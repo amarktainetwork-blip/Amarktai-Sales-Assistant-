@@ -19,6 +19,12 @@ import type { ProposedAction } from "./workflowRules";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
+const publicConnectionLabels = {
+  genie: "CRM workspace bridge",
+  outlook: "Messaging and calendar link",
+  genx: "Amarktai intelligence service",
+} as const;
+
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
@@ -118,6 +124,51 @@ export async function getAssistantDashboard(userId: number) {
     },
     runs,
     proposals,
+  };
+}
+
+export async function getOperationsDashboard(userId: number) {
+  const db = await requireDb();
+  const now = new Date();
+  const todayEnd = new Date(now);
+  todayEnd.setHours(23, 59, 59, 999);
+  const [proposals, callbacks, calls, runs, profiles, audit] = await Promise.all([
+    db.select().from(actionProposals).where(eq(actionProposals.userId, userId)).orderBy(desc(actionProposals.createdAt)).limit(100),
+    db.select().from(callbackTasks).where(eq(callbackTasks.userId, userId)).orderBy(desc(callbackTasks.createdAt)).limit(80),
+    db.select().from(callSessions).where(eq(callSessions.userId, userId)).orderBy(desc(callSessions.updatedAt)).limit(40),
+    db.select().from(workflowRuns).where(eq(workflowRuns.userId, userId)).orderBy(desc(workflowRuns.updatedAt)).limit(40),
+    db.select().from(integrationProfiles).where(eq(integrationProfiles.userId, userId)).orderBy(desc(integrationProfiles.updatedAt)).limit(20),
+    db.select().from(auditEntries).where(eq(auditEntries.userId, userId)).orderBy(desc(auditEntries.createdAt)).limit(30),
+  ]);
+  const openCallbacks = callbacks.filter(task => task.state === "open");
+  const overdueCallbacks = openCallbacks.filter(task => task.dueAt && task.dueAt < now);
+  const dueTodayCallbacks = openCallbacks.filter(task => task.dueAt && task.dueAt >= now && task.dueAt <= todayEnd);
+  const reviewProposals = proposals.filter(proposal => proposal.state === "review_required");
+  const approvedProposals = proposals.filter(proposal => proposal.state === "approved");
+  const executedProposals = proposals.filter(proposal => proposal.state === "executed");
+  const blockedProposals = proposals.filter(proposal => proposal.state === "blocked");
+  const activeCalls = calls.filter(call => call.status === "in_progress");
+  const reviewCalls = calls.filter(call => call.status === "ready_for_review");
+  return {
+    generatedAt: now,
+    metrics: {
+      reviewRequired: reviewProposals.length, approvedActions: approvedProposals.length,
+      openCallbacks: openCallbacks.length, overdueCallbacks: overdueCallbacks.length, dueTodayCallbacks: dueTodayCallbacks.length,
+      activeCalls: activeCalls.length, callsReadyForReview: reviewCalls.length,
+      executedActions: executedProposals.length, blockedActions: blockedProposals.length,
+      preparedWorkflows: runs.filter(run => run.status === "prepared").length,
+    },
+    queues: {
+      reviewProposals: reviewProposals.slice(0, 8), approvedProposals: approvedProposals.slice(0, 6),
+      overdueCallbacks: overdueCallbacks.slice(0, 8), dueTodayCallbacks: dueTodayCallbacks.slice(0, 8),
+      activeCalls: activeCalls.slice(0, 6), callsReadyForReview: reviewCalls.slice(0, 6),
+    },
+    recent: {
+      workflows: runs.slice(0, 8),
+      audit: audit.slice(0, 10),
+      connections: profiles.map(profile => ({ ...profile, provider: publicConnectionLabels[profile.provider] })),
+      agentActivity: audit.filter(entry => ["workflow_prepared", "live_call_started", "live_call_completed", "genie_action_executed", "genie_action_blocked"].includes(entry.eventType)).slice(0, 8),
+    },
   };
 }
 

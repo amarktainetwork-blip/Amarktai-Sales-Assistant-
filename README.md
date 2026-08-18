@@ -1,49 +1,41 @@
-# Amarktai AI Sales Assistant
+# Amarktai Network Sales Assistant
 
-**Amarktai AI** is a blue-and-white, governed sales-intelligence workspace for the Course2Career pilot. It combines a modern public product site, secure workspace access, specialized GenX agents, review-first workflow planning, call coaching, approved knowledge retrieval, and controlled CRM and Outlook connection paths. It is **Part of Amarktai Network**.
+**Amarktai Network Sales Assistant** is a governed sales-operations application for the Course2Career pilot. It provides a public product site, secure workspace access, a real data-backed operations dashboard, workflow preparation, review queues, call-context capture, approved knowledge, connection readiness, and a retained operational audit trail.
 
-> The system separates intelligence from execution. A user instruction can be routed, clarified, planned and reviewed, but no external CRM or communication action may run without an owned, approved action proposal and a verified integration contract.
+> The application is deliberately review-first. It can prepare work and retain decisions, but it must not claim that an external CRM, message, calendar, or email action occurred unless the configured integration reports the result and records the evidence.
 
-## What is implemented
+## Read the current implementation status first
 
-| Area | Capability |
+The source brief describes a much larger system than is currently live. Before installing or evaluating this project, read the code-grounded status report at [`docs/implementation-status.md`](docs/implementation-status.md).
+
+It separates features into three states:
+
+| State | Meaning |
 | --- | --- |
-| Product and workspace | Responsive blue-and-white Amarktai AI website, secure access screen, protected command centre, workflow studio, agent desk, live call desk, knowledge hub, and connection centre. |
-| Secure self-hosting | Webdock-local administrator login mode, signed server session, app-level email second factor, role-aware backend procedures, and server-side secret handling. |
-| Supervisor Agent | Deterministic natural-language routing for first contact, Cyber post-consultation, Cyber final close, call coaching, knowledge, and operational analytics requests. It identifies required inputs and preserves review-first controls. |
-| Specialist agents | Supervisor, Workflow Guardian, CRM Context, Conversation Coach, Programme Knowledge, Communications, Notes & Summary, QA & Compliance, and Analytics roles. Model-backed roles use GenX when configured. |
-| Workflow governance | First contact, Cyber final close, and Cyber post-consultation rules are stored as reviewable action proposals with idempotency keys, historical-record protection, and immutable audit entries. |
-| Genie CRM bridge | Playwright/Browserless bridge using a Genie login, reviewed saved scripts, execution evidence, and action results. **No Genie API key is used.** |
-| Call intelligence | Persisted live-call sessions, transcript chunks, GenX coaching tips, factual post-call summaries, and review-ready call notes. A real-time transcription provider can be connected at deployment. |
-| Knowledge grounding | Approved programme and policy sources are stored per workspace and injected into the Programme Knowledge Agent only when relevant. |
-| Outlook readiness | Microsoft Graph application-token support, deployment readiness checks, and saved-template email validation that rejects missing recipients, bodies, template names, and blank subjects. |
-| Operational intelligence | Review, approved, executed, blocked, callback and call-session analytics, plus an append-only audit API. |
-| Deployment | Webdock Docker Compose package for Caddy, app, worker, MariaDB, Redis, Browserless Chromium, persistent script calibration, screenshots, and Genie health checks. |
+| **Built** | The interface and backend contract exist in this repository. |
+| **Configuration-dependent** | The code exists but needs real production credentials, a permitted account, or calibration on Webdock before it can operate. |
+| **Not yet built** | The source brief calls for it, but this repository does not yet provide the complete data model, service, or end-to-end interface. |
 
-## Architecture
+## What is available now
 
-```text
-Public product site + protected Amarktai AI workspace
-        │
-        ├── Supervisor Agent ──► specialist agents and governed workflow router
-        ├── Review queue ──────► owned proposals, approvals, execution evidence
-        ├── Live call service ─► transcript → coaching → factual summary
-        ├── Knowledge service ─► approved programme and policy context
-        └── Integration layer ─► Genie browser bridge / Outlook Graph / GenX
+| Product area | Current capability |
+| --- | --- |
+| Operations dashboard | A data-backed dashboard for review load, callbacks, overdue and due-today work, live/reviewable calls, workflow activity, connection profiles, and audit activity. |
+| Controlled workflows | First contact, Cyber final close, and Cyber post-consultation paths create reviewable action proposals with idempotency and historical-record safeguards. |
+| Review and evidence | Proposed actions can be approved or skipped. Approved CRM actions have a guarded execution route with normalized evidence status and proposal-specific audit history. |
+| Secure access | A self-hosted administrator sign-in path, signed sessions, role field, and email second-factor implementation are included. Live email verification needs SMTP configuration. |
+| Call desk | Manual live-call sessions, factual notes/transcript capture, coaching request contract, and post-call summary contract are included. Audio and telephony ingestion are not yet included. |
+| Knowledge | Approved notes and URLs can be added and used to ground the knowledge guidance route. Advanced document ingestion and vector search are not yet included. |
+| Connections | Browser-automation, Microsoft Graph, email, and intelligence-provider readiness/configuration surfaces exist. A real connection must be configured and tested before it is treated as active. |
 
-Webdock VPS ── Caddy ── Node app ── MariaDB + Redis + Browserless worker
-```
-
-## Development
-
-Install dependencies and start the application.
+## Local development
 
 ```bash
 pnpm install
 pnpm dev
 ```
 
-Run all local quality checks before committing.
+Run the required checks before committing:
 
 ```bash
 pnpm test
@@ -51,49 +43,23 @@ pnpm check
 pnpm build
 ```
 
-The development database uses the MySQL-compatible `DATABASE_URL` supplied to the project. Schema changes are defined in `drizzle/schema.ts`, generated through Drizzle, and stored under `drizzle/`.
+## Webdock VPS package
 
-## Webdock VPS installation
-
-The deployable package is in [`deploy/webdock`](deploy/webdock). It provisions Caddy, the application, a Genie health worker, MariaDB, Redis, and Browserless Chromium. Read the complete [Webdock VPS installation guide](docs/webdock-vps-install.md) before starting.
+The self-hosted deployment package is located in [`deploy/webdock`](deploy/webdock). It includes the application container, reverse proxy configuration, MariaDB, Redis, Browserless Chromium, a CRM health worker, an environment template, and operational scripts.
 
 ```bash
-git clone https://github.com/amarktainetwork-blip/Amarktai-Sales-Assistant.git /opt/c2c-assistant
-cd /opt/c2c-assistant
+git clone https://github.com/amarktainetwork-blip/Amarktai-Sales-Assistant.git /opt/amarktai-network
+cd /opt/amarktai-network
 cp deploy/webdock/configuration.template .env
 nano .env
 chmod +x deploy/webdock/install.sh scripts/run-genie-health-check.sh
 ./deploy/webdock/install.sh
 ```
 
-After the first deployment, validate containers and application logs.
+The Webdock package has been packaged and syntax-checked in development, but it still needs an end-to-end run on the target VPS. The installation guide at [`docs/webdock-vps-install.md`](docs/webdock-vps-install.md) documents the required production configuration, CRM selector calibration, and health-check steps.
 
-```bash
-docker compose -f deploy/webdock/docker-compose.yml --env-file .env ps
-docker compose -f deploy/webdock/docker-compose.yml --env-file .env logs --tail=150 app worker
-```
+## Integration safety
 
-## First-install configuration
+The browser CRM bridge intentionally has **no CRM API key**. It requires an authorised login, reviewed saved scripts, calibrated selectors, and evidence capture. Microsoft Graph mail/calendar capability is likewise configuration-dependent until the tenant, application permissions, sender, and test mailbox have been verified.
 
-The complete configuration template is [`deploy/webdock/configuration.template`](deploy/webdock/configuration.template). Place real values only in `/opt/c2c-assistant/.env`; never commit that file.
-
-| Group | Required values |
-| --- | --- |
-| Application and infrastructure | `DOMAIN`, `DB_PASSWORD`, `DB_ROOT_PASSWORD`, `JWT_SECRET`, `SECRET_KEY`, `BROWSERLESS_TOKEN` |
-| Webdock-local access | `AUTH_MODE=local`, `VITE_AUTH_MODE=local`, `LOCAL_ADMIN_NAME`, `LOCAL_ADMIN_EMAIL`, `LOCAL_ADMIN_PASSWORD` |
-| GenX | `GENX_CHAT_COMPLETIONS_URL`, `GENX_API_KEY`, `GENX_DEFAULT_MODEL` |
-| Genie browser automation | `GENIE_LOGIN_URL`, `GENIE_USERNAME`, `GENIE_PASSWORD`, and reviewed `GENIE_*_SELECTOR` values |
-| Outlook / Microsoft Graph | `OUTLOOK_TENANT_ID`, `OUTLOOK_CLIENT_ID`, `OUTLOOK_CLIENT_SECRET`, `OUTLOOK_SENDER_EMAIL` |
-| Email second factor and daily reports | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` |
-
-There is deliberately no `GENIE_CRM_API_KEY`. Genie is controlled through the dedicated browser service with an authorised login and saved Playwright scripts. The installer creates `config/genie-scripts.json` from `deploy/webdock/genie-scripts.template.json`. Every `REPLACE_*` selector and the Genie search URL must be calibrated using an authorised live session before a browser write is activated.
-
-## Operational safety rules
-
-The Course2Career rules encoded in the project include the approved SMS sender `+447428000560`, saved-template communication requirements, blank-subject email prevention, task and opportunity historical-record protection, first-contact progression, Cyber final closure rules, and the Cyber post-consultation no-answer/voicemail branch.
-
-The system must stop and report the exception rather than substitute an action when it cannot verify an active task, current opportunity, required template, valid recipient, correct sender, consent, or duplicate protection condition.
-
-## Documentation
-
-The primary operational guide is [`docs/webdock-vps-install.md`](docs/webdock-vps-install.md). It covers VPS setup, HTTPS, backups, Genie selector calibration, deployment health checks, recovery steps, and the persistent Browserless worker. Additional provider research is retained in [`docs/integration-research.md`](docs/integration-research.md).
+The customer-facing application is branded as **Amarktai Network**. Provider names and credentials are technical deployment details, not product branding.

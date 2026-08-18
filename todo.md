@@ -31,3 +31,16 @@
 - [x] Attach proposal-specific audit metadata, timestamps, and linked evidence directly to each review-queue card.
 - [x] Normalize Genie execution-result payloads so evidence paths are always present or explicitly reported as unavailable in the review queue.
 - [x] Render proposal-specific audit metadata fields in each review-queue card, including script, completion, detail, and evidence-status keys when available.
+- [x] Write an honest feature-by-feature implementation status that distinguishes built, configured-only, and production-validated capabilities.
+- [x] Build a substantive Amarktai Network operational dashboard with actual queues, KPIs, agent activity, callback workload, workflow activity, connection readiness, and audit visibility.
+- [x] Audit the backend against the dashboard and stated product capabilities, then implement or remove every unsupported claim.
+- [x] Create one darker, cohesive Amarktai Network visual system shared by the landing page, sign-in, dashboard, workspace, and footer.
+- [x] Increase and correct Amarktai Network branding, remove customer-facing GenX language, and repair all footer ownership copy.
+- [x] Add restrained background depth and accessible motion so the site is less bright while remaining professional and consistent.
+- [x] Add actual agent-activity and connection-readiness data to the dashboard, and present only metrics supported by the current backend.
+- [x] Remove the remaining customer-facing external-provider naming and replace it with Amarktai Network product language.
+- [x] Rebuild the workspace screens into the same darker Amarktai Network visual system used by the landing page, sign-in, and dashboard.
+- [x] Reconcile all visible product copy against the implementation-status document so no screen overstates an unbuilt or configuration-dependent feature.
+- [x] Replace the remaining customer-facing provider-specific connection labels with Amarktai Network product terminology.
+- [x] Normalize saved connection-profile display data into Amarktai Network product labels before rendering it in dashboard and connection views.
+- [ ] Remove the unused legacy ConnectionsPage export that still contains provider-specific UI wording.

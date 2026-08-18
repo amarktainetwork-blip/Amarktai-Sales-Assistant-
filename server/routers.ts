@@ -10,6 +10,7 @@ import {
   createWorkflowRun,
   createLiveCallSession,
   getAssistantDashboard,
+  getOperationsDashboard,
   getOperationalAnalytics,
   getApprovedActionProposal,
   recordActionExecution,
@@ -48,6 +49,21 @@ const workflowInput = z.object({
   callOutcome: z.enum(["no_answer", "voicemail", "answered"]).optional(),
   conversationNotes: z.string().trim().max(12_000).optional(),
 });
+
+const publicConnectionLabels = {
+  genie: "CRM workspace bridge",
+  outlook: "Messaging and calendar link",
+  genx: "Amarktai intelligence service",
+} as const;
+
+function presentConnectionProfile<T extends { provider: keyof typeof publicConnectionLabels; displayName: string; scopeSummary: string | null }>(profile: T) {
+  const productLabel = publicConnectionLabels[profile.provider];
+  return {
+    ...profile,
+    displayName: productLabel,
+    scopeSummary: `Amarktai Network ${productLabel.toLowerCase()} profile. Technical configuration details remain server-side.`,
+  };
+}
 
 export const appRouter = router({
   system: systemRouter,
@@ -94,6 +110,18 @@ export const appRouter = router({
   }),
   assistant: router({
     dashboard: secondFactorProcedure.query(({ ctx }) => getAssistantDashboard(ctx.user.id)),
+    operationsDashboard: secondFactorProcedure.query(async ({ ctx }) => {
+      const dashboard = await getOperationsDashboard(ctx.user.id);
+      return {
+        ...dashboard,
+        connectionReadiness: {
+          crmBrowserBridge: getGenieReadiness().configured,
+          microsoftConnection: getOutlookReadiness().ready,
+          intelligenceService: getGenxReadiness().ready,
+          emailDelivery: getSmtpReadiness().ready,
+        },
+      };
+    }),
     routeCommand: secondFactorProcedure.input(z.object({ command: z.string().trim().min(4).max(4_000) })).mutation(({ input }) => routeSalesCommand(input.command)),
     agents: secondFactorProcedure.query(() => ({ agents: AGENT_CATALOG, genx: getGenxReadiness() })),
     actions: secondFactorProcedure
@@ -142,7 +170,7 @@ export const appRouter = router({
   }),
   integrations: router({
     list: secondFactorProcedure.query(async ({ ctx }) => ({
-      profiles: await listIntegrationProfiles(ctx.user.id),
+      profiles: (await listIntegrationProfiles(ctx.user.id)).map(presentConnectionProfile),
       genx: getGenxReadiness(),
       outlook: getOutlookReadiness(),
       genie: {
