@@ -16,3 +16,16 @@ export function routeCrmCapability(input: { connections: CrmConnectionRoute[]; r
   if (!chosen) return { routable: false as const, reason: `No ready CRM connection has the '${input.requiredCapability}' capability.` };
   return { routable: true as const, provider: chosen.provider, displayName: chosen.displayName, connectionMode: chosen.connectionMode };
 }
+
+const ACTION_CAPABILITY: Record<string, CrmCapability> = {
+  verify_contact_context: "contacts", update_contact_status: "contacts", complete_active_task: "tasks", schedule_callback: "tasks",
+  update_current_opportunity: "opportunities", append_contact_note: "notes", apply_sequence: "activities",
+  send_sms_template: "activities", send_email_template: "activities", send_whatsapp_template: "activities",
+};
+
+export function routeWorkflowActions<T extends { actionType: string; payload: Record<string, unknown> }>(actions: T[], connections: CrmConnectionRoute[]) {
+  return actions.map(action => {
+    const requiredCapability = ACTION_CAPABILITY[action.actionType] ?? "activities";
+    return { ...action, payload: { ...action.payload, crmRoute: { ...routeCrmCapability({ connections, requiredCapability }), requiredCapability } } };
+  });
+}

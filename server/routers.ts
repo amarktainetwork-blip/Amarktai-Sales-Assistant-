@@ -48,7 +48,7 @@ import { routeSalesCommand } from "./supervisor";
 import { prepareLiveCoachingTip, preparePostCallSummary } from "./liveCoach";
 import { getOutlookReadiness, validateEmailPreview } from "./outlook";
 import { discoverPublicWebsite } from "./companyDiscovery";
-import { routeCrmCapability, type CrmCapability } from "./crmRouter";
+import { routeWorkflowActions } from "./crmRouter";
 
 const workflowInput = z.object({
   workflowKey: z.enum(WORKFLOW_KEYS),
@@ -70,20 +70,6 @@ function presentConnectionProfile<T extends { provider: keyof typeof publicConne
     displayName: productLabel,
     scopeSummary: `Amarktai Network ${productLabel.toLowerCase()} profile. Technical configuration details remain server-side.`,
   };
-}
-
-const actionCapability: Record<string, CrmCapability> = {
-  verify_contact_context: "contacts", update_contact_status: "contacts", complete_active_task: "tasks", schedule_callback: "tasks",
-  update_current_opportunity: "opportunities", append_contact_note: "notes", apply_sequence: "activities",
-  send_sms_template: "activities", send_email_template: "activities", send_whatsapp_template: "activities",
-};
-
-function applyCrmRouting(actions: ReturnType<typeof buildWorkflowPlan>["actions"], connections: Awaited<ReturnType<typeof getCompanySetup>>["connections"]) {
-  return actions.map(action => {
-    const requiredCapability = actionCapability[action.actionType] ?? "activities";
-    const crmRoute = routeCrmCapability({ connections, requiredCapability });
-    return { ...action, payload: { ...action.payload, crmRoute: { ...crmRoute, requiredCapability } } };
-  });
 }
 
 export const appRouter = router({
@@ -151,7 +137,7 @@ export const appRouter = router({
     prepareWorkflow: secondFactorProcedure.input(workflowInput).mutation(async ({ ctx, input }) => {
       const plan = buildWorkflowPlan(input);
       const companySetup = await getCompanySetup(ctx.user.id);
-      const routedActions = applyCrmRouting(plan.actions, companySetup.connections);
+      const routedActions = routeWorkflowActions(plan.actions, companySetup.connections);
       const workflowRunId = await createWorkflowRun({
         userId: ctx.user.id,
         workflowKey: input.workflowKey,

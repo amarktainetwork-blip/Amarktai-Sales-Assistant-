@@ -6,7 +6,7 @@
 - [x] Implement the specified sales-assistant workflows and operational dashboard.
 - [x] Redesign the public marketing experience with the updated brand direction.
 - [x] Write complete installation, configuration, deployment, and security documentation.
-- [ ] Run build and integration validation, save a release checkpoint, and push the completed implementation to GitHub.
+- [ ] Run authenticated end-to-end Company Setup validation, complete release integration checks, save an updated checkpoint, and push the verified implementation to GitHub.
 - [x] Re-read the supplied specification’s final integration design and remove the unsupported Genie CRM API-key assumption.
 - [x] Replace the Genie connection implementation with the specified install-time CRM bridge or browser-session approach, without storing a Genie API key.
 - [x] Add a Webdock VPS first-install package, including environment template, production process configuration, reverse-proxy guidance, database setup, migrations, health checks, and update procedure.
@@ -59,3 +59,6 @@
 - [x] Refresh the hero with the requested white-model image and expand the public automation, multi-CRM, agent-capability, and review-first explanations.
 - [ ] Add targeted unit coverage for website-discovery safeguards, CRM routing, and company onboarding persistence.
 - [x] Add unit coverage for website-discovery safeguards and multi-CRM capability routing.
+- [ ] Run authenticated Company Setup end-to-end validation: save profile, preview website, confirm knowledge, register CRM capability, and save a playbook.
+- [ ] Add API smoke coverage for Company Setup procedures and CRM-routed workflow-proposal blocking behaviour.
+- [x] Add direct smoke coverage for CRM-routed workflow proposal blocking and ready-route attachment.
