@@ -201,9 +201,18 @@ export async function getApprovedActionProposal(userId: number, proposalId: numb
 export async function recordActionExecution(input: { userId: number; proposalId: number; success: boolean; result: Record<string, unknown> }) {
   const db = await requireDb();
   const state: "executed" | "blocked" = input.success ? "executed" : "blocked";
+  const screenshotPath = typeof input.result.screenshotPath === "string" ? input.result.screenshotPath : null;
+  const normalizedResult = {
+    ...input.result,
+    evidence: {
+      screenshotPath,
+      availability: screenshotPath ? "captured" : "unavailable",
+      reason: screenshotPath ? null : "The saved script completed without a configured screenshot step. Add a screenshot step during Genie script calibration to retain visual evidence.",
+    },
+  };
   await db
     .update(actionProposals)
-    .set({ state, executedAt: new Date(), executionResult: input.result })
+    .set({ state, executedAt: new Date(), executionResult: normalizedResult })
     .where(and(eq(actionProposals.id, input.proposalId), eq(actionProposals.userId, input.userId), eq(actionProposals.state, "approved")));
   await recordAudit({
     userId: input.userId,
@@ -211,8 +220,13 @@ export async function recordActionExecution(input: { userId: number; proposalId:
     entityType: "action_proposal",
     entityId: String(input.proposalId),
     summary: input.success ? "Approved Genie saved script completed." : "Approved Genie saved script failed and was blocked.",
-    metadata: input.result,
+    metadata: normalizedResult,
   });
+}
+
+export async function listProposalAuditEntries(userId: number, proposalId: number) {
+  const db = await requireDb();
+  return db.select().from(auditEntries).where(and(eq(auditEntries.userId, userId), eq(auditEntries.entityType, "action_proposal"), eq(auditEntries.entityId, String(proposalId)))).orderBy(desc(auditEntries.createdAt)).limit(12);
 }
 
 export async function listIntegrationProfiles(userId: number) {
@@ -245,6 +259,17 @@ export async function listKnowledgeSources(userId: number) {
   return db.select().from(knowledgeSources).where(eq(knowledgeSources.userId, userId)).orderBy(desc(knowledgeSources.updatedAt));
 }
 
+export async function searchApprovedKnowledge(userId: number, query: string) {
+  const db = await requireDb();
+  const sources = await db.select().from(knowledgeSources).where(and(eq(knowledgeSources.userId, userId), eq(knowledgeSources.status, "ready"))).orderBy(desc(knowledgeSources.updatedAt)).limit(80);
+  const terms = query.toLowerCase().split(/[^a-z0-9]+/).filter(term => term.length > 2).slice(0, 18);
+  const score = (source: typeof sources[number]) => {
+    const haystack = `${source.title}\n${source.content ?? ""}\n${source.sourceUrl ?? ""}`.toLowerCase();
+    return terms.reduce((total, term) => total + (haystack.includes(term) ? 1 : 0), 0);
+  };
+  return sources.map(source => ({ source, score: score(source) })).filter(item => item.score > 0).sort((a, b) => b.score - a.score || Number(b.source.updatedAt) - Number(a.source.updatedAt)).slice(0, 6).map(item => item.source);
+}
+
 export async function createKnowledgeSource(input: {
   userId: number;
   title: string;
@@ -275,6 +300,47 @@ export async function createCallSession(input: {
     metadata: { leadLabel: input.leadLabel },
   });
   return id;
+}
+
+export async function createLiveCallSession(input: { userId: number; leadLabel: string }) {
+  const db = await requireDb();
+  const result = await db.insert(callSessions).values({ userId: input.userId, leadLabel: input.leadLabel, status: "in_progress" });
+  const id = Number(result[0].insertId);
+  await recordAudit({ userId: input.userId, eventType: "live_call_started", entityType: "call_session", entityId: String(id), summary: "Live coaching session started.", metadata: { leadLabel: input.leadLabel } });
+  return id;
+}
+
+export async function appendLiveTranscript(input: { userId: number; callSessionId: number; transcriptChunk: string; coachTip?: string }) {
+  const db = await requireDb();
+  const current = (await db.select().from(callSessions).where(and(eq(callSessions.id, input.callSessionId), eq(callSessions.userId, input.userId))).limit(1))[0];
+  if (!current) throw new Error("Live call session was not found.");
+  const transcript = `${current.transcript ? `${current.transcript}\n` : ""}${input.transcriptChunk}`.slice(-40_000);
+  await db.update(callSessions).set({ transcript, coachNotes: input.coachTip ?? current.coachNotes, status: "in_progress" }).where(eq(callSessions.id, input.callSessionId));
+  return { transcript };
+}
+
+export async function completeLiveCallSession(input: { userId: number; callSessionId: number; summary?: string }) {
+  const db = await requireDb();
+  await db.update(callSessions).set({ status: "ready_for_review", summary: input.summary }).where(and(eq(callSessions.id, input.callSessionId), eq(callSessions.userId, input.userId)));
+  await recordAudit({ userId: input.userId, eventType: "live_call_completed", entityType: "call_session", entityId: String(input.callSessionId), summary: "Live coaching session completed and is ready for review.", metadata: {} });
+}
+
+export async function getOperationalAnalytics(userId: number) {
+  const db = await requireDb();
+  const [review, approved, executed, blocked, callbacks, calls] = await Promise.all([
+    db.select({ value: count() }).from(actionProposals).where(and(eq(actionProposals.userId, userId), eq(actionProposals.state, "review_required"))),
+    db.select({ value: count() }).from(actionProposals).where(and(eq(actionProposals.userId, userId), eq(actionProposals.state, "approved"))),
+    db.select({ value: count() }).from(actionProposals).where(and(eq(actionProposals.userId, userId), eq(actionProposals.state, "executed"))),
+    db.select({ value: count() }).from(actionProposals).where(and(eq(actionProposals.userId, userId), eq(actionProposals.state, "blocked"))),
+    db.select({ value: count() }).from(callbackTasks).where(and(eq(callbackTasks.userId, userId), eq(callbackTasks.state, "open"))),
+    db.select({ value: count() }).from(callSessions).where(eq(callSessions.userId, userId)),
+  ]);
+  return { reviewRequired: review[0]?.value ?? 0, approved: approved[0]?.value ?? 0, executed: executed[0]?.value ?? 0, blocked: blocked[0]?.value ?? 0, openCallbacks: callbacks[0]?.value ?? 0, callSessions: calls[0]?.value ?? 0 };
+}
+
+export async function listAuditEntries(userId: number, limit = 60) {
+  const db = await requireDb();
+  return db.select().from(auditEntries).where(eq(auditEntries.userId, userId)).orderBy(desc(auditEntries.createdAt)).limit(limit);
 }
 
 export async function recordAudit(input: {

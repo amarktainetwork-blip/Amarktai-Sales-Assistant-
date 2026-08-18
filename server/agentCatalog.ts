@@ -5,12 +5,20 @@ export type AgentDefinition = {
   key: string;
   name: string;
   purpose: string;
-  category: "governance" | "context" | "conversation" | "knowledge" | "communications";
+  category: "governance" | "context" | "conversation" | "knowledge" | "communications" | "analysis" | "orchestration";
   requiresModel: boolean;
   modelRole: string;
 };
 
 export const AGENT_CATALOG: AgentDefinition[] = [
+  {
+    key: "supervisor",
+    name: "Supervisor Agent",
+    purpose: "Interprets a sales instruction, routes it to the right specialist or governed workflow, identifies missing inputs, and never bypasses review-first controls.",
+    category: "orchestration",
+    requiresModel: false,
+    modelRole: "Deterministic command router and safety coordinator",
+  },
   {
     key: "workflow_guardian",
     name: "Workflow Guardian",
@@ -50,6 +58,30 @@ export const AGENT_CATALOG: AgentDefinition[] = [
     category: "communications",
     requiresModel: true,
     modelRole: "GenX controlled-drafting model",
+  },
+  {
+    key: "notes_agent",
+    name: "Notes & Summary Agent",
+    purpose: "Converts a verified transcript or factual notes into concise CRM-ready summaries, next steps and missing-information prompts.",
+    category: "conversation",
+    requiresModel: true,
+    modelRole: "GenX structured call-analysis model",
+  },
+  {
+    key: "qa_compliance",
+    name: "QA & Compliance Agent",
+    purpose: "Checks eligibility, duplicate safeguards, template use, sender requirements and historical record protections before review.",
+    category: "governance",
+    requiresModel: false,
+    modelRole: "Deterministic policy validation model",
+  },
+  {
+    key: "analytics",
+    name: "Analytics Agent",
+    purpose: "Surfaces operational throughput, review volume, execution outcomes and blocked work from durable workspace records.",
+    category: "analysis",
+    requiresModel: false,
+    modelRole: "Measured operational analytics",
   },
 ];
 

@@ -17,5 +17,17 @@
 - [ ] Validate the Webdock Docker Compose package end to end, including application startup, migrations, Caddy routing, Browserless connection, and the 12-hour health worker.
 - [x] Expand the Webdock guide with selector calibration, authentication setup, health-check recovery, and browser-script operational runbooks.
 - [ ] Calibrate the deployed Genie script registry with real Genie URLs and selectors, then validate every required saved script against a live authorized Genie session.
-- [ ] Complete the workspace’s end-to-end approved-action execution view, including execution status, evidence screenshots, audit result display, and actionable failure reporting.
+- [x] Complete the workspace’s end-to-end approved-action execution view, including execution status, evidence screenshots, audit result display, and actionable failure reporting.
 - [ ] Complete the per-script real-session calibration and verification checklist after the authorized Genie selector mapping is available.
+- [x] Replace the existing Signal Garden design with a professional blue-and-white Amarktai AI visual system across the public site, sign-in, and workspace.
+- [ ] Create and apply a cohesive new set of premium blue Amarktai AI product visuals instead of the current mixed-color imagery.
+- [x] Redesign the landing page information architecture, product storytelling, typography, navigation, calls to action, and responsive layouts from first principles.
+- [x] Rebuild the workspace interface so operational workflows, approval actions, evidence, integrations, and system status are clear and production-oriented.
+- [x] Audit the original system brief against the current backend and implement all self-contained missing services, procedures, persistence, and automated operations.
+- [x] Re-test the rebuilt experience, APIs, migrations, deployment package, and documentation before the next GitHub release.
+- [x] Display Genie execution evidence, structured results, audit metadata, and actionable recovery guidance directly in the workspace review queue.
+- [x] Integrate the Supervisor Agent, live-coaching session, analytics, and Outlook validation APIs into the visible workspace flows and verify the end-to-end contracts.
+- [ ] Run and document final API smoke checks and deploy-artifact validation after the latest redesign and backend changes.
+- [x] Attach proposal-specific audit metadata, timestamps, and linked evidence directly to each review-queue card.
+- [x] Normalize Genie execution-result payloads so evidence paths are always present or explicitly reported as unavailable in the review queue.
+- [x] Render proposal-specific audit metadata fields in each review-queue card, including script, completion, detail, and evidence-status keys when available.

@@ -14,7 +14,7 @@ export function getGenxReadiness() {
   };
 }
 
-export async function runGenxAgent(input: { agentKey: string; messages: ChatMessage[] }) {
+export async function runGenxAgent(input: { agentKey: string; messages: ChatMessage[]; approvedKnowledge?: string }) {
   const readiness = getGenxReadiness();
   const agent = AGENT_CATALOG.find(item => item.key === input.agentKey) ?? AGENT_CATALOG[1];
 
@@ -28,7 +28,7 @@ export async function runGenxAgent(input: { agentKey: string; messages: ChatMess
 
   const systemMessage = {
     role: "system",
-    content: `You are ${agent.name} for Course2Career. ${agent.purpose} Never claim that an external CRM, email, SMS, WhatsApp, or calendar action happened unless the system confirms it. Never invent candidate facts, objections, commitments, or programme details. Produce concise, review-ready guidance.`,
+    content: `You are ${agent.name} for Course2Career. ${agent.purpose} Never claim that an external CRM, email, SMS, WhatsApp, or calendar action happened unless the system confirms it. Never invent candidate facts, objections, commitments, or programme details. Produce concise, review-ready guidance.${input.approvedKnowledge ? `\n\nApproved knowledge sources for this answer:\n${input.approvedKnowledge}\n\nTreat these sources as the only authority for programme, policy, pricing, entry requirement or course claims. If the answer is not present, say so clearly.` : ""}`,
   };
 
   const response = await fetch(process.env.GENX_CHAT_COMPLETIONS_URL!, {

@@ -8,7 +8,9 @@ import {
   createIntegrationProfile,
   createKnowledgeSource,
   createWorkflowRun,
+  createLiveCallSession,
   getAssistantDashboard,
+  getOperationalAnalytics,
   getApprovedActionProposal,
   recordActionExecution,
   attachDailyReportTask,
@@ -17,7 +19,12 @@ import {
   listActionProposals,
   listIntegrationProfiles,
   listKnowledgeSources,
+  searchApprovedKnowledge,
+  listAuditEntries,
+  listProposalAuditEntries,
   reviewActionProposal,
+  appendLiveTranscript,
+  completeLiveCallSession,
 } from "./db";
 import { getGenxReadiness, runGenxAgent } from "./genx";
 import { getGenieReadiness } from "./genie/config";
@@ -31,6 +38,9 @@ import { compareVerificationCode, createVerificationChallenge, issueTwoFactorSes
 import { getSmtpReadiness, sendSecondFactorCode } from "./smtp";
 import { createHeartbeatJob } from "./_core/heartbeat";
 import { authenticateLocalPassword, isLocalAuthMode, issueLocalSession, LOCAL_SESSION_MAX_AGE_MS } from "./localAuth";
+import { routeSalesCommand } from "./supervisor";
+import { prepareLiveCoachingTip, preparePostCallSummary } from "./liveCoach";
+import { getOutlookReadiness, validateEmailPreview } from "./outlook";
 
 const workflowInput = z.object({
   workflowKey: z.enum(WORKFLOW_KEYS),
@@ -84,6 +94,7 @@ export const appRouter = router({
   }),
   assistant: router({
     dashboard: secondFactorProcedure.query(({ ctx }) => getAssistantDashboard(ctx.user.id)),
+    routeCommand: secondFactorProcedure.input(z.object({ command: z.string().trim().min(4).max(4_000) })).mutation(({ input }) => routeSalesCommand(input.command)),
     agents: secondFactorProcedure.query(() => ({ agents: AGENT_CATALOG, genx: getGenxReadiness() })),
     actions: secondFactorProcedure
       .input(z.object({ workflowRunId: z.number().int().positive().optional() }).optional())
@@ -106,6 +117,7 @@ export const appRouter = router({
         await reviewActionProposal(ctx.user.id, input.proposalId, input.state);
         return { success: true };
       }),
+    proposalAudit: secondFactorProcedure.input(z.object({ proposalId: z.number().int().positive() })).query(({ ctx, input }) => listProposalAuditEntries(ctx.user.id, input.proposalId)),
     executeApprovedGenieAction: secondFactorProcedure.input(z.object({ proposalId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
       const proposal = await getApprovedActionProposal(ctx.user.id, input.proposalId);
       if (!proposal) throw new Error("Only an approved action proposal may be executed, and it must be owned by your workspace.");
@@ -121,16 +133,18 @@ export const appRouter = router({
           messages: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().min(1).max(12_000) })).min(1).max(18),
         }),
       )
-      .mutation(({ input }) => runGenxAgent(input)),
+      .mutation(async ({ ctx, input }) => {
+        const query = input.messages.filter(message => message.role === "user").map(message => message.content).join("\n");
+        const sources = input.agentKey === "knowledge_guide" ? await searchApprovedKnowledge(ctx.user.id, query) : [];
+        const approvedKnowledge = sources.length ? sources.map(source => `[${source.title}]\n${source.content ?? source.sourceUrl ?? "No retained body."}`).join("\n\n---\n\n") : undefined;
+        return runGenxAgent({ ...input, approvedKnowledge });
+      }),
   }),
   integrations: router({
     list: secondFactorProcedure.query(async ({ ctx }) => ({
       profiles: await listIntegrationProfiles(ctx.user.id),
       genx: getGenxReadiness(),
-      outlook: {
-        configured: Boolean(process.env.OUTLOOK_CLIENT_ID && process.env.OUTLOOK_CLIENT_SECRET && process.env.OUTLOOK_TENANT_ID),
-        requiredVariables: ["OUTLOOK_CLIENT_ID", "OUTLOOK_CLIENT_SECRET", "OUTLOOK_TENANT_ID"],
-      },
+      outlook: getOutlookReadiness(),
       genie: {
         ...getGenieReadiness(),
         requiredVariables: ["GENIE_LOGIN_URL", "GENIE_USERNAME", "GENIE_PASSWORD", "BROWSERLESS_WS_ENDPOINT"],
@@ -150,6 +164,26 @@ export const appRouter = router({
     saveNotes: secondFactorProcedure
       .input(z.object({ leadLabel: z.string().trim().min(1).max(160), transcript: z.string().trim().max(40_000).optional(), coachNotes: z.string().trim().max(12_000).optional() }))
       .mutation(({ ctx, input }) => createCallSession({ userId: ctx.user.id, ...input })),
+    startLive: secondFactorProcedure.input(z.object({ leadLabel: z.string().trim().min(1).max(160) })).mutation(({ ctx, input }) => createLiveCallSession({ userId: ctx.user.id, ...input })),
+    coachTranscript: secondFactorProcedure.input(z.object({ callSessionId: z.number().int().positive(), leadLabel: z.string().trim().min(1).max(160), transcriptChunk: z.string().trim().min(4).max(12_000), approvedContext: z.string().trim().max(8_000).optional() })).mutation(async ({ ctx, input }) => {
+      const tip = await prepareLiveCoachingTip({ leadLabel: input.leadLabel, transcript: input.transcriptChunk, approvedContext: input.approvedContext });
+      await appendLiveTranscript({ userId: ctx.user.id, callSessionId: input.callSessionId, transcriptChunk: input.transcriptChunk, coachTip: tip.content });
+      return tip;
+    }),
+    completeLive: secondFactorProcedure.input(z.object({ callSessionId: z.number().int().positive(), leadLabel: z.string().trim().min(1).max(160), transcript: z.string().trim().min(4).max(40_000) })).mutation(async ({ ctx, input }) => {
+      const summary = await preparePostCallSummary({ leadLabel: input.leadLabel, transcript: input.transcript });
+      await appendLiveTranscript({ userId: ctx.user.id, callSessionId: input.callSessionId, transcriptChunk: input.transcript });
+      await completeLiveCallSession({ userId: ctx.user.id, callSessionId: input.callSessionId, summary: summary.content });
+      return summary;
+    }),
+  }),
+  analytics: router({
+    summary: secondFactorProcedure.query(({ ctx }) => getOperationalAnalytics(ctx.user.id)),
+    audit: secondFactorProcedure.input(z.object({ limit: z.number().int().min(1).max(100).optional() }).optional()).query(({ ctx, input }) => listAuditEntries(ctx.user.id, input?.limit ?? 60)),
+  }),
+  outlook: router({
+    readiness: secondFactorProcedure.query(() => getOutlookReadiness()),
+    previewEmail: secondFactorProcedure.input(z.object({ to: z.string().max(320), subject: z.string().max(300), body: z.string().max(20_000), templateName: z.string().max(200).optional() })).mutation(({ input }) => validateEmailPreview(input)),
   }),
   reports: router({
     list: secondFactorProcedure.query(({ ctx }) => listDailyReports(ctx.user.id)),
