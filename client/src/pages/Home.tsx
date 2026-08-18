@@ -4,9 +4,9 @@ import { ArrowRight, BrainCircuit, CalendarDays, Check, ChevronDown, CircleCheck
 import { useState } from "react";
 
 const heroImage = "/manus-storage/amarktai-ai-master-hero_5b3a2d3c.png";
-const commandImage = "/manus-storage/amarktai-ai-master-hero_5b3a2d3c.png";
-const coachImage = "/manus-storage/amarktai-ai-master-hero_5b3a2d3c.png";
-const trustImage = "/manus-storage/amarktai-ai-master-hero_5b3a2d3c.png";
+const commandImage = "/manus-storage/amarktai-ai-platform-flow_5d540057.png";
+const coachImage = "/manus-storage/amarktai-ai-live-call_e5c733b7.png";
+const trustImage = "/manus-storage/amarktai-ai-trust-security_8b827cc4.png";
 
 const navigation = [
   { label: "Platform", anchor: "platform" },
