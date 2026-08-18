@@ -15,7 +15,7 @@ export { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 export const startLogin = () => {
   const oauthPortalUrl = import.meta.env.VITE_OAUTH_PORTAL_URL;
   const appId = import.meta.env.VITE_APP_ID;
-  if (import.meta.env.VITE_AUTH_MODE === "local" || !oauthPortalUrl || !appId) {
+  if (import.meta.env.DEV || import.meta.env.VITE_AUTH_MODE === "local" || !oauthPortalUrl || !appId) {
     window.location.href = "/auth";
     return;
   }

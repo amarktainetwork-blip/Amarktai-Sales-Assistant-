@@ -5,6 +5,7 @@ import { createLocalAdminIfMissing, getUserByEmail, getUserById } from "./db";
 
 const LOCAL_AUTH_MODE = "local";
 const LOCAL_SESSION_TTL_SECONDS = 12 * 60 * 60;
+export const DEVELOPMENT_PREVIEW_OPEN_ID = "development-preview";
 
 function localAuthKey() {
   const secret = process.env.SECRET_KEY || process.env.JWT_SECRET;
@@ -14,6 +15,14 @@ function localAuthKey() {
 
 export function isLocalAuthMode() {
   return process.env.AUTH_MODE === LOCAL_AUTH_MODE;
+}
+
+export function isDevelopmentPreviewMode() {
+  return process.env.NODE_ENV === "development";
+}
+
+export function isLocalSessionMode() {
+  return isLocalAuthMode() || isDevelopmentPreviewMode();
 }
 
 export async function authenticateLocalPassword(email: string, password: string): Promise<User | undefined> {
@@ -35,7 +44,7 @@ export async function issueLocalSession(user: User) {
 }
 
 export async function getLocalSessionUser(token: string | undefined): Promise<User | null> {
-  if (!token || !isLocalAuthMode()) return null;
+  if (!token || !isLocalSessionMode()) return null;
   try {
     const { payload } = await jwtVerify(token, localAuthKey());
     if (payload.mode !== LOCAL_AUTH_MODE || !payload.sub) return null;
@@ -43,6 +52,10 @@ export async function getLocalSessionUser(token: string | undefined): Promise<Us
   } catch {
     return null;
   }
+}
+
+export function isDevelopmentPreviewUser(user: Pick<User, "openId"> | null | undefined) {
+  return Boolean(isDevelopmentPreviewMode() && user?.openId === DEVELOPMENT_PREVIEW_OPEN_ID);
 }
 
 export const LOCAL_SESSION_MAX_AGE_MS = LOCAL_SESSION_TTL_SECONDS * 1000;

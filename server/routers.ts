@@ -8,6 +8,7 @@ import {
   createTwoFactorChallenge,
   createIntegrationProfile,
   createKnowledgeSource,
+  getOrCreateDevelopmentPreviewUser,
   createWorkflowRun,
   createLiveCallSession,
   getAssistantDashboard,
@@ -54,7 +55,7 @@ import { buildWorkflowPlan } from "./workflowRules";
 import { compareVerificationCode, createVerificationChallenge, issueTwoFactorSession, TWO_FACTOR_COOKIE, TWO_FACTOR_MAX_AGE_MS } from "./twoFactor";
 import { getSmtpReadiness, sendSecondFactorCode } from "./smtp";
 import { createHeartbeatJob } from "./_core/heartbeat";
-import { authenticateLocalPassword, isLocalAuthMode, issueLocalSession, LOCAL_SESSION_MAX_AGE_MS } from "./localAuth";
+import { authenticateLocalPassword, isDevelopmentPreviewMode, isLocalAuthMode, issueLocalSession, LOCAL_SESSION_MAX_AGE_MS } from "./localAuth";
 import { routeSalesCommand } from "./supervisor";
 import { prepareLiveCoachingTip, preparePostCallSummary } from "./liveCoach";
 import { getOutlookReadiness, validateEmailPreview } from "./outlook";
@@ -92,11 +93,20 @@ export const appRouter = router({
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
-    mode: publicProcedure.query(() => ({ local: isLocalAuthMode() })),
+    mode: publicProcedure.query(() => ({ local: isLocalAuthMode(), developmentPreview: isDevelopmentPreviewMode() })),
     localLogin: publicProcedure.input(z.object({ email: z.string().email(), password: z.string().min(12).max(160) })).mutation(async ({ ctx, input }) => {
       if (!isLocalAuthMode()) throw new Error("Local login is only available on the self-hosted Webdock deployment.");
       const user = await authenticateLocalPassword(input.email, input.password);
       if (!user) throw new Error("Invalid email or password.");
+      const token = await issueLocalSession(user);
+      const cookieOptions = getSessionCookieOptions(ctx.req);
+      ctx.res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: LOCAL_SESSION_MAX_AGE_MS });
+      return { success: true };
+    }),
+    developmentPreviewLogin: publicProcedure.mutation(async ({ ctx }) => {
+      if (!isDevelopmentPreviewMode()) throw new Error("Development dashboard preview is unavailable on the deployed application.");
+      const user = await getOrCreateDevelopmentPreviewUser();
+      if (!user) throw new Error("Unable to initialise development preview access.");
       const token = await issueLocalSession(user);
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: LOCAL_SESSION_MAX_AGE_MS });

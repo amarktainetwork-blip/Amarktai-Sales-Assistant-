@@ -75,3 +75,8 @@
 - [ ] Add focused CRM-context reuse, response-cache, usage-ledger, and duplicate-draft suppression tests.
 - [ ] Implement and test the remaining approved CRM outcome branches and exact customer workflow templates that are still not codified in the deterministic library.
 - [ ] Expand active playbooks from generic capability mapping into fully defined, customer-approved sequence templates where an exact workflow is required.
+- [x] Replace the managed preview sign-in path with a visually uniform Amarktai Network local-login screen that provides a clear dashboard-testing route.
+- [ ] Add a safe development-only local-login setup path and document how the administrator can create or reset the initial dashboard-test credentials during Webdock installation.
+- [ ] Validate the local login and dashboard-access path, then update deployment-readiness and Genie commissioning guidance with an exact no-API-key browser-session procedure.
+- [x] Add a disposable development-only local access route that is unavailable in production and does not require or persist VPS credentials.
+- [ ] Document the Webdock administrator credential-reset procedure and run a real local email-password plus SMTP second-factor dashboard test after installation.

@@ -2,7 +2,7 @@ import type { CreateExpressContextOptions } from "@trpc/server/adapters/express"
 import { parse as parseCookieHeader } from "cookie";
 import type { User } from "../../drizzle/schema";
 import { COOKIE_NAME } from "@shared/const";
-import { getLocalSessionUser, isLocalAuthMode } from "../localAuth";
+import { getLocalSessionUser, isDevelopmentPreviewUser, isLocalSessionMode } from "../localAuth";
 import { TWO_FACTOR_COOKIE, verifyTwoFactorSession } from "../twoFactor";
 import { sdk, type AuthenticatedUser } from "./sdk";
 
@@ -19,12 +19,12 @@ export async function createContext(opts: CreateExpressContextOptions): Promise<
 
   try {
     const cookies = parseCookieHeader(opts.req.headers.cookie ?? "");
-    if (isLocalAuthMode()) {
+    if (isLocalSessionMode()) {
       user = await getLocalSessionUser(cookies[COOKIE_NAME]) as AuthenticatedUser | null;
     } else {
       user = await sdk.authenticateRequest(opts.req);
     }
-    if (user && !user.isCron) twoFactorVerified = await verifyTwoFactorSession(cookies[TWO_FACTOR_COOKIE], user.id);
+    if (user && !user.isCron) twoFactorVerified = isDevelopmentPreviewUser(user) || await verifyTwoFactorSession(cookies[TWO_FACTOR_COOKIE], user.id);
   } catch {
     user = null;
   }

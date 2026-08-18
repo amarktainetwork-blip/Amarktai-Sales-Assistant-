@@ -116,6 +116,16 @@ export async function createLocalAdminIfMissing() {
   return getUserByEmail(email);
 }
 
+export async function getOrCreateDevelopmentPreviewUser() {
+  if (process.env.NODE_ENV !== "development") throw new Error("Development preview access is unavailable outside development.");
+  const email = "preview@amarktainetwork.local";
+  const existing = await getUserByEmail(email);
+  if (existing) return existing;
+  const db = await requireDb();
+  await db.insert(users).values({ openId: "development-preview", email, name: "Amarktai Dashboard Preview", loginMethod: "local", role: "admin", lastSignedIn: new Date() });
+  return getUserByEmail(email);
+}
+
 export async function getAssistantDashboard(userId: number) {
   const db = await requireDb();
   const [reviewCount, openTaskCount, knowledgeCount, runs, proposals] = await Promise.all([
