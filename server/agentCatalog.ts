@@ -1,4 +1,4 @@
-export const WORKFLOW_KEYS = ["first_contact", "call_2_followup", "call_3_followup", "call_4_final_attempt", "callback_requested", "booking_confirmation", "reschedule_requested", "no_show_followup", "information_request", "manager_escalation", "cyber_final_close", "cyber_post_consultation"] as const;
+export const WORKFLOW_KEYS = ["first_contact", "call_2_followup", "call_3_followup", "call_4_final_attempt", "callback_requested", "booking_confirmation", "reschedule_requested", "no_show_followup", "information_request", "manager_escalation", "post_call_outcome", "cyber_final_close", "cyber_post_consultation"] as const;
 export type WorkflowKey = (typeof WORKFLOW_KEYS)[number];
 
 export type AgentDefinition = {
@@ -144,6 +144,7 @@ export const WORKFLOW_LABELS: Record<WorkflowKey, string> = {
   no_show_followup: "No-show follow-up",
   information_request: "Information request",
   manager_escalation: "Manager escalation",
+  post_call_outcome: "Post-call outcome capture",
   cyber_final_close: "Cyber Security final close",
   cyber_post_consultation: "Cyber post-consultation follow-up",
 };

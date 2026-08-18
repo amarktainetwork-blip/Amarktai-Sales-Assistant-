@@ -69,6 +69,7 @@ const workflowInput = z.object({
   workflowKey: z.enum(WORKFLOW_KEYS),
   leadLabel: z.string().trim().min(1).max(160),
   callOutcome: z.enum(["no_answer", "voicemail", "answered"]).optional(),
+  salesOutcome: z.enum(["answered", "no_answer", "voicemail", "wrong_number", "not_interested", "not_fit", "callback_requested", "booked", "considering_options", "information_requested", "funding_issue", "time_issue", "family_commitments", "already_studying_elsewhere", "closed_lost"]).optional(),
   conversationNotes: z.string().trim().max(12_000).optional(),
 });
 

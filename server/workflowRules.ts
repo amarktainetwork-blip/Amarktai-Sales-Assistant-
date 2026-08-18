@@ -1,11 +1,13 @@
 import type { WorkflowKey } from "./agentCatalog";
 
 export type CallOutcome = "no_answer" | "voicemail" | "answered";
+export type SalesOutcome = "answered" | "no_answer" | "voicemail" | "wrong_number" | "not_interested" | "not_fit" | "callback_requested" | "booked" | "considering_options" | "information_requested" | "funding_issue" | "time_issue" | "family_commitments" | "already_studying_elsewhere" | "closed_lost";
 
 export type WorkflowRequest = {
   workflowKey: WorkflowKey;
   leadLabel: string;
   callOutcome?: CallOutcome;
+  salesOutcome?: SalesOutcome;
   conversationNotes?: string;
   callbackAt?: string;
 };
@@ -127,6 +129,19 @@ function structuredFollowUpPlan(request: WorkflowRequest, type: "booking_confirm
   return { verificationSummary: `${definition.title} requires factual context, current CRM history, consent and exclusion checks, duplicate protection, and a human decision on every proposed communication or task. This workflow never assumes that a booking, reschedule, no-show, request, or escalation occurred.`, actions };
 }
 
+function postCallOutcomePlan(request: WorkflowRequest): WorkflowPlan {
+  const outcome = request.salesOutcome;
+  if (!outcome) throw new Error("Select the verified post-call outcome before preparing outcome actions.");
+  if (!request.conversationNotes?.trim()) throw new Error("Provide factual outcome notes. The assistant will not infer a candidate statement, interest level, booking, or objection.");
+  const outcomeLabels: Record<SalesOutcome, string> = { answered: "Answered", no_answer: "No answer", voicemail: "Voicemail", wrong_number: "Wrong number", not_interested: "Not interested", not_fit: "Not a fit", callback_requested: "Callback requested", booked: "Booked", considering_options: "Considering options", information_requested: "Information requested", funding_issue: "Funding issue", time_issue: "Time issue", family_commitments: "Family or commitments issue", already_studying_elsewhere: "Already studying elsewhere", closed_lost: "Closed lost" };
+  const actions: ProposedAction[] = [...commonVerification(request.leadLabel), reviewAction(request.leadLabel, `outcome-${outcome}-notes`, "append_contact_note", `Add factual ${outcomeLabels[outcome].toLowerCase()} outcome notes`, { outcome, content: request.conversationNotes.trim(), guardrail: "Record only verified statements and never overwrite history." })];
+  if (["not_interested", "not_fit", "wrong_number", "closed_lost"].includes(outcome)) actions.push(reviewAction(request.leadLabel, `outcome-${outcome}-status`, "update_contact_status", `Review status update for ${outcomeLabels[outcome].toLowerCase()}`, { status: outcome === "wrong_number" || outcome === "not_fit" ? "Not a Fit" : outcome === "not_interested" ? "Not Interested" : "Lost", guardrail: "Confirm the current record and historical status trail before any change." }));
+  if (["callback_requested", "considering_options", "funding_issue", "time_issue", "family_commitments", "information_requested"].includes(outcome)) actions.push(reviewAction(request.leadLabel, `outcome-${outcome}-task`, "schedule_callback", "Schedule outcome follow-up only if no duplicate exists", { taskTitle: outcome === "callback_requested" ? "Callback" : "Outcome follow-up", callbackAt: request.callbackAt?.trim(), prerequisite: "Confirm consent, any agreed time, and the absence of a duplicate future task." }));
+  if (outcome === "booked") actions.push(reviewAction(request.leadLabel, "outcome-booked-status", "update_contact_status", "Review status update to Booked", { status: "Booked", guardrail: "Verify the booking is factual and current before updating the record." }), reviewAction(request.leadLabel, "outcome-booked-task", "schedule_callback", "Schedule booking task only if no duplicate exists", { taskTitle: "Booking task", callbackAt: request.callbackAt?.trim(), prerequisite: "Verify no booking task or calendar item already exists." }));
+  if (outcome === "information_requested") actions.push(reviewAction(request.leadLabel, "outcome-information-email", "send_email_template", "Send approved information-request email", { templateName: "INFORMATION REQUEST EMAIL", requireSavedSubject: true, guardrail: "Use approved knowledge and a configured saved template only." }));
+  return { verificationSummary: `The verified outcome is ${outcomeLabels[outcome]}. Review existing history, consent, current task, current opportunity, communication history, and duplicate risk before each proposal. The assistant has prepared actions only; a person must decide whether each CRM change or communication is appropriate.`, actions };
+}
+
 function cyberFinalClosePlan(leadLabel: string): WorkflowPlan {
   return {
     verificationSummary:
@@ -244,6 +259,7 @@ export function buildWorkflowPlan(request: WorkflowRequest): WorkflowPlan {
   if (request.workflowKey === "no_show_followup") return structuredFollowUpPlan({ ...request, leadLabel }, "no_show_followup");
   if (request.workflowKey === "information_request") return structuredFollowUpPlan({ ...request, leadLabel }, "information_request");
   if (request.workflowKey === "manager_escalation") return structuredFollowUpPlan({ ...request, leadLabel }, "manager_escalation");
+  if (request.workflowKey === "post_call_outcome") return postCallOutcomePlan({ ...request, leadLabel });
   if (request.workflowKey === "cyber_final_close") return cyberFinalClosePlan(leadLabel);
   return cyberPostConsultationPlan({ ...request, leadLabel });
 }

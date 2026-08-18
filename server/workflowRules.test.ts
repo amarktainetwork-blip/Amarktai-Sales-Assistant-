@@ -49,4 +49,14 @@ describe("workflow rules", () => {
     expect(plan.actions.map(action => action.title)).toContain("Send approved booking confirmation email");
     expect(plan.actions.every(action => action.payload.reviewRequired === true)).toBe(true);
   });
+  it("maps a verified booked outcome to protected status and booking-task proposals", () => {
+    const plan = buildWorkflowPlan({ workflowKey: "post_call_outcome", leadLabel: "Candidate H", salesOutcome: "booked", conversationNotes: "Candidate confirmed a booking for Friday." });
+    expect(plan.actions.map(action => action.title)).toContain("Review status update to Booked");
+    expect(plan.actions.map(action => action.title)).toContain("Schedule booking task only if no duplicate exists");
+  });
+  it("requires factual notes and prepares approved information-request communication", () => {
+    expect(() => buildWorkflowPlan({ workflowKey: "post_call_outcome", leadLabel: "Candidate I", salesOutcome: "information_requested" })).toThrow("Provide factual outcome notes");
+    const plan = buildWorkflowPlan({ workflowKey: "post_call_outcome", leadLabel: "Candidate I", salesOutcome: "information_requested", conversationNotes: "Asked for approved programme information by email." });
+    expect(plan.actions.map(action => action.title)).toContain("Send approved information-request email");
+  });
 });
