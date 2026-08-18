@@ -53,6 +53,63 @@ export const integrationProfiles = mysqlTable(
  * Immutable record of an assistant instruction and the safe, review-first
  * action plan produced from it. External actions are never performed here.
  */
+export const companyProfiles = mysqlTable("companyProfiles", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }).unique(),
+  companyName: varchar("companyName", { length: 220 }).notNull(),
+  websiteUrl: varchar("websiteUrl", { length: 1024 }),
+  industry: varchar("industry", { length: 180 }),
+  companySize: varchar("companySize", { length: 80 }),
+  primaryMarket: varchar("primaryMarket", { length: 220 }),
+  salesMotion: varchar("salesMotion", { length: 180 }),
+  brandVoice: text("brandVoice"),
+  discoveryStatus: mysqlEnum("discoveryStatus", ["not_started", "review_required", "confirmed", "failed"]).default("not_started").notNull(),
+  confirmedAt: timestamp("confirmedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [index("companyProfiles_user_idx").on(table.userId)]);
+
+export const websiteDiscoveries = mysqlTable("websiteDiscoveries", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  companyProfileId: int("companyProfileId").notNull().references(() => companyProfiles.id, { onDelete: "cascade" }),
+  sourceUrl: varchar("sourceUrl", { length: 1024 }).notNull(),
+  pageTitle: varchar("pageTitle", { length: 500 }),
+  extractedText: text("extractedText"),
+  proposedFacts: json("proposedFacts").$type<Record<string, unknown>>().notNull(),
+  proposedKnowledge: json("proposedKnowledge").$type<Array<{ title: string; content: string }>>().notNull(),
+  status: mysqlEnum("status", ["review_required", "confirmed", "rejected", "failed"]).default("review_required").notNull(),
+  reviewedAt: timestamp("reviewedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [index("websiteDiscoveries_user_created_idx").on(table.userId, table.createdAt)]);
+
+export const crmConnections = mysqlTable("crmConnections", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  provider: mysqlEnum("provider", ["genie", "hubspot", "salesforce", "pipedrive", "custom_browser"]).notNull(),
+  displayName: varchar("displayName", { length: 180 }).notNull(),
+  status: mysqlEnum("status", ["draft", "needs_credentials", "ready", "paused", "error"]).default("draft").notNull(),
+  capabilities: json("capabilities").$type<Array<"contacts" | "tasks" | "opportunities" | "notes" | "activities" | "email" | "calendar">>().notNull(),
+  connectionMode: mysqlEnum("connectionMode", ["api", "browser_automation", "custom"]).notNull(),
+  configurationHint: text("configurationHint"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [index("crmConnections_user_provider_idx").on(table.userId, table.provider)]);
+
+export const automationPlaybooks = mysqlTable("automationPlaybooks", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  title: varchar("title", { length: 220 }).notNull(),
+  trigger: varchar("trigger", { length: 160 }).notNull(),
+  description: text("description").notNull(),
+  agentKey: varchar("agentKey", { length: 80 }).notNull(),
+  requiredCapabilities: json("requiredCapabilities").$type<string[]>().notNull(),
+  reviewRequired: boolean("reviewRequired").default(true).notNull(),
+  status: mysqlEnum("status", ["draft", "active", "paused"]).default("draft").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [index("automationPlaybooks_user_status_idx").on(table.userId, table.status)]);
+
 export const workflowRuns = mysqlTable(
   "workflowRuns",
   {
@@ -223,6 +280,10 @@ export const dailyReports = mysqlTable(
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type IntegrationProfile = typeof integrationProfiles.$inferSelect;
+export type CompanyProfile = typeof companyProfiles.$inferSelect;
+export type WebsiteDiscovery = typeof websiteDiscoveries.$inferSelect;
+export type CrmConnection = typeof crmConnections.$inferSelect;
+export type AutomationPlaybook = typeof automationPlaybooks.$inferSelect;
 export type WorkflowRun = typeof workflowRuns.$inferSelect;
 export type ActionProposal = typeof actionProposals.$inferSelect;
 export type CallbackTask = typeof callbackTasks.$inferSelect;

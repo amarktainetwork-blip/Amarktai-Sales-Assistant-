@@ -83,6 +83,46 @@ export const AGENT_CATALOG: AgentDefinition[] = [
     requiresModel: false,
     modelRole: "Measured operational analytics",
   },
+  {
+    key: "sales_intelligence",
+    name: "Sales Intelligence Agent",
+    purpose: "Finds actionable patterns in approved CRM activity, call outcomes, callbacks, and review decisions so agents can prioritise the next best work.",
+    category: "analysis",
+    requiresModel: true,
+    modelRole: "GenX evidence-led sales analysis model",
+  },
+  {
+    key: "objection_handler",
+    name: "Objection Handling Agent",
+    purpose: "Prepares factual, source-grounded responses to objections and clearly identifies missing information for human review.",
+    category: "conversation",
+    requiresModel: true,
+    modelRole: "GenX controlled response-planning model",
+  },
+  {
+    key: "recommendation_agent",
+    name: "Course Recommendation Agent",
+    purpose: "Maps verified prospect needs to approved programme information, while escalating eligibility and suitability decisions for human review.",
+    category: "knowledge",
+    requiresModel: true,
+    modelRole: "GenX grounded recommendation model",
+  },
+  {
+    key: "crm_router",
+    name: "Multi-CRM Router Agent",
+    purpose: "Routes a proposed contact, task, note, opportunity, or activity action only to a connected CRM that has the required confirmed capability.",
+    category: "orchestration",
+    requiresModel: false,
+    modelRole: "Deterministic provider and capability router",
+  },
+  {
+    key: "pipeline_planner",
+    name: "Pipeline Planner Agent",
+    purpose: "Prepares prioritised pipeline actions, follow-up timing, and task proposals from approved organisation context and CRM evidence.",
+    category: "analysis",
+    requiresModel: true,
+    modelRole: "GenX structured pipeline planning model",
+  },
 ];
 
 export const WORKFLOW_LABELS: Record<WorkflowKey, string> = {

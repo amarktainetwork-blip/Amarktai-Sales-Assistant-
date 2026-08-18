@@ -2,42 +2,42 @@
 
 **Last audited:** 18 August 2026
 
-This document is intentionally strict. A feature is only described as **built** when it exists in the current code and has a usable interface or backend contract. A feature is **configuration-dependent** when the code exists but requires production credentials, a live account, selector calibration, or the Webdock environment. A feature is **not yet built** when the approved brief requires it but the current repository does not provide the data model, service, or end-to-end interface.
+This document distinguishes **built** code and user-facing workflows from **configuration-dependent** capabilities that require a customer's authorised accounts, credentials, selectors, or Webdock VPS. It does not treat an install-time setting or a UI card as proof that an external action has run successfully.
 
-## Current reality
+## Current capability status
 
-| Product area | Status | What is actually present | What is not yet complete |
+| Product area | Status | What is present now | Production dependency or limitation |
 | --- | --- | --- | --- |
-| Public landing and sign-in | **Built, being redesigned** | Responsive landing page, access page, navigation, application routes, local sign-in form, and an email second-factor gate. | The public, login, and workspace visual systems still need to be fully unified under the darker Amarktai Network direction. |
-| Workspace shell | **Built, partial dashboard** | Protected sidebar, command-centre route, workflow studio, agent desk, call desk, knowledge hub, connections page, and review queue. | This is **not** yet the full consultant, manager, and administrator dashboard specified in the brief. |
-| Dashboard metrics | **Built, limited** | Counts for review-required proposals, open callbacks, executed/blocked actions, call sessions, recent workflow runs, and audit entries. | No today/overdue task queue, team performance, funnel, conversion, pipeline, bookings, course, revenue, cost, or model-usage dashboards. |
-| Governed workflows | **Built, limited** | Rule-based first-contact, Cyber final-close, and Cyber post-consultation proposal preparation with review and audit records. | The full library of operational workflows, templates, office-hour rules, escalation, and exception management remains incomplete. |
-| Approval and audit trail | **Built** | Proposal approval/skip actions, guarded browser execution pathway, persisted execution result, evidence status, and proposal-specific audit entries. | Live evidence is only meaningful after a calibrated CRM script runs successfully in the Webdock environment. |
-| CRM browser bridge | **Configuration-dependent** | Browserless/Playwright bridge, saved-script registry, action guards, health check, persistent evidence path, and Webdock Compose service definitions. | A real authorised CRM login, live URLs, selectors, and each script must be calibrated and tested. No live CRM action has been validated here. |
-| Email and calendar | **Partial** | Readiness checks and validated email-preview inputs. | There is no confirmed end-to-end production mail-send or calendar-write workflow until Microsoft Graph credentials, permissions, and a real mailbox are configured and tested. |
-| Call coaching | **Built, configuration-dependent intelligence** | A manually started live-call session, transcript/note capture, persisted coaching notes, and summary contract. | No audio capture, streaming transcription, recording ingestion, or live telephony integration is installed. Model-backed coaching requires the configured external model provider. |
-| Knowledge | **Built, limited** | Manual approved notes/URLs, readiness status, and keyword-ranked source grounding for the Knowledge Agent. | No document extraction pipeline, embeddings/vector search, source versioning, approval workflow, or citation interface. |
-| Model-backed agents | **Configuration-dependent** | Agent catalogue, command routing, prompt boundaries, and a server-side model-provider adapter. | Requires a live model endpoint and credential; chat is not yet a complete conversation-history, streaming, feedback, or evaluation system. |
-| Authentication | **Built, configuration-dependent** | Self-hosted administrator login path, signed session, role field, email second-factor challenges, and expiry controls. | The production local-login and SMTP second-factor flow must be run on Webdock with real configured secrets before it can be called live-validated. |
-| Webdock deployment | **Packaged, not live-validated** | Docker Compose, app Dockerfile, Caddy configuration, MariaDB, Redis, Browserless, installer, environment template, scripts, and operating guide. | Docker is not available in this development environment. The full Compose startup, migrations, routing, browser worker, and health worker still require validation on the user’s Webdock VPS. |
+| Sales Assistant public product | **Built** | Dark Amarktai Network landing page with prominent Sales Assistant branding, automation explanation, multi-CRM capability statement, 14-agent capability grid, review-first explanation, white-model hero, and required ownership copy. | No production dependency for the static public experience. |
+| Secure workspace | **Built, configuration-dependent access** | Local Webdock login, signed session, role field, email second factor, protected dashboard and sidebar routes. | SMTP values and a live Webdock deployment are needed to complete the real second-factor journey. |
+| Company setup | **Built** | A protected Company Setup route captures company name, website, industry, size, market, sales motion, and approved brand guidance in a user-owned profile. | Each workspace user currently owns one organisation profile. Multi-organisation tenancy is not implemented. |
+| Website discovery and knowledge confirmation | **Built** | Public HTML discovery rejects local/private targets, limits fetched text, and returns a transient in-session preview. After explicit selection, the public URL is rechecked and only selected knowledge is written with an audit record. | The first release analyses the saved public website URL only; it is not a whole-domain crawler, document parser, or source-versioning system. |
+| Review-first automation playbooks | **Built** | Users can persist organisation-specific playbook definitions with agent assignment, required capabilities, draft/active/paused state, and an enforced review-required flag. | Playbooks are durable configuration and must be connected to additional workflow templates as those approved processes are implemented. |
+| Governed workflows | **Built, limited library** | First-contact, Cyber final-close, and Cyber post-consultation workflows prepare reviewable actions, preserve idempotency keys, and record audit history. | The complete workflow library from every possible sales process cannot be safely assumed; new flows should be codified from the customer's actual approved policy and templates. |
+| Agent catalogue | **Built, model-dependent intelligence** | Fourteen specialist roles cover supervision, governance, CRM context, coaching, knowledge, communications, notes, compliance, analytics, sales intelligence, objections, recommendations, CRM routing, and pipeline planning. | Model-backed responses require the configured intelligence endpoint. Agents do not invent customer facts or bypass review controls. |
+| Multi-CRM capability registry | **Built** | User-owned CRM registrations support CRM workspace bridge, HubSpot, Salesforce, Pipedrive, and custom browser CRM labels, a capability matrix, and a deterministic router. Workflow proposals receive a capability route at creation and are blocked before review when no ready compatible connection exists. | The registry and router are not a claim that every external CRM has a pre-authenticated live connector. A connector requires authorised credentials or browser scripts and production testing. |
+| CRM browser bridge | **Configuration-dependent** | Browserless/Playwright bridge, saved-script registry, action guards, screenshot evidence, and a CRM workspace bridge execution route exist without a CRM API key. | A real authorised account, URLs, selectors, and scripts must be calibrated and tested on Webdock before external CRM actions can run. |
+| Email and calendar | **Partial** | Microsoft readiness checks and validated email-preview inputs exist. | A production mail-send or calendar-write flow needs Microsoft tenant credentials, permissions, a sender mailbox, and an authorised end-to-end test. |
+| Live call support | **Built, model-dependent** | Manual live-call sessions retain factual transcripts/notes, coaching guidance, and summaries. | No telephony, audio capture, streaming transcription, or recording ingestion is installed. |
+| Operational dashboard and audit | **Built, bounded scope** | Live counters, review queue, callback workload, calls, workflow activity, connection readiness, agent activity, and audit visibility use persisted data. | Full manager analytics, revenue/funnel reporting, exportable reports, and advanced team dashboards are outside the current data model. |
+| Webdock package | **Packaged, not live-validated** | Docker Compose, application image, Caddy, MariaDB, Redis, Browserless, environment template, installer, health worker, and installation guide are included. | The full stack must be deployed and tested on the user's authorised Webdock VPS. Docker is not available in this development environment. |
 
-## The dashboard gap
+## Automation boundary
 
-The current **Command Centre is an operational overview**, not the finished dashboard described in the brief. It has useful, real data-backed elements, but it does not yet satisfy the required consultant, manager, or administrator dashboard scope.
+> **The Sales Assistant may prepare, route, and explain work. A human approves every external action before the system attempts it.**
 
-| Required dashboard outcome | Current state | Build required |
-| --- | --- | --- |
-| Consultant day view | Partial counters only | Today’s tasks, overdue tasks, calls, callbacks, lead statuses, meetings, opportunities, next best action, recent notes, templates, and course quick reference. |
-| Manager performance view | Not built | Team task completion, consultant activity, contact/conversion/booking rates, losses, pipeline, overdue/stalled leads, compliance exceptions, duplicate warnings, failed communication and review load. |
-| Administrator operations view | Partial connection readiness | Connected-system status, automation configuration, sender/office-hour settings, roles, permissions, error reports, usage and workflow logs. |
-| Reporting | Not built | Lead, funnel, course, consultant, campaign, communication, audit, and performance reporting with date filters and exportable views. |
+The multi-CRM layer evaluates the required capability—such as contacts, tasks, opportunities, notes, activities, email, or calendar—against ready registrations. It attaches the resulting route to each proposal and sets an unroutable proposal to **blocked** before it can be approved. Credentials remain deployment secrets; they are never stored in the organisation or CRM-registry tables.
 
-## What installation does and does not do
+## Required Webdock completion steps
 
-Installing the Webdock package supplies the **runtime environment**: database, cache, browser service, reverse proxy, application container, local administrator bootstrap, configuration loading, and scheduled health worker. It does **not** create the missing dashboard, reporting models, integrations, or CRM scripts automatically.
+| Step | Why it is required |
+| --- | --- |
+| Configure database, local-admin, SMTP, intelligence-service, CRM browser, and Outlook secrets during installation | These values are environment-specific and intentionally excluded from source control. |
+| Calibrate authorised CRM selectors and saved scripts | Browser automation cannot safely guess CRM page structure or execute against an unauthorised session. |
+| Register CRM capability profiles in Company Setup | The deterministic router needs a declared, verified capability boundary before it can prepare a route. |
+| Test real email, CRM, and browser workflows on the VPS | A readiness check proves configuration presence, not a completed external operation. |
+| Confirm company website discovery results | Only information explicitly selected by a workspace member becomes assistant knowledge. |
 
-> Installation enables the configuration-dependent features to run. It does not convert partially implemented features into finished capabilities.
+## Verification completed in this repository
 
-## Next build sequence
-
-The next implementation pass is therefore focused on the product gap rather than additional visual scaffolding. It will create a real operations dashboard from the persisted workload, extend the data and server contracts for dashboard queues and trend metrics, consolidate customer-facing branding under **Amarktai Network**, remove external provider language from public screens, and unify landing, sign-in, and workspace styling.
+The additive organisation, discovery, CRM registry, and automation-playbook migration was reviewed and applied. Unit coverage includes website-discovery private-network rejection, bounded HTML extraction, and multi-CRM capability routing. The project unit suite, TypeScript check, and production build pass locally. Live Webdock, mailbox, CRM, browser-session, and external-provider validation remain customer-environment activities.

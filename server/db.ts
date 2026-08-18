@@ -6,12 +6,16 @@ import {
   auditEntries,
   callbackTasks,
   callSessions,
+  companyProfiles,
+  crmConnections,
   dailyReports,
   integrationProfiles,
   knowledgeSources,
   twoFactorChallenges,
   type InsertUser,
   users,
+  websiteDiscoveries,
+  automationPlaybooks,
   workflowRuns,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
@@ -200,6 +204,7 @@ export async function createWorkflowRun(input: {
         targetLabel: action.targetLabel,
         idempotencyKey: action.idempotencyKey,
         payload: action.payload,
+        state: ((action.payload.crmRoute as { routable?: boolean } | undefined)?.routable === false ? "blocked" : "review_required") as "blocked" | "review_required",
       })),
     );
   }
@@ -451,4 +456,70 @@ export async function markDailyReportDelivery(reportId: number, deliveryKey: str
 export async function releaseDailyReportDelivery(reportId: number, deliveryKey: string) {
   const db = await requireDb();
   await db.update(dailyReports).set({ lastDeliveryKey: null }).where(and(eq(dailyReports.id, reportId), eq(dailyReports.lastDeliveryKey, deliveryKey)));
+}
+
+export async function getCompanySetup(userId: number) {
+  const db = await requireDb();
+  const [profile, discoveries, connections, playbooks] = await Promise.all([
+    db.select().from(companyProfiles).where(eq(companyProfiles.userId, userId)).limit(1),
+    db.select().from(websiteDiscoveries).where(eq(websiteDiscoveries.userId, userId)).orderBy(desc(websiteDiscoveries.createdAt)).limit(8),
+    db.select().from(crmConnections).where(eq(crmConnections.userId, userId)).orderBy(desc(crmConnections.updatedAt)),
+    db.select().from(automationPlaybooks).where(eq(automationPlaybooks.userId, userId)).orderBy(desc(automationPlaybooks.updatedAt)),
+  ]);
+  return { profile: profile[0] ?? null, discoveries, connections, playbooks };
+}
+
+export async function upsertCompanyProfile(input: {
+  userId: number; companyName: string; websiteUrl?: string | null; industry?: string | null; companySize?: string | null;
+  primaryMarket?: string | null; salesMotion?: string | null; brandVoice?: string | null;
+}) {
+  const db = await requireDb();
+  await db.insert(companyProfiles).values(input).onDuplicateKeyUpdate({ set: {
+    companyName: input.companyName, websiteUrl: input.websiteUrl ?? null, industry: input.industry ?? null,
+    companySize: input.companySize ?? null, primaryMarket: input.primaryMarket ?? null, salesMotion: input.salesMotion ?? null,
+    brandVoice: input.brandVoice ?? null,
+  } });
+  const profile = (await db.select().from(companyProfiles).where(eq(companyProfiles.userId, input.userId)).limit(1))[0];
+  if (!profile) throw new Error("Company profile could not be saved.");
+  await recordAudit({ userId: input.userId, eventType: "company_profile_saved", entityType: "company_profile", entityId: String(profile.id), summary: "Company setup profile saved.", metadata: { hasWebsite: Boolean(profile.websiteUrl) } });
+  return profile;
+}
+
+export async function confirmWebsiteDiscovery(input: {
+  userId: number; companyProfileId: number; sourceUrl: string; pageTitle: string | null;
+  confirmedKnowledge: Array<{ title: string; content: string }>;
+}) {
+  const db = await requireDb();
+  const profile = (await db.select().from(companyProfiles).where(and(eq(companyProfiles.id, input.companyProfileId), eq(companyProfiles.userId, input.userId))).limit(1))[0];
+  if (!profile) throw new Error("Company profile is unavailable for confirmation.");
+  await db.transaction(async tx => {
+    const result = await tx.insert(websiteDiscoveries).values({
+      userId: input.userId, companyProfileId: input.companyProfileId, sourceUrl: input.sourceUrl, pageTitle: input.pageTitle,
+      extractedText: null, proposedFacts: { confirmedKnowledgeTitles: input.confirmedKnowledge.map(item => item.title) },
+      proposedKnowledge: input.confirmedKnowledge, status: "confirmed", reviewedAt: new Date(),
+    });
+    const discoveryId = Number(result[0].insertId);
+    await tx.update(companyProfiles).set({ discoveryStatus: "confirmed", confirmedAt: new Date() }).where(and(eq(companyProfiles.id, input.companyProfileId), eq(companyProfiles.userId, input.userId)));
+    if (input.confirmedKnowledge.length) await tx.insert(knowledgeSources).values(input.confirmedKnowledge.map(item => ({ userId: input.userId, title: item.title, sourceType: "url" as const, sourceUrl: input.sourceUrl, content: item.content, status: "ready" as const })));
+    return discoveryId;
+  });
+  const confirmed = (await db.select().from(websiteDiscoveries).where(and(eq(websiteDiscoveries.companyProfileId, input.companyProfileId), eq(websiteDiscoveries.userId, input.userId), eq(websiteDiscoveries.status, "confirmed"))).orderBy(desc(websiteDiscoveries.createdAt)).limit(1))[0];
+  await recordAudit({ userId: input.userId, eventType: "website_discovery_confirmed", entityType: "website_discovery", entityId: String(confirmed?.id ?? ""), summary: "Confirmed website knowledge is now available to the assistant.", metadata: { sourceUrl: input.sourceUrl, confirmedKnowledgeItems: input.confirmedKnowledge.length } });
+  return { discoveryId: confirmed?.id ?? null, confirmedKnowledgeItems: input.confirmedKnowledge.length };
+}
+
+export async function saveCrmConnection(input: { userId: number; provider: "genie" | "hubspot" | "salesforce" | "pipedrive" | "custom_browser"; displayName: string; status: "draft" | "needs_credentials" | "ready" | "paused" | "error"; capabilities: Array<"contacts" | "tasks" | "opportunities" | "notes" | "activities" | "email" | "calendar">; connectionMode: "api" | "browser_automation" | "custom"; configurationHint?: string | null }) {
+  const db = await requireDb();
+  const result = await db.insert(crmConnections).values(input);
+  const id = Number(result[0].insertId);
+  await recordAudit({ userId: input.userId, eventType: "crm_connection_registered", entityType: "crm_connection", entityId: String(id), summary: `${input.displayName} was registered for review-first automation.`, metadata: { provider: input.provider, capabilities: input.capabilities, connectionMode: input.connectionMode } });
+  return id;
+}
+
+export async function saveAutomationPlaybook(input: { userId: number; title: string; trigger: string; description: string; agentKey: string; requiredCapabilities: string[]; status: "draft" | "active" | "paused" }) {
+  const db = await requireDb();
+  const result = await db.insert(automationPlaybooks).values({ ...input, reviewRequired: true });
+  const id = Number(result[0].insertId);
+  await recordAudit({ userId: input.userId, eventType: "automation_playbook_saved", entityType: "automation_playbook", entityId: String(id), summary: `Review-first playbook '${input.title}' saved.`, metadata: { agentKey: input.agentKey, status: input.status } });
+  return id;
 }

@@ -8,6 +8,7 @@ import Auth from "./pages/Auth";
 import Connections from "./pages/Connections";
 import Dashboard from "./pages/Dashboard";
 import Home from "./pages/Home";
+import Onboarding from "./pages/Onboarding";
 import { AgentDesk, CallDesk, CommandCentre, KnowledgeHub, WorkflowStudio } from "./pages/Workspace";
 
 function Router() {
@@ -21,6 +22,7 @@ function Router() {
     <Route path="/calls" component={CallDesk} />
     <Route path="/knowledge" component={KnowledgeHub} />
     <Route path="/connections" component={Connections} />
+    <Route path="/company-setup" component={Onboarding} />
     <Route path="/404" component={NotFound} />
     <Route component={NotFound} />
   </Switch>;

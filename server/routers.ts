@@ -3,6 +3,7 @@ import { parse as parseCookieHeader } from "cookie";
 import { AGENT_CATALOG, WORKFLOW_KEYS } from "./agentCatalog";
 import {
   createCallSession,
+  confirmWebsiteDiscovery,
   createDailyReport,
   createTwoFactorChallenge,
   createIntegrationProfile,
@@ -10,6 +11,7 @@ import {
   createWorkflowRun,
   createLiveCallSession,
   getAssistantDashboard,
+  getCompanySetup,
   getOperationsDashboard,
   getOperationalAnalytics,
   getApprovedActionProposal,
@@ -24,6 +26,9 @@ import {
   listAuditEntries,
   listProposalAuditEntries,
   reviewActionProposal,
+  saveAutomationPlaybook,
+  saveCrmConnection,
+  upsertCompanyProfile,
   appendLiveTranscript,
   completeLiveCallSession,
 } from "./db";
@@ -42,6 +47,8 @@ import { authenticateLocalPassword, isLocalAuthMode, issueLocalSession, LOCAL_SE
 import { routeSalesCommand } from "./supervisor";
 import { prepareLiveCoachingTip, preparePostCallSummary } from "./liveCoach";
 import { getOutlookReadiness, validateEmailPreview } from "./outlook";
+import { discoverPublicWebsite } from "./companyDiscovery";
+import { routeCrmCapability, type CrmCapability } from "./crmRouter";
 
 const workflowInput = z.object({
   workflowKey: z.enum(WORKFLOW_KEYS),
@@ -63,6 +70,20 @@ function presentConnectionProfile<T extends { provider: keyof typeof publicConne
     displayName: productLabel,
     scopeSummary: `Amarktai Network ${productLabel.toLowerCase()} profile. Technical configuration details remain server-side.`,
   };
+}
+
+const actionCapability: Record<string, CrmCapability> = {
+  verify_contact_context: "contacts", update_contact_status: "contacts", complete_active_task: "tasks", schedule_callback: "tasks",
+  update_current_opportunity: "opportunities", append_contact_note: "notes", apply_sequence: "activities",
+  send_sms_template: "activities", send_email_template: "activities", send_whatsapp_template: "activities",
+};
+
+function applyCrmRouting(actions: ReturnType<typeof buildWorkflowPlan>["actions"], connections: Awaited<ReturnType<typeof getCompanySetup>>["connections"]) {
+  return actions.map(action => {
+    const requiredCapability = actionCapability[action.actionType] ?? "activities";
+    const crmRoute = routeCrmCapability({ connections, requiredCapability });
+    return { ...action, payload: { ...action.payload, crmRoute: { ...crmRoute, requiredCapability } } };
+  });
 }
 
 export const appRouter = router({
@@ -129,15 +150,17 @@ export const appRouter = router({
       .query(({ ctx, input }) => listActionProposals(ctx.user.id, input?.workflowRunId)),
     prepareWorkflow: secondFactorProcedure.input(workflowInput).mutation(async ({ ctx, input }) => {
       const plan = buildWorkflowPlan(input);
+      const companySetup = await getCompanySetup(ctx.user.id);
+      const routedActions = applyCrmRouting(plan.actions, companySetup.connections);
       const workflowRunId = await createWorkflowRun({
         userId: ctx.user.id,
         workflowKey: input.workflowKey,
         leadLabel: input.leadLabel,
         payload: input,
         verificationSummary: plan.verificationSummary,
-        actions: plan.actions,
+        actions: routedActions,
       });
-      return { workflowRunId, verificationSummary: plan.verificationSummary, actionCount: plan.actions.length };
+      return { workflowRunId, verificationSummary: plan.verificationSummary, actionCount: routedActions.length, blockedActionCount: routedActions.filter(action => (action.payload.crmRoute as { routable?: boolean } | undefined)?.routable === false).length };
     }),
     reviewAction: secondFactorProcedure
       .input(z.object({ proposalId: z.number().int().positive(), state: z.enum(["approved", "skipped"]) }))
@@ -149,6 +172,8 @@ export const appRouter = router({
     executeApprovedGenieAction: secondFactorProcedure.input(z.object({ proposalId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
       const proposal = await getApprovedActionProposal(ctx.user.id, input.proposalId);
       if (!proposal) throw new Error("Only an approved action proposal may be executed, and it must be owned by your workspace.");
+      const crmRoute = proposal.payload.crmRoute as { routable?: boolean; provider?: string } | undefined;
+      if (!crmRoute?.routable || crmRoute.provider !== "genie") throw new Error("This proposal has no ready CRM workspace bridge route. Register and verify a compatible CRM capability before requesting execution.");
       const result = await executeApprovedGenieProposal(proposal);
       await recordActionExecution({ userId: ctx.user.id, proposalId: proposal.id, success: result.success, result });
       if (!result.success) throw new Error(`Genie script failed: ${result.detail}`);
@@ -187,6 +212,35 @@ export const appRouter = router({
     add: secondFactorProcedure
       .input(z.object({ title: z.string().trim().min(2).max(220), sourceType: z.enum(["note", "url", "document"]), sourceUrl: z.string().url().max(1024).optional(), content: z.string().trim().max(40_000).optional() }))
       .mutation(({ ctx, input }) => createKnowledgeSource({ userId: ctx.user.id, ...input })),
+  }),
+  companySetup: router({
+    get: secondFactorProcedure.query(({ ctx }) => getCompanySetup(ctx.user.id)),
+    saveProfile: secondFactorProcedure.input(z.object({
+      companyName: z.string().trim().min(2).max(220), websiteUrl: z.string().url().max(1024).optional().nullable(),
+      industry: z.string().trim().max(180).optional().nullable(), companySize: z.string().trim().max(80).optional().nullable(),
+      primaryMarket: z.string().trim().max(220).optional().nullable(), salesMotion: z.string().trim().max(180).optional().nullable(), brandVoice: z.string().trim().max(8_000).optional().nullable(),
+    })).mutation(({ ctx, input }) => upsertCompanyProfile({ userId: ctx.user.id, ...input })),
+    discoverWebsite: secondFactorProcedure.mutation(async ({ ctx }) => {
+      const setup = await getCompanySetup(ctx.user.id);
+      if (!setup.profile?.websiteUrl) throw new Error("Save a public company website before starting discovery.");
+      return discoverPublicWebsite(setup.profile.websiteUrl);
+    }),
+    confirmDiscovery: secondFactorProcedure.input(z.object({ knowledgeIndexes: z.array(z.number().int().min(0).max(24)).max(12) })).mutation(async ({ ctx, input }) => {
+      const setup = await getCompanySetup(ctx.user.id);
+      if (!setup.profile?.websiteUrl) throw new Error("Save a public company website before confirming discovery.");
+      const result = await discoverPublicWebsite(setup.profile.websiteUrl);
+      const confirmedKnowledge = result.proposedKnowledge.filter((_, index) => input.knowledgeIndexes.includes(index));
+      return confirmWebsiteDiscovery({ userId: ctx.user.id, companyProfileId: setup.profile.id, sourceUrl: result.sourceUrl, pageTitle: result.pageTitle, confirmedKnowledge });
+    }),
+    registerCrm: secondFactorProcedure.input(z.object({
+      provider: z.enum(["genie", "hubspot", "salesforce", "pipedrive", "custom_browser"]), displayName: z.string().trim().min(2).max(180),
+      status: z.enum(["draft", "needs_credentials", "ready", "paused", "error"]), capabilities: z.array(z.enum(["contacts", "tasks", "opportunities", "notes", "activities", "email", "calendar"])).min(1).max(7),
+      connectionMode: z.enum(["api", "browser_automation", "custom"]), configurationHint: z.string().trim().max(2_000).optional().nullable(),
+    })).mutation(({ ctx, input }) => saveCrmConnection({ userId: ctx.user.id, ...input })),
+    savePlaybook: secondFactorProcedure.input(z.object({
+      title: z.string().trim().min(2).max(220), trigger: z.string().trim().min(2).max(160), description: z.string().trim().min(5).max(8_000),
+      agentKey: z.string().trim().min(2).max(80), requiredCapabilities: z.array(z.string().trim().min(2).max(80)).min(1).max(12), status: z.enum(["draft", "active", "paused"]),
+    })).mutation(({ ctx, input }) => saveAutomationPlaybook({ userId: ctx.user.id, ...input })),
   }),
   calls: router({
     saveNotes: secondFactorProcedure

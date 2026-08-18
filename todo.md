@@ -20,7 +20,7 @@
 - [x] Complete the workspace’s end-to-end approved-action execution view, including execution status, evidence screenshots, audit result display, and actionable failure reporting.
 - [ ] Complete the per-script real-session calibration and verification checklist after the authorized Genie selector mapping is available.
 - [x] Replace the existing Signal Garden design with a professional blue-and-white Amarktai AI visual system across the public site, sign-in, and workspace.
-- [ ] Create and apply a cohesive new set of premium blue Amarktai AI product visuals instead of the current mixed-color imagery.
+- [x] Create and apply a cohesive new set of premium blue Amarktai AI product visuals instead of the current mixed-color imagery.
 - [x] Redesign the landing page information architecture, product storytelling, typography, navigation, calls to action, and responsive layouts from first principles.
 - [x] Rebuild the workspace interface so operational workflows, approval actions, evidence, integrations, and system status are clear and production-oriented.
 - [x] Audit the original system brief against the current backend and implement all self-contained missing services, procedures, persistence, and automated operations.
@@ -43,4 +43,19 @@
 - [x] Reconcile all visible product copy against the implementation-status document so no screen overstates an unbuilt or configuration-dependent feature.
 - [x] Replace the remaining customer-facing provider-specific connection labels with Amarktai Network product terminology.
 - [x] Normalize saved connection-profile display data into Amarktai Network product labels before rendering it in dashboard and connection views.
-- [ ] Remove the unused legacy ConnectionsPage export that still contains provider-specific UI wording.
+- [x] Remove the unused legacy ConnectionsPage export that still contains provider-specific UI wording.
+- [ ] Run and document end-to-end integration validation for active flows, explicitly separating local validation from live Webdock and authorised CRM validation.
+- [x] Audit the original brief against the current backend for company onboarding, multi-CRM routing, broad agent automation, and operational coverage gaps.
+- [x] Add a company setup data model, secure onboarding form, and organisation profile management flow.
+- [x] Add safe website discovery that collects public site information, proposes extracted company facts and knowledge sources, and requires user confirmation before storage or use.
+- [x] Build a multi-CRM provider registry, connection configuration model, capability matrix, and review-first action routing controls.
+- [ ] Expand the agent catalogue and controlled workflow library to cover the broader agent-assisted sales tasks specified in the brief, without overstating unconfigured integrations.
+- [x] Make Amarktai Sales Assistant prominent across the product, explain the automation model and its guardrails clearly, and refresh the public hero visual.
+- [ ] Validate onboarding, discovery, knowledge confirmation, CRM-routing, agent workflow, and deployment contracts with tests and documentation.
+- [x] Add production organisation, discovery, CRM capability, and automation-playbook tables with reviewed additive migration.
+- [x] Implement secured company profile, public-website discovery, explicit knowledge confirmation, CRM registration, and playbook backend procedures.
+- [x] Expand the agent catalogue and add deterministic CRM capability routing that blocks unsupported routes.
+- [x] Build the visible multi-step company setup form with discovery review and knowledge confirmation.
+- [x] Refresh the hero with the requested white-model image and expand the public automation, multi-CRM, agent-capability, and review-first explanations.
+- [ ] Add targeted unit coverage for website-discovery safeguards, CRM routing, and company onboarding persistence.
+- [x] Add unit coverage for website-discovery safeguards and multi-CRM capability routing.
