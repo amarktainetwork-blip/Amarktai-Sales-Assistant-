@@ -1,4 +1,4 @@
-export const WORKFLOW_KEYS = ["first_contact", "cyber_final_close", "cyber_post_consultation"] as const;
+export const WORKFLOW_KEYS = ["first_contact", "call_2_followup", "call_3_followup", "call_4_final_attempt", "callback_requested", "booking_confirmation", "reschedule_requested", "no_show_followup", "information_request", "manager_escalation", "cyber_final_close", "cyber_post_consultation"] as const;
 export type WorkflowKey = (typeof WORKFLOW_KEYS)[number];
 
 export type AgentDefinition = {
@@ -53,11 +53,11 @@ export const AGENT_CATALOG: AgentDefinition[] = [
   },
   {
     key: "communications",
-    name: "Communications Agent",
-    purpose: "Prepares template-bound email, SMS, and WhatsApp action proposals that retain approved wording and subject lines.",
+    name: "Human Communications Agent",
+    purpose: "Prepares natural, company-aware email replies and template-bound email, SMS, and WhatsApp proposals that retain approved wording, subject lines, facts, and human review.",
     category: "communications",
     requiresModel: true,
-    modelRole: "GenX controlled-drafting model",
+    modelRole: "GenX human-style controlled-drafting model",
   },
   {
     key: "notes_agent",
@@ -74,6 +74,14 @@ export const AGENT_CATALOG: AgentDefinition[] = [
     category: "governance",
     requiresModel: false,
     modelRole: "Deterministic policy validation model",
+  },
+  {
+    key: "manager_assurance",
+    name: "Manager Assurance Agent",
+    purpose: "Checks retained workflow evidence, blocked actions, ageing review decisions, overdue callbacks, failed work, and unreviewed call outcomes; it raises findings but never alters CRM records or approves work itself.",
+    category: "governance",
+    requiresModel: false,
+    modelRole: "Deterministic operational-quality evaluator",
   },
   {
     key: "analytics",
@@ -127,6 +135,15 @@ export const AGENT_CATALOG: AgentDefinition[] = [
 
 export const WORKFLOW_LABELS: Record<WorkflowKey, string> = {
   first_contact: "First contact sequence",
+  call_2_followup: "Call 2 follow-up",
+  call_3_followup: "Call 3 follow-up",
+  call_4_final_attempt: "Call 4 / final attempt",
+  callback_requested: "Callback requested",
+  booking_confirmation: "Booking confirmation",
+  reschedule_requested: "Reschedule requested",
+  no_show_followup: "No-show follow-up",
+  information_request: "Information request",
+  manager_escalation: "Manager escalation",
   cyber_final_close: "Cyber Security final close",
   cyber_post_consultation: "Cyber post-consultation follow-up",
 };

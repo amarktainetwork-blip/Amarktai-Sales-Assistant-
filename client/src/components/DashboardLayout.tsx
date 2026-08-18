@@ -7,7 +7,7 @@ import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarInset, Si
 import { startLogin } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
 import { trpc } from "@/lib/trpc";
-import { Activity, Bot, Building2, Cable, CheckCircle2, Headphones, LayoutDashboard, LibraryBig, LockKeyhole, LogOut, MailCheck, Workflow } from "lucide-react";
+import { Activity, Bot, Building2, Cable, CheckCircle2, Headphones, LayoutDashboard, LibraryBig, LockKeyhole, LogOut, MailCheck, PanelsTopLeft, Workflow } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -19,6 +19,7 @@ const menuItems = [
   { icon: Workflow, label: "Workflow studio", path: "/workflows" },
   { icon: Headphones, label: "Live call desk", path: "/calls" },
   { icon: Bot, label: "Agent desk", path: "/agents" },
+  { icon: PanelsTopLeft, label: "Sales operations hub", path: "/sales-operations" },
   { icon: LibraryBig, label: "Approved knowledge", path: "/knowledge" },
   { icon: Building2, label: "Company setup", path: "/company-setup" },
   { icon: Cable, label: "Connections", path: "/connections" },

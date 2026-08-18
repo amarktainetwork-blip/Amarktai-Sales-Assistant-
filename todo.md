@@ -49,7 +49,7 @@
 - [x] Add a company setup data model, secure onboarding form, and organisation profile management flow.
 - [x] Add safe website discovery that collects public site information, proposes extracted company facts and knowledge sources, and requires user confirmation before storage or use.
 - [x] Build a multi-CRM provider registry, connection configuration model, capability matrix, and review-first action routing controls.
-- [ ] Expand the agent catalogue and controlled workflow library to cover the broader agent-assisted sales tasks specified in the brief, without overstating unconfigured integrations.
+- [x] Expand the agent catalogue and controlled workflow library to cover the broader agent-assisted sales tasks specified in the brief, without overstating unconfigured integrations.
 - [x] Make Amarktai Sales Assistant prominent across the product, explain the automation model and its guardrails clearly, and refresh the public hero visual.
 - [ ] Validate onboarding, discovery, knowledge confirmation, CRM-routing, agent workflow, and deployment contracts with tests and documentation.
 - [x] Add production organisation, discovery, CRM capability, and automation-playbook tables with reviewed additive migration.
@@ -62,3 +62,16 @@
 - [ ] Run authenticated Company Setup end-to-end validation: save profile, preview website, confirm knowledge, register CRM capability, and save a playbook.
 - [ ] Add API smoke coverage for Company Setup procedures and CRM-routed workflow-proposal blocking behaviour.
 - [x] Add direct smoke coverage for CRM-routed workflow proposal blocking and ready-route attachment.
+- [x] Audit every agent, workflow, dashboard, CRM, communication, and efficiency requirement against the original brief and record the remaining operating-model gaps.
+- [x] Add a Human Communications Agent with structured draft-quality controls that make email replies sound natural, company-aware, concise, and non-generic while preserving human approval before sending.
+- [x] Add a Manager Assurance Agent and manager dashboard queue to check workflow completion, missing CRM evidence, overdue work, blocked proposals, and quality exceptions without silently changing records.
+- [x] Extend the CRM workspace model so assistants can prepare a single reviewable workboard from CRM context, surface record-linked next actions, and avoid forcing agents to repeat CRM research.
+- [ ] Expand the governed workflow library and playbook execution model to cover the remaining agent-assisted sales tasks from the approved brief, always requiring explicit approval for external actions.
+- [x] Implement token-efficiency controls: company-context retrieval, action-memory reuse, prompt budgeting, deterministic routing, duplicate suppression, and per-agent usage visibility.
+- [x] Add tests and documentation for human-email quality gates, manager assurance findings, CRM context reuse, workflow coverage, and token-efficiency safeguards.
+- [x] Wire company profile and brand-voice context into agent prompts and prove company-aware human-email drafting behavior with tests.
+- [x] Extend Manager Assurance with missing CRM evidence and workflow-completion correctness checks, with regression coverage.
+- [x] Add executable active-playbook preparation, remaining approved workflow templates, and review-first UI controls.
+- [ ] Add focused CRM-context reuse, response-cache, usage-ledger, and duplicate-draft suppression tests.
+- [ ] Implement and test the remaining approved CRM outcome branches and exact customer workflow templates that are still not codified in the deterministic library.
+- [ ] Expand active playbooks from generic capability mapping into fully defined, customer-approved sequence templates where an exact workflow is required.

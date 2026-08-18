@@ -12,6 +12,8 @@ import {
   createLiveCallSession,
   getAssistantDashboard,
   getCompanySetup,
+  getCompanyAgentContext,
+  getActiveAutomationPlaybook,
   getOperationsDashboard,
   getOperationalAnalytics,
   getApprovedActionProposal,
@@ -25,6 +27,15 @@ import {
   searchApprovedKnowledge,
   listAuditEntries,
   listProposalAuditEntries,
+  getAgentUsageSummary,
+  getCrmWorkboard,
+  listCommunicationDrafts,
+  listManagerFindings,
+  saveCommunicationDraft,
+  updateManagerFindingState,
+  getManagerAssuranceSnapshot,
+  upsertManagerFinding,
+  upsertCrmContextSnapshot,
   reviewActionProposal,
   saveAutomationPlaybook,
   saveCrmConnection,
@@ -49,6 +60,10 @@ import { prepareLiveCoachingTip, preparePostCallSummary } from "./liveCoach";
 import { getOutlookReadiness, validateEmailPreview } from "./outlook";
 import { discoverPublicWebsite } from "./companyDiscovery";
 import { routeWorkflowActions } from "./crmRouter";
+import { prepareHumanEmailDraft } from "./communicationQuality";
+import { buildManagerAssuranceFindings } from "./managerAssurance";
+import { refreshGenieWorkboard } from "./crmWorkboard";
+import { buildPlaybookPlan } from "./playbookRules";
 
 const workflowInput = z.object({
   workflowKey: z.enum(WORKFLOW_KEYS),
@@ -148,6 +163,15 @@ export const appRouter = router({
       });
       return { workflowRunId, verificationSummary: plan.verificationSummary, actionCount: routedActions.length, blockedActionCount: routedActions.filter(action => (action.payload.crmRoute as { routable?: boolean } | undefined)?.routable === false).length };
     }),
+    preparePlaybook: secondFactorProcedure.input(z.object({ playbookId: z.number().int().positive(), leadLabel: z.string().trim().min(1).max(160), factualContext: z.string().trim().min(8).max(12_000) })).mutation(async ({ ctx, input }) => {
+      const playbook = await getActiveAutomationPlaybook(ctx.user.id, input.playbookId);
+      if (!playbook) throw new Error("Select an active review-first company playbook before preparing work.");
+      const plan = buildPlaybookPlan({ playbook, leadLabel: input.leadLabel, factualContext: input.factualContext });
+      const companySetup = await getCompanySetup(ctx.user.id);
+      const routedActions = routeWorkflowActions(plan.actions, companySetup.connections);
+      const workflowRunId = await createWorkflowRun({ userId: ctx.user.id, workflowKey: `playbook:${playbook.id}`, leadLabel: input.leadLabel, payload: input, verificationSummary: plan.verificationSummary, actions: routedActions });
+      return { workflowRunId, verificationSummary: plan.verificationSummary, actionCount: routedActions.length, blockedActionCount: routedActions.filter(action => (action.payload.crmRoute as { routable?: boolean } | undefined)?.routable === false).length };
+    }),
     reviewAction: secondFactorProcedure
       .input(z.object({ proposalId: z.number().int().positive(), state: z.enum(["approved", "skipped"]) }))
       .mutation(async ({ ctx, input }) => {
@@ -176,8 +200,40 @@ export const appRouter = router({
         const query = input.messages.filter(message => message.role === "user").map(message => message.content).join("\n");
         const sources = input.agentKey === "knowledge_guide" ? await searchApprovedKnowledge(ctx.user.id, query) : [];
         const approvedKnowledge = sources.length ? sources.map(source => `[${source.title}]\n${source.content ?? source.sourceUrl ?? "No retained body."}`).join("\n\n---\n\n") : undefined;
-        return runGenxAgent({ ...input, approvedKnowledge });
+        return runGenxAgent({ userId: ctx.user.id, ...input, approvedKnowledge, companyContext: await getCompanyAgentContext(ctx.user.id) });
       }),
+  }),
+  communications: router({
+    drafts: secondFactorProcedure.query(({ ctx }) => listCommunicationDrafts(ctx.user.id)),
+    prepareHumanEmail: secondFactorProcedure.input(z.object({
+      recipientEmail: z.string().email().max(320), purpose: z.string().trim().min(4).max(160), facts: z.string().trim().min(8).max(12_000),
+      leadLabel: z.string().trim().min(1).max(180).optional(), threadContext: z.string().trim().max(8_000).optional(), preferredSubject: z.string().trim().max(300).optional(), templateLocked: z.boolean().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const draft = await prepareHumanEmailDraft({ userId: ctx.user.id, ...input });
+      const saved = await saveCommunicationDraft({ userId: ctx.user.id, leadLabel: input.leadLabel ?? null, recipientEmail: input.recipientEmail, subject: draft.subject, body: draft.body, purpose: input.purpose, dedupeKey: draft.dedupeKey, qualityChecks: draft.qualityChecks });
+      return { id: saved.id, reusedDraft: saved.reused, ...draft, state: "review_required" as const };
+    }),
+  }),
+  manager: router({
+    findings: secondFactorProcedure.query(({ ctx }) => listManagerFindings(ctx.user.id)),
+    runAssurance: secondFactorProcedure.mutation(async ({ ctx }) => {
+      const snapshot = await getManagerAssuranceSnapshot(ctx.user.id);
+      const findings = buildManagerAssuranceFindings(snapshot);
+      for (const finding of findings) await upsertManagerFinding({ userId: ctx.user.id, ...finding });
+      return { findings, generatedAt: new Date() };
+    }),
+    updateFinding: secondFactorProcedure.input(z.object({ findingId: z.number().int().positive(), state: z.enum(["acknowledged", "resolved"]) })).mutation(({ ctx, input }) => updateManagerFindingState({ userId: ctx.user.id, ...input })),
+  }),
+  crmWorkboard: router({
+    get: secondFactorProcedure.input(z.object({ leadLabel: z.string().trim().min(1).max(180) })).query(({ ctx, input }) => getCrmWorkboard(ctx.user.id, input.leadLabel)),
+    refreshGenie: secondFactorProcedure.input(z.object({ leadLabel: z.string().trim().min(1).max(180) })).mutation(({ ctx, input }) => refreshGenieWorkboard({ userId: ctx.user.id, leadLabel: input.leadLabel })),
+    saveManualContext: secondFactorProcedure.input(z.object({ leadLabel: z.string().trim().min(1).max(180), summary: z.string().trim().min(8).max(12_000), context: z.record(z.string().max(80), z.string().max(8_000)) })).mutation(({ ctx, input }) => {
+      if (Object.keys(input.context).length > 40) throw new Error("Save no more than 40 context fields at one time.");
+      return upsertCrmContextSnapshot({ userId: ctx.user.id, leadLabel: input.leadLabel, source: "manual", context: input.context, summary: input.summary, expiresAt: new Date(Date.now() + 20 * 60_000) });
+    }),
+  }),
+  usage: router({
+    summary: secondFactorProcedure.query(({ ctx }) => getAgentUsageSummary(ctx.user.id)),
   }),
   integrations: router({
     list: secondFactorProcedure.query(async ({ ctx }) => ({

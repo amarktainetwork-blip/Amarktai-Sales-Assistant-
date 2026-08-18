@@ -33,4 +33,20 @@ describe("workflow rules", () => {
       buildWorkflowPlan({ workflowKey: "cyber_post_consultation", leadLabel: "Candidate D", callOutcome: "answered" }),
     ).toThrow("Provide factual conversation notes");
   });
+  it("prepares the Call 2 failed-contact path with protected history and the next task", () => {
+    const plan = buildWorkflowPlan({ workflowKey: "call_2_followup", leadLabel: "Candidate E", callOutcome: "no_answer" });
+    expect(plan.actions.map(action => action.title)).toContain("Schedule Call 3 only if no duplicate exists");
+    expect(plan.actions.find(action => action.actionType === "send_sms_template")?.payload.sendingNumber).toBe("+447428000560");
+  });
+  it("requires factual callback details before scheduling a callback", () => {
+    expect(() => buildWorkflowPlan({ workflowKey: "callback_requested", leadLabel: "Candidate F", conversationNotes: "Requested a callback" })).toThrow("Provide the agreed callback date and time");
+    const plan = buildWorkflowPlan({ workflowKey: "callback_requested", leadLabel: "Candidate F", callbackAt: "2026-08-19T10:00:00Z", conversationNotes: "Asked for a callback after work." });
+    expect(plan.actions.map(action => action.actionType)).toContain("schedule_callback");
+  });
+  it("requires factual context and a time for booking confirmation", () => {
+    expect(() => buildWorkflowPlan({ workflowKey: "booking_confirmation", leadLabel: "Candidate G", conversationNotes: "Confirmed a booking." })).toThrow("Provide the agreed date and time");
+    const plan = buildWorkflowPlan({ workflowKey: "booking_confirmation", leadLabel: "Candidate G", conversationNotes: "Confirmed a booking for Wednesday.", callbackAt: "2026-08-19T10:00:00Z" });
+    expect(plan.actions.map(action => action.title)).toContain("Send approved booking confirmation email");
+    expect(plan.actions.every(action => action.payload.reviewRequired === true)).toBe(true);
+  });
 });

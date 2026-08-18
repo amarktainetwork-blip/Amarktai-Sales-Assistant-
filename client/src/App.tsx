@@ -9,7 +9,9 @@ import Connections from "./pages/Connections";
 import Dashboard from "./pages/Dashboard";
 import Home from "./pages/Home";
 import Onboarding from "./pages/Onboarding";
-import { AgentDesk, CallDesk, CommandCentre, KnowledgeHub, WorkflowStudio } from "./pages/Workspace";
+import SalesOperationsHub from "./pages/SalesOperationsHub";
+import WorkflowStudioExpanded from "./pages/WorkflowStudioExpanded";
+import { AgentDesk, CallDesk, CommandCentre, KnowledgeHub } from "./pages/Workspace";
 
 function Router() {
   return <Switch>
@@ -17,12 +19,13 @@ function Router() {
     <Route path="/auth" component={Auth} />
     <Route path="/dashboard" component={Dashboard} />
     <Route path="/workspace" component={CommandCentre} />
-    <Route path="/workflows" component={WorkflowStudio} />
+    <Route path="/workflows" component={WorkflowStudioExpanded} />
     <Route path="/agents" component={AgentDesk} />
     <Route path="/calls" component={CallDesk} />
     <Route path="/knowledge" component={KnowledgeHub} />
     <Route path="/connections" component={Connections} />
     <Route path="/company-setup" component={Onboarding} />
+    <Route path="/sales-operations" component={SalesOperationsHub} />
     <Route path="/404" component={NotFound} />
     <Route component={NotFound} />
   </Switch>;

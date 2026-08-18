@@ -1,0 +1,2 @@
+ALTER TABLE `communicationDrafts` ADD `dedupeKey` varchar(64) DEFAULT '' NOT NULL;--> statement-breakpoint
+CREATE INDEX `communicationDrafts_user_dedupe_idx` ON `communicationDrafts` (`userId`,`dedupeKey`);

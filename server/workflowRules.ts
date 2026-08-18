@@ -7,6 +7,7 @@ export type WorkflowRequest = {
   leadLabel: string;
   callOutcome?: CallOutcome;
   conversationNotes?: string;
+  callbackAt?: string;
 };
 
 export type ProposedAction = {
@@ -75,6 +76,55 @@ function firstContactPlan(leadLabel: string): WorkflowPlan {
       }),
     ],
   };
+}
+
+function callAttemptPlan(request: WorkflowRequest, attempt: 2 | 3 | 4): WorkflowPlan {
+  const outcome = request.callOutcome;
+  if (!outcome) throw new Error(`Select no answer, voicemail, or answered before preparing the Call ${attempt} workflow.`);
+  if (outcome === "answered" && !request.conversationNotes?.trim()) throw new Error("Provide factual conversation notes for an answered call. The assistant will not invent a customer outcome.");
+  const nextTask = attempt === 2 ? "Call 3" : attempt === 3 ? "Call 4" : "Final closure review";
+  const actions: ProposedAction[] = [
+    ...commonVerification(request.leadLabel),
+    reviewAction(request.leadLabel, `complete-call-${attempt}`, "complete_active_task", `Complete only the active Call ${attempt} task`, { allowedTaskTitles: [`Call ${attempt}`], forbidden: ["reopen completed tasks", "modify historical tasks"] }),
+    reviewAction(request.leadLabel, `call-${attempt}-notes`, "append_contact_note", `Add factual Call ${attempt} outcome notes`, { outcome, content: outcome === "answered" ? request.conversationNotes?.trim() : `Call ${attempt} attempted: ${outcome === "no_answer" ? "no answer" : "voicemail"}.`, guardrail: "Use only information supplied by the consultant." }),
+  ];
+  if (outcome !== "answered") actions.push(
+    reviewAction(request.leadLabel, `call-${attempt}-email`, "send_email_template", `Send approved Call ${attempt} follow-up email`, { templateName: `CALL ${attempt} FOLLOW-UP EMAIL`, requireSavedSubject: true, guardrail: "Only execute when the saved approved template and subject are configured." }),
+    reviewAction(request.leadLabel, `call-${attempt}-sms`, "send_sms_template", `Send approved Call ${attempt} follow-up SMS`, { templateName: `CALL ${attempt} FOLLOW-UP SMS`, sendingNumber: "+447428000560", guardrail: "Only execute when the saved approved template is configured." }),
+    reviewAction(request.leadLabel, `call-${attempt}-next-task`, "schedule_callback", `Schedule ${nextTask} only if no duplicate exists`, { taskTitle: nextTask, prerequisite: "Verify there is no current future task of this type and that the current call task was attempted." }),
+  );
+  return { verificationSummary: `Review the full contact history, current open task, current opportunity, consent signals, and future callbacks before progressing Call ${attempt}. Completed or historical records remain protected. If the candidate answered, use only factual notes and the agreed next step; do not send failed-contact communications automatically.`, actions };
+}
+
+function callbackRequestedPlan(request: WorkflowRequest): WorkflowPlan {
+  if (!request.callbackAt?.trim()) throw new Error("Provide the agreed callback date and time before preparing a callback-requested workflow.");
+  if (!request.conversationNotes?.trim()) throw new Error("Provide the factual request and agreed callback context before preparing the workflow.");
+  return { verificationSummary: "Confirm the callback request is factual, consent is intact, the requested time is within policy, and no equivalent future callback already exists before creating a reviewable task.", actions: [
+    ...commonVerification(request.leadLabel),
+    reviewAction(request.leadLabel, "callback-request-note", "append_contact_note", "Add factual callback-request notes", { content: request.conversationNotes.trim(), guardrail: "Record only what the candidate or consultant stated." }),
+    reviewAction(request.leadLabel, "callback-request-task", "schedule_callback", "Schedule the agreed callback only if no duplicate exists", { taskTitle: "Callback", callbackAt: request.callbackAt.trim(), prerequisite: "Verify a matching future callback does not already exist and respect approved office-hour rules." }),
+  ] };
+}
+
+function structuredFollowUpPlan(request: WorkflowRequest, type: "booking_confirmation" | "reschedule_requested" | "no_show_followup" | "information_request" | "manager_escalation"): WorkflowPlan {
+  if (!request.conversationNotes?.trim()) throw new Error("Provide factual notes before preparing this workflow. The assistant will not infer a booking, reschedule, no-show, request, or escalation.");
+  const definitions = {
+    booking_confirmation: { title: "Booking confirmation", email: "BOOKING CONFIRMATION EMAIL", sms: "BOOKING CONFIRMATION SMS", task: "Booking task", requiresTime: true },
+    reschedule_requested: { title: "Reschedule requested", email: "RESCHEDULE CONFIRMATION EMAIL", sms: "RESCHEDULE CONFIRMATION SMS", task: "Rescheduled consultation", requiresTime: true },
+    no_show_followup: { title: "No-show follow-up", email: "NO-SHOW FOLLOW-UP EMAIL", sms: "NO-SHOW FOLLOW-UP SMS", task: "No-show follow-up" },
+    information_request: { title: "Information request", email: "INFORMATION REQUEST EMAIL", sms: "INFORMATION REQUEST SMS", task: "Information follow-up" },
+    manager_escalation: { title: "Manager escalation", task: "Manager review" },
+  } as const;
+  const definition = definitions[type];
+  if ("requiresTime" in definition && definition.requiresTime && !request.callbackAt?.trim()) throw new Error("Provide the agreed date and time before preparing this booking or reschedule workflow.");
+  const actions: ProposedAction[] = [
+    ...commonVerification(request.leadLabel),
+    reviewAction(request.leadLabel, `${type}-notes`, "append_contact_note", `Add factual ${definition.title.toLowerCase()} notes`, { content: request.conversationNotes.trim(), guardrail: "Record only verified statements and never overwrite historic notes." }),
+  ];
+  if ("email" in definition) actions.push(reviewAction(request.leadLabel, `${type}-email`, "send_email_template", `Send approved ${definition.title.toLowerCase()} email`, { templateName: definition.email, requireSavedSubject: true, guardrail: "Use only a configured approved template and do not send a blank subject." }));
+  if ("sms" in definition) actions.push(reviewAction(request.leadLabel, `${type}-sms`, "send_sms_template", `Send approved ${definition.title.toLowerCase()} SMS`, { templateName: definition.sms, sendingNumber: "+447428000560", guardrail: "Use only a configured approved template, respect consent, and respect office hours." }));
+  actions.push(reviewAction(request.leadLabel, `${type}-task`, "schedule_callback", `Schedule ${definition.task} only if no duplicate exists`, { taskTitle: definition.task, callbackAt: request.callbackAt?.trim(), prerequisite: "Check existing future tasks, consent, and any current active task before creating work." }));
+  return { verificationSummary: `${definition.title} requires factual context, current CRM history, consent and exclusion checks, duplicate protection, and a human decision on every proposed communication or task. This workflow never assumes that a booking, reschedule, no-show, request, or escalation occurred.`, actions };
 }
 
 function cyberFinalClosePlan(leadLabel: string): WorkflowPlan {
@@ -185,6 +235,15 @@ export function buildWorkflowPlan(request: WorkflowRequest): WorkflowPlan {
   const leadLabel = request.leadLabel.trim();
   if (!leadLabel) throw new Error("A contact or candidate label is required.");
   if (request.workflowKey === "first_contact") return firstContactPlan(leadLabel);
+  if (request.workflowKey === "call_2_followup") return callAttemptPlan({ ...request, leadLabel }, 2);
+  if (request.workflowKey === "call_3_followup") return callAttemptPlan({ ...request, leadLabel }, 3);
+  if (request.workflowKey === "call_4_final_attempt") return callAttemptPlan({ ...request, leadLabel }, 4);
+  if (request.workflowKey === "callback_requested") return callbackRequestedPlan({ ...request, leadLabel });
+  if (request.workflowKey === "booking_confirmation") return structuredFollowUpPlan({ ...request, leadLabel }, "booking_confirmation");
+  if (request.workflowKey === "reschedule_requested") return structuredFollowUpPlan({ ...request, leadLabel }, "reschedule_requested");
+  if (request.workflowKey === "no_show_followup") return structuredFollowUpPlan({ ...request, leadLabel }, "no_show_followup");
+  if (request.workflowKey === "information_request") return structuredFollowUpPlan({ ...request, leadLabel }, "information_request");
+  if (request.workflowKey === "manager_escalation") return structuredFollowUpPlan({ ...request, leadLabel }, "manager_escalation");
   if (request.workflowKey === "cyber_final_close") return cyberFinalClosePlan(leadLabel);
   return cyberPostConsultationPlan({ ...request, leadLabel });
 }

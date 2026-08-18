@@ -16,10 +16,16 @@ import {
   users,
   websiteDiscoveries,
   automationPlaybooks,
+  agentResponseCache,
+  agentUsageEvents,
+  communicationDrafts,
+  crmContextSnapshots,
+  managerFindings,
   workflowRuns,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import type { ProposedAction } from "./workflowRules";
+import { summarizeAgentUsageEvents } from "./agentUsage";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -469,6 +475,19 @@ export async function getCompanySetup(userId: number) {
   return { profile: profile[0] ?? null, discoveries, connections, playbooks };
 }
 
+export async function getCompanyAgentContext(userId: number) {
+  const db = await requireDb();
+  const profile = (await db.select().from(companyProfiles).where(eq(companyProfiles.userId, userId)).limit(1))[0];
+  if (!profile) return undefined;
+  return [
+    `Company: ${profile.companyName}`,
+    profile.industry ? `Industry: ${profile.industry}` : "",
+    profile.primaryMarket ? `Primary market: ${profile.primaryMarket}` : "",
+    profile.salesMotion ? `Sales motion: ${profile.salesMotion}` : "",
+    profile.brandVoice ? `Approved brand voice: ${profile.brandVoice}` : "",
+  ].filter(Boolean).join("\n").slice(0, 8_000);
+}
+
 export async function upsertCompanyProfile(input: {
   userId: number; companyName: string; websiteUrl?: string | null; industry?: string | null; companySize?: string | null;
   primaryMarket?: string | null; salesMotion?: string | null; brandVoice?: string | null;
@@ -522,4 +541,100 @@ export async function saveAutomationPlaybook(input: { userId: number; title: str
   const id = Number(result[0].insertId);
   await recordAudit({ userId: input.userId, eventType: "automation_playbook_saved", entityType: "automation_playbook", entityId: String(id), summary: `Review-first playbook '${input.title}' saved.`, metadata: { agentKey: input.agentKey, status: input.status } });
   return id;
+}
+
+export async function getActiveAutomationPlaybook(userId: number, playbookId: number) {
+  const db = await requireDb();
+  return (await db.select().from(automationPlaybooks).where(and(eq(automationPlaybooks.id, playbookId), eq(automationPlaybooks.userId, userId), eq(automationPlaybooks.status, "active"))).limit(1))[0];
+}
+
+export async function getCachedAgentResponse(input: { userId: number; agentKey: string; requestHash: string; policyVersion: string }) {
+  const db = await requireDb();
+  return (await db.select().from(agentResponseCache).where(and(eq(agentResponseCache.userId, input.userId), eq(agentResponseCache.agentKey, input.agentKey), eq(agentResponseCache.requestHash, input.requestHash), eq(agentResponseCache.policyVersion, input.policyVersion), gt(agentResponseCache.expiresAt, new Date()))).orderBy(desc(agentResponseCache.createdAt)).limit(1))[0];
+}
+
+export async function saveCachedAgentResponse(input: { userId: number; agentKey: string; requestHash: string; policyVersion: string; content: string; expiresAt: Date }) {
+  const db = await requireDb();
+  await db.insert(agentResponseCache).values(input).onDuplicateKeyUpdate({ set: { content: input.content, expiresAt: input.expiresAt, createdAt: new Date() } });
+}
+
+export async function recordAgentUsage(input: { userId: number; agentKey: string; model?: string | null; cacheHit: boolean; inputTokens?: number | null; outputTokens?: number | null; inputChars: number; outputChars: number }) {
+  const db = await requireDb();
+  await db.insert(agentUsageEvents).values(input);
+}
+
+export async function getAgentUsageSummary(userId: number) {
+  const db = await requireDb();
+  const events = await db.select().from(agentUsageEvents).where(eq(agentUsageEvents.userId, userId)).orderBy(desc(agentUsageEvents.createdAt)).limit(250);
+  return summarizeAgentUsageEvents(events);
+}
+
+export async function saveCommunicationDraft(input: { userId: number; leadLabel?: string | null; recipientEmail: string; subject: string; body: string; purpose: string; dedupeKey: string; qualityChecks: Array<{ key: string; passed: boolean; detail: string }> }) {
+  const db = await requireDb();
+  const existing = (await db.select().from(communicationDrafts).where(and(eq(communicationDrafts.userId, input.userId), eq(communicationDrafts.dedupeKey, input.dedupeKey))).orderBy(desc(communicationDrafts.createdAt)).limit(1))[0];
+  if (existing && ["draft", "review_required"].includes(existing.state)) return { id: existing.id, reused: true };
+  const result = await db.insert(communicationDrafts).values({ ...input, state: "review_required" });
+  const id = Number(result[0].insertId);
+  await recordAudit({ userId: input.userId, eventType: "communication_draft_prepared", entityType: "communication_draft", entityId: String(id), summary: "Human-style email draft prepared for review; no email was sent.", metadata: { leadLabel: input.leadLabel ?? null, recipientEmail: input.recipientEmail, qualityChecks: input.qualityChecks } });
+  return { id, reused: false };
+}
+
+export async function listCommunicationDrafts(userId: number) {
+  const db = await requireDb();
+  return db.select().from(communicationDrafts).where(eq(communicationDrafts.userId, userId)).orderBy(desc(communicationDrafts.createdAt)).limit(30);
+}
+
+export async function upsertCrmContextSnapshot(input: { userId: number; leadLabel: string; source: "genie_browser" | "manual"; context: Record<string, string>; summary: string; expiresAt: Date }) {
+  const db = await requireDb();
+  await db.insert(crmContextSnapshots).values(input).onDuplicateKeyUpdate({ set: { source: input.source, context: input.context, summary: input.summary, refreshedAt: new Date(), expiresAt: input.expiresAt } });
+  const snapshot = (await db.select().from(crmContextSnapshots).where(and(eq(crmContextSnapshots.userId, input.userId), eq(crmContextSnapshots.leadLabel, input.leadLabel))).limit(1))[0];
+  if (!snapshot) throw new Error("CRM context snapshot could not be saved.");
+  await recordAudit({ userId: input.userId, eventType: "crm_context_refreshed", entityType: "crm_context_snapshot", entityId: String(snapshot.id), summary: `CRM context refreshed for ${input.leadLabel}.`, metadata: { source: input.source, expiresAt: input.expiresAt.toISOString() } });
+  return snapshot;
+}
+
+export async function getCrmContextSnapshot(userId: number, leadLabel: string) {
+  const db = await requireDb();
+  return (await db.select().from(crmContextSnapshots).where(and(eq(crmContextSnapshots.userId, userId), eq(crmContextSnapshots.leadLabel, leadLabel))).limit(1))[0];
+}
+
+export async function getCrmWorkboard(userId: number, leadLabel: string) {
+  const db = await requireDb();
+  const [snapshot, workflows, proposals, callbacks, calls] = await Promise.all([
+    getCrmContextSnapshot(userId, leadLabel),
+    db.select().from(workflowRuns).where(and(eq(workflowRuns.userId, userId), eq(workflowRuns.leadLabel, leadLabel))).orderBy(desc(workflowRuns.createdAt)).limit(8),
+    db.select().from(actionProposals).where(and(eq(actionProposals.userId, userId), eq(actionProposals.targetLabel, leadLabel))).orderBy(desc(actionProposals.createdAt)).limit(30),
+    db.select().from(callbackTasks).where(and(eq(callbackTasks.userId, userId), eq(callbackTasks.leadLabel, leadLabel))).orderBy(desc(callbackTasks.updatedAt)).limit(16),
+    db.select().from(callSessions).where(and(eq(callSessions.userId, userId), eq(callSessions.leadLabel, leadLabel))).orderBy(desc(callSessions.updatedAt)).limit(8),
+  ]);
+  return { snapshot: snapshot ?? null, workflows, proposals, callbacks, calls };
+}
+
+export type ManagerFindingInput = { findingKey: string; severity: "critical" | "high" | "normal" | "info"; title: string; detail: string; targetType?: string; targetId?: string; metadata: Record<string, unknown> };
+export async function upsertManagerFinding(input: ManagerFindingInput & { userId: number }) {
+  const db = await requireDb();
+  await db.insert(managerFindings).values({ ...input, state: "open" }).onDuplicateKeyUpdate({ set: { severity: input.severity, title: input.title, detail: input.detail, targetType: input.targetType ?? null, targetId: input.targetId ?? null, metadata: input.metadata, state: "open", updatedAt: new Date() } });
+}
+
+export async function listManagerFindings(userId: number) {
+  const db = await requireDb();
+  return db.select().from(managerFindings).where(eq(managerFindings.userId, userId)).orderBy(desc(managerFindings.updatedAt)).limit(80);
+}
+
+export async function updateManagerFindingState(input: { userId: number; findingId: number; state: "acknowledged" | "resolved" }) {
+  const db = await requireDb();
+  await db.update(managerFindings).set({ state: input.state }).where(and(eq(managerFindings.id, input.findingId), eq(managerFindings.userId, input.userId)));
+  await recordAudit({ userId: input.userId, eventType: `manager_finding_${input.state}`, entityType: "manager_finding", entityId: String(input.findingId), summary: `Manager finding marked ${input.state}.`, metadata: {} });
+}
+
+export async function getManagerAssuranceSnapshot(userId: number) {
+  const db = await requireDb();
+  const [proposals, callbacks, runs, calls, findings] = await Promise.all([
+    db.select().from(actionProposals).where(eq(actionProposals.userId, userId)).orderBy(desc(actionProposals.createdAt)).limit(200),
+    db.select().from(callbackTasks).where(eq(callbackTasks.userId, userId)).orderBy(desc(callbackTasks.updatedAt)).limit(200),
+    db.select().from(workflowRuns).where(eq(workflowRuns.userId, userId)).orderBy(desc(workflowRuns.updatedAt)).limit(100),
+    db.select().from(callSessions).where(eq(callSessions.userId, userId)).orderBy(desc(callSessions.updatedAt)).limit(80),
+    listManagerFindings(userId),
+  ]);
+  return { proposals, callbacks, runs, calls, findings };
 }
