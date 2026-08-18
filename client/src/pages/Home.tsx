@@ -1,214 +1,56 @@
-/**
- * Signal Garden style reminder: build an asymmetric sales-signal journey with joyful editorial color,
- * bold type, paper-cut overlaps, and direct, observant copy. Every detail should make automation feel human.
- */
-import { useState } from "react";
-import {
-  ArrowDownRight,
-  ArrowRight,
-  Check,
-  ChevronRight,
-  Clock3,
-  Menu,
-  MessageCircleMore,
-  MoveUpRight,
-  Play,
-  ShieldCheck,
-  Sparkles,
-  X,
-  Zap,
-} from "lucide-react";
-import { Link } from "wouter";
+import { startLogin } from "@/const";
 import { BrandMark } from "@/components/BrandMark";
+import { ArrowRight, Bot, Braces, CheckCircle2, ChevronRight, CircleCheck, Database, Headphones, LibraryBig, Mail, Menu, ShieldCheck, Sparkles, Workflow, X } from "lucide-react";
+import { useState } from "react";
 
 const heroImage = "/manus-storage/amarktai-hero-sales-signal_6cce2a2c.png";
 const flowImage = "/manus-storage/amarktai-conversation-flow_71f75f8b.png";
 const securityImage = "/manus-storage/amarktai-security-orbit_503e7f2b.png";
 
 const navItems = [
-  { label: "How it moves", target: "how-it-moves" },
-  { label: "The assistant", target: "the-assistant" },
-  { label: "Security", target: "security" },
+  { label: "Platform", target: "platform" },
+  { label: "Guardrails", target: "guardrails" },
+  { label: "Connections", target: "connections" },
 ];
 
 export default function Home() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const scrollTo = (target: string) => { document.getElementById(target)?.scrollIntoView({ behavior: "smooth" }); setMenuOpen(false); };
 
-  function scrollToSection(target: string) {
-    document.getElementById(target)?.scrollIntoView({ behavior: "smooth" });
-    setMenuOpen(false);
-  }
+  return <main className="min-h-screen overflow-hidden bg-[#f6f8fb] text-[#102238]">
+    <header className="relative z-30 mx-auto flex max-w-[1440px] items-center justify-between px-5 py-5 sm:px-8 lg:px-12">
+      <BrandMark />
+      <nav className="hidden items-center gap-8 lg:flex">{navItems.map(item => <button key={item.target} onClick={() => scrollTo(item.target)} className="text-sm font-bold text-slate-600 transition hover:text-[#102238]">{item.label}</button>)}</nav>
+      <div className="flex items-center gap-3"><button onClick={() => startLogin()} className="hidden text-sm font-bold text-slate-600 transition hover:text-[#102238] sm:block">Sign in</button><button onClick={() => startLogin()} className="inline-flex h-11 items-center gap-2 rounded-xl bg-[#102238] px-4 text-sm font-bold text-white shadow-[4px_4px_0_#d8ff3e] transition hover:-translate-y-0.5 hover:bg-[#19334f] active:scale-[.98]">Open workspace <ArrowRight size={16} /></button><button onClick={() => setMenuOpen(open => !open)} aria-label="Toggle navigation" className="grid size-11 place-items-center rounded-xl border border-slate-200 bg-white lg:hidden">{menuOpen ? <X size={20} /> : <Menu size={20} />}</button></div>
+      {menuOpen && <div className="absolute left-5 right-5 top-[74px] grid gap-1 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl lg:hidden">{navItems.map(item => <button key={item.target} onClick={() => scrollTo(item.target)} className="flex items-center justify-between rounded-xl px-4 py-3 text-left text-sm font-bold hover:bg-slate-50">{item.label}<ChevronRight size={16} /></button>)}</div>}
+    </header>
 
-  return (
-    <main className="site-shell">
-      <div className="announce-bar">
-        <span className="announce-bar__spark">✦</span>
-        <p>For teams who prefer moving leads to moving tabs.</p>
-        <button onClick={() => scrollToSection("how-it-moves")}>See the rhythm <ArrowDownRight size={15} /></button>
-      </div>
+    <section className="mx-auto grid max-w-[1440px] gap-10 px-5 pb-14 pt-8 sm:px-8 sm:pt-14 lg:grid-cols-[.92fr_1.08fr] lg:items-center lg:px-12 lg:pb-24">
+      <div className="max-w-2xl"><div className="inline-flex items-center gap-2 rounded-full border border-[#d9e5ae] bg-[#f1f9d9] px-3 py-1.5 text-[11px] font-black uppercase tracking-[.13em] text-[#587000]"><Sparkles size={13} /> Built for governed sales momentum</div><h1 className="mt-6 font-display text-[clamp(3.6rem,7.2vw,7.4rem)] font-bold leading-[.84] tracking-[-.085em] text-[#102238]">A sales operating system that <em className="font-semibold text-[#88a900]">knows the rules.</em></h1><p className="mt-7 max-w-xl text-lg leading-8 text-slate-600">Amarktai equips sales teams with role-specific AI agents, protected CRM workflows, factual call coaching, and a review queue that keeps every important action visible.</p><div className="mt-9 flex flex-wrap items-center gap-4"><button onClick={() => startLogin()} className="inline-flex h-13 items-center gap-2 rounded-xl bg-[#102238] px-5 text-sm font-bold text-white shadow-[5px_5px_0_#d8ff3e] transition hover:-translate-y-1 hover:bg-[#19334f] active:scale-[.98]">Launch the protected workspace <ArrowRight size={18} /></button><button onClick={() => scrollTo("platform")} className="inline-flex items-center gap-2 text-sm font-bold text-[#102238] underline decoration-[#d8ff3e] decoration-2 underline-offset-8">Explore the platform <ChevronRight size={16} /></button></div><div className="mt-10 grid max-w-lg grid-cols-3 gap-3"><SmallProof icon={ShieldCheck} label="Review-first actions" /><SmallProof icon={Bot} label="Specialist agents" /><SmallProof icon={CircleCheck} label="Audit-ready trail" /></div></div>
+      <div className="relative min-h-[440px] sm:min-h-[530px]"><div className="absolute inset-3 rounded-[2rem] bg-[#d8ff3e] sm:inset-5" /><div className="absolute inset-0 overflow-hidden rounded-[2rem] border-[3px] border-[#102238] bg-[#102238] shadow-[11px_13px_0_#102238]"><img src={heroImage} alt="A sales professional working with automated sales signals" className="h-full w-full object-cover object-center opacity-95" /><div className="absolute inset-0 bg-gradient-to-tr from-[#102238]/55 via-transparent to-transparent" /></div><div className="absolute bottom-6 left-5 max-w-[255px] rounded-2xl border-2 border-[#102238] bg-white p-4 shadow-[4px_5px_0_#102238] sm:bottom-9 sm:left-8"><div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[.14em] text-[#688000]"><span className="size-2 rounded-full bg-[#d8ff3e] ring-2 ring-[#102238]" />Assistant brief</div><p className="mt-2 text-sm font-bold leading-5">Context caught. Proposed next move is ready for review.</p><p className="mt-2 text-xs leading-5 text-slate-500">The workflow engine checks for duplicate tasks and protects completed history.</p></div><div className="absolute right-5 top-6 rounded-xl border-2 border-[#102238] bg-[#57c4fb] px-3 py-2 text-xs font-black text-[#102238] shadow-[3px_4px_0_#102238] sm:right-8 sm:top-9">Human control stays on</div></div>
+    </section>
 
-      <header className="site-header">
-        <BrandMark />
-        <nav className="desktop-nav" aria-label="Primary navigation">
-          {navItems.map((item) => (
-            <button key={item.target} onClick={() => scrollToSection(item.target)}>{item.label}</button>
-          ))}
-        </nav>
-        <div className="site-header__actions">
-          <Link className="login-link" href="/auth">Sign in</Link>
-          <button className="button button--lime button--nav" onClick={() => scrollToSection("start")}>Meet your assistant <ArrowRight size={16} /></button>
-          <button
-            className="menu-button"
-            aria-label={menuOpen ? "Close menu" : "Open menu"}
-            aria-expanded={menuOpen}
-            onClick={() => setMenuOpen((open) => !open)}
-          >
-            {menuOpen ? <X size={22} /> : <Menu size={22} />}
-          </button>
-        </div>
-        {menuOpen && (
-          <div className="mobile-nav">
-            {navItems.map((item) => <button key={item.target} onClick={() => scrollToSection(item.target)}>{item.label} <ChevronRight size={16} /></button>)}
-            <Link href="/auth" onClick={() => setMenuOpen(false)}>Sign in <ArrowRight size={16} /></Link>
-          </div>
-        )}
-      </header>
+    <section className="border-y border-slate-200 bg-white py-4"><div className="mx-auto grid max-w-[1440px] gap-2 px-5 text-center sm:grid-cols-3 sm:px-8 lg:px-12"><Rail icon={Workflow} label="Policies become reviewable plans" /><Rail icon={Database} label="Records keep their history" /><Rail icon={Headphones} label="Calls stay factual and useful" /></div></section>
 
-      <section className="hero-section" id="start">
-        <div className="hero-curve hero-curve--coral" aria-hidden="true" />
-        <div className="hero-curve hero-curve--blue" aria-hidden="true" />
-        <div className="hero-copy">
-          <div className="eyebrow eyebrow--ink"><Sparkles size={14} /> Your all-day sales sidekick</div>
-          <h1>Your pipeline called. <em>It wants momentum.</em></h1>
-          <p className="hero-copy__lead">Amarktai Sales Assistant turns every warm signal into a well-timed, human-sounding next move.</p>
-          <div className="hero-copy__buttons">
-            <button className="button button--ink" onClick={() => scrollToSection("how-it-moves")}>Give every lead a next move <ArrowRight size={18} /></button>
-            <button className="play-button" onClick={() => scrollToSection("the-assistant")}><span><Play size={14} fill="currentColor" /></span> See it in motion</button>
-          </div>
-          <div className="hero-copy__proof">
-            <div className="mini-bloom"><span /><span /><span /><span /></div>
-            <p><strong>Less chasing.</strong> More showing up for the moments that matter.</p>
-          </div>
-        </div>
+    <SignalJourney label="Warm signal → context note → reviewable next move" tone="lime" />
 
-        <div className="hero-art" aria-label="Amarktai sales assistant in action">
-          <div className="hero-art__frame">
-            <img src={heroImage} alt="Sales professional surrounded by colorful automation signals" />
-            <span className="frame-signal-bud frame-signal-bud--one" aria-hidden="true" />
-            <span className="frame-signal-bud frame-signal-bud--two" aria-hidden="true" />
-          </div>
-          <div className="hero-art__track hero-art__track--one" aria-hidden="true"><i /><i /><i /></div>
-          <div className="hero-art__status status-card status-card--top"><span className="status-card__dot" /> Hot signal caught <MoveUpRight size={16} /></div>
-          <div className="hero-art__status status-card status-card--bottom"><div className="avatar-stack"><b>Y</b><b>A</b><b>M</b></div><span>Three good next moves</span></div>
-          <div className="hero-art__brief" aria-label="Assistant brief preview">
-            <span><Sparkles size={13} /> Assistant brief</span>
-            <strong>Yara replied after the pricing note.</strong>
-            <small>Suggested next move: offer a 15-min walk-through.</small>
-          </div>
-          <div className="hero-art__burst" aria-hidden="true">✦</div>
-        </div>
-      </section>
+    <section id="platform" className="mx-auto max-w-[1440px] px-5 py-20 sm:px-8 lg:px-12 lg:py-28"><div className="grid gap-10 lg:grid-cols-[.85fr_1.15fr] lg:items-end"><div><p className="text-xs font-black uppercase tracking-[.15em] text-[#708400]">The platform</p><h2 className="mt-4 max-w-xl font-display text-5xl font-bold leading-[.9] tracking-[-.075em] text-[#102238] sm:text-6xl">From a sales instruction to a safe next move.</h2></div><p className="max-w-xl text-base leading-7 text-slate-600">The operating model separates deterministic policy checks from role-specific AI guidance. Your team can use the same workspace for CRM task preparation, communication review, live call notes, and programme knowledge.</p></div><div className="mt-12 grid gap-4 md:grid-cols-3"><PlatformCard index="01" icon={Workflow} title="Workflow Guardian" text="Transforms the Course2Career playbook into a review-first sequence with duplicate protection and historical-record safeguards." accent="lime" /><PlatformCard index="02" icon={Bot} title="Agent desk" text="Routes a focused question to a specialist such as the Conversation Coach, CRM Context Agent, or Programme Knowledge Agent." accent="sky" /><PlatformCard index="03" icon={ShieldCheck} title="Control layer" text="Keeps every intended email, SMS, CRM update, task, and sequence visible as an action proposal before execution." accent="coral" /></div></section>
 
-      <section className="signal-rail" aria-label="Sales assistant benefits">
-        <div><Zap size={22} /><span>Spot the warmth</span><small>Catch conversation momentum before it cools.</small></div>
-        <div><MessageCircleMore size={22} /><span>Sound like you</span><small>Draft the thoughtful reply, then keep it yours.</small></div>
-        <div><Clock3 size={22} /><span>Make space</span><small>Give your team back the time for real conversations.</small></div>
-      </section>
+    <SignalJourney label="Plan prepared → human decision → lead momentum protected" tone="coral" />
 
-      <div className="journey-connector journey-connector--from-hero" aria-hidden="true"><span /><i /><b>follow the warm signals</b></div>
+    <section id="guardrails" className="bg-[#102238] px-5 py-20 text-white sm:px-8 lg:px-12 lg:py-28"><div className="mx-auto grid max-w-[1280px] gap-10 lg:grid-cols-[1.05fr_.95fr] lg:items-center"><div><p className="text-xs font-black uppercase tracking-[.15em] text-[#d8ff3e]">Guardrails by design</p><h2 className="mt-4 font-display text-5xl font-bold leading-[.9] tracking-[-.075em] sm:text-6xl">Automation should never be a leap of faith.</h2><p className="mt-6 max-w-xl text-base leading-7 text-white/65">The assistant prepares structured, traceable operations around your sales playbooks. It does not silently rewrite communications, reopen completed records, create duplicates, or substitute a guess for missing CRM information.</p><button onClick={() => startLogin()} className="mt-8 inline-flex h-12 items-center gap-2 rounded-xl bg-[#d8ff3e] px-5 text-sm font-bold text-[#102238] shadow-[4px_5px_0_#57c4fb] transition hover:-translate-y-1 active:scale-[.98]">See the control layer <ArrowRight size={17} /></button></div><div className="relative min-h-[380px]"><div className="absolute -left-5 top-2 size-36 rounded-full border-[20px] border-[#ff6d68] sm:-left-10" /><img src={securityImage} alt="Abstract security and protection artwork" className="absolute right-0 top-1/2 z-10 w-full max-w-sm -translate-y-1/2 rotate-[3deg] drop-shadow-[11px_12px_0_rgba(0,0,0,.22)]" /><div className="absolute bottom-8 left-0 z-20 max-w-[250px] rounded-xl border-2 border-[#102238] bg-white p-4 text-[#102238] shadow-[4px_5px_0_#d8ff3e]"><p className="text-[10px] font-black uppercase tracking-[.13em] text-[#638000]">A simple principle</p><p className="mt-2 text-sm font-bold">A human approves the change. The system retains the evidence.</p></div></div></div></section>
 
-      <section id="how-it-moves" className="movement-section">
-        <div className="section-intro section-intro--offset">
-          <div>
-            <p className="eyebrow eyebrow--orange">How it moves</p>
-            <h2>Every conversation has a pulse. We help you keep it.</h2>
-          </div>
-          <p>The assistant listens for useful context, suggests a thoughtful next move, and leaves the real relationship building to your team.</p>
-        </div>
+    <SignalJourney label="Approved tools → useful context → confident conversations" tone="sky" />
 
-        <div className="movement-grid">
-          <article className="process-card process-card--ink process-card--start">
-            <span className="process-card__number">01</span>
-            <div className="process-card__icon"><Sparkles size={23} /></div>
-            <h3>Spot the signal.</h3>
-            <p>From a warm reply to a quiet gap, the assistant brings the useful moments to the surface.</p>
-            <div className="signal-line"><i /><i /><i /><b /></div>
-          </article>
-          <article className="process-card process-card--lime process-card--mid">
-            <span className="process-card__number">02</span>
-            <div className="process-card__icon"><MessageCircleMore size={23} /></div>
-            <h3>Shape the reply.</h3>
-            <p>Build a message with the right context and a tone that still sounds like your team.</p>
-            <div className="message-snippet"><span>Draft ready</span><b>“Sounds good — how does Thursday look?”</b><i>send with care <ArrowRight size={13} /></i></div>
-          </article>
-          <article className="process-card process-card--orange process-card--end">
-            <span className="process-card__number">03</span>
-            <div className="process-card__icon"><Check size={23} /></div>
-            <h3>Keep moving.</h3>
-            <p>Small, timely follow-through adds up to a pipeline that actually feels alive.</p>
-            <div className="check-trail"><span><Check size={13} /> context saved</span><span><Check size={13} /> next move queued</span></div>
-          </article>
-        </div>
-        <div className="journey-connector journey-connector--within" aria-hidden="true"><span /><i /><i /><span /></div>
-      </section>
+    <section id="connections" className="mx-auto max-w-[1440px] px-5 py-20 sm:px-8 lg:px-12 lg:py-28"><div className="grid gap-10 lg:grid-cols-[.95fr_1.05fr] lg:items-center"><div className="relative min-h-[400px]"><div className="absolute left-0 top-6 h-[78%] w-[84%] rounded-[2rem] bg-[#ff6d68]" /><img src={flowImage} alt="Abstract flow from conversation to a confirmed next step" className="absolute bottom-0 left-7 h-[90%] w-[92%] rounded-[2rem] border-[3px] border-[#102238] object-cover shadow-[10px_11px_0_#102238]" /><div className="absolute right-0 top-2 rounded-xl border-2 border-[#102238] bg-[#d8ff3e] px-3 py-2 text-xs font-black shadow-[3px_4px_0_#102238]">Connect once. Govern always.</div></div><div><p className="text-xs font-black uppercase tracking-[.15em] text-[#708400]">Connection-ready</p><h2 className="mt-4 max-w-xl font-display text-5xl font-bold leading-[.9] tracking-[-.075em] text-[#102238] sm:text-6xl">One workspace for the tools your reps already use.</h2><p className="mt-6 max-w-xl text-base leading-7 text-slate-600">Genie CRM, Outlook, and GenX each have a controlled connection profile. The server keeps secrets private, checks readiness, and gives your team a clear path to activate an integration only after its permissions and API contract are verified.</p><div className="mt-7 grid gap-3">{["Genie CRM for contact context, tasks, opportunities, and sequence control.", "Microsoft Graph for Outlook mail, calendar scheduling, and change notifications.", "GenX for role-specific model routing across the assistant team."].map(copy => <div key={copy} className="flex items-start gap-3"><span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-[#d8ff3e] text-[#102238]"><CheckCircle2 size={13} /></span><p className="text-sm leading-6 text-slate-600">{copy}</p></div>)}</div><button onClick={() => startLogin()} className="mt-8 inline-flex items-center gap-2 text-sm font-bold text-[#102238] underline decoration-[#d8ff3e] decoration-2 underline-offset-8">Open secure connections <ArrowRight size={16} /></button></div></div></section>
 
-      <section id="the-assistant" className="assistant-section">
-        <div className="assistant-section__art">
-          <div className="image-stamp image-stamp--one">Right time. Right tone.</div>
-          <img src={flowImage} alt="Colorful conceptual illustration of a conversation becoming a confirmed next step" />
-          <div className="image-stamp image-stamp--two"><Sparkles size={17} /> context, carried forward</div>
-          <div className="context-fragment">
-            <span><span className="context-fragment__dot" /> Warm signal</span>
-            <strong>Asked about onboarding time</strong>
-            <small>Context note saved · 2 minutes ago</small>
-          </div>
-        </div>
-        <div className="assistant-section__copy">
-          <p className="eyebrow eyebrow--coral">The assistant</p>
-          <h2>It remembers the thread, so you can keep the spark.</h2>
-          <p>From first hello to “let’s do this”, Amarktai helps your team pick up a conversation without losing the human details that make it matter.</p>
-          <ul className="check-list">
-            <li><span><Check size={15} /></span> A clear brief before each follow-up.</li>
-            <li><span><Check size={15} /></span> Thoughtful drafts that invite a response.</li>
-            <li><span><Check size={15} /></span> Small prompts that keep no lead forgotten.</li>
-          </ul>
-          <button className="text-link" onClick={() => scrollToSection("security")}>See how we protect the pace <ArrowRight size={16} /></button>
-        </div>
-      </section>
+    <section className="mx-5 mb-5 overflow-hidden rounded-[2rem] bg-[#57c4fb] px-7 py-16 text-center sm:mx-8 lg:mx-12 lg:px-16 lg:py-20"><p className="text-xs font-black uppercase tracking-[.15em] text-[#102238]/65">The next sales day starts here</p><h2 className="mx-auto mt-4 max-w-4xl font-display text-5xl font-bold leading-[.88] tracking-[-.08em] text-[#102238] sm:text-7xl">Bring discipline to every good conversation.</h2><p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-[#102238]/70">Open the protected workspace to prepare governed workflows, connect your tools, and give your agents dependable sales intelligence.</p><button onClick={() => startLogin()} className="mt-8 inline-flex h-12 items-center gap-2 rounded-xl bg-[#102238] px-5 text-sm font-bold text-white shadow-[4px_5px_0_#ff6d68] transition hover:-translate-y-1 active:scale-[.98]">Enter Amarktai <ArrowRight size={17} /></button></section>
 
-      <div className="journey-connector journey-connector--between" aria-hidden="true"><span /><i /><i /><i /><span /></div>
-
-      <section id="security" className="security-section">
-        <div className="security-section__content">
-          <p className="eyebrow eyebrow--lime"><ShieldCheck size={14} /> Security, with a softer edge</p>
-          <h2>Strong protection. No scary theatre.</h2>
-          <p>Sign in with a second signal and keep your customer relationships, notes, and conversations where they belong: with your team.</p>
-          <Link href="/auth" className="button button--cream">Preview the two-factor sign-in <ArrowRight size={18} /></Link>
-        </div>
-        <div className="security-section__visual">
-          <div className="security-section__ring" aria-hidden="true" />
-          <img src={securityImage} alt="Abstract colorful security orbit" />
-          <div className="security-section__badge"><ShieldCheck size={18} /> one more layer, made simple</div>
-        </div>
-      </section>
-
-      <section className="closing-section">
-        <div className="closing-section__burst" aria-hidden="true">✦</div>
-        <p className="eyebrow eyebrow--ink">Ready when the next signal lands</p>
-        <h2>Give every good lead its best next move.</h2>
-        <p>Bring a little more rhythm, context, and care to every conversation in your pipeline.</p>
-        <Link href="/auth" className="button button--ink">Meet the assistant <ArrowRight size={18} /></Link>
-      </section>
-
-      <footer className="site-footer">
-        <BrandMark inverse />
-        <div className="site-footer__links">
-          <button onClick={() => scrollToSection("how-it-moves")}>How it moves</button>
-          <button onClick={() => scrollToSection("security")}>Security</button>
-          <Link href="/auth">Sign in</Link>
-        </div>
-        <p>© 2026 Amarktai Sales Assistant. <strong>Part of Amarktai Network.</strong></p>
-      </footer>
-    </main>
-  );
+    <footer className="mx-auto flex max-w-[1440px] flex-col gap-5 px-5 py-9 text-sm sm:flex-row sm:items-center sm:justify-between sm:px-8 lg:px-12"><BrandMark /><p className="text-slate-500">© 2026 Amarktai Sales Assistant. <strong className="font-semibold text-[#102238]">Part of Amarktai Network.</strong></p></footer>
+  </main>;
 }
+
+function SmallProof({ icon: Icon, label }: { icon: typeof ShieldCheck; label: string }) { return <div className="flex items-center gap-2 text-xs font-bold leading-4 text-slate-600"><Icon className="size-4 shrink-0 text-[#7f9900]" />{label}</div>; }
+function Rail({ icon: Icon, label }: { icon: typeof Workflow; label: string }) { return <div className="flex items-center justify-center gap-2 py-2 text-xs font-black uppercase tracking-[.11em] text-slate-500"><Icon className="size-4 text-[#7c9600]" />{label}</div>; }
+function SignalJourney({ label, tone }: { label: string; tone: "lime" | "coral" | "sky" }) { const colors = { lime: "bg-[#d8ff3e]", coral: "bg-[#ff6d68]", sky: "bg-[#57c4fb]" }; return <div className="relative z-10 mx-auto -mb-5 flex w-fit items-center gap-2 rounded-full border-2 border-[#102238] bg-white px-3 py-2 shadow-[3px_4px_0_#102238]"><span className={`size-2.5 rounded-full border border-[#102238] ${colors[tone]}`} /><span className="size-1.5 rounded-full bg-[#102238]" /><span className={`size-2.5 rounded-full border border-[#102238] ${colors[tone]}`} /><span className="px-1 text-[10px] font-black uppercase tracking-[.12em] text-[#102238]">{label}</span></div>; }
+function PlatformCard({ index, icon: Icon, title, text, accent }: { index: string; icon: typeof Workflow; title: string; text: string; accent: "lime" | "sky" | "coral" }) { const colors = { lime: "bg-[#eef6d1] text-[#728a00]", sky: "bg-[#e8f6ff] text-[#2083ba]", coral: "bg-[#fff0ed] text-[#d75e55]" }; return <article className="rounded-[1.4rem] border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-md"><div className="flex items-start justify-between"><div className={`grid size-11 place-items-center rounded-xl ${colors[accent]}`}><Icon size={19} /></div><span className="font-display text-sm font-bold tracking-[-.04em] text-slate-300">{index}</span></div><h3 className="mt-7 font-display text-3xl font-bold tracking-[-.06em] text-[#102238]">{title}</h3><p className="mt-3 text-sm leading-6 text-slate-600">{text}</p></article>; }

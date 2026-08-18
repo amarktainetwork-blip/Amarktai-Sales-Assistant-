@@ -1,0 +1,21 @@
+# Amarktai Sales Assistant — Implementation Checklist
+
+- [x] Extract and map all requirements from the supplied system export.
+- [x] Inspect the existing project and select the required full-stack capabilities.
+- [x] Create the production database schema, authentication model, and backend service boundaries.
+- [x] Implement the specified sales-assistant workflows and operational dashboard.
+- [x] Redesign the public marketing experience with the updated brand direction.
+- [x] Write complete installation, configuration, deployment, and security documentation.
+- [ ] Run build and integration validation, save a release checkpoint, and push the completed implementation to GitHub.
+- [x] Re-read the supplied specification’s final integration design and remove the unsupported Genie CRM API-key assumption.
+- [x] Replace the Genie connection implementation with the specified install-time CRM bridge or browser-session approach, without storing a Genie API key.
+- [x] Add a Webdock VPS first-install package, including environment template, production process configuration, reverse-proxy guidance, database setup, migrations, health checks, and update procedure.
+- [x] Limit required runtime configuration to the credentials and settings explicitly required by the approved architecture.
+- [ ] Replace the Manus-specific authentication dependency with a Webdock-compatible login and second-factor implementation, and validate the complete VPS login flow.
+- [x] Implement the full guarded Genie saved-script set: candidate search, history read, template SMS, note save, active-task completion, next-task creation, and current-opportunity update.
+- [x] Connect approved Genie action proposals to the saved scripts with precondition checks, screenshots, audit evidence, and explicit failure reporting.
+- [ ] Validate the Webdock Docker Compose package end to end, including application startup, migrations, Caddy routing, Browserless connection, and the 12-hour health worker.
+- [x] Expand the Webdock guide with selector calibration, authentication setup, health-check recovery, and browser-script operational runbooks.
+- [ ] Calibrate the deployed Genie script registry with real Genie URLs and selectors, then validate every required saved script against a live authorized Genie session.
+- [ ] Complete the workspace’s end-to-end approved-action execution view, including execution status, evidence screenshots, audit result display, and actionable failure reporting.
+- [ ] Complete the per-script real-session calibration and verification checklist after the authorized Genie selector mapping is available.

@@ -1,102 +1,28 @@
-/**
- * Signal Garden style reminder: security should feel optimistic and focused—deep ink, vivid signal accents,
- * tactile shapes, clear hierarchy, and no intimidating cyber-security clichés.
- */
-import { useState } from "react";
-import { ArrowRight, CheckCircle2, ChevronLeft, KeyRound, Mail, ShieldCheck, Sparkles } from "lucide-react";
-import { Link } from "wouter";
 import { BrandMark } from "@/components/BrandMark";
+import { startLogin } from "@/const";
+import { trpc } from "@/lib/trpc";
+import { ArrowRight, CheckCircle2, ChevronLeft, LockKeyhole, ShieldCheck, Sparkles } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
+import { Link, useLocation } from "wouter";
 
 const securityImage = "/manus-storage/amarktai-security-orbit_503e7f2b.png";
 
 export default function Auth() {
-  const [code, setCode] = useState("");
-  const [verified, setVerified] = useState(false);
-
-  function updateCode(value: string) {
-    setCode(value.replace(/\D/g, "").slice(0, 6));
-    setVerified(false);
-  }
-
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (code.length === 6) setVerified(true);
-  }
-
-  return (
-    <main className="auth-shell">
-      <section className="auth-story" aria-label="Secure access information">
-        <div className="auth-story__texture texture-dots" aria-hidden="true" />
-        <div className="auth-story__topline">
-          <Link href="/" className="auth-back">
-            <ChevronLeft size={16} /> Back to the signal
-          </Link>
-          <BrandMark inverse />
-        </div>
-
-        <div className="auth-story__copy">
-          <div className="eyebrow eyebrow--lime">
-            <ShieldCheck size={14} /> A quieter kind of secure
-          </div>
-          <h1>Good sales work deserves a safe home.</h1>
-          <p>
-            Your assistant can handle the momentum. Two-factor sign-in keeps your conversations and relationships in the right hands.
-          </p>
-          <div className="auth-story__trust">
-            <span><CheckCircle2 size={17} /> A short code, a stronger gate.</span>
-            <span><CheckCircle2 size={17} /> Clear by design, not by accident.</span>
-          </div>
-        </div>
-
-        <div className="auth-story__art-wrap">
-          <div className="signal-chip signal-chip--left"><Sparkles size={15} /> private workspace</div>
-          <img className="auth-story__art" src={securityImage} alt="Abstract orbiting security shield illustration" />
-          <div className="signal-chip signal-chip--right"><KeyRound size={15} /> one more signal</div>
-        </div>
-
-        <p className="auth-story__footer">Part of Amarktai Network</p>
-      </section>
-
-      <section className="auth-action">
-        <div className="auth-action__grain" aria-hidden="true" />
-        <div className="auth-card">
-          <div className="auth-card__icon"><Mail size={20} /></div>
-          <p className="eyebrow eyebrow--ink">Nearly there</p>
-          <h2>Check your inbox.</h2>
-          <p className="auth-card__intro">We sent a six-digit sign-in code to <strong>hello@amarktai.co.za</strong>.</p>
-
-          <form onSubmit={handleSubmit} className="auth-form">
-            <label htmlFor="two-factor-code">Your verification code</label>
-            <input
-              id="two-factor-code"
-              className="auth-code-input"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={6}
-              value={code}
-              onChange={(event) => updateCode(event.target.value)}
-              placeholder="000000"
-              aria-describedby="code-help"
-            />
-            <p id="code-help" className="auth-form__help">Enter the six digits exactly as they appear in your email.</p>
-            <button type="submit" className="button button--ink button--wide" disabled={code.length !== 6}>
-              Continue securely <ArrowRight size={18} />
-            </button>
-          </form>
-
-          {verified ? (
-            <div className="verification-notice" role="status">
-              <CheckCircle2 size={20} />
-              <span><strong>Code recognised.</strong> This presentation screen is ready to connect to your preferred identity provider.</span>
-            </div>
-          ) : (
-            <button type="button" className="text-button" onClick={() => setCode("")}>I need a fresh code</button>
-          )}
-
-          <p className="auth-card__fineprint">By continuing, you agree to protect access to your team’s customer conversations.</p>
-        </div>
-      </section>
-    </main>
-  );
+  const mode = trpc.auth.mode.useQuery();
+  return <main className="grid min-h-screen lg:grid-cols-[1.03fr_.97fr]"><section className="relative flex min-h-[470px] flex-col overflow-hidden bg-[#102238] p-6 text-white sm:p-10 lg:min-h-screen lg:p-14"><div className="absolute inset-0 opacity-30" style={{ backgroundImage: "radial-gradient(rgba(216,255,62,.45) 1px, transparent 1px)", backgroundSize: "18px 18px", maskImage: "linear-gradient(90deg, black, transparent 75%)" }} /><div className="relative flex items-center justify-between"><Link href="/" className="inline-flex items-center gap-1 text-sm font-bold text-white/80 transition hover:text-white"><ChevronLeft size={17} /> Back to home</Link><BrandMark inverse /></div><div className="relative mt-auto max-w-xl pt-24 lg:pt-0"><p className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[.15em] text-[#d8ff3e]"><ShieldCheck size={14} /> Protected by design</p><h1 className="mt-4 font-display text-5xl font-bold leading-[.88] tracking-[-.08em] sm:text-7xl">Access the system. Keep the control.</h1><p className="mt-6 max-w-lg text-base leading-7 text-white/65">Sign in to your Amarktai workspace. The self-hosted deployment uses a local administrator account, a signed server session, and an email second factor before operational data can load.</p><div className="mt-8 grid gap-3 text-sm font-semibold text-white/75"><span className="flex items-center gap-2"><CheckCircle2 className="size-4 text-[#d8ff3e]" />Workspace data stays under authenticated access.</span><span className="flex items-center gap-2"><CheckCircle2 className="size-4 text-[#d8ff3e]" />Every intended action has an audit trail.</span></div></div><div className="pointer-events-none absolute -bottom-7 right-[-2rem] w-[42%] min-w-[230px] rotate-[3deg]"><img src={securityImage} alt="" className="w-full drop-shadow-[12px_13px_0_rgba(0,0,0,.25)]" /></div></section><section className="grid place-items-center bg-[#f6f8fb] p-5 sm:p-10"><div className="w-full max-w-md rounded-[2rem] border border-slate-200 bg-white p-7 shadow-[14px_15px_0_#102238] sm:p-10"><div className="grid size-12 place-items-center rounded-2xl bg-[#d8ff3e] text-[#102238]"><LockKeyhole size={20} /></div><p className="mt-7 text-xs font-black uppercase tracking-[.15em] text-slate-400">Secure sign-in</p><h2 className="mt-3 font-display text-5xl font-bold leading-[.9] tracking-[-.075em] text-[#102238]">Open your workspace.</h2>{mode.isLoading ? <p className="mt-5 text-sm text-slate-500">Loading sign-in…</p> : mode.data?.local ? <LocalLoginForm /> : <ManagedSignIn />}</div></section></main>;
 }
 
+function ManagedSignIn() {
+  return <><p className="mt-5 text-sm leading-6 text-slate-600">Continue to the protected identity flow. Once authenticated, you can access the command centre, agent desk, workflow studio, knowledge sources, and connections.</p><button onClick={() => startLogin()} className="mt-8 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#102238] text-sm font-bold text-white shadow-[4px_5px_0_#d8ff3e] transition hover:-translate-y-0.5 hover:bg-[#19334f] active:scale-[.98]">Continue securely <ArrowRight size={17} /></button><SecurityFineprint /></>;
+}
+
+function LocalLoginForm() {
+  const [, navigate] = useLocation();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const login = trpc.auth.localLogin.useMutation({ onSuccess: () => { toast.success("Signed in. Complete the email verification step to enter the workspace."); navigate("/workspace"); }, onError: error => toast.error(error.message) });
+  return <form onSubmit={event => { event.preventDefault(); login.mutate({ email, password }); }} className="mt-6 grid gap-4"><div><label htmlFor="email" className="text-sm font-bold text-[#102238]">Administrator email</label><input id="email" type="email" autoComplete="email" required value={email} onChange={event => setEmail(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-slate-300 px-3 outline-none transition focus:border-[#102238]" /></div><div><label htmlFor="password" className="text-sm font-bold text-[#102238]">Password</label><input id="password" type="password" autoComplete="current-password" required minLength={12} value={password} onChange={event => setPassword(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-slate-300 px-3 outline-none transition focus:border-[#102238]" /></div><button type="submit" disabled={login.isPending} className="mt-3 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#102238] text-sm font-bold text-white shadow-[4px_5px_0_#d8ff3e] transition hover:-translate-y-0.5 hover:bg-[#19334f] active:scale-[.98]">{login.isPending ? "Signing in…" : "Sign in securely"} <ArrowRight size={17} /></button><SecurityFineprint /></form>;
+}
+
+function SecurityFineprint() { return <p className="mt-7 text-center text-xs leading-5 text-slate-400"><Sparkles className="mr-1 inline size-3" />Credentials and third-party integration secrets are never displayed inside this workspace.</p>; }

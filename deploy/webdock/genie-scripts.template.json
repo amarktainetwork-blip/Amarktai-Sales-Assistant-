@@ -1,0 +1,178 @@
+{
+  "scripts": {
+    "search_candidate": {
+      "steps": [
+        { "action": "goto", "value": "https://replace-with-genie-search-url" },
+        {
+          "action": "fill",
+          "selector": "input[name='search']",
+          "value": "{{leadLabel}}"
+        },
+        { "action": "click", "selector": "button[type='submit']" },
+        { "action": "expect_visible", "selector": "body" },
+        {
+          "action": "screenshot",
+          "selector": "body",
+          "key": "search-candidate"
+        }
+      ]
+    },
+    "read_candidate_history": {
+      "steps": [
+        {
+          "action": "read_text",
+          "selector": "body",
+          "key": "candidate-history"
+        },
+        {
+          "action": "screenshot",
+          "selector": "body",
+          "key": "candidate-history"
+        }
+      ]
+    },
+    "send_template_sms": {
+      "steps": [
+        { "action": "click", "selector": "REPLACE_SMS_PANEL_SELECTOR" },
+        {
+          "action": "click",
+          "selector": "REPLACE_SAVED_SMS_TEMPLATE_SELECTOR"
+        },
+        {
+          "action": "expect_visible",
+          "selector": "REPLACE_SMS_SENDER_447428000560_SELECTOR"
+        },
+        { "action": "click", "selector": "REPLACE_SMS_SEND_SELECTOR" },
+        {
+          "action": "screenshot",
+          "selector": "body",
+          "key": "sms-confirmation"
+        }
+      ]
+    },
+    "send_template_email": {
+      "steps": [
+        { "action": "click", "selector": "REPLACE_EMAIL_PANEL_SELECTOR" },
+        {
+          "action": "click",
+          "selector": "REPLACE_SAVED_EMAIL_TEMPLATE_SELECTOR"
+        },
+        {
+          "action": "expect_visible",
+          "selector": "REPLACE_NONBLANK_SUBJECT_SELECTOR"
+        },
+        { "action": "click", "selector": "REPLACE_EMAIL_SEND_SELECTOR" },
+        {
+          "action": "screenshot",
+          "selector": "body",
+          "key": "email-confirmation"
+        }
+      ]
+    },
+    "send_template_whatsapp": {
+      "steps": [
+        { "action": "click", "selector": "REPLACE_WHATSAPP_PANEL_SELECTOR" },
+        {
+          "action": "click",
+          "selector": "REPLACE_SAVED_WHATSAPP_TEMPLATE_SELECTOR"
+        },
+        { "action": "click", "selector": "REPLACE_WHATSAPP_SEND_SELECTOR" },
+        {
+          "action": "screenshot",
+          "selector": "body",
+          "key": "whatsapp-confirmation"
+        }
+      ]
+    },
+    "add_note": {
+      "steps": [
+        { "action": "click", "selector": "REPLACE_NOTES_PANEL_SELECTOR" },
+        {
+          "action": "fill",
+          "selector": "REPLACE_NOTE_INPUT_SELECTOR",
+          "value": "{{content}}"
+        },
+        { "action": "click", "selector": "REPLACE_NOTE_SAVE_SELECTOR" },
+        {
+          "action": "screenshot",
+          "selector": "body",
+          "key": "note-confirmation"
+        }
+      ]
+    },
+    "complete_active_task": {
+      "steps": [
+        { "action": "click", "selector": "REPLACE_ACTIVE_TASK_SELECTOR" },
+        {
+          "action": "expect_visible",
+          "selector": "REPLACE_OPEN_TASK_STATUS_SELECTOR"
+        },
+        { "action": "click", "selector": "REPLACE_COMPLETE_TASK_SELECTOR" },
+        { "action": "screenshot", "selector": "body", "key": "task-completion" }
+      ]
+    },
+    "create_next_task": {
+      "steps": [
+        { "action": "click", "selector": "REPLACE_CREATE_TASK_SELECTOR" },
+        {
+          "action": "fill",
+          "selector": "REPLACE_TASK_TITLE_SELECTOR",
+          "value": "{{taskTitle}}"
+        },
+        { "action": "click", "selector": "REPLACE_TASK_SAVE_SELECTOR" },
+        { "action": "screenshot", "selector": "body", "key": "task-created" }
+      ]
+    },
+    "update_current_opportunity": {
+      "steps": [
+        {
+          "action": "click",
+          "selector": "REPLACE_CURRENT_OPEN_OPPORTUNITY_SELECTOR"
+        },
+        { "action": "click", "selector": "REPLACE_STAGE_SELECTOR" },
+        {
+          "action": "click",
+          "selector": "REPLACE_APPROVED_STAGE_OPTION_SELECTOR"
+        },
+        { "action": "click", "selector": "REPLACE_OPPORTUNITY_SAVE_SELECTOR" },
+        {
+          "action": "screenshot",
+          "selector": "body",
+          "key": "opportunity-updated"
+        }
+      ]
+    },
+    "update_contact_status": {
+      "steps": [
+        { "action": "click", "selector": "REPLACE_CONTACT_STATUS_SELECTOR" },
+        {
+          "action": "click",
+          "selector": "REPLACE_LOST_STATUS_OPTION_SELECTOR"
+        },
+        { "action": "click", "selector": "REPLACE_CONTACT_SAVE_SELECTOR" },
+        { "action": "screenshot", "selector": "body", "key": "contact-status" }
+      ]
+    },
+    "apply_sequence": {
+      "steps": [
+        { "action": "click", "selector": "REPLACE_SEQUENCE_SELECTOR" },
+        {
+          "action": "click",
+          "selector": "REPLACE_CYBER_CLOSED_LOST_SEQUENCE_SELECTOR"
+        },
+        { "action": "click", "selector": "REPLACE_SEQUENCE_SAVE_SELECTOR" },
+        {
+          "action": "screenshot",
+          "selector": "body",
+          "key": "sequence-applied"
+        }
+      ]
+    },
+    "health_check": {
+      "steps": [
+        { "action": "expect_visible", "selector": "body" },
+        { "action": "screenshot", "selector": "body", "key": "health-check" }
+      ]
+    }
+  }
+}
