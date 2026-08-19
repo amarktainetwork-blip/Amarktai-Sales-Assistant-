@@ -65,6 +65,12 @@ else
   info "Genie login configuration is present; selectors still require authorised calibration."
 fi
 
+if is_placeholder "${STT_TRANSCRIPTIONS_URL:-}" || is_placeholder "${STT_MODEL:-}"; then
+  warn "Speech-to-text is not configured; Live Call Companion will remain available only after STT_TRANSCRIPTIONS_URL and STT_MODEL are supplied."
+else
+  info "Live Call Companion speech-to-text configuration is present."
+fi
+
 if is_placeholder "${SMTP_HOST:-}" || is_placeholder "${SMTP_USER:-}" || is_placeholder "${SMTP_PASSWORD:-}"; then
   warn "SMTP is not configured; email 2FA and email reports cannot be activated."
 else
