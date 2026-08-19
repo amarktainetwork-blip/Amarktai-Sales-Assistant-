@@ -17,6 +17,7 @@ import { registerConnectedSystemAdminRoutes } from "../connectedSystemAdminRoute
 import { registerSalesAutomationRoutes } from "../salesAutomationRoutes";
 import { registerSalesTargetsRoutes } from "../salesTargetsRoutes";
 import { registerAiCreditsRoutes } from "../aiCreditsRoutes";
+import { withAiRequestIdentity } from "../aiRequestContext";
 import { allowSidecarOrigin, enforceAppOrigin, rateLimit, securityHeaders } from "../security/http";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
@@ -63,7 +64,7 @@ async function startServer() {
   registerAiCreditsRoutes(app);
   app.use("/api/sidecar", allowSidecarOrigin);
   registerSidecarRoutes(app);
-  app.use("/api/trpc", rateLimit({ limit: 180, windowMs: 60_000 }), enforceAppOrigin, createExpressMiddleware({ router: appRouter, createContext }));
+  app.use("/api/trpc", rateLimit({ limit: 180, windowMs: 60_000 }), enforceAppOrigin, withAiRequestIdentity, createExpressMiddleware({ router: appRouter, createContext }));
 
   if (process.env.NODE_ENV === "development") await setupVite(app, server);
   else serveStatic(app);
