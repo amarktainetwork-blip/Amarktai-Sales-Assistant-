@@ -21,6 +21,14 @@ const ACTION_TYPES = [
 ] as const;
 type ActionType = (typeof ACTION_TYPES)[number];
 
+type PreparedSalesAction = {
+  actionType: ActionType;
+  title: string;
+  targetLabel: string;
+  idempotencyKey: string;
+  payload: Record<string, unknown>;
+};
+
 async function authenticated(req: Request) {
   const cookies = parseCookieHeader(req.headers.cookie ?? "");
   const user = isLocalAuthMode() ? await getLocalSessionUser(cookies[COOKIE_NAME]) : await sdk.authenticateRequest(req);
@@ -38,7 +46,7 @@ function sendError(res: Response, error: unknown) {
   return res.status(400).json({ error: detail.slice(0, 500) || "Sales automation operation failed." });
 }
 
-function cleanAction(value: unknown, index: number) {
+function cleanAction(value: unknown, index: number): PreparedSalesAction {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`Action ${index + 1} must be an object.`);
   const source = value as Record<string, unknown>;
   const actionType = String(source.actionType || "") as ActionType;
@@ -78,11 +86,11 @@ export function registerSalesAutomationRoutes(app: Express) {
       const { userId, membership } = await authenticated(req);
       const supplied = Array.isArray(req.body?.actions) ? req.body.actions : req.body?.action ? [req.body.action] : [];
       if (!supplied.length || supplied.length > 40) throw new Error("Supply between one and forty sales actions.");
-      const actions = supplied.map(cleanAction);
+      const actions: PreparedSalesAction[] = supplied.map(cleanAction);
       const systems = await listConnectedSystemsForUser(userId, membership.organisationId);
-      const routed = routeConnectedSystemActions(actions, systems);
+      const routed = routeConnectedSystemActions(actions, systems) as PreparedSalesAction[];
       const policy = await getAutomationPolicy({ userId, organisationId: membership.organisationId });
-      if (policy.mode === "advise") return res.json({ mode: policy.mode, persisted: false, actions: routed, blockedActionCount: routed.filter(action => !(action.payload.crmRoute as { routable?: boolean }).routable).length });
+      if (policy.mode === "advise") return res.json({ mode: policy.mode, persisted: false, actions: routed, blockedActionCount: routed.filter(action => !((action.payload.crmRoute as { routable?: boolean } | undefined)?.routable)).length });
 
       const workflowRunId = await createWorkflowRun({ userId, workflowKey: "generic_sales_automation", leadLabel: String(req.body?.label || actions[0].targetLabel).slice(0, 160), payload: { source: "generic_sales_automation", actionCount: actions.length }, verificationSummary: "Amarktai routed these actions only through backend-verified organisation CRM capabilities. External actions require review unless explicitly pre-approved by organisation policy.", actions: routed });
       const proposals = await listActionProposals(userId, workflowRunId);
