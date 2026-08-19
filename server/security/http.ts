@@ -11,7 +11,9 @@ function clientKey(req: Request) {
 function cleanupExpiredWindows(now: number) {
   if (now - lastCleanupAt < 60_000) return;
   lastCleanupAt = now;
-  for (const [key, state] of windows) if (state.resetAt <= now) windows.delete(key);
+  windows.forEach((state, key) => {
+    if (state.resetAt <= now) windows.delete(key);
+  });
 }
 
 export function rateLimit(options: { limit: number; windowMs: number }) {
