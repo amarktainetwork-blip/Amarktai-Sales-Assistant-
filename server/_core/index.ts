@@ -10,6 +10,7 @@ import { appRouter } from "../routers";
 import { registerDailyReportRoutes } from "../dailyReports";
 import { registerCrmOAuthRoutes } from "../crm/oauthRoutes";
 import { registerSidecarRoutes } from "../sidecar/routes";
+import { registerLiveCallRoutes } from "../liveCalls/routes";
 import { allowSidecarOrigin, enforceAppOrigin, rateLimit, securityHeaders } from "../security/http";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
@@ -42,6 +43,8 @@ async function startServer() {
   if (!isLocalAuthMode()) registerOAuthRoutes(app);
   registerDailyReportRoutes(app);
   registerCrmOAuthRoutes(app);
+  app.use("/api/live-calls", rateLimit({ limit: 40, windowMs: 60_000 }), enforceAppOrigin);
+  registerLiveCallRoutes(app);
   app.use("/api/sidecar", allowSidecarOrigin);
   registerSidecarRoutes(app);
   app.use(
@@ -56,9 +59,6 @@ async function startServer() {
 
   const preferredPort = Number.parseInt(process.env.PORT || "3000", 10);
   if (!Number.isInteger(preferredPort) || preferredPort < 1 || preferredPort > 65535) throw new Error("PORT must be a valid TCP port.");
-
-  // Production reverse proxies and container health checks target an exact port.
-  // Silently choosing a different port would leave a healthy process unreachable.
   const port = process.env.NODE_ENV === "production" ? preferredPort : await findAvailablePort(preferredPort);
   if (process.env.NODE_ENV !== "production" && port !== preferredPort) console.log(`Port ${preferredPort} is busy, using port ${port} instead`);
 
