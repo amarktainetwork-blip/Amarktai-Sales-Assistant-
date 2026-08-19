@@ -7,7 +7,7 @@ vi.mock("node:dns/promises", () => ({
 import { discoverPublicWebsite } from "./companyDiscovery";
 
 const originalFetch = globalThis.fetch;
-afterEach(() => { globalThis.fetch = originalFetch; vi.restoreAllMocks(); });
+afterEach(() => { globalThis.fetch = originalFetch; });
 
 describe("public website discovery", () => {
   it("rejects local and private-network targets before a fetch is attempted", async () => {
