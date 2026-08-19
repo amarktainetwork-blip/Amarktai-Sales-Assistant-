@@ -44,11 +44,10 @@ KEY_BYTES="$(printf '%s' "$CONNECTION_SECRETS_MASTER_KEY" | base64 -d 2>/dev/nul
 [ "${#SECRET_KEY}" -ge 32 ] || fail "SECRET_KEY must be at least 32 characters."
 
 if [ "$PROFILE" = "pilot" ]; then
-  is_placeholder "${BROWSERLESS_WS_ENDPOINT:-}" && fail "Pilot mode requires BROWSERLESS_WS_ENDPOINT for an external Browserless service."
-  info "Pilot profile will use external Browserless."
+  is_placeholder "${BROWSERLESS_WS_ENDPOINT:-}" && fail "Pilot mode requires BROWSERLESS_WS_ENDPOINT for an external Chromium/CDP service."
+  info "Pilot profile will use the configured external Chromium/CDP endpoint."
 elif [ "$PROFILE" = "full" ]; then
-  is_placeholder "${BROWSERLESS_TOKEN:-}" && fail "Full mode requires BROWSERLESS_TOKEN for the local Browserless container."
-  info "Full profile will run the local Browserless container."
+  info "Full profile will build the repository's internal Chromium/CDP runtime."
 else
   fail "AMARKTAI_DEPLOY_PROFILE must be 'pilot' or 'full'."
 fi
@@ -66,7 +65,7 @@ else
 fi
 
 if is_placeholder "${STT_TRANSCRIPTIONS_URL:-}" || is_placeholder "${STT_MODEL:-}"; then
-  warn "Speech-to-text is not configured; Live Call Companion will remain available only after STT_TRANSCRIPTIONS_URL and STT_MODEL are supplied."
+  warn "Speech-to-text is not configured; Live Call Companion will remain unavailable until STT_TRANSCRIPTIONS_URL and STT_MODEL are supplied."
 else
   info "Live Call Companion speech-to-text configuration is present."
 fi
