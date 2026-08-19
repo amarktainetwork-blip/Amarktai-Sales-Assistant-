@@ -112,7 +112,9 @@ export default function LiveCalls() {
       recorderRef.current = recorder;
       recorder.ondataavailable = event => {
         if (!event.data.size) return;
-        pendingRef.current = pendingRef.current.then(() => uploadChunk(event.data, activeSessionId)).catch(error => toast.error(error instanceof Error ? error.message : "Live transcription failed."));
+        pendingRef.current = pendingRef.current.then(() => uploadChunk(event.data, activeSessionId)).catch(error => {
+          toast.error(error instanceof Error ? error.message : "Live transcription failed.");
+        });
       };
       recorder.start(5000);
       setRecording(true);
