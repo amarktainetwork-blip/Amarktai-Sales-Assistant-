@@ -9,6 +9,7 @@ import { toast } from "sonner";
 type Signal = { type: string; label: string; evidence: string; priority: "normal" | "important" };
 type CaptureMode = "microphone" | "mixed";
 type TranscriptionResult = { text: string; signals: Signal[]; durationMs: number; rawAudioRetained: boolean };
+type CoachingResult = { content: string; usage?: Record<string, number> };
 
 function blobToBase64(blob: Blob) {
   return blob.arrayBuffer().then(buffer => {
@@ -17,6 +18,13 @@ function blobToBase64(blob: Blob) {
     for (let offset = 0; offset < bytes.length; offset += 0x8000) binary += String.fromCharCode(...Array.from(bytes.subarray(offset, offset + 0x8000)));
     return btoa(binary);
   });
+}
+
+async function postLive<T>(path: string, body: Record<string, unknown>): Promise<T> {
+  const response = await fetch(path, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const result = await response.json().catch(() => ({})) as T & { error?: string };
+  if (!response.ok) throw new Error(result.error || `Live Call Companion request failed (${response.status}).`);
+  return result;
 }
 
 async function getCaptureStream(mode: CaptureMode) {
@@ -46,16 +54,16 @@ export default function LiveCalls() {
   const [tip, setTip] = useState("");
   const [sttReady, setSttReady] = useState<boolean | null>(null);
   const [sttLabel, setSttLabel] = useState("Speech-to-text");
+  const [completing, setCompleting] = useState(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const sourcesRef = useRef<MediaStream[]>([]);
   const audioContextRef = useRef<AudioContext | undefined>(undefined);
   const pendingRef = useRef<Promise<void>>(Promise.resolve());
   const transcriptRef = useRef("");
   const lastCoachAtRef = useRef(0);
+  const coachingRef = useRef(false);
 
   const startSession = trpc.calls.startLive.useMutation();
-  const coach = trpc.calls.coachTranscript.useMutation({ onSuccess: result => setTip(result.content) });
-  const complete = trpc.calls.completeLive.useMutation({ onSuccess: result => setTip(result.content) });
 
   useEffect(() => {
     fetch("/api/live-calls/readiness", { credentials: "include" }).then(async response => {
@@ -71,18 +79,24 @@ export default function LiveCalls() {
     };
   }, []);
 
+  async function requestCoaching(activeSessionId: number, text: string) {
+    if (coachingRef.current) return;
+    coachingRef.current = true;
+    try {
+      const result = await postLive<CoachingResult>("/api/live-calls/coach", { callSessionId: activeSessionId, leadLabel, transcriptChunk: text });
+      setTip(result.content);
+    } catch (error) {
+      console.warn(error);
+    } finally {
+      coachingRef.current = false;
+    }
+  }
+
   async function uploadChunk(blob: Blob, activeSessionId: number) {
     if (!blob.size) return;
     const base64 = await blobToBase64(blob);
     const mimeType = (blob.type || "audio/webm").split(";")[0];
-    const response = await fetch("/api/live-calls/transcribe", {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ callSessionId: activeSessionId, audioBase64: base64, mimeType, durationMs: 5000 }),
-    });
-    const result = await response.json().catch(() => ({})) as TranscriptionResult & { error?: string };
-    if (!response.ok) throw new Error(result.error || `Transcription failed (${response.status}).`);
+    const result = await postLive<TranscriptionResult>("/api/live-calls/transcribe", { callSessionId: activeSessionId, audioBase64: base64, mimeType, durationMs: 5000 });
     const text = result.text?.trim();
     if (!text) return;
     transcriptRef.current = `${transcriptRef.current}${transcriptRef.current ? "\n" : ""}${text}`.slice(-40_000);
@@ -90,9 +104,9 @@ export default function LiveCalls() {
     if (result.signals?.length) {
       setSignals(current => [...result.signals, ...current].filter((signal, index, all) => all.findIndex(other => other.type === signal.type && other.evidence === signal.evidence) === index).slice(0, 12));
       const needsCoach = result.signals.some(signal => signal.priority === "important" || signal.type === "question");
-      if (needsCoach && Date.now() - lastCoachAtRef.current > 15_000 && !coach.isPending) {
+      if (needsCoach && Date.now() - lastCoachAtRef.current > 15_000 && !coachingRef.current) {
         lastCoachAtRef.current = Date.now();
-        coach.mutate({ callSessionId: activeSessionId, leadLabel, transcriptChunk: text });
+        void requestCoaching(activeSessionId, text);
       }
     }
   }
@@ -142,11 +156,15 @@ export default function LiveCalls() {
     audioContextRef.current = undefined;
     await pendingRef.current;
     if (sessionId && transcriptRef.current.trim().length >= 4) {
+      setCompleting(true);
       try {
-        await complete.mutateAsync({ callSessionId: sessionId, leadLabel, transcript: transcriptRef.current });
+        const result = await postLive<CoachingResult>("/api/live-calls/complete", { callSessionId: sessionId, leadLabel, transcript: transcriptRef.current });
+        setTip(result.content);
         toast.success("Call stopped. Transcript and post-call summary are ready for review.");
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Could not complete the call summary.");
+      } finally {
+        setCompleting(false);
       }
     }
   }
@@ -168,8 +186,9 @@ export default function LiveCalls() {
         </div>
         <label className="mt-5 flex cursor-pointer gap-3 rounded-xl border border-white/10 bg-[#08172F] p-4 text-sm leading-6 text-[#C4D3E9]"><input type="checkbox" checked={consent} disabled={recording} onChange={event => setConsent(event.target.checked)} className="mt-1 size-4"/><span>I confirm that my organisation authorises transcription/recording assistance for this call and that required participant notice/consent has been handled.</span></label>
         <div className="mt-5 flex flex-wrap gap-3">
-          {!recording ? <Button disabled={!leadLabel.trim() || !consent || !sttReady || startSession.isPending} onClick={() => void begin()} className="h-12 bg-[#1B64F2] hover:bg-[#2B76FF]"><Waves className="mr-2 size-4"/>Start Live Companion</Button> : <Button onClick={() => void stop()} className="h-12 bg-rose-600 hover:bg-rose-500"><Square className="mr-2 size-4"/>Stop & prepare closeout</Button>}
+          {!recording ? <Button disabled={!leadLabel.trim() || !consent || !sttReady || startSession.isPending || completing} onClick={() => void begin()} className="h-12 bg-[#1B64F2] hover:bg-[#2B76FF]"><Waves className="mr-2 size-4"/>Start Live Companion</Button> : <Button onClick={() => void stop()} className="h-12 bg-rose-600 hover:bg-rose-500"><Square className="mr-2 size-4"/>Stop & prepare closeout</Button>}
           {recording && <span className="inline-flex items-center gap-2 rounded-xl bg-emerald-400/10 px-4 text-sm font-bold text-emerald-200"><span className="size-2 animate-pulse rounded-full bg-emerald-300"/>Listening</span>}
+          {completing && <span className="inline-flex items-center rounded-xl bg-white/10 px-4 text-sm font-bold text-[#DCE6F6]">Preparing closeout…</span>}
         </div>
         <div className="mt-6 min-h-48 rounded-xl border border-white/10 bg-[#08172F] p-4"><p className="text-[10px] font-black uppercase tracking-[.13em] text-[#7FAAF8]">LIVE TRANSCRIPT</p><p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-[#DCE6F6]">{transcript || "Finalised transcript chunks will appear here while the call is running."}</p></div>
       </section>
