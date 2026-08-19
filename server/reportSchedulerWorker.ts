@@ -3,9 +3,10 @@ import { eq } from "drizzle-orm";
 import { dailyReports } from "../drizzle/schema";
 import { getAssistantDashboard, getDb, markDailyReportDelivery, releaseDailyReportDelivery } from "./db";
 import { loadManagementReportSettings } from "./managementSettings";
+import { sendTargetAwareManagementReport } from "./managementEmail";
 import { ensureDefaultOrganisation } from "./organisation";
 import { canManageOrganisation } from "./organisationAccess";
-import { sendDailyWorkspaceReport, sendManagementTeamReport } from "./smtp";
+import { sendDailyWorkspaceReport } from "./smtp";
 import { getTeamIntelligence } from "./teamIntelligence";
 
 const pollMs = Math.max(10_000, Number(process.env.REPORT_SCHEDULER_POLL_MS || 30_000));
@@ -44,7 +45,17 @@ async function deliver(report: typeof dailyReports.$inferSelect) {
   );
   if (settings.reportMode === "exceptions_only" && breaches.length === 0) return { kind: "management" as const, sent: false, exceptions: 0 };
   const people = settings.reportMode === "daily_full" && settings.includeHealthyPeople ? team.people : breaches;
-  await sendManagementTeamReport({ to: report.recipientEmail, organisationName: membership.organisationName, mappedSalespeople: team.summary.mappedSalespeople, overdueTasks: team.summary.overdueTasks, staleOpportunities: team.summary.staleOpportunities, pipelineAtRiskMinor: team.summary.pipelineAtRiskMinor, people });
+  await sendTargetAwareManagementReport({
+    to: report.recipientEmail,
+    organisationName: membership.organisationName,
+    currency: membership.currency,
+    mappedSalespeople: team.summary.mappedSalespeople,
+    overdueTasks: team.summary.overdueTasks,
+    staleOpportunities: team.summary.staleOpportunities,
+    pipelineAtRiskMinor: team.summary.pipelineAtRiskMinor,
+    wonValueThisMonthMinor: team.summary.wonValueThisMonthMinor,
+    people,
+  });
   return { kind: "management" as const, sent: true, exceptions: breaches.length };
 }
 
