@@ -1,0 +1,95 @@
+import type { Express, Request, Response } from "express";
+import { parse as parseCookieHeader } from "cookie";
+import { COOKIE_NAME } from "@shared/const";
+import { getLocalSessionUser, isLocalAuthMode } from "../localAuth";
+import { TWO_FACTOR_COOKIE, verifyTwoFactorSession } from "../twoFactor";
+import { sdk } from "../_core/sdk";
+import { detectLiveSignals } from "./signals";
+
+const MAX_AUDIO_BYTES = 800_000;
+const ALLOWED_MIME = new Set(["audio/webm", "audio/ogg", "audio/mp4", "audio/wav", "audio/x-wav", "audio/mpeg"]);
+
+type Authenticated = { id: number };
+
+async function requireAuthorisedUser(req: Request): Promise<Authenticated> {
+  const cookies = parseCookieHeader(req.headers.cookie ?? "");
+  const user = isLocalAuthMode()
+    ? await getLocalSessionUser(cookies[COOKIE_NAME])
+    : await sdk.authenticateRequest(req);
+  if (!user || user.isCron) throw new Error("AUTH_REQUIRED");
+  const verified = await verifyTwoFactorSession(cookies[TWO_FACTOR_COOKIE], user.id);
+  if (!verified) throw new Error("TWO_FACTOR_REQUIRED");
+  return user;
+}
+
+function transcriptionReadiness() {
+  return {
+    ready: Boolean(process.env.STT_TRANSCRIPTIONS_URL?.trim() && process.env.STT_MODEL?.trim()),
+    provider: process.env.STT_PROVIDER_LABEL?.trim() || "Configured speech-to-text service",
+  };
+}
+
+function decodedAudio(input: unknown) {
+  if (typeof input !== "string" || input.length < 8) throw new Error("Audio data is missing.");
+  const bytes = Buffer.from(input, "base64");
+  if (!bytes.length) throw new Error("Audio data is empty.");
+  if (bytes.length > MAX_AUDIO_BYTES) throw new Error("Audio chunk is too large; use shorter chunks.");
+  return bytes;
+}
+
+async function transcribe(bytes: Buffer, mimeType: string, language?: string) {
+  const url = process.env.STT_TRANSCRIPTIONS_URL?.trim();
+  const model = process.env.STT_MODEL?.trim();
+  if (!url || !model) throw new Error("Speech-to-text is not configured.");
+  const form = new FormData();
+  const extension = mimeType.includes("ogg") ? "ogg" : mimeType.includes("mp4") ? "m4a" : mimeType.includes("wav") ? "wav" : mimeType.includes("mpeg") ? "mp3" : "webm";
+  form.append("file", new Blob([bytes], { type: mimeType }), `call-chunk.${extension}`);
+  form.append("model", model);
+  form.append("response_format", "json");
+  if (language && /^[a-z]{2,8}(?:-[A-Za-z0-9]{2,8})?$/.test(language)) form.append("language", language);
+  const headers: Record<string, string> = {};
+  if (process.env.STT_API_KEY?.trim()) headers.Authorization = `Bearer ${process.env.STT_API_KEY.trim()}`;
+  const response = await fetch(url, { method: "POST", headers, body: form, signal: AbortSignal.timeout(45_000) });
+  const raw = await response.text();
+  if (!response.ok) throw new Error(`Speech-to-text failed with ${response.status}${raw ? `: ${raw.slice(0, 240)}` : ""}`);
+  if (!raw.trim()) return "";
+  try {
+    const parsed = JSON.parse(raw) as { text?: string };
+    return parsed.text?.trim() ?? "";
+  } catch {
+    return raw.trim();
+  }
+}
+
+export function registerLiveCallRoutes(app: Express) {
+  app.get("/api/live-calls/readiness", async (req: Request, res: Response) => {
+    try {
+      await requireAuthorisedUser(req);
+      return res.json(transcriptionReadiness());
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "";
+      return res.status(code === "TWO_FACTOR_REQUIRED" ? 403 : 401).json({ error: code === "TWO_FACTOR_REQUIRED" ? "Second-factor verification is required." : "Authentication is required." });
+    }
+  });
+
+  app.post("/api/live-calls/transcribe", async (req: Request, res: Response) => {
+    try {
+      const user = await requireAuthorisedUser(req);
+      const mimeType = String(req.body?.mimeType || "").split(";")[0].toLowerCase();
+      if (!ALLOWED_MIME.has(mimeType)) return res.status(400).json({ error: "Unsupported audio type." });
+      const durationMs = Math.max(0, Math.min(15_000, Number(req.body?.durationMs || 0)));
+      const bytes = decodedAudio(req.body?.audioBase64);
+      const text = await transcribe(bytes, mimeType, typeof req.body?.language === "string" ? req.body.language : undefined);
+      const signals = detectLiveSignals(text);
+      console.log(JSON.stringify({ event: "live_call_transcription_chunk", userId: user.id, bytes: bytes.length, durationMs, textChars: text.length, signalTypes: signals.map(signal => signal.type) }));
+      return res.json({ text, signals, durationMs, rawAudioRetained: false });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      if (detail === "AUTH_REQUIRED") return res.status(401).json({ error: "Authentication is required." });
+      if (detail === "TWO_FACTOR_REQUIRED") return res.status(403).json({ error: "Second-factor verification is required." });
+      if (detail === "Speech-to-text is not configured.") return res.status(503).json({ error: detail });
+      console.error(JSON.stringify({ event: "live_call_transcription_error", detail: detail.slice(0, 300) }));
+      return res.status(502).json({ error: detail.slice(0, 300) || "Transcription failed." });
+    }
+  });
+}
