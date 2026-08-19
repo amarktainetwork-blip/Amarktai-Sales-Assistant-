@@ -13,7 +13,7 @@ export type CrmConnectionRoute = {
 export function routeCrmCapability(input: { connections: CrmConnectionRoute[]; requiredCapability: CrmCapability; preferredProvider?: CrmProvider }) {
   const eligible = input.connections.filter(connection => connection.status === "ready" && connection.capabilities.includes(input.requiredCapability));
   const chosen = input.preferredProvider ? eligible.find(connection => connection.provider === input.preferredProvider) : eligible[0];
-  if (!chosen) return { routable: false as const, reason: `No ready CRM connection has the '${input.requiredCapability}' capability.` };
+  if (!chosen) return { routable: false as const, reason: `No ready legacy CRM connection has the '${input.requiredCapability}' capability.` };
   return { routable: true as const, provider: chosen.provider, displayName: chosen.displayName, connectionMode: chosen.connectionMode };
 }
 
@@ -23,10 +23,18 @@ const ACTION_CAPABILITY: Record<string, CrmCapability> = {
   send_sms_template: "activities", send_email_template: "activities", send_whatsapp_template: "activities",
 };
 
+/**
+ * Existing hard-coded playbooks pre-date organisation-scoped Connected Systems.
+ * When no legacy per-user route exists, preserve a reviewable proposal and let
+ * execution resolve a verified organisation connector. Execution still fails
+ * closed if no backend-verified connector can satisfy the action.
+ */
 export function routeWorkflowActions<T extends { actionType: string; payload: Record<string, unknown> }>(actions: T[], connections: CrmConnectionRoute[]) {
   return actions.map(action => {
     const requiredCapability = ACTION_CAPABILITY[action.actionType] ?? "activities";
-    return { ...action, payload: { ...action.payload, crmRoute: { ...routeCrmCapability({ connections, requiredCapability }), requiredCapability } } };
+    const legacy = routeCrmCapability({ connections, requiredCapability });
+    const crmRoute = legacy.routable ? { ...legacy, requiredCapability } : { routable: true as const, provider: "auto", deferredToOrganisationConnector: true, requiredCapability, legacyReason: legacy.reason };
+    return { ...action, payload: { ...action.payload, crmRoute } };
   });
 }
 
@@ -39,7 +47,7 @@ export type ConnectedSystemRoute = {
   verifiedCapabilities: string[];
 };
 
-const ACTION_CONNECTED_CAPABILITIES: Record<string, string[][]> = {
+export const ACTION_CONNECTED_CAPABILITIES: Record<string, string[][]> = {
   verify_contact_context: [["contacts.read"]],
   append_contact_note: [["notes.write"], ["activities.write"]],
   schedule_callback: [["tasks.write"]],
@@ -62,7 +70,8 @@ const ACTION_CONNECTED_CAPABILITIES: Record<string, string[][]> = {
   custom_crm_action: [["activities.write"]],
 };
 
-function supportsAny(system: ConnectedSystemRoute, alternatives: string[][]) {
+export function connectedSystemSupportsAction(system: ConnectedSystemRoute, actionType: string) {
+  const alternatives = ACTION_CONNECTED_CAPABILITIES[actionType] || [["activities.write"]];
   return alternatives.some(required => required.every(capability => system.verifiedCapabilities.includes(capability)));
 }
 
@@ -71,7 +80,7 @@ export function routeConnectedSystemActions<T extends { actionType: string; payl
   return actions.map(action => {
     const alternatives = ACTION_CONNECTED_CAPABILITIES[action.actionType] || [["activities.write"]];
     const preferred = typeof action.payload.preferredProvider === "string" ? action.payload.preferredProvider : undefined;
-    const eligible = ready.filter(system => supportsAny(system, alternatives));
+    const eligible = ready.filter(system => connectedSystemSupportsAction(system, action.actionType));
     const chosen = preferred ? eligible.find(system => system.provider === preferred) : eligible[0];
     const requiredCapability = alternatives.map(set => set.join("+")).join(" OR ");
     const crmRoute = chosen
