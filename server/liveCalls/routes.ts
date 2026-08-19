@@ -5,7 +5,9 @@ import { getLocalSessionUser, isLocalAuthMode } from "../localAuth";
 import { TWO_FACTOR_COOKIE, verifyTwoFactorSession } from "../twoFactor";
 import { sdk } from "../_core/sdk";
 import { appendLiveTranscript } from "../db";
+import { prepareLiveCoachingTip, preparePostCallSummary } from "../liveCoach";
 import { detectLiveSignals } from "./signals";
+import { completeLiveCallExact, requireLiveCallOwner } from "./store";
 
 const MAX_AUDIO_BYTES = 800_000;
 const ALLOWED_MIME = new Set(["audio/webm", "audio/ogg", "audio/mp4", "audio/wav", "audio/x-wav", "audio/mpeg"]);
@@ -62,14 +64,23 @@ async function transcribe(bytes: Buffer, mimeType: string, language?: string) {
   }
 }
 
+function sendLiveCallError(res: Response, error: unknown) {
+  const detail = error instanceof Error ? error.message : String(error);
+  if (detail === "AUTH_REQUIRED") return res.status(401).json({ error: "Authentication is required." });
+  if (detail === "TWO_FACTOR_REQUIRED") return res.status(403).json({ error: "Second-factor verification is required." });
+  if (detail === "Live call session was not found.") return res.status(404).json({ error: detail });
+  if (detail === "Speech-to-text is not configured.") return res.status(503).json({ error: detail });
+  console.error(JSON.stringify({ event: "live_call_api_error", detail: detail.slice(0, 300) }));
+  return res.status(502).json({ error: detail.slice(0, 300) || "Live Call Companion request failed." });
+}
+
 export function registerLiveCallRoutes(app: Express) {
   app.get("/api/live-calls/readiness", async (req: Request, res: Response) => {
     try {
       await requireAuthorisedUser(req);
       return res.json(transcriptionReadiness());
     } catch (error) {
-      const code = error instanceof Error ? error.message : "";
-      return res.status(code === "TWO_FACTOR_REQUIRED" ? 403 : 401).json({ error: code === "TWO_FACTOR_REQUIRED" ? "Second-factor verification is required." : "Authentication is required." });
+      return sendLiveCallError(res, error);
     }
   });
 
@@ -88,13 +99,40 @@ export function registerLiveCallRoutes(app: Express) {
       console.log(JSON.stringify({ event: "live_call_transcription_chunk", userId: user.id, callSessionId, bytes: bytes.length, durationMs, textChars: text.length, signalTypes: signals.map(signal => signal.type) }));
       return res.json({ text, signals, durationMs, rawAudioRetained: false });
     } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      if (detail === "AUTH_REQUIRED") return res.status(401).json({ error: "Authentication is required." });
-      if (detail === "TWO_FACTOR_REQUIRED") return res.status(403).json({ error: "Second-factor verification is required." });
-      if (detail === "Speech-to-text is not configured.") return res.status(503).json({ error: detail });
-      if (detail === "Live call session was not found.") return res.status(404).json({ error: detail });
-      console.error(JSON.stringify({ event: "live_call_transcription_error", detail: detail.slice(0, 300) }));
-      return res.status(502).json({ error: detail.slice(0, 300) || "Transcription failed." });
+      return sendLiveCallError(res, error);
+    }
+  });
+
+  app.post("/api/live-calls/coach", async (req: Request, res: Response) => {
+    try {
+      const user = await requireAuthorisedUser(req);
+      const callSessionId = Number(req.body?.callSessionId);
+      const leadLabel = typeof req.body?.leadLabel === "string" ? req.body.leadLabel.trim().slice(0, 160) : "";
+      const transcriptChunk = typeof req.body?.transcriptChunk === "string" ? req.body.transcriptChunk.trim().slice(-8_000) : "";
+      if (!Number.isInteger(callSessionId) || callSessionId <= 0 || !leadLabel || transcriptChunk.length < 2) return res.status(400).json({ error: "A live call, contact and transcript segment are required." });
+      await requireLiveCallOwner(user.id, callSessionId);
+      const result = await prepareLiveCoachingTip({ leadLabel, transcript: transcriptChunk });
+      console.log(JSON.stringify({ event: "live_call_coaching", userId: user.id, callSessionId, transcriptChars: transcriptChunk.length, genxUsage: result.usage ?? {} }));
+      return res.json({ content: result.content, usage: result.usage ?? {} });
+    } catch (error) {
+      return sendLiveCallError(res, error);
+    }
+  });
+
+  app.post("/api/live-calls/complete", async (req: Request, res: Response) => {
+    try {
+      const user = await requireAuthorisedUser(req);
+      const callSessionId = Number(req.body?.callSessionId);
+      const leadLabel = typeof req.body?.leadLabel === "string" ? req.body.leadLabel.trim().slice(0, 160) : "";
+      const transcript = typeof req.body?.transcript === "string" ? req.body.transcript.trim().slice(-40_000) : "";
+      if (!Number.isInteger(callSessionId) || callSessionId <= 0 || !leadLabel || transcript.length < 4) return res.status(400).json({ error: "A live call, contact and transcript are required." });
+      await requireLiveCallOwner(user.id, callSessionId);
+      const summary = await preparePostCallSummary({ leadLabel, transcript });
+      await completeLiveCallExact({ userId: user.id, callSessionId, transcript, summary: summary.content });
+      console.log(JSON.stringify({ event: "live_call_completed", userId: user.id, callSessionId, transcriptChars: transcript.length, genxUsage: summary.usage ?? {} }));
+      return res.json({ content: summary.content, usage: summary.usage ?? {} });
+    } catch (error) {
+      return sendLiveCallError(res, error);
     }
   });
 }
