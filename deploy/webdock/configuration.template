@@ -9,12 +9,13 @@
 DOMAIN=assistant.example.com
 DB_PASSWORD=replace_with_a_long_random_database_password
 DB_ROOT_PASSWORD=replace_with_a_different_long_random_root_password
+# The service is Valkey but retains the Redis protocol/URL name for library compatibility.
 REDIS_URL=redis://redis:6379
 
-# Full profile: local Browserless Chromium
-BROWSERLESS_TOKEN=replace_with_a_long_random_browser_token
-# Pilot profile: external Browserless websocket URL, including provider token when required.
-# Example shape only: wss://provider.example?token=...
+# Full profile builds the repository's internal Chromium/CDP runtime automatically.
+# Pilot profile should point at an external authorised Chrome/Chromium CDP service.
+# Existing code keeps the historical BROWSERLESS_WS_ENDPOINT variable name for compatibility;
+# the value may be an http(s) CDP endpoint or ws(s) DevTools endpoint supported by Playwright.
 BROWSERLESS_WS_ENDPOINT=
 
 # Application security
