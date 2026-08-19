@@ -1,12 +1,12 @@
 import type { CrmAdapter, CrmProvider } from "./types";
-import { hubspotAdapter } from "./hubspot";
+import { hubspotExtendedAdapter } from "./hubspotExtended";
 import { salesforceAdapter } from "./salesforce";
 import { pipedriveAdapter } from "./pipedrive";
 import { zohoAdapter } from "./zoho";
 import { browserCrmAdapter } from "../browserConnectors/browserCrmAdapter";
 
 const adapters: Partial<Record<CrmProvider, CrmAdapter>> = {
-  hubspot: hubspotAdapter,
+  hubspot: hubspotExtendedAdapter,
   salesforce: salesforceAdapter,
   pipedrive: pipedriveAdapter,
   zoho: zohoAdapter,
