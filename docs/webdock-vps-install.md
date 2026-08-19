@@ -1,6 +1,6 @@
 # Webdock VPS Installation
 
-This repository deploys Amarktai Sales Assistant on Webdock with React/Vite + Express/tRPC, MariaDB, Redis, Caddy and optional local Browserless Chromium. GenX remains the application's generative/reasoning AI router. Genie uses authorised browser automation; HubSpot uses OAuth/API.
+This repository deploys Amarktai Sales Assistant on Webdock with React/Vite + Express/tRPC, MariaDB, Valkey (Redis protocol), Caddy and a self-hosted Chromium/CDP browser runtime in the full profile. GenX remains the application's generative/reasoning AI router. Genie uses authorised deterministic browser automation; HubSpot uses OAuth/API.
 
 The small VPS is a **pilot target only**. It does not define the production architecture.
 
@@ -13,7 +13,7 @@ docker --version
 docker compose version
 ```
 
-For a production deployment that self-hosts Chromium, size the host from measured concurrency rather than the pilot specification. For a small test VPS use the pilot profile and an external Browserless endpoint.
+For a production deployment that self-hosts Chromium, size the host from measured concurrency rather than the pilot specification. For a small test VPS use the pilot profile and an external authorised Chromium/CDP endpoint.
 
 ## 2. Clone the correct repository
 
@@ -39,19 +39,23 @@ Put the result in `CONNECTION_SECRETS_MASTER_KEY`. Replace every required templa
 
 ### Pilot / small test VPS
 
-The pilot profile runs Caddy, the application, the worker, MariaDB and Redis locally, but connects to an external Browserless websocket. Set `BROWSERLESS_WS_ENDPOINT` in `.env`, then run:
+The pilot profile runs Caddy, the application, worker, report scheduler, MariaDB and Valkey locally, but connects to an external Chrome/Chromium CDP service. Set the compatibility variable `BROWSERLESS_WS_ENDPOINT` to that authorised endpoint, then run:
 
 ```bash
-AMARKTAI_DEPLOY_PROFILE=pilot ./deploy/webdock/install.sh
+AMARKTAI_DEPLOY_PROFILE=pilot sh deploy/webdock/install.sh
 ```
 
-### Full / local Browserless
+The external service does not have to be Browserless; the application consumes a Playwright-compatible CDP endpoint. If you choose a commercial service, verify its licence and pricing separately.
 
-The full profile also runs the pinned Browserless Chromium container. Configure `BROWSERLESS_TOKEN`, then run:
+### Full / self-hosted Chromium
+
+The full profile builds the repository's own internal Chromium/CDP image from `deploy/browser/Dockerfile`. No Browserless token or commercial browser-service licence is required.
 
 ```bash
-AMARKTAI_DEPLOY_PROFILE=full ./deploy/webdock/install.sh
+AMARKTAI_DEPLOY_PROFILE=full sh deploy/webdock/install.sh
 ```
+
+The Chromium DevTools port is internal to the Compose network and is not published to the internet.
 
 The installer runs a preflight before building, verifies the Compose configuration, creates the correct bind-mount directories under `deploy/webdock/`, applies migrations, and starts the selected profile.
 
@@ -81,7 +85,7 @@ Do not put HubSpot access/refresh tokens in `.env`; Amarktai stores connection m
 
 ## 6. Genie calibration
 
-Genie has no assumed API key. Configure the authorised login URL/account and login selectors. The first pilot still uses the install-level Genie login values; future SaaS organisations must use organisation-scoped encrypted browser sessions rather than sharing these credentials.
+Genie has no assumed API key. Configure the authorised login URL/account and login selectors. The first pilot still uses the install-level Genie login values; multi-customer production must move authenticated browser state to organisation-scoped encrypted sessions rather than sharing one account.
 
 The installer creates:
 
@@ -109,7 +113,22 @@ deploy/webdock/files/connector-evidence/
 
 Do not claim Genie live-ready until the actual customer domain, login, selectors and saved scripts have been tested with an authorised account.
 
-## 7. Operations
+## 7. Live Call Companion
+
+To enable live transcription, point the application at an authorised OpenAI-compatible speech-to-text endpoint:
+
+```text
+STT_PROVIDER_LABEL=Self-hosted speech-to-text
+STT_TRANSCRIPTIONS_URL=https://your-stt-host/v1/audio/transcriptions
+STT_MODEL=your-model-id
+STT_API_KEY=optional-provider-key
+```
+
+A self-hosted faster-whisper/Speaches-style service is suitable for evaluation. The Webdock application host does not need to run the speech model itself; production can place STT on dedicated CPU/GPU workers later.
+
+The `/calls` workspace requires explicit browser media permission and an explicit confirmation that the organisation's transcription/consent requirements have been handled. Raw audio chunks are not retained by the current bridge.
+
+## 8. Operations
 
 Choose the same Compose file used for installation.
 
@@ -119,38 +138,43 @@ COMPOSE='docker compose -f deploy/webdock/docker-compose.yml --env-file .env'
 $COMPOSE ps
 $COMPOSE logs --tail=200 app
 $COMPOSE logs --tail=200 worker
+$COMPOSE logs --tail=200 reporter
 ```
 
-Before updating production, take a database backup and review migrations. Then:
+For a routine update, use the repository's guarded update path. It runs preflight, takes a database backup, rebuilds, migrates, restarts and smoke-tests:
 
 ```bash
-git pull --ff-only
-$COMPOSE build
-$COMPOSE run --rm app pnpm drizzle-kit migrate
-$COMPOSE up -d
-curl -fsS "https://$DOMAIN/api/health"
+AMARKTAI_DEPLOY_PROFILE=full sh deploy/webdock/update.sh
 ```
 
-## 8. Backup
+For pilot, replace `full` with `pilot`.
 
-Create an application-level MariaDB dump before schema changes and store backups off-server according to your retention policy.
+## 9. Backup
+
+Create an application-level MariaDB backup before schema changes and keep copies off-server according to your retention policy:
 
 ```bash
-mkdir -p deploy/webdock/backups
-$COMPOSE exec -T db mariadb-dump -u root -p"$DB_ROOT_PASSWORD" amarktai_sales_assistant \
-  | gzip > "deploy/webdock/backups/db-$(date +%F-%H%M%S).sql.gz"
+AMARKTAI_DEPLOY_PROFILE=full sh deploy/webdock/backup.sh
 ```
 
-Routinely test restoration on an isolated database. Webdock snapshots are useful additional protection, not a substitute for tested application-level backups.
+The script writes a compressed SQL dump plus SHA-256 checksum under `deploy/webdock/backups/`. Routinely test restoration on an isolated database. Webdock snapshots are useful additional protection, not a substitute for tested application-level backups.
 
-## 9. What deployment proves
+## 10. Smoke test
 
-A healthy deployment proves that the application, database, cache, migrations, reverse proxy and selected browser endpoint start correctly. It does **not** by itself prove:
+```bash
+AMARKTAI_DEPLOY_PROFILE=full sh deploy/webdock/smoke-test.sh
+```
+
+This checks the app health endpoint, MariaDB, Valkey and—on the full profile—the internal Chromium DevTools endpoint.
+
+## 11. What deployment proves
+
+A healthy deployment proves that the application, database, cache, migrations, reverse proxy and selected browser runtime start correctly. It does **not** by itself prove:
 
 - real Genie selectors/actions;
 - an authorised HubSpot account;
 - SMTP delivery;
 - Microsoft Graph permissions;
-- real audio capture/transcription.
+- real STT accuracy on the target call/audio setup.
 
 Those require their own authorised integration tests. Keep `docs/implementation-status.md` truthful after each validation milestone.
