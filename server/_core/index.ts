@@ -11,6 +11,7 @@ import { registerDailyReportRoutes } from "../dailyReports";
 import { registerCrmOAuthRoutes } from "../crm/oauthRoutes";
 import { registerSidecarRoutes } from "../sidecar/routes";
 import { registerLiveCallRoutes } from "../liveCalls/routes";
+import { registerTeamAdminRoutes } from "../teamAdmin/routes";
 import { allowSidecarOrigin, enforceAppOrigin, rateLimit, securityHeaders } from "../security/http";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
@@ -45,6 +46,8 @@ async function startServer() {
   registerCrmOAuthRoutes(app);
   app.use("/api/live-calls", rateLimit({ limit: 40, windowMs: 60_000 }), enforceAppOrigin);
   registerLiveCallRoutes(app);
+  app.use("/api/team-admin", rateLimit({ limit: 40, windowMs: 60_000 }), enforceAppOrigin);
+  registerTeamAdminRoutes(app);
   app.use("/api/sidecar", allowSidecarOrigin);
   registerSidecarRoutes(app);
   app.use(
