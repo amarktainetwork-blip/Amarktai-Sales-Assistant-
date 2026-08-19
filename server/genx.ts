@@ -1,5 +1,6 @@
 import { AGENT_CATALOG } from "./agentCatalog";
 import { consumeAiCredits, getAiCreditWallet } from "./aiCredits";
+import { currentAiRequestIdentity } from "./aiRequestContext";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 export type GenxUsage = { promptTokens?: number; completionTokens?: number; totalTokens?: number };
@@ -10,6 +11,11 @@ function positiveInt(value: string | undefined, fallback: number) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 function featureEnvKey(feature: string) { return `AI_CREDIT_COST_${feature.replace(/[^a-z0-9]+/gi, "_").replace(/^_+|_+$/g, "").toUpperCase()}`; }
+function resolvedBilling(input: { agentKey: string; billing?: GenxBillingContext }): GenxBillingContext | undefined {
+  if (input.billing) return input.billing;
+  const identity = currentAiRequestIdentity();
+  return identity ? { ...identity, feature: `assistant_${input.agentKey}` } : undefined;
+}
 function creditCost(billing?: GenxBillingContext) {
   if (!billing) return 0;
   if (Number.isInteger(billing.creditCost) && (billing.creditCost || 0) >= 0) return Math.min(10_000, billing.creditCost || 0);
@@ -40,14 +46,15 @@ export function getGenxReadiness() {
 export async function runGenxAgent(input: { agentKey: string; messages: ChatMessage[]; approvedKnowledge?: string; modelTier?: "fast" | "default" | "reasoning"; billing?: GenxBillingContext }) {
   const readiness = getGenxReadiness();
   const agent = AGENT_CATALOG.find(item => item.key === input.agentKey) ?? AGENT_CATALOG[1];
+  const billing = resolvedBilling(input);
 
   if (!readiness.ready) {
     return { content: "Amarktai intelligence is not connected yet. Configure the GenX chat-completions URL, API key, and default model in deployment secrets.", provider: "not_configured" as const, usage: {} as GenxUsage, creditsCharged: 0 };
   }
 
-  const charge = creditCost(input.billing);
-  if (input.billing && charge > 0) {
-    const wallet = await getAiCreditWallet({ userId: input.billing.userId, organisationId: input.billing.organisationId });
+  const charge = creditCost(billing);
+  if (billing && charge > 0) {
+    const wallet = await getAiCreditWallet({ userId: billing.userId, organisationId: billing.organisationId });
     if (wallet.balance < charge) throw new Error(`This AI operation needs ${charge} Amarktai AI Credit${charge === 1 ? "" : "s"}, but the organisation has ${wallet.balance} remaining.`);
   }
 
@@ -84,8 +91,8 @@ export async function runGenxAgent(input: { agentKey: string; messages: ChatMess
   if (!content) throw new Error("GenX returned no assistant content.");
   const usage: GenxUsage = { promptTokens: payload.usage?.prompt_tokens ?? payload.usage?.input_tokens, completionTokens: payload.usage?.completion_tokens ?? payload.usage?.output_tokens, totalTokens: payload.usage?.total_tokens };
 
-  if (input.billing && charge > 0) {
-    await consumeAiCredits({ userId: input.billing.userId, organisationId: input.billing.organisationId, credits: charge, feature: input.billing.feature, model, providerUsage: { ...usage }, reference: input.billing.reference });
+  if (billing && charge > 0) {
+    await consumeAiCredits({ userId: billing.userId, organisationId: billing.organisationId, credits: charge, feature: billing.feature, model, providerUsage: { ...usage }, reference: billing.reference });
   }
-  return { content, provider: "genx" as const, model, usage, creditsCharged: input.billing ? charge : 0 };
+  return { content, provider: "genx" as const, model, usage, creditsCharged: billing ? charge : 0 };
 }
