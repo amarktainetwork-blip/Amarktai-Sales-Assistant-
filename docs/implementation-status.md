@@ -1,43 +1,194 @@
-# Amarktai Network Sales Assistant — Honest Implementation Status
+# Amarktai Sales Assistant — implementation status
 
-**Last audited:** 19 August 2026
+Updated: 19 August 2026
 
-This document distinguishes **built** code and user-facing workflows from **configuration-dependent** capabilities that require a customer's authorised accounts, credentials, selectors, or Webdock VPS. It does not treat an install-time setting or a UI card as proof that an external action has run successfully.
+This document distinguishes **implemented code**, **independently validated repository checks**, and **external activation that still requires authorised credentials/accounts**. A healthy container is not evidence that an external CRM or speech provider was successfully authorised.
 
-## Current capability status
+## Current product shape
 
-| Product area | Status | What is present now | Production dependency or limitation |
-| --- | --- | --- | --- |
-| Sales Assistant public product | **Built** | Dark Amarktai Network landing page with prominent Sales Assistant branding, automation explanation, multi-CRM capability statement, 14-agent capability grid, review-first explanation, white-model hero, and required ownership copy. | No production dependency for the static public experience. |
-| Secure workspace | **Built, configuration-dependent access** | Local Webdock login, signed session, role field, email second factor, protected dashboard and sidebar routes. | SMTP values and a live Webdock deployment are needed to complete the real second-factor journey. |
-| Organisation and membership foundation | **Built, migration required** | Additive organisations, organisation members, external owner mappings, connected systems, authorised domains, and role-aware desktop navigation are implemented. Existing users lazily receive a private default organisation on first use of the new foundation. | Apply migrations `0004`–`0006` before use. Member invitation/management UX and legacy-record backfill remain follow-on implementation work. |
-| Website discovery and knowledge confirmation | **Built** | Public HTML discovery rejects local/private targets, limits fetched text, and returns a transient in-session preview. After explicit selection, the public URL is rechecked and only selected knowledge is written with an audit record. | The first release analyses the saved public website URL only; it is not a whole-domain crawler, document parser, or source-versioning system. |
-| Review-first automation playbooks | **Built** | Users can persist organisation-specific playbook definitions with agent assignment, required capabilities, draft/active/paused state, and an enforced review-required flag. | Playbooks are durable configuration and must be connected to additional workflow templates as those approved processes are implemented. |
-| Governed workflows | **Built, limited library** | First-contact, Cyber final-close, and Cyber post-consultation workflows prepare reviewable actions, preserve idempotency keys, and record audit history. | The complete workflow library from every possible sales process cannot be safely assumed; new flows should be codified from the customer's actual approved policy and templates. |
-| Agent catalogue | **Built, model-dependent intelligence** | Fourteen specialist roles cover supervision, governance, CRM context, coaching, knowledge, communications, notes, compliance, analytics, sales intelligence, objections, recommendations, CRM routing, and pipeline planning. | Model-backed responses require the configured intelligence endpoint. Agents do not invent customer facts or bypass review controls. |
-| Connected Systems and CRM adapter architecture | **Built, configuration-dependent** | A provider-neutral `CrmAdapter` contract, encrypted connection-secret store, one-time OAuth state, backend-only verification state transition, normalized CRM mirror tables, sync cursors, capability evidence, and a real HubSpot OAuth/API adapter are implemented. | HubSpot requires a registered public app and authorised account. Salesforce, Pipedrive, Zoho, and bespoke adapters are represented by the contract but are not implemented live adapters in this checkpoint. |
-| Browser CRM and sidecar | **Built framework, configuration-dependent operation** | The Genie saved-script runtime now uses reusable deterministic browser-script primitives with validation against executable customer-supplied content. A Manifest V3 sidecar retrieves short-lived, organisation- and domain-gated context only for an active authorised tab. | Genie and custom browser systems need a reviewed profile, authorised session, page detector/record extractor calibration, and live customer-authorised test before record-specific context or write operations can be claimed. |
-| Email and calendar | **Partial** | Microsoft readiness checks and validated email-preview inputs exist. | A production mail-send or calendar-write flow needs Microsoft tenant credentials, permissions, a sender mailbox, and an authorised end-to-end test. |
-| Live call support | **Built, model-dependent** | Manual live-call sessions retain factual transcripts/notes, coaching guidance, and summaries. | No telephony, audio capture, streaming transcription, or recording ingestion is installed. |
-| Today, Sales Session, and Team Intelligence | **Built, data-dependent** | Desktop-first Today and Sales Session views deterministically prioritize normalized CRM work by task due date, stale opportunity age, missing next step, and opportunity value. Manager Team Intelligence deterministically groups overdue tasks, stale opportunities, no-next-step records, and at-risk pipeline by mapped CRM owner. | The views remain intentionally empty until an authorised system is verified, synchronized, and its external owners are mapped to organisation members. Targets, historical conversion, and email reporting need additional configured data and implementation. |
-| Webdock package | **Packaged and hardened, not live-validated** | The package now has a multi-stage non-root application image, pinned Browserless tag, service health checks, safe app health endpoint, persistent connector-evidence storage, hardened Caddy headers, a non-root Node health worker, and environment placeholders for HubSpot and encrypted CRM secret storage. | The full stack still must be deployed and tested on the user's authorised Webdock VPS. Docker is not available in this development environment. |
+Amarktai is a desktop-first sales operating layer built on the existing React/Vite + Express/tRPC + Drizzle/MariaDB stack. The launch architecture supports deep Genie browser automation, current HubSpot OAuth/API integration, multi-person organisations, normalized CRM data, Team Intelligence, live call transcription/coaching, review-first CRM actions, and Webdock pilot/full deployment profiles.
 
-## Automation boundary
+The application remains a modular monolith plus isolated workers. It has not been rewritten around the pilot VPS.
 
-> **The Sales Assistant may prepare, route, and explain work. A human approves every external action before the system attempts it.**
+## Independently validated repository gate
 
-The multi-CRM layer evaluates the required capability—such as contacts, tasks, opportunities, notes, activities, email, or calendar—against ready registrations. It attaches the resulting route to each proposal and sets an unroutable proposal to **blocked** before it can be approved. OAuth and browser-session material is stored only in encrypted connection-secret records using a server-side AES-256-GCM master key; it is never returned through APIs, logs, audit evidence, or GenX context.
+The deployment branch reached a full green GitHub Actions gate during this completion pass, including locked `pnpm` install, unit tests, TypeScript, Drizzle schema/migration validation, and the production build. After any later commit, use the PR's latest CI result as the source of truth before merging/deploying.
 
-## Required Webdock completion steps
+## Organisation and multiple salespeople
 
-| Step | Why it is required |
-| --- | --- |
-| Configure database, local-admin, SMTP, intelligence-service, HubSpot OAuth, encrypted connection-secret key, CRM browser, and Outlook secrets during installation | These values are environment-specific and intentionally excluded from source control. |
-| Calibrate authorised CRM selectors and saved scripts | Browser automation cannot safely guess CRM page structure or execute against an unauthorised session. |
-| Register CRM capability profiles in Company Setup | The deterministic router needs a declared, verified capability boundary before it can prepare a route. |
-| Test real email, CRM, and browser workflows on the VPS | A readiness check proves configuration presence, not a completed external operation. |
-| Confirm company website discovery results | Only information explicitly selected by a workspace member becomes assistant knowledge. |
+Implemented:
 
-## Verification completed in this repository
+- organisations and organisation memberships;
+- roles: owner, manager, salesperson, auditor;
+- management-only access controls;
+- secure team administration page;
+- email invitations for local/Webdock auth;
+- signed 48-hour password-setup link;
+- setup link becomes unusable after the account has a password;
+- member activation/deactivation and role changes;
+- external CRM owner/user mapping to Amarktai members;
+- normalized activity can therefore be attributed without re-syncing the CRM once per salesperson.
 
-Additive migrations `0004_universal_sales_foundation`, `0005_crm_oauth_state`, and `0006_sidecar_sessions` were generated and validated with Drizzle; they have not been applied to a customer deployment. Unit coverage includes website-discovery safeguards, CRM capability routing, encrypted connection secrets, declarative browser-script validation, and cross-organisation access policy. The project unit suite, TypeScript check, Drizzle migration check, and production build pass locally. Live Webdock, mailbox, HubSpot OAuth, CRM browser-session, selector calibration, and external-provider validation remain customer-authorised activities.
+Not yet implemented: enterprise SCIM/SAML provisioning, many-to-many named team hierarchy, and formal per-person revenue quota/target objects.
+
+## Genie
+
+Implemented:
+
+- deterministic Playwright/CDP browser connector architecture;
+- generic reusable browser connector primitives;
+- saved scripts with controlled navigation/fill/click/expect/read/screenshot steps;
+- approved-action execution and audit/evidence boundary;
+- connector capability routing;
+- full Webdock profile with a repository-built internal Chromium/CDP runtime rather than a required Browserless service.
+
+External activation still required:
+
+- authorised Genie URL/account;
+- real login and page/action selector calibration in `deploy/webdock/config/genie-scripts.json`;
+- authorised read/write smoke testing;
+- confirmation that the target Genie authentication/MFA/session behaviour works with the bridge.
+
+The first pilot still accepts install-level Genie credentials. Before multi-customer commercial SaaS use, authenticated browser state must be isolated per organisation/connection rather than sharing one global account.
+
+## HubSpot
+
+Implemented:
+
+- provider-neutral adapter;
+- date-versioned 2026-03 OAuth token exchange/refresh/introspection/revocation flow;
+- 2026-03 CRM object paths;
+- encrypted connection material;
+- requested scope verification;
+- real read-endpoint capability tests before a requested read capability is marked available;
+- contacts, companies, deals/opportunities, tasks, activities, pipeline reads and approved writes supported by the adapter;
+- normalized owner IDs for team attribution.
+
+External activation still required: real HubSpot app/client, registered callback URL, authorised portal, live OAuth/capability testing, and webhook/incremental-sync validation where used.
+
+## Live Call Companion
+
+Implemented:
+
+- real browser microphone capture;
+- microphone + explicitly shared browser-tab/system-audio capture mode;
+- local browser mixing of call audio + microphone;
+- short MediaRecorder chunks;
+- authenticated/2FA protected STT bridge;
+- deployment-controlled OpenAI-compatible `STT_TRANSCRIPTIONS_URL` with no direct OpenAI dependency;
+- incremental transcript persistence;
+- deterministic detection of common price/timing/trust objections, questions, callback requests, commitments, competitor mentions and buying signals;
+- selective GenX coaching only when important semantic help is useful;
+- coaching separated from transcript persistence;
+- exact final transcript replacement at closeout;
+- post-call GenX summary prepared for review;
+- per-call explicit confirmation that organisational transcription/consent requirements have been handled;
+- raw audio chunks are not retained by the current bridge.
+
+External activation/validation still required: configured STT endpoint/model, accuracy/latency tests on the target accents/languages/headsets/dialler, direct SIP/WebRTC/provider media adapters where browser capture is unsuitable, and organisation-level retention/legal policy controls before retained audio recording is introduced.
+
+## GenX / token economy
+
+Implemented:
+
+- all generative/reasoning AI stays behind GenX;
+- bounded recent context and approved-knowledge budgets;
+- bounded output tokens;
+- optional fast/default/reasoning model tiers;
+- provider usage capture when returned;
+- no GenX for CRM sync, health arithmetic, Team Intelligence thresholds, management exception detection, or normal deterministic browser execution.
+
+Not yet implemented: persistent organisation AI-credit wallet/ledger, paid checkout enforcement, and a complete customer-facing usage dashboard.
+
+A public pricing page and centralized plan definition exist, but checkout is intentionally not presented as active billing until a verified billing provider and durable credit ledger are implemented.
+
+## Management Intelligence
+
+Implemented:
+
+- Team Intelligence from synchronized CRM owners, tasks and opportunities;
+- overdue-task, stale-opportunity and missing-next-step metrics;
+- pipeline-at-risk amount from known opportunity values;
+- management-only team administration/configuration;
+- organisation-level Management Intelligence settings;
+- report modes: Exceptions Only and Daily Full Brief;
+- configurable overdue/stale/no-next-step thresholds;
+- Webdock-owned scheduled management-email worker, not a Manus heartbeat dependency;
+- Exceptions Only suppresses email when no configured exception exists;
+- deterministic management emails with factual metrics;
+- no webcam, keystroke, personal-browsing or unrelated-device monitoring.
+
+Not yet implemented: formal per-salesperson quota/target pacing, closed-won revenue target forecasting, one-on-one preparation history, and richer longitudinal coaching analytics.
+
+## Pricing
+
+Implemented public plan source/page:
+
+- Trial: 50 AI Credits;
+- Starter: $29/month, 500 credits, one user;
+- Professional: $79/month, 2,000 credits, up to three users;
+- Team: $199/month, 5,000 credits, up to ten users;
+- additional 1,000 AI Credits: $35;
+- upstream cost assumption recorded as $10 per 1,000 upstream units;
+- page explains that deterministic CRM work does not consume AI Credits.
+
+Billing remains deliberately disabled until a payment provider and durable wallet/ledger are configured and tested.
+
+## Webdock deployment
+
+Implemented:
+
+- multi-stage non-root Node image;
+- Caddy TLS/reverse proxy;
+- MariaDB;
+- Valkey 8.1.9 using the Redis protocol;
+- app, CRM-health worker and self-hosted report-scheduler worker;
+- full profile with internal Chromium/CDP runtime;
+- pilot profile that omits local Chromium and uses an external CDP endpoint;
+- preflight validation;
+- exact production port binding;
+- migrations during install/update;
+- application/database/cache/browser health checks;
+- database backup + checksum;
+- guarded update and smoke-test scripts;
+- correct Genie config/evidence bind mounts;
+- pinned infrastructure images where applicable.
+
+The full profile no longer depends on a Browserless commercial licence. Pilot mode can target any authorised Playwright-compatible external CDP service.
+
+External validation still required: run the selected profile on the actual Webdock host, confirm public DNS/TLS, SMTP delivery, and real external integration credentials.
+
+## Website discovery and security
+
+Implemented:
+
+- authentication + second factor for protected operations;
+- httpOnly session cookies;
+- request origin checks and rate limiting;
+- CSP/security headers/HSTS behind HTTPS;
+- 1 MB JSON body limit;
+- encrypted CRM connection secrets;
+- SSRF protections for website discovery including public DNS validation and every redirect hop;
+- private/link-local/local target rejection;
+- connector domain allowlisting foundation;
+- audit events for sensitive management/action operations.
+
+## Open-source-first infrastructure
+
+Default self-hosted deployment uses MariaDB, Valkey, Caddy, Chromium from Debian packages, Playwright Core and the existing open application stack. Optional/future candidates such as self-hosted faster-whisper/Speaches, whisper.cpp, LiveKit, BullMQ and OpenTelemetry remain behind replaceable boundaries. See `docs/open-source-dependencies.md`.
+
+## What can be tested immediately after deployment
+
+Without external CRM/STT credentials: local admin login, organisation setup, team invitation/member lifecycle once SMTP is configured, management settings, pricing, dashboard/Today/Team Intelligence with normalized test/synced data, database/cache/report-worker/app/browser health, public website discovery, and review/audit architecture.
+
+With the respective authorised credentials: Genie deterministic browser operations after selector calibration, HubSpot OAuth/API, live call transcription/coaching, and outbound email/2FA/management reports.
+
+## Do not call these externally verified until proven
+
+- Genie live automation on the customer's account;
+- HubSpot OAuth on a real portal;
+- STT accuracy/latency on real calls;
+- Webdock public deployment;
+- commercial billing/credit enforcement.
+
+Those are the remaining activation/validation gates, not hidden completed work.
