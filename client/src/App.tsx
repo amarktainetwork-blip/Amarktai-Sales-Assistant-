@@ -8,11 +8,12 @@ import Auth from "./pages/Auth";
 import Connections from "./pages/Connections";
 import Dashboard from "./pages/Dashboard";
 import Home from "./pages/Home";
+import LiveCalls from "./pages/LiveCalls";
 import Onboarding from "./pages/Onboarding";
 import Pricing from "./pages/Pricing";
 import Today from "./pages/Today";
 import TeamIntelligence from "./pages/TeamIntelligence";
-import { AgentDesk, CallDesk, CommandCentre, KnowledgeHub, WorkflowStudio } from "./pages/Workspace";
+import { AgentDesk, CommandCentre, KnowledgeHub, WorkflowStudio } from "./pages/Workspace";
 
 function Router() {
   return <Switch>
@@ -25,7 +26,7 @@ function Router() {
     <Route path="/workspace" component={CommandCentre} />
     <Route path="/workflows" component={WorkflowStudio} />
     <Route path="/agents" component={AgentDesk} />
-    <Route path="/calls" component={CallDesk} />
+    <Route path="/calls" component={LiveCalls} />
     <Route path="/knowledge" component={KnowledgeHub} />
     <Route path="/connections" component={Connections} />
     <Route path="/company-setup" component={Onboarding} />
