@@ -13,6 +13,7 @@ import { registerSidecarRoutes } from "../sidecar/routes";
 import { registerLiveCallRoutes } from "../liveCalls/routes";
 import { registerTeamAdminRoutes } from "../teamAdmin/routes";
 import { registerManagementSettingsRoutes } from "../managementSettingsRoutes";
+import { registerConnectedSystemAdminRoutes } from "../connectedSystemAdminRoutes";
 import { allowSidecarOrigin, enforceAppOrigin, rateLimit, securityHeaders } from "../security/http";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
@@ -26,9 +27,7 @@ function isPortAvailable(port: number): Promise<boolean> {
 }
 
 async function findAvailablePort(startPort: number = 3000): Promise<number> {
-  for (let port = startPort; port < startPort + 20; port++) {
-    if (await isPortAvailable(port)) return port;
-  }
+  for (let port = startPort; port < startPort + 20; port++) if (await isPortAvailable(port)) return port;
   throw new Error(`No available port found starting from ${startPort}`);
 }
 
@@ -51,14 +50,11 @@ async function startServer() {
   registerTeamAdminRoutes(app);
   app.use("/api/management-settings", rateLimit({ limit: 30, windowMs: 60_000 }), enforceAppOrigin);
   registerManagementSettingsRoutes(app);
+  app.use("/api/connected-system-admin", rateLimit({ limit: 30, windowMs: 60_000 }), enforceAppOrigin);
+  registerConnectedSystemAdminRoutes(app);
   app.use("/api/sidecar", allowSidecarOrigin);
   registerSidecarRoutes(app);
-  app.use(
-    "/api/trpc",
-    rateLimit({ limit: 180, windowMs: 60_000 }),
-    enforceAppOrigin,
-    createExpressMiddleware({ router: appRouter, createContext }),
-  );
+  app.use("/api/trpc", rateLimit({ limit: 180, windowMs: 60_000 }), enforceAppOrigin, createExpressMiddleware({ router: appRouter, createContext }));
 
   if (process.env.NODE_ENV === "development") await setupVite(app, server);
   else serveStatic(app);
@@ -67,7 +63,6 @@ async function startServer() {
   if (!Number.isInteger(preferredPort) || preferredPort < 1 || preferredPort > 65535) throw new Error("PORT must be a valid TCP port.");
   const port = process.env.NODE_ENV === "production" ? preferredPort : await findAvailablePort(preferredPort);
   if (process.env.NODE_ENV !== "production" && port !== preferredPort) console.log(`Port ${preferredPort} is busy, using port ${port} instead`);
-
   server.listen(port, "0.0.0.0", () => console.log(`Server running on http://0.0.0.0:${port}/`));
 }
 
