@@ -1,94 +1,156 @@
 # Webdock VPS Installation
 
-This deployment package implements the architecture agreed in the supplied system brief: **Webdock VPS** is the operational environment, **GenX** is the model provider, **Playwright through Browserless** is the controlled way to operate Genie CRM, **Microsoft Graph** is the Outlook connection, and an approval queue remains the safety boundary. Genie credentials are browser-login credentials; there is **no Genie API key** in this installation.
+This repository deploys Amarktai Sales Assistant on Webdock with React/Vite + Express/tRPC, MariaDB, Redis, Caddy and optional local Browserless Chromium. GenX remains the application's generative/reasoning AI router. Genie uses authorised browser automation; HubSpot uses OAuth/API.
 
-> The repository currently uses a MySQL-compatible Drizzle schema, so the packaged first installation uses **MariaDB 11.7**. This keeps the application and its migrations consistent. A later PostgreSQL/pgvector migration should be an explicit, tested data migration rather than an unverified database swap.
+The small VPS is a **pilot target only**. It does not define the production architecture.
 
-## 1. Provision and secure the server
+## 1. Server
 
-Create an Ubuntu 24.04 Webdock VPS with enough capacity for the browser service and worker. The original brief recommends eight vCPUs, 16 GB RAM, 160 GB NVMe, and daily backups. Use a non-root administrator with SSH keys; disable password-based SSH after validating key access. Restrict inbound access to ports 22, 80, and 443.
-
-```bash
-sudo apt-get update && sudo apt-get -y upgrade
-sudo adduser --disabled-password --gecos "" amarktai
-sudo usermod -aG sudo amarktai
-sudo ufw allow OpenSSH
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
-sudo ufw enable
-```
-
-Install Docker Engine and the Compose plugin using Docker’s current Ubuntu instructions, then confirm the installation.
+Use Ubuntu 24.04, a non-root sudo user and SSH keys. Permit only the network services you need (normally SSH, HTTP and HTTPS). Install Docker Engine and the Docker Compose plugin from Docker's current Ubuntu instructions.
 
 ```bash
 docker --version
 docker compose version
 ```
 
-## 2. Install the repository and configure the first deployment
+For a production deployment that self-hosts Chromium, size the host from measured concurrency rather than the pilot specification. For a small test VPS use the pilot profile and an external Browserless endpoint.
 
-Clone this repository into the location specified by the original brief, then create the install-time environment file. Every operational credential is entered before the stack starts. Do not commit the resulting `.env` file.
+## 2. Clone the correct repository
 
 ```bash
-sudo mkdir -p /opt/c2c-assistant
-sudo chown amarktai:amarktai /opt/c2c-assistant
-git clone https://github.com/amarktainetwork-blip/Amarktai-Sales-Assistant.git /opt/c2c-assistant
-cd /opt/c2c-assistant
+sudo mkdir -p /opt/amarktai-sales
+sudo chown "$USER":"$USER" /opt/amarktai-sales
+git clone https://github.com/sharetheherbman-debug/Amarktai-Sales.git /opt/amarktai-sales
+cd /opt/amarktai-sales
 cp deploy/webdock/configuration.template .env
+chmod 600 .env
 nano .env
 ```
 
-The following values are required before activation: a domain name, database passwords, `JWT_SECRET`, `SECRET_KEY`, `BROWSERLESS_TOKEN`, the GenX endpoint/key/default model, and the Genie login URL/username/password. Microsoft Graph and SMTP values are required to activate their corresponding features. **Do not add a Genie API key**: Genie is operated through the saved Playwright scripts in the browser service.
-
-## 3. DNS, TLS, and first start
-
-Point an A or AAAA DNS record for `DOMAIN` at the Webdock server. Caddy obtains and renews TLS automatically after the domain resolves publicly. Build the stack and run the database migrations with the included installer.
+Generate the connection-secret encryption key with:
 
 ```bash
-chmod +x deploy/webdock/install.sh scripts/run-genie-health-check.sh
-./deploy/webdock/install.sh
+openssl rand -base64 32
 ```
 
-The services are Caddy, the application API/web server, the 12-hour Genie health worker, MariaDB, Redis, and Browserless Chromium. The browser is not public; only the application and worker access it over the internal Docker network.
+Put the result in `CONNECTION_SECRETS_MASTER_KEY`. Replace every required template value. Do not commit `.env`.
 
-## 4. Initial Genie browser-script calibration
+## 3. Choose a deployment profile
 
-The provided login script is deliberately selector-driven. During the first secure calibration, edit the `GENIE_*_SELECTOR` values in `.env` to match the real Genie login page, then verify from within the worker container.
+### Pilot / small test VPS
+
+The pilot profile runs Caddy, the application, the worker, MariaDB and Redis locally, but connects to an external Browserless websocket. Set `BROWSERLESS_WS_ENDPOINT` in `.env`, then run:
 
 ```bash
-docker compose -f deploy/webdock/docker-compose.yml --env-file .env run --rm worker /app/scripts/run-genie-health-check.sh
-docker compose -f deploy/webdock/docker-compose.yml --env-file .env logs --tail=100 worker
+AMARKTAI_DEPLOY_PROFILE=pilot ./deploy/webdock/install.sh
 ```
 
-After the login and dashboard checks succeed, calibrate `/opt/c2c-assistant/config/genie-scripts.json`. The installer creates it from `deploy/webdock/genie-scripts.template.json`; every `REPLACE_*` selector must be changed to a reviewed Genie selector before a browser write can run. The required saved scripts are candidate search, history read, saved-template SMS/email/WhatsApp, note save, active-task completion, next-task creation, current-opportunity update, contact-status update, and Cyber closed-lost sequence setup.
+### Full / local Browserless
 
-Every browser action is only available after its matching proposal is marked **approved**. The worker captures a screenshot in `/opt/c2c-assistant/files/screenshots`, persists the result against the proposal, and writes an audit event. If a selector, expected page state, or saved template cannot be confirmed, the execution ends as blocked with the reason recorded; it must never create a substitute action.
-
-## 5. Ongoing operations and updates
-
-Use the following commands for visibility and a safe source update. Always review migrations before applying them to the production database.
+The full profile also runs the pinned Browserless Chromium container. Configure `BROWSERLESS_TOKEN`, then run:
 
 ```bash
-docker compose -f deploy/webdock/docker-compose.yml --env-file .env ps
-docker compose -f deploy/webdock/docker-compose.yml --env-file .env logs -f app
-docker compose -f deploy/webdock/docker-compose.yml --env-file .env logs -f worker
+AMARKTAI_DEPLOY_PROFILE=full ./deploy/webdock/install.sh
+```
 
+The installer runs a preflight before building, verifies the Compose configuration, creates the correct bind-mount directories under `deploy/webdock/`, applies migrations, and starts the selected profile.
+
+## 4. DNS and TLS
+
+Point `DOMAIN` to the VPS before expecting public TLS to become healthy. Caddy obtains and renews certificates automatically.
+
+After deployment:
+
+```bash
+curl -fsS "https://$DOMAIN/api/health"
+```
+
+Expected application response includes `"status":"ok"` and `"service":"amarktai-sales"`.
+
+## 5. HubSpot
+
+Create/configure the HubSpot app and register exactly:
+
+```text
+https://YOUR_DOMAIN/api/crm/oauth/callback
+```
+
+Set `HUBSPOT_CLIENT_ID` and `HUBSPOT_CLIENT_SECRET`. A saved system is not marked ready merely because OAuth succeeded; the backend tests the requested scopes and read capabilities.
+
+Do not put HubSpot access/refresh tokens in `.env`; Amarktai stores connection material encrypted per connected system.
+
+## 6. Genie calibration
+
+Genie has no assumed API key. Configure the authorised login URL/account and login selectors. The first pilot still uses the install-level Genie login values; future SaaS organisations must use organisation-scoped encrypted browser sessions rather than sharing these credentials.
+
+The installer creates:
+
+```text
+deploy/webdock/config/genie-scripts.json
+```
+
+from the template when absent. Every `REPLACE_*` selector must be calibrated against the authorised Genie environment before writes are enabled.
+
+Run a health check in the selected profile:
+
+```bash
+# Pilot
+AMARKTAI_DEPLOY_PROFILE=pilot docker compose -f deploy/webdock/docker-compose.pilot.yml --env-file .env run --rm worker /app/scripts/run-genie-health-check.sh
+
+# Full
+AMARKTAI_DEPLOY_PROFILE=full docker compose -f deploy/webdock/docker-compose.yml --env-file .env run --rm worker /app/scripts/run-genie-health-check.sh
+```
+
+Browser evidence is persisted under:
+
+```text
+deploy/webdock/files/connector-evidence/
+```
+
+Do not claim Genie live-ready until the actual customer domain, login, selectors and saved scripts have been tested with an authorised account.
+
+## 7. Operations
+
+Choose the same Compose file used for installation.
+
+```bash
+# example full profile
+COMPOSE='docker compose -f deploy/webdock/docker-compose.yml --env-file .env'
+$COMPOSE ps
+$COMPOSE logs --tail=200 app
+$COMPOSE logs --tail=200 worker
+```
+
+Before updating production, take a database backup and review migrations. Then:
+
+```bash
 git pull --ff-only
-docker compose -f deploy/webdock/docker-compose.yml --env-file .env build
-docker compose -f deploy/webdock/docker-compose.yml --env-file .env run --rm app pnpm drizzle-kit migrate
-docker compose -f deploy/webdock/docker-compose.yml --env-file .env up -d
+$COMPOSE build
+$COMPOSE run --rm app pnpm drizzle-kit migrate
+$COMPOSE up -d
+curl -fsS "https://$DOMAIN/api/health"
 ```
 
-The worker runs a Genie login and dashboard-selector health check every 12 hours. A failed check exits non-zero and is visible in the worker log; treat that as a reason to pause risky browser scripts, capture the changed UI, update only the affected saved selector, and retest before resuming writes.
+## 8. Backup
 
-## 6. Backup and recovery
-
-Enable Webdock backups and take an application-level MariaDB dump before schema changes.
+Create an application-level MariaDB dump before schema changes and store backups off-server according to your retention policy.
 
 ```bash
-mkdir -p backups
-docker compose -f deploy/webdock/docker-compose.yml --env-file .env exec -T db \
-  mariadb-dump -u root -p"$DB_ROOT_PASSWORD" amarktai_sales_assistant > "backups/db-$(date +%F-%H%M%S).sql"
+mkdir -p deploy/webdock/backups
+$COMPOSE exec -T db mariadb-dump -u root -p"$DB_ROOT_PASSWORD" amarktai_sales_assistant \
+  | gzip > "deploy/webdock/backups/db-$(date +%F-%H%M%S).sql.gz"
 ```
 
-Store backups off-server according to your retention policy and routinely test a restoration on an isolated database.
+Routinely test restoration on an isolated database. Webdock snapshots are useful additional protection, not a substitute for tested application-level backups.
+
+## 9. What deployment proves
+
+A healthy deployment proves that the application, database, cache, migrations, reverse proxy and selected browser endpoint start correctly. It does **not** by itself prove:
+
+- real Genie selectors/actions;
+- an authorised HubSpot account;
+- SMTP delivery;
+- Microsoft Graph permissions;
+- real audio capture/transcription.
+
+Those require their own authorised integration tests. Keep `docs/implementation-status.md` truthful after each validation milestone.
