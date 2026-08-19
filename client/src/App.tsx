@@ -11,8 +11,9 @@ import Home from "./pages/Home";
 import LiveCalls from "./pages/LiveCalls";
 import Onboarding from "./pages/Onboarding";
 import Pricing from "./pages/Pricing";
-import Today from "./pages/Today";
 import TeamIntelligence from "./pages/TeamIntelligence";
+import TeamManagement from "./pages/TeamManagement";
+import Today from "./pages/Today";
 import { AgentDesk, CommandCentre, KnowledgeHub, WorkflowStudio } from "./pages/Workspace";
 
 function Router() {
@@ -23,6 +24,7 @@ function Router() {
     <Route path="/dashboard" component={Dashboard} />
     <Route path="/today" component={Today} />
     <Route path="/team" component={TeamIntelligence} />
+    <Route path="/team/manage" component={TeamManagement} />
     <Route path="/workspace" component={CommandCentre} />
     <Route path="/workflows" component={WorkflowStudio} />
     <Route path="/agents" component={AgentDesk} />
