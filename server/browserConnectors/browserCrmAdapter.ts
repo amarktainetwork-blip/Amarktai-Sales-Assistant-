@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright-core";
+import { loadConnectionSecret } from "../connectedSystems";
 import type {
   AdapterConnection,
   AdapterEvidence,
@@ -54,14 +55,7 @@ const CAPABILITY_OPERATIONS: Record<CrmCapability, string[]> = {
   "sequences.apply": ["applySequence"],
 };
 
-type BrowserLoginProfile = {
-  url: string;
-  usernameSelector?: string;
-  passwordSelector?: string;
-  submitSelector?: string;
-  readySelector: string;
-};
-
+type BrowserLoginProfile = { url: string; usernameSelector?: string; passwordSelector?: string; submitSelector?: string; readySelector: string };
 type BrowserProfile = {
   browserEndpoint?: string;
   login?: BrowserLoginProfile;
@@ -96,13 +90,7 @@ async function genieProfile(): Promise<BrowserProfile | undefined> {
     const loginUrl = process.env.GENIE_LOGIN_URL;
     return {
       browserEndpoint: process.env.BROWSERLESS_WS_ENDPOINT,
-      login: loginUrl ? {
-        url: loginUrl,
-        usernameSelector: process.env.GENIE_USERNAME_SELECTOR || 'input[name="username"]',
-        passwordSelector: process.env.GENIE_PASSWORD_SELECTOR || 'input[type="password"]',
-        submitSelector: process.env.GENIE_LOGIN_SUBMIT_SELECTOR || 'button[type="submit"]',
-        readySelector: process.env.GENIE_DASHBOARD_SELECTOR || "body",
-      } : undefined,
+      login: loginUrl ? { url: loginUrl, usernameSelector: process.env.GENIE_USERNAME_SELECTOR || 'input[name="username"]', passwordSelector: process.env.GENIE_PASSWORD_SELECTOR || 'input[type="password"]', submitSelector: process.env.GENIE_LOGIN_SUBMIT_SELECTOR || 'button[type="submit"]', readySelector: process.env.GENIE_DASHBOARD_SELECTOR || "body" } : undefined,
       scripts: Object.fromEntries(Object.entries(parsed.scripts).map(([key, script]) => [key, validateSavedBrowserScript(script)])),
       operationMap: DEFAULT_GENIE_OPERATION_MAP,
       artifactDirectory: process.env.GENIE_ARTIFACT_DIR || "/app/data/genie-artifacts",
@@ -113,58 +101,35 @@ async function genieProfile(): Promise<BrowserProfile | undefined> {
 async function profileFor(connection: AdapterConnection, provider: Extract<CrmProvider, "genie" | "custom_browser">) {
   return asProfile(connection.configuration.browserProfile) || (provider === "genie" ? genieProfile() : undefined);
 }
-
+async function browserSecret(connection: AdapterConnection, supplied?: ConnectionSecretPayload) {
+  if (supplied && Object.keys(supplied).length) return supplied;
+  return (await loadConnectionSecret({ organisationId: connection.organisationId, connectedSystemId: connection.id, secretKind: "browser" })) || {};
+}
 function credentials(secret?: ConnectionSecretPayload, provider?: string) {
   const fromSecret = secret?.credentials || {};
   if (Object.keys(fromSecret).length) return fromSecret;
   if (provider === "genie") return { username: process.env.GENIE_USERNAME || "", password: process.env.GENIE_PASSWORD || "" };
   return {};
 }
-
-function operationScript(profile: BrowserProfile, operation: string) {
-  const key = profile.operationMap?.[operation] || operation;
-  return profile.scripts[key];
-}
-
-function artifactDirectory(profile: BrowserProfile, connection: AdapterConnection) {
-  return profile.artifactDirectory || `/app/data/browser-artifacts/${connection.organisationId}/${connection.id}`;
-}
-
-async function connect(profile: BrowserProfile) {
-  const endpoint = profile.browserEndpoint || process.env.BROWSERLESS_WS_ENDPOINT;
-  if (!endpoint) throw new Error("No Chromium/CDP endpoint is configured for this browser connector.");
-  return chromium.connectOverCDP(endpoint);
-}
-
+function operationScript(profile: BrowserProfile, operation: string) { const key = profile.operationMap?.[operation] || operation; return profile.scripts[key]; }
+function artifactDirectory(profile: BrowserProfile, connection: AdapterConnection) { return profile.artifactDirectory || `/app/data/browser-artifacts/${connection.organisationId}/${connection.id}`; }
+async function connect(profile: BrowserProfile) { const endpoint = profile.browserEndpoint || process.env.BROWSERLESS_WS_ENDPOINT; if (!endpoint) throw new Error("No Chromium/CDP endpoint is configured for this browser connector."); return chromium.connectOverCDP(endpoint); }
 async function authenticate(page: Page, profile: BrowserProfile, secret: ConnectionSecretPayload, provider: string) {
   if (!profile.login) return;
   const creds = credentials(secret, provider);
   await page.goto(profile.login.url, { waitUntil: "domcontentloaded", timeout: 45_000 });
-  if (profile.login.usernameSelector) {
-    if (!creds.username) throw new Error("Browser connector username is not configured.");
-    await page.locator(profile.login.usernameSelector).fill(creds.username);
-  }
-  if (profile.login.passwordSelector) {
-    if (!creds.password) throw new Error("Browser connector password is not configured.");
-    await page.locator(profile.login.passwordSelector).fill(creds.password);
-  }
+  if (profile.login.usernameSelector) { if (!creds.username) throw new Error("Browser connector username is not configured."); await page.locator(profile.login.usernameSelector).fill(creds.username); }
+  if (profile.login.passwordSelector) { if (!creds.password) throw new Error("Browser connector password is not configured."); await page.locator(profile.login.passwordSelector).fill(creds.password); }
   if (profile.login.submitSelector) await page.locator(profile.login.submitSelector).click();
   await page.locator(profile.login.readySelector).waitFor({ state: "visible", timeout: 45_000 });
 }
-
 async function withPage<T>(connection: AdapterConnection, secret: ConnectionSecretPayload, provider: string, profile: BrowserProfile, run: (page: Page, context: BrowserContext) => Promise<T>) {
   const browser: Browser = await connect(profile);
   const context = await browser.newContext(secret.browserSession ? { storageState: secret.browserSession as never } : undefined);
   const page = await context.newPage();
-  try {
-    await authenticate(page, profile, secret, provider);
-    return await run(page, context);
-  } finally {
-    await context.close().catch(() => undefined);
-    await browser.close().catch(() => undefined);
-  }
+  try { await authenticate(page, profile, secret, provider); return await run(page, context); }
+  finally { await context.close().catch(() => undefined); await browser.close().catch(() => undefined); }
 }
-
 async function runOperation(input: { connection: AdapterConnection; secret: ConnectionSecretPayload; provider: string; operation: string; payload?: Record<string, unknown>; correlationId: string }) {
   const profile = await profileFor(input.connection, input.provider as Extract<CrmProvider, "genie" | "custom_browser">);
   if (!profile) throw new Error("This browser CRM has no calibrated connector profile. Add a reviewed browser profile before verification.");
@@ -174,17 +139,10 @@ async function runOperation(input: { connection: AdapterConnection; secret: Conn
   if (!result.success) throw new Error(result.detail);
   return { result, profile };
 }
-
-function evidence(operation: string, correlationId: string, result: { completedAt: string; data: Record<string, string>; screenshotPath?: string }): AdapterEvidence {
-  return { operation, correlationId, completedAt: result.completedAt, providerResult: { data: result.data }, screenshotPath: result.screenshotPath };
-}
-
+function evidence(operation: string, correlationId: string, result: { completedAt: string; data: Record<string, string>; screenshotPath?: string }): AdapterEvidence { return { operation, correlationId, completedAt: result.completedAt, providerResult: { data: result.data }, screenshotPath: result.screenshotPath }; }
 function rows(result: { data: Record<string, string> }, profile: BrowserProfile, operation: string) {
-  const key = profile.resultKeys?.[operation] || "records";
-  const raw = result.data[key];
-  if (!raw) return [] as Array<Record<string, string>>;
-  const parsed = JSON.parse(raw) as unknown;
-  if (!Array.isArray(parsed)) throw new Error(`Browser connector '${operation}' did not return an array in result key '${key}'.`);
+  const key = profile.resultKeys?.[operation] || "records"; const raw = result.data[key]; if (!raw) return [] as Array<Record<string, string>>;
+  const parsed = JSON.parse(raw) as unknown; if (!Array.isArray(parsed)) throw new Error(`Browser connector '${operation}' did not return an array in result key '${key}'.`);
   return parsed.filter(isObject).map(item => Object.fromEntries(Object.entries(item).map(([field, value]) => [field, String(value ?? "")])));
 }
 function asDate(value?: string) { if (!value) return undefined; const result = new Date(value); return Number.isNaN(result.valueOf()) ? undefined : result; }
@@ -194,49 +152,28 @@ function company(row: Record<string, string>): NormalizedCompany { return { exte
 function opportunity(row: Record<string, string>): NormalizedOpportunity { return { externalId: row.externalId || row.id, companyExternalId: row.companyExternalId || undefined, contactExternalId: row.contactExternalId || undefined, ownerExternalId: row.ownerExternalId || undefined, name: row.name || "Unnamed opportunity", pipeline: row.pipeline || undefined, stage: row.stage || undefined, valueMinor: asMinor(row.value), currency: row.currency || undefined, closeAt: asDate(row.closeAt), lastActivityAt: asDate(row.lastActivityAt), nextStepAt: asDate(row.nextStepAt), sourceUpdatedAt: asDate(row.sourceUpdatedAt), sourceRevision: row.sourceRevision || row.sourceUpdatedAt, raw: row }; }
 function task(row: Record<string, string>): NormalizedTask { return { externalId: row.externalId || row.id, contactExternalId: row.contactExternalId || undefined, opportunityExternalId: row.opportunityExternalId || undefined, ownerExternalId: row.ownerExternalId || undefined, title: row.title || "Task", status: row.status || "open", dueAt: asDate(row.dueAt), completedAt: asDate(row.completedAt), sourceUpdatedAt: asDate(row.sourceUpdatedAt), sourceRevision: row.sourceRevision || row.sourceUpdatedAt, raw: row }; }
 function activity(row: Record<string, string>): NormalizedActivity { return { externalId: row.externalId || row.id, contactExternalId: row.contactExternalId || undefined, opportunityExternalId: row.opportunityExternalId || undefined, ownerExternalId: row.ownerExternalId || undefined, activityType: row.activityType || row.type || "activity", occurredAt: asDate(row.occurredAt) || new Date(), body: row.body || undefined, sourceRevision: row.sourceRevision || undefined, raw: row }; }
-
-async function messageOperation(operation: "sendEmail" | "sendSms" | "sendWhatsApp", input: OutboundMessageInput, provider: string) {
-  const execution = await runOperation({ connection: input.connection, secret: input.secret, provider, operation, correlationId: input.correlationId, payload: { to: input.to, subject: input.subject || "", body: input.body, message: input.body, templateName: input.templateName || "", contactExternalId: input.contactExternalId || "", opportunityExternalId: input.opportunityExternalId || "" } });
-  return evidence(operation, input.correlationId, execution.result);
-}
+async function messageOperation(operation: "sendEmail" | "sendSms" | "sendWhatsApp", input: OutboundMessageInput, provider: string) { const execution = await runOperation({ connection: input.connection, secret: input.secret, provider, operation, correlationId: input.correlationId, payload: { to: input.to, subject: input.subject || "", body: input.body, message: input.body, templateName: input.templateName || "", contactExternalId: input.contactExternalId || "", opportunityExternalId: input.opportunityExternalId || "" } }); return evidence(operation, input.correlationId, execution.result); }
 
 export function browserCrmAdapter(provider: Extract<CrmProvider, "genie" | "custom_browser">): CrmAdapter {
   const testConnection = async (input: { connection: AdapterConnection; secret?: ConnectionSecretPayload; correlationId: string }): Promise<ConnectionTest> => {
     try {
-      const profile = await profileFor(input.connection, provider);
-      if (!profile) throw new Error("No calibrated browser connector profile is configured.");
-      const secret = input.secret || {};
+      const profile = await profileFor(input.connection, provider); if (!profile) throw new Error("No calibrated browser connector profile is configured.");
+      const secret = await browserSecret(input.connection, input.secret);
       const healthScript = operationScript(profile, "healthCheck");
-      if (healthScript) await runOperation({ connection: input.connection, secret, provider, operation: "healthCheck", correlationId: input.correlationId });
-      else await withPage(input.connection, secret, provider, profile, async () => undefined);
+      if (healthScript) await runOperation({ connection: input.connection, secret, provider, operation: "healthCheck", correlationId: input.correlationId }); else await withPage(input.connection, secret, provider, profile, async () => undefined);
       const requested = Array.from(new Set([...input.connection.allowedReadCapabilities, ...input.connection.allowedWriteCapabilities]));
-      const capabilities = requested.filter((value): value is CrmCapability => value in CAPABILITY_OPERATIONS).map(capability => {
-        const available = CAPABILITY_OPERATIONS[capability].some(operation => Boolean(operationScript(profile, operation)));
-        return { capability, available, detail: available ? "Verified calibrated deterministic browser operation is configured." : "No reviewed deterministic browser operation is mapped for this capability." } satisfies CapabilityResult;
-      });
+      const capabilities = requested.filter((value): value is CrmCapability => value in CAPABILITY_OPERATIONS).map(capability => { const available = CAPABILITY_OPERATIONS[capability].some(operation => Boolean(operationScript(profile, operation))); return { capability, available, detail: available ? "Verified calibrated deterministic browser operation is configured." : "No reviewed deterministic browser operation is mapped for this capability." } satisfies CapabilityResult; });
       const available = capabilities.filter(item => item.available);
       return { status: available.length === capabilities.length && capabilities.length ? "ready" : available.length ? "limited" : "failed", summary: `${available.length} of ${capabilities.length} requested browser CRM capabilities have calibrated operations.`, capabilities, evidence: [{ operation: "browser_connector_health", correlationId: input.correlationId, completedAt: new Date().toISOString(), providerResult: { configuredOperations: Object.keys(profile.operationMap || profile.scripts) } }] };
-    } catch (error) {
-      return { status: "failed", summary: error instanceof Error ? error.message : String(error), capabilities: [], evidence: [{ operation: "browser_connector_health", correlationId: input.correlationId, completedAt: new Date().toISOString(), errorClassification: "authentication", retryable: false }] };
-    }
+    } catch (error) { return { status: "failed", summary: error instanceof Error ? error.message : String(error), capabilities: [], evidence: [{ operation: "browser_connector_health", correlationId: input.correlationId, completedAt: new Date().toISOString(), errorClassification: "authentication", retryable: false }] }; }
   };
-
-  const list = async <T>(operation: string, mapper: (row: Record<string, string>) => T, input: { connection: AdapterConnection; secret: ConnectionSecretPayload }) => {
-    const execution = await runOperation({ ...input, provider, operation, correlationId: `sync-${operation}`, payload: {} });
-    return { records: rows(execution.result, execution.profile, operation).map(mapper) };
-  };
-
+  const list = async <T>(operation: string, mapper: (row: Record<string, string>) => T, input: { connection: AdapterConnection; secret: ConnectionSecretPayload }) => { const execution = await runOperation({ ...input, provider, operation, correlationId: `sync-${operation}`, payload: {} }); return { records: rows(execution.result, execution.profile, operation).map(mapper) }; };
   return {
     provider,
     disconnect: async input => ({ operation: "disconnect", correlationId: input.correlationId, completedAt: new Date().toISOString(), providerResult: { localBrowserCredentialsCanBeRemoved: true } }),
     refreshAuthentication: async input => input.secret,
-    testConnection,
-    discoverCapabilities: async input => (await testConnection(input)).capabilities,
-    syncContacts: input => list("syncContacts", contact, input),
-    syncCompanies: input => list("syncCompanies", company, input),
-    syncOpportunities: input => list("syncOpportunities", opportunity, input),
-    syncTasks: input => list("syncTasks", task, input),
-    syncActivities: input => list("syncActivities", activity, input),
+    testConnection, discoverCapabilities: async input => (await testConnection(input)).capabilities,
+    syncContacts: input => list("syncContacts", contact, input), syncCompanies: input => list("syncCompanies", company, input), syncOpportunities: input => list("syncOpportunities", opportunity, input), syncTasks: input => list("syncTasks", task, input), syncActivities: input => list("syncActivities", activity, input),
     searchContacts: async input => { const execution = await runOperation({ ...input, provider, operation: "searchContacts", correlationId: "search-contacts", payload: { query: input.query, leadLabel: input.query } }); const extracted = rows(execution.result, execution.profile, "searchContacts"); if (extracted.length) return extracted.map(contact); return [{ externalId: input.query, firstName: input.query, raw: { browserText: Object.values(execution.result.data).join("\n").slice(0, 20_000) } }]; },
     getContact: async input => { const execution = await runOperation({ ...input, provider, operation: "getContact", correlationId: "get-contact", payload: { externalId: input.externalId, leadLabel: input.externalId } }); const extracted = rows(execution.result, execution.profile, "getContact"); return extracted[0] ? contact(extracted[0]) : { externalId: input.externalId, raw: { browserText: Object.values(execution.result.data).join("\n").slice(0, 20_000) } }; },
     getCompany: async input => { const execution = await runOperation({ ...input, provider, operation: "getCompany", correlationId: "get-company", payload: { externalId: input.externalId } }); const extracted = rows(execution.result, execution.profile, "getCompany"); return extracted[0] ? company(extracted[0]) : null; },
@@ -250,9 +187,7 @@ export function browserCrmAdapter(provider: Extract<CrmProvider, "genie" | "cust
     updateContact: async input => { const execution = await runOperation({ ...input, provider, operation: "updateContact", payload: { externalId: input.externalId, ...input.patch } }); return evidence("update_contact", input.correlationId, execution.result); },
     updateOpportunity: async input => { const execution = await runOperation({ ...input, provider, operation: "updateOpportunity", payload: { externalId: input.externalId, ...input.patch } }); return evidence("update_opportunity", input.correlationId, execution.result); },
     createActivity: async input => { const execution = await runOperation({ ...input, provider, operation: "createActivity", payload: input.activity }); return evidence("create_activity", input.correlationId, execution.result); },
-    sendEmail: input => messageOperation("sendEmail", input, provider),
-    sendSms: input => messageOperation("sendSms", input, provider),
-    sendWhatsApp: input => messageOperation("sendWhatsApp", input, provider),
+    sendEmail: input => messageOperation("sendEmail", input, provider), sendSms: input => messageOperation("sendSms", input, provider), sendWhatsApp: input => messageOperation("sendWhatsApp", input, provider),
     applySequence: async input => { const execution = await runOperation({ ...input, provider, operation: "applySequence", payload: { externalId: input.externalId, sequence: input.sequence } }); return evidence("apply_sequence", input.correlationId, execution.result); },
     executeCustomAction: async input => { const execution = await runOperation({ ...input, provider, operation: input.actionName, payload: input.payload }); return evidence(input.actionName, input.correlationId, execution.result); },
     listPipelines: async input => { const execution = await runOperation({ ...input, provider, operation: "listPipelines", correlationId: "list-pipelines", payload: {} }); return rows(execution.result, execution.profile, "listPipelines").map(row => ({ externalId: row.externalId || row.id, label: row.label || row.name || "Pipeline", stages: [] })); },
