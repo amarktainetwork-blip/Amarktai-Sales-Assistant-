@@ -1,0 +1,117 @@
+services:
+  caddy:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+
+  app:
+    build:
+      context: ../..
+      dockerfile: deploy/webdock/Dockerfile
+    restart: unless-stopped
+    init: true
+    env_file:
+      - ../../.env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: mysql://amarktai:${DB_PASSWORD}@db:3306/amarktai_sales_assistant
+      REDIS_URL: redis://redis:6379
+      BROWSERLESS_WS_ENDPOINT: ${BROWSERLESS_WS_ENDPOINT}
+      GENIE_SCRIPTS_CONFIG_PATH: /app/config/genie-scripts.json
+      GENIE_ARTIFACT_DIR: /app/data/connector-evidence
+    volumes:
+      - ./config:/app/config:ro
+      - ./files/connector-evidence:/app/data/connector-evidence
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 20s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: deploy/webdock/Dockerfile
+    restart: unless-stopped
+    init: true
+    env_file:
+      - ../../.env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: mysql://amarktai:${DB_PASSWORD}@db:3306/amarktai_sales_assistant
+      REDIS_URL: redis://redis:6379
+      BROWSERLESS_WS_ENDPOINT: ${BROWSERLESS_WS_ENDPOINT}
+      GENIE_SCRIPTS_CONFIG_PATH: /app/config/genie-scripts.json
+      GENIE_ARTIFACT_DIR: /app/data/connector-evidence
+      CRM_HEALTH_INTERVAL_MS: 43200000
+    command: ["node", "dist/healthWorker.js"]
+    volumes:
+      - ./config:/app/config:ro
+      - ./files/connector-evidence:/app/data/connector-evidence
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+
+  db:
+    image: mariadb:11.7.2
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: amarktai_sales_assistant
+      MARIADB_USER: amarktai
+      MARIADB_PASSWORD: ${DB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    security_opt:
+      - no-new-privileges:true
+
+  redis:
+    image: redis:7.4.2-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  caddy_data:
+  caddy_config:
+  db_data:
+  redis_data:
