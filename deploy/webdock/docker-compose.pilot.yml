@@ -30,7 +30,7 @@ services:
       PORT: 3000
       DATABASE_URL: mysql://amarktai:${DB_PASSWORD}@db:3306/amarktai_sales_assistant
       REDIS_URL: redis://redis:6379
-      BROWSERLESS_WS_ENDPOINT: http://browser:9222
+      BROWSERLESS_WS_ENDPOINT: ${BROWSERLESS_WS_ENDPOINT}
       GENIE_SCRIPTS_CONFIG_PATH: /app/config/genie-scripts.json
       GENIE_ARTIFACT_DIR: /app/data/connector-evidence
     volumes:
@@ -40,8 +40,6 @@ services:
       db:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      browser:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
@@ -64,7 +62,7 @@ services:
       NODE_ENV: production
       DATABASE_URL: mysql://amarktai:${DB_PASSWORD}@db:3306/amarktai_sales_assistant
       REDIS_URL: redis://redis:6379
-      BROWSERLESS_WS_ENDPOINT: http://browser:9222
+      BROWSERLESS_WS_ENDPOINT: ${BROWSERLESS_WS_ENDPOINT}
       GENIE_SCRIPTS_CONFIG_PATH: /app/config/genie-scripts.json
       GENIE_ARTIFACT_DIR: /app/data/connector-evidence
       CRM_HEALTH_INTERVAL_MS: 43200000
@@ -76,8 +74,6 @@ services:
       db:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      browser:
         condition: service_healthy
     security_opt:
       - no-new-privileges:true
@@ -119,8 +115,6 @@ services:
     security_opt:
       - no-new-privileges:true
 
-  # Valkey is an open-source Redis-protocol-compatible data store. Keep the service
-  # name/REDIS_URL stable so application code and future BullMQ workers need no change.
   redis:
     image: valkey/valkey:8.1.9-alpine
     restart: unless-stopped
@@ -132,24 +126,6 @@ services:
       interval: 10s
       timeout: 3s
       retries: 10
-    security_opt:
-      - no-new-privileges:true
-
-  # Internal-only permissive Chromium/CDP runtime for deterministic browser connectors.
-  # No host port is published; only application containers can reach DevTools on 9222.
-  browser:
-    build:
-      context: ../..
-      dockerfile: deploy/browser/Dockerfile
-    restart: unless-stopped
-    init: true
-    shm_size: 1gb
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9222/json/version"]
-      interval: 20s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
     security_opt:
       - no-new-privileges:true
 

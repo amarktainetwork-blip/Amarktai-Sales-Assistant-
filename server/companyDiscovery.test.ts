@@ -1,8 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("node:dns/promises", () => ({
+  lookup: vi.fn().mockResolvedValue([{ address: "93.184.216.34", family: 4 }]),
+}));
+
 import { discoverPublicWebsite } from "./companyDiscovery";
 
 const originalFetch = globalThis.fetch;
-afterEach(() => { globalThis.fetch = originalFetch; vi.restoreAllMocks(); });
+afterEach(() => { globalThis.fetch = originalFetch; });
 
 describe("public website discovery", () => {
   it("rejects local and private-network targets before a fetch is attempted", async () => {

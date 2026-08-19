@@ -11,12 +11,10 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10.4.1
       - uses: actions/setup-node@v4
         with:
           node-version: 22.15.0
@@ -33,3 +31,12 @@ jobs:
         run: pnpm exec drizzle-kit check
       - name: Production build
         run: pnpm build
+      - name: Validate deployment shell scripts
+        run: sh -n deploy/webdock/install.sh deploy/webdock/preflight.sh deploy/webdock/backup.sh deploy/webdock/update.sh deploy/webdock/smoke-test.sh
+      - name: Validate Webdock Compose profiles
+        run: |
+          cp deploy/webdock/configuration.template .env
+          docker compose -f deploy/webdock/docker-compose.yml --env-file .env config >/dev/null
+          docker compose -f deploy/webdock/docker-compose.pilot.yml --env-file .env config >/dev/null
+      - name: Build Webdock production images
+        run: docker compose -f deploy/webdock/docker-compose.yml --env-file .env build app browser

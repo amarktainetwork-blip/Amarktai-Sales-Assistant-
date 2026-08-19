@@ -1,18 +1,28 @@
-# Copy this file to /opt/c2c-assistant/.env during the Webdock VPS installation.
-# It is intentionally not an application .env file inside the managed project.
+# Copy this file to .env at the repository root during Webdock installation.
+# Keep it private: deploy/webdock/install.sh enforces mode 0600.
+
+# Deployment profile is selected in the shell when running install.sh:
+#   AMARKTAI_DEPLOY_PROFILE=pilot sh deploy/webdock/install.sh
+#   AMARKTAI_DEPLOY_PROFILE=full  sh deploy/webdock/install.sh
 
 # Public network and persistent data
 DOMAIN=assistant.example.com
 DB_PASSWORD=replace_with_a_long_random_database_password
 DB_ROOT_PASSWORD=replace_with_a_different_long_random_root_password
+# The service is Valkey but retains the Redis protocol/URL name for library compatibility.
 REDIS_URL=redis://redis:6379
-BROWSERLESS_TOKEN=replace_with_a_long_random_browser_token
+
+# Full profile builds the repository's internal Chromium/CDP runtime automatically.
+# Pilot profile should point at an external authorised Chrome/Chromium CDP service.
+# Existing code keeps the historical BROWSERLESS_WS_ENDPOINT variable name for compatibility;
+# the value may be an http(s) CDP endpoint or ws(s) DevTools endpoint supported by Playwright.
+BROWSERLESS_WS_ENDPOINT=
 
 # Application security
 JWT_SECRET=replace_with_a_long_random_jwt_secret
 SECRET_KEY=replace_with_a_long_random_application_secret
 APP_PUBLIC_URL=https://assistant.example.com
-# Exactly 32 random bytes encoded in base64; keep separate from DATABASE_URL and JWT secrets.
+# Exactly 32 random bytes encoded in base64; generate with: openssl rand -base64 32
 CONNECTION_SECRETS_MASTER_KEY=replace_with_base64_encoded_32_byte_key
 CONNECTION_SECRETS_KEY_VERSION=v1
 VITE_APP_TITLE=Amarktai Sales Assistant
@@ -22,16 +32,34 @@ LOCAL_ADMIN_NAME=Amarktai Administrator
 LOCAL_ADMIN_EMAIL=admin@example.com
 LOCAL_ADMIN_PASSWORD=replace_with_a_long_unique_admin_password
 
-# GenX model router — use values supplied by your GenX account
+# GenX model router — all generative/reasoning AI stays behind this abstraction.
 GENX_CHAT_COMPLETIONS_URL=https://your-genx-endpoint.example/v1/chat/completions
 GENX_API_KEY=replace_with_your_genx_api_key
 GENX_DEFAULT_MODEL=replace_with_an_approved_genx_model_id
+# Optional token-economy controls. Defaults are conservative when omitted.
+GENX_FAST_MODEL=
+GENX_REASONING_MODEL=
+GENX_MAX_OUTPUT_TOKENS=900
+GENX_MAX_CONTEXT_CHARS=24000
 
-# HubSpot OAuth — create a public app and register ${APP_PUBLIC_URL}/api/crm/oauth/callback as its callback URL.
+# Live Call Companion speech-to-text (optional until configured).
+# Point this at an authorised OpenAI-compatible transcription endpoint, preferably a
+# self-hosted/open-source service such as Speaches/faster-whisper-server. Amarktai does
+# not call OpenAI directly; this URL is entirely deployment controlled.
+STT_PROVIDER_LABEL=Self-hosted speech-to-text
+STT_TRANSCRIPTIONS_URL=
+STT_API_KEY=
+STT_MODEL=
+
+# HubSpot OAuth — create a public app and register:
+#   ${APP_PUBLIC_URL}/api/crm/oauth/callback
+# The adapter uses HubSpot's 2026-03 OAuth/token and CRM API families.
 HUBSPOT_CLIENT_ID=
 HUBSPOT_CLIENT_SECRET=
 
-# Genie CRM browser automation — no Genie API key is used
+# Genie CRM browser automation — no Genie API key is used.
+# These install-wide values support the first authorised Genie pilot. The SaaS architecture
+# must continue moving authenticated browser state to organisation-scoped encrypted sessions.
 GENIE_LOGIN_URL=https://your-genie-login-url.example
 GENIE_USERNAME=replace_with_genie_username
 GENIE_PASSWORD=replace_with_genie_password
@@ -40,12 +68,12 @@ GENIE_PASSWORD_SELECTOR=input[type="password"]
 GENIE_LOGIN_SUBMIT_SELECTOR=button[type="submit"]
 GENIE_DASHBOARD_SELECTOR=body
 
-# Microsoft Outlook / Microsoft Graph
-OUTLOOK_TENANT_ID=replace_with_tenant_id
-OUTLOOK_CLIENT_ID=replace_with_client_id
-OUTLOOK_CLIENT_SECRET=replace_with_client_secret
+# Microsoft Outlook / Microsoft Graph (optional until activated)
+OUTLOOK_TENANT_ID=
+OUTLOOK_CLIENT_ID=
+OUTLOOK_CLIENT_SECRET=
 
-# Optional SMTP: required for email second-factor codes and daily reports
+# SMTP: required for email second-factor codes and email reports
 SMTP_HOST=smtp.example.com
 SMTP_PORT=587
 SMTP_SECURE=false

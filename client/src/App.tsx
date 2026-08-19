@@ -8,22 +8,27 @@ import Auth from "./pages/Auth";
 import Connections from "./pages/Connections";
 import Dashboard from "./pages/Dashboard";
 import Home from "./pages/Home";
+import LiveCalls from "./pages/LiveCalls";
 import Onboarding from "./pages/Onboarding";
-import Today from "./pages/Today";
+import Pricing from "./pages/Pricing";
 import TeamIntelligence from "./pages/TeamIntelligence";
-import { AgentDesk, CallDesk, CommandCentre, KnowledgeHub, WorkflowStudio } from "./pages/Workspace";
+import TeamManagement from "./pages/TeamManagement";
+import Today from "./pages/Today";
+import { AgentDesk, CommandCentre, KnowledgeHub, WorkflowStudio } from "./pages/Workspace";
 
 function Router() {
   return <Switch>
     <Route path="/" component={Home} />
+    <Route path="/pricing" component={Pricing} />
     <Route path="/auth" component={Auth} />
     <Route path="/dashboard" component={Dashboard} />
     <Route path="/today" component={Today} />
     <Route path="/team" component={TeamIntelligence} />
+    <Route path="/team/manage" component={TeamManagement} />
     <Route path="/workspace" component={CommandCentre} />
     <Route path="/workflows" component={WorkflowStudio} />
     <Route path="/agents" component={AgentDesk} />
-    <Route path="/calls" component={CallDesk} />
+    <Route path="/calls" component={LiveCalls} />
     <Route path="/knowledge" component={KnowledgeHub} />
     <Route path="/connections" component={Connections} />
     <Route path="/company-setup" component={Onboarding} />
