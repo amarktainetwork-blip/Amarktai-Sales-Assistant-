@@ -15,6 +15,7 @@ import { registerTeamAdminRoutes } from "../teamAdmin/routes";
 import { registerManagementSettingsRoutes } from "../managementSettingsRoutes";
 import { registerConnectedSystemAdminRoutes } from "../connectedSystemAdminRoutes";
 import { registerSalesAutomationRoutes } from "../salesAutomationRoutes";
+import { registerSalesTargetsRoutes } from "../salesTargetsRoutes";
 import { allowSidecarOrigin, enforceAppOrigin, rateLimit, securityHeaders } from "../security/http";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
@@ -55,6 +56,8 @@ async function startServer() {
   registerConnectedSystemAdminRoutes(app);
   app.use("/api/sales-automation", rateLimit({ limit: 90, windowMs: 60_000 }), enforceAppOrigin);
   registerSalesAutomationRoutes(app);
+  app.use("/api/sales-targets", rateLimit({ limit: 30, windowMs: 60_000 }), enforceAppOrigin);
+  registerSalesTargetsRoutes(app);
   app.use("/api/sidecar", allowSidecarOrigin);
   registerSidecarRoutes(app);
   app.use("/api/trpc", rateLimit({ limit: 180, windowMs: 60_000 }), enforceAppOrigin, createExpressMiddleware({ router: appRouter, createContext }));
