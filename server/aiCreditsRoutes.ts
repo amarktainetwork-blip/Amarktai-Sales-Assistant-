@@ -21,6 +21,9 @@ function sendError(res: Response, error: unknown) {
   if (detail === "TWO_FACTOR_REQUIRED") return res.status(403).json({ error: "Second-factor verification is required." });
   return res.status(400).json({ error: detail.slice(0, 400) || "AI credit operation failed." });
 }
+function requireManualBillingMode() {
+  if (process.env.ALLOW_MANUAL_PLAN_ASSIGNMENT !== "true") throw new Error("Manual plan/credit changes are disabled. Production entitlements must come from a verified billing provider.");
+}
 
 export function registerAiCreditsRoutes(app: Express) {
   app.get("/api/ai-credits", async (req, res) => {
@@ -29,6 +32,7 @@ export function registerAiCreditsRoutes(app: Express) {
   });
   app.post("/api/ai-credits/adjust", async (req, res) => {
     try {
+      requireManualBillingMode();
       const { userId, membership } = await authenticated(req);
       const transactionType = req.body?.transactionType;
       if (transactionType !== "purchase" && transactionType !== "adjustment" && transactionType !== "refund") throw new Error("A valid AI credit transaction type is required.");
@@ -37,6 +41,7 @@ export function registerAiCreditsRoutes(app: Express) {
   });
   app.put("/api/ai-credits/plan", async (req, res) => {
     try {
+      requireManualBillingMode();
       const { userId, membership } = await authenticated(req);
       const planKey = String(req.body?.planKey || "") as PlanKey;
       if (!(["trial", "starter", "professional", "team"] as string[]).includes(planKey)) throw new Error("A valid plan is required.");
