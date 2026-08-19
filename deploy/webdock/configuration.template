@@ -2,8 +2,8 @@
 # Keep it private: deploy/webdock/install.sh enforces mode 0600.
 
 # Deployment profile is selected in the shell when running install.sh:
-#   AMARKTAI_DEPLOY_PROFILE=pilot ./deploy/webdock/install.sh
-#   AMARKTAI_DEPLOY_PROFILE=full  ./deploy/webdock/install.sh
+#   AMARKTAI_DEPLOY_PROFILE=pilot sh deploy/webdock/install.sh
+#   AMARKTAI_DEPLOY_PROFILE=full  sh deploy/webdock/install.sh
 
 # Public network and persistent data
 DOMAIN=assistant.example.com
@@ -40,6 +40,15 @@ GENX_FAST_MODEL=
 GENX_REASONING_MODEL=
 GENX_MAX_OUTPUT_TOKENS=900
 GENX_MAX_CONTEXT_CHARS=24000
+
+# Live Call Companion speech-to-text (optional until configured).
+# Point this at an authorised OpenAI-compatible transcription endpoint, preferably a
+# self-hosted/open-source service such as Speaches/faster-whisper-server. Amarktai does
+# not call OpenAI directly; this URL is entirely deployment controlled.
+STT_PROVIDER_LABEL=Self-hosted speech-to-text
+STT_TRANSCRIPTIONS_URL=
+STT_API_KEY=
+STT_MODEL=
 
 # HubSpot OAuth — create a public app and register:
 #   ${APP_PUBLIC_URL}/api/crm/oauth/callback
