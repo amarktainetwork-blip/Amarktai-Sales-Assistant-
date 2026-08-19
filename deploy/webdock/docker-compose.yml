@@ -82,6 +82,25 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  reporter:
+    build:
+      context: ../..
+      dockerfile: deploy/webdock/Dockerfile
+    restart: unless-stopped
+    init: true
+    env_file:
+      - ../../.env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: mysql://amarktai:${DB_PASSWORD}@db:3306/amarktai_sales_assistant
+      REPORT_SCHEDULER_POLL_MS: 30000
+    command: ["node", "dist/reportSchedulerWorker.js"]
+    depends_on:
+      db:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+
   db:
     image: mariadb:11.7.2
     restart: unless-stopped
