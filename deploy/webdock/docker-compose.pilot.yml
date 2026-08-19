@@ -116,13 +116,13 @@ services:
       - no-new-privileges:true
 
   redis:
-    image: redis:7.4.2-alpine
+    image: valkey/valkey:8.1.9-alpine
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    command: ["valkey-server", "--appendonly", "yes"]
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "valkey-cli", "ping"]
       interval: 10s
       timeout: 3s
       retries: 10
