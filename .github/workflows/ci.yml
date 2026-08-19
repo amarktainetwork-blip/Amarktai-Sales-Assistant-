@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.4.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.15.0
+          cache: pnpm
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Unit tests
+        run: pnpm test
+      - name: TypeScript
+        run: pnpm check
+      - name: Validate Drizzle schema and migrations
+        env:
+          DATABASE_URL: mysql://migration:placeholder@127.0.0.1:3306/amarktai
+        run: pnpm exec drizzle-kit check
+      - name: Production build
+        run: pnpm build

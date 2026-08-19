@@ -11,6 +11,10 @@ BROWSERLESS_TOKEN=replace_with_a_long_random_browser_token
 # Application security
 JWT_SECRET=replace_with_a_long_random_jwt_secret
 SECRET_KEY=replace_with_a_long_random_application_secret
+APP_PUBLIC_URL=https://assistant.example.com
+# Exactly 32 random bytes encoded in base64; keep separate from DATABASE_URL and JWT secrets.
+CONNECTION_SECRETS_MASTER_KEY=replace_with_base64_encoded_32_byte_key
+CONNECTION_SECRETS_KEY_VERSION=v1
 VITE_APP_TITLE=Amarktai Sales Assistant
 AUTH_MODE=local
 VITE_AUTH_MODE=local
@@ -22,6 +26,10 @@ LOCAL_ADMIN_PASSWORD=replace_with_a_long_unique_admin_password
 GENX_CHAT_COMPLETIONS_URL=https://your-genx-endpoint.example/v1/chat/completions
 GENX_API_KEY=replace_with_your_genx_api_key
 GENX_DEFAULT_MODEL=replace_with_an_approved_genx_model_id
+
+# HubSpot OAuth — create a public app and register ${APP_PUBLIC_URL}/api/crm/oauth/callback as its callback URL.
+HUBSPOT_CLIENT_ID=
+HUBSPOT_CLIENT_SECRET=
 
 # Genie CRM browser automation — no Genie API key is used
 GENIE_LOGIN_URL=https://your-genie-login-url.example

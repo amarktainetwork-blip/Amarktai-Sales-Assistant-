@@ -8,6 +8,9 @@ import { isLocalAuthMode } from "../localAuth";
 import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { registerDailyReportRoutes } from "../dailyReports";
+import { registerCrmOAuthRoutes } from "../crm/oauthRoutes";
+import { registerSidecarRoutes } from "../sidecar/routes";
+import { allowSidecarOrigin, enforceAppOrigin, rateLimit, securityHeaders } from "../security/http";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 
@@ -33,15 +36,24 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
   const server = createServer(app);
-  // Configure body parser with larger size limit for file uploads
-  app.use(express.json({ limit: "50mb" }));
-  app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  app.set("trust proxy", 1);
+  app.disable("x-powered-by");
+  app.use(securityHeaders);
+  // Normal operational APIs should remain small; dedicated upload routes own any larger limits.
+  app.use(express.json({ limit: "1mb" }));
+  app.use(express.urlencoded({ limit: "32kb", extended: true }));
+  app.get("/api/health", (_req, res) => res.status(200).json({ status: "ok" }));
   registerStorageProxy(app);
   if (!isLocalAuthMode()) registerOAuthRoutes(app);
   registerDailyReportRoutes(app);
+  registerCrmOAuthRoutes(app);
+  app.use("/api/sidecar", allowSidecarOrigin);
+  registerSidecarRoutes(app);
   // tRPC API
   app.use(
     "/api/trpc",
+    rateLimit({ limit: 180, windowMs: 60_000 }),
+    enforceAppOrigin,
     createExpressMiddleware({
       router: appRouter,
       createContext,

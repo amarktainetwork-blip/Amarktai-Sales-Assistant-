@@ -42,7 +42,8 @@ export function getSessionCookieOptions(
   return {
     httpOnly: true,
     path: "/",
-    sameSite: "none",
+    // OAuth uses a one-time server-side state callback and does not require a cross-site session cookie.
+    sameSite: "lax",
     secure: isSecureRequest(req),
   };
 }

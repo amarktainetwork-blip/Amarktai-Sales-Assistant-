@@ -277,6 +277,279 @@ export const dailyReports = mysqlTable(
   ],
 );
 
+/**
+ * Organisation-scoped foundations for the universal sales operating layer.
+ * Legacy user-owned records remain intact while new shared CRM data belongs to
+ * an organisation and may be safely used by several mapped salespeople.
+ */
+export const organisations = mysqlTable("organisations", {
+  id: int("id").autoincrement().primaryKey(),
+  ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "restrict" }),
+  name: varchar("name", { length: 220 }).notNull(),
+  slug: varchar("slug", { length: 120 }).notNull().unique(),
+  timezone: varchar("timezone", { length: 80 }).notNull().default("UTC"),
+  locale: varchar("locale", { length: 24 }).notNull().default("en"),
+  currency: varchar("currency", { length: 8 }).notNull().default("USD"),
+  settings: json("settings").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [index("organisations_owner_idx").on(table.ownerUserId)]);
+
+export const organisationMembers = mysqlTable("organisationMembers", {
+  id: int("id").autoincrement().primaryKey(),
+  organisationId: int("organisationId").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  role: mysqlEnum("role", ["owner", "manager", "salesperson", "auditor"]).notNull().default("salesperson"),
+  isActive: boolean("isActive").notNull().default(true),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [
+  uniqueIndex("organisation_members_unique").on(table.organisationId, table.userId),
+  index("organisation_members_user_idx").on(table.userId, table.isActive),
+]);
+
+export const connectedSystems = mysqlTable("connectedSystems", {
+  id: int("id").autoincrement().primaryKey(),
+  organisationId: int("organisationId").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+  provider: mysqlEnum("provider", ["genie", "hubspot", "salesforce", "pipedrive", "zoho", "custom_browser", "custom_api", "csv_import"]).notNull(),
+  displayName: varchar("displayName", { length: 180 }).notNull(),
+  baseUrl: varchar("baseUrl", { length: 1024 }),
+  connectionMethod: mysqlEnum("connectionMethod", ["oauth", "browser", "sidecar", "custom_adapter", "import"]).notNull(),
+  status: mysqlEnum("status", ["connecting", "testing", "ready", "needs_attention", "authentication_expired", "limited_permissions", "paused", "disconnected", "error"]).notNull().default("disconnected"),
+  allowedReadCapabilities: json("allowedReadCapabilities").$type<string[]>().notNull(),
+  allowedWriteCapabilities: json("allowedWriteCapabilities").$type<string[]>().notNull(),
+  verifiedCapabilities: json("verifiedCapabilities").$type<string[]>().notNull(),
+  accountExternalId: varchar("accountExternalId", { length: 180 }),
+  scopes: json("scopes").$type<string[]>().notNull(),
+  configuration: json("configuration").$type<Record<string, unknown>>().notNull(),
+  lastHealthCheckAt: timestamp("lastHealthCheckAt"),
+  lastHealthSummary: text("lastHealthSummary"),
+  readyAt: timestamp("readyAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [
+  index("connected_systems_org_status_idx").on(table.organisationId, table.status),
+  index("connected_systems_org_provider_idx").on(table.organisationId, table.provider),
+]);
+
+/** Encrypted material only: values never leave the server in API responses or audit records. */
+export const connectionSecrets = mysqlTable("connectionSecrets", {
+  id: int("id").autoincrement().primaryKey(),
+  connectedSystemId: int("connectedSystemId").notNull().references(() => connectedSystems.id, { onDelete: "cascade" }),
+  secretKind: varchar("secretKind", { length: 80 }).notNull(),
+  keyVersion: varchar("keyVersion", { length: 64 }).notNull(),
+  iv: varchar("iv", { length: 128 }).notNull(),
+  authTag: varchar("authTag", { length: 128 }).notNull(),
+  ciphertext: text("ciphertext").notNull(),
+  expiresAt: timestamp("expiresAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [uniqueIndex("connection_secrets_system_kind_unique").on(table.connectedSystemId, table.secretKind)]);
+
+export const authorisedDomains = mysqlTable("authorisedDomains", {
+  id: int("id").autoincrement().primaryKey(),
+  organisationId: int("organisationId").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+  connectedSystemId: int("connectedSystemId").notNull().references(() => connectedSystems.id, { onDelete: "cascade" }),
+  hostname: varchar("hostname", { length: 253 }).notNull(),
+  allowedPaths: json("allowedPaths").$type<string[]>().notNull(),
+  status: mysqlEnum("status", ["pending", "verified", "paused", "revoked"]).notNull().default("pending"),
+  verifiedAt: timestamp("verifiedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [
+  uniqueIndex("authorised_domains_system_host_unique").on(table.connectedSystemId, table.hostname),
+  index("authorised_domains_org_status_idx").on(table.organisationId, table.status),
+]);
+
+export const externalUserMappings = mysqlTable("externalUserMappings", {
+  id: int("id").autoincrement().primaryKey(),
+  organisationId: int("organisationId").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+  connectedSystemId: int("connectedSystemId").notNull().references(() => connectedSystems.id, { onDelete: "cascade" }),
+  userId: int("userId").references(() => users.id, { onDelete: "set null" }),
+  externalUserId: varchar("externalUserId", { length: 180 }).notNull(),
+  displayName: varchar("displayName", { length: 220 }).notNull(),
+  email: varchar("email", { length: 320 }),
+  isActive: boolean("isActive").notNull().default(true),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [
+  uniqueIndex("external_user_mapping_system_external_unique").on(table.connectedSystemId, table.externalUserId),
+  index("external_user_mapping_org_user_idx").on(table.organisationId, table.userId),
+]);
+
+export const crmCompanies = mysqlTable("crmCompanies", {
+  id: int("id").autoincrement().primaryKey(),
+  organisationId: int("organisationId").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+  connectedSystemId: int("connectedSystemId").notNull().references(() => connectedSystems.id, { onDelete: "cascade" }),
+  externalId: varchar("externalId", { length: 180 }).notNull(),
+  name: varchar("name", { length: 320 }).notNull(),
+  website: varchar("website", { length: 1024 }),
+  ownerExternalId: varchar("ownerExternalId", { length: 180 }),
+  sourceUpdatedAt: timestamp("sourceUpdatedAt"),
+  sourceRevision: varchar("sourceRevision", { length: 180 }),
+  raw: json("raw").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [
+  uniqueIndex("crm_companies_system_external_unique").on(table.connectedSystemId, table.externalId),
+  index("crm_companies_org_owner_idx").on(table.organisationId, table.ownerExternalId),
+]);
+
+export const crmContacts = mysqlTable("crmContacts", {
+  id: int("id").autoincrement().primaryKey(),
+  organisationId: int("organisationId").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+  connectedSystemId: int("connectedSystemId").notNull().references(() => connectedSystems.id, { onDelete: "cascade" }),
+  externalId: varchar("externalId", { length: 180 }).notNull(),
+  companyExternalId: varchar("companyExternalId", { length: 180 }),
+  ownerExternalId: varchar("ownerExternalId", { length: 180 }),
+  firstName: varchar("firstName", { length: 160 }),
+  lastName: varchar("lastName", { length: 160 }),
+  email: varchar("email", { length: 320 }),
+  phone: varchar("phone", { length: 80 }),
+  lifecycleStage: varchar("lifecycleStage", { length: 120 }),
+  sourceUpdatedAt: timestamp("sourceUpdatedAt"),
+  sourceRevision: varchar("sourceRevision", { length: 180 }),
+  raw: json("raw").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [
+  uniqueIndex("crm_contacts_system_external_unique").on(table.connectedSystemId, table.externalId),
+  index("crm_contacts_org_owner_idx").on(table.organisationId, table.ownerExternalId),
+  index("crm_contacts_org_email_idx").on(table.organisationId, table.email),
+]);
+
+export const crmOpportunities = mysqlTable("crmOpportunities", {
+  id: int("id").autoincrement().primaryKey(),
+  organisationId: int("organisationId").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+  connectedSystemId: int("connectedSystemId").notNull().references(() => connectedSystems.id, { onDelete: "cascade" }),
+  externalId: varchar("externalId", { length: 180 }).notNull(),
+  companyExternalId: varchar("companyExternalId", { length: 180 }),
+  contactExternalId: varchar("contactExternalId", { length: 180 }),
+  ownerExternalId: varchar("ownerExternalId", { length: 180 }),
+  name: varchar("name", { length: 320 }).notNull(),
+  pipeline: varchar("pipeline", { length: 180 }),
+  stage: varchar("stage", { length: 180 }),
+  valueMinor: int("valueMinor"),
+  currency: varchar("currency", { length: 8 }),
+  closeAt: timestamp("closeAt"),
+  lastActivityAt: timestamp("lastActivityAt"),
+  nextStepAt: timestamp("nextStepAt"),
+  sourceUpdatedAt: timestamp("sourceUpdatedAt"),
+  sourceRevision: varchar("sourceRevision", { length: 180 }),
+  raw: json("raw").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [
+  uniqueIndex("crm_opportunities_system_external_unique").on(table.connectedSystemId, table.externalId),
+  index("crm_opportunities_org_owner_stage_idx").on(table.organisationId, table.ownerExternalId, table.stage),
+  index("crm_opportunities_org_activity_idx").on(table.organisationId, table.lastActivityAt),
+]);
+
+export const crmTasks = mysqlTable("crmTasks", {
+  id: int("id").autoincrement().primaryKey(),
+  organisationId: int("organisationId").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+  connectedSystemId: int("connectedSystemId").notNull().references(() => connectedSystems.id, { onDelete: "cascade" }),
+  externalId: varchar("externalId", { length: 180 }).notNull(),
+  contactExternalId: varchar("contactExternalId", { length: 180 }),
+  opportunityExternalId: varchar("opportunityExternalId", { length: 180 }),
+  ownerExternalId: varchar("ownerExternalId", { length: 180 }),
+  title: varchar("title", { length: 320 }).notNull(),
+  status: varchar("status", { length: 120 }).notNull(),
+  dueAt: timestamp("dueAt"),
+  completedAt: timestamp("completedAt"),
+  sourceUpdatedAt: timestamp("sourceUpdatedAt"),
+  sourceRevision: varchar("sourceRevision", { length: 180 }),
+  raw: json("raw").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [
+  uniqueIndex("crm_tasks_system_external_unique").on(table.connectedSystemId, table.externalId),
+  index("crm_tasks_org_owner_due_idx").on(table.organisationId, table.ownerExternalId, table.dueAt),
+]);
+
+export const crmActivities = mysqlTable("crmActivities", {
+  id: int("id").autoincrement().primaryKey(),
+  organisationId: int("organisationId").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+  connectedSystemId: int("connectedSystemId").notNull().references(() => connectedSystems.id, { onDelete: "cascade" }),
+  externalId: varchar("externalId", { length: 180 }).notNull(),
+  contactExternalId: varchar("contactExternalId", { length: 180 }),
+  opportunityExternalId: varchar("opportunityExternalId", { length: 180 }),
+  ownerExternalId: varchar("ownerExternalId", { length: 180 }),
+  activityType: varchar("activityType", { length: 120 }).notNull(),
+  occurredAt: timestamp("occurredAt").notNull(),
+  body: text("body"),
+  sourceRevision: varchar("sourceRevision", { length: 180 }),
+  raw: json("raw").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [
+  uniqueIndex("crm_activities_system_external_unique").on(table.connectedSystemId, table.externalId),
+  index("crm_activities_org_owner_occurred_idx").on(table.organisationId, table.ownerExternalId, table.occurredAt),
+]);
+
+export const crmSyncCursors = mysqlTable("crmSyncCursors", {
+  id: int("id").autoincrement().primaryKey(),
+  connectedSystemId: int("connectedSystemId").notNull().references(() => connectedSystems.id, { onDelete: "cascade" }),
+  resourceType: varchar("resourceType", { length: 80 }).notNull(),
+  cursor: text("cursor"),
+  sourceCheckpoint: varchar("sourceCheckpoint", { length: 255 }),
+  lastSuccessfulAt: timestamp("lastSuccessfulAt"),
+  lastError: text("lastError"),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [uniqueIndex("crm_sync_cursors_system_resource_unique").on(table.connectedSystemId, table.resourceType)]);
+
+export const salesActivityEvents = mysqlTable("salesActivityEvents", {
+  id: int("id").autoincrement().primaryKey(),
+  organisationId: int("organisationId").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+  connectedSystemId: int("connectedSystemId").references(() => connectedSystems.id, { onDelete: "set null" }),
+  salespersonUserId: int("salespersonUserId").references(() => users.id, { onDelete: "set null" }),
+  externalOwnerId: varchar("externalOwnerId", { length: 180 }),
+  contactExternalId: varchar("contactExternalId", { length: 180 }),
+  opportunityExternalId: varchar("opportunityExternalId", { length: 180 }),
+  eventType: varchar("eventType", { length: 120 }).notNull(),
+  source: varchar("source", { length: 80 }).notNull(),
+  occurredAt: timestamp("occurredAt").notNull(),
+  externalId: varchar("externalId", { length: 180 }),
+  metadata: json("metadata").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [
+  uniqueIndex("sales_activity_events_source_external_unique").on(table.connectedSystemId, table.externalId),
+  index("sales_activity_events_org_user_occurred_idx").on(table.organisationId, table.salespersonUserId, table.occurredAt),
+]);
+
+export const connectorVerificationRuns = mysqlTable("connectorVerificationRuns", {
+  id: int("id").autoincrement().primaryKey(),
+  connectedSystemId: int("connectedSystemId").notNull().references(() => connectedSystems.id, { onDelete: "cascade" }),
+  correlationId: varchar("correlationId", { length: 80 }).notNull(),
+  status: mysqlEnum("status", ["testing", "ready", "limited", "failed"]).notNull(),
+  capabilities: json("capabilities").$type<Record<string, boolean>>().notNull(),
+  summary: text("summary").notNull(),
+  evidence: json("evidence").$type<Record<string, unknown>>().notNull(),
+  completedAt: timestamp("completedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [index("connector_verification_system_created_idx").on(table.connectedSystemId, table.createdAt)]);
+
+export const crmOAuthStates = mysqlTable("crmOAuthStates", {
+  id: int("id").autoincrement().primaryKey(),
+  connectedSystemId: int("connectedSystemId").notNull().references(() => connectedSystems.id, { onDelete: "cascade" }),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  nonce: varchar("nonce", { length: 160 }).notNull().unique(),
+  redirectUri: varchar("redirectUri", { length: 1024 }).notNull(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  consumedAt: timestamp("consumedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [index("crm_oauth_states_system_expiry_idx").on(table.connectedSystemId, table.expiresAt)]);
+
+export const sidecarSessions = mysqlTable("sidecarSessions", {
+  id: int("id").autoincrement().primaryKey(),
+  organisationId: int("organisationId").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  tokenHash: varchar("tokenHash", { length: 128 }).notNull().unique(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  revokedAt: timestamp("revokedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [index("sidecar_sessions_org_user_expiry_idx").on(table.organisationId, table.userId, table.expiresAt)]);
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type IntegrationProfile = typeof integrationProfiles.$inferSelect;

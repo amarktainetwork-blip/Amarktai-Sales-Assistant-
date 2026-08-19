@@ -272,10 +272,10 @@ export async function recordActionExecution(input: { userId: number; proposalId:
     .where(and(eq(actionProposals.id, input.proposalId), eq(actionProposals.userId, input.userId), eq(actionProposals.state, "approved")));
   await recordAudit({
     userId: input.userId,
-    eventType: input.success ? "genie_action_executed" : "genie_action_blocked",
+    eventType: input.success ? "crm_action_executed" : "crm_action_blocked",
     entityType: "action_proposal",
     entityId: String(input.proposalId),
-    summary: input.success ? "Approved Genie saved script completed." : "Approved Genie saved script failed and was blocked.",
+    summary: input.success ? "Approved CRM action was verified by its connector." : "Approved CRM action failed and was blocked.",
     metadata: normalizedResult,
   });
 }

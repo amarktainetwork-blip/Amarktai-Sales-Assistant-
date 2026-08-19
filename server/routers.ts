@@ -34,7 +34,7 @@ import {
 } from "./db";
 import { getGenxReadiness, runGenxAgent } from "./genx";
 import { getGenieReadiness } from "./genie/config";
-import { executeApprovedGenieProposal } from "./genie/executeProposal";
+import { executeApprovedCrmAction } from "./crm/executeApprovedAction";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
@@ -49,6 +49,16 @@ import { prepareLiveCoachingTip, preparePostCallSummary } from "./liveCoach";
 import { getOutlookReadiness, validateEmailPreview } from "./outlook";
 import { discoverPublicWebsite } from "./companyDiscovery";
 import { routeWorkflowActions } from "./crmRouter";
+import { ensureDefaultOrganisation, canManageOrganisation, requireOrganisationMembership } from "./organisation";
+import { addAuthorisedDomain, createConnectedSystem, getConnectedSystemForUser, listConnectedSystemsForUser, loadConnectionSecret, recordConnectionVerification, toAdapterConnection } from "./connectedSystems";
+import { getCrmAdapter } from "./crm/adapterRegistry";
+import { createCrmOAuthState } from "./crm/oauthState";
+import { crmOAuthCallbackUrl } from "./crm/oauthRoutes";
+import { syncConnectedSystem } from "./crm/sync";
+import { getTodayWork } from "./today";
+import { issueSidecarSession, revokeSidecarSessions } from "./sidecar/sidecarSessions";
+import { getTeamIntelligence } from "./teamIntelligence";
+import { randomUUID } from "node:crypto";
 
 const workflowInput = z.object({
   workflowKey: z.enum(WORKFLOW_KEYS),
@@ -155,14 +165,13 @@ export const appRouter = router({
         return { success: true };
       }),
     proposalAudit: secondFactorProcedure.input(z.object({ proposalId: z.number().int().positive() })).query(({ ctx, input }) => listProposalAuditEntries(ctx.user.id, input.proposalId)),
-    executeApprovedGenieAction: secondFactorProcedure.input(z.object({ proposalId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+    executeApprovedCrmAction: secondFactorProcedure.input(z.object({ proposalId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
       const proposal = await getApprovedActionProposal(ctx.user.id, input.proposalId);
       if (!proposal) throw new Error("Only an approved action proposal may be executed, and it must be owned by your workspace.");
-      const crmRoute = proposal.payload.crmRoute as { routable?: boolean; provider?: string } | undefined;
-      if (!crmRoute?.routable || crmRoute.provider !== "genie") throw new Error("This proposal has no ready CRM workspace bridge route. Register and verify a compatible CRM capability before requesting execution.");
-      const result = await executeApprovedGenieProposal(proposal);
+      const organisation = await ensureDefaultOrganisation(ctx.user.id);
+      const result = await executeApprovedCrmAction({ organisationId: organisation.organisationId, proposal, correlationId: randomUUID() });
       await recordActionExecution({ userId: ctx.user.id, proposalId: proposal.id, success: result.success, result });
-      if (!result.success) throw new Error(`Genie script failed: ${result.detail}`);
+      if (!result.success) throw new Error(`CRM action failed: ${result.detail}`);
       return result;
     }),
     chat: secondFactorProcedure
@@ -178,6 +187,54 @@ export const appRouter = router({
         const approvedKnowledge = sources.length ? sources.map(source => `[${source.title}]\n${source.content ?? source.sourceUrl ?? "No retained body."}`).join("\n\n---\n\n") : undefined;
         return runGenxAgent({ ...input, approvedKnowledge });
       }),
+  }),
+  organisation: router({
+    current: secondFactorProcedure.query(({ ctx }) => ensureDefaultOrganisation(ctx.user.id)),
+  }),
+  connectedSystems: router({
+    list: secondFactorProcedure.input(z.object({ organisationId: z.number().int().positive() })).query(({ ctx, input }) => listConnectedSystemsForUser(ctx.user.id, input.organisationId)),
+    create: secondFactorProcedure.input(z.object({
+      organisationId: z.number().int().positive(), provider: z.enum(["genie", "hubspot", "salesforce", "pipedrive", "zoho", "custom_browser", "custom_api", "csv_import"]),
+      displayName: z.string().trim().min(2).max(180), baseUrl: z.string().url().max(1024).optional().nullable(), connectionMethod: z.enum(["oauth", "browser", "sidecar", "custom_adapter", "import"]),
+      allowedReadCapabilities: z.array(z.string().trim().min(3).max(80)).max(20), allowedWriteCapabilities: z.array(z.string().trim().min(3).max(80)).max(20),
+    })).mutation(({ ctx, input }) => createConnectedSystem({ userId: ctx.user.id, ...input })),
+    addDomain: secondFactorProcedure.input(z.object({ organisationId: z.number().int().positive(), connectedSystemId: z.number().int().positive(), hostname: z.string().trim().min(3).max(253), allowedPaths: z.array(z.string().trim().min(1).max(500)).max(40) })).mutation(({ ctx, input }) => addAuthorisedDomain({ userId: ctx.user.id, ...input })),
+    beginOAuth: secondFactorProcedure.input(z.object({ organisationId: z.number().int().positive(), connectedSystemId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const membership = await requireOrganisationMembership(ctx.user.id, input.organisationId);
+      if (!canManageOrganisation(membership.role)) throw new Error("Only organisation owners and managers can authenticate connected systems.");
+      const system = await getConnectedSystemForUser(ctx.user.id, input.organisationId, input.connectedSystemId);
+      const adapter = getCrmAdapter(system.provider);
+      if (!adapter.createAuthorizationUrl || system.connectionMethod !== "oauth") throw new Error("This connected system does not support OAuth authorization.");
+      const redirectUri = crmOAuthCallbackUrl(ctx.req);
+      const state = await createCrmOAuthState({ connectedSystemId: system.id, userId: ctx.user.id, redirectUri });
+      return { authorizationUrl: adapter.createAuthorizationUrl({ connection: toAdapterConnection(system), state, redirectUri }) };
+    }),
+    verify: secondFactorProcedure.input(z.object({ organisationId: z.number().int().positive(), connectedSystemId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const membership = await requireOrganisationMembership(ctx.user.id, input.organisationId);
+      if (!canManageOrganisation(membership.role)) throw new Error("Only organisation owners and managers can test connected systems.");
+      const system = await getConnectedSystemForUser(ctx.user.id, input.organisationId, input.connectedSystemId);
+      const adapter = getCrmAdapter(system.provider);
+      const secret = await loadConnectionSecret({ organisationId: input.organisationId, connectedSystemId: system.id, secretKind: "oauth" });
+      const correlationId = randomUUID();
+      const test = await adapter.testConnection({ connection: toAdapterConnection(system), secret, correlationId });
+      const outcome = await recordConnectionVerification({ organisationId: input.organisationId, connectedSystemId: system.id, correlationId, test });
+      return { ...outcome, summary: test.summary, correlationId };
+    }),
+    sync: secondFactorProcedure.input(z.object({ organisationId: z.number().int().positive(), connectedSystemId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const membership = await requireOrganisationMembership(ctx.user.id, input.organisationId);
+      if (!canManageOrganisation(membership.role)) throw new Error("Only organisation owners and managers can synchronize connected systems.");
+      return syncConnectedSystem({ userId: ctx.user.id, ...input });
+    }),
+  }),
+  sales: router({
+    today: secondFactorProcedure.input(z.object({ organisationId: z.number().int().positive() })).query(({ ctx, input }) => getTodayWork({ userId: ctx.user.id, organisationId: input.organisationId })),
+  }),
+  management: router({
+    teamIntelligence: secondFactorProcedure.input(z.object({ organisationId: z.number().int().positive() })).query(({ ctx, input }) => getTeamIntelligence({ userId: ctx.user.id, organisationId: input.organisationId })),
+  }),
+  sidecar: router({
+    issueSession: secondFactorProcedure.input(z.object({ organisationId: z.number().int().positive() })).mutation(({ ctx, input }) => issueSidecarSession({ userId: ctx.user.id, organisationId: input.organisationId })),
+    revokeSessions: secondFactorProcedure.input(z.object({ organisationId: z.number().int().positive() })).mutation(async ({ ctx, input }) => { await revokeSidecarSessions({ userId: ctx.user.id, organisationId: input.organisationId }); return { success: true }; }),
   }),
   integrations: router({
     list: secondFactorProcedure.query(async ({ ctx }) => ({

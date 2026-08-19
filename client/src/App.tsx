@@ -9,6 +9,8 @@ import Connections from "./pages/Connections";
 import Dashboard from "./pages/Dashboard";
 import Home from "./pages/Home";
 import Onboarding from "./pages/Onboarding";
+import Today from "./pages/Today";
+import TeamIntelligence from "./pages/TeamIntelligence";
 import { AgentDesk, CallDesk, CommandCentre, KnowledgeHub, WorkflowStudio } from "./pages/Workspace";
 
 function Router() {
@@ -16,6 +18,8 @@ function Router() {
     <Route path="/" component={Home} />
     <Route path="/auth" component={Auth} />
     <Route path="/dashboard" component={Dashboard} />
+    <Route path="/today" component={Today} />
+    <Route path="/team" component={TeamIntelligence} />
     <Route path="/workspace" component={CommandCentre} />
     <Route path="/workflows" component={WorkflowStudio} />
     <Route path="/agents" component={AgentDesk} />
