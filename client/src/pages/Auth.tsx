@@ -5,7 +5,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation } from "wouter";
 
-const securityImage = "/manus-storage/amarktai-ai-trust-security_8b827cc4.png";
+const securityImage = "/assets/auth-security-visual.png";
 
 export default function Auth() {
   const mode = trpc.auth.mode.useQuery();

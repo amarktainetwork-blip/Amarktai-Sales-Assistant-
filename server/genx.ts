@@ -12,15 +12,62 @@ export function getGenxReadiness() {
   return { ready: endpointConfigured && keyConfigured && modelConfigured, endpointConfigured, keyConfigured, modelConfigured };
 }
 
+function getGenxModelsUrl() {
+  const configured = process.env.GENX_CHAT_COMPLETIONS_URL?.trim();
+  if (!configured) return null;
+  try {
+    const url = new URL(configured);
+    url.pathname = url.pathname.replace(/\/chat\/completions\/?$/, "/models");
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+async function fetchWithTimeout(fetcher: typeof fetch, input: string, init: RequestInit) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
+  try {
+    return await fetcher(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function verifyGenxConnection(fetcher: typeof fetch = fetch) {
+  const readiness = getGenxReadiness();
+  const modelsUrl = getGenxModelsUrl();
+  if (!readiness.ready || !modelsUrl) return { ready: false as const, reason: "not_configured" as const };
+  const headers = { "Content-Type": "application/json", Authorization: `Bearer ${process.env.GENX_API_KEY!}` };
+  try {
+    const modelsResponse = await fetchWithTimeout(fetcher, modelsUrl, { headers });
+    if (!modelsResponse.ok) return { ready: false as const, reason: "models_unavailable" as const };
+    const modelsPayload = (await modelsResponse.json()) as { data?: Array<{ id?: string }> };
+    const advertisedModels = modelsPayload.data?.map(model => model.id).filter((value): value is string => Boolean(value)) ?? [];
+    if (advertisedModels.length && !advertisedModels.includes(process.env.GENX_DEFAULT_MODEL!)) return { ready: false as const, reason: "configured_model_not_advertised" as const };
+    const completionResponse = await fetchWithTimeout(fetcher, process.env.GENX_CHAT_COMPLETIONS_URL!, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ model: process.env.GENX_DEFAULT_MODEL!, messages: [{ role: "user", content: "Return READY." }], temperature: 0, max_tokens: 8 }),
+    });
+    if (!completionResponse.ok) return { ready: false as const, reason: "minimal_request_failed" as const };
+    const payload = (await completionResponse.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    if (!payload.choices?.[0]?.message?.content?.trim()) return { ready: false as const, reason: "minimal_request_invalid" as const };
+    return { ready: true as const, reason: "verified" as const };
+  } catch {
+    return { ready: false as const, reason: "verification_failed" as const };
+  }
+}
+
 export function buildAgentSystemPrompt(input: { agentName: string; agentPurpose: string; policy: ReturnType<typeof getAgentPolicy>; companyContext?: string; approvedKnowledge?: string }) {
   return [
-    `You are ${input.agentName} for Course2Career. ${input.agentPurpose}`,
+    `You are ${input.agentName} for the organisation using Amarktai Sales Assistant. ${input.agentPurpose}`,
     ...input.policy.instructions,
     "Never claim that an external CRM, email, SMS, WhatsApp, or calendar action happened unless the system confirms it.",
     "Never invent candidate facts, objections, commitments, programme details, consent, or communication history.",
     input.policy.outputContract,
-    input.companyContext ? `Approved company operating context:\n${input.companyContext}\nUse this for tone, audience, and sales-motion alignment. It is not authority for customer-, programme-, price-, funding-, or policy-specific claims.` : "No approved company profile was supplied. Do not assume a brand voice, market, or sales motion.",
-    input.approvedKnowledge ? `Approved knowledge sources for this answer:\n${input.approvedKnowledge}\nTreat these sources as the only authority for programme, policy, pricing, entry requirement, or course claims. If an answer is not present, say so plainly.` : "No approved knowledge was supplied. Do not make programme, pricing, funding, eligibility, or policy claims.",
+    input.companyContext ? `Approved company operating context:\n${input.companyContext}\nUse this for tone, audience, and sales-motion alignment. It is not authority for customer-, product-, service-, price-, funding-, or policy-specific claims.` : "No approved company profile was supplied. Do not assume a brand voice, market, or sales motion.",
+    input.approvedKnowledge ? `Approved knowledge sources for this answer:\n${input.approvedKnowledge}\nTreat these sources as the only authority for product, service, policy, pricing, entry requirement, and eligibility claims. If an answer is not present, say so plainly.` : "No approved knowledge was supplied. Do not make product, service, pricing, funding, eligibility, or policy claims.",
   ].join("\n\n");
 }
 

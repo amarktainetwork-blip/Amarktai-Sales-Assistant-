@@ -24,7 +24,22 @@ function getTransporter() {
     port: Number(process.env.SMTP_PORT!),
     secure: process.env.SMTP_SECURE === "true",
     auth: { user: process.env.SMTP_USER!, pass: process.env.SMTP_PASSWORD! },
+    connectionTimeout: 8_000,
+    greetingTimeout: 8_000,
+    socketTimeout: 15_000,
   });
+}
+
+export async function verifySmtpTransport() {
+  const readiness = getSmtpReadiness();
+  if (!readiness.ready) return { ready: false, reason: "not_configured" as const };
+  try {
+    await getTransporter().verify();
+    return { ready: true as const, reason: "verified" as const };
+  } catch (error) {
+    console.warn("[SMTP] transport verification failed", error instanceof Error ? error.message : "unknown error");
+    return { ready: false, reason: "verification_failed" as const };
+  }
 }
 
 export async function sendEmail(input: { to: string; subject: string; text: string; html: string }) {

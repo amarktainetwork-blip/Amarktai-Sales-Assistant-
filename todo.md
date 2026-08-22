@@ -80,3 +80,16 @@
 - [ ] Validate the local login and dashboard-access path, then update deployment-readiness and Genie commissioning guidance with an exact no-API-key browser-session procedure.
 - [x] Add a disposable development-only local access route that is unavailable in production and does not require or persist VPS credentials.
 - [ ] Document the Webdock administrator credential-reset procedure and run a real local email-password plus SMTP second-factor dashboard test after installation.
+- [x] Audit and remove all repository-controlled Manus preview, storage, Forge, Heartbeat, notification, analytics, runtime-plugin, and debug dependencies from production paths.
+- [x] Move all critical landing, auth, metadata, and favicon visual assets into repository-owned production paths and prove no `/manus-storage` reference remains in production output.
+- [x] Replace managed daily-report scheduling with a self-hosted, idempotent worker backed by MariaDB and SMTP; remove inactive hosted owner-notification code so no production feature depends on it.
+- [x] Add production environment validation, deterministic port behavior, `/healthz` and `/readyz`, integration readiness, asset checks, and production-safe error handling.
+- [x] Harden authentication, cookies, CSRF/origin controls, rate limiting, request limits, SSRF-safe website discovery, security headers, and GenX/SMTP readiness checks.
+- [x] Generalise all runtime company behaviour and move Course2Career/Cyber-specific content to an optional inactive preset with no default customer identity, templates, stages, or contact data.
+- [x] Make CRM readiness server-verified, stale-safe, capability-specific, and truthful for unimplemented providers; add verification evidence and execution guards.
+- [ ] Rebuild Webdock configuration, Docker Compose, Dockerfile, installer, verifier, backup/upgrade scripts, and acceptance documentation as a deterministic production gate.
+- [ ] Add CI and comprehensive regression coverage for production configuration, readiness, scheduler, security, SSRF, CRM verification, company context, migrations, and review-first execution controls.
+- [ ] Run every available local release gate, document unavailable Docker/VPS checks truthfully, commit and push the final production release with the required readiness report.
+- [x] Wire bounded GenX and SMTP transport probes into the production verifier and add regression coverage for configured-but-unreachable integrations.
+- [x] Audit and remove or replace every remaining hosted owner-notification path with self-hosted SMTP delivery or persisted administrator events.
+- [x] Record truthful daily-report success/failure delivery bookkeeping and regression coverage before the production checkpoint.

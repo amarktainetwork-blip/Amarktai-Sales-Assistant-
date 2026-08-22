@@ -25,9 +25,6 @@ export type WorkflowPlan = {
   actions: ProposedAction[];
 };
 
-const FIRST_CONTACT_SMS =
-  "Hi [First Name], thank you for your enquiry about our Career Programme. I’ve received your details and would be happy to talk you through the programme and answer any questions you may have. We’re currently handling a high volume of enquiries, so please let me know a convenient day and time for a quick call, and confirm the best number to reach you on. Our office hours are Monday–Friday, 9am–6pm. Kind regards, Amelia – Course2Career";
-
 function key(leadLabel: string, suffix: string) {
   return `${leadLabel.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-")}:${suffix}`;
 }
@@ -67,10 +64,8 @@ function firstContactPlan(leadLabel: string): WorkflowPlan {
     actions: [
       ...commonVerification(leadLabel),
       reviewAction(leadLabel, "first-contact-sms", "send_sms_template", "Send approved initial first-contact SMS", {
-        sendingNumber: "+447428000560",
-        templateName: "INITIAL FIRST CONTACT SMS",
-        templateText: FIRST_CONTACT_SMS,
-        officeHours: "Monday–Friday, 9am–6pm",
+        templateName: "APPROVED_FIRST_CONTACT_SMS",
+        guardrail: "Use only an organisation-configured approved template, sender identity, consent rule, and contact-hours policy.",
       }),
       reviewAction(leadLabel, "call-2", "schedule_callback", "Schedule Call 2 only when the First Call remains pending", {
         taskTitle: "Call 2",
@@ -92,7 +87,7 @@ function callAttemptPlan(request: WorkflowRequest, attempt: 2 | 3 | 4): Workflow
   ];
   if (outcome !== "answered") actions.push(
     reviewAction(request.leadLabel, `call-${attempt}-email`, "send_email_template", `Send approved Call ${attempt} follow-up email`, { templateName: `CALL ${attempt} FOLLOW-UP EMAIL`, requireSavedSubject: true, guardrail: "Only execute when the saved approved template and subject are configured." }),
-    reviewAction(request.leadLabel, `call-${attempt}-sms`, "send_sms_template", `Send approved Call ${attempt} follow-up SMS`, { templateName: `CALL ${attempt} FOLLOW-UP SMS`, sendingNumber: "+447428000560", guardrail: "Only execute when the saved approved template is configured." }),
+    reviewAction(request.leadLabel, `call-${attempt}-sms`, "send_sms_template", `Send approved Call ${attempt} follow-up SMS`, { templateName: `CALL_${attempt}_FOLLOW_UP_SMS`, guardrail: "Only execute when the organisation-configured approved template, sender identity, consent, and contact-hours policy are configured." }),
     reviewAction(request.leadLabel, `call-${attempt}-next-task`, "schedule_callback", `Schedule ${nextTask} only if no duplicate exists`, { taskTitle: nextTask, prerequisite: "Verify there is no current future task of this type and that the current call task was attempted." }),
   );
   return { verificationSummary: `Review the full contact history, current open task, current opportunity, consent signals, and future callbacks before progressing Call ${attempt}. Completed or historical records remain protected. If the candidate answered, use only factual notes and the agreed next step; do not send failed-contact communications automatically.`, actions };
@@ -124,7 +119,7 @@ function structuredFollowUpPlan(request: WorkflowRequest, type: "booking_confirm
     reviewAction(request.leadLabel, `${type}-notes`, "append_contact_note", `Add factual ${definition.title.toLowerCase()} notes`, { content: request.conversationNotes.trim(), guardrail: "Record only verified statements and never overwrite historic notes." }),
   ];
   if ("email" in definition) actions.push(reviewAction(request.leadLabel, `${type}-email`, "send_email_template", `Send approved ${definition.title.toLowerCase()} email`, { templateName: definition.email, requireSavedSubject: true, guardrail: "Use only a configured approved template and do not send a blank subject." }));
-  if ("sms" in definition) actions.push(reviewAction(request.leadLabel, `${type}-sms`, "send_sms_template", `Send approved ${definition.title.toLowerCase()} SMS`, { templateName: definition.sms, sendingNumber: "+447428000560", guardrail: "Use only a configured approved template, respect consent, and respect office hours." }));
+  if ("sms" in definition) actions.push(reviewAction(request.leadLabel, `${type}-sms`, "send_sms_template", `Send approved ${definition.title.toLowerCase()} SMS`, { templateName: definition.sms, guardrail: "Use only an organisation-configured approved template, sender identity, consent, and contact-hours policy." }));
   actions.push(reviewAction(request.leadLabel, `${type}-task`, "schedule_callback", `Schedule ${definition.task} only if no duplicate exists`, { taskTitle: definition.task, callbackAt: request.callbackAt?.trim(), prerequisite: "Check existing future tasks, consent, and any current active task before creating work." }));
   return { verificationSummary: `${definition.title} requires factual context, current CRM history, consent and exclusion checks, duplicate protection, and a human decision on every proposed communication or task. This workflow never assumes that a booking, reschedule, no-show, request, or escalation occurred.`, actions };
 }
@@ -142,110 +137,6 @@ function postCallOutcomePlan(request: WorkflowRequest): WorkflowPlan {
   return { verificationSummary: `The verified outcome is ${outcomeLabels[outcome]}. Review existing history, consent, current task, current opportunity, communication history, and duplicate risk before each proposal. The assistant has prepared actions only; a person must decide whether each CRM change or communication is appropriate.`, actions };
 }
 
-function cyberFinalClosePlan(leadLabel: string): WorkflowPlan {
-  return {
-    verificationSummary:
-      "Locate only the active open Last Try task and inspect every opportunity. Historical closed or Lost opportunities remain untouched; a separate current open opportunity must be assessed independently.",
-    actions: [
-      ...commonVerification(leadLabel),
-      reviewAction(leadLabel, "close-active-last-try", "complete_active_task", "Complete only the active Last Try task", {
-        allowedTaskTitles: ["Last Try", "Last Try Cyber"],
-        forbidden: ["reopen completed tasks", "modify historical tasks"],
-      }),
-      reviewAction(leadLabel, "permission-close-email", "send_email_template", "Send the saved Permission to Close Your File email", {
-        templateLocation: "Consultant Contact Emails",
-        templateName: "Permission to Close Your File",
-        requireSavedSubject: true,
-        forbidden: ["blank subject", "rewriting the template"],
-      }),
-      reviewAction(leadLabel, "close-file-cyber-sms", "send_sms_template", "Send the saved close file cyber SMS", {
-        templateLocation: "Consultant Contact Texts",
-        templateName: "close file cyber",
-        sendingNumber: "+447428000560",
-      }),
-      reviewAction(leadLabel, "close-current-opportunity", "update_current_opportunity", "Close only the current open opportunity", {
-        transitions: {
-          "New Lead – Uncontacted": "Lost – No Show",
-          "Attempting Contact": "Lost – No Show",
-          "Discovery Call Completed – Considering Options": "Not a Fit / Rejected",
-        },
-        skipOnlyWhen: "No current open opportunity exists and all historic opportunities are already closed.",
-      }),
-      reviewAction(leadLabel, "update-lead-lost", "update_contact_status", "Set current contact status to Lost", {
-        status: "Lost",
-        requiredFields: "Complete closed-lost fields on the current opportunity only.",
-      }),
-      reviewAction(leadLabel, "cyber-closed-lost-sequence", "apply_sequence", "Set the Cyber Security closed-lost sequence", {
-        sequence: "Cyber Security closed-lost",
-      }),
-    ],
-  };
-}
-
-function cyberPostConsultationPlan(request: WorkflowRequest): WorkflowPlan {
-  const outcome = request.callOutcome;
-  if (!outcome) {
-    throw new Error("Select no answer, voicemail, or answered before preparing the post-consultation workflow.");
-  }
-  if (outcome === "answered" && !request.conversationNotes?.trim()) {
-    throw new Error("Provide factual conversation notes for an answered call. The assistant will not invent objections, commitments, or outcomes.");
-  }
-
-  const baseActions = [
-    ...commonVerification(request.leadLabel),
-    reviewAction(request.leadLabel, "complete-yes-no-cyber", "complete_active_task", "Complete only the current Yes/No Cyber task", {
-      allowedTaskTitles: ["Yes/No Cyber"],
-      forbidden: ["reopen completed tasks", "modify historical tasks"],
-    }),
-    reviewAction(request.leadLabel, "follow-up-notes", "append_contact_note", "Add factual Cyber follow-up notes", {
-      outcome,
-      content:
-        outcome === "answered"
-          ? request.conversationNotes?.trim()
-          : `Cyber follow-up call attempted: ${outcome === "no_answer" ? "no answer" : "voicemail"}.`,
-      guardrail: "Use only information supplied by the consultant.",
-    }),
-    reviewAction(request.leadLabel, "ensure-discovery-stage", "update_current_opportunity", "Keep the current opportunity at Discovery Completed – Considering Options", {
-      transitionOnlyIfCurrentStage: "Attempting Contact",
-      targetStage: "Discovery Completed – Considering Options",
-      forbidden: ["create duplicate opportunity", "modify historical closed or Lost opportunity"],
-    }),
-  ];
-
-  if (outcome === "answered") {
-    return {
-      verificationSummary:
-        "The call was answered. Record only the supplied conversation notes, complete the current task, and follow any agreed next step. Do not send failed-contact communications or create a Last Try task automatically.",
-      actions: baseActions,
-    };
-  }
-
-  return {
-    verificationSummary:
-      "The call was not completed. Verify every existing communication and task immediately before action; then use saved templates exactly, keeping the approved SMS sending number.",
-    actions: [
-      ...baseActions,
-      reviewAction(request.leadLabel, "follow-up-email-cyber", "send_email_template", "Send saved Follow-up Email Cyber", {
-        templateLocation: "Consultant Contact Emails",
-        templateName: "Follow-up Email Cyber",
-        requireSavedSubject: true,
-      }),
-      reviewAction(request.leadLabel, "failed-follow-up-cyber-sms", "send_sms_template", "Send saved Failed Follow-up Cyber SMS", {
-        templateLocation: "Consultant Contact Text",
-        templateName: "Failed Follow-up Cyber",
-        sendingNumber: "+447428000560",
-      }),
-      reviewAction(request.leadLabel, "tried-to-email-whatsapp", "send_whatsapp_template", "Send saved tried_to_email WhatsApp template", {
-        templateName: "tried_to_email",
-      }),
-      reviewAction(request.leadLabel, "last-try-cyber", "schedule_callback", "Schedule Last Try Cyber only if no duplicate exists", {
-        taskTitle: "Last Try Cyber",
-        prerequisite: "Verify a future Last Try Cyber task does not already exist.",
-      }),
-    ],
-  };
-}
-
 export function buildWorkflowPlan(request: WorkflowRequest): WorkflowPlan {
   const leadLabel = request.leadLabel.trim();
   if (!leadLabel) throw new Error("A contact or candidate label is required.");
@@ -260,6 +151,5 @@ export function buildWorkflowPlan(request: WorkflowRequest): WorkflowPlan {
   if (request.workflowKey === "information_request") return structuredFollowUpPlan({ ...request, leadLabel }, "information_request");
   if (request.workflowKey === "manager_escalation") return structuredFollowUpPlan({ ...request, leadLabel }, "manager_escalation");
   if (request.workflowKey === "post_call_outcome") return postCallOutcomePlan({ ...request, leadLabel });
-  if (request.workflowKey === "cyber_final_close") return cyberFinalClosePlan(leadLabel);
-  return cyberPostConsultationPlan({ ...request, leadLabel });
+  throw new Error("Select a supported generic workflow or configure an approved company preset.");
 }

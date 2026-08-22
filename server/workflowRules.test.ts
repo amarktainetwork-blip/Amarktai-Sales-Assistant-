@@ -1,42 +1,28 @@
 import { describe, expect, it } from "vitest";
+import { COURSE2CAREER_PRESET } from "./presets/course2career";
 import { buildWorkflowPlan } from "./workflowRules";
 
-describe("workflow rules", () => {
-  it("keeps first-contact work review-only and fixes the required SMS sending number", () => {
+describe("generic workflow rules", () => {
+  it("uses organisation-configured communication guardrails instead of legacy sender or customer values", () => {
     const plan = buildWorkflowPlan({ workflowKey: "first_contact", leadLabel: "Candidate A" });
-    const sms = plan.actions.find(action => action.actionType === "send_sms_template");
+    const serialised = JSON.stringify(plan);
 
     expect(plan.actions.every(action => action.payload.reviewRequired === true)).toBe(true);
-    expect(sms?.payload.sendingNumber).toBe("+447428000560");
-    expect(sms?.payload.templateName).toBe("INITIAL FIRST CONTACT SMS");
+    expect(serialised).toContain("APPROVED_FIRST_CONTACT_SMS");
+    expect(serialised).toContain("organisation-configured approved template");
+    expect(serialised).not.toContain("Course2Career");
+    expect(serialised).not.toContain("Amelia");
+    expect(serialised).not.toContain("+447428000560");
+    expect(serialised).not.toContain("Cyber");
   });
 
-  it("preserves historical opportunities during Cyber final closure planning", () => {
-    const plan = buildWorkflowPlan({ workflowKey: "cyber_final_close", leadLabel: "Candidate B" });
-    const opportunity = plan.actions.find(action => action.actionType === "update_current_opportunity");
-
-    expect(opportunity?.payload.skipOnlyWhen).toContain("No current open opportunity");
-    expect(plan.verificationSummary).toContain("Historical closed or Lost opportunities remain untouched");
-  });
-
-  it("adds failed-contact communications only when the Cyber follow-up was not answered", () => {
-    const plan = buildWorkflowPlan({ workflowKey: "cyber_post_consultation", leadLabel: "Candidate C", callOutcome: "voicemail" });
-    const titles = plan.actions.map(action => action.title);
-
-    expect(titles).toContain("Send saved Follow-up Email Cyber");
-    expect(titles).toContain("Send saved Failed Follow-up Cyber SMS");
-    expect(titles).toContain("Schedule Last Try Cyber only if no duplicate exists");
-  });
-
-  it("requires factual notes for an answered Cyber follow-up", () => {
-    expect(() =>
-      buildWorkflowPlan({ workflowKey: "cyber_post_consultation", leadLabel: "Candidate D", callOutcome: "answered" }),
-    ).toThrow("Provide factual conversation notes");
+  it("rejects an obsolete customer-specific workflow key", () => {
+    expect(() => buildWorkflowPlan({ workflowKey: "cyber_final_close" as never, leadLabel: "Candidate B" })).toThrow("supported generic workflow");
   });
   it("prepares the Call 2 failed-contact path with protected history and the next task", () => {
     const plan = buildWorkflowPlan({ workflowKey: "call_2_followup", leadLabel: "Candidate E", callOutcome: "no_answer" });
     expect(plan.actions.map(action => action.title)).toContain("Schedule Call 3 only if no duplicate exists");
-    expect(plan.actions.find(action => action.actionType === "send_sms_template")?.payload.sendingNumber).toBe("+447428000560");
+    expect(plan.actions.find(action => action.actionType === "send_sms_template")?.payload.sendingNumber).toBeUndefined();
   });
   it("requires factual callback details before scheduling a callback", () => {
     expect(() => buildWorkflowPlan({ workflowKey: "callback_requested", leadLabel: "Candidate F", conversationNotes: "Requested a callback" })).toThrow("Provide the agreed callback date and time");
@@ -58,5 +44,13 @@ describe("workflow rules", () => {
     expect(() => buildWorkflowPlan({ workflowKey: "post_call_outcome", leadLabel: "Candidate I", salesOutcome: "information_requested" })).toThrow("Provide factual outcome notes");
     const plan = buildWorkflowPlan({ workflowKey: "post_call_outcome", leadLabel: "Candidate I", salesOutcome: "information_requested", conversationNotes: "Asked for approved programme information by email." });
     expect(plan.actions.map(action => action.title)).toContain("Send approved information-request email");
+  });
+});
+
+describe("Course2Career migration preset", () => {
+  it("is isolated and inactive until an organisation explicitly activates it", () => {
+    expect(COURSE2CAREER_PRESET.key).toBe("course2career");
+    expect(COURSE2CAREER_PRESET.status).toBe("inactive_by_default");
+    expect(COURSE2CAREER_PRESET.requiresExplicitOrganisationActivation).toBe(true);
   });
 });

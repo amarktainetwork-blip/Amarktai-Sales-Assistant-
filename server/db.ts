@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gt, isNull } from "drizzle-orm";
+import { and, count, desc, eq, gt, isNull, ne, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import bcrypt from "bcryptjs";
 import {
@@ -8,6 +8,7 @@ import {
   callSessions,
   companyProfiles,
   crmConnections,
+  dailyReportExecutions,
   dailyReports,
   integrationProfiles,
   knowledgeSources,
@@ -23,7 +24,6 @@ import {
   managerFindings,
   workflowRuns,
 } from "../drizzle/schema";
-import { ENV } from "./_core/env";
 import type { ProposedAction } from "./workflowRules";
 import { summarizeAgentUsageEvents } from "./agentUsage";
 
@@ -53,6 +53,16 @@ async function requireDb() {
   return db;
 }
 
+export async function checkDatabaseReadiness() {
+  try {
+    const db = await requireDb();
+    await db.execute("SELECT 1");
+    return { ready: true as const };
+  } catch {
+    return { ready: false as const };
+  }
+}
+
 export async function upsertUser(user: InsertUser): Promise<void> {
   if (!user.openId) throw new Error("User openId is required for upsert");
   const db = await getDb();
@@ -69,9 +79,6 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   if (user.role !== undefined) {
     values.role = user.role;
     updateSet.role = user.role;
-  } else if (user.openId === ENV.ownerOpenId) {
-    values.role = "admin";
-    updateSet.role = "admin";
   }
 
   await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
@@ -449,29 +456,40 @@ export async function createDailyReport(input: { userId: number; recipientEmail:
   return Number(result[0].insertId);
 }
 
-export async function attachDailyReportTask(input: { reportId: number; userId: number; taskUid: string }) {
-  const db = await requireDb();
-  await db.update(dailyReports).set({ scheduleCronTaskUid: input.taskUid }).where(and(eq(dailyReports.id, input.reportId), eq(dailyReports.userId, input.userId)));
-}
-
 export async function listDailyReports(userId: number) {
   const db = await requireDb();
   return db.select().from(dailyReports).where(eq(dailyReports.userId, userId)).orderBy(desc(dailyReports.createdAt));
 }
 
-export async function getDailyReportByTaskUid(taskUid: string) {
+export async function listEnabledDailyReports() {
   const db = await requireDb();
-  return (await db.select().from(dailyReports).where(eq(dailyReports.scheduleCronTaskUid, taskUid)).limit(1))[0];
+  return db.select().from(dailyReports).where(eq(dailyReports.isEnabled, true));
+}
+
+export async function claimDailyReportDelivery(reportId: number, deliveryKey: string) {
+  const db = await requireDb();
+  const result = await db.update(dailyReports)
+    .set({ deliveryClaimKey: deliveryKey, lastAttemptAt: new Date() })
+    .where(and(
+      eq(dailyReports.id, reportId),
+      or(isNull(dailyReports.lastDeliveryKey), ne(dailyReports.lastDeliveryKey, deliveryKey)),
+      or(isNull(dailyReports.deliveryClaimKey), ne(dailyReports.deliveryClaimKey, deliveryKey)),
+    ));
+  return Number((result as unknown as [{ affectedRows?: number }])[0]?.affectedRows ?? 0) === 1;
 }
 
 export async function markDailyReportDelivery(reportId: number, deliveryKey: string) {
   const db = await requireDb();
-  await db.update(dailyReports).set({ lastDeliveryKey: deliveryKey, lastSentAt: new Date() }).where(eq(dailyReports.id, reportId));
+  const sentAt = new Date();
+  await db.update(dailyReports).set({ deliveryClaimKey: null, lastDeliveryKey: deliveryKey, lastSentAt: sentAt }).where(and(eq(dailyReports.id, reportId), eq(dailyReports.deliveryClaimKey, deliveryKey)));
+  await db.insert(dailyReportExecutions).values({ reportId, deliveryKey, status: "sent", sentAt }).onDuplicateKeyUpdate({ set: { status: "sent", failureReason: null, attemptedAt: sentAt, sentAt } });
 }
 
-export async function releaseDailyReportDelivery(reportId: number, deliveryKey: string) {
+export async function releaseDailyReportDelivery(reportId: number, deliveryKey: string, failureReason: string) {
   const db = await requireDb();
-  await db.update(dailyReports).set({ lastDeliveryKey: null }).where(and(eq(dailyReports.id, reportId), eq(dailyReports.lastDeliveryKey, deliveryKey)));
+  const attemptedAt = new Date();
+  await db.update(dailyReports).set({ deliveryClaimKey: null }).where(and(eq(dailyReports.id, reportId), eq(dailyReports.deliveryClaimKey, deliveryKey)));
+  await db.insert(dailyReportExecutions).values({ reportId, deliveryKey, status: "failed", failureReason: failureReason.slice(0, 240), attemptedAt }).onDuplicateKeyUpdate({ set: { status: "failed", failureReason: failureReason.slice(0, 240), attemptedAt, sentAt: null } });
 }
 
 export async function getCompanySetup(userId: number) {
@@ -537,12 +555,32 @@ export async function confirmWebsiteDiscovery(input: {
   return { discoveryId: confirmed?.id ?? null, confirmedKnowledgeItems: input.confirmedKnowledge.length };
 }
 
-export async function saveCrmConnection(input: { userId: number; provider: "genie" | "hubspot" | "salesforce" | "pipedrive" | "custom_browser"; displayName: string; status: "draft" | "needs_credentials" | "ready" | "paused" | "error"; capabilities: Array<"contacts" | "tasks" | "opportunities" | "notes" | "activities" | "email" | "calendar">; connectionMode: "api" | "browser_automation" | "custom"; configurationHint?: string | null }) {
+export async function saveCrmConnection(input: { userId: number; provider: "genie" | "hubspot" | "salesforce" | "pipedrive" | "custom_browser"; displayName: string; status: "draft" | "needs_credentials"; capabilities: Array<"contacts" | "tasks" | "opportunities" | "notes" | "activities" | "email" | "calendar">; connectionMode: "api" | "browser_automation" | "custom"; configurationHint?: string | null }) {
   const db = await requireDb();
   const result = await db.insert(crmConnections).values(input);
   const id = Number(result[0].insertId);
   await recordAudit({ userId: input.userId, eventType: "crm_connection_registered", entityType: "crm_connection", entityId: String(id), summary: `${input.displayName} was registered for review-first automation.`, metadata: { provider: input.provider, capabilities: input.capabilities, connectionMode: input.connectionMode } });
   return id;
+}
+
+export async function getCrmConnectionForVerification(userId: number, connectionId: number) {
+  const db = await requireDb();
+  return (await db.select().from(crmConnections).where(and(eq(crmConnections.id, connectionId), eq(crmConnections.userId, userId))).limit(1))[0];
+}
+
+export async function recordCrmConnectionVerification(input: {
+  userId: number; connectionId: number; status: "ready" | "needs_credentials" | "error" | "connector_not_implemented";
+  verifiedAt?: Date | null; verificationExpiresAt?: Date | null; verificationFailure?: string | null; verificationEvidence?: Record<string, unknown> | null;
+}) {
+  const db = await requireDb();
+  await db.update(crmConnections).set({
+    status: input.status,
+    verifiedAt: input.verifiedAt ?? null,
+    verificationExpiresAt: input.verificationExpiresAt ?? null,
+    verificationFailure: input.verificationFailure ?? null,
+    verificationEvidence: input.verificationEvidence ?? null,
+  }).where(and(eq(crmConnections.id, input.connectionId), eq(crmConnections.userId, input.userId)));
+  await recordAudit({ userId: input.userId, eventType: "crm_connection_verified", entityType: "crm_connection", entityId: String(input.connectionId), summary: `CRM connection verification finished with ${input.status}.`, metadata: { status: input.status, verified: input.status === "ready" } });
 }
 
 export async function saveAutomationPlaybook(input: { userId: number; title: string; trigger: string; description: string; agentKey: string; requiredCapabilities: string[]; status: "draft" | "active" | "paused" }) {

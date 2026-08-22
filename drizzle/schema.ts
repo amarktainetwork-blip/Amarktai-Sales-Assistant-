@@ -88,10 +88,14 @@ export const crmConnections = mysqlTable("crmConnections", {
   userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   provider: mysqlEnum("provider", ["genie", "hubspot", "salesforce", "pipedrive", "custom_browser"]).notNull(),
   displayName: varchar("displayName", { length: 180 }).notNull(),
-  status: mysqlEnum("status", ["draft", "needs_credentials", "ready", "paused", "error"]).default("draft").notNull(),
+  status: mysqlEnum("status", ["draft", "needs_credentials", "verifying", "ready", "paused", "error", "connector_not_implemented"]).default("draft").notNull(),
   capabilities: json("capabilities").$type<Array<"contacts" | "tasks" | "opportunities" | "notes" | "activities" | "email" | "calendar">>().notNull(),
   connectionMode: mysqlEnum("connectionMode", ["api", "browser_automation", "custom"]).notNull(),
   configurationHint: text("configurationHint"),
+  verifiedAt: timestamp("verifiedAt"),
+  verificationExpiresAt: timestamp("verificationExpiresAt"),
+  verificationFailure: varchar("verificationFailure", { length: 300 }),
+  verificationEvidence: json("verificationEvidence").$type<Record<string, unknown>>(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, table => [index("crmConnections_user_provider_idx").on(table.userId, table.provider)]);
@@ -336,17 +340,29 @@ export const dailyReports = mysqlTable(
     userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
     recipientEmail: varchar("recipientEmail", { length: 320 }).notNull(),
     cronExpression: varchar("cronExpression", { length: 64 }).notNull(),
-    scheduleCronTaskUid: varchar("scheduleCronTaskUid", { length: 65 }),
     isEnabled: boolean("isEnabled").default(true).notNull(),
+    deliveryClaimKey: varchar("deliveryClaimKey", { length: 32 }),
     lastDeliveryKey: varchar("lastDeliveryKey", { length: 32 }),
+    lastAttemptAt: timestamp("lastAttemptAt"),
     lastSentAt: timestamp("lastSentAt"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   },
-  table => [
-    index("dailyReports_user_enabled_idx").on(table.userId, table.isEnabled),
-    uniqueIndex("dailyReports_task_uid_uq").on(table.scheduleCronTaskUid),
-  ],
+  table => [index("dailyReports_user_enabled_idx").on(table.userId, table.isEnabled)],
+);
+
+export const dailyReportExecutions = mysqlTable(
+  "dailyReportExecutions",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    reportId: int("reportId").notNull().references(() => dailyReports.id, { onDelete: "cascade" }),
+    deliveryKey: varchar("deliveryKey", { length: 32 }).notNull(),
+    status: mysqlEnum("status", ["sent", "failed"]).notNull(),
+    failureReason: varchar("failureReason", { length: 240 }),
+    attemptedAt: timestamp("attemptedAt").defaultNow().notNull(),
+    sentAt: timestamp("sentAt"),
+  },
+  table => [uniqueIndex("dailyReportExecutions_report_delivery_uq").on(table.reportId, table.deliveryKey), index("dailyReportExecutions_report_idx").on(table.reportId, table.attemptedAt)],
 );
 
 export type User = typeof users.$inferSelect;

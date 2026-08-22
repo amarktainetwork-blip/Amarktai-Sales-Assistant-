@@ -1,65 +1,60 @@
-# Amarktai Network Sales Assistant
+# Amarktai Sales Assistant
 
-**Amarktai Network Sales Assistant** is a governed sales-operations application for the Course2Career pilot. It provides a public product site, secure workspace access, a real data-backed operations dashboard, workflow preparation, review queues, call-context capture, approved knowledge, connection readiness, and a retained operational audit trail.
+**Amarktai Sales Assistant** is a self-hosted, review-first sales-operations application for organisations that need a governed workspace for sales context, approved knowledge, workflow preparation, proposals, callbacks, call notes, CRM readiness, and evidence-backed audit history.
 
-> The application is deliberately review-first. It can prepare work and retain decisions, but it must not claim that an external CRM, message, calendar, or email action occurred unless the configured integration reports the result and records the evidence.
+> **External-action rule:** The assistant may prepare, route, and explain work. It may not send an email, update a CRM, schedule a calendar item, or take another external action until a human approves the proposal and a current, server-verified route permits that exact action.
 
-## Read the current implementation status first
+The generic product contains no default customer identity, phone number, templates, sales stages, or customer-specific workflow. The retained Course2Career material is an **inactive optional preset** for future deliberate migration/configuration; it is not imported by the generic runtime.
 
-The source brief describes a much larger system than is currently live. Before installing or evaluating this project, read the code-grounded status report at [`docs/implementation-status.md`](docs/implementation-status.md).
+## What this release contains
 
-It separates features into three states:
+| Area | Included now | Requires authorised production configuration |
+| --- | --- | --- |
+| Public experience and protected workspace | Local repository-owned visuals, local email/password sign-in, signed sessions, SMTP six-digit second factor, dashboard, company setup, audit/evidence, and review queues. | Real SMTP transport and a deliberate end-to-end login test. |
+| Security and discovery | Same-origin state-change enforcement, sensitive-route rate limits, scoped secure cookies, bounded request bodies, Caddy headers, and SSRF-safe public website discovery. | Public TLS/header verification on the Webdock domain. |
+| CRM | Capability registry, server-only Genie verification state, fresh-expiry routing, proposal guards, Browserless/Playwright bridge, saved-script/evidence framework. | Authorised Genie login, selector/script calibration, read-only proof, then deliberate approved write tests. |
+| Intelligence | Company-aware GenX adapter with model/connection verification. | GenX endpoint, key, selected model, and live minimal-request verification. |
+| Scheduler | MariaDB-backed daily schedules, authenticated internal worker, atomic claim/retry behavior, SMTP reports, and manual operator command. | Real SMTP delivery and schedule execution on the VPS. |
+| Outlook | Configuration/readiness surface and sender validation. | Outlook mail/calendar execution is not implemented or claimed live. |
 
-| State | Meaning |
-| --- | --- |
-| **Built** | The interface and backend contract exist in this repository. |
-| **Configuration-dependent** | The code exists but needs real production credentials, a permitted account, or calibration on Webdock before it can operate. |
-| **Not yet built** | The source brief calls for it, but this repository does not yet provide the complete data model, service, or end-to-end interface. |
+Read [`docs/implementation-status.md`](docs/implementation-status.md) for the built, locally verified, configuration-required, and intentionally unimplemented boundaries. Read [`docs/PRODUCTION_ACCEPTANCE.md`](docs/PRODUCTION_ACCEPTANCE.md) for the full release checklist.
 
-## What is available now
-
-| Product area | Current capability |
-| --- | --- |
-| Operations dashboard | A data-backed dashboard for review load, callbacks, overdue and due-today work, live/reviewable calls, workflow activity, connection profiles, and audit activity. |
-| Controlled workflows | First contact, Cyber final close, and Cyber post-consultation paths create reviewable action proposals with idempotency and historical-record safeguards. |
-| Review and evidence | Proposed actions can be approved or skipped. Approved CRM actions have a guarded execution route with normalized evidence status and proposal-specific audit history. |
-| Secure access | A self-hosted administrator sign-in path, signed sessions, role field, and email second-factor implementation are included. Live email verification needs SMTP configuration. |
-| Call desk | Manual live-call sessions, factual notes/transcript capture, coaching request contract, and post-call summary contract are included. Audio and telephony ingestion are not yet included. |
-| Knowledge | Approved notes and URLs can be added and used to ground the knowledge guidance route. Advanced document ingestion and vector search are not yet included. |
-| Connections | Browser-automation, Microsoft Graph, email, and intelligence-provider readiness/configuration surfaces exist. A real connection must be configured and tested before it is treated as active. |
-
-## Local development
+## Local development and release gates
 
 ```bash
-pnpm install
+pnpm install --frozen-lockfile
 pnpm dev
-```
 
-Run the required checks before committing:
-
-```bash
+# Before committing
 pnpm test
 pnpm check
 pnpm build
 ```
 
-## Webdock VPS package
-
-The self-hosted deployment package is located in [`deploy/webdock`](deploy/webdock). It includes the application container, reverse proxy configuration, MariaDB, Redis, Browserless Chromium, a CRM health worker, an environment template, and operational scripts.
+The release includes the following explicit operator commands:
 
 ```bash
-git clone https://github.com/amarktainetwork-blip/Amarktai-Sales-Assistant.git /opt/amarktai-network
-cd /opt/amarktai-network
+pnpm reports:run          # Run due daily reports once; uses current database/SMTP settings.
+pnpm verify:integrations  # Probe SMTP and configured GenX/Genie/Outlook state.
+pnpm smtp:test-2fa        # Send one explicit test 2FA-format email to LOCAL_ADMIN_EMAIL.
+```
+
+## Webdock installation
+
+Production runs with Caddy, the application, an internal worker, MariaDB 11.7, and internal Browserless Chromium. It has no production dependency on Manus/Forge storage, preview domains, hosted scheduling, owner notifications, runtime plugins, analytics placeholders, or a Genie API key.
+
+```bash
+sudo mkdir -p /opt/amarktai-sales-assistant
+sudo chown "$USER":"$USER" /opt/amarktai-sales-assistant
+git clone https://github.com/amarktainetwork-blip/Amarktai-Network-V2.git /opt/amarktai-sales-assistant
+cd /opt/amarktai-sales-assistant
 cp deploy/webdock/configuration.template .env
+chmod 600 .env
 nano .env
-chmod +x deploy/webdock/install.sh scripts/run-genie-health-check.sh
+chmod +x deploy/webdock/*.sh scripts/*.sh
 ./deploy/webdock/install.sh
 ```
 
-The Webdock package has been packaged and syntax-checked in development, but it still needs an end-to-end run on the target VPS. The installation guide at [`docs/webdock-vps-install.md`](docs/webdock-vps-install.md) documents the required production configuration, CRM selector calibration, and health-check steps.
+The installer validates required local-auth and SMTP settings, placeholder values, tests/builds, Compose configuration, database health, migrations, app liveness, and the reusable verifier. Secrets belong only in the VPS `.env`; never commit or share them.
 
-## Integration safety
-
-The browser CRM bridge intentionally has **no CRM API key**. It requires an authorised login, reviewed saved scripts, calibrated selectors, and evidence capture. Microsoft Graph mail/calendar capability is likewise configuration-dependent until the tenant, application permissions, sender, and test mailbox have been verified.
-
-The customer-facing application is branded as **Amarktai Network**. Provider names and credentials are technical deployment details, not product branding.
+For DNS, TLS, local administrator recovery, SMTP test messaging, Genie calibration, backups, upgrades, rollback, and truthful external-integration commissioning, follow [`docs/webdock-vps-install.md`](docs/webdock-vps-install.md).

@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { parse as parseCookieHeader } from "cookie";
 import { AGENT_CATALOG, WORKFLOW_KEYS } from "./agentCatalog";
 import {
   createCallSession,
@@ -18,8 +17,9 @@ import {
   getOperationsDashboard,
   getOperationalAnalytics,
   getApprovedActionProposal,
+  getCrmConnectionForVerification,
   recordActionExecution,
-  attachDailyReportTask,
+  recordCrmConnectionVerification,
   consumeValidTwoFactorChallenge,
   listDailyReports,
   listActionProposals,
@@ -46,6 +46,7 @@ import {
 } from "./db";
 import { getGenxReadiness, runGenxAgent } from "./genx";
 import { getGenieReadiness } from "./genie/config";
+import { runGenieHealthCheck } from "./genie/bridge";
 import { executeApprovedGenieProposal } from "./genie/executeProposal";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
@@ -54,13 +55,12 @@ import { protectedProcedure, publicProcedure, router, secondFactorProcedure } fr
 import { buildWorkflowPlan } from "./workflowRules";
 import { compareVerificationCode, createVerificationChallenge, issueTwoFactorSession, TWO_FACTOR_COOKIE, TWO_FACTOR_MAX_AGE_MS } from "./twoFactor";
 import { getSmtpReadiness, sendSecondFactorCode } from "./smtp";
-import { createHeartbeatJob } from "./_core/heartbeat";
 import { authenticateLocalPassword, isDevelopmentPreviewMode, isLocalAuthMode, issueLocalSession, LOCAL_SESSION_MAX_AGE_MS } from "./localAuth";
 import { routeSalesCommand } from "./supervisor";
 import { prepareLiveCoachingTip, preparePostCallSummary } from "./liveCoach";
 import { getOutlookReadiness, validateEmailPreview } from "./outlook";
 import { discoverPublicWebsite } from "./companyDiscovery";
-import { routeWorkflowActions } from "./crmRouter";
+import { routeCrmCapability, routeWorkflowActions } from "./crmRouter";
 import { prepareHumanEmailDraft } from "./communicationQuality";
 import { buildManagerAssuranceFindings } from "./managerAssurance";
 import { refreshGenieWorkboard } from "./crmWorkboard";
@@ -195,6 +195,9 @@ export const appRouter = router({
       if (!proposal) throw new Error("Only an approved action proposal may be executed, and it must be owned by your workspace.");
       const crmRoute = proposal.payload.crmRoute as { routable?: boolean; provider?: string } | undefined;
       if (!crmRoute?.routable || crmRoute.provider !== "genie") throw new Error("This proposal has no ready CRM workspace bridge route. Register and verify a compatible CRM capability before requesting execution.");
+      const requiredCapability = (crmRoute as { requiredCapability?: "contacts" | "tasks" | "opportunities" | "notes" | "activities" | "email" | "calendar" }).requiredCapability;
+      const currentConnections = (await getCompanySetup(ctx.user.id)).connections;
+      if (!requiredCapability || !routeCrmCapability({ connections: currentConnections, requiredCapability, preferredProvider: "genie" }).routable) throw new Error("The CRM route is no longer currently verified for this approved action. Re-verify the connection before execution.");
       const result = await executeApprovedGenieProposal(proposal);
       await recordActionExecution({ userId: ctx.user.id, proposalId: proposal.id, success: result.success, result });
       if (!result.success) throw new Error(`Genie script failed: ${result.detail}`);
@@ -287,9 +290,29 @@ export const appRouter = router({
     }),
     registerCrm: secondFactorProcedure.input(z.object({
       provider: z.enum(["genie", "hubspot", "salesforce", "pipedrive", "custom_browser"]), displayName: z.string().trim().min(2).max(180),
-      status: z.enum(["draft", "needs_credentials", "ready", "paused", "error"]), capabilities: z.array(z.enum(["contacts", "tasks", "opportunities", "notes", "activities", "email", "calendar"])).min(1).max(7),
+      status: z.enum(["draft", "needs_credentials"]), capabilities: z.array(z.enum(["contacts", "tasks", "opportunities", "notes", "activities", "email", "calendar"])).min(1).max(7),
       connectionMode: z.enum(["api", "browser_automation", "custom"]), configurationHint: z.string().trim().max(2_000).optional().nullable(),
     })).mutation(({ ctx, input }) => saveCrmConnection({ userId: ctx.user.id, ...input })),
+    verifyCrm: secondFactorProcedure.input(z.object({ connectionId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const connection = await getCrmConnectionForVerification(ctx.user.id, input.connectionId);
+      if (!connection) throw new Error("CRM connection is unavailable for this workspace.");
+      if (connection.provider !== "genie" || connection.connectionMode !== "browser_automation") {
+        await recordCrmConnectionVerification({ userId: ctx.user.id, connectionId: connection.id, status: "connector_not_implemented", verificationFailure: "This provider has no executable connector in this release.", verificationEvidence: { checkedAt: new Date().toISOString(), executable: false } });
+        return { ready: false, state: "connector_not_implemented" as const };
+      }
+      if (!getGenieReadiness().configured) {
+        await recordCrmConnectionVerification({ userId: ctx.user.id, connectionId: connection.id, status: "needs_credentials", verificationFailure: "Genie configuration is incomplete.", verificationEvidence: { checkedAt: new Date().toISOString(), executable: false } });
+        return { ready: false, state: "needs_credentials" as const };
+      }
+      const result = await runGenieHealthCheck();
+      if (!result.success) {
+        await recordCrmConnectionVerification({ userId: ctx.user.id, connectionId: connection.id, status: "error", verificationFailure: "Authorised login or dashboard selector verification failed.", verificationEvidence: { checkedAt: result.completedAt, executable: false } });
+        return { ready: false, state: "error" as const };
+      }
+      const verifiedAt = new Date();
+      await recordCrmConnectionVerification({ userId: ctx.user.id, connectionId: connection.id, status: "ready", verifiedAt, verificationExpiresAt: new Date(verifiedAt.getTime() + 12 * 60 * 60_000), verificationEvidence: { checkedAt: result.completedAt, executable: true, capabilitiesVerified: connection.capabilities, method: "authorised_browser_login_and_dashboard_selector" } });
+      return { ready: true, state: "ready" as const, verifiedAt };
+    }),
     savePlaybook: secondFactorProcedure.input(z.object({
       title: z.string().trim().min(2).max(220), trigger: z.string().trim().min(2).max(160), description: z.string().trim().min(5).max(8_000),
       agentKey: z.string().trim().min(2).max(80), requiredCapabilities: z.array(z.string().trim().min(2).max(80)).min(1).max(12), status: z.enum(["draft", "active", "paused"]),
@@ -324,11 +347,8 @@ export const appRouter = router({
     list: secondFactorProcedure.query(({ ctx }) => listDailyReports(ctx.user.id)),
     configureDaily: secondFactorProcedure.input(z.object({ recipientEmail: z.string().email(), cronExpression: z.string().regex(/^\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+$/, "Use a six-field UTC cron expression.") })).mutation(async ({ ctx, input }) => {
       if (!getSmtpReadiness().ready) throw new Error("Configure SMTP deployment secrets before scheduling a daily report.");
-      const sessionToken = parseCookieHeader(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
       const reportId = await createDailyReport({ userId: ctx.user.id, ...input });
-      const job = await createHeartbeatJob({ name: `amarktai-daily-report-${reportId}`, cron: input.cronExpression, path: "/api/scheduled/daily-report", payload: { reportId }, description: `Daily Amarktai workspace report for ${input.recipientEmail}` }, sessionToken);
-      await attachDailyReportTask({ reportId, userId: ctx.user.id, taskUid: job.taskUid });
-      return { reportId, nextExecutionAt: job.nextExecutionAt ?? null };
+      return { reportId, scheduler: "self_hosted_worker" as const };
     }),
   }),
 });

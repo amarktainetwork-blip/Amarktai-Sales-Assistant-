@@ -5,15 +5,17 @@ export type CrmProvider = "genie" | "hubspot" | "salesforce" | "pipedrive" | "cu
 export type CrmConnectionRoute = {
   provider: CrmProvider;
   displayName: string;
-  status: "draft" | "needs_credentials" | "ready" | "paused" | "error";
+  status: "draft" | "needs_credentials" | "verifying" | "ready" | "paused" | "error" | "connector_not_implemented";
   capabilities: CrmCapability[];
   connectionMode: "api" | "browser_automation" | "custom";
+  verificationExpiresAt?: Date | null;
 };
 
 export function routeCrmCapability(input: { connections: CrmConnectionRoute[]; requiredCapability: CrmCapability; preferredProvider?: CrmProvider }) {
-  const eligible = input.connections.filter(connection => connection.status === "ready" && connection.capabilities.includes(input.requiredCapability));
+  const now = Date.now();
+  const eligible = input.connections.filter(connection => connection.provider === "genie" && connection.status === "ready" && Boolean(connection.verificationExpiresAt && connection.verificationExpiresAt.getTime() > now) && connection.capabilities.includes(input.requiredCapability));
   const chosen = input.preferredProvider ? eligible.find(connection => connection.provider === input.preferredProvider) : eligible[0];
-  if (!chosen) return { routable: false as const, reason: `No ready CRM connection has the '${input.requiredCapability}' capability.` };
+  if (!chosen) return { routable: false as const, reason: `No currently verified executable CRM connection has the '${input.requiredCapability}' capability.` };
   return { routable: true as const, provider: chosen.provider, displayName: chosen.displayName, connectionMode: chosen.connectionMode };
 }
 

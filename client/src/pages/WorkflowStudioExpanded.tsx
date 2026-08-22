@@ -21,11 +21,9 @@ const workflows = [
   { key: "information_request", title: "Information request", text: "Prepare an approved information response and follow-up task without inventing course claims." },
   { key: "manager_escalation", title: "Manager escalation", text: "Retain factual risk context and create a reviewable manager task without silently altering CRM records." },
   { key: "post_call_outcome", title: "Post-call outcome capture", text: "Translate a verified call outcome into protected CRM-note, status, task, and approved-template proposals." },
-  { key: "cyber_post_consultation", title: "Cyber post-consultation", text: "Prepare the controlled no-answer, voicemail, or answered follow-up sequence." },
-  { key: "cyber_final_close", title: "Cyber Security final close", text: "Prepare protected closure actions for the current open record only." },
 ] as const;
 type WorkflowKey = (typeof workflows)[number]["key"];
-const outcomeKeys: WorkflowKey[] = ["call_2_followup", "call_3_followup", "call_4_final_attempt", "cyber_post_consultation"];
+const outcomeKeys: WorkflowKey[] = ["call_2_followup", "call_3_followup", "call_4_final_attempt"];
 
 export default function WorkflowStudioExpanded() {
   const [, navigate] = useLocation();

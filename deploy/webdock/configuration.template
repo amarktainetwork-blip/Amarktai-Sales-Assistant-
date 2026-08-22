@@ -1,49 +1,45 @@
-# Copy this file to /opt/c2c-assistant/.env during the Webdock VPS installation.
-# It is intentionally not an application .env file inside the managed project.
+# Copy to /opt/amarktai-sales-assistant/.env during installation. Never commit this file after adding real values.
+# REQUIRED TO BOOT: domain, database credentials, application secrets, scheduler token, and browser token.
+DOMAIN=assistant.your-domain.co.za
+DB_PASSWORD=replace_with_a_unique_32_character_database_password
+DB_ROOT_PASSWORD=replace_with_a_different_32_character_root_password
+BROWSERLESS_TOKEN=replace_with_a_unique_32_character_browser_token
+INTERNAL_SCHEDULER_TOKEN=replace_with_a_unique_32_character_scheduler_token
+JWT_SECRET=replace_with_a_unique_32_character_jwt_secret
+SECRET_KEY=replace_with_a_different_32_character_application_secret
 
-# Public network and persistent data
-DOMAIN=assistant.example.com
-DB_PASSWORD=replace_with_a_long_random_database_password
-DB_ROOT_PASSWORD=replace_with_a_different_long_random_root_password
-REDIS_URL=redis://redis:6379
-BROWSERLESS_TOKEN=replace_with_a_long_random_browser_token
-
-# Application security
-JWT_SECRET=replace_with_a_long_random_jwt_secret
-SECRET_KEY=replace_with_a_long_random_application_secret
-VITE_APP_TITLE=Amarktai Sales Assistant
+# REQUIRED TO OPEN THE PROTECTED WORKSPACE: local administrator and SMTP verification.
 AUTH_MODE=local
 VITE_AUTH_MODE=local
 LOCAL_ADMIN_NAME=Amarktai Administrator
-LOCAL_ADMIN_EMAIL=admin@example.com
-LOCAL_ADMIN_PASSWORD=replace_with_a_long_unique_admin_password
+LOCAL_ADMIN_EMAIL=admin@your-domain.co.za
+LOCAL_ADMIN_PASSWORD=replace_with_a_unique_16_character_or_longer_admin_password
+SMTP_HOST=smtp.your-provider.co.za
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=replace_with_smtp_username
+SMTP_PASSWORD=replace_with_smtp_password
+SMTP_FROM=Amarktai Sales Assistant <admin@your-domain.co.za>
 
-# GenX model router — use values supplied by your GenX account
-GENX_CHAT_COMPLETIONS_URL=https://your-genx-endpoint.example/v1/chat/completions
-GENX_API_KEY=replace_with_your_genx_api_key
-GENX_DEFAULT_MODEL=replace_with_an_approved_genx_model_id
+# OPTIONAL INTELLIGENCE INTEGRATION: validated at install; shown Not Ready until all values work.
+GENX_CHAT_COMPLETIONS_URL=https://query.genx.sh/v1/chat/completions
+GENX_API_KEY=
+GENX_DEFAULT_MODEL=
 
-# Genie CRM browser automation — no Genie API key is used
-GENIE_LOGIN_URL=https://your-genie-login-url.example
-GENIE_USERNAME=replace_with_genie_username
-GENIE_PASSWORD=replace_with_genie_password
+# OPTIONAL CRM BROWSER BRIDGE: no Genie API key is used. It remains Not Ready until authorised login and selector verification succeed.
+GENIE_LOGIN_URL=
+GENIE_USERNAME=
+GENIE_PASSWORD=
 GENIE_USERNAME_SELECTOR=input[name="username"]
 GENIE_PASSWORD_SELECTOR=input[type="password"]
 GENIE_LOGIN_SUBMIT_SELECTOR=button[type="submit"]
 GENIE_DASHBOARD_SELECTOR=body
 
-# Microsoft Outlook / Microsoft Graph
-OUTLOOK_TENANT_ID=replace_with_tenant_id
-OUTLOOK_CLIENT_ID=replace_with_client_id
-OUTLOOK_CLIENT_SECRET=replace_with_client_secret
+# OPTIONAL OUTLOOK CONNECTION: connection-ready only until mail/calendar execution is deliberately implemented and tested.
+OUTLOOK_TENANT_ID=
+OUTLOOK_CLIENT_ID=
+OUTLOOK_CLIENT_SECRET=
+OUTLOOK_SENDER_EMAIL=
 
-# Optional SMTP: required for email second-factor codes and daily reports
-SMTP_HOST=smtp.example.com
-SMTP_PORT=587
-SMTP_SECURE=false
-SMTP_USER=replace_with_smtp_username
-SMTP_PASSWORD=replace_with_smtp_password
-SMTP_FROM=Amarktai Sales Assistant <no-reply@example.com>
-
-# Optional external channels: configure only when their delivery bridge is implemented
-SMS_PROVIDER_KEY=
+# Optional product display setting.
+VITE_APP_TITLE=Amarktai Sales Assistant

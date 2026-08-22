@@ -12,7 +12,8 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
-      - app
+      app:
+        condition: service_healthy
 
   app:
     build:
@@ -25,7 +26,6 @@ services:
       NODE_ENV: production
       PORT: 3000
       DATABASE_URL: mysql://amarktai:${DB_PASSWORD}@db:3306/amarktai_sales_assistant
-      REDIS_URL: redis://redis:6379
       BROWSERLESS_WS_ENDPOINT: ws://browser:3000?token=${BROWSERLESS_TOKEN}
       GENIE_SCRIPTS_CONFIG_PATH: /app/config/genie-scripts.json
       GENIE_ARTIFACT_DIR: /app/data/genie-artifacts
@@ -35,10 +35,14 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      redis:
-        condition: service_started
       browser:
         condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3000/healthz >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
 
   worker:
     build:
@@ -48,21 +52,19 @@ services:
     env_file:
       - ../../.env
     environment:
+      NODE_ENV: production
       DATABASE_URL: mysql://amarktai:${DB_PASSWORD}@db:3306/amarktai_sales_assistant
-      REDIS_URL: redis://redis:6379
       BROWSERLESS_WS_ENDPOINT: ws://browser:3000?token=${BROWSERLESS_TOKEN}
       GENIE_SCRIPTS_CONFIG_PATH: /app/config/genie-scripts.json
       GENIE_ARTIFACT_DIR: /app/data/genie-artifacts
-    command:
-      [
-        "sh",
-        "-c",
-        "echo '0 */12 * * * /app/scripts/run-genie-health-check.sh >> /proc/1/fd/1 2>&1' | crontab - && cron -f",
-      ]
+      APP_INTERNAL_URL: http://app:3000
+    command: ["/app/scripts/worker-run.sh"]
     volumes:
       - ./config:/app/config:ro
       - ./files/screenshots:/app/data/genie-artifacts
     depends_on:
+      app:
+        condition: service_healthy
       db:
         condition: service_healthy
       browser:
@@ -84,15 +86,8 @@ services:
       timeout: 5s
       retries: 20
 
-  redis:
-    image: redis:7.4-alpine
-    restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
-    volumes:
-      - redis_data:/data
-
   browser:
-    image: ghcr.io/browserless/chromium:latest
+    image: ghcr.io/browserless/chromium:v2.42.0
     restart: unless-stopped
     environment:
       TOKEN: ${BROWSERLESS_TOKEN}
@@ -106,4 +101,3 @@ volumes:
   caddy_data:
   caddy_config:
   db_data:
-  redis_data:

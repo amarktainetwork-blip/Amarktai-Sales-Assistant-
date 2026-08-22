@@ -1,4 +1,4 @@
-export const WORKFLOW_KEYS = ["first_contact", "call_2_followup", "call_3_followup", "call_4_final_attempt", "callback_requested", "booking_confirmation", "reschedule_requested", "no_show_followup", "information_request", "manager_escalation", "post_call_outcome", "cyber_final_close", "cyber_post_consultation"] as const;
+export const WORKFLOW_KEYS = ["first_contact", "call_2_followup", "call_3_followup", "call_4_final_attempt", "callback_requested", "booking_confirmation", "reschedule_requested", "no_show_followup", "information_request", "manager_escalation", "post_call_outcome"] as const;
 export type WorkflowKey = (typeof WORKFLOW_KEYS)[number];
 
 export type AgentDefinition = {
@@ -45,8 +45,8 @@ export const AGENT_CATALOG: AgentDefinition[] = [
   },
   {
     key: "knowledge_guide",
-    name: "Programme Knowledge Agent",
-    purpose: "Answers sales questions from approved Course2Career programme and policy sources.",
+    name: "Company Knowledge Agent",
+    purpose: "Answers sales questions from approved company product, service, policy, and process sources.",
     category: "knowledge",
     requiresModel: true,
     modelRole: "GenX retrieval and explanation model",
@@ -109,8 +109,8 @@ export const AGENT_CATALOG: AgentDefinition[] = [
   },
   {
     key: "recommendation_agent",
-    name: "Course Recommendation Agent",
-    purpose: "Maps verified prospect needs to approved programme information, while escalating eligibility and suitability decisions for human review.",
+    name: "Product & Service Recommendation Agent",
+    purpose: "Maps verified prospect needs to approved product or service information, while escalating eligibility and suitability decisions for human review.",
     category: "knowledge",
     requiresModel: true,
     modelRole: "GenX grounded recommendation model",
@@ -145,6 +145,4 @@ export const WORKFLOW_LABELS: Record<WorkflowKey, string> = {
   information_request: "Information request",
   manager_escalation: "Manager escalation",
   post_call_outcome: "Post-call outcome capture",
-  cyber_final_close: "Cyber Security final close",
-  cyber_post_consultation: "Cyber post-consultation follow-up",
 };
