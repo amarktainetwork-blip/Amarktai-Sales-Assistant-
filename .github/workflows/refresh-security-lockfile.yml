@@ -11,7 +11,7 @@ permissions:
 jobs:
   refresh:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
         with:
@@ -23,34 +23,41 @@ jobs:
         with:
           node-version: 22.15.0
           cache: pnpm
-      - name: Refresh lockfile and validate dependencies
+      - name: Refresh lockfile and persist all diagnostics
         shell: bash
         run: |
-          set -euo pipefail
+          set +e
           git config user.name "amarktai-release-bot"
           git config user.email "release-bot@users.noreply.github.com"
-          pnpm install --lockfile-only
-          pnpm install --frozen-lockfile
-          set +e
-          pnpm audit --prod --audit-level=high > /tmp/audit.log 2>&1
-          audit_code=$?
-          set -e
-          pnpm test
-          pnpm check
-          pnpm build
-          {
-            echo '# Production dependency refresh'
-            echo
-            echo "- axios requested: $(node -p \"require('./package.json').dependencies.axios\")"
-            echo "- nanoid requested: $(node -p \"require('./package.json').dependencies.nanoid\")"
-            echo "- production audit exit: $audit_code"
-            echo
-            echo '```text'
-            tail -n 120 /tmp/audit.log
-            echo '```'
-          } > docs/dependency-refresh-20260822.md
+          REPORT=docs/dependency-refresh-20260822.md
+          : > "$REPORT"
+          printf '# Production dependency refresh\n\n' >> "$REPORT"
+          failures=0
+          gate() {
+            name="$1"; shift
+            log="/tmp/dependency-$name.log"
+            "$@" >"$log" 2>&1
+            code=$?
+            printf -- '- %s exit: %s\n' "$name" "$code" >> "$REPORT"
+            if [ "$code" -ne 0 ]; then
+              failures=$((failures+1))
+              printf '\n```text\n' >> "$REPORT"
+              tail -n 120 "$log" >> "$REPORT"
+              printf '\n```\n' >> "$REPORT"
+            fi
+            return 0
+          }
+          gate lockfile pnpm install --lockfile-only
+          gate frozen_install pnpm install --frozen-lockfile
+          gate production_audit pnpm audit --prod --audit-level=high
+          gate unit_tests pnpm test
+          gate typescript pnpm check
+          gate production_build pnpm build
+          printf '\n- axios requested: `%s`\n' "$(node -p "require('./package.json').dependencies.axios")" >> "$REPORT"
+          printf -- '- nanoid requested: `%s`\n' "$(node -p "require('./package.json').dependencies.nanoid")" >> "$REPORT"
+          printf '\nFAILURES=%s\n' "$failures" >> "$REPORT"
           git rm .github/workflows/refresh-security-lockfile.yml
-          git add package.json pnpm-lock.yaml docs/dependency-refresh-20260822.md
+          git add package.json pnpm-lock.yaml "$REPORT"
           git commit -m "security: refresh patched production dependency lockfile"
           git push origin HEAD:release/go-live-20260822
-          [ "$audit_code" -eq 0 ]
+          exit "$([ "$failures" -eq 0 ] && printf 0 || printf 1)"
