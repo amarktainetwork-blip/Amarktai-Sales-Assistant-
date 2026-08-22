@@ -136,7 +136,7 @@ export async function getOperationsDashboard(userId: number, organisationId: num
     db.select().from(callbackTasks).where(and(eq(callbackTasks.userId, userId), eq(callbackTasks.organisationId, organisationId))).orderBy(desc(callbackTasks.createdAt)).limit(80),
     db.select().from(callSessions).where(and(eq(callSessions.userId, userId), eq(callSessions.organisationId, organisationId))).orderBy(desc(callSessions.updatedAt)).limit(40),
     db.select().from(workflowRuns).where(and(eq(workflowRuns.userId, userId), eq(workflowRuns.organisationId, organisationId))).orderBy(desc(workflowRuns.updatedAt)).limit(40),
-    db.select().from(integrationProfiles).where(eq(integrationProfiles.userId, userId)).orderBy(desc(integrationProfiles.updatedAt)).limit(20),
+    db.select().from(integrationProfiles).where(and(eq(integrationProfiles.userId, userId), eq(integrationProfiles.organisationId, organisationId))).orderBy(desc(integrationProfiles.updatedAt)).limit(20),
     db.select().from(auditEntries).where(and(eq(auditEntries.userId, userId), eq(auditEntries.organisationId, organisationId))).orderBy(desc(auditEntries.createdAt)).limit(30),
   ]);
   const openCallbacks = callbacks.filter(task => task.state === "open");
@@ -322,13 +322,14 @@ export async function listProposalAuditEntries(userId: number, organisationId: n
   return db.select().from(auditEntries).where(and(eq(auditEntries.userId, userId), eq(auditEntries.organisationId, organisationId), eq(auditEntries.entityType, "action_proposal"), eq(auditEntries.entityId, String(proposalId)))).orderBy(desc(auditEntries.createdAt)).limit(12);
 }
 
-export async function listIntegrationProfiles(userId: number) {
+export async function listIntegrationProfiles(userId: number, organisationId: number) {
   const db = await requireDb();
-  return db.select().from(integrationProfiles).where(eq(integrationProfiles.userId, userId)).orderBy(desc(integrationProfiles.updatedAt));
+  return db.select().from(integrationProfiles).where(and(eq(integrationProfiles.userId, userId), eq(integrationProfiles.organisationId, organisationId))).orderBy(desc(integrationProfiles.updatedAt));
 }
 
 export async function createIntegrationProfile(input: {
   userId: number;
+  organisationId: number;
   provider: "genie" | "outlook" | "genx";
   displayName: string;
   scopeSummary?: string;
@@ -338,11 +339,12 @@ export async function createIntegrationProfile(input: {
   const id = Number(result[0].insertId);
   await recordAudit({
     userId: input.userId,
+    organisationId: input.organisationId,
     eventType: "integration_profile_created",
     entityType: "integration_profile",
     entityId: String(id),
     summary: `${input.provider} profile saved without secrets.`,
-    metadata: { provider: input.provider },
+    metadata: { provider: input.provider, organisationId: input.organisationId },
   });
   return id;
 }

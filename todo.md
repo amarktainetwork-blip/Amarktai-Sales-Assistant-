@@ -131,3 +131,4 @@
 - [x] Add an organisation-scoped, audited CRM pipeline-stage mapping model and management control backed by verified connected systems.
 - [x] Add reviewed nullable organisation references and active-organisation guards for callback work, live-call records, knowledge, audit entries, and daily reports.
 - [x] Enforce signed active-organisation reads and writes for company setup, website discovery, confirmed knowledge, and review-first playbooks.
+- [x] Enforce signed active-organisation reads and writes for legacy integration profiles and dashboard integration visibility.

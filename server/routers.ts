@@ -315,18 +315,23 @@ export const appRouter = router({
     revokeSessions: secondFactorProcedure.input(z.object({ organisationId: z.number().int().positive() })).mutation(async ({ ctx, input }) => { requireActiveOrganisationContext(ctx, input.organisationId); await revokeSidecarSessions({ userId: ctx.user.id, organisationId: input.organisationId }); return { success: true }; }),
   }),
   integrations: router({
-    list: secondFactorProcedure.query(async ({ ctx }) => ({
-      profiles: (await listIntegrationProfiles(ctx.user.id)).map(presentConnectionProfile),
+    list: secondFactorProcedure.query(async ({ ctx }) => {
+      if (!ctx.activeOrganisation) throw new Error("Choose an organisation before accessing integrations.");
+      return {
+      profiles: (await listIntegrationProfiles(ctx.user.id, ctx.activeOrganisation.organisationId)).map(presentConnectionProfile),
       genx: getGenxReadiness(),
       outlook: getOutlookReadiness(),
       genie: {
         ...getGenieReadiness(),
         requiredVariables: ["GENIE_LOGIN_URL", "GENIE_USERNAME", "GENIE_PASSWORD", "BROWSERLESS_WS_ENDPOINT"],
       },
-    })),
+    }; }),
     createProfile: secondFactorProcedure
       .input(z.object({ provider: z.enum(["genie", "outlook", "genx"]), displayName: z.string().trim().min(2).max(140), scopeSummary: z.string().trim().max(800).optional() }))
-      .mutation(({ ctx, input }) => createIntegrationProfile({ userId: ctx.user.id, ...input })),
+      .mutation(({ ctx, input }) => {
+        if (!ctx.activeOrganisation) throw new Error("Choose an organisation before creating an integration profile.");
+        return createIntegrationProfile({ userId: ctx.user.id, organisationId: ctx.activeOrganisation.organisationId, ...input });
+      }),
   }),
   knowledge: router({
     list: secondFactorProcedure.query(({ ctx }) => {
