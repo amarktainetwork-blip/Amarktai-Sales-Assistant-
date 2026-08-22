@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { requireLocalHttpContext } from "./httpAuth";
 import { listConnectedSystemsForUser } from "./connectedSystems";
 import { routeConnectedSystemActions } from "./crmRouter";
-import { createWorkflowRun, getApprovedActionProposal, listActionProposals, recordActionExecution, reviewActionProposal } from "./db";
+import { claimApprovedActionProposal, createWorkflowRun, listActionProposals, recordActionExecution, reviewActionProposal } from "./db";
 import { executeApprovedCrmAction } from "./crm/executeApprovedAction";
 import { getAutomationPolicy, mayAutoExecute, normalizeAutomationPolicy, saveAutomationPolicy } from "./automationPolicy";
 
@@ -90,14 +90,15 @@ export function registerSalesAutomationRoutes(app: Express) {
           const route = (proposal.payload as Record<string, unknown>).crmRoute as { routable?: boolean } | undefined;
           if (!route?.routable || !mayAutoExecute(policy, proposal.actionType)) continue;
           await reviewActionProposal(userId, proposal.id, "approved");
-          const approved = await getApprovedActionProposal(userId, proposal.id);
+          const correlationId = randomUUID();
+          const approved = await claimApprovedActionProposal({ userId, proposalId: proposal.id, correlationId });
           if (!approved) continue;
           try {
-            const result = await executeApprovedCrmAction({ organisationId: membership.organisationId, proposal: approved, correlationId: randomUUID() });
+            const result = await executeApprovedCrmAction({ organisationId: membership.organisationId, proposal: approved, correlationId });
             await recordActionExecution({ userId, proposalId: approved.id, success: result.success, result });
             executions.push({ proposalId: approved.id, success: result.success, provider: result.provider, detail: result.detail });
           } catch (error) {
-            const result = { success: false, detail: error instanceof Error ? error.message : String(error), correlationId: randomUUID() };
+            const result = { success: false, detail: error instanceof Error ? error.message : String(error), correlationId };
             await recordActionExecution({ userId, proposalId: approved.id, success: false, result });
             executions.push({ proposalId: approved.id, ...result });
           }

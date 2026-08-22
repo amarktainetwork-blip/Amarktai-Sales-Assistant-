@@ -14,7 +14,7 @@ import {
   getCompanySetup,
   getOperationsDashboard,
   getOperationalAnalytics,
-  getApprovedActionProposal,
+  claimApprovedActionProposal,
   recordActionExecution,
   attachDailyReportTask,
   consumeValidTwoFactorChallenge,
@@ -170,11 +170,12 @@ export const appRouter = router({
       }),
     proposalAudit: secondFactorProcedure.input(z.object({ proposalId: z.number().int().positive() })).query(({ ctx, input }) => listProposalAuditEntries(ctx.user.id, input.proposalId)),
     executeApprovedCrmAction: secondFactorProcedure.input(z.object({ proposalId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
-      const proposal = await getApprovedActionProposal(ctx.user.id, input.proposalId);
+      const correlationId = randomUUID();
+      const proposal = await claimApprovedActionProposal({ userId: ctx.user.id, proposalId: input.proposalId, correlationId });
       if (!proposal) throw new Error("Only an approved action proposal may be executed, and it must be owned by your workspace.");
       const organisation = ctx.activeOrganisation;
       if (!organisation) throw new Error("Choose an organisation before executing CRM actions.");
-      const result = await executeApprovedCrmAction({ organisationId: organisation.organisationId, proposal, correlationId: randomUUID() });
+      const result = await executeApprovedCrmAction({ organisationId: organisation.organisationId, proposal, correlationId });
       await recordActionExecution({ userId: ctx.user.id, proposalId: proposal.id, success: result.success, result });
       if (!result.success) throw new Error(`CRM action failed: ${result.detail}`);
       return result;

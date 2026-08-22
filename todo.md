@@ -121,3 +121,4 @@
 - [x] Replace security-sensitive process-local rate limiting with a shared Valkey-backed limiter and bounded local fallback policy.
 - [x] Make AI-credit debits transactional, organisation-serialized, and idempotent by reference so concurrent requests cannot overspend the ledger.
 - [x] Implement real Microsoft Graph mail/calendar request boundaries with review-first validation and truthful unverified provider readiness.
+- [x] Atomically claim approved action proposals before manual or policy-driven CRM execution so duplicate concurrent actions are rejected.

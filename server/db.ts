@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gt, isNull } from "drizzle-orm";
+import { and, count, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import bcrypt from "bcryptjs";
 import {
@@ -247,6 +247,17 @@ export async function getApprovedActionProposal(userId: number, proposalId: numb
     .from(actionProposals)
     .where(and(eq(actionProposals.id, proposalId), eq(actionProposals.userId, userId), eq(actionProposals.state, "approved")))
     .limit(1))[0];
+}
+
+export async function claimApprovedActionProposal(input: { userId: number; proposalId: number; correlationId: string }) {
+  const db = await requireDb();
+  const claim = { status: "executing", correlationId: input.correlationId, claimedAt: new Date().toISOString() };
+  const result = await db.update(actionProposals).set({ executionResult: claim }).where(and(eq(actionProposals.id, input.proposalId), eq(actionProposals.userId, input.userId), eq(actionProposals.state, "approved"), isNull(actionProposals.executionResult)));
+  if (result[0].affectedRows !== 1) return undefined;
+  const proposal = (await db.select().from(actionProposals).where(and(eq(actionProposals.id, input.proposalId), eq(actionProposals.userId, input.userId), eq(actionProposals.state, "approved"))).limit(1))[0];
+  if (!proposal) throw new Error("Claimed action proposal could not be loaded.");
+  await recordAudit({ userId: input.userId, eventType: "crm_action_claimed", entityType: "action_proposal", entityId: String(input.proposalId), summary: "Approved CRM action claimed for one-time execution.", metadata: claim });
+  return proposal;
 }
 
 export async function recordActionExecution(input: { userId: number; proposalId: number; success: boolean; result: Record<string, unknown> }) {
