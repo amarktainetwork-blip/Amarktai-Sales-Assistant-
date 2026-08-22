@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { parse as parseCookieHeader } from "cookie";
+import { TRPCError } from "@trpc/server";
 import { AGENT_CATALOG, WORKFLOW_KEYS } from "./agentCatalog";
 import {
   createCallSession,
@@ -14,6 +15,7 @@ import {
   getCompanySetup,
   getOperationsDashboard,
   getOperationalAnalytics,
+  getUserByEmail,
   claimApprovedActionProposal,
   recordActionExecution,
   attachDailyReportTask,
@@ -40,9 +42,9 @@ import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router, secondFactorProcedure } from "./_core/trpc";
 import { buildWorkflowPlan } from "./workflowRules";
 import { compareVerificationCode, createVerificationChallenge, issueTwoFactorSession, TWO_FACTOR_COOKIE, TWO_FACTOR_MAX_AGE_MS } from "./twoFactor";
-import { getSmtpReadiness, sendSecondFactorCode } from "./smtp";
+import { getSmtpReadiness, sendEmail, sendSecondFactorCode } from "./smtp";
 import { createHeartbeatJob } from "./_core/heartbeat";
-import { authenticateLocalPassword, isLocalAuthMode, issueLocalSession, LOCAL_SESSION_MAX_AGE_MS } from "./localAuth";
+import { authenticateLocalPassword, isLocalAuthMode, issueLocalSession, issuePasswordResetToken, LOCAL_SESSION_MAX_AGE_MS, registerLocalUser, resetLocalPassword } from "./localAuth";
 import { routeSalesCommand } from "./supervisor";
 import { prepareLiveCoachingTip, preparePostCallSummary } from "./liveCoach";
 import { getOutlookReadiness, validateEmailPreview } from "./outlook";
@@ -57,8 +59,9 @@ import { syncConnectedSystem } from "./crm/sync";
 import { getTodayWork } from "./today";
 import { issueSidecarSession, revokeSidecarSessions } from "./sidecar/sidecarSessions";
 import { getTeamIntelligence } from "./teamIntelligence";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { requireActiveOrganisationContext } from "./activeOrganisationGuard";
+import { checkRateLimit } from "./security/http";
 
 const workflowInput = z.object({
   workflowKey: z.enum(WORKFLOW_KEYS),
@@ -82,6 +85,21 @@ function presentConnectionProfile<T extends { provider: keyof typeof publicConne
   };
 }
 
+function publicAuthClientKey(req: { ip?: string; socket?: { remoteAddress?: string } }) {
+  return req.ip || req.socket?.remoteAddress || "unknown";
+}
+
+async function enforcePublicAuthRateLimit(input: { req: { ip?: string; socket?: { remoteAddress?: string } }; operation: "register" | "recovery" | "reset"; email?: string }) {
+  const policy = input.operation === "register" ? { limit: 5, windowMs: 60 * 60_000 } : { limit: 3, windowMs: 15 * 60_000 };
+  const keys = [`amarktai:public-auth:${input.operation}:ip:${publicAuthClientKey(input.req)}`];
+  if (input.email) keys.push(`amarktai:public-auth:${input.operation}:identity:${createHash("sha256").update(input.email.trim().toLowerCase()).digest("hex")}`);
+  for (const key of keys) {
+    const result = await checkRateLimit({ key, ...policy, securitySensitive: true });
+    if (!result) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Authentication protection is temporarily unavailable. Try again shortly." });
+    if (!result.allowed) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Too many authentication requests. Try again shortly." });
+  }
+}
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -97,6 +115,36 @@ export const appRouter = router({
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: LOCAL_SESSION_MAX_AGE_MS });
       return { success: true, activeOrganisation, organisationSelectionRequired: activeOrganisation === null };
+    }),
+    register: publicProcedure.input(z.object({ name: z.string().trim().min(2).max(160), email: z.string().email().max(320), password: z.string().min(12).max(160) })).mutation(async ({ ctx, input }) => {
+      await enforcePublicAuthRateLimit({ req: ctx.req, operation: "register", email: input.email });
+      const { user, activeOrganisation } = await registerLocalUser(input);
+      const token = await issueLocalSession(user, activeOrganisation.organisationId);
+      ctx.res.cookie(COOKIE_NAME, token, { ...getSessionCookieOptions(ctx.req), maxAge: LOCAL_SESSION_MAX_AGE_MS });
+      return { success: true, activeOrganisation, twoFactorRequired: true as const };
+    }),
+    requestPasswordReset: publicProcedure.input(z.object({ email: z.string().email().max(320) })).mutation(async ({ ctx, input }) => {
+      await enforcePublicAuthRateLimit({ req: ctx.req, operation: "recovery", email: input.email });
+      if (!isLocalAuthMode()) return { success: true } as const;
+      const account = await getUserByEmail(input.email.trim().toLowerCase());
+      if (account?.email && account.passwordHash && getSmtpReadiness().ready) {
+        try {
+          const token = await issuePasswordResetToken(account);
+          const url = new URL("/auth", process.env.APP_PUBLIC_URL || "http://localhost:3000");
+          url.searchParams.set("reset", token);
+          await sendEmail({ to: account.email, subject: "Reset your Amarktai workspace password", text: `Use this one-time link within 30 minutes to reset your password: ${url.toString()}`, html: `<main style="font-family:Arial,sans-serif;max-width:560px;margin:auto"><h1>Reset your workspace password</h1><p>Use the link below within 30 minutes. If you did not request this, you can ignore this email.</p><p><a href="${url.toString()}">Reset password</a></p></main>` });
+        } catch (error) { console.warn(JSON.stringify({ event: "password_reset_delivery_failed", detail: error instanceof Error ? error.message.slice(0, 160) : String(error).slice(0, 160) })); }
+      }
+      return { success: true } as const;
+    }),
+    resetPassword: publicProcedure.input(z.object({ token: z.string().min(20).max(4000), password: z.string().min(12).max(160) })).mutation(async ({ ctx, input }) => {
+      await enforcePublicAuthRateLimit({ req: ctx.req, operation: "reset" });
+      const user = await resetLocalPassword(input.token, input.password);
+      const memberships = await listOrganisationMemberships(user.id);
+      const activeOrganisation = memberships.length === 0 ? await ensureDefaultOrganisation(user.id) : memberships.length === 1 ? memberships[0] : null;
+      const session = await issueLocalSession(user, activeOrganisation?.organisationId ?? null);
+      ctx.res.cookie(COOKIE_NAME, session, { ...getSessionCookieOptions(ctx.req), maxAge: LOCAL_SESSION_MAX_AGE_MS });
+      return { success: true, activeOrganisation, organisationSelectionRequired: activeOrganisation === null, twoFactorRequired: true as const };
     }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
@@ -176,7 +224,7 @@ export const appRouter = router({
       const organisation = ctx.activeOrganisation;
       if (!organisation) throw new Error("Choose an organisation before executing CRM actions.");
       const result = await executeApprovedCrmAction({ organisationId: organisation.organisationId, proposal, correlationId });
-      await recordActionExecution({ userId: ctx.user.id, proposalId: proposal.id, success: result.success, result });
+      await recordActionExecution({ userId: ctx.user.id, proposalId: proposal.id, correlationId, success: result.success, result });
       if (!result.success) throw new Error(`CRM action failed: ${result.detail}`);
       return result;
     }),

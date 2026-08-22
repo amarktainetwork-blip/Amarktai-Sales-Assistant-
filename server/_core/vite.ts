@@ -12,7 +12,8 @@ const productionPublicDir = path.join(rootDir, "dist", "public");
 /** Serve the local Vite SPA during development; no managed middleware is registered. */
 export async function setupVite(app: Express, server: Server) {
   const vite = await createViteServer({
-    root: rootDir,
+    configFile: path.join(rootDir, "vite.config.ts"),
+    root: clientDir,
     appType: "spa",
     server: { middlewareMode: true, hmr: { server } },
   });

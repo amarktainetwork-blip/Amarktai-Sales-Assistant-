@@ -58,28 +58,27 @@ async function sharedRateLimit(key: string, limit: number, windowMs: number) {
   return { allowed: result[0] <= limit, retryAfterSeconds: Math.max(1, Math.ceil(result[1] / 1000)) };
 }
 
+export async function checkRateLimit(input: { key: string; limit: number; windowMs: number; securitySensitive?: boolean }) {
+  try {
+    const shared = await sharedRateLimit(input.key, input.limit, input.windowMs);
+    return shared ?? (process.env.NODE_ENV === "production" && input.securitySensitive !== false ? null : incrementLocalWindow(input.key, input.limit, input.windowMs));
+  } catch (error) {
+    console.warn(JSON.stringify({ event: "rate_limit_error", detail: error instanceof Error ? error.message.slice(0, 160) : String(error).slice(0, 160) }));
+    if (process.env.NODE_ENV === "production" && input.securitySensitive !== false) return null;
+    return incrementLocalWindow(input.key, input.limit, input.windowMs);
+  }
+}
+
 export function rateLimit(options: { limit: number; windowMs: number; securitySensitive?: boolean }) {
   return async (req: Request, res: Response, next: NextFunction) => {
     const key = `amarktai:rate-limit:${req.baseUrl || req.path}:${clientKey(req)}`;
-    try {
-      const shared = await sharedRateLimit(key, options.limit, options.windowMs);
-      const result = shared ?? (process.env.NODE_ENV === "production" && options.securitySensitive !== false ? null : incrementLocalWindow(key, options.limit, options.windowMs));
-      if (!result) return res.status(503).json({ error: "Security rate limiter is temporarily unavailable. Try again shortly." });
-      if (!result.allowed) {
-        res.setHeader("Retry-After", result.retryAfterSeconds);
-        return res.status(429).json({ error: "Too many requests. Try again shortly." });
-      }
-      return next();
-    } catch (error) {
-      console.warn(JSON.stringify({ event: "rate_limit_error", detail: error instanceof Error ? error.message.slice(0, 160) : String(error).slice(0, 160) }));
-      if (process.env.NODE_ENV === "production" && options.securitySensitive !== false) return res.status(503).json({ error: "Security rate limiter is temporarily unavailable. Try again shortly." });
-      const fallback = incrementLocalWindow(key, options.limit, options.windowMs);
-      if (!fallback.allowed) {
-        res.setHeader("Retry-After", fallback.retryAfterSeconds);
-        return res.status(429).json({ error: "Too many requests. Try again shortly." });
-      }
-      return next();
+    const result = await checkRateLimit({ key, ...options });
+    if (!result) return res.status(503).json({ error: "Security rate limiter is temporarily unavailable. Try again shortly." });
+    if (!result.allowed) {
+      res.setHeader("Retry-After", result.retryAfterSeconds);
+      return res.status(429).json({ error: "Too many requests. Try again shortly." });
     }
+    return next();
   };
 }
 

@@ -95,11 +95,11 @@ export function registerSalesAutomationRoutes(app: Express) {
           if (!approved) continue;
           try {
             const result = await executeApprovedCrmAction({ organisationId: membership.organisationId, proposal: approved, correlationId });
-            await recordActionExecution({ userId, proposalId: approved.id, success: result.success, result });
+            await recordActionExecution({ userId, proposalId: approved.id, correlationId, success: result.success, result });
             executions.push({ proposalId: approved.id, success: result.success, provider: result.provider, detail: result.detail });
           } catch (error) {
             const result = { success: false, detail: error instanceof Error ? error.message : String(error), correlationId };
-            await recordActionExecution({ userId, proposalId: approved.id, success: false, result });
+            await recordActionExecution({ userId, proposalId: approved.id, correlationId, success: false, result });
             executions.push({ proposalId: approved.id, ...result });
           }
         }

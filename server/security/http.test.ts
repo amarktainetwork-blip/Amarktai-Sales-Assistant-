@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { rateLimit } from "./http";
+import { checkRateLimit, rateLimit } from "./http";
 
 function response() {
   const res = { setHeader: vi.fn(), status: vi.fn(), json: vi.fn() } as any;
@@ -38,5 +38,14 @@ describe("shared security rate limiting", () => {
     await middleware(request, second, next);
     expect(next).toHaveBeenCalledTimes(1);
     expect(second.status).toHaveBeenCalledWith(429);
+  });
+
+  it("makes the reusable public-auth limit fail closed in production and bounded in test mode", async () => {
+    delete process.env.REDIS_URL;
+    process.env.NODE_ENV = "production";
+    await expect(checkRateLimit({ key: "test:public-auth:production", limit: 1, windowMs: 60_000, securitySensitive: true })).resolves.toBeNull();
+    process.env.NODE_ENV = "test";
+    await expect(checkRateLimit({ key: "test:public-auth:development", limit: 1, windowMs: 60_000, securitySensitive: true })).resolves.toMatchObject({ allowed: true });
+    await expect(checkRateLimit({ key: "test:public-auth:development", limit: 1, windowMs: 60_000, securitySensitive: true })).resolves.toMatchObject({ allowed: false });
   });
 });

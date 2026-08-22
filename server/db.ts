@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gt, isNull, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import bcrypt from "bcryptjs";
 import {
@@ -249,10 +249,30 @@ export async function getApprovedActionProposal(userId: number, proposalId: numb
     .limit(1))[0];
 }
 
+export const ACTION_EXECUTION_CLAIM_TTL_MS = 15 * 60 * 1000;
+
+export function isActionExecutionClaimStale(claimedAt: Date | null | undefined, now = Date.now()) {
+  return Boolean(claimedAt && now - claimedAt.getTime() >= ACTION_EXECUTION_CLAIM_TTL_MS);
+}
+
+export function isCurrentActionExecutionClaim(activeCorrelationId: string | null | undefined, correlationId: string) {
+  return Boolean(activeCorrelationId && activeCorrelationId === correlationId);
+}
+
 export async function claimApprovedActionProposal(input: { userId: number; proposalId: number; correlationId: string }) {
   const db = await requireDb();
-  const claim = { status: "executing", correlationId: input.correlationId, claimedAt: new Date().toISOString() };
-  const result = await db.update(actionProposals).set({ executionResult: claim }).where(and(eq(actionProposals.id, input.proposalId), eq(actionProposals.userId, input.userId), eq(actionProposals.state, "approved"), isNull(actionProposals.executionResult)));
+  const claimedAt = new Date();
+  const claim = { status: "executing", correlationId: input.correlationId, claimedAt: claimedAt.toISOString() };
+  const staleBefore = new Date(claimedAt.getTime() - ACTION_EXECUTION_CLAIM_TTL_MS);
+  const result = await db.update(actionProposals).set({ executionClaimId: input.correlationId, executionClaimedAt: claimedAt, executionResult: claim }).where(and(
+    eq(actionProposals.id, input.proposalId),
+    eq(actionProposals.userId, input.userId),
+    eq(actionProposals.state, "approved"),
+    or(
+      and(isNull(actionProposals.executionClaimId), isNull(actionProposals.executionResult)),
+      and(isNotNull(actionProposals.executionClaimId), isNotNull(actionProposals.executionClaimedAt), lt(actionProposals.executionClaimedAt, staleBefore)),
+    ),
+  ));
   if (result[0].affectedRows !== 1) return undefined;
   const proposal = (await db.select().from(actionProposals).where(and(eq(actionProposals.id, input.proposalId), eq(actionProposals.userId, input.userId), eq(actionProposals.state, "approved"))).limit(1))[0];
   if (!proposal) throw new Error("Claimed action proposal could not be loaded.");
@@ -260,22 +280,24 @@ export async function claimApprovedActionProposal(input: { userId: number; propo
   return proposal;
 }
 
-export async function recordActionExecution(input: { userId: number; proposalId: number; success: boolean; result: Record<string, unknown> }) {
+export async function recordActionExecution(input: { userId: number; proposalId: number; correlationId: string; success: boolean; result: Record<string, unknown> }) {
   const db = await requireDb();
   const state: "executed" | "blocked" = input.success ? "executed" : "blocked";
   const screenshotPath = typeof input.result.screenshotPath === "string" ? input.result.screenshotPath : null;
   const normalizedResult = {
     ...input.result,
+    correlationId: input.correlationId,
     evidence: {
       screenshotPath,
       availability: screenshotPath ? "captured" : "unavailable",
       reason: screenshotPath ? null : "The saved script completed without a configured screenshot step. Add a screenshot step during Genie script calibration to retain visual evidence.",
     },
   };
-  await db
+  const finalized = await db
     .update(actionProposals)
-    .set({ state, executedAt: new Date(), executionResult: normalizedResult })
-    .where(and(eq(actionProposals.id, input.proposalId), eq(actionProposals.userId, input.userId), eq(actionProposals.state, "approved")));
+    .set({ state, executedAt: new Date(), executionClaimId: null, executionClaimedAt: null, executionResult: normalizedResult })
+    .where(and(eq(actionProposals.id, input.proposalId), eq(actionProposals.userId, input.userId), eq(actionProposals.state, "approved"), eq(actionProposals.executionClaimId, input.correlationId)));
+  if (finalized[0].affectedRows !== 1) throw new Error("Action execution claim is no longer current; the result was not recorded.");
   await recordAudit({
     userId: input.userId,
     eventType: input.success ? "crm_action_executed" : "crm_action_blocked",

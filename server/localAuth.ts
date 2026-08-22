@@ -1,7 +1,11 @@
 import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
+import { randomUUID } from "node:crypto";
+import { eq } from "drizzle-orm";
 import type { User } from "../drizzle/schema";
-import { createLocalAdminIfMissing, getUserByEmail, getUserById } from "./db";
+import { users } from "../drizzle/schema";
+import { createLocalAdminIfMissing, getDb, getUserByEmail, getUserById } from "./db";
+import { ensureDefaultOrganisation } from "./organisation";
 
 const LOCAL_AUTH_MODE = "local";
 const LOCAL_SESSION_TTL_SECONDS = 12 * 60 * 60;
@@ -23,6 +27,38 @@ export async function authenticateLocalPassword(email: string, password: string)
   if (!user?.passwordHash) return undefined;
   const valid = await bcrypt.compare(password, user.passwordHash);
   return valid ? user : undefined;
+}
+
+export async function registerLocalUser(input: { name: string; email: string; password: string }) {
+  if (!isLocalAuthMode()) throw new Error("Local registration is only available on the self-hosted Webdock deployment.");
+  const email = input.email.trim().toLowerCase();
+  const existing = await getUserByEmail(email);
+  if (existing) throw new Error("An account with that email already exists. Sign in or use password recovery.");
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const passwordHash = await bcrypt.hash(input.password, 12);
+  await db.insert(users).values({ openId: `local:${randomUUID()}`, name: input.name.trim().slice(0, 160), email, loginMethod: "local", passwordHash, role: "user", lastSignedIn: new Date() });
+  const user = await getUserByEmail(email);
+  if (!user) throw new Error("Account could not be created.");
+  const activeOrganisation = await ensureDefaultOrganisation(user.id);
+  return { user, activeOrganisation };
+}
+
+export async function issuePasswordResetToken(user: User) {
+  if (!user.passwordHash) throw new Error("Password recovery is not available for this account.");
+  return new SignJWT({ purpose: "password_reset", passwordHash: user.passwordHash }).setProtectedHeader({ alg: "HS256" }).setSubject(String(user.id)).setIssuedAt().setExpirationTime("30m").sign(localAuthKey());
+}
+
+export async function resetLocalPassword(token: string, password: string) {
+  if (!isLocalAuthMode()) throw new Error("Local password recovery is only available on the self-hosted Webdock deployment.");
+  const { payload } = await jwtVerify(token, localAuthKey());
+  if (payload.purpose !== "password_reset" || !payload.sub || typeof payload.passwordHash !== "string") throw new Error("This password recovery link is invalid or expired.");
+  const user = await getUserById(Number(payload.sub));
+  if (!user?.passwordHash || user.passwordHash !== payload.passwordHash) throw new Error("This password recovery link is invalid or has already been used.");
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  await db.update(users).set({ passwordHash: await bcrypt.hash(password, 12), lastSignedIn: new Date() }).where(eq(users.id, user.id));
+  return user;
 }
 
 export type LocalSessionIdentity = { user: User; activeOrganisationId: number | null };

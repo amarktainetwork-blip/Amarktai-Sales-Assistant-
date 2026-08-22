@@ -123,3 +123,7 @@
 - [x] Implement real Microsoft Graph mail/calendar request boundaries with review-first validation and truthful unverified provider readiness.
 - [x] Atomically claim approved action proposals before manual or policy-driven CRM execution so duplicate concurrent actions are rejected.
 - [x] Run GitHub CI on release branches and verify the exact trailing-hyphen release branch checks before final handoff.
+- [x] Add generic public local registration and password recovery/reset flows that preserve local 2FA and do not expose account existence.
+- [x] Restore standalone development SPA route fallback so direct authentication URLs resolve through the client Vite root.
+- [x] Add bounded stale-claim recovery and correlation-bound finalization for approved external actions so a process crash cannot permanently trap a review-approved proposal.
+- [x] Apply dedicated shared, fail-closed rate limits to public registration and password-recovery/reset operations.
