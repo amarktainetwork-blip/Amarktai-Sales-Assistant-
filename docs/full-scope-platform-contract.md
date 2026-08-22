@@ -1,19 +1,19 @@
 # Full-Scope Platform Contract
 
-This contract converts the complete-sales-assistant requirement into provider-neutral, organisation-scoped software work. It does not substitute configuration flags for functionality: every feature must persist state, enforce active-organisation access, expose an operator/manager surface, emit auditable events, and remain review-first where an external action can occur.
+This contract converts the complete-sales-assistant requirement into provider-neutral, organisation-scoped software work. It does not substitute configuration flags for functionality: each capability has durable state, active-organisation boundaries, tested decision controls, audit/operational evidence, and a review-first boundary where an external action can occur. The delivered records and service contracts are activated only after a Webdock operator supplies and verifies the corresponding real account or provider configuration.
 
 | Capability | Persisted contract | Controlled behavior |
 |---|---|---|
-| Compliance | Organisation policy, retention rule, deletion/export request | No record is removed automatically without a policy and auditable execution. |
-| Playbooks | Playbook versions, draft/published/retired status, template/approval metadata | Managers publish or roll back; agents use only published versions. |
-| Connector operations | Sync job, webhook receipt, retry/dead-letter state | Intake is signature-verified per configured connector; unprocessed failures are visible. |
-| Prioritisation | Evidence-led lead score, reason list, source timestamps | Ranking is explainable and never inferred from protected attributes. |
-| Inbound communications | Inbound message, classification, reviewable reply draft | No inbound reply is sent without the existing approval boundary. |
-| Coaching QA | Configurable rubric, sampled scorecard, coaching record | Manager calibration is durable and attributable. |
-| Forecasting | Territory, quota period, scenario, factual pipeline inputs | Forecasts expose assumptions, pipeline stage mapping, and confidence. |
-| Enterprise identity | SAML/SCIM connection configuration and provisioning event ledger | No identity provider is active until it has been verified during installation. |
-| Entitlements | Plan/entitlement ledger and provider-event ledger | Billing remains disabled until a provider is configured; feature enforcement is durable. |
-| TTS | Organisation voice policy and generated-audio review record | Audio requires policy/consent and cannot bypass review-first communications. |
-| Observability | Structured operational event and alert-rule/alert-delivery ledger | Worker, backup, connector, and deployment failures become actionable signals. |
+| Compliance | Policy, data-subject request, operational event, dry-run retention worker | No record is removed by a timer; destructive execution requires an auditable approved request. |
+| Playbooks | Immutable playbook revisions, approval-template records, execution-history records | Managers create drafts and publish/republish revisions; runtime resolution fails closed unless exactly one revision is published. |
+| Connector operations | Verified sync job, webhook receipt, retry/dead-letter state, alert delivery record | HMAC intake is denied unless the connector is ready, capability-verified, and secret-configured. |
+| Prioritisation | Evidence-led score, band, and reason list | Ranking is explainable and only uses supplied CRM, callback, task, opportunity, and call evidence. |
+| Inbound communications | Inbound message, classification, reviewable reply draft | Opt-out signals are classified distinctly and a reply cannot send unless separately approved. |
+| Coaching QA | Configurable rubric, scorecard, calibration/coaching record | Weighted scoring is transparent, attributable, and manager-governed. |
+| Forecasting | Territory, quota period, snapshot, factual opportunity inputs | Forecasts retain configured probability evidence and methodology instead of presenting opaque predictions. |
+| Enterprise identity | SAML/SCIM connection configuration and durable lifecycle state | No identity provider is activated until it is verified during Webdock installation. |
+| Entitlements | Self-hosted entitlement record and provider-neutral enforcement guard | No billing provider is assumed; inactive, disabled, or exhausted capabilities fail closed. |
+| TTS | Voice profile, consent state, and approved generation request | Generation requires recorded consent, an active voice policy, and a reviewed request; no unreviewed delivery path exists. |
+| Observability | Structured event, rule, delivery, and worker-run ledgers | Events create only severity/category-matched pending deliveries; destination delivery remains a separately verified operator action. |
 
 All records are scoped to the signed active organisation and use additive migrations. Provider-specific credentials remain encrypted installation-time configuration and are never committed.
