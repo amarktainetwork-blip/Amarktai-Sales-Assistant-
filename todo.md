@@ -137,3 +137,4 @@
 - [x] Add an active-organisation-scoped favorites and tags model for reviewable sales pitches, leads, and action proposals, with secure UI controls and isolation tests.
 - [x] Improve loading states and actionable API error feedback across the export, review, workspace, and operational management interactions.
 - [x] Perform a fresh feature, source, deployment, and checklist audit; document exact code gaps, deployment-time commissioning steps, and go-live blockers without overstating live proof.
+- [x] Document CSV/PDF exports, workspace favorites/tags, migration 0013, and the new API-feedback behavior in the Webdock operator guide.

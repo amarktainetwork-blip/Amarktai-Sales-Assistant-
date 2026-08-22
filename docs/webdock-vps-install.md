@@ -20,8 +20,9 @@ For a production deployment that self-hosts Chromium, size the host from measure
 ```bash
 sudo mkdir -p /opt/amarktai-sales
 sudo chown "$USER":"$USER" /opt/amarktai-sales
-git clone https://github.com/sharetheherbman-debug/Amarktai-Sales.git /opt/amarktai-sales
+git clone https://github.com/amarktainetwork-blip/Amarktai-Sales-Assistant-.git /opt/amarktai-sales
 cd /opt/amarktai-sales
+git checkout release/go-live-20260822
 cp deploy/webdock/configuration.template .env
 chmod 600 .env
 nano .env
@@ -66,10 +67,14 @@ Point `DOMAIN` to the VPS before expecting public TLS to become healthy. Caddy o
 After deployment:
 
 ```bash
-curl -fsS "https://$DOMAIN/api/health"
+curl -fsS "https://$DOMAIN/healthz"
 ```
 
-Expected application response includes `"status":"ok"` and `"service":"amarktai-sales"`.
+Expected application response includes a healthy service result. Check database-aware readiness separately with:
+
+```bash
+curl -fsS "https://$DOMAIN/readyz"
+```
 
 ## 5. HubSpot
 
@@ -167,7 +172,18 @@ AMARKTAI_DEPLOY_PROFILE=full sh deploy/webdock/smoke-test.sh
 
 This checks the app health endpoint, MariaDB, Valkey and—on the full profile—the internal Chromium DevTools endpoint.
 
-## 11. What deployment proves
+## 11. Exports, favorites, and API feedback
+
+After a signed local session has passed the second-factor gate, the Operations Dashboard provides two protected downloads:
+
+- **Report CSV** exports the active organisation's bounded action-proposal, callback, call-session, and audit summary.
+- **Call logs PDF** exports factual call-session text for the active organisation. It does not export data from another selected workspace.
+
+The Review Command Centre also provides private **saved favorites** and comma-separated tags for reviewable proposals. Migration `0013_magenta_fabian_cortez.sql` creates the `workspaceSavedItems` table and is applied by the standard installer/update migration step. Do not create the table manually or seed it with customer records.
+
+The dashboard and review queue now distinguish loading, empty, and API-failure states. A retryable error normally means the local session, second-factor status, selected organisation, or network connection should be checked before retrying.
+
+## 12. What deployment proves
 
 A healthy deployment proves that the application, database, cache, migrations, reverse proxy and selected browser runtime start correctly. It does **not** by itself prove:
 
