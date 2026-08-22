@@ -31,8 +31,8 @@ function deliveryKey(reportId: number, now: Date) { return `${reportId}:${now.to
 
 async function deliver(report: typeof dailyReports.$inferSelect) {
   const memberships = await listOrganisationMemberships(report.userId);
-  if (memberships.length !== 1) throw new Error("REPORT_ORGANISATION_REQUIRED");
-  const membership = memberships[0];
+  const membership = report.organisationId ? memberships.find(item => item.organisationId === report.organisationId) : memberships.length === 1 ? memberships[0] : undefined;
+  if (!membership) throw new Error("REPORT_ORGANISATION_REQUIRED");
   if (!canManageOrganisation(membership.role)) {
     const dashboard = await getAssistantDashboard(report.userId, membership.organisationId);
     await sendDailyWorkspaceReport({ to: report.recipientEmail, ...dashboard.metrics });

@@ -73,14 +73,14 @@ export function registerLiveCallRoutes(app: Express) {
       const user = await requireAuthorisedUser(req);
       const callSessionId = Number(req.body?.callSessionId);
       if (!Number.isInteger(callSessionId) || callSessionId <= 0) return res.status(400).json({ error: "A valid live call session is required." });
-      await requireLiveCallOwner(user.id, callSessionId);
+      await requireLiveCallOwner(user.id, user.membership.organisationId, callSessionId);
       const mimeType = String(req.body?.mimeType || "").split(";")[0].toLowerCase();
       if (!ALLOWED_MIME.has(mimeType)) return res.status(400).json({ error: "Unsupported audio type." });
       const durationMs = Math.max(0, Math.min(15_000, Number(req.body?.durationMs || 0)));
       const bytes = decodedAudio(req.body?.audioBase64);
       const text = await transcribe(bytes, mimeType, typeof req.body?.language === "string" ? req.body.language : undefined);
       const signals = detectLiveSignals(text);
-      if (text) await appendLiveTranscript({ userId: user.id, callSessionId, transcriptChunk: text });
+      if (text) await appendLiveTranscript({ userId: user.id, organisationId: user.membership.organisationId, callSessionId, transcriptChunk: text });
       console.log(JSON.stringify({ event: "live_call_transcription_chunk", userId: user.id, callSessionId, bytes: bytes.length, durationMs, textChars: text.length, signalTypes: signals.map(signal => signal.type) }));
       return res.json({ text, signals, durationMs, rawAudioRetained: false });
     } catch (error) { return sendLiveCallError(res, error); }
@@ -93,7 +93,7 @@ export function registerLiveCallRoutes(app: Express) {
       const leadLabel = typeof req.body?.leadLabel === "string" ? req.body.leadLabel.trim().slice(0, 160) : "";
       const transcriptChunk = typeof req.body?.transcriptChunk === "string" ? req.body.transcriptChunk.trim().slice(-8_000) : "";
       if (!Number.isInteger(callSessionId) || callSessionId <= 0 || !leadLabel || transcriptChunk.length < 2) return res.status(400).json({ error: "A live call, contact and transcript segment are required." });
-      await requireLiveCallOwner(user.id, callSessionId);
+      await requireLiveCallOwner(user.id, user.membership.organisationId, callSessionId);
       const result = await prepareLiveCoachingTip({ leadLabel, transcript: transcriptChunk, billing: { userId: user.id, organisationId: user.membership.organisationId, feature: "live_call_coaching", reference: `call:${callSessionId}` } });
       console.log(JSON.stringify({ event: "live_call_coaching", userId: user.id, callSessionId, transcriptChars: transcriptChunk.length, genxUsage: result.usage ?? {}, creditsCharged: result.creditsCharged ?? 0 }));
       return res.json({ content: result.content, usage: result.usage ?? {}, creditsCharged: result.creditsCharged ?? 0 });
@@ -107,9 +107,9 @@ export function registerLiveCallRoutes(app: Express) {
       const leadLabel = typeof req.body?.leadLabel === "string" ? req.body.leadLabel.trim().slice(0, 160) : "";
       const transcript = typeof req.body?.transcript === "string" ? req.body.transcript.trim().slice(-40_000) : "";
       if (!Number.isInteger(callSessionId) || callSessionId <= 0 || !leadLabel || transcript.length < 4) return res.status(400).json({ error: "A live call, contact and transcript are required." });
-      await requireLiveCallOwner(user.id, callSessionId);
+      await requireLiveCallOwner(user.id, user.membership.organisationId, callSessionId);
       const summary = await preparePostCallSummary({ leadLabel, transcript, billing: { userId: user.id, organisationId: user.membership.organisationId, feature: "post_call_summary", reference: `call:${callSessionId}` } });
-      await completeLiveCallExact({ userId: user.id, callSessionId, transcript, summary: summary.content });
+      await completeLiveCallExact({ userId: user.id, organisationId: user.membership.organisationId, callSessionId, transcript, summary: summary.content });
       const systems = await listConnectedSystemsForUser(user.id, user.membership.organisationId);
       const proposed = routeConnectedSystemActions([{ actionType: "append_contact_note", title: "Add factual post-call summary to CRM", targetLabel: leadLabel, idempotencyKey: `live-call:${callSessionId}:summary-note`, payload: { reviewRequired: true, content: summary.content, sourceCallSessionId: callSessionId, contactExternalId: typeof req.body?.contactExternalId === "string" ? req.body.contactExternalId.trim().slice(0, 180) : undefined } }], systems);
       const workflowRunId = await createWorkflowRun({ userId: user.id, organisationId: user.membership.organisationId, workflowKey: "post_call_closeout", leadLabel, payload: { sourceCallSessionId: callSessionId }, verificationSummary: "Review the factual call summary before writing it to the verified CRM. Add any promised task/message as a separate governed action if it was explicitly agreed during the conversation.", actions: proposed });

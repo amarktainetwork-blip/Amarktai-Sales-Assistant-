@@ -179,6 +179,7 @@ export const callbackTasks = mysqlTable(
   {
     id: int("id").autoincrement().primaryKey(),
     userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    organisationId: int("organisationId").references(() => organisations.id, { onDelete: "set null" }),
     leadLabel: varchar("leadLabel", { length: 160 }).notNull(),
     title: varchar("title", { length: 160 }).notNull(),
     priority: mysqlEnum("priority", ["low", "normal", "high"]).default("normal").notNull(),
@@ -191,6 +192,7 @@ export const callbackTasks = mysqlTable(
   },
   table => [
     index("callbackTasks_user_state_due_idx").on(table.userId, table.state, table.dueAt),
+    index("callbackTasks_organisation_state_due_idx").on(table.organisationId, table.state, table.dueAt),
     uniqueIndex("callbackTasks_idempotency_uq").on(table.userId, table.idempotencyKey),
   ],
 );
@@ -204,6 +206,7 @@ export const callSessions = mysqlTable(
   {
     id: int("id").autoincrement().primaryKey(),
     userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    organisationId: int("organisationId").references(() => organisations.id, { onDelete: "set null" }),
     leadLabel: varchar("leadLabel", { length: 160 }).notNull(),
     status: mysqlEnum("status", ["in_progress", "ready_for_review", "completed"])
       .default("ready_for_review")
@@ -215,7 +218,7 @@ export const callSessions = mysqlTable(
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   },
-  table => [index("callSessions_user_created_idx").on(table.userId, table.createdAt)],
+  table => [index("callSessions_user_created_idx").on(table.userId, table.createdAt), index("callSessions_organisation_created_idx").on(table.organisationId, table.createdAt)],
 );
 
 /** Course, programme, and policy content used by the knowledge agent. */
@@ -224,6 +227,7 @@ export const knowledgeSources = mysqlTable(
   {
     id: int("id").autoincrement().primaryKey(),
     userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    organisationId: int("organisationId").references(() => organisations.id, { onDelete: "set null" }),
     title: varchar("title", { length: 220 }).notNull(),
     sourceType: mysqlEnum("sourceType", ["note", "url", "document"]).default("note").notNull(),
     sourceUrl: varchar("sourceUrl", { length: 1024 }),
@@ -232,7 +236,7 @@ export const knowledgeSources = mysqlTable(
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   },
-  table => [index("knowledgeSources_user_status_idx").on(table.userId, table.status)],
+  table => [index("knowledgeSources_user_status_idx").on(table.userId, table.status), index("knowledgeSources_organisation_status_idx").on(table.organisationId, table.status)],
 );
 
 /** Append-only user-visible operational audit trail. */
@@ -241,6 +245,7 @@ export const auditEntries = mysqlTable(
   {
     id: int("id").autoincrement().primaryKey(),
     userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    organisationId: int("organisationId").references(() => organisations.id, { onDelete: "set null" }),
     eventType: varchar("eventType", { length: 100 }).notNull(),
     entityType: varchar("entityType", { length: 100 }).notNull(),
     entityId: varchar("entityId", { length: 100 }),
@@ -248,7 +253,7 @@ export const auditEntries = mysqlTable(
     metadata: json("metadata").$type<Record<string, unknown>>().notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
-  table => [index("auditEntries_user_created_idx").on(table.userId, table.createdAt)],
+  table => [index("auditEntries_user_created_idx").on(table.userId, table.createdAt), index("auditEntries_organisation_created_idx").on(table.organisationId, table.createdAt)],
 );
 
 /** Short-lived, hashed email verification challenges for app-level second-factor checks. */
@@ -273,6 +278,7 @@ export const dailyReports = mysqlTable(
   {
     id: int("id").autoincrement().primaryKey(),
     userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    organisationId: int("organisationId").references(() => organisations.id, { onDelete: "set null" }),
     recipientEmail: varchar("recipientEmail", { length: 320 }).notNull(),
     cronExpression: varchar("cronExpression", { length: 64 }).notNull(),
     scheduleCronTaskUid: varchar("scheduleCronTaskUid", { length: 65 }),
@@ -284,6 +290,7 @@ export const dailyReports = mysqlTable(
   },
   table => [
     index("dailyReports_user_enabled_idx").on(table.userId, table.isEnabled),
+    index("dailyReports_organisation_enabled_idx").on(table.organisationId, table.isEnabled),
     uniqueIndex("dailyReports_task_uid_uq").on(table.scheduleCronTaskUid),
   ],
 );

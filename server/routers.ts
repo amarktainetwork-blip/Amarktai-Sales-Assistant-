@@ -249,7 +249,8 @@ export const appRouter = router({
       )
       .mutation(async ({ ctx, input }) => {
         const query = input.messages.filter(message => message.role === "user").map(message => message.content).join("\n");
-        const sources = input.agentKey === "knowledge_guide" ? await searchApprovedKnowledge(ctx.user.id, query) : [];
+        if (!ctx.activeOrganisation) throw new Error("Choose an organisation before using the assistant.");
+        const sources = input.agentKey === "knowledge_guide" ? await searchApprovedKnowledge(ctx.user.id, ctx.activeOrganisation.organisationId, query) : [];
         const approvedKnowledge = sources.length ? sources.map(source => `[${source.title}]\n${source.content ?? source.sourceUrl ?? "No retained body."}`).join("\n\n---\n\n") : undefined;
         return runGenxAgent({ ...input, approvedKnowledge });
       }),
@@ -328,10 +329,16 @@ export const appRouter = router({
       .mutation(({ ctx, input }) => createIntegrationProfile({ userId: ctx.user.id, ...input })),
   }),
   knowledge: router({
-    list: secondFactorProcedure.query(({ ctx }) => listKnowledgeSources(ctx.user.id)),
+    list: secondFactorProcedure.query(({ ctx }) => {
+      if (!ctx.activeOrganisation) throw new Error("Choose an organisation before accessing knowledge.");
+      return listKnowledgeSources(ctx.user.id, ctx.activeOrganisation.organisationId);
+    }),
     add: secondFactorProcedure
       .input(z.object({ title: z.string().trim().min(2).max(220), sourceType: z.enum(["note", "url", "document"]), sourceUrl: z.string().url().max(1024).optional(), content: z.string().trim().max(40_000).optional() }))
-      .mutation(({ ctx, input }) => createKnowledgeSource({ userId: ctx.user.id, ...input })),
+      .mutation(({ ctx, input }) => {
+        if (!ctx.activeOrganisation) throw new Error("Choose an organisation before adding knowledge.");
+        return createKnowledgeSource({ userId: ctx.user.id, organisationId: ctx.activeOrganisation.organisationId, ...input });
+      }),
   }),
   companySetup: router({
     get: secondFactorProcedure.query(({ ctx }) => getCompanySetup(ctx.user.id)),
@@ -360,36 +367,54 @@ export const appRouter = router({
   calls: router({
     saveNotes: secondFactorProcedure
       .input(z.object({ leadLabel: z.string().trim().min(1).max(160), transcript: z.string().trim().max(40_000).optional(), coachNotes: z.string().trim().max(12_000).optional() }))
-      .mutation(({ ctx, input }) => createCallSession({ userId: ctx.user.id, ...input })),
-    startLive: secondFactorProcedure.input(z.object({ leadLabel: z.string().trim().min(1).max(160) })).mutation(({ ctx, input }) => createLiveCallSession({ userId: ctx.user.id, ...input })),
+      .mutation(({ ctx, input }) => {
+        if (!ctx.activeOrganisation) throw new Error("Choose an organisation before saving call notes.");
+        return createCallSession({ userId: ctx.user.id, organisationId: ctx.activeOrganisation.organisationId, ...input });
+      }),
+    startLive: secondFactorProcedure.input(z.object({ leadLabel: z.string().trim().min(1).max(160) })).mutation(({ ctx, input }) => {
+      if (!ctx.activeOrganisation) throw new Error("Choose an organisation before starting a live call.");
+      return createLiveCallSession({ userId: ctx.user.id, organisationId: ctx.activeOrganisation.organisationId, ...input });
+    }),
     coachTranscript: secondFactorProcedure.input(z.object({ callSessionId: z.number().int().positive(), leadLabel: z.string().trim().min(1).max(160), transcriptChunk: z.string().trim().min(4).max(12_000), approvedContext: z.string().trim().max(8_000).optional() })).mutation(async ({ ctx, input }) => {
       const tip = await prepareLiveCoachingTip({ leadLabel: input.leadLabel, transcript: input.transcriptChunk, approvedContext: input.approvedContext });
-      await appendLiveTranscript({ userId: ctx.user.id, callSessionId: input.callSessionId, transcriptChunk: input.transcriptChunk, coachTip: tip.content });
+      if (!ctx.activeOrganisation) throw new Error("Choose an organisation before updating a live call.");
+      await appendLiveTranscript({ userId: ctx.user.id, organisationId: ctx.activeOrganisation.organisationId, callSessionId: input.callSessionId, transcriptChunk: input.transcriptChunk, coachTip: tip.content });
       return tip;
     }),
     completeLive: secondFactorProcedure.input(z.object({ callSessionId: z.number().int().positive(), leadLabel: z.string().trim().min(1).max(160), transcript: z.string().trim().min(4).max(40_000) })).mutation(async ({ ctx, input }) => {
       const summary = await preparePostCallSummary({ leadLabel: input.leadLabel, transcript: input.transcript });
-      await appendLiveTranscript({ userId: ctx.user.id, callSessionId: input.callSessionId, transcriptChunk: input.transcript });
-      await completeLiveCallSession({ userId: ctx.user.id, callSessionId: input.callSessionId, summary: summary.content });
+      if (!ctx.activeOrganisation) throw new Error("Choose an organisation before completing a live call.");
+      await appendLiveTranscript({ userId: ctx.user.id, organisationId: ctx.activeOrganisation.organisationId, callSessionId: input.callSessionId, transcriptChunk: input.transcript });
+      await completeLiveCallSession({ userId: ctx.user.id, organisationId: ctx.activeOrganisation.organisationId, callSessionId: input.callSessionId, summary: summary.content });
       return summary;
     }),
   }),
   analytics: router({
-    summary: secondFactorProcedure.query(({ ctx }) => getOperationalAnalytics(ctx.user.id)),
-    audit: secondFactorProcedure.input(z.object({ limit: z.number().int().min(1).max(100).optional() }).optional()).query(({ ctx, input }) => listAuditEntries(ctx.user.id, input?.limit ?? 60)),
+    summary: secondFactorProcedure.query(({ ctx }) => {
+      if (!ctx.activeOrganisation) throw new Error("Choose an organisation before accessing analytics.");
+      return getOperationalAnalytics(ctx.user.id, ctx.activeOrganisation.organisationId);
+    }),
+    audit: secondFactorProcedure.input(z.object({ limit: z.number().int().min(1).max(100).optional() }).optional()).query(({ ctx, input }) => {
+      if (!ctx.activeOrganisation) throw new Error("Choose an organisation before accessing audit.");
+      return listAuditEntries(ctx.user.id, ctx.activeOrganisation.organisationId, input?.limit ?? 60);
+    }),
   }),
   outlook: router({
     readiness: secondFactorProcedure.query(() => getOutlookReadiness()),
     previewEmail: secondFactorProcedure.input(z.object({ to: z.string().max(320), subject: z.string().max(300), body: z.string().max(20_000), templateName: z.string().max(200).optional() })).mutation(({ input }) => validateEmailPreview(input)),
   }),
   reports: router({
-    list: secondFactorProcedure.query(({ ctx }) => listDailyReports(ctx.user.id)),
+    list: secondFactorProcedure.query(({ ctx }) => {
+      if (!ctx.activeOrganisation) throw new Error("Choose an organisation before accessing reports.");
+      return listDailyReports(ctx.user.id, ctx.activeOrganisation.organisationId);
+    }),
     configureDaily: secondFactorProcedure.input(z.object({ recipientEmail: z.string().email(), cronExpression: z.string().regex(/^\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+$/, "Use a six-field UTC cron expression.") })).mutation(async ({ ctx, input }) => {
       if (!getSmtpReadiness().ready) throw new Error("Configure SMTP deployment secrets before scheduling a daily report.");
       const sessionToken = parseCookieHeader(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
-      const reportId = await createDailyReport({ userId: ctx.user.id, ...input });
+      if (!ctx.activeOrganisation) throw new Error("Choose an organisation before scheduling reports.");
+      const reportId = await createDailyReport({ userId: ctx.user.id, organisationId: ctx.activeOrganisation.organisationId, ...input });
       const job = await createHeartbeatJob({ name: `amarktai-daily-report-${reportId}`, cron: input.cronExpression, path: "/api/scheduled/daily-report", payload: { reportId }, description: `Daily Amarktai workspace report for ${input.recipientEmail}` }, sessionToken);
-      await attachDailyReportTask({ reportId, userId: ctx.user.id, taskUid: job.taskUid });
+      await attachDailyReportTask({ reportId, userId: ctx.user.id, organisationId: ctx.activeOrganisation.organisationId, taskUid: job.taskUid });
       return { reportId, nextExecutionAt: job.nextExecutionAt ?? null };
     }),
   }),
