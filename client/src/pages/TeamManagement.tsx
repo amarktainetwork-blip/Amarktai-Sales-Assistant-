@@ -34,6 +34,7 @@ type CompliancePolicy = { transcriptRetentionDays: number; auditRetentionDays: n
 type DataSubjectRequest = { id: number; requestType: "export" | "deletion"; subjectType: string; subjectReference: string; status: string; createdAt: string };
 type EnterpriseSettings = { identityConnections: { id: number; protocol: string; displayName: string; status: string }[]; entitlement: { planKey: string; status: string; providerReference: string | null } | null };
 type PlaybookVersion = { id: number; playbookKey: string; version: number; title: string; instructions: string; status: "draft" | "published" | "archived" };
+type ConnectorOperations = { jobs: Array<{ id: number; connectedSystemId: number; resourceType: string; scheduleExpression: string; capabilityKey: string; status: string; lastError: string | null }>; receipts: Array<{ id: number; connectedSystemId: number; eventType: string; signatureStatus: string; processingStatus: string; attempts: number; receivedAt: string }> };
 
 async function api<T>(path: string, init?: RequestInit) {
   const response = await fetch(path, { credentials: "include", ...init, headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) } });
@@ -53,6 +54,9 @@ export default function TeamManagement() {
   const [playbookVersions, setPlaybookVersions] = useState<PlaybookVersion[]>([]);
   const [playbookDraft, setPlaybookDraft] = useState({ playbookKey: "", title: "", instructions: "" });
   const [savingPlaybook, setSavingPlaybook] = useState(false);
+  const [connectorOperations, setConnectorOperations] = useState<ConnectorOperations>({ jobs: [], receipts: [] });
+  const [syncJob, setSyncJob] = useState({ connectedSystemId: "", resourceType: "", scheduleExpression: "", capabilityKey: "" });
+  const [savingSyncJob, setSavingSyncJob] = useState(false);
   const [savingCompliance, setSavingCompliance] = useState(false);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");
@@ -70,7 +74,7 @@ export default function TeamManagement() {
 
   const refresh = useCallback(async () => {
     try {
-      const [team, management, ownerMappings, savedPipelineMappings, savedCompliance, subjectRequests, enterpriseSettings, versionedPlaybooks] = await Promise.all([
+      const [team, management, ownerMappings, savedPipelineMappings, savedCompliance, subjectRequests, enterpriseSettings, versionedPlaybooks, operations] = await Promise.all([
         api<TeamResponse>("/api/team-admin/members"),
         api<ManagementSettings>("/api/management-settings"),
         api<OwnerMappingResponse>("/api/team-admin/crm-owner-mappings"),
@@ -79,6 +83,7 @@ export default function TeamManagement() {
         api<{ requests: DataSubjectRequest[] }>("/api/team-admin/data-subject-requests"),
         api<EnterpriseSettings>("/api/team-admin/enterprise-settings"),
         api<{ playbooks: PlaybookVersion[] }>("/api/team-admin/playbook-versions"),
+        api<ConnectorOperations>("/api/team-admin/connector-operations"),
       ]);
       setData(team);
       setSettings(management);
@@ -88,6 +93,7 @@ export default function TeamManagement() {
       setDataSubjectRequests(subjectRequests.requests);
       setEnterprise(enterpriseSettings);
       setPlaybookVersions(versionedPlaybooks.playbooks);
+      setConnectorOperations(operations);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not load team administration.");
     } finally {
@@ -184,6 +190,21 @@ export default function TeamManagement() {
     }
   }
 
+  async function saveSyncJob(event: React.FormEvent) {
+    event.preventDefault();
+    setSavingSyncJob(true);
+    try {
+      const result = await api<{ status: string }>("/api/team-admin/connector-sync-jobs", { method: "POST", body: JSON.stringify({ ...syncJob, connectedSystemId: Number(syncJob.connectedSystemId) }) });
+      toast.success(result.status === "ready" ? "Verified connector sync job is ready." : "Sync job saved as draft until the connector capability is verified.");
+      setSyncJob({ connectedSystemId: syncJob.connectedSystemId, resourceType: "", scheduleExpression: "", capabilityKey: "" });
+      await refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save connector sync job.");
+    } finally {
+      setSavingSyncJob(false);
+    }
+  }
+
   async function saveOwnerMapping(event: React.FormEvent) {
     event.preventDefault();
     setSavingMapping(true);
@@ -277,6 +298,8 @@ export default function TeamManagement() {
     </section>
 
     <section className="mt-6 rounded-[1.5rem] border border-white/10 bg-[#0E2142] p-6"><div className="flex gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#153B7A] text-[#9FC2FF]"><ShieldCheck size={18}/></span><div><p className="text-[10px] font-black uppercase tracking-[.14em] text-[#7FAAF8]">VERSIONED PLAYBOOKS</p><h2 className="font-display text-2xl font-bold tracking-[-.05em] text-white">Publish the exact instructions that workflows may use.</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-[#9EB6DB]">Drafts are never selected at runtime. Publishing a revision archives the former published revision for the same key, preserving a clear rollback and audit trail.</p></div></div><form onSubmit={createPlaybookVersion} className="mt-6 grid gap-3 lg:grid-cols-3"><label className="text-xs font-black uppercase tracking-[.12em] text-[#9EB6DB]">Playbook key<Input required value={playbookDraft.playbookKey} onChange={event => setPlaybookDraft({ ...playbookDraft, playbookKey: event.target.value })} placeholder="e.g. follow-up-review" className="mt-2 border-white/15 bg-[#08172F] text-white"/></label><label className="text-xs font-black uppercase tracking-[.12em] text-[#9EB6DB]">Title<Input required value={playbookDraft.title} onChange={event => setPlaybookDraft({ ...playbookDraft, title: event.target.value })} placeholder="Clear internal title" className="mt-2 border-white/15 bg-[#08172F] text-white"/></label><div className="flex items-end"><Button disabled={savingPlaybook} className="h-11 w-full bg-[#1B64F2] hover:bg-[#2B76FF]">{savingPlaybook ? "Creating…" : "Create draft revision"}</Button></div><label className="lg:col-span-3 text-xs font-black uppercase tracking-[.12em] text-[#9EB6DB]">Review-first instructions<Textarea required value={playbookDraft.instructions} onChange={event => setPlaybookDraft({ ...playbookDraft, instructions: event.target.value })} placeholder="State the allowed preparation steps, evidence requirements, and approval boundary." className="mt-2 min-h-24 border-white/15 bg-[#08172F] text-white"/></label></form><div className="mt-6 overflow-x-auto"><table className="w-full min-w-[720px] text-left"><thead className="border-b border-white/10 text-[10px] font-black uppercase tracking-[.12em] text-[#7896C1]"><tr><th className="pb-3 pr-4">Playbook</th><th className="pb-3 pr-4">Revision</th><th className="pb-3 pr-4">Status</th><th className="pb-3">Control</th></tr></thead><tbody>{playbookVersions.map(version => <tr key={version.id} className="border-b border-white/[.07]"><td className="py-3 pr-4"><p className="font-semibold text-white">{version.title}</p><p className="font-mono text-xs text-[#8FA9CE]">{version.playbookKey}</p></td><td className="py-3 pr-4 text-sm text-[#B6C9E8]">v{version.version}</td><td className="py-3 pr-4 text-sm capitalize text-[#B6C9E8]">{version.status}</td><td className="py-3">{version.status === "draft" ? <Button size="sm" onClick={() => void publishPlaybookVersion(version.id)} className="bg-[#1B64F2] hover:bg-[#2B76FF]">Publish revision</Button> : <span className="text-xs text-[#8FA9CE]">Immutable</span>}</td></tr>)}{!playbookVersions.length && <tr><td colSpan={4} className="py-8 text-center text-sm text-[#A9BFDF]">No versioned playbooks yet. Create a draft to begin a controlled workflow.</td></tr>}</tbody></table></div></section>
+
+    <section className="mt-6 rounded-[1.5rem] border border-white/10 bg-[#0E2142] p-6"><div className="flex gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#153B7A] text-[#9FC2FF]"><RefreshCw size={18}/></span><div><p className="text-[10px] font-black uppercase tracking-[.14em] text-[#7FAAF8]">CONNECTOR OPERATIONS</p><h2 className="font-display text-2xl font-bold tracking-[-.05em] text-white">Schedule only verified connector capabilities.</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-[#9EB6DB]">A sync job is ready only when its connected system is server-verified for the stated capability. Webhook receipts stay ignored when their connector, HMAC signature, or capability is not verified.</p></div></div><form onSubmit={saveSyncJob} className="mt-6 grid gap-3 lg:grid-cols-4"><label className="text-xs font-black uppercase tracking-[.12em] text-[#9EB6DB]">Connected system<select required value={syncJob.connectedSystemId} onChange={event => setSyncJob({ ...syncJob, connectedSystemId: event.target.value })} className="mt-2 h-11 w-full rounded-xl border border-white/15 bg-[#08172F] px-3 text-sm normal-case tracking-normal text-white"><option value="">Select a system</option>{systems.data?.map(system => <option key={system.id} value={system.id}>{system.displayName} · {system.status}</option>)}</select></label><label className="text-xs font-black uppercase tracking-[.12em] text-[#9EB6DB]">Resource<Input required value={syncJob.resourceType} onChange={event => setSyncJob({ ...syncJob, resourceType: event.target.value })} placeholder="contacts" className="mt-2 border-white/15 bg-[#08172F] text-white"/></label><label className="text-xs font-black uppercase tracking-[.12em] text-[#9EB6DB]">Schedule<Input required value={syncJob.scheduleExpression} onChange={event => setSyncJob({ ...syncJob, scheduleExpression: event.target.value })} placeholder="0 */15 * * *" className="mt-2 border-white/15 bg-[#08172F] text-white"/></label><label className="text-xs font-black uppercase tracking-[.12em] text-[#9EB6DB]">Capability<Input required value={syncJob.capabilityKey} onChange={event => setSyncJob({ ...syncJob, capabilityKey: event.target.value })} placeholder="read_contacts" className="mt-2 border-white/15 bg-[#08172F] text-white"/></label><div className="lg:col-span-4 flex justify-end"><Button disabled={savingSyncJob} className="bg-[#1B64F2] hover:bg-[#2B76FF]">{savingSyncJob ? "Saving…" : "Save sync job"}</Button></div></form><div className="mt-6 grid gap-4 xl:grid-cols-2"><div className="rounded-xl border border-white/10 bg-[#0B1B37] p-4"><p className="text-[10px] font-black uppercase tracking-[.12em] text-[#7FAAF8]">SYNC JOBS</p>{connectorOperations.jobs.length ? <div className="mt-3 space-y-2">{connectorOperations.jobs.map(job => <div key={job.id} className="rounded-lg border border-white/10 p-3 text-sm text-[#C9D7ED]"><b>{job.resourceType}</b> · {job.status} · system #{job.connectedSystemId}<p className="mt-1 font-mono text-xs text-[#8FA9CE]">{job.scheduleExpression} · {job.capabilityKey}</p>{job.lastError && <p className="mt-1 text-xs text-amber-100">{job.lastError}</p>}</div>)}</div> : <p className="mt-3 text-sm text-[#A9BFDF]">No connector sync jobs are configured.</p>}</div><div className="rounded-xl border border-white/10 bg-[#0B1B37] p-4"><p className="text-[10px] font-black uppercase tracking-[.12em] text-[#7FAAF8]">WEBHOOK RECEIPTS</p>{connectorOperations.receipts.length ? <div className="mt-3 space-y-2">{connectorOperations.receipts.slice(0, 8).map(receipt => <div key={receipt.id} className="rounded-lg border border-white/10 p-3 text-sm text-[#C9D7ED]"><b>{receipt.eventType}</b> · {receipt.processingStatus}<p className="mt-1 text-xs text-[#8FA9CE]">HMAC: {receipt.signatureStatus} · attempts: {receipt.attempts}</p></div>)}</div> : <p className="mt-3 text-sm text-[#A9BFDF]">No signed connector webhook receipts have been recorded.</p>}</div></div></section>
 
     {compliance && <section className="mt-6 rounded-[1.5rem] border border-white/10 bg-[#0E2142] p-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between"><div className="flex gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#153B7A] text-[#9FC2FF]"><FileLock2 size={18}/></span><div><p className="text-[10px] font-black uppercase tracking-[.14em] text-[#7FAAF8]">PRIVACY & RETENTION</p><h2 className="font-display text-2xl font-bold tracking-[-.05em] text-white">Set evidence-preserving lifecycle controls.</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-[#9EB6DB]">Retention defaults to a dry run and destructive work requires an approved request. These settings never bypass CRM action review.</p></div></div><Button disabled={savingCompliance} onClick={() => void saveCompliance()} className="bg-[#1B64F2] hover:bg-[#2B76FF]">{savingCompliance ? "Saving…" : "Save privacy policy"}</Button></div>
