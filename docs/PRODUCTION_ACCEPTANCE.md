@@ -18,7 +18,7 @@ This checklist is the release gate for the self-hosted Amarktai Sales Assistant.
 | SSRF protection | `pnpm vitest run server/companyDiscovery.test.ts` | Passed during production pass | Private destinations, credentials, custom ports, redirects, and non-HTML responses are rejected. |
 | CRM freshness guard | `pnpm vitest run server/crmRouter.test.ts` | Passed during production pass | Only fresh server-verified Genie capability routes are executable. |
 | Scheduler behavior | `pnpm vitest run server/dailyReports.test.ts` | Passed during production pass | Due, duplicate-claim skip, and failure retry behavior are deterministic. |
-| Clean scheduler migration | Reviewed `drizzle/0007_easy_echo.sql` and development DB column query | Passed during production pass | Obsolete hosted task UID column/index removed; active schedule data retained. |
+| Clean scheduler migrations | Reviewed `drizzle/0007_easy_echo.sql` and `drizzle/0008_wise_terrax.sql`, then queried development DB columns | Passed during production pass | Obsolete hosted task UID/index removed; daily-report claim/attempt and execution-ledger schema applied. |
 | Shell syntax | `sh -n deploy/webdock/*.sh scripts/*.sh` | Passed during production pass | Installer/operator scripts have valid POSIX shell syntax. |
 | Compose definition | `docker compose -f deploy/webdock/docker-compose.yml --env-file .env config -q` | Pending CI/VPS | Local Docker CLI is unavailable. GitHub CI executes this gate. |
 | Image build | `docker build -f deploy/webdock/Dockerfile -t amarktai-sales-assistant:ci .` | Pending CI/VPS | Local Docker CLI is unavailable. GitHub CI executes this gate. |
@@ -33,6 +33,7 @@ Run these only on the authorised VPS after installing real values in `/opt/amark
 | Application readiness | `./deploy/webdock/verify-production.sh` | `/healthz` and `/readyz` are successful; mandatory SMTP transport verifies. |
 | Public TLS and security headers | `VERIFY_PUBLIC_URL=https://your-domain ./deploy/webdock/verify-production.sh` | Public HTTPS plus HSTS, CSP, and `nosniff` response headers. |
 | Local authentication and SMTP 2FA | Browser sign-in with the configured local administrator | A real six-digit code arrives, validates, and opens the protected workspace. |
+| Authenticated Company Setup smoke | In the workspace: save Company Profile, preview one public website, explicitly confirm selected knowledge, register one CRM profile, save one review-first playbook, then refresh each panel. | Each record persists only in the authenticated workspace; discovery remains review-first; the CRM profile remains non-executable until Verify on server succeeds. |
 | Optional GenX | Configure endpoint/key/model, then run verifier | Models endpoint accepts the selected model and minimal completion succeeds. |
 | Optional Genie CRM | Register connection, configure authorised credentials/selectors, choose Verify on server | Server-owned fresh verification result and expiry are displayed. |
 | Deliberate CRM writes | Prepare then approve one non-critical proposal at a time | Calibrated selectors, evidence, audit event, idempotency, and expected CRM result. |
