@@ -47,9 +47,10 @@ $COMPOSE up -d db redis
 if [ "$PROFILE" = "full" ]; then
   $COMPOSE up -d browser
 fi
-$COMPOSE run --rm app pnpm drizzle-kit migrate
+$COMPOSE run --rm app node dist/migrate.js
 $COMPOSE up -d
 $COMPOSE ps
 
 printf '\nAmarktai deployment started using profile: %s\n' "$PROFILE"
-printf 'Health check: https://%s/api/health\n' "$(grep '^DOMAIN=' .env | tail -1 | cut -d= -f2-)"
+printf 'Health check: https://%s/healthz\n' "$(grep '^DOMAIN=' .env | tail -1 | cut -d= -f2-)"
+printf 'Readiness check: https://%s/readyz\n' "$(grep '^DOMAIN=' .env | tail -1 | cut -d= -f2-)"
