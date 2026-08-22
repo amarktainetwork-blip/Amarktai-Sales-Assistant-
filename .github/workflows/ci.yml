@@ -35,6 +35,8 @@ jobs:
         run: pnpm audit --prod --audit-level=high
       - name: Verify generated migration state is clean
         run: pnpm drizzle-kit generate && git diff --exit-code -- drizzle
+        env:
+          DATABASE_URL: mysql://ci:ci@127.0.0.1:3306/amarktai_sales_assistant
       - name: Validate Webdock shell commands
         run: sh -n deploy/webdock/*.sh scripts/*.sh
       - name: Prepare non-secret Compose validation environment
