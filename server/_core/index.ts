@@ -15,6 +15,7 @@ import { registerConnectedSystemAdminRoutes } from "../connectedSystemAdminRoute
 import { registerSalesAutomationRoutes } from "../salesAutomationRoutes";
 import { registerSalesTargetsRoutes } from "../salesTargetsRoutes";
 import { registerAiCreditsRoutes } from "../aiCreditsRoutes";
+import { registerConnectorWebhookRoutes } from "../connectors/webhookRoutes";
 import { withAiRequestIdentity } from "../aiRequestContext";
 import { allowSidecarOrigin, enforceAppOrigin, rateLimit, securityHeaders } from "../security/http";
 import { createContext } from "./context";
@@ -39,6 +40,9 @@ async function startServer() {
   app.set("trust proxy", 1);
   app.disable("x-powered-by");
   app.use(securityHeaders);
+  app.use("/api/connector-webhooks", rateLimit({ limit: 120, windowMs: 60_000 }));
+  app.use("/api/connector-webhooks", express.raw({ type: "application/json", limit: "1mb" }));
+  registerConnectorWebhookRoutes(app);
   app.use(express.json({ limit: "1mb" }));
   app.use(express.urlencoded({ limit: "32kb", extended: true }));
   app.get("/healthz", (_req, res) => res.status(200).json({ status: "ok", service: "amarktai-sales" }));
