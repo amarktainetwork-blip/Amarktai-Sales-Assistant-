@@ -122,3 +122,4 @@
 - [x] Make AI-credit debits transactional, organisation-serialized, and idempotent by reference so concurrent requests cannot overspend the ledger.
 - [x] Implement real Microsoft Graph mail/calendar request boundaries with review-first validation and truthful unverified provider readiness.
 - [x] Atomically claim approved action proposals before manual or policy-driven CRM execution so duplicate concurrent actions are rejected.
+- [ ] Run GitHub CI on release branches and verify the exact trailing-hyphen release branch checks before final handoff.
