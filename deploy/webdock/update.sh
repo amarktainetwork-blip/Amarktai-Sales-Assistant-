@@ -12,7 +12,7 @@ AMARKTAI_DEPLOY_PROFILE="$PROFILE" sh deploy/webdock/backup.sh
 COMPOSE="docker compose -f $COMPOSE_FILE --env-file .env"
 $COMPOSE config >/dev/null
 $COMPOSE build
-$COMPOSE run --rm app pnpm drizzle-kit migrate
+$COMPOSE run --rm app node dist/migrate.js
 $COMPOSE up -d --remove-orphans
 AMARKTAI_DEPLOY_PROFILE="$PROFILE" sh deploy/webdock/smoke-test.sh
 
