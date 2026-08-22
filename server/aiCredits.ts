@@ -37,22 +37,30 @@ export function assessAiCreditDebit(entries: CreditLedgerMetadata[], credits: nu
   return { idempotent: false as const, balance };
 }
 
+async function lockOrganisation(tx: Parameters<Parameters<NonNullable<Awaited<ReturnType<typeof getDb>>>["transaction"]>[0]>[0], organisationId: number) {
+  const [locked] = await tx.execute(sql`SELECT id FROM ${organisations} WHERE ${organisations.id} = ${organisationId} FOR UPDATE`) as unknown as [Array<{ id: number }>, unknown];
+  if (!locked.length) throw new Error("Organisation was not found.");
+}
+
 async function ensureMonthlyAllowance(input: { organisationId: number; userId: number; timezone: string }) {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
-  const organisation = (await db.select().from(organisations).where(eq(organisations.id, input.organisationId)).limit(1))[0];
-  if (!organisation) throw new Error("Organisation was not found.");
-  const settings = (organisation.settings || {}) as Record<string, unknown>;
-  const currentPeriod = periodKey(new Date(), input.timezone || organisation.timezone || "UTC");
-  const selectedPlan = plan(settings.planKey);
-  const allowanceMarker = settings.aiCreditAllowance as { period?: string; planKey?: string } | undefined;
-  if (allowanceMarker?.period === currentPeriod && allowanceMarker.planKey === selectedPlan.key) return;
-  const existing = await db.select().from(salesActivityEvents).where(and(eq(salesActivityEvents.organisationId, input.organisationId), eq(salesActivityEvents.source, "ai_credit"), eq(salesActivityEvents.eventType, "ai_credit_allowance"))).limit(5000);
-  const alreadyGranted = existing.some(event => { const metadata = meta(event); return metadata?.period === currentPeriod && metadata.note === `plan:${selectedPlan.key}`; });
-  if (!alreadyGranted && selectedPlan.includedAiCredits > 0) {
-    await db.insert(salesActivityEvents).values({ organisationId: input.organisationId, salespersonUserId: input.userId, eventType: "ai_credit_allowance", source: "ai_credit", occurredAt: new Date(), metadata: { creditsDelta: selectedPlan.includedAiCredits, transactionType: "allowance", period: currentPeriod, note: `plan:${selectedPlan.key}` } satisfies CreditLedgerMetadata });
-  }
-  await db.update(organisations).set({ settings: { ...settings, planKey: selectedPlan.key, aiCreditAllowance: { period: currentPeriod, planKey: selectedPlan.key } } }).where(eq(organisations.id, input.organisationId));
+  await db.transaction(async tx => {
+    await lockOrganisation(tx, input.organisationId);
+    const organisation = (await tx.select().from(organisations).where(eq(organisations.id, input.organisationId)).limit(1))[0];
+    if (!organisation) throw new Error("Organisation was not found.");
+    const settings = (organisation.settings || {}) as Record<string, unknown>;
+    const currentPeriod = periodKey(new Date(), input.timezone || organisation.timezone || "UTC");
+    const selectedPlan = plan(settings.planKey);
+    const allowanceMarker = settings.aiCreditAllowance as { period?: string; planKey?: string } | undefined;
+    if (allowanceMarker?.period === currentPeriod && allowanceMarker.planKey === selectedPlan.key) return;
+    const existing = await tx.select().from(salesActivityEvents).where(and(eq(salesActivityEvents.organisationId, input.organisationId), eq(salesActivityEvents.source, "ai_credit"), eq(salesActivityEvents.eventType, "ai_credit_allowance"))).limit(5000);
+    const alreadyGranted = existing.some(event => { const metadata = meta(event); return metadata?.period === currentPeriod && metadata.note === `plan:${selectedPlan.key}`; });
+    if (!alreadyGranted && selectedPlan.includedAiCredits > 0) {
+      await tx.insert(salesActivityEvents).values({ organisationId: input.organisationId, salespersonUserId: input.userId, eventType: "ai_credit_allowance", source: "ai_credit", occurredAt: new Date(), metadata: { creditsDelta: selectedPlan.includedAiCredits, transactionType: "allowance", period: currentPeriod, note: `plan:${selectedPlan.key}` } satisfies CreditLedgerMetadata });
+    }
+    await tx.update(organisations).set({ settings: { ...settings, planKey: selectedPlan.key, aiCreditAllowance: { period: currentPeriod, planKey: selectedPlan.key } } }).where(eq(organisations.id, input.organisationId));
+  });
 }
 
 async function ledger(organisationId: number) {
@@ -83,16 +91,15 @@ async function append(input: { actorUserId: number; organisationId: number; sale
 }
 
 export async function consumeAiCredits(input: { userId: number; organisationId: number; credits: number; feature: string; model?: string; providerUsage?: Record<string, unknown>; reference?: string }) {
-  await requireOrganisationMembership(input.userId, input.organisationId);
+  const membership = await requireOrganisationMembership(input.userId, input.organisationId);
   const credits = Math.max(0, Math.floor(input.credits));
   if (!credits) return getAiCreditWallet({ userId: input.userId, organisationId: input.organisationId });
-  await ensureMonthlyAllowance({ organisationId: input.organisationId, userId: input.userId, timezone: (await requireOrganisationMembership(input.userId, input.organisationId)).timezone });
+  await ensureMonthlyAllowance({ organisationId: input.organisationId, userId: input.userId, timezone: membership.timezone });
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
   const reference = input.reference?.slice(0, 180);
   await db.transaction(async tx => {
-    const [locked] = await tx.execute(sql`SELECT id FROM ${organisations} WHERE ${organisations.id} = ${input.organisationId} FOR UPDATE`) as unknown as [Array<{ id: number }>, unknown];
-    if (!locked.length) throw new Error("Organisation was not found.");
+    await lockOrganisation(tx, input.organisationId);
     const events = await tx.select().from(salesActivityEvents).where(and(eq(salesActivityEvents.organisationId, input.organisationId), eq(salesActivityEvents.source, "ai_credit"))).limit(20_000);
     const entries = events.map(event => meta(event)).filter((item): item is CreditLedgerMetadata => Boolean(item));
     const debit = assessAiCreditDebit(entries, credits, reference);
