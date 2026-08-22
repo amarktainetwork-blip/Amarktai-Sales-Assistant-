@@ -341,28 +341,39 @@ export const appRouter = router({
       }),
   }),
   companySetup: router({
-    get: secondFactorProcedure.query(({ ctx }) => getCompanySetup(ctx.user.id)),
+    get: secondFactorProcedure.query(({ ctx }) => {
+      if (!ctx.activeOrganisation) throw new Error("Choose an organisation before accessing company setup.");
+      return getCompanySetup(ctx.user.id, ctx.activeOrganisation.organisationId);
+    }),
     saveProfile: secondFactorProcedure.input(z.object({
       companyName: z.string().trim().min(2).max(220), websiteUrl: z.string().url().max(1024).optional().nullable(),
       industry: z.string().trim().max(180).optional().nullable(), companySize: z.string().trim().max(80).optional().nullable(),
       primaryMarket: z.string().trim().max(220).optional().nullable(), salesMotion: z.string().trim().max(180).optional().nullable(), brandVoice: z.string().trim().max(8_000).optional().nullable(),
-    })).mutation(({ ctx, input }) => upsertCompanyProfile({ userId: ctx.user.id, ...input })),
+    })).mutation(({ ctx, input }) => {
+      if (!ctx.activeOrganisation) throw new Error("Choose an organisation before saving company setup.");
+      return upsertCompanyProfile({ userId: ctx.user.id, organisationId: ctx.activeOrganisation.organisationId, ...input });
+    }),
     discoverWebsite: secondFactorProcedure.mutation(async ({ ctx }) => {
-      const setup = await getCompanySetup(ctx.user.id);
+      if (!ctx.activeOrganisation) throw new Error("Choose an organisation before discovering a website.");
+      const setup = await getCompanySetup(ctx.user.id, ctx.activeOrganisation.organisationId);
       if (!setup.profile?.websiteUrl) throw new Error("Save a public company website before starting discovery.");
       return discoverPublicWebsite(setup.profile.websiteUrl);
     }),
     confirmDiscovery: secondFactorProcedure.input(z.object({ knowledgeIndexes: z.array(z.number().int().min(0).max(24)).max(12) })).mutation(async ({ ctx, input }) => {
-      const setup = await getCompanySetup(ctx.user.id);
+      if (!ctx.activeOrganisation) throw new Error("Choose an organisation before confirming website knowledge.");
+      const setup = await getCompanySetup(ctx.user.id, ctx.activeOrganisation.organisationId);
       if (!setup.profile?.websiteUrl) throw new Error("Save a public company website before confirming discovery.");
       const result = await discoverPublicWebsite(setup.profile.websiteUrl);
       const confirmedKnowledge = result.proposedKnowledge.filter((_, index) => input.knowledgeIndexes.includes(index));
-      return confirmWebsiteDiscovery({ userId: ctx.user.id, companyProfileId: setup.profile.id, sourceUrl: result.sourceUrl, pageTitle: result.pageTitle, confirmedKnowledge });
+      return confirmWebsiteDiscovery({ userId: ctx.user.id, organisationId: ctx.activeOrganisation.organisationId, companyProfileId: setup.profile.id, sourceUrl: result.sourceUrl, pageTitle: result.pageTitle, confirmedKnowledge });
     }),
     savePlaybook: secondFactorProcedure.input(z.object({
       title: z.string().trim().min(2).max(220), trigger: z.string().trim().min(2).max(160), description: z.string().trim().min(5).max(8_000),
       agentKey: z.string().trim().min(2).max(80), requiredCapabilities: z.array(z.string().trim().min(2).max(80)).min(1).max(12), status: z.enum(["draft", "active", "paused"]),
-    })).mutation(({ ctx, input }) => saveAutomationPlaybook({ userId: ctx.user.id, ...input })),
+    })).mutation(({ ctx, input }) => {
+      if (!ctx.activeOrganisation) throw new Error("Choose an organisation before saving a playbook.");
+      return saveAutomationPlaybook({ userId: ctx.user.id, organisationId: ctx.activeOrganisation.organisationId, ...input });
+    }),
   }),
   calls: router({
     saveNotes: secondFactorProcedure

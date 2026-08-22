@@ -1,0 +1,2 @@
+ALTER TABLE `companyProfiles` DROP INDEX `companyProfiles_userId_unique`;--> statement-breakpoint
+ALTER TABLE `companyProfiles` ADD CONSTRAINT `companyProfiles_organisation_user_unique` UNIQUE(`organisationId`,`userId`);

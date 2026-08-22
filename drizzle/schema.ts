@@ -56,7 +56,7 @@ export const integrationProfiles = mysqlTable(
  */
 export const companyProfiles = mysqlTable("companyProfiles", {
   id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }).unique(),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   organisationId: int("organisationId").references(() => organisations.id, { onDelete: "cascade" }),
   companyName: varchar("companyName", { length: 220 }).notNull(),
   websiteUrl: varchar("websiteUrl", { length: 1024 }),
@@ -69,7 +69,7 @@ export const companyProfiles = mysqlTable("companyProfiles", {
   confirmedAt: timestamp("confirmedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-}, table => [index("companyProfiles_user_idx").on(table.userId), index("companyProfiles_org_idx").on(table.organisationId)]);
+}, table => [uniqueIndex("companyProfiles_organisation_user_unique").on(table.organisationId, table.userId), index("companyProfiles_user_idx").on(table.userId), index("companyProfiles_org_idx").on(table.organisationId)]);
 
 export const websiteDiscoveries = mysqlTable("websiteDiscoveries", {
   id: int("id").autoincrement().primaryKey(),
