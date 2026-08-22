@@ -1,3 +1,5 @@
+import { getOutlookReadiness } from "./outlook";
+
 export type ConnectedSystemRoute = {
   id: number;
   provider: string;
@@ -38,6 +40,13 @@ export function connectedSystemSupportsAction(system: ConnectedSystemRoute, acti
 export function routeConnectedSystemActions<T extends { actionType: string; payload: Record<string, unknown> }>(actions: T[], systems: ConnectedSystemRoute[]) {
   const ready = systems.filter(system => system.status === "ready");
   return actions.map(action => {
+    if (action.actionType === "create_calendar_event") {
+      const outlook = getOutlookReadiness();
+      const crmRoute = outlook.ready
+        ? { routable: true as const, provider: "outlook", displayName: "Microsoft Outlook", connectionMode: "microsoft_graph", requiredCapability: "calendar.create" }
+        : { routable: false as const, reason: "Microsoft Outlook calendar is not configured and verified for this deployment.", requiredCapability: "calendar.create" };
+      return { ...action, payload: { ...action.payload, crmRoute } };
+    }
     const alternatives = ACTION_CONNECTED_CAPABILITIES[action.actionType] || [["activities.write"]];
     const preferred = typeof action.payload.preferredProvider === "string" ? action.payload.preferredProvider : undefined;
     const eligible = ready.filter(system => connectedSystemSupportsAction(system, action.actionType));
