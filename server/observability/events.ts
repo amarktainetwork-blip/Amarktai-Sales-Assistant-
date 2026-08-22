@@ -1,5 +1,7 @@
-import { operationalEvents } from "../../drizzle/schema";
+import { operationalAlertDeliveries, operationalAlertRules, operationalEvents } from "../../drizzle/schema";
+import { eq } from "drizzle-orm";
 import { getDb } from "../db";
+import { shouldRouteOperationalAlert } from "./alerts";
 
 export type OperationalEventInput = {
   organisationId?: number | null;
@@ -15,7 +17,7 @@ export type OperationalEventInput = {
 export async function recordOperationalEvent(input: OperationalEventInput) {
   const db = await getDb();
   if (!db) return { recorded: false, reason: "database_unavailable" as const };
-  await db.insert(operationalEvents).values({
+  const result = await db.insert(operationalEvents).values({
     organisationId: input.organisationId ?? null,
     connectedSystemId: input.connectedSystemId ?? null,
     severity: input.severity ?? "info",
@@ -24,5 +26,11 @@ export async function recordOperationalEvent(input: OperationalEventInput) {
     summary: input.summary.slice(0, 8_000),
     detail: input.detail ?? {},
   });
+  if (input.organisationId) {
+    const rules = await db.select().from(operationalAlertRules).where(eq(operationalAlertRules.organisationId, input.organisationId));
+    const event = { severity: input.severity ?? "info", category: input.category } as const;
+    const eligibleRules = rules.filter(rule => shouldRouteOperationalAlert(rule, event));
+    if (eligibleRules.length) await db.insert(operationalAlertDeliveries).values(eligibleRules.map(rule => ({ operationalEventId: Number(result[0].insertId), alertRuleId: rule.id })));
+  }
   return { recorded: true as const };
 }
