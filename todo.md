@@ -132,3 +132,4 @@
 - [x] Add reviewed nullable organisation references and active-organisation guards for callback work, live-call records, knowledge, audit entries, and daily reports.
 - [x] Enforce signed active-organisation reads and writes for company setup, website discovery, confirmed knowledge, and review-first playbooks.
 - [x] Enforce signed active-organisation reads and writes for legacy integration profiles and dashboard integration visibility.
+- [x] Remove residual customer-specific names and workflow labels from active onboarding and workspace UI so generic deployments carry no client identity or vertical-specific defaults.
