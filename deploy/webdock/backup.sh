@@ -1,17 +1,18 @@
 #!/usr/bin/env sh
 set -eu
 
-ROOT_DIR="${AMARKTAI_ROOT:-/opt/amarktai-sales-assistant}"
-BACKUP_DIR="${BACKUP_DIR:-$ROOT_DIR/backups}"
-COMPOSE_FILE="$ROOT_DIR/deploy/webdock/docker-compose.yml"
+PROFILE="${AMARKTAI_DEPLOY_PROFILE:-full}"
+COMPOSE_FILE="deploy/webdock/docker-compose.yml"
+[ "$PROFILE" = "pilot" ] && COMPOSE_FILE="deploy/webdock/docker-compose.pilot.yml"
+[ "$PROFILE" = "pilot" ] || [ "$PROFILE" = "full" ] || { echo "AMARKTAI_DEPLOY_PROFILE must be pilot or full" >&2; exit 1; }
+[ -f .env ] || { echo ".env is missing" >&2; exit 1; }
 
-cd "$ROOT_DIR"
-set -a
-. ./.env
-set +a
-mkdir -p "$BACKUP_DIR"
-stamp="$(date -u +%Y%m%dT%H%M%SZ)"
-umask 077
-MYSQL_PWD="$DB_ROOT_PASSWORD" docker compose -f "$COMPOSE_FILE" --env-file .env exec -T db mariadb-dump -uroot --single-transaction --routines --events amarktai_sales_assistant > "$BACKUP_DIR/amarktai-$stamp.sql"
-tar -C "$ROOT_DIR" -czf "$BACKUP_DIR/amarktai-config-$stamp.tar.gz" .env deploy/webdock/config files
-echo "Backup written to $BACKUP_DIR for $stamp"
+mkdir -p deploy/webdock/backups
+STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+DEST="deploy/webdock/backups/amarktai-${STAMP}.sql.gz"
+COMPOSE="docker compose -f $COMPOSE_FILE --env-file .env"
+
+$COMPOSE exec -T db sh -eu -c 'mariadb-dump --single-transaction --quick --routines --events -uroot -p"$MARIADB_ROOT_PASSWORD" amarktai_sales_assistant' | gzip -9 > "$DEST"
+test -s "$DEST" || { rm -f "$DEST"; echo "Backup was empty; removed it." >&2; exit 1; }
+sha256sum "$DEST" > "$DEST.sha256"
+printf 'Backup created: %s\n' "$DEST"

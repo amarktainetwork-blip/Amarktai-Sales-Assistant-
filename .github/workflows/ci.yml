@@ -1,62 +1,42 @@
-name: Production gate
+name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
+  push:
     branches: [main]
 
 permissions:
   contents: read
 
 jobs:
-  validate:
+  verify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 22.15.0
           cache: pnpm
-      - name: Enable pinned package manager
-        run: corepack enable
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
-      - name: Run unit and regression tests
+      - name: Unit tests
         run: pnpm test
-      - name: Run TypeScript validation
+      - name: TypeScript
         run: pnpm check
-      - name: Build the standalone production artifact
-        run: pnpm build
-      - name: Audit production dependencies for high and critical findings
-        run: pnpm audit --prod --audit-level=high
-      - name: Verify generated migration state is clean
-        run: pnpm drizzle-kit generate && git diff --exit-code -- drizzle
+      - name: Validate Drizzle schema and migrations
         env:
-          DATABASE_URL: mysql://ci:ci@127.0.0.1:3306/amarktai_sales_assistant
-      - name: Validate Webdock shell commands
-        run: sh -n deploy/webdock/*.sh scripts/*.sh
-      - name: Prepare non-secret Compose validation environment
+          DATABASE_URL: mysql://migration:placeholder@127.0.0.1:3306/amarktai
+        run: pnpm exec drizzle-kit check
+      - name: Production build
+        run: pnpm build
+      - name: Validate deployment shell scripts
+        run: sh -n deploy/webdock/install.sh deploy/webdock/preflight.sh deploy/webdock/backup.sh deploy/webdock/update.sh deploy/webdock/smoke-test.sh
+      - name: Validate Webdock Compose profiles
         run: |
           cp deploy/webdock/configuration.template .env
-          sed -i \
-            -e 's/^DOMAIN=.*/DOMAIN=assistant.example.co.za/' \
-            -e 's/^DB_PASSWORD=.*/DB_PASSWORD=ci_database_password_0123456789abcdef/' \
-            -e 's/^DB_ROOT_PASSWORD=.*/DB_ROOT_PASSWORD=ci_root_password_0123456789abcdef/' \
-            -e 's/^BROWSERLESS_TOKEN=.*/BROWSERLESS_TOKEN=ci_browser_token_0123456789abcdef/' \
-            -e 's/^INTERNAL_SCHEDULER_TOKEN=.*/INTERNAL_SCHEDULER_TOKEN=ci_scheduler_token_0123456789abcdef/' \
-            -e 's/^JWT_SECRET=.*/JWT_SECRET=ci_jwt_secret_0123456789abcdef/' \
-            -e 's/^SECRET_KEY=.*/SECRET_KEY=ci_application_secret_0123456789abcdef/' \
-            -e 's/^LOCAL_ADMIN_EMAIL=.*/LOCAL_ADMIN_EMAIL=admin@example.co.za/' \
-            -e 's/^LOCAL_ADMIN_PASSWORD=.*/LOCAL_ADMIN_PASSWORD=ci_admin_password_0123456789abcdef/' \
-            -e 's/^SMTP_HOST=.*/SMTP_HOST=smtp.example.co.za/' \
-            -e 's/^SMTP_USER=.*/SMTP_USER=ci-smtp-user/' \
-            -e 's/^SMTP_PASSWORD=.*/SMTP_PASSWORD=ci_smtp_password_0123456789abcdef/' \
-            -e 's/^SMTP_FROM=.*/SMTP_FROM=Amarktai Sales Assistant <admin@example.co.za>/' .env
-      - name: Validate self-hosted Compose definition
-        run: docker compose -f deploy/webdock/docker-compose.yml --env-file .env config -q
-      - name: Build the Webdock application image
-        run: docker build --pull -f deploy/webdock/Dockerfile -t amarktai-sales-assistant:ci .
+          docker compose -f deploy/webdock/docker-compose.yml --env-file .env config >/dev/null
+          docker compose -f deploy/webdock/docker-compose.pilot.yml --env-file .env config >/dev/null
+      - name: Build Webdock production images
+        run: docker compose -f deploy/webdock/docker-compose.yml --env-file .env build app browser

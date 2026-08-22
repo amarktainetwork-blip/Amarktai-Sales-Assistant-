@@ -33,36 +33,22 @@
     {
       "idx": 4,
       "version": "5",
-      "when": 1787061520551,
-      "tag": "0004_odd_piledriver",
+      "when": 1787155335103,
+      "tag": "0004_universal_sales_foundation",
       "breakpoints": true
     },
     {
       "idx": 5,
       "version": "5",
-      "when": 1787062487843,
-      "tag": "0005_fuzzy_monster_badoon",
+      "when": 1787155630042,
+      "tag": "0005_crm_oauth_state",
       "breakpoints": true
     },
     {
       "idx": 6,
       "version": "5",
-      "when": 1787381943057,
-      "tag": "0006_lumpy_darkstar",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "5",
-      "when": 1787383678025,
-      "tag": "0007_easy_echo",
-      "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "5",
-      "when": 1787384798844,
-      "tag": "0008_wise_terrax",
+      "when": 1787156149747,
+      "tag": "0006_sidecar_sessions",
       "breakpoints": true
     }
   ]

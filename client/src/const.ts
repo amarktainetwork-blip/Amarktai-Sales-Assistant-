@@ -1,6 +1,6 @@
-export { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
-
-/** Navigate to the local self-hosted sign-in screen from an event handler. */
-export const startLogin = () => {
-  window.location.href = "/auth";
-};
+/** Navigate to the application's own local authentication screen. */
+export function startLogin() {
+  if (typeof window !== "undefined" && window.location.pathname !== "/auth") {
+    window.location.assign("/auth");
+  }
+}

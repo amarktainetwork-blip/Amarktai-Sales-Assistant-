@@ -5,7 +5,6 @@ import { createLocalAdminIfMissing, getUserByEmail, getUserById } from "./db";
 
 const LOCAL_AUTH_MODE = "local";
 const LOCAL_SESSION_TTL_SECONDS = 12 * 60 * 60;
-export const DEVELOPMENT_PREVIEW_OPEN_ID = "development-preview";
 
 function localAuthKey() {
   const secret = process.env.SECRET_KEY || process.env.JWT_SECRET;
@@ -17,14 +16,6 @@ export function isLocalAuthMode() {
   return process.env.AUTH_MODE === LOCAL_AUTH_MODE;
 }
 
-export function isDevelopmentPreviewMode() {
-  return process.env.NODE_ENV === "development";
-}
-
-export function isLocalSessionMode() {
-  return isLocalAuthMode() || isDevelopmentPreviewMode();
-}
-
 export async function authenticateLocalPassword(email: string, password: string): Promise<User | undefined> {
   if (!isLocalAuthMode()) throw new Error("Local authentication is not enabled in this environment.");
   await createLocalAdminIfMissing();
@@ -34,8 +25,10 @@ export async function authenticateLocalPassword(email: string, password: string)
   return valid ? user : undefined;
 }
 
-export async function issueLocalSession(user: User) {
-  return new SignJWT({ mode: LOCAL_AUTH_MODE })
+export type LocalSessionIdentity = { user: User; activeOrganisationId: number | null };
+
+export async function issueLocalSession(user: User, activeOrganisationId: number | null) {
+  return new SignJWT({ mode: LOCAL_AUTH_MODE, activeOrganisationId })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(String(user.id))
     .setIssuedAt()
@@ -43,19 +36,24 @@ export async function issueLocalSession(user: User) {
     .sign(localAuthKey());
 }
 
-export async function getLocalSessionUser(token: string | undefined): Promise<User | null> {
-  if (!token || !isLocalSessionMode()) return null;
+export async function getLocalSessionIdentity(token: string | undefined): Promise<LocalSessionIdentity | null> {
+  if (!token || !isLocalAuthMode()) return null;
   try {
     const { payload } = await jwtVerify(token, localAuthKey());
     if (payload.mode !== LOCAL_AUTH_MODE || !payload.sub) return null;
-    return (await getUserById(Number(payload.sub))) ?? null;
+    const user = await getUserById(Number(payload.sub));
+    if (!user) return null;
+    const activeOrganisationId = typeof payload.activeOrganisationId === "number" && Number.isInteger(payload.activeOrganisationId) && payload.activeOrganisationId > 0
+      ? payload.activeOrganisationId
+      : null;
+    return { user, activeOrganisationId };
   } catch {
     return null;
   }
 }
 
-export function isDevelopmentPreviewUser(user: Pick<User, "openId"> | null | undefined) {
-  return Boolean(isDevelopmentPreviewMode() && user?.openId === DEVELOPMENT_PREVIEW_OPEN_ID);
+export async function getLocalSessionUser(token: string | undefined): Promise<User | null> {
+  return (await getLocalSessionIdentity(token))?.user ?? null;
 }
 
 export const LOCAL_SESSION_MAX_AGE_MS = LOCAL_SESSION_TTL_SECONDS * 1000;

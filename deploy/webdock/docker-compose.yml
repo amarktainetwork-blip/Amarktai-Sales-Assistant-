@@ -1,6 +1,6 @@
 services:
   caddy:
-    image: caddy:2.10-alpine
+    image: caddy:2.10.2-alpine
     restart: unless-stopped
     ports:
       - "80:80"
@@ -14,64 +14,95 @@ services:
     depends_on:
       app:
         condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
 
   app:
     build:
       context: ../..
       dockerfile: deploy/webdock/Dockerfile
     restart: unless-stopped
+    init: true
     env_file:
       - ../../.env
     environment:
       NODE_ENV: production
       PORT: 3000
       DATABASE_URL: mysql://amarktai:${DB_PASSWORD}@db:3306/amarktai_sales_assistant
-      BROWSERLESS_WS_ENDPOINT: ws://browser:3000?token=${BROWSERLESS_TOKEN}
+      REDIS_URL: redis://redis:6379
+      BROWSERLESS_WS_ENDPOINT: http://browser:9222
       GENIE_SCRIPTS_CONFIG_PATH: /app/config/genie-scripts.json
-      GENIE_ARTIFACT_DIR: /app/data/genie-artifacts
+      GENIE_ARTIFACT_DIR: /app/data/connector-evidence
     volumes:
       - ./config:/app/config:ro
-      - ./files/screenshots:/app/data/genie-artifacts
+      - ./files/connector-evidence:/app/data/connector-evidence
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
       browser:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:3000/healthz >/dev/null"]
-      interval: 15s
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 20s
       timeout: 5s
-      retries: 12
-      start_period: 20s
+      retries: 10
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
 
   worker:
     build:
       context: ../..
       dockerfile: deploy/webdock/Dockerfile
     restart: unless-stopped
+    init: true
     env_file:
       - ../../.env
     environment:
       NODE_ENV: production
       DATABASE_URL: mysql://amarktai:${DB_PASSWORD}@db:3306/amarktai_sales_assistant
-      BROWSERLESS_WS_ENDPOINT: ws://browser:3000?token=${BROWSERLESS_TOKEN}
+      REDIS_URL: redis://redis:6379
+      BROWSERLESS_WS_ENDPOINT: http://browser:9222
       GENIE_SCRIPTS_CONFIG_PATH: /app/config/genie-scripts.json
-      GENIE_ARTIFACT_DIR: /app/data/genie-artifacts
-      APP_INTERNAL_URL: http://app:3000
-    command: ["/app/scripts/worker-run.sh"]
+      GENIE_ARTIFACT_DIR: /app/data/connector-evidence
+      CRM_HEALTH_INTERVAL_MS: 43200000
+    command: ["node", "dist/healthWorker.js"]
     volumes:
       - ./config:/app/config:ro
-      - ./files/screenshots:/app/data/genie-artifacts
+      - ./files/connector-evidence:/app/data/connector-evidence
     depends_on:
-      app:
-        condition: service_healthy
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
       browser:
-        condition: service_started
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+
+  reporter:
+    build:
+      context: ../..
+      dockerfile: deploy/webdock/Dockerfile
+    restart: unless-stopped
+    init: true
+    env_file:
+      - ../../.env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: mysql://amarktai:${DB_PASSWORD}@db:3306/amarktai_sales_assistant
+      REPORT_SCHEDULER_POLL_MS: 30000
+    command: ["node", "dist/reportSchedulerWorker.js"]
+    depends_on:
+      db:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
 
   db:
-    image: mariadb:11.7
+    image: mariadb:11.7.2
     restart: unless-stopped
     environment:
       MARIADB_DATABASE: amarktai_sales_assistant
@@ -85,19 +116,45 @@ services:
       interval: 10s
       timeout: 5s
       retries: 20
+    security_opt:
+      - no-new-privileges:true
 
-  browser:
-    image: ghcr.io/browserless/chromium:v2.42.0
+  # Valkey is an open-source Redis-protocol-compatible data store. Keep the service
+  # name/REDIS_URL stable so application code and future BullMQ workers need no change.
+  redis:
+    image: valkey/valkey:8.1.9-alpine
     restart: unless-stopped
-    environment:
-      TOKEN: ${BROWSERLESS_TOKEN}
-      CONCURRENT: 1
-      QUEUED: 5
-      TIMEOUT: 120000
-      PREBOOT_CHROME: "true"
+    command: ["valkey-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    security_opt:
+      - no-new-privileges:true
+
+  # Internal-only permissive Chromium/CDP runtime for deterministic browser connectors.
+  # No host port is published; only application containers can reach DevTools on 9222.
+  browser:
+    build:
+      context: ../..
+      dockerfile: deploy/browser/Dockerfile
+    restart: unless-stopped
+    init: true
     shm_size: 1gb
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9222/json/version"]
+      interval: 20s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    security_opt:
+      - no-new-privileges:true
 
 volumes:
   caddy_data:
   caddy_config:
   db_data:
+  redis_data:

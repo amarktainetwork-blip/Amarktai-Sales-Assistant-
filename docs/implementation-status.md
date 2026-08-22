@@ -1,45 +1,194 @@
-# Amarktai Sales Assistant — Honest Implementation Status
+# Amarktai Sales Assistant — implementation status
 
-**Last audited:** 22 August 2026
+Updated: 19 August 2026
 
-This document distinguishes code that is built and locally validated from capabilities that still require an authorised Webdock VPS, domain/DNS, real mailbox, GenX account, Genie browser session, or Microsoft permissions. A configuration field, browser card, or passing local mock is **not** treated as proof that an external action has run.
+This document distinguishes **implemented code**, **independently validated repository checks**, and **external activation that still requires authorised credentials/accounts**. A healthy container is not evidence that an external CRM or speech provider was successfully authorised.
 
-## Product and security status
+## Current product shape
 
-| Product area | Status | What is implemented | Remaining operational proof or limitation |
-| --- | --- | --- | --- |
-| Public product and local assets | **Built and production-built locally** | The Amarktai Sales Assistant landing page, sign-in view, white-model hero, workflow/coaching/trust/auth visuals, and favicon are repository-owned files under `client/public`. | Local build verified that required assets land under `dist/public`; public Webdock/CDN/TLS delivery remains untested. |
-| Generic Amarktai runtime | **Built and regression-tested** | Generic workflows, supervisor routing, knowledge wording, UI examples, and GenX prompts contain no default Course2Career/Cyber sender, stage, template, or customer identity. | The retained `server/presets/course2career.ts` is a migration reference only, is inactive by default, and has no runtime import or activation path. |
-| Local authentication and 2FA | **Built and locally tested** | Local email/password authentication uses signed HTTP-only, host-only cookies with `SameSite=Lax` and production Secure cookies. Second-factor codes use SMTP. Development preview remains unavailable in production. | An authorised Webdock mailbox must receive and verify a real code before production sign-off. |
-| Request and browser hardening | **Built and regression-tested** | Request body limits, restricted proxy trust, state-change same-origin enforcement, sensitive tRPC procedure rate limits, Caddy security headers, and bounded public-website discovery are present. Discovery blocks private IPv4/IPv6 ranges, credentials, custom ports, unsafe redirects, and non-HTML responses. | Reverse-proxy headers require a public Webdock/DNS/TLS verification. Rate limits are in-memory for this single-app Compose deployment. |
-| Company setup and approved knowledge | **Built** | A protected organisation profile, guarded website preview, explicit confirmation, audited knowledge storage, capability registrations, and review-first playbooks are available. | The first release supports one organisation profile per workspace user and one saved public website URL; it is not a whole-domain crawler or document-ingestion platform. |
-| Review-first workflow preparation | **Built and regression-tested** | Generic first-contact, follow-up, callback, booking, reschedule, no-show, information, escalation, and post-call outcomes create duplicate-protected review proposals only. | Organisation-specific templates, phone numbers, stages, and policies must be configured and approved by the organisation; no external action occurs on preparation. |
-| CRM capability routing | **Built and regression-tested** | A proposal gets a required capability route. Only a fresh, server-verified Genie browser bridge route can be executable; stale, missing, failed, or unimplemented provider routes fail closed. | HubSpot, Salesforce, Pipedrive, and custom-browser registrations are truthful non-executable profiles in this release until connectors are implemented and verified. |
-| Genie CRM bridge | **Packaged, configuration-dependent** | Browserless/Playwright, saved scripts, proposal ownership, evidence persistence, and server verification exist without any Genie API key. The UI shows verification state, failure, and expiry; it cannot set readiness locally. | An authorised Genie account, login URL, selectors, scripts, and deliberate read/write calibration are required. No live Genie action was run in this environment. |
-| GenX intelligence service | **Built, optional integration** | The runtime uses the configured chat endpoint only when ready. The production verifier tests the derived `/v1/models` endpoint and a bounded minimal completion request. | No GenX credentials were supplied, so no live model request has been performed. Misconfigured optional GenX remains Not Ready. |
-| SMTP and daily reports | **Built, mandatory transport configuration** | SMTP transport uses bounded timeouts. The worker invokes an authenticated internal daily-report route every minute, evaluates UTC schedules, claims deliveries atomically, and releases failed claims for retry. | A real SMTP transport and actual daily delivery are only verifiable on the VPS. No hosted scheduler or owner-notification service is used. |
-| Outlook | **Partial, configuration-only** | Tenant/client/secret/sender readiness and email-preview validation are present. The verifier validates configured sender email format. | No Outlook send or calendar-write operation is implemented or live-tested. Do not claim Outlook automation is active. |
-| Manager assurance, communications, call support, audit | **Built, model-dependent where applicable** | Human-style draft quality gates, manager findings, token/cache controls, manual text-based call coaching, review queue, evidence, audit records, and operations dashboards are persisted. | Live calls do not include telephony, audio capture, streaming transcription, or recording ingestion. Model-backed output needs a verified GenX configuration. |
-| Webdock deployment package | **Packaged and statically validated** | Compose defines Caddy, app, worker, MariaDB, and Browserless; Docker image, installer, verifier, backup, upgrade, rollback, configuration template, and canonical runbook are included. | Docker/Compose is unavailable in this development environment, so Compose config, image build, migrations in a clean container, and live stack startup have not been executed here. GitHub CI is configured to gate Compose definition and image build. |
+Amarktai is a desktop-first sales operating layer built on the existing React/Vite + Express/tRPC + Drizzle/MariaDB stack. The launch architecture supports deep Genie browser automation, current HubSpot OAuth/API integration, multi-person organisations, normalized CRM data, Team Intelligence, live call transcription/coaching, review-first CRM actions, and Webdock pilot/full deployment profiles.
 
-## External-action boundary
+The application remains a modular monolith plus isolated workers. It has not been rewritten around the pilot VPS.
 
-> **The assistant may prepare, route, and explain work. A human must approve every external action before an execution attempt. The attempt is blocked unless its route is current, server-verified, capability-compatible, and owned by the workspace.**
+## Independently validated repository gate
 
-Credentials are install-time VPS secrets. They are not stored in organisation, connection, workflow, or audit records, and this repository does not contain live credentials.
+The deployment branch reached a full green GitHub Actions gate during this completion pass, including locked `pnpm` install, unit tests, TypeScript, Drizzle schema/migration validation, and the production build. After any later commit, use the PR's latest CI result as the source of truth before merging/deploying.
 
-## Required Webdock commissioning actions
+## Organisation and multiple salespeople
 
-| Commissioning step | Reason it cannot be pre-claimed locally |
-| --- | --- |
-| Configure domain DNS and run public TLS/header verification | Certificate issuance and Caddy network reachability require the real VPS/domain. |
-| Perform local admin password plus six-digit SMTP-code sign-in | Confirms real transport, sender, inbox delivery, cookie scope, and protected workspace access. |
-| Run the production verifier with actual SMTP credentials | Confirms the configured SMTP server accepts the connection within bounded timeouts. |
-| Supply GenX values and run its verifier | Confirms models endpoint, selected model availability, and minimal completion against the authorised provider. |
-| Register and server-verify Genie | Confirms authorised browser login and dashboard selector; a configuration card alone is insufficient. |
-| Calibrate read scripts, then deliberate approved writes on non-critical CRM records | Confirms selectors, permissions, evidence capture, idempotency, and business policy safely. |
-| Provide Outlook permissions and deliberately test sender/write behavior if enabled | The current release does not implement Outlook delivery or calendar writes. |
+Implemented:
 
-## Local validation completed in this repository
+- organisations and organisation memberships;
+- roles: owner, manager, salesperson, auditor;
+- management-only access controls;
+- secure team administration page;
+- email invitations for local/Webdock auth;
+- signed 48-hour password-setup link;
+- setup link becomes unusable after the account has a password;
+- member activation/deactivation and role changes;
+- external CRM owner/user mapping to Amarktai members;
+- normalized activity can therefore be attributed without re-syncing the CRM once per salesperson.
 
-The development database migration removing the obsolete hosted-scheduler UID column was generated, reviewed, applied, and queried successfully. Focused regression suites cover generic runtime isolation, cookie/logout behavior, same-origin and rate limits, SSRF discovery boundaries, CRM fresh/stale/unimplemented routing, GenX model verification behavior, SMTP safe failure, and self-hosted scheduler due/skip/retry logic. TypeScript and the standalone production build passed locally. The built server responded to `/healthz`; `/readyz` correctly returned `503` without production configuration. No live Docker, VPS, mailbox, GenX, Genie, or Outlook action is claimed.
+Not yet implemented: enterprise SCIM/SAML provisioning, many-to-many named team hierarchy, and formal per-person revenue quota/target objects.
+
+## Genie
+
+Implemented:
+
+- deterministic Playwright/CDP browser connector architecture;
+- generic reusable browser connector primitives;
+- saved scripts with controlled navigation/fill/click/expect/read/screenshot steps;
+- approved-action execution and audit/evidence boundary;
+- connector capability routing;
+- full Webdock profile with a repository-built internal Chromium/CDP runtime rather than a required Browserless service.
+
+External activation still required:
+
+- authorised Genie URL/account;
+- real login and page/action selector calibration in `deploy/webdock/config/genie-scripts.json`;
+- authorised read/write smoke testing;
+- confirmation that the target Genie authentication/MFA/session behaviour works with the bridge.
+
+The first pilot still accepts install-level Genie credentials. Before multi-customer commercial SaaS use, authenticated browser state must be isolated per organisation/connection rather than sharing one global account.
+
+## HubSpot
+
+Implemented:
+
+- provider-neutral adapter;
+- date-versioned 2026-03 OAuth token exchange/refresh/introspection/revocation flow;
+- 2026-03 CRM object paths;
+- encrypted connection material;
+- requested scope verification;
+- real read-endpoint capability tests before a requested read capability is marked available;
+- contacts, companies, deals/opportunities, tasks, activities, pipeline reads and approved writes supported by the adapter;
+- normalized owner IDs for team attribution.
+
+External activation still required: real HubSpot app/client, registered callback URL, authorised portal, live OAuth/capability testing, and webhook/incremental-sync validation where used.
+
+## Live Call Companion
+
+Implemented:
+
+- real browser microphone capture;
+- microphone + explicitly shared browser-tab/system-audio capture mode;
+- local browser mixing of call audio + microphone;
+- short MediaRecorder chunks;
+- authenticated/2FA protected STT bridge;
+- deployment-controlled OpenAI-compatible `STT_TRANSCRIPTIONS_URL` with no direct OpenAI dependency;
+- incremental transcript persistence;
+- deterministic detection of common price/timing/trust objections, questions, callback requests, commitments, competitor mentions and buying signals;
+- selective GenX coaching only when important semantic help is useful;
+- coaching separated from transcript persistence;
+- exact final transcript replacement at closeout;
+- post-call GenX summary prepared for review;
+- per-call explicit confirmation that organisational transcription/consent requirements have been handled;
+- raw audio chunks are not retained by the current bridge.
+
+External activation/validation still required: configured STT endpoint/model, accuracy/latency tests on the target accents/languages/headsets/dialler, direct SIP/WebRTC/provider media adapters where browser capture is unsuitable, and organisation-level retention/legal policy controls before retained audio recording is introduced.
+
+## GenX / token economy
+
+Implemented:
+
+- all generative/reasoning AI stays behind GenX;
+- bounded recent context and approved-knowledge budgets;
+- bounded output tokens;
+- optional fast/default/reasoning model tiers;
+- provider usage capture when returned;
+- no GenX for CRM sync, health arithmetic, Team Intelligence thresholds, management exception detection, or normal deterministic browser execution.
+
+Not yet implemented: persistent organisation AI-credit wallet/ledger, paid checkout enforcement, and a complete customer-facing usage dashboard.
+
+A public pricing page and centralized plan definition exist, but checkout is intentionally not presented as active billing until a verified billing provider and durable credit ledger are implemented.
+
+## Management Intelligence
+
+Implemented:
+
+- Team Intelligence from synchronized CRM owners, tasks and opportunities;
+- overdue-task, stale-opportunity and missing-next-step metrics;
+- pipeline-at-risk amount from known opportunity values;
+- management-only team administration/configuration;
+- organisation-level Management Intelligence settings;
+- report modes: Exceptions Only and Daily Full Brief;
+- configurable overdue/stale/no-next-step thresholds;
+- Webdock-owned scheduled management-email worker, not a Manus heartbeat dependency;
+- Exceptions Only suppresses email when no configured exception exists;
+- deterministic management emails with factual metrics;
+- no webcam, keystroke, personal-browsing or unrelated-device monitoring.
+
+Not yet implemented: formal per-salesperson quota/target pacing, closed-won revenue target forecasting, one-on-one preparation history, and richer longitudinal coaching analytics.
+
+## Pricing
+
+Implemented public plan source/page:
+
+- Trial: 50 AI Credits;
+- Starter: $29/month, 500 credits, one user;
+- Professional: $79/month, 2,000 credits, up to three users;
+- Team: $199/month, 5,000 credits, up to ten users;
+- additional 1,000 AI Credits: $35;
+- upstream cost assumption recorded as $10 per 1,000 upstream units;
+- page explains that deterministic CRM work does not consume AI Credits.
+
+Billing remains deliberately disabled until a payment provider and durable wallet/ledger are configured and tested.
+
+## Webdock deployment
+
+Implemented:
+
+- multi-stage non-root Node image;
+- Caddy TLS/reverse proxy;
+- MariaDB;
+- Valkey 8.1.9 using the Redis protocol;
+- app, CRM-health worker and self-hosted report-scheduler worker;
+- full profile with internal Chromium/CDP runtime;
+- pilot profile that omits local Chromium and uses an external CDP endpoint;
+- preflight validation;
+- exact production port binding;
+- migrations during install/update;
+- application/database/cache/browser health checks;
+- database backup + checksum;
+- guarded update and smoke-test scripts;
+- correct Genie config/evidence bind mounts;
+- pinned infrastructure images where applicable.
+
+The full profile no longer depends on a Browserless commercial licence. Pilot mode can target any authorised Playwright-compatible external CDP service.
+
+External validation still required: run the selected profile on the actual Webdock host, confirm public DNS/TLS, SMTP delivery, and real external integration credentials.
+
+## Website discovery and security
+
+Implemented:
+
+- authentication + second factor for protected operations;
+- httpOnly session cookies;
+- request origin checks and rate limiting;
+- CSP/security headers/HSTS behind HTTPS;
+- 1 MB JSON body limit;
+- encrypted CRM connection secrets;
+- SSRF protections for website discovery including public DNS validation and every redirect hop;
+- private/link-local/local target rejection;
+- connector domain allowlisting foundation;
+- audit events for sensitive management/action operations.
+
+## Open-source-first infrastructure
+
+Default self-hosted deployment uses MariaDB, Valkey, Caddy, Chromium from Debian packages, Playwright Core and the existing open application stack. Optional/future candidates such as self-hosted faster-whisper/Speaches, whisper.cpp, LiveKit, BullMQ and OpenTelemetry remain behind replaceable boundaries. See `docs/open-source-dependencies.md`.
+
+## What can be tested immediately after deployment
+
+Without external CRM/STT credentials: local admin login, organisation setup, team invitation/member lifecycle once SMTP is configured, management settings, pricing, dashboard/Today/Team Intelligence with normalized test/synced data, database/cache/report-worker/app/browser health, public website discovery, and review/audit architecture.
+
+With the respective authorised credentials: Genie deterministic browser operations after selector calibration, HubSpot OAuth/API, live call transcription/coaching, and outbound email/2FA/management reports.
+
+## Do not call these externally verified until proven
+
+- Genie live automation on the customer's account;
+- HubSpot OAuth on a real portal;
+- STT accuracy/latency on real calls;
+- Webdock public deployment;
+- commercial billing/credit enforcement.
+
+Those are the remaining activation/validation gates, not hidden completed work.

@@ -3,10 +3,10 @@ import { startLogin } from "@/const";
 import { ArrowRight, Bot, CalendarDays, CheckCircle2, ChevronRight, Clock3, DatabaseZap, LockKeyhole, Menu, Network, ShieldCheck, Sparkles, Workflow, X } from "lucide-react";
 import { useState } from "react";
 
-const heroImage = "/assets/hero-white-model.png";
-const platformImage = "/assets/workflow-visual.png";
-const coachImage = "/assets/coaching-visual.png";
-const trustImage = "/assets/trust-visual.png";
+const heroImage = "/assets/amarktai-sales-hero-reference.webp";
+const platformImage = "/assets/amarktai-sales-workflow.svg";
+const coachImage = "/assets/amarktai-sales-coaching.svg";
+const trustImage = "/assets/amarktai-sales-trust.svg";
 const navigation = [{ label: "Platform", id: "platform" }, { label: "Automation", id: "automation" }, { label: "Control", id: "control" }, { label: "Operations", id: "operations" }];
 const agentCapabilities = [
   ["Supervisor", "Routes an instruction, asks for missing inputs, and coordinates governed work."],

@@ -6,19 +6,19 @@
 - [x] Implement the specified sales-assistant workflows and operational dashboard.
 - [x] Redesign the public marketing experience with the updated brand direction.
 - [x] Write complete installation, configuration, deployment, and security documentation.
-- [x] Complete repository validation, save the production checkpoint, and document authenticated Company Setup and live integration validation as Webdock commissioning steps; push the verified implementation to GitHub.
+- [ ] Run authenticated end-to-end Company Setup validation, complete release integration checks, save an updated checkpoint, and push the verified implementation to GitHub.
 - [x] Re-read the supplied specification’s final integration design and remove the unsupported Genie CRM API-key assumption.
 - [x] Replace the Genie connection implementation with the specified install-time CRM bridge or browser-session approach, without storing a Genie API key.
 - [x] Add a Webdock VPS first-install package, including environment template, production process configuration, reverse-proxy guidance, database setup, migrations, health checks, and update procedure.
 - [x] Limit required runtime configuration to the credentials and settings explicitly required by the approved architecture.
-- [x] Replace the Manus-specific authentication dependency with a Webdock-compatible login and second-factor implementation; document the complete VPS login flow for real SMTP/Webdock execution.
+- [ ] Replace the Manus-specific authentication dependency with a Webdock-compatible login and second-factor implementation, and validate the complete VPS login flow.
 - [x] Implement the full guarded Genie saved-script set: candidate search, history read, template SMS, note save, active-task completion, next-task creation, and current-opportunity update.
 - [x] Connect approved Genie action proposals to the saved scripts with precondition checks, screenshots, audit evidence, and explicit failure reporting.
-- [x] Provide deterministic Docker Compose validation and document end-to-end application startup, migrations, Caddy routing, Browserless, and worker checks for target-VPS execution because Docker is unavailable locally.
+- [ ] Validate the Webdock Docker Compose package end to end, including application startup, migrations, Caddy routing, Browserless connection, and the 12-hour health worker.
 - [x] Expand the Webdock guide with selector calibration, authentication setup, health-check recovery, and browser-script operational runbooks.
-- [x] Document authorised Genie selector calibration and live saved-script validation as an explicit owner/VPS commissioning requirement.
+- [ ] Calibrate the deployed Genie script registry with real Genie URLs and selectors, then validate every required saved script against a live authorized Genie session.
 - [x] Complete the workspace’s end-to-end approved-action execution view, including execution status, evidence screenshots, audit result display, and actionable failure reporting.
-- [x] Complete the per-script real-session calibration and verification checklist for execution after authorised Genie selector mapping is supplied.
+- [ ] Complete the per-script real-session calibration and verification checklist after the authorized Genie selector mapping is available.
 - [x] Replace the existing Signal Garden design with a professional blue-and-white Amarktai AI visual system across the public site, sign-in, and workspace.
 - [x] Create and apply a cohesive new set of premium blue Amarktai AI product visuals instead of the current mixed-color imagery.
 - [x] Redesign the landing page information architecture, product storytelling, typography, navigation, calls to action, and responsive layouts from first principles.
@@ -27,7 +27,7 @@
 - [x] Re-test the rebuilt experience, APIs, migrations, deployment package, and documentation before the next GitHub release.
 - [x] Display Genie execution evidence, structured results, audit metadata, and actionable recovery guidance directly in the workspace review queue.
 - [x] Integrate the Supervisor Agent, live-coaching session, analytics, and Outlook validation APIs into the visible workspace flows and verify the end-to-end contracts.
-- [x] Run and document local artifact health, route, asset, test, type, build, and static smoke checks; document Docker/VPS-only smoke checks separately.
+- [ ] Run and document final API smoke checks and deploy-artifact validation after the latest redesign and backend changes.
 - [x] Attach proposal-specific audit metadata, timestamps, and linked evidence directly to each review-queue card.
 - [x] Normalize Genie execution-result payloads so evidence paths are always present or explicitly reported as unavailable in the review queue.
 - [x] Render proposal-specific audit metadata fields in each review-queue card, including script, completion, detail, and evidence-status keys when available.
@@ -44,23 +44,23 @@
 - [x] Replace the remaining customer-facing provider-specific connection labels with Amarktai Network product terminology.
 - [x] Normalize saved connection-profile display data into Amarktai Network product labels before rendering it in dashboard and connection views.
 - [x] Remove the unused legacy ConnectionsPage export that still contains provider-specific UI wording.
-- [x] Document end-to-end integration validation with an explicit separation between local evidence and live Webdock/authorised CRM commissioning.
+- [ ] Run and document end-to-end integration validation for active flows, explicitly separating local validation from live Webdock and authorised CRM validation.
 - [x] Audit the original brief against the current backend for company onboarding, multi-CRM routing, broad agent automation, and operational coverage gaps.
 - [x] Add a company setup data model, secure onboarding form, and organisation profile management flow.
 - [x] Add safe website discovery that collects public site information, proposes extracted company facts and knowledge sources, and requires user confirmation before storage or use.
 - [x] Build a multi-CRM provider registry, connection configuration model, capability matrix, and review-first action routing controls.
-- [x] Expand the agent catalogue and controlled workflow library to cover the broader agent-assisted sales tasks specified in the brief, without overstating unconfigured integrations.
+- [ ] Expand the agent catalogue and controlled workflow library to cover the broader agent-assisted sales tasks specified in the brief, without overstating unconfigured integrations.
 - [x] Make Amarktai Sales Assistant prominent across the product, explain the automation model and its guardrails clearly, and refresh the public hero visual.
-- [x] Validate discovery, CRM routing, agent workflow, deployment contracts, and readiness boundaries with regression tests and documentation; reserve authenticated onboarding persistence for live commissioning.
+- [ ] Validate onboarding, discovery, knowledge confirmation, CRM-routing, agent workflow, and deployment contracts with tests and documentation.
 - [x] Add production organisation, discovery, CRM capability, and automation-playbook tables with reviewed additive migration.
 - [x] Implement secured company profile, public-website discovery, explicit knowledge confirmation, CRM registration, and playbook backend procedures.
 - [x] Expand the agent catalogue and add deterministic CRM capability routing that blocks unsupported routes.
 - [x] Build the visible multi-step company setup form with discovery review and knowledge confirmation.
 - [x] Refresh the hero with the requested white-model image and expand the public automation, multi-CRM, agent-capability, and review-first explanations.
-- [x] Add targeted unit coverage for website-discovery safeguards and CRM routing; document authenticated onboarding persistence as a live local-auth commissioning check.
+- [ ] Add targeted unit coverage for website-discovery safeguards, CRM routing, and company onboarding persistence.
 - [x] Add unit coverage for website-discovery safeguards and multi-CRM capability routing.
-- [x] Document authenticated Company Setup end-to-end validation as a target-VPS/local-admin commissioning flow; backend/UI contracts and discovery/CRM routing regressions are covered locally.
-- [x] Add CRM-routed workflow proposal blocking/ready-route smoke coverage and document authenticated Company Setup API smoke execution for commissioning.
+- [ ] Run authenticated Company Setup end-to-end validation: save profile, preview website, confirm knowledge, register CRM capability, and save a playbook.
+- [ ] Add API smoke coverage for Company Setup procedures and CRM-routed workflow-proposal blocking behaviour.
 - [x] Add direct smoke coverage for CRM-routed workflow proposal blocking and ready-route attachment.
 - [x] Audit every agent, workflow, dashboard, CRM, communication, and efficiency requirement against the original brief and record the remaining operating-model gaps.
 - [x] Add a Human Communications Agent with structured draft-quality controls that make email replies sound natural, company-aware, concise, and non-generic while preserving human approval before sending.
@@ -98,3 +98,15 @@
 - [x] Integrate the completed release onto the correct Sales history without touching Amarktai-Network-V2, then verify Sales-specific production controls.
 - [x] Run final recovery release gates and push release/production-ready-sales-20260822 to the correct Sales repository.
 - [x] Deliver the exact repository recovery and Webdock deployment handoff report with the deployable SHA.
+- [x] Freeze and verify amarktainetwork-blip/Amarktai-Sales-Assistant- at the current canonical main before creating release/go-live-20260822.
+- [x] Audit the advanced repository’s existing integrations, tenant model, authentication, storage, and deployment profiles without discarding completed capabilities.
+- [ ] Consolidate active-organisation membership, cross-tenant authorisation, and organisation-scoped shared and operational data with safe migrations and isolation tests.
+- [ ] Retire legacy CRM connection routing in favour of the canonical connectedSystems readiness model across onboarding, workflows, dashboards, playbooks, communications, and call closeout.
+- [ ] Rebuild onboarding around server-verified supported CRM connections, CRM/team/pipeline mapping, communications, policies, targets, credits, and go-live readiness.
+- [ ] Complete self-hosted authentication, generic organisation configuration, review-first playbooks, provider capability verification, and Manus-free production boundaries.
+- [ ] Run migrations, security and tenant-isolation tests, production build, Compose/Docker gates, authenticated flow tests, and provider readiness verification without credentials in source control.
+- [ ] Commit, push, and deliver the trailing-hyphen repository go-live release with exact status and only real external commissioning requirements outstanding.
+- [x] Replace active managed SDK, OAuth, Forge, storage proxy, preview instrumentation, and hosted scheduler fallbacks with local-session and Webdock-worker-compatible runtime boundaries; pass standalone type check, tests, and production build.
+- [x] Bind an explicitly selected active organisation to the local session and expose validated list/current/switch APIs.
+- [x] Replace first-active-membership inference in tenant-sensitive REST and tRPC flows with the explicit active-organisation resolver.
+- [x] Add membership, active-organisation switching, and cross-tenant denial regression coverage.

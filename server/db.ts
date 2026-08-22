@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gt, isNull, ne, or } from "drizzle-orm";
+import { and, count, desc, eq, gt, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import bcrypt from "bcryptjs";
 import {
@@ -8,7 +8,6 @@ import {
   callSessions,
   companyProfiles,
   crmConnections,
-  dailyReportExecutions,
   dailyReports,
   integrationProfiles,
   knowledgeSources,
@@ -17,15 +16,9 @@ import {
   users,
   websiteDiscoveries,
   automationPlaybooks,
-  agentResponseCache,
-  agentUsageEvents,
-  communicationDrafts,
-  crmContextSnapshots,
-  managerFindings,
   workflowRuns,
 } from "../drizzle/schema";
 import type { ProposedAction } from "./workflowRules";
-import { summarizeAgentUsageEvents } from "./agentUsage";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -51,16 +44,6 @@ async function requireDb() {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
   return db;
-}
-
-export async function checkDatabaseReadiness() {
-  try {
-    const db = await requireDb();
-    await db.execute("SELECT 1");
-    return { ready: true as const };
-  } catch {
-    return { ready: false as const };
-  }
 }
 
 export async function upsertUser(user: InsertUser): Promise<void> {
@@ -120,16 +103,6 @@ export async function createLocalAdminIfMissing() {
     role: "admin",
     lastSignedIn: new Date(),
   });
-  return getUserByEmail(email);
-}
-
-export async function getOrCreateDevelopmentPreviewUser() {
-  if (process.env.NODE_ENV !== "development") throw new Error("Development preview access is unavailable outside development.");
-  const email = "preview@amarktainetwork.local";
-  const existing = await getUserByEmail(email);
-  if (existing) return existing;
-  const db = await requireDb();
-  await db.insert(users).values({ openId: "development-preview", email, name: "Amarktai Dashboard Preview", loginMethod: "local", role: "admin", lastSignedIn: new Date() });
   return getUserByEmail(email);
 }
 
@@ -295,10 +268,10 @@ export async function recordActionExecution(input: { userId: number; proposalId:
     .where(and(eq(actionProposals.id, input.proposalId), eq(actionProposals.userId, input.userId), eq(actionProposals.state, "approved")));
   await recordAudit({
     userId: input.userId,
-    eventType: input.success ? "genie_action_executed" : "genie_action_blocked",
+    eventType: input.success ? "crm_action_executed" : "crm_action_blocked",
     entityType: "action_proposal",
     entityId: String(input.proposalId),
-    summary: input.success ? "Approved Genie saved script completed." : "Approved Genie saved script failed and was blocked.",
+    summary: input.success ? "Approved CRM action was verified by its connector." : "Approved CRM action failed and was blocked.",
     metadata: normalizedResult,
   });
 }
@@ -456,40 +429,29 @@ export async function createDailyReport(input: { userId: number; recipientEmail:
   return Number(result[0].insertId);
 }
 
+export async function attachDailyReportTask(input: { reportId: number; userId: number; taskUid: string }) {
+  const db = await requireDb();
+  await db.update(dailyReports).set({ scheduleCronTaskUid: input.taskUid }).where(and(eq(dailyReports.id, input.reportId), eq(dailyReports.userId, input.userId)));
+}
+
 export async function listDailyReports(userId: number) {
   const db = await requireDb();
   return db.select().from(dailyReports).where(eq(dailyReports.userId, userId)).orderBy(desc(dailyReports.createdAt));
 }
 
-export async function listEnabledDailyReports() {
+export async function getDailyReportByTaskUid(taskUid: string) {
   const db = await requireDb();
-  return db.select().from(dailyReports).where(eq(dailyReports.isEnabled, true));
-}
-
-export async function claimDailyReportDelivery(reportId: number, deliveryKey: string) {
-  const db = await requireDb();
-  const result = await db.update(dailyReports)
-    .set({ deliveryClaimKey: deliveryKey, lastAttemptAt: new Date() })
-    .where(and(
-      eq(dailyReports.id, reportId),
-      or(isNull(dailyReports.lastDeliveryKey), ne(dailyReports.lastDeliveryKey, deliveryKey)),
-      or(isNull(dailyReports.deliveryClaimKey), ne(dailyReports.deliveryClaimKey, deliveryKey)),
-    ));
-  return Number((result as unknown as [{ affectedRows?: number }])[0]?.affectedRows ?? 0) === 1;
+  return (await db.select().from(dailyReports).where(eq(dailyReports.scheduleCronTaskUid, taskUid)).limit(1))[0];
 }
 
 export async function markDailyReportDelivery(reportId: number, deliveryKey: string) {
   const db = await requireDb();
-  const sentAt = new Date();
-  await db.update(dailyReports).set({ deliveryClaimKey: null, lastDeliveryKey: deliveryKey, lastSentAt: sentAt }).where(and(eq(dailyReports.id, reportId), eq(dailyReports.deliveryClaimKey, deliveryKey)));
-  await db.insert(dailyReportExecutions).values({ reportId, deliveryKey, status: "sent", sentAt }).onDuplicateKeyUpdate({ set: { status: "sent", failureReason: null, attemptedAt: sentAt, sentAt } });
+  await db.update(dailyReports).set({ lastDeliveryKey: deliveryKey, lastSentAt: new Date() }).where(eq(dailyReports.id, reportId));
 }
 
-export async function releaseDailyReportDelivery(reportId: number, deliveryKey: string, failureReason: string) {
+export async function releaseDailyReportDelivery(reportId: number, deliveryKey: string) {
   const db = await requireDb();
-  const attemptedAt = new Date();
-  await db.update(dailyReports).set({ deliveryClaimKey: null }).where(and(eq(dailyReports.id, reportId), eq(dailyReports.deliveryClaimKey, deliveryKey)));
-  await db.insert(dailyReportExecutions).values({ reportId, deliveryKey, status: "failed", failureReason: failureReason.slice(0, 240), attemptedAt }).onDuplicateKeyUpdate({ set: { status: "failed", failureReason: failureReason.slice(0, 240), attemptedAt, sentAt: null } });
+  await db.update(dailyReports).set({ lastDeliveryKey: null }).where(and(eq(dailyReports.id, reportId), eq(dailyReports.lastDeliveryKey, deliveryKey)));
 }
 
 export async function getCompanySetup(userId: number) {
@@ -501,19 +463,6 @@ export async function getCompanySetup(userId: number) {
     db.select().from(automationPlaybooks).where(eq(automationPlaybooks.userId, userId)).orderBy(desc(automationPlaybooks.updatedAt)),
   ]);
   return { profile: profile[0] ?? null, discoveries, connections, playbooks };
-}
-
-export async function getCompanyAgentContext(userId: number) {
-  const db = await requireDb();
-  const profile = (await db.select().from(companyProfiles).where(eq(companyProfiles.userId, userId)).limit(1))[0];
-  if (!profile) return undefined;
-  return [
-    `Company: ${profile.companyName}`,
-    profile.industry ? `Industry: ${profile.industry}` : "",
-    profile.primaryMarket ? `Primary market: ${profile.primaryMarket}` : "",
-    profile.salesMotion ? `Sales motion: ${profile.salesMotion}` : "",
-    profile.brandVoice ? `Approved brand voice: ${profile.brandVoice}` : "",
-  ].filter(Boolean).join("\n").slice(0, 8_000);
 }
 
 export async function upsertCompanyProfile(input: {
@@ -555,32 +504,12 @@ export async function confirmWebsiteDiscovery(input: {
   return { discoveryId: confirmed?.id ?? null, confirmedKnowledgeItems: input.confirmedKnowledge.length };
 }
 
-export async function saveCrmConnection(input: { userId: number; provider: "genie" | "hubspot" | "salesforce" | "pipedrive" | "custom_browser"; displayName: string; status: "draft" | "needs_credentials"; capabilities: Array<"contacts" | "tasks" | "opportunities" | "notes" | "activities" | "email" | "calendar">; connectionMode: "api" | "browser_automation" | "custom"; configurationHint?: string | null }) {
+export async function saveCrmConnection(input: { userId: number; provider: "genie" | "hubspot" | "salesforce" | "pipedrive" | "custom_browser"; displayName: string; status: "draft" | "needs_credentials" | "ready" | "paused" | "error"; capabilities: Array<"contacts" | "tasks" | "opportunities" | "notes" | "activities" | "email" | "calendar">; connectionMode: "api" | "browser_automation" | "custom"; configurationHint?: string | null }) {
   const db = await requireDb();
   const result = await db.insert(crmConnections).values(input);
   const id = Number(result[0].insertId);
   await recordAudit({ userId: input.userId, eventType: "crm_connection_registered", entityType: "crm_connection", entityId: String(id), summary: `${input.displayName} was registered for review-first automation.`, metadata: { provider: input.provider, capabilities: input.capabilities, connectionMode: input.connectionMode } });
   return id;
-}
-
-export async function getCrmConnectionForVerification(userId: number, connectionId: number) {
-  const db = await requireDb();
-  return (await db.select().from(crmConnections).where(and(eq(crmConnections.id, connectionId), eq(crmConnections.userId, userId))).limit(1))[0];
-}
-
-export async function recordCrmConnectionVerification(input: {
-  userId: number; connectionId: number; status: "ready" | "needs_credentials" | "error" | "connector_not_implemented";
-  verifiedAt?: Date | null; verificationExpiresAt?: Date | null; verificationFailure?: string | null; verificationEvidence?: Record<string, unknown> | null;
-}) {
-  const db = await requireDb();
-  await db.update(crmConnections).set({
-    status: input.status,
-    verifiedAt: input.verifiedAt ?? null,
-    verificationExpiresAt: input.verificationExpiresAt ?? null,
-    verificationFailure: input.verificationFailure ?? null,
-    verificationEvidence: input.verificationEvidence ?? null,
-  }).where(and(eq(crmConnections.id, input.connectionId), eq(crmConnections.userId, input.userId)));
-  await recordAudit({ userId: input.userId, eventType: "crm_connection_verified", entityType: "crm_connection", entityId: String(input.connectionId), summary: `CRM connection verification finished with ${input.status}.`, metadata: { status: input.status, verified: input.status === "ready" } });
 }
 
 export async function saveAutomationPlaybook(input: { userId: number; title: string; trigger: string; description: string; agentKey: string; requiredCapabilities: string[]; status: "draft" | "active" | "paused" }) {
@@ -589,100 +518,4 @@ export async function saveAutomationPlaybook(input: { userId: number; title: str
   const id = Number(result[0].insertId);
   await recordAudit({ userId: input.userId, eventType: "automation_playbook_saved", entityType: "automation_playbook", entityId: String(id), summary: `Review-first playbook '${input.title}' saved.`, metadata: { agentKey: input.agentKey, status: input.status } });
   return id;
-}
-
-export async function getActiveAutomationPlaybook(userId: number, playbookId: number) {
-  const db = await requireDb();
-  return (await db.select().from(automationPlaybooks).where(and(eq(automationPlaybooks.id, playbookId), eq(automationPlaybooks.userId, userId), eq(automationPlaybooks.status, "active"))).limit(1))[0];
-}
-
-export async function getCachedAgentResponse(input: { userId: number; agentKey: string; requestHash: string; policyVersion: string }) {
-  const db = await requireDb();
-  return (await db.select().from(agentResponseCache).where(and(eq(agentResponseCache.userId, input.userId), eq(agentResponseCache.agentKey, input.agentKey), eq(agentResponseCache.requestHash, input.requestHash), eq(agentResponseCache.policyVersion, input.policyVersion), gt(agentResponseCache.expiresAt, new Date()))).orderBy(desc(agentResponseCache.createdAt)).limit(1))[0];
-}
-
-export async function saveCachedAgentResponse(input: { userId: number; agentKey: string; requestHash: string; policyVersion: string; content: string; expiresAt: Date }) {
-  const db = await requireDb();
-  await db.insert(agentResponseCache).values(input).onDuplicateKeyUpdate({ set: { content: input.content, expiresAt: input.expiresAt, createdAt: new Date() } });
-}
-
-export async function recordAgentUsage(input: { userId: number; agentKey: string; model?: string | null; cacheHit: boolean; inputTokens?: number | null; outputTokens?: number | null; inputChars: number; outputChars: number }) {
-  const db = await requireDb();
-  await db.insert(agentUsageEvents).values(input);
-}
-
-export async function getAgentUsageSummary(userId: number) {
-  const db = await requireDb();
-  const events = await db.select().from(agentUsageEvents).where(eq(agentUsageEvents.userId, userId)).orderBy(desc(agentUsageEvents.createdAt)).limit(250);
-  return summarizeAgentUsageEvents(events);
-}
-
-export async function saveCommunicationDraft(input: { userId: number; leadLabel?: string | null; recipientEmail: string; subject: string; body: string; purpose: string; dedupeKey: string; qualityChecks: Array<{ key: string; passed: boolean; detail: string }> }) {
-  const db = await requireDb();
-  const existing = (await db.select().from(communicationDrafts).where(and(eq(communicationDrafts.userId, input.userId), eq(communicationDrafts.dedupeKey, input.dedupeKey))).orderBy(desc(communicationDrafts.createdAt)).limit(1))[0];
-  if (existing && ["draft", "review_required"].includes(existing.state)) return { id: existing.id, reused: true };
-  const result = await db.insert(communicationDrafts).values({ ...input, state: "review_required" });
-  const id = Number(result[0].insertId);
-  await recordAudit({ userId: input.userId, eventType: "communication_draft_prepared", entityType: "communication_draft", entityId: String(id), summary: "Human-style email draft prepared for review; no email was sent.", metadata: { leadLabel: input.leadLabel ?? null, recipientEmail: input.recipientEmail, qualityChecks: input.qualityChecks } });
-  return { id, reused: false };
-}
-
-export async function listCommunicationDrafts(userId: number) {
-  const db = await requireDb();
-  return db.select().from(communicationDrafts).where(eq(communicationDrafts.userId, userId)).orderBy(desc(communicationDrafts.createdAt)).limit(30);
-}
-
-export async function upsertCrmContextSnapshot(input: { userId: number; leadLabel: string; source: "genie_browser" | "manual"; context: Record<string, string>; summary: string; expiresAt: Date }) {
-  const db = await requireDb();
-  await db.insert(crmContextSnapshots).values(input).onDuplicateKeyUpdate({ set: { source: input.source, context: input.context, summary: input.summary, refreshedAt: new Date(), expiresAt: input.expiresAt } });
-  const snapshot = (await db.select().from(crmContextSnapshots).where(and(eq(crmContextSnapshots.userId, input.userId), eq(crmContextSnapshots.leadLabel, input.leadLabel))).limit(1))[0];
-  if (!snapshot) throw new Error("CRM context snapshot could not be saved.");
-  await recordAudit({ userId: input.userId, eventType: "crm_context_refreshed", entityType: "crm_context_snapshot", entityId: String(snapshot.id), summary: `CRM context refreshed for ${input.leadLabel}.`, metadata: { source: input.source, expiresAt: input.expiresAt.toISOString() } });
-  return snapshot;
-}
-
-export async function getCrmContextSnapshot(userId: number, leadLabel: string) {
-  const db = await requireDb();
-  return (await db.select().from(crmContextSnapshots).where(and(eq(crmContextSnapshots.userId, userId), eq(crmContextSnapshots.leadLabel, leadLabel))).limit(1))[0];
-}
-
-export async function getCrmWorkboard(userId: number, leadLabel: string) {
-  const db = await requireDb();
-  const [snapshot, workflows, proposals, callbacks, calls] = await Promise.all([
-    getCrmContextSnapshot(userId, leadLabel),
-    db.select().from(workflowRuns).where(and(eq(workflowRuns.userId, userId), eq(workflowRuns.leadLabel, leadLabel))).orderBy(desc(workflowRuns.createdAt)).limit(8),
-    db.select().from(actionProposals).where(and(eq(actionProposals.userId, userId), eq(actionProposals.targetLabel, leadLabel))).orderBy(desc(actionProposals.createdAt)).limit(30),
-    db.select().from(callbackTasks).where(and(eq(callbackTasks.userId, userId), eq(callbackTasks.leadLabel, leadLabel))).orderBy(desc(callbackTasks.updatedAt)).limit(16),
-    db.select().from(callSessions).where(and(eq(callSessions.userId, userId), eq(callSessions.leadLabel, leadLabel))).orderBy(desc(callSessions.updatedAt)).limit(8),
-  ]);
-  return { snapshot: snapshot ?? null, workflows, proposals, callbacks, calls };
-}
-
-export type ManagerFindingInput = { findingKey: string; severity: "critical" | "high" | "normal" | "info"; title: string; detail: string; targetType?: string; targetId?: string; metadata: Record<string, unknown> };
-export async function upsertManagerFinding(input: ManagerFindingInput & { userId: number }) {
-  const db = await requireDb();
-  await db.insert(managerFindings).values({ ...input, state: "open" }).onDuplicateKeyUpdate({ set: { severity: input.severity, title: input.title, detail: input.detail, targetType: input.targetType ?? null, targetId: input.targetId ?? null, metadata: input.metadata, state: "open", updatedAt: new Date() } });
-}
-
-export async function listManagerFindings(userId: number) {
-  const db = await requireDb();
-  return db.select().from(managerFindings).where(eq(managerFindings.userId, userId)).orderBy(desc(managerFindings.updatedAt)).limit(80);
-}
-
-export async function updateManagerFindingState(input: { userId: number; findingId: number; state: "acknowledged" | "resolved" }) {
-  const db = await requireDb();
-  await db.update(managerFindings).set({ state: input.state }).where(and(eq(managerFindings.id, input.findingId), eq(managerFindings.userId, input.userId)));
-  await recordAudit({ userId: input.userId, eventType: `manager_finding_${input.state}`, entityType: "manager_finding", entityId: String(input.findingId), summary: `Manager finding marked ${input.state}.`, metadata: {} });
-}
-
-export async function getManagerAssuranceSnapshot(userId: number) {
-  const db = await requireDb();
-  const [proposals, callbacks, runs, calls, findings] = await Promise.all([
-    db.select().from(actionProposals).where(eq(actionProposals.userId, userId)).orderBy(desc(actionProposals.createdAt)).limit(200),
-    db.select().from(callbackTasks).where(eq(callbackTasks.userId, userId)).orderBy(desc(callbackTasks.updatedAt)).limit(200),
-    db.select().from(workflowRuns).where(eq(workflowRuns.userId, userId)).orderBy(desc(workflowRuns.updatedAt)).limit(100),
-    db.select().from(callSessions).where(eq(callSessions.userId, userId)).orderBy(desc(callSessions.updatedAt)).limit(80),
-    listManagerFindings(userId),
-  ]);
-  return { proposals, callbacks, runs, calls, findings };
 }

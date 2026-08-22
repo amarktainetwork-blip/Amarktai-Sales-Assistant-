@@ -1,9 +1,40 @@
 import { AGENT_CATALOG } from "./agentCatalog";
-import { compactAgentMessages, compactKnowledge, createAgentRequestHash, getAgentModel, getAgentPolicy } from "./agentPolicies";
-import { getCachedAgentResponse, recordAgentUsage, saveCachedAgentResponse } from "./db";
+import { consumeAiCredits, getAiCreditWallet } from "./aiCredits";
+import { currentAiRequestIdentity } from "./aiRequestContext";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
-export type GenxAgentResult = { content: string; provider: "genx" | "not_configured"; model: string | null; cacheHit: boolean; usage?: { inputTokens?: number; outputTokens?: number } };
+export type GenxUsage = { promptTokens?: number; completionTokens?: number; totalTokens?: number };
+export type GenxBillingContext = { userId: number; organisationId: number; feature: string; creditCost?: number; reference?: string };
+
+function positiveInt(value: string | undefined, fallback: number) {
+  const parsed = Number.parseInt(value || "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+function featureEnvKey(feature: string) { return `AI_CREDIT_COST_${feature.replace(/[^a-z0-9]+/gi, "_").replace(/^_+|_+$/g, "").toUpperCase()}`; }
+function resolvedBilling(input: { agentKey: string; billing?: GenxBillingContext }): GenxBillingContext | undefined {
+  if (input.billing) return input.billing;
+  const identity = currentAiRequestIdentity();
+  return identity ? { ...identity, feature: `assistant_${input.agentKey}` } : undefined;
+}
+function creditCost(billing?: GenxBillingContext) {
+  if (!billing) return 0;
+  if (Number.isInteger(billing.creditCost) && (billing.creditCost || 0) >= 0) return Math.min(10_000, billing.creditCost || 0);
+  return Math.min(10_000, positiveInt(process.env[featureEnvKey(billing.feature)], positiveInt(process.env.AI_CREDIT_COST_DEFAULT, 1)));
+}
+
+function boundedMessages(messages: ChatMessage[], maxChars: number) {
+  const selected: ChatMessage[] = [];
+  let remaining = maxChars;
+  for (let index = messages.length - 1; index >= 0 && remaining > 0; index -= 1) {
+    const message = messages[index];
+    const content = message.content.trim();
+    if (!content) continue;
+    const slice = content.length > remaining ? content.slice(content.length - remaining) : content;
+    selected.unshift({ role: message.role, content: slice });
+    remaining -= slice.length;
+  }
+  return selected;
+}
 
 export function getGenxReadiness() {
   const endpointConfigured = Boolean(process.env.GENX_CHAT_COMPLETIONS_URL);
@@ -12,108 +43,56 @@ export function getGenxReadiness() {
   return { ready: endpointConfigured && keyConfigured && modelConfigured, endpointConfigured, keyConfigured, modelConfigured };
 }
 
-function getGenxModelsUrl() {
-  const configured = process.env.GENX_CHAT_COMPLETIONS_URL?.trim();
-  if (!configured) return null;
-  try {
-    const url = new URL(configured);
-    url.pathname = url.pathname.replace(/\/chat\/completions\/?$/, "/models");
-    return url.toString();
-  } catch {
-    return null;
-  }
-}
-
-async function fetchWithTimeout(fetcher: typeof fetch, input: string, init: RequestInit) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8_000);
-  try {
-    return await fetcher(input, { ...init, signal: controller.signal });
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-export async function verifyGenxConnection(fetcher: typeof fetch = fetch) {
-  const readiness = getGenxReadiness();
-  const modelsUrl = getGenxModelsUrl();
-  if (!readiness.ready || !modelsUrl) return { ready: false as const, reason: "not_configured" as const };
-  const headers = { "Content-Type": "application/json", Authorization: `Bearer ${process.env.GENX_API_KEY!}` };
-  try {
-    const modelsResponse = await fetchWithTimeout(fetcher, modelsUrl, { headers });
-    if (!modelsResponse.ok) return { ready: false as const, reason: "models_unavailable" as const };
-    const modelsPayload = (await modelsResponse.json()) as { data?: Array<{ id?: string }> };
-    const advertisedModels = modelsPayload.data?.map(model => model.id).filter((value): value is string => Boolean(value)) ?? [];
-    if (advertisedModels.length && !advertisedModels.includes(process.env.GENX_DEFAULT_MODEL!)) return { ready: false as const, reason: "configured_model_not_advertised" as const };
-    const completionResponse = await fetchWithTimeout(fetcher, process.env.GENX_CHAT_COMPLETIONS_URL!, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ model: process.env.GENX_DEFAULT_MODEL!, messages: [{ role: "user", content: "Return READY." }], temperature: 0, max_tokens: 8 }),
-    });
-    if (!completionResponse.ok) return { ready: false as const, reason: "minimal_request_failed" as const };
-    const payload = (await completionResponse.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    if (!payload.choices?.[0]?.message?.content?.trim()) return { ready: false as const, reason: "minimal_request_invalid" as const };
-    return { ready: true as const, reason: "verified" as const };
-  } catch {
-    return { ready: false as const, reason: "verification_failed" as const };
-  }
-}
-
-export function buildAgentSystemPrompt(input: { agentName: string; agentPurpose: string; policy: ReturnType<typeof getAgentPolicy>; companyContext?: string; approvedKnowledge?: string }) {
-  return [
-    `You are ${input.agentName} for the organisation using Amarktai Sales Assistant. ${input.agentPurpose}`,
-    ...input.policy.instructions,
-    "Never claim that an external CRM, email, SMS, WhatsApp, or calendar action happened unless the system confirms it.",
-    "Never invent candidate facts, objections, commitments, programme details, consent, or communication history.",
-    input.policy.outputContract,
-    input.companyContext ? `Approved company operating context:\n${input.companyContext}\nUse this for tone, audience, and sales-motion alignment. It is not authority for customer-, product-, service-, price-, funding-, or policy-specific claims.` : "No approved company profile was supplied. Do not assume a brand voice, market, or sales motion.",
-    input.approvedKnowledge ? `Approved knowledge sources for this answer:\n${input.approvedKnowledge}\nTreat these sources as the only authority for product, service, policy, pricing, entry requirement, and eligibility claims. If an answer is not present, say so plainly.` : "No approved knowledge was supplied. Do not make product, service, pricing, funding, eligibility, or policy claims.",
-  ].join("\n\n");
-}
-
-export async function runGenxAgent(input: { userId?: number; agentKey: string; messages: ChatMessage[]; approvedKnowledge?: string; companyContext?: string }): Promise<GenxAgentResult> {
+export async function runGenxAgent(input: { agentKey: string; messages: ChatMessage[]; approvedKnowledge?: string; modelTier?: "fast" | "default" | "reasoning"; billing?: GenxBillingContext }) {
   const readiness = getGenxReadiness();
   const agent = AGENT_CATALOG.find(item => item.key === input.agentKey) ?? AGENT_CATALOG[1];
-  const policy = getAgentPolicy(agent.key);
-  const messages = compactAgentMessages(input.messages, policy);
-  const approvedKnowledge = compactKnowledge(input.approvedKnowledge, policy);
-  const companyContext = input.companyContext?.slice(0, 8_000);
-  const model = getAgentModel(agent.key);
-  const inputChars = messages.reduce((total, message) => total + message.content.length, 0) + (approvedKnowledge?.length ?? 0) + (companyContext?.length ?? 0);
-  const requestHash = createAgentRequestHash({ agentKey: agent.key, messages, approvedKnowledge, companyContext, policy });
+  const billing = resolvedBilling(input);
 
-  if (input.userId && policy.cacheMinutes > 0) {
-    const cached = await getCachedAgentResponse({ userId: input.userId, agentKey: agent.key, requestHash, policyVersion: policy.version });
-    if (cached) {
-      await recordAgentUsage({ userId: input.userId, agentKey: agent.key, model: model ?? null, cacheHit: true, inputChars, outputChars: cached.content.length });
-      return { content: cached.content, provider: "genx", model: model ?? null, cacheHit: true };
-    }
+  if (!readiness.ready) {
+    return { content: "Amarktai intelligence is not connected yet. Configure the GenX chat-completions URL, API key, and default model in deployment secrets.", provider: "not_configured" as const, usage: {} as GenxUsage, creditsCharged: 0 };
   }
 
-  if (!readiness.ready || !model) {
-    return { content: "Amarktai intelligence service is not connected yet. Add the GenX chat-completions URL, API key, and default model in deployment secrets; the selected specialist will then prepare review-ready guidance.", provider: "not_configured", model: model ?? null, cacheHit: false };
+  const charge = creditCost(billing);
+  if (billing && charge > 0) {
+    const wallet = await getAiCreditWallet({ userId: billing.userId, organisationId: billing.organisationId });
+    if (wallet.balance < charge) throw new Error(`This AI operation needs ${charge} Amarktai AI Credit${charge === 1 ? "" : "s"}, but the organisation has ${wallet.balance} remaining.`);
   }
 
-  const systemMessage = { role: "system", content: buildAgentSystemPrompt({ agentName: agent.name, agentPurpose: agent.purpose, policy, companyContext, approvedKnowledge }) };
+  const maxContextChars = Math.min(60_000, positiveInt(process.env.GENX_MAX_CONTEXT_CHARS, 24_000));
+  const maxOutputTokens = Math.min(4_000, positiveInt(process.env.GENX_MAX_OUTPUT_TOKENS, 900));
+  const knowledgeBudget = Math.min(12_000, Math.floor(maxContextChars * 0.45));
+  const approvedKnowledge = input.approvedKnowledge?.trim().slice(0, knowledgeBudget);
+  const conversationBudget = Math.max(4_000, maxContextChars - (approvedKnowledge?.length ?? 0));
+  const messages = boundedMessages(input.messages, conversationBudget);
+
+  const systemMessage = {
+    role: "system" as const,
+    content: `You are ${agent.name}, a governed capability inside Amarktai Sales Assistant. ${agent.purpose} Never claim that an external CRM, email, SMS, WhatsApp, phone, or calendar action happened unless the system confirms it. Never invent customer facts, objections, commitments, prices, policies, or product details. Produce concise, practical, review-ready guidance.${approvedKnowledge ? `\n\nApproved company knowledge for this answer:\n${approvedKnowledge}\n\nTreat this material as the authority for company-specific factual claims. If the answer is absent, say so clearly.` : ""}`,
+  };
+
+  const model = input.modelTier === "fast" && process.env.GENX_FAST_MODEL?.trim()
+    ? process.env.GENX_FAST_MODEL.trim()
+    : input.modelTier === "reasoning" && process.env.GENX_REASONING_MODEL?.trim()
+      ? process.env.GENX_REASONING_MODEL.trim()
+      : process.env.GENX_DEFAULT_MODEL!;
 
   const response = await fetch(process.env.GENX_CHAT_COMPLETIONS_URL!, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.GENX_API_KEY!}` },
-    body: JSON.stringify({ model, messages: [systemMessage, ...messages], temperature: policy.temperature, max_tokens: policy.maxResponseTokens }),
+    body: JSON.stringify({ model, messages: [systemMessage, ...messages], temperature: 0.2, max_tokens: maxOutputTokens }),
   });
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
     throw new Error(`GenX request failed with ${response.status}${detail ? `: ${detail.slice(0, 240)}` : ""}`);
   }
 
-  const payload = (await response.json()) as { choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number } };
+  const payload = (await response.json()) as { choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number; input_tokens?: number; output_tokens?: number } };
   const content = payload.choices?.[0]?.message?.content?.trim();
   if (!content) throw new Error("GenX returned no assistant content.");
-  const usage = { inputTokens: payload.usage?.prompt_tokens, outputTokens: payload.usage?.completion_tokens };
+  const usage: GenxUsage = { promptTokens: payload.usage?.prompt_tokens ?? payload.usage?.input_tokens, completionTokens: payload.usage?.completion_tokens ?? payload.usage?.output_tokens, totalTokens: payload.usage?.total_tokens };
 
-  if (input.userId) {
-    await recordAgentUsage({ userId: input.userId, agentKey: agent.key, model, cacheHit: false, inputTokens: usage.inputTokens ?? null, outputTokens: usage.outputTokens ?? null, inputChars, outputChars: content.length });
-    if (policy.cacheMinutes > 0) await saveCachedAgentResponse({ userId: input.userId, agentKey: agent.key, requestHash, policyVersion: policy.version, content, expiresAt: new Date(Date.now() + policy.cacheMinutes * 60_000) });
+  if (billing && charge > 0) {
+    await consumeAiCredits({ userId: billing.userId, organisationId: billing.organisationId, credits: charge, feature: billing.feature, model, providerUsage: { ...usage }, reference: billing.reference });
   }
-  return { content, provider: "genx", model, cacheHit: false, usage };
+  return { content, provider: "genx" as const, model, usage, creditsCharged: billing ? charge : 0 };
 }

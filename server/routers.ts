@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parse as parseCookieHeader } from "cookie";
 import { AGENT_CATALOG, WORKFLOW_KEYS } from "./agentCatalog";
 import {
   createCallSession,
@@ -7,19 +8,15 @@ import {
   createTwoFactorChallenge,
   createIntegrationProfile,
   createKnowledgeSource,
-  getOrCreateDevelopmentPreviewUser,
   createWorkflowRun,
   createLiveCallSession,
   getAssistantDashboard,
   getCompanySetup,
-  getCompanyAgentContext,
-  getActiveAutomationPlaybook,
   getOperationsDashboard,
   getOperationalAnalytics,
   getApprovedActionProposal,
-  getCrmConnectionForVerification,
   recordActionExecution,
-  recordCrmConnectionVerification,
+  attachDailyReportTask,
   consumeValidTwoFactorChallenge,
   listDailyReports,
   listActionProposals,
@@ -28,15 +25,6 @@ import {
   searchApprovedKnowledge,
   listAuditEntries,
   listProposalAuditEntries,
-  getAgentUsageSummary,
-  getCrmWorkboard,
-  listCommunicationDrafts,
-  listManagerFindings,
-  saveCommunicationDraft,
-  updateManagerFindingState,
-  getManagerAssuranceSnapshot,
-  upsertManagerFinding,
-  upsertCrmContextSnapshot,
   reviewActionProposal,
   saveAutomationPlaybook,
   saveCrmConnection,
@@ -46,8 +34,7 @@ import {
 } from "./db";
 import { getGenxReadiness, runGenxAgent } from "./genx";
 import { getGenieReadiness } from "./genie/config";
-import { runGenieHealthCheck } from "./genie/bridge";
-import { executeApprovedGenieProposal } from "./genie/executeProposal";
+import { executeApprovedCrmAction } from "./crm/executeApprovedAction";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
@@ -55,22 +42,28 @@ import { protectedProcedure, publicProcedure, router, secondFactorProcedure } fr
 import { buildWorkflowPlan } from "./workflowRules";
 import { compareVerificationCode, createVerificationChallenge, issueTwoFactorSession, TWO_FACTOR_COOKIE, TWO_FACTOR_MAX_AGE_MS } from "./twoFactor";
 import { getSmtpReadiness, sendSecondFactorCode } from "./smtp";
-import { authenticateLocalPassword, isDevelopmentPreviewMode, isLocalAuthMode, issueLocalSession, LOCAL_SESSION_MAX_AGE_MS } from "./localAuth";
+import { createHeartbeatJob } from "./_core/heartbeat";
+import { authenticateLocalPassword, isLocalAuthMode, issueLocalSession, LOCAL_SESSION_MAX_AGE_MS } from "./localAuth";
 import { routeSalesCommand } from "./supervisor";
 import { prepareLiveCoachingTip, preparePostCallSummary } from "./liveCoach";
 import { getOutlookReadiness, validateEmailPreview } from "./outlook";
 import { discoverPublicWebsite } from "./companyDiscovery";
-import { routeCrmCapability, routeWorkflowActions } from "./crmRouter";
-import { prepareHumanEmailDraft } from "./communicationQuality";
-import { buildManagerAssuranceFindings } from "./managerAssurance";
-import { refreshGenieWorkboard } from "./crmWorkboard";
-import { buildPlaybookPlan } from "./playbookRules";
+import { routeWorkflowActions } from "./crmRouter";
+import { ensureDefaultOrganisation, canManageOrganisation, listOrganisationMemberships, requireOrganisationMembership, type OrganisationMembership } from "./organisation";
+import { addAuthorisedDomain, createConnectedSystem, getConnectedSystemForUser, listConnectedSystemsForUser, loadConnectionSecret, recordConnectionVerification, toAdapterConnection } from "./connectedSystems";
+import { getCrmAdapter } from "./crm/adapterRegistry";
+import { createCrmOAuthState } from "./crm/oauthState";
+import { crmOAuthCallbackUrl } from "./crm/oauthRoutes";
+import { syncConnectedSystem } from "./crm/sync";
+import { getTodayWork } from "./today";
+import { issueSidecarSession, revokeSidecarSessions } from "./sidecar/sidecarSessions";
+import { getTeamIntelligence } from "./teamIntelligence";
+import { randomUUID } from "node:crypto";
 
 const workflowInput = z.object({
   workflowKey: z.enum(WORKFLOW_KEYS),
   leadLabel: z.string().trim().min(1).max(160),
   callOutcome: z.enum(["no_answer", "voicemail", "answered"]).optional(),
-  salesOutcome: z.enum(["answered", "no_answer", "voicemail", "wrong_number", "not_interested", "not_fit", "callback_requested", "booked", "considering_options", "information_requested", "funding_issue", "time_issue", "family_commitments", "already_studying_elsewhere", "closed_lost"]).optional(),
   conversationNotes: z.string().trim().max(12_000).optional(),
 });
 
@@ -89,28 +82,27 @@ function presentConnectionProfile<T extends { provider: keyof typeof publicConne
   };
 }
 
+function requireActiveOrganisationContext(ctx: { activeOrganisation: OrganisationMembership | null }, organisationId: number) {
+  if (!ctx.activeOrganisation) throw new Error("Choose an organisation before accessing workspace data.");
+  if (ctx.activeOrganisation.organisationId !== organisationId) throw new Error("ACTIVE_ORGANISATION_MISMATCH");
+  return ctx.activeOrganisation;
+}
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
-    mode: publicProcedure.query(() => ({ local: isLocalAuthMode(), developmentPreview: isDevelopmentPreviewMode() })),
+    mode: publicProcedure.query(() => ({ local: isLocalAuthMode() })),
     localLogin: publicProcedure.input(z.object({ email: z.string().email(), password: z.string().min(12).max(160) })).mutation(async ({ ctx, input }) => {
       if (!isLocalAuthMode()) throw new Error("Local login is only available on the self-hosted Webdock deployment.");
       const user = await authenticateLocalPassword(input.email, input.password);
       if (!user) throw new Error("Invalid email or password.");
-      const token = await issueLocalSession(user);
+      const memberships = await listOrganisationMemberships(user.id);
+      const activeOrganisation = memberships.length === 0 ? await ensureDefaultOrganisation(user.id) : memberships.length === 1 ? memberships[0] : null;
+      const token = await issueLocalSession(user, activeOrganisation?.organisationId ?? null);
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: LOCAL_SESSION_MAX_AGE_MS });
-      return { success: true };
-    }),
-    developmentPreviewLogin: publicProcedure.mutation(async ({ ctx }) => {
-      if (!isDevelopmentPreviewMode()) throw new Error("Development dashboard preview is unavailable on the deployed application.");
-      const user = await getOrCreateDevelopmentPreviewUser();
-      if (!user) throw new Error("Unable to initialise development preview access.");
-      const token = await issueLocalSession(user);
-      const cookieOptions = getSessionCookieOptions(ctx.req);
-      ctx.res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: LOCAL_SESSION_MAX_AGE_MS });
-      return { success: true };
+      return { success: true, activeOrganisation, organisationSelectionRequired: activeOrganisation === null };
     }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
@@ -174,15 +166,6 @@ export const appRouter = router({
       });
       return { workflowRunId, verificationSummary: plan.verificationSummary, actionCount: routedActions.length, blockedActionCount: routedActions.filter(action => (action.payload.crmRoute as { routable?: boolean } | undefined)?.routable === false).length };
     }),
-    preparePlaybook: secondFactorProcedure.input(z.object({ playbookId: z.number().int().positive(), leadLabel: z.string().trim().min(1).max(160), factualContext: z.string().trim().min(8).max(12_000) })).mutation(async ({ ctx, input }) => {
-      const playbook = await getActiveAutomationPlaybook(ctx.user.id, input.playbookId);
-      if (!playbook) throw new Error("Select an active review-first company playbook before preparing work.");
-      const plan = buildPlaybookPlan({ playbook, leadLabel: input.leadLabel, factualContext: input.factualContext });
-      const companySetup = await getCompanySetup(ctx.user.id);
-      const routedActions = routeWorkflowActions(plan.actions, companySetup.connections);
-      const workflowRunId = await createWorkflowRun({ userId: ctx.user.id, workflowKey: `playbook:${playbook.id}`, leadLabel: input.leadLabel, payload: input, verificationSummary: plan.verificationSummary, actions: routedActions });
-      return { workflowRunId, verificationSummary: plan.verificationSummary, actionCount: routedActions.length, blockedActionCount: routedActions.filter(action => (action.payload.crmRoute as { routable?: boolean } | undefined)?.routable === false).length };
-    }),
     reviewAction: secondFactorProcedure
       .input(z.object({ proposalId: z.number().int().positive(), state: z.enum(["approved", "skipped"]) }))
       .mutation(async ({ ctx, input }) => {
@@ -190,17 +173,14 @@ export const appRouter = router({
         return { success: true };
       }),
     proposalAudit: secondFactorProcedure.input(z.object({ proposalId: z.number().int().positive() })).query(({ ctx, input }) => listProposalAuditEntries(ctx.user.id, input.proposalId)),
-    executeApprovedGenieAction: secondFactorProcedure.input(z.object({ proposalId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+    executeApprovedCrmAction: secondFactorProcedure.input(z.object({ proposalId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
       const proposal = await getApprovedActionProposal(ctx.user.id, input.proposalId);
       if (!proposal) throw new Error("Only an approved action proposal may be executed, and it must be owned by your workspace.");
-      const crmRoute = proposal.payload.crmRoute as { routable?: boolean; provider?: string } | undefined;
-      if (!crmRoute?.routable || crmRoute.provider !== "genie") throw new Error("This proposal has no ready CRM workspace bridge route. Register and verify a compatible CRM capability before requesting execution.");
-      const requiredCapability = (crmRoute as { requiredCapability?: "contacts" | "tasks" | "opportunities" | "notes" | "activities" | "email" | "calendar" }).requiredCapability;
-      const currentConnections = (await getCompanySetup(ctx.user.id)).connections;
-      if (!requiredCapability || !routeCrmCapability({ connections: currentConnections, requiredCapability, preferredProvider: "genie" }).routable) throw new Error("The CRM route is no longer currently verified for this approved action. Re-verify the connection before execution.");
-      const result = await executeApprovedGenieProposal(proposal);
+      const organisation = ctx.activeOrganisation;
+      if (!organisation) throw new Error("Choose an organisation before executing CRM actions.");
+      const result = await executeApprovedCrmAction({ organisationId: organisation.organisationId, proposal, correlationId: randomUUID() });
       await recordActionExecution({ userId: ctx.user.id, proposalId: proposal.id, success: result.success, result });
-      if (!result.success) throw new Error(`Genie script failed: ${result.detail}`);
+      if (!result.success) throw new Error(`CRM action failed: ${result.detail}`);
       return result;
     }),
     chat: secondFactorProcedure
@@ -214,40 +194,67 @@ export const appRouter = router({
         const query = input.messages.filter(message => message.role === "user").map(message => message.content).join("\n");
         const sources = input.agentKey === "knowledge_guide" ? await searchApprovedKnowledge(ctx.user.id, query) : [];
         const approvedKnowledge = sources.length ? sources.map(source => `[${source.title}]\n${source.content ?? source.sourceUrl ?? "No retained body."}`).join("\n\n---\n\n") : undefined;
-        return runGenxAgent({ userId: ctx.user.id, ...input, approvedKnowledge, companyContext: await getCompanyAgentContext(ctx.user.id) });
+        return runGenxAgent({ ...input, approvedKnowledge });
       }),
   }),
-  communications: router({
-    drafts: secondFactorProcedure.query(({ ctx }) => listCommunicationDrafts(ctx.user.id)),
-    prepareHumanEmail: secondFactorProcedure.input(z.object({
-      recipientEmail: z.string().email().max(320), purpose: z.string().trim().min(4).max(160), facts: z.string().trim().min(8).max(12_000),
-      leadLabel: z.string().trim().min(1).max(180).optional(), threadContext: z.string().trim().max(8_000).optional(), preferredSubject: z.string().trim().max(300).optional(), templateLocked: z.boolean().optional(),
-    })).mutation(async ({ ctx, input }) => {
-      const draft = await prepareHumanEmailDraft({ userId: ctx.user.id, ...input });
-      const saved = await saveCommunicationDraft({ userId: ctx.user.id, leadLabel: input.leadLabel ?? null, recipientEmail: input.recipientEmail, subject: draft.subject, body: draft.body, purpose: input.purpose, dedupeKey: draft.dedupeKey, qualityChecks: draft.qualityChecks });
-      return { id: saved.id, reusedDraft: saved.reused, ...draft, state: "review_required" as const };
+  organisation: router({
+    available: protectedProcedure.query(({ ctx }) => listOrganisationMemberships(ctx.user.id)),
+    current: secondFactorProcedure.query(({ ctx }) => {
+      if (!ctx.activeOrganisation) throw new Error("Choose an organisation before accessing workspace data.");
+      return ctx.activeOrganisation;
+    }),
+    switch: protectedProcedure.input(z.object({ organisationId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const membership = await requireOrganisationMembership(ctx.user.id, input.organisationId);
+      const token = await issueLocalSession(ctx.user, membership.organisationId);
+      const cookieOptions = getSessionCookieOptions(ctx.req);
+      ctx.res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: LOCAL_SESSION_MAX_AGE_MS });
+      return membership;
     }),
   }),
-  manager: router({
-    findings: secondFactorProcedure.query(({ ctx }) => listManagerFindings(ctx.user.id)),
-    runAssurance: secondFactorProcedure.mutation(async ({ ctx }) => {
-      const snapshot = await getManagerAssuranceSnapshot(ctx.user.id);
-      const findings = buildManagerAssuranceFindings(snapshot);
-      for (const finding of findings) await upsertManagerFinding({ userId: ctx.user.id, ...finding });
-      return { findings, generatedAt: new Date() };
+  connectedSystems: router({
+    list: secondFactorProcedure.input(z.object({ organisationId: z.number().int().positive() })).query(({ ctx, input }) => { requireActiveOrganisationContext(ctx, input.organisationId); return listConnectedSystemsForUser(ctx.user.id, input.organisationId); }),
+    create: secondFactorProcedure.input(z.object({
+      organisationId: z.number().int().positive(), provider: z.enum(["genie", "hubspot", "salesforce", "pipedrive", "zoho", "custom_browser", "custom_api", "csv_import"]),
+      displayName: z.string().trim().min(2).max(180), baseUrl: z.string().url().max(1024).optional().nullable(), connectionMethod: z.enum(["oauth", "browser", "sidecar", "custom_adapter", "import"]),
+      allowedReadCapabilities: z.array(z.string().trim().min(3).max(80)).max(20), allowedWriteCapabilities: z.array(z.string().trim().min(3).max(80)).max(20),
+    })).mutation(({ ctx, input }) => { requireActiveOrganisationContext(ctx, input.organisationId); return createConnectedSystem({ userId: ctx.user.id, ...input }); }),
+    addDomain: secondFactorProcedure.input(z.object({ organisationId: z.number().int().positive(), connectedSystemId: z.number().int().positive(), hostname: z.string().trim().min(3).max(253), allowedPaths: z.array(z.string().trim().min(1).max(500)).max(40) })).mutation(({ ctx, input }) => { requireActiveOrganisationContext(ctx, input.organisationId); return addAuthorisedDomain({ userId: ctx.user.id, ...input }); }),
+    beginOAuth: secondFactorProcedure.input(z.object({ organisationId: z.number().int().positive(), connectedSystemId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const membership = requireActiveOrganisationContext(ctx, input.organisationId);
+      if (!canManageOrganisation(membership.role)) throw new Error("Only organisation owners and managers can authenticate connected systems.");
+      const system = await getConnectedSystemForUser(ctx.user.id, input.organisationId, input.connectedSystemId);
+      const adapter = getCrmAdapter(system.provider);
+      if (!adapter.createAuthorizationUrl || system.connectionMethod !== "oauth") throw new Error("This connected system does not support OAuth authorization.");
+      const redirectUri = crmOAuthCallbackUrl(ctx.req);
+      const state = await createCrmOAuthState({ connectedSystemId: system.id, userId: ctx.user.id, redirectUri });
+      return { authorizationUrl: adapter.createAuthorizationUrl({ connection: toAdapterConnection(system), state, redirectUri }) };
     }),
-    updateFinding: secondFactorProcedure.input(z.object({ findingId: z.number().int().positive(), state: z.enum(["acknowledged", "resolved"]) })).mutation(({ ctx, input }) => updateManagerFindingState({ userId: ctx.user.id, ...input })),
-  }),
-  crmWorkboard: router({
-    get: secondFactorProcedure.input(z.object({ leadLabel: z.string().trim().min(1).max(180) })).query(({ ctx, input }) => getCrmWorkboard(ctx.user.id, input.leadLabel)),
-    refreshGenie: secondFactorProcedure.input(z.object({ leadLabel: z.string().trim().min(1).max(180) })).mutation(({ ctx, input }) => refreshGenieWorkboard({ userId: ctx.user.id, leadLabel: input.leadLabel })),
-    saveManualContext: secondFactorProcedure.input(z.object({ leadLabel: z.string().trim().min(1).max(180), summary: z.string().trim().min(8).max(12_000), context: z.record(z.string().max(80), z.string().max(8_000)) })).mutation(({ ctx, input }) => {
-      if (Object.keys(input.context).length > 40) throw new Error("Save no more than 40 context fields at one time.");
-      return upsertCrmContextSnapshot({ userId: ctx.user.id, leadLabel: input.leadLabel, source: "manual", context: input.context, summary: input.summary, expiresAt: new Date(Date.now() + 20 * 60_000) });
+    verify: secondFactorProcedure.input(z.object({ organisationId: z.number().int().positive(), connectedSystemId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const membership = requireActiveOrganisationContext(ctx, input.organisationId);
+      if (!canManageOrganisation(membership.role)) throw new Error("Only organisation owners and managers can test connected systems.");
+      const system = await getConnectedSystemForUser(ctx.user.id, input.organisationId, input.connectedSystemId);
+      const adapter = getCrmAdapter(system.provider);
+      const secret = await loadConnectionSecret({ organisationId: input.organisationId, connectedSystemId: system.id, secretKind: "oauth" });
+      const correlationId = randomUUID();
+      const test = await adapter.testConnection({ connection: toAdapterConnection(system), secret, correlationId });
+      const outcome = await recordConnectionVerification({ organisationId: input.organisationId, connectedSystemId: system.id, correlationId, test });
+      return { ...outcome, summary: test.summary, correlationId };
+    }),
+    sync: secondFactorProcedure.input(z.object({ organisationId: z.number().int().positive(), connectedSystemId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const membership = requireActiveOrganisationContext(ctx, input.organisationId);
+      if (!canManageOrganisation(membership.role)) throw new Error("Only organisation owners and managers can synchronize connected systems.");
+      return syncConnectedSystem({ userId: ctx.user.id, ...input });
     }),
   }),
-  usage: router({
-    summary: secondFactorProcedure.query(({ ctx }) => getAgentUsageSummary(ctx.user.id)),
+  sales: router({
+    today: secondFactorProcedure.input(z.object({ organisationId: z.number().int().positive() })).query(({ ctx, input }) => { requireActiveOrganisationContext(ctx, input.organisationId); return getTodayWork({ userId: ctx.user.id, organisationId: input.organisationId }); }),
+  }),
+  management: router({
+    teamIntelligence: secondFactorProcedure.input(z.object({ organisationId: z.number().int().positive() })).query(({ ctx, input }) => { requireActiveOrganisationContext(ctx, input.organisationId); return getTeamIntelligence({ userId: ctx.user.id, organisationId: input.organisationId }); }),
+  }),
+  sidecar: router({
+    issueSession: secondFactorProcedure.input(z.object({ organisationId: z.number().int().positive() })).mutation(({ ctx, input }) => { requireActiveOrganisationContext(ctx, input.organisationId); return issueSidecarSession({ userId: ctx.user.id, organisationId: input.organisationId }); }),
+    revokeSessions: secondFactorProcedure.input(z.object({ organisationId: z.number().int().positive() })).mutation(async ({ ctx, input }) => { requireActiveOrganisationContext(ctx, input.organisationId); await revokeSidecarSessions({ userId: ctx.user.id, organisationId: input.organisationId }); return { success: true }; }),
   }),
   integrations: router({
     list: secondFactorProcedure.query(async ({ ctx }) => ({
@@ -290,29 +297,9 @@ export const appRouter = router({
     }),
     registerCrm: secondFactorProcedure.input(z.object({
       provider: z.enum(["genie", "hubspot", "salesforce", "pipedrive", "custom_browser"]), displayName: z.string().trim().min(2).max(180),
-      status: z.enum(["draft", "needs_credentials"]), capabilities: z.array(z.enum(["contacts", "tasks", "opportunities", "notes", "activities", "email", "calendar"])).min(1).max(7),
+      status: z.enum(["draft", "needs_credentials", "ready", "paused", "error"]), capabilities: z.array(z.enum(["contacts", "tasks", "opportunities", "notes", "activities", "email", "calendar"])).min(1).max(7),
       connectionMode: z.enum(["api", "browser_automation", "custom"]), configurationHint: z.string().trim().max(2_000).optional().nullable(),
     })).mutation(({ ctx, input }) => saveCrmConnection({ userId: ctx.user.id, ...input })),
-    verifyCrm: secondFactorProcedure.input(z.object({ connectionId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
-      const connection = await getCrmConnectionForVerification(ctx.user.id, input.connectionId);
-      if (!connection) throw new Error("CRM connection is unavailable for this workspace.");
-      if (connection.provider !== "genie" || connection.connectionMode !== "browser_automation") {
-        await recordCrmConnectionVerification({ userId: ctx.user.id, connectionId: connection.id, status: "connector_not_implemented", verificationFailure: "This provider has no executable connector in this release.", verificationEvidence: { checkedAt: new Date().toISOString(), executable: false } });
-        return { ready: false, state: "connector_not_implemented" as const };
-      }
-      if (!getGenieReadiness().configured) {
-        await recordCrmConnectionVerification({ userId: ctx.user.id, connectionId: connection.id, status: "needs_credentials", verificationFailure: "Genie configuration is incomplete.", verificationEvidence: { checkedAt: new Date().toISOString(), executable: false } });
-        return { ready: false, state: "needs_credentials" as const };
-      }
-      const result = await runGenieHealthCheck();
-      if (!result.success) {
-        await recordCrmConnectionVerification({ userId: ctx.user.id, connectionId: connection.id, status: "error", verificationFailure: "Authorised login or dashboard selector verification failed.", verificationEvidence: { checkedAt: result.completedAt, executable: false } });
-        return { ready: false, state: "error" as const };
-      }
-      const verifiedAt = new Date();
-      await recordCrmConnectionVerification({ userId: ctx.user.id, connectionId: connection.id, status: "ready", verifiedAt, verificationExpiresAt: new Date(verifiedAt.getTime() + 12 * 60 * 60_000), verificationEvidence: { checkedAt: result.completedAt, executable: true, capabilitiesVerified: connection.capabilities, method: "authorised_browser_login_and_dashboard_selector" } });
-      return { ready: true, state: "ready" as const, verifiedAt };
-    }),
     savePlaybook: secondFactorProcedure.input(z.object({
       title: z.string().trim().min(2).max(220), trigger: z.string().trim().min(2).max(160), description: z.string().trim().min(5).max(8_000),
       agentKey: z.string().trim().min(2).max(80), requiredCapabilities: z.array(z.string().trim().min(2).max(80)).min(1).max(12), status: z.enum(["draft", "active", "paused"]),
@@ -347,8 +334,11 @@ export const appRouter = router({
     list: secondFactorProcedure.query(({ ctx }) => listDailyReports(ctx.user.id)),
     configureDaily: secondFactorProcedure.input(z.object({ recipientEmail: z.string().email(), cronExpression: z.string().regex(/^\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+$/, "Use a six-field UTC cron expression.") })).mutation(async ({ ctx, input }) => {
       if (!getSmtpReadiness().ready) throw new Error("Configure SMTP deployment secrets before scheduling a daily report.");
+      const sessionToken = parseCookieHeader(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
       const reportId = await createDailyReport({ userId: ctx.user.id, ...input });
-      return { reportId, scheduler: "self_hosted_worker" as const };
+      const job = await createHeartbeatJob({ name: `amarktai-daily-report-${reportId}`, cron: input.cronExpression, path: "/api/scheduled/daily-report", payload: { reportId }, description: `Daily Amarktai workspace report for ${input.recipientEmail}` }, sessionToken);
+      await attachDailyReportTask({ reportId, userId: ctx.user.id, taskUid: job.taskUid });
+      return { reportId, nextExecutionAt: job.nextExecutionAt ?? null };
     }),
   }),
 });

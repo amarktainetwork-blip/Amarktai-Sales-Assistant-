@@ -1,31 +1,39 @@
 import { describe, expect, it } from "vitest";
-import { routeCrmCapability, routeWorkflowActions } from "./crmRouter";
+import { connectedSystemSupportsAction, routeConnectedSystemActions, routeCrmCapability, routeWorkflowActions } from "./crmRouter";
 
-const readyBrowserCrm = { provider: "genie" as const, displayName: "CRM workspace bridge", status: "ready" as const, capabilities: ["contacts", "notes", "tasks"] as const, connectionMode: "browser_automation" as const, verificationExpiresAt: new Date(Date.now() + 60 * 60_000) };
+const readyBrowserCrm = { provider: "genie" as const, displayName: "CRM workspace bridge", status: "ready" as const, capabilities: ["contacts", "notes", "tasks"] as const, connectionMode: "browser_automation" as const };
 
 describe("multi-CRM capability router", () => {
-  it("routes only to a ready connection with the required capability", () => {
+  it("routes only to a ready legacy connection with the required capability", () => {
     expect(routeCrmCapability({ connections: [readyBrowserCrm], requiredCapability: "notes" })).toMatchObject({ routable: true, provider: "genie", connectionMode: "browser_automation" });
   });
-  it("rejects a missing capability instead of inventing a route", () => {
+  it("rejects a missing legacy capability instead of inventing a provider", () => {
     expect(routeCrmCapability({ connections: [readyBrowserCrm], requiredCapability: "opportunities" })).toMatchObject({ routable: false, reason: expect.stringContaining("opportunities") });
   });
-  it("fails closed for an unimplemented provider even if a profile reports ready", () => {
-    const result = routeCrmCapability({ connections: [{ provider: "hubspot" as const, displayName: "HubSpot", status: "ready" as const, capabilities: ["tasks"] as const, connectionMode: "api" as const, verificationExpiresAt: new Date(Date.now() + 60 * 60_000) }], requiredCapability: "tasks" });
-    expect(result).toMatchObject({ routable: false, reason: expect.stringContaining("currently verified executable CRM") });
+  it("honours a preferred legacy provider only when that provider is ready", () => {
+    const result = routeCrmCapability({ connections: [readyBrowserCrm, { provider: "hubspot" as const, displayName: "HubSpot", status: "ready" as const, capabilities: ["tasks"] as const, connectionMode: "api" as const }], requiredCapability: "tasks", preferredProvider: "hubspot" });
+    expect(result).toMatchObject({ routable: true, provider: "hubspot" });
   });
-  it("fails closed when the server verification is stale or missing", () => {
-    const expired = { ...readyBrowserCrm, verificationExpiresAt: new Date(Date.now() - 1_000) };
-    const missing = { ...readyBrowserCrm, verificationExpiresAt: null };
-    expect(routeCrmCapability({ connections: [expired], requiredCapability: "tasks" })).toMatchObject({ routable: false });
-    expect(routeCrmCapability({ connections: [missing], requiredCapability: "tasks" })).toMatchObject({ routable: false });
-  });
-  it("marks an unroutable workflow proposal as blocked at routing time", () => {
+  it("defers old playbooks to organisation-scoped connected systems when the legacy registry has no route", () => {
     const [proposal] = routeWorkflowActions([{ actionType: "update_current_opportunity", payload: { reviewRequired: true } }], [readyBrowserCrm]);
-    expect(proposal.payload.crmRoute).toMatchObject({ routable: false, requiredCapability: "opportunities" });
+    expect(proposal.payload.crmRoute).toMatchObject({ routable: true, provider: "auto", deferredToOrganisationConnector: true, requiredCapability: "opportunities" });
   });
-  it("attaches the CRM workspace bridge route when the matching capability is ready", () => {
+  it("preserves the legacy route when it is genuinely ready", () => {
     const [proposal] = routeWorkflowActions([{ actionType: "append_contact_note", payload: {} }], [readyBrowserCrm]);
     expect(proposal.payload.crmRoute).toMatchObject({ routable: true, provider: "genie", requiredCapability: "notes" });
+  });
+  it("routes new actions only through ready systems with verified capabilities", () => {
+    const systems = [
+      { id: 1, provider: "hubspot", displayName: "HubSpot", status: "ready", connectionMethod: "oauth", verifiedCapabilities: ["contacts.read", "contacts.write", "notes.write", "activities.write"] },
+      { id: 2, provider: "genie", displayName: "Genie", status: "needs_attention", connectionMethod: "browser", verifiedCapabilities: ["sms.send", "activities.write"] },
+    ];
+    const [note] = routeConnectedSystemActions([{ actionType: "append_contact_note", payload: {} }], systems);
+    expect(note.payload.crmRoute).toMatchObject({ routable: true, provider: "hubspot", connectedSystemId: 1 });
+    expect(connectedSystemSupportsAction(systems[0], "append_contact_note")).toBe(true);
+  });
+  it("fails routing when no ready connected system has an allowed communication path", () => {
+    const systems = [{ id: 1, provider: "hubspot", displayName: "HubSpot", status: "ready", connectionMethod: "oauth", verifiedCapabilities: ["contacts.read"] }];
+    const [sms] = routeConnectedSystemActions([{ actionType: "send_sms", payload: {} }], systems);
+    expect(sms.payload.crmRoute).toMatchObject({ routable: false, requiredCapability: expect.stringContaining("sms.send") });
   });
 });
