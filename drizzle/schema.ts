@@ -682,6 +682,252 @@ export const organisationEntitlements = mysqlTable("organisationEntitlements", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, table => [uniqueIndex("organisation_entitlements_unique").on(table.organisationId)]);
 
+/** Immutable manager-authored revisions; only one published revision may be selected by a workflow at runtime. */
+export const playbookVersions = mysqlTable("playbookVersions", {
+  id: int("id").autoincrement().primaryKey(),
+  organisationId: int("organisationId").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+  playbookKey: varchar("playbookKey", { length: 140 }).notNull(),
+  version: int("version").notNull(),
+  title: varchar("title", { length: 220 }).notNull(),
+  instructions: text("instructions").notNull(),
+  inputSchema: json("inputSchema").$type<Record<string, unknown>>().notNull(),
+  status: mysqlEnum("status", ["draft", "published", "archived"]).notNull().default("draft"),
+  createdByUserId: int("createdByUserId").references(() => users.id, { onDelete: "set null" }),
+  publishedByUserId: int("publishedByUserId").references(() => users.id, { onDelete: "set null" }),
+  publishedAt: timestamp("publishedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [uniqueIndex("playbook_versions_org_key_version_unique").on(table.organisationId, table.playbookKey, table.version), index("playbook_versions_org_key_status_idx").on(table.organisationId, table.playbookKey, table.status)]);
+
+/** Review language is versioned separately so policy/legal changes do not alter historical approvals. */
+export const approvalTemplates = mysqlTable("approvalTemplates", {
+  id: int("id").autoincrement().primaryKey(),
+  organisationId: int("organisationId").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+  templateKey: varchar("templateKey", { length: 140 }).notNull(),
+  version: int("version").notNull(),
+  title: varchar("title", { length: 220 }).notNull(),
+  body: text("body").notNull(),
+  status: mysqlEnum("status", ["draft", "published", "archived"]).notNull().default("draft"),
+  createdByUserId: int("createdByUserId").references(() => users.id, { onDelete: "set null" }),
+  publishedByUserId: int("publishedByUserId").references(() => users.id, { onDelete: "set null" }),
+  publishedAt: timestamp("publishedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [uniqueIndex("approval_templates_org_key_version_unique").on(table.organisationId, table.templateKey, table.version), index("approval_templates_org_key_status_idx").on(table.organisationId, table.templateKey, table.status)]);
+
+/** Runtime execution evidence binds a workflow run to exact approved playbook/template revisions. */
+export const playbookExecutionHistory = mysqlTable("playbookExecutionHistory", {
+  id: int("id").autoincrement().primaryKey(),
+  organisationId: int("organisationId").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+  playbookVersionId: int("playbookVersionId").notNull().references(() => playbookVersions.id, { onDelete: "restrict" }),
+  approvalTemplateId: int("approvalTemplateId").references(() => approvalTemplates.id, { onDelete: "set null" }),
+  workflowRunId: int("workflowRunId").references(() => workflowRuns.id, { onDelete: "set null" }),
+  actionProposalId: int("actionProposalId").references(() => actionProposals.id, { onDelete: "set null" }),
+  status: mysqlEnum("status", ["prepared", "reviewed", "approved", "executed", "failed", "cancelled"]).notNull().default("prepared"),
+  inputSnapshot: json("inputSnapshot").$type<Record<string, unknown>>().notNull(),
+  outputSummary: text("outputSummary"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  completedAt: timestamp("completedAt"),
+}, table => [index("playbook_execution_org_created_idx").on(table.organisationId, table.createdAt), index("playbook_execution_workflow_idx").on(table.workflowRunId)]);
+
+/** A scheduled connector job remains disabled until its connected system is backend-verified for the specified capability. */
+export const connectorSyncJobs = mysqlTable("connectorSyncJobs", {
+  id: int("id").autoincrement().primaryKey(),
+  organisationId: int("organisationId").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+  connectedSystemId: int("connectedSystemId").notNull().references(() => connectedSystems.id, { onDelete: "cascade" }),
+  resourceType: varchar("resourceType", { length: 80 }).notNull(),
+  scheduleExpression: varchar("scheduleExpression", { length: 120 }).notNull(),
+  status: mysqlEnum("status", ["draft", "ready", "paused", "running", "error"]).notNull().default("draft"),
+  capabilityKey: varchar("capabilityKey", { length: 120 }).notNull(),
+  lastStartedAt: timestamp("lastStartedAt"),
+  lastSucceededAt: timestamp("lastSucceededAt"),
+  lastError: text("lastError"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [uniqueIndex("connector_sync_jobs_system_resource_unique").on(table.connectedSystemId, table.resourceType), index("connector_sync_jobs_org_status_idx").on(table.organisationId, table.status)]);
+
+/** Webhook payloads are retained as receipt metadata; unsigned or duplicate payloads never trigger CRM mutations. */
+export const connectorWebhookReceipts = mysqlTable("connectorWebhookReceipts", {
+  id: int("id").autoincrement().primaryKey(),
+  organisationId: int("organisationId").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+  connectedSystemId: int("connectedSystemId").notNull().references(() => connectedSystems.id, { onDelete: "cascade" }),
+  eventId: varchar("eventId", { length: 220 }).notNull(),
+  eventType: varchar("eventType", { length: 160 }).notNull(),
+  signatureStatus: mysqlEnum("signatureStatus", ["verified", "missing", "invalid", "not_configured"]).notNull(),
+  processingStatus: mysqlEnum("processingStatus", ["received", "processed", "retrying", "dead_letter", "ignored"]).notNull().default("received"),
+  attempts: int("attempts").notNull().default(0),
+  payloadHash: varchar("payloadHash", { length: 128 }).notNull(),
+  lastError: text("lastError"),
+  receivedAt: timestamp("receivedAt").defaultNow().notNull(),
+  processedAt: timestamp("processedAt"),
+}, table => [uniqueIndex("connector_webhook_system_event_unique").on(table.connectedSystemId, table.eventId), index("connector_webhook_org_status_received_idx").on(table.organisationId, table.processingStatus, table.receivedAt)]);
+
+export const operationalAlertRules = mysqlTable("operationalAlertRules", {
+  id: int("id").autoincrement().primaryKey(),
+  organisationId: int("organisationId").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 180 }).notNull(),
+  severityThreshold: mysqlEnum("severityThreshold", ["warning", "error", "critical"]).notNull().default("error"),
+  category: varchar("category", { length: 100 }),
+  deliveryChannel: mysqlEnum("deliveryChannel", ["email", "webhook"]).notNull(),
+  destination: varchar("destination", { length: 1_000 }).notNull(),
+  isActive: boolean("isActive").notNull().default(true),
+  createdByUserId: int("createdByUserId").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [index("operational_alert_rules_org_active_idx").on(table.organisationId, table.isActive)]);
+
+export const operationalAlertDeliveries = mysqlTable("operationalAlertDeliveries", {
+  id: int("id").autoincrement().primaryKey(),
+  operationalEventId: int("operationalEventId").notNull().references(() => operationalEvents.id, { onDelete: "cascade" }),
+  alertRuleId: int("alertRuleId").notNull().references(() => operationalAlertRules.id, { onDelete: "cascade" }),
+  status: mysqlEnum("status", ["pending", "delivered", "failed", "suppressed"]).notNull().default("pending"),
+  attempts: int("attempts").notNull().default(0),
+  deliveredAt: timestamp("deliveredAt"),
+  lastError: text("lastError"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [uniqueIndex("operational_alert_delivery_event_rule_unique").on(table.operationalEventId, table.alertRuleId), index("operational_alert_delivery_status_idx").on(table.status, table.createdAt)]);
+
+export const operationalWorkerRuns = mysqlTable("operationalWorkerRuns", {
+  id: int("id").autoincrement().primaryKey(),
+  workerKey: varchar("workerKey", { length: 140 }).notNull(),
+  organisationId: int("organisationId").references(() => organisations.id, { onDelete: "set null" }),
+  status: mysqlEnum("status", ["started", "succeeded", "failed"]).notNull(),
+  summary: text("summary").notNull(),
+  detail: json("detail").$type<Record<string, unknown>>().notNull(),
+  startedAt: timestamp("startedAt").defaultNow().notNull(),
+  finishedAt: timestamp("finishedAt"),
+}, table => [index("operational_worker_runs_key_started_idx").on(table.workerKey, table.startedAt)]);
+
+export const inboundMessages = mysqlTable("inboundMessages", {
+  id: int("id").autoincrement().primaryKey(),
+  organisationId: int("organisationId").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+  connectedSystemId: int("connectedSystemId").references(() => connectedSystems.id, { onDelete: "set null" }),
+  externalMessageId: varchar("externalMessageId", { length: 220 }).notNull(),
+  channel: mysqlEnum("channel", ["email", "sms", "chat", "other"]).notNull(),
+  senderReference: varchar("senderReference", { length: 320 }).notNull(),
+  subject: varchar("subject", { length: 500 }),
+  body: text("body").notNull(),
+  classification: json("classification").$type<Record<string, unknown>>(),
+  status: mysqlEnum("status", ["received", "classified", "draft_ready", "archived"]).notNull().default("received"),
+  receivedAt: timestamp("receivedAt").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [uniqueIndex("inbound_messages_system_external_unique").on(table.connectedSystemId, table.externalMessageId), index("inbound_messages_org_status_received_idx").on(table.organisationId, table.status, table.receivedAt)]);
+
+export const inboundReplyDrafts = mysqlTable("inboundReplyDrafts", {
+  id: int("id").autoincrement().primaryKey(),
+  organisationId: int("organisationId").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+  inboundMessageId: int("inboundMessageId").notNull().references(() => inboundMessages.id, { onDelete: "cascade" }),
+  draftBody: text("draftBody").notNull(),
+  rationale: text("rationale").notNull(),
+  qualityChecks: json("qualityChecks").$type<Record<string, boolean>>().notNull(),
+  status: mysqlEnum("status", ["draft", "approved", "rejected", "sent", "cancelled"]).notNull().default("draft"),
+  approvedByUserId: int("approvedByUserId").references(() => users.id, { onDelete: "set null" }),
+  approvedAt: timestamp("approvedAt"),
+  sentAt: timestamp("sentAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [index("inbound_reply_drafts_org_status_idx").on(table.organisationId, table.status)]);
+
+export const qaRubrics = mysqlTable("qaRubrics", {
+  id: int("id").autoincrement().primaryKey(),
+  organisationId: int("organisationId").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 180 }).notNull(),
+  criteria: json("criteria").$type<Array<{ key: string; label: string; weight: number }>>().notNull(),
+  isActive: boolean("isActive").notNull().default(true),
+  createdByUserId: int("createdByUserId").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [index("qa_rubrics_org_active_idx").on(table.organisationId, table.isActive)]);
+
+export const qaScorecards = mysqlTable("qaScorecards", {
+  id: int("id").autoincrement().primaryKey(),
+  organisationId: int("organisationId").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+  rubricId: int("rubricId").notNull().references(() => qaRubrics.id, { onDelete: "restrict" }),
+  reviewedUserId: int("reviewedUserId").references(() => users.id, { onDelete: "set null" }),
+  reviewerUserId: int("reviewerUserId").references(() => users.id, { onDelete: "set null" }),
+  sourceType: mysqlEnum("sourceType", ["call", "message", "proposal", "workflow"]).notNull(),
+  sourceReference: varchar("sourceReference", { length: 220 }).notNull(),
+  scores: json("scores").$type<Record<string, number>>().notNull(),
+  totalScore: int("totalScore").notNull(),
+  feedback: text("feedback"),
+  status: mysqlEnum("status", ["draft", "calibrated", "shared"]).notNull().default("draft"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [index("qa_scorecards_org_user_created_idx").on(table.organisationId, table.reviewedUserId, table.createdAt)]);
+
+export const coachingRecords = mysqlTable("coachingRecords", {
+  id: int("id").autoincrement().primaryKey(),
+  organisationId: int("organisationId").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+  scorecardId: int("scorecardId").references(() => qaScorecards.id, { onDelete: "set null" }),
+  userId: int("userId").references(() => users.id, { onDelete: "set null" }),
+  coachUserId: int("coachUserId").references(() => users.id, { onDelete: "set null" }),
+  summary: text("summary").notNull(),
+  commitments: json("commitments").$type<string[]>().notNull(),
+  followUpAt: timestamp("followUpAt"),
+  status: mysqlEnum("status", ["open", "completed", "cancelled"]).notNull().default("open"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [index("coaching_records_org_user_status_idx").on(table.organisationId, table.userId, table.status)]);
+
+export const salesTerritories = mysqlTable("salesTerritories", {
+  id: int("id").autoincrement().primaryKey(),
+  organisationId: int("organisationId").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 180 }).notNull(),
+  definition: json("definition").$type<Record<string, unknown>>().notNull(),
+  ownerUserId: int("ownerUserId").references(() => users.id, { onDelete: "set null" }),
+  isActive: boolean("isActive").notNull().default(true),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [uniqueIndex("sales_territories_org_name_unique").on(table.organisationId, table.name)]);
+
+export const quotaPlans = mysqlTable("quotaPlans", {
+  id: int("id").autoincrement().primaryKey(),
+  organisationId: int("organisationId").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+  territoryId: int("territoryId").references(() => salesTerritories.id, { onDelete: "set null" }),
+  userId: int("userId").references(() => users.id, { onDelete: "set null" }),
+  periodStart: timestamp("periodStart").notNull(),
+  periodEnd: timestamp("periodEnd").notNull(),
+  targetValueMinor: int("targetValueMinor").notNull(),
+  currency: varchar("currency", { length: 8 }).notNull().default("USD"),
+  capacityAssumption: json("capacityAssumption").$type<Record<string, number>>().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [index("quota_plans_org_period_idx").on(table.organisationId, table.periodStart, table.periodEnd)]);
+
+export const forecastSnapshots = mysqlTable("forecastSnapshots", {
+  id: int("id").autoincrement().primaryKey(),
+  organisationId: int("organisationId").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+  quotaPlanId: int("quotaPlanId").references(() => quotaPlans.id, { onDelete: "set null" }),
+  forecastValueMinor: int("forecastValueMinor").notNull(),
+  currency: varchar("currency", { length: 8 }).notNull().default("USD"),
+  confidence: int("confidence").notNull(),
+  methodology: varchar("methodology", { length: 180 }).notNull(),
+  evidence: json("evidence").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [index("forecast_snapshots_org_created_idx").on(table.organisationId, table.createdAt)]);
+
+export const ttsVoiceProfiles = mysqlTable("ttsVoiceProfiles", {
+  id: int("id").autoincrement().primaryKey(),
+  organisationId: int("organisationId").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+  displayName: varchar("displayName", { length: 180 }).notNull(),
+  providerKey: varchar("providerKey", { length: 100 }).notNull(),
+  voiceReference: varchar("voiceReference", { length: 180 }).notNull(),
+  consentStatus: mysqlEnum("consentStatus", ["not_recorded", "recorded", "revoked"]).notNull().default("not_recorded"),
+  isActive: boolean("isActive").notNull().default(false),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [uniqueIndex("tts_voice_profiles_org_voice_unique").on(table.organisationId, table.providerKey, table.voiceReference)]);
+
+export const ttsGenerationRequests = mysqlTable("ttsGenerationRequests", {
+  id: int("id").autoincrement().primaryKey(),
+  organisationId: int("organisationId").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+  voiceProfileId: int("voiceProfileId").notNull().references(() => ttsVoiceProfiles.id, { onDelete: "restrict" }),
+  text: text("text").notNull(),
+  status: mysqlEnum("status", ["draft", "approved", "generated", "failed", "cancelled"]).notNull().default("draft"),
+  approvedByUserId: int("approvedByUserId").references(() => users.id, { onDelete: "set null" }),
+  audioStorageKey: varchar("audioStorageKey", { length: 1_024 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  generatedAt: timestamp("generatedAt"),
+}, table => [index("tts_generation_org_status_idx").on(table.organisationId, table.status)]);
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type IntegrationProfile = typeof integrationProfiles.$inferSelect;

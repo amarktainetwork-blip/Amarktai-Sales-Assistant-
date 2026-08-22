@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { and, eq } from "drizzle-orm";
 import { jwtVerify, SignJWT } from "jose";
 import { COOKIE_NAME } from "@shared/const";
-import { connectedSystems, crmPipelineStageMappings, dataSubjectRequests, enterpriseIdentityConnections, externalUserMappings, organisationCompliancePolicies, organisationEntitlements, organisationMembers, users } from "../../drizzle/schema";
+import { approvalTemplates, connectedSystems, connectorSyncJobs, connectorWebhookReceipts, crmPipelineStageMappings, dataSubjectRequests, enterpriseIdentityConnections, externalUserMappings, organisationCompliancePolicies, organisationEntitlements, organisationMembers, playbookVersions, users } from "../../drizzle/schema";
 import { getDb, getUserByEmail, getUserById, recordAudit } from "../db";
 import { isLocalAuthMode } from "../localAuth";
 import { canManageOrganisation } from "../organisationAccess";
@@ -187,6 +187,81 @@ export function registerTeamAdminRoutes(app: Express) {
       await db.update(dataSubjectRequests).set({ status: decision, reviewedByUserId: actor.id, reviewedAt: new Date() }).where(eq(dataSubjectRequests.id, id));
       await recordAudit({ userId: actor.id, eventType: "data_subject_request_reviewed", entityType: "data_subject_request", entityId: String(id), summary: `Data-subject ${request.requestType} request ${decision}.`, metadata: { organisationId: membership.organisationId, decision, requestType: request.requestType } });
       return res.json({ ok: true, status: decision });
+    } catch (error) { return sendError(res, error); }
+  });
+
+  app.get("/api/team-admin/playbook-versions", async (req, res) => {
+    try {
+      const { membership } = await requireManager(req);
+      const db = await getDb(); if (!db) throw new Error("Database connection is unavailable.");
+      const [playbooks, templates] = await Promise.all([
+        db.select().from(playbookVersions).where(eq(playbookVersions.organisationId, membership.organisationId)),
+        db.select().from(approvalTemplates).where(eq(approvalTemplates.organisationId, membership.organisationId)),
+      ]);
+      return res.json({ playbooks, templates });
+    } catch (error) { return sendError(res, error); }
+  });
+
+  app.post("/api/team-admin/playbook-versions", async (req, res) => {
+    try {
+      const { user: actor, membership } = await requireManager(req);
+      const playbookKey = typeof req.body?.playbookKey === "string" ? req.body.playbookKey.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").slice(0, 140) : "";
+      const title = typeof req.body?.title === "string" ? req.body.title.trim().slice(0, 220) : "";
+      const instructions = typeof req.body?.instructions === "string" ? req.body.instructions.trim().slice(0, 20_000) : "";
+      const inputSchema = req.body?.inputSchema && typeof req.body.inputSchema === "object" && !Array.isArray(req.body.inputSchema) ? req.body.inputSchema as Record<string, unknown> : {};
+      if (!playbookKey || !title || !instructions) throw new Error("Playbook key, title, and instructions are required.");
+      const db = await getDb(); if (!db) throw new Error("Database connection is unavailable.");
+      const existing = await db.select({ version: playbookVersions.version }).from(playbookVersions).where(and(eq(playbookVersions.organisationId, membership.organisationId), eq(playbookVersions.playbookKey, playbookKey)));
+      const version = Math.max(0, ...existing.map(item => item.version)) + 1;
+      const result = await db.insert(playbookVersions).values({ organisationId: membership.organisationId, playbookKey, version, title, instructions, inputSchema, createdByUserId: actor.id });
+      await recordAudit({ userId: actor.id, eventType: "playbook_version_created", entityType: "playbook_version", entityId: String(result[0].insertId), summary: `Draft playbook version ${version} created.`, metadata: { organisationId: membership.organisationId, playbookKey, version } });
+      return res.status(201).json({ id: Number(result[0].insertId), version, status: "draft" });
+    } catch (error) { return sendError(res, error); }
+  });
+
+  app.put("/api/team-admin/playbook-versions/:id/publish", async (req, res) => {
+    try {
+      const { user: actor, membership } = await requireManager(req); const id = Number(req.params.id);
+      if (!Number.isInteger(id) || id <= 0) throw new Error("A valid playbook version is required.");
+      const db = await getDb(); if (!db) throw new Error("Database connection is unavailable.");
+      const version = (await db.select().from(playbookVersions).where(and(eq(playbookVersions.id, id), eq(playbookVersions.organisationId, membership.organisationId))).limit(1))[0];
+      if (!version) throw new Error("Playbook version was not found in the active organisation.");
+      await db.transaction(async tx => {
+        await tx.update(playbookVersions).set({ status: "archived" }).where(and(eq(playbookVersions.organisationId, membership.organisationId), eq(playbookVersions.playbookKey, version.playbookKey), eq(playbookVersions.status, "published")));
+        await tx.update(playbookVersions).set({ status: "published", publishedByUserId: actor.id, publishedAt: new Date() }).where(eq(playbookVersions.id, id));
+      });
+      await recordAudit({ userId: actor.id, eventType: "playbook_version_published", entityType: "playbook_version", entityId: String(id), summary: `Playbook version ${version.version} published.`, metadata: { organisationId: membership.organisationId, playbookKey: version.playbookKey, version: version.version } });
+      return res.json({ ok: true, status: "published" });
+    } catch (error) { return sendError(res, error); }
+  });
+
+  app.get("/api/team-admin/connector-operations", async (req, res) => {
+    try {
+      const { membership } = await requireManager(req);
+      const db = await getDb(); if (!db) throw new Error("Database connection is unavailable.");
+      const [jobs, receipts] = await Promise.all([
+        db.select().from(connectorSyncJobs).where(eq(connectorSyncJobs.organisationId, membership.organisationId)),
+        db.select().from(connectorWebhookReceipts).where(eq(connectorWebhookReceipts.organisationId, membership.organisationId)),
+      ]);
+      return res.json({ jobs, receipts });
+    } catch (error) { return sendError(res, error); }
+  });
+
+  app.post("/api/team-admin/connector-sync-jobs", async (req, res) => {
+    try {
+      const { user: actor, membership } = await requireManager(req);
+      const connectedSystemId = Number(req.body?.connectedSystemId);
+      const resourceType = typeof req.body?.resourceType === "string" ? req.body.resourceType.trim().slice(0, 80) : "";
+      const scheduleExpression = typeof req.body?.scheduleExpression === "string" ? req.body.scheduleExpression.trim().slice(0, 120) : "";
+      const capabilityKey = typeof req.body?.capabilityKey === "string" ? req.body.capabilityKey.trim().slice(0, 120) : "";
+      if (!Number.isInteger(connectedSystemId) || connectedSystemId <= 0 || !resourceType || !scheduleExpression || !capabilityKey) throw new Error("Connected system, resource, schedule, and verified capability are required.");
+      const db = await getDb(); if (!db) throw new Error("Database connection is unavailable.");
+      const system = (await db.select().from(connectedSystems).where(and(eq(connectedSystems.id, connectedSystemId), eq(connectedSystems.organisationId, membership.organisationId))).limit(1))[0];
+      if (!system) throw new Error("Connected system was not found in the active organisation.");
+      const verified = system.status === "ready" && system.verifiedCapabilities.includes(capabilityKey);
+      await db.insert(connectorSyncJobs).values({ organisationId: membership.organisationId, connectedSystemId, resourceType, scheduleExpression, capabilityKey, status: verified ? "ready" : "draft" }).onDuplicateKeyUpdate({ set: { scheduleExpression, capabilityKey, status: verified ? "ready" : "draft", lastError: verified ? null : "Connector is not ready or capability is not verified." } });
+      await recordAudit({ userId: actor.id, eventType: "connector_sync_job_saved", entityType: "connector_sync_job", entityId: `${connectedSystemId}:${resourceType}`, summary: `Connector sync job saved as ${verified ? "ready" : "draft"}.`, metadata: { organisationId: membership.organisationId, connectedSystemId, resourceType, capabilityKey, verified } });
+      return res.status(201).json({ ok: true, status: verified ? "ready" : "draft" });
     } catch (error) { return sendError(res, error); }
   });
 

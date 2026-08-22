@@ -1,6 +1,7 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { BellRing, CheckCircle2, FileLock2, Landmark, MailPlus, RefreshCw, ShieldCheck, UserRoundCog, Users } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -32,6 +33,7 @@ type ManagementSettings = {
 type CompliancePolicy = { transcriptRetentionDays: number; auditRetentionDays: number; operationalRetentionDays: number; outboundConsentRequired: boolean; deletionApprovalRequired: boolean; policyText: string | null };
 type DataSubjectRequest = { id: number; requestType: "export" | "deletion"; subjectType: string; subjectReference: string; status: string; createdAt: string };
 type EnterpriseSettings = { identityConnections: { id: number; protocol: string; displayName: string; status: string }[]; entitlement: { planKey: string; status: string; providerReference: string | null } | null };
+type PlaybookVersion = { id: number; playbookKey: string; version: number; title: string; instructions: string; status: "draft" | "published" | "archived" };
 
 async function api<T>(path: string, init?: RequestInit) {
   const response = await fetch(path, { credentials: "include", ...init, headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) } });
@@ -48,6 +50,9 @@ export default function TeamManagement() {
   const [compliance, setCompliance] = useState<CompliancePolicy | null>(null);
   const [dataSubjectRequests, setDataSubjectRequests] = useState<DataSubjectRequest[]>([]);
   const [enterprise, setEnterprise] = useState<EnterpriseSettings | null>(null);
+  const [playbookVersions, setPlaybookVersions] = useState<PlaybookVersion[]>([]);
+  const [playbookDraft, setPlaybookDraft] = useState({ playbookKey: "", title: "", instructions: "" });
+  const [savingPlaybook, setSavingPlaybook] = useState(false);
   const [savingCompliance, setSavingCompliance] = useState(false);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");
@@ -65,7 +70,7 @@ export default function TeamManagement() {
 
   const refresh = useCallback(async () => {
     try {
-      const [team, management, ownerMappings, savedPipelineMappings, savedCompliance, subjectRequests, enterpriseSettings] = await Promise.all([
+      const [team, management, ownerMappings, savedPipelineMappings, savedCompliance, subjectRequests, enterpriseSettings, versionedPlaybooks] = await Promise.all([
         api<TeamResponse>("/api/team-admin/members"),
         api<ManagementSettings>("/api/management-settings"),
         api<OwnerMappingResponse>("/api/team-admin/crm-owner-mappings"),
@@ -73,6 +78,7 @@ export default function TeamManagement() {
         api<{ policy: CompliancePolicy | null }>("/api/team-admin/compliance-policy"),
         api<{ requests: DataSubjectRequest[] }>("/api/team-admin/data-subject-requests"),
         api<EnterpriseSettings>("/api/team-admin/enterprise-settings"),
+        api<{ playbooks: PlaybookVersion[] }>("/api/team-admin/playbook-versions"),
       ]);
       setData(team);
       setSettings(management);
@@ -81,6 +87,7 @@ export default function TeamManagement() {
       setCompliance(savedCompliance.policy ?? { transcriptRetentionDays: 90, auditRetentionDays: 365, operationalRetentionDays: 365, outboundConsentRequired: true, deletionApprovalRequired: true, policyText: null });
       setDataSubjectRequests(subjectRequests.requests);
       setEnterprise(enterpriseSettings);
+      setPlaybookVersions(versionedPlaybooks.playbooks);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not load team administration.");
     } finally {
@@ -149,6 +156,31 @@ export default function TeamManagement() {
       await refresh();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not review request.");
+    }
+  }
+
+  async function createPlaybookVersion(event: React.FormEvent) {
+    event.preventDefault();
+    setSavingPlaybook(true);
+    try {
+      await api<{ id: number }>("/api/team-admin/playbook-versions", { method: "POST", body: JSON.stringify(playbookDraft) });
+      toast.success("Draft playbook revision created.");
+      setPlaybookDraft({ playbookKey: "", title: "", instructions: "" });
+      await refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not create playbook draft.");
+    } finally {
+      setSavingPlaybook(false);
+    }
+  }
+
+  async function publishPlaybookVersion(id: number) {
+    try {
+      await api<{ ok: boolean }>(`/api/team-admin/playbook-versions/${id}/publish`, { method: "PUT" });
+      toast.success("Playbook version published; the prior published revision was archived.");
+      await refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not publish playbook revision.");
     }
   }
 
@@ -243,6 +275,8 @@ export default function TeamManagement() {
       {!((systems.data as ConnectedSystem[] | undefined)?.some(system => system.status === "ready")) && <p className="mt-3 text-xs text-amber-100">Verify a CRM connection before recording pipeline stages.</p>}
       <div className="mt-6 overflow-x-auto"><table className="w-full min-w-[720px] text-left"><thead className="border-b border-white/10 text-[10px] font-black uppercase tracking-[.12em] text-[#7896C1]"><tr><th className="pb-3 pr-4">Pipeline</th><th className="pb-3 pr-4">Stage</th><th className="pb-3 pr-4">Provider IDs</th><th className="pb-3">Reporting category</th></tr></thead><tbody>{pipelineMappings.map(item => <tr key={item.id} className="border-b border-white/[.07]"><td className="py-3 pr-4 font-semibold text-white">{item.pipelineLabel}</td><td className="py-3 pr-4 text-sm text-[#B6C9E8]">{item.stageLabel}</td><td className="py-3 pr-4 font-mono text-xs text-[#8FA9CE]">{item.externalPipelineId} / {item.externalStageId}</td><td className="py-3 text-sm capitalize text-[#B6C9E8]">{item.category}</td></tr>)}{!pipelineMappings.length && <tr><td colSpan={4} className="py-8 text-center text-sm text-[#A9BFDF]">No pipeline stage mappings yet.</td></tr>}</tbody></table></div>
     </section>
+
+    <section className="mt-6 rounded-[1.5rem] border border-white/10 bg-[#0E2142] p-6"><div className="flex gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#153B7A] text-[#9FC2FF]"><ShieldCheck size={18}/></span><div><p className="text-[10px] font-black uppercase tracking-[.14em] text-[#7FAAF8]">VERSIONED PLAYBOOKS</p><h2 className="font-display text-2xl font-bold tracking-[-.05em] text-white">Publish the exact instructions that workflows may use.</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-[#9EB6DB]">Drafts are never selected at runtime. Publishing a revision archives the former published revision for the same key, preserving a clear rollback and audit trail.</p></div></div><form onSubmit={createPlaybookVersion} className="mt-6 grid gap-3 lg:grid-cols-3"><label className="text-xs font-black uppercase tracking-[.12em] text-[#9EB6DB]">Playbook key<Input required value={playbookDraft.playbookKey} onChange={event => setPlaybookDraft({ ...playbookDraft, playbookKey: event.target.value })} placeholder="e.g. follow-up-review" className="mt-2 border-white/15 bg-[#08172F] text-white"/></label><label className="text-xs font-black uppercase tracking-[.12em] text-[#9EB6DB]">Title<Input required value={playbookDraft.title} onChange={event => setPlaybookDraft({ ...playbookDraft, title: event.target.value })} placeholder="Clear internal title" className="mt-2 border-white/15 bg-[#08172F] text-white"/></label><div className="flex items-end"><Button disabled={savingPlaybook} className="h-11 w-full bg-[#1B64F2] hover:bg-[#2B76FF]">{savingPlaybook ? "Creating…" : "Create draft revision"}</Button></div><label className="lg:col-span-3 text-xs font-black uppercase tracking-[.12em] text-[#9EB6DB]">Review-first instructions<Textarea required value={playbookDraft.instructions} onChange={event => setPlaybookDraft({ ...playbookDraft, instructions: event.target.value })} placeholder="State the allowed preparation steps, evidence requirements, and approval boundary." className="mt-2 min-h-24 border-white/15 bg-[#08172F] text-white"/></label></form><div className="mt-6 overflow-x-auto"><table className="w-full min-w-[720px] text-left"><thead className="border-b border-white/10 text-[10px] font-black uppercase tracking-[.12em] text-[#7896C1]"><tr><th className="pb-3 pr-4">Playbook</th><th className="pb-3 pr-4">Revision</th><th className="pb-3 pr-4">Status</th><th className="pb-3">Control</th></tr></thead><tbody>{playbookVersions.map(version => <tr key={version.id} className="border-b border-white/[.07]"><td className="py-3 pr-4"><p className="font-semibold text-white">{version.title}</p><p className="font-mono text-xs text-[#8FA9CE]">{version.playbookKey}</p></td><td className="py-3 pr-4 text-sm text-[#B6C9E8]">v{version.version}</td><td className="py-3 pr-4 text-sm capitalize text-[#B6C9E8]">{version.status}</td><td className="py-3">{version.status === "draft" ? <Button size="sm" onClick={() => void publishPlaybookVersion(version.id)} className="bg-[#1B64F2] hover:bg-[#2B76FF]">Publish revision</Button> : <span className="text-xs text-[#8FA9CE]">Immutable</span>}</td></tr>)}{!playbookVersions.length && <tr><td colSpan={4} className="py-8 text-center text-sm text-[#A9BFDF]">No versioned playbooks yet. Create a draft to begin a controlled workflow.</td></tr>}</tbody></table></div></section>
 
     {compliance && <section className="mt-6 rounded-[1.5rem] border border-white/10 bg-[#0E2142] p-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between"><div className="flex gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#153B7A] text-[#9FC2FF]"><FileLock2 size={18}/></span><div><p className="text-[10px] font-black uppercase tracking-[.14em] text-[#7FAAF8]">PRIVACY & RETENTION</p><h2 className="font-display text-2xl font-bold tracking-[-.05em] text-white">Set evidence-preserving lifecycle controls.</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-[#9EB6DB]">Retention defaults to a dry run and destructive work requires an approved request. These settings never bypass CRM action review.</p></div></div><Button disabled={savingCompliance} onClick={() => void saveCompliance()} className="bg-[#1B64F2] hover:bg-[#2B76FF]">{savingCompliance ? "Saving…" : "Save privacy policy"}</Button></div>
