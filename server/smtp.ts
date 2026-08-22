@@ -15,6 +15,12 @@ function getTransporter() {
   return nodemailer.createTransport({ host: process.env.SMTP_HOST!, port: Number(process.env.SMTP_PORT!), secure: process.env.SMTP_SECURE === "true", auth: { user: process.env.SMTP_USER!, pass: process.env.SMTP_PASSWORD! } });
 }
 
+export async function verifySmtpConnection() {
+  const transporter = getTransporter();
+  await transporter.verify();
+  return { verified: true as const, host: process.env.SMTP_HOST!, port: Number(process.env.SMTP_PORT!), verifiedAt: new Date().toISOString() };
+}
+
 export async function sendEmail(input: { to: string; subject: string; text: string; html: string }) {
   const transporter = getTransporter();
   await transporter.sendMail({ from: process.env.SMTP_FROM!, ...input });
