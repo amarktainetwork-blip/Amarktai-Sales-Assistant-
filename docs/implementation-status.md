@@ -2,85 +2,78 @@
 
 **Updated:** 22 August 2026
 
-This record distinguishes **implemented repository behavior**, **verified release gates**, and **external activation that requires an authorised Webdock environment or provider account**. A passing build or healthy container is not evidence that a CRM, mailbox, browser session, STT service, or Microsoft tenant is authorised.
+This document separates repository-complete behavior from target-environment commissioning. The exact final release SHA and gate results are recorded in `docs/final-release-validation-20260822.md` after the release branch is reconciled with `main`; do not rely on a hard-coded SHA in this status page.
 
-## Current Product Shape
+## Product shape
 
-Amarktai Sales Assistant is a self-hosted, multi-tenant sales operating layer built with React/Vite, Express/tRPC, Drizzle/MariaDB, Valkey, Caddy, and optional self-hosted Chromium/CDP. It prepares CRM and communications work from approved organisation context, retains a review trail, and prevents AI from silently authorising external actions.
+Amarktai Sales Assistant is a self-hosted multi-tenant sales operating layer built with React/Vite, Express/tRPC, Drizzle/MariaDB, Valkey, Caddy and optional self-hosted Chromium/CDP. It prepares and executes governed sales work from confirmed organisation context while retaining human review, idempotency, execution evidence and audit history.
 
-The standalone release has no executable Manus, Forge, managed OAuth, hosted scheduler, storage-proxy, or preview-runtime dependency. Local signed sessions are the production identity boundary. The application remains a modular monolith with isolated report and health workers, rather than being optimized around a pilot VPS.
+The production source has no executable Manus/Forge hosted-preview dependency. Local signed sessions and email second factor are the self-hosted identity boundary.
 
-## Verified Release Gates
+## Implemented and release-gated
 
-| Gate | Current result |
+- Public/local account registration, login, password recovery, signed sessions, email second factor and organisation switching.
+- Organisation-scoped company setup, safe website discovery and explicitly approved knowledge.
+- Command Centre, Today workspace, workflow preparation, review/approve/skip, callbacks, targets, management intelligence, exports and audit history.
+- Atomic action claims and correlation-bound finalisation to prevent duplicate approved writes.
+- GenX agent execution with bounded context/output, timeouts/retries, live commissioning probe and AI-credit accounting.
+- Native OAuth CRM adapters for **HubSpot, Salesforce, Pipedrive and Zoho CRM**.
+- **Genie** and **Other CRM** deterministic browser adapters with encrypted credentials, reviewed saved scripts, screenshot evidence and authorised-domain/private-network controls.
+- CRM synchronization, normalized contacts/companies/opportunities/tasks/activities, pipeline reads and verified-capability routing.
+- Review-first sales email/SMS/WhatsApp actions. CRM-native delivery is preferred where supported; generic SMTP/webhook delivery can log the completed communication back to CRM.
+- Microsoft 365 / Outlook Graph support for reviewed outbound sales mail and approved calendar-event creation when the installation tenant is configured and commissioned.
+- Live Call Companion with organisation isolation, explicit consent/media boundary, factual transcript storage, coaching, post-call proposals and optional OpenAI-compatible STT.
+- Team administration, owner mappings, QA rubrics, compliance/retention dry-run records, connector webhook intake, observability and worker records.
+- Webdock full/pilot packaging, runtime migration executable, preflight, install/update, backup, guarded restore, smoke test and production verifier.
+
+## Connection truth
+
+`connectedSystems` is the CRM readiness source of truth. A CRM can become `ready` only after its backend adapter tests the requested capabilities. Merely registering a CRM or completing OAuth is not proof of usable capabilities.
+
+The user-facing connection choices intentionally expose only executable paths:
+
+| Connection | Method |
 |---|---|
-| Release branch | `release/go-live-20260822` in `amarktainetwork-blip/Amarktai-Sales-Assistant-` |
-| Current audited SHA | `ac9af7c2465c6426233360c5cd1c1977ac6082aa` |
-| GitHub Actions | CI run `32579295685` completed successfully at the current SHA. |
-| Local tests | 61 tests in 25 files passed. |
-| TypeScript | `pnpm check` passed. |
-| Schema | `pnpm drizzle-kit check` passed. |
-| Production bundle | `pnpm build` passed. |
-| Webdock packaging | Shell syntax, full/pilot Compose validation, and app/browser production-image builds passed in CI. |
+| HubSpot | Native OAuth/API |
+| Salesforce | Native OAuth/API |
+| Pipedrive | Native OAuth/API |
+| Zoho CRM | Native OAuth/API |
+| Genie | Deterministic authorised browser connector |
+| Other web CRM | Organisation-specific deterministic browser connector |
 
-## Identity, Security, and Multi-Tenancy
+A company with another browser-accessible CRM can use **Other CRM** after its authorised hostname, login and reviewed operation profile are calibrated. The product does not pretend to have a native API adapter for every CRM.
 
-Implemented behavior includes public local registration, non-enumerating password-recovery requests, password-hash-bound reset links, password hashing, email second factor, httpOnly signed session cookies, explicit active-organisation selection, membership switching, and manager/owner controls.
+## Microsoft 365 / communications
 
-Every active new operational path is scoped to the selected organisation: company setup, discoveries, confirmed knowledge, playbooks, connected systems, workflow runs, action proposals, callback tasks, live-call records, audits, reports, pipeline mappings, integration profiles, exports, and saved items. Migrations `0007` through `0013` are additive and nullable-first where legacy reconciliation is required; no legacy row is assigned to an arbitrary organisation.
+SMTP is mandatory for account second factor, password recovery, invitations and reports. Reviewed sales email uses a CRM-native sender when the verified CRM provides one; otherwise `OUTBOUND_EMAIL_PROVIDER=auto` prefers configured Outlook Graph and falls back to SMTP. Approved `create_calendar_event` proposals route through Outlook Graph and retain the same approval/correlation evidence boundary as CRM writes.
 
-Security controls include origin checks, CSRF-aware cookie settings, request-size limits, shared Valkey-backed rate limiting with production fail-closed behavior for sensitive paths, public-auth limits, SSRF-safe website discovery, encrypted connected-system secrets, security headers, active-organisation guards, audit events, atomic AI credit debits, and atomic approved-action claims with stale-claim recovery and correlation-bound finalization.
+SMS/WhatsApp require either a verified CRM/browser-native channel or an explicitly configured idempotent webhook bridge. They are not called live until target acceptance succeeds.
 
-## Sales Operations and Review-First Automation
+## Security / tenancy
 
-The product provides a governed Command Centre, workflow preparation, review/skip/approve controls, CRM capability routing, execution evidence, result visibility, callbacks, daily reports, policy-driven automation, management intelligence, sales targets, human communications drafting, supervisor checks, CRM context reuse, agent/usage controls, and active pipeline-stage mappings.
+Active operational paths are organisation-scoped. Controls include request-size/origin protection, secure cookies, shared Valkey rate limits with fail-closed sensitive paths, SSRF-safe website discovery, encrypted connection secrets, browser-domain/private-network enforcement, Caddy security headers, atomic AI-credit debits, audit records and review-first external execution.
 
-The generic workflow catalogue is intentionally neutral: first contact, post-consultation follow-up, and final-close review. Organisation-specific templates, sender identities, stages, and contact data must be entered during configuration; no customer-specific phone number, exact template, or vertical-specific stage is embedded in the active runtime.
+## Webdock deployment
 
-The agent catalogue covers supervisor/orchestration, workflow governance, CRM context, conversation coaching, knowledge grounding, communications, notes and summaries, QA/compliance, analytics, sales intelligence, objection handling, recommendations, multi-CRM routing, and pipeline planning. AI prepares content and recommendations only; a human review remains required before external action.
+The full profile runs Caddy, app, CRM health worker, reporter, MariaDB, Valkey and internal Chromium/CDP. The pilot profile uses an authorised external Playwright-compatible CDP endpoint. Production migrations run from the compiled runtime (`node dist/migrate.js`) rather than relying on pruned development tooling.
 
-## CRM and Browser Integrations
+`backup.sh` protects MariaDB plus connector calibration/evidence with checksums and a manifest while deliberately excluding `.env` and raw deployment secrets. `restore.sh` requires explicit destructive confirmation and validates checksums/archive paths before replacing the application database.
 
-The canonical `connectedSystems` registry is the only production readiness and action-routing source. It supports server-verified HubSpot, Salesforce, Pipedrive, Zoho, Genie/browser, custom browser, and custom API registrations. The HubSpot adapter includes encrypted material, OAuth boundaries, capability checks, normalized CRM records, pipeline reads, and approved writes. The Genie/browser architecture includes deterministic Playwright/CDP primitives, saved scripts, screenshot evidence, domain policy, and review-first execution.
+## Target-environment commissioning still required
 
-No live CRM or Genie claim is made without installation-time credentials, OAuth authorisation, selector calibration, and capability verification. A browser connector is not marked ready merely because configuration exists.
+These actions cannot truthfully be proven by repository code alone:
 
-## Communications, Calls, and Reporting
+- Webdock host, DNS and Caddy TLS.
+- Real SMTP delivery and login second-factor completion.
+- Real GenX model/API response.
+- OAuth/credentials and capability verification for the client's chosen CRM.
+- Selector/profile calibration for Genie/Other CRM.
+- Microsoft Graph token/mail/calendar acceptance if Outlook is used.
+- Real STT audio acceptance if Live Call Companion transcription is enabled.
+- SMS/WhatsApp sender acceptance if those channels are enabled.
+- One real authorised CRM read and one safe reviewed external write.
+- Backup creation/checksum and recovery rehearsal according to the client's operational policy.
 
-Local SMTP supports second-factor delivery, recovery delivery, and report delivery once a real mailbox is configured. Microsoft Graph mail and calendar requests are review-first and require an approved review reference. SMS and WhatsApp are modeled as reviewable proposals; no unverified live sender or hardcoded customer template exists.
+## Go-live boundary
 
-The Live Call Companion protects call and transcript access by active organisation, stores factual transcripts, detects deterministic signals, prepares coaching and review-first follow-up proposals, and supports an optional OpenAI-compatible STT boundary. The deployment only claims live transcription after a target STT endpoint/model is configured and tested.
-
-The Operations Dashboard can produce protected active-workspace **CSV exports** for operational reports and **PDF exports** for factual conversation logs. The server derives organisation identity from the signed session, bounds returned content, and does not accept a client-supplied organisation identifier.
-
-## Workspace Productivity
-
-Users can save reviewable action proposals as private active-workspace favorites, assign normalized tags, update them, and remove them. The saved-item model supports future lead and pitch references without storing provider secrets. The Command Centre and dashboard now expose explicit loading states, per-action progress labels, actionable errors, and retry controls instead of treating API failure as an empty workspace.
-
-## Webdock Deployment
-
-The repository ships a full profile with MariaDB, Valkey, Caddy, app, report worker, health worker, and self-hosted Chromium/CDP, plus a pilot profile that accepts an authorised external CDP endpoint. It includes an environment template, preflight, install, backup, update, rollback, smoke-test, health/readiness endpoints, and Caddy policy.
-
-Use the correct trailing-hyphen repository, check out `release/go-live-20260822`, create an installation-only `.env` from `deploy/webdock/configuration.template`, and run the documented profile installer. The standard migration step includes `0013_magenta_fabian_cortez.sql` for workspace favorites/tags.
-
-## Still Requires Target-Environment Proof
-
-The following are commissioning activities, not missing source features:
-
-| Area | Required target action |
-|---|---|
-| Webdock | Launch the selected profile, apply migrations, and confirm `/healthz` and `/readyz`. |
-| Public access | Point DNS to Webdock and confirm Caddy TLS plus secure-cookie behavior. |
-| SMTP/2FA | Configure a real mailbox and receive a login second-factor, reset link, and report email. |
-| CRM | Authorise each selected provider and execute the server verification/capability checks. |
-| Genie/browser | Calibrate selectors and saved scripts using an authorised account. |
-| Graph/STT/GenX | Configure only chosen optional integrations and retain verifier evidence. |
-| Acceptance | Under a real local user and 2FA session, test onboarding, exports, favorites/tags, review/approval, and error recovery. |
-
-## Deliberately Out of Scope Until a Business Requirement Exists
-
-Enterprise SAML/SCIM, formal hierarchical sales territories, native billing/checkout, live-provider-specific media adapters, and organisation-specific sales cadences are not claimed as generic default features. The AI credit ledger is implemented and concurrency-safe, but a commercial checkout provider is intentionally not enabled.
-
-## Truthful Go-Live Position
-
-The codebase is **ready for Webdock deployment**. The application is **not yet live-provider proven**, because no Webdock host, mailbox, DNS endpoint, CRM account, Genie session, Graph tenant, GenX endpoint, or STT provider credential was supplied for this audit.
+The repository is **ready for Webdock deployment only after the exact release SHA passes the final release validation ledger**. Client handover is complete only after `deploy/webdock/verify-production.sh` passes on the target and the selected external integrations have their authorised acceptance evidence. Optional integrations that are not configured remain explicitly `NOT_CONFIGURED`; they do not prevent the core product from operating unless the client requires them for handover.
