@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright-core";
-import { loadConnectionSecret } from "../connectedSystems";
+import { assertAuthorisedConnectionUrl, loadConnectionSecret } from "../connectedSystems";
 import type {
   AdapterConnection,
   AdapterEvidence,
@@ -114,20 +114,36 @@ function credentials(secret?: ConnectionSecretPayload, provider?: string) {
 function operationScript(profile: BrowserProfile, operation: string) { const key = profile.operationMap?.[operation] || operation; return profile.scripts[key]; }
 function artifactDirectory(profile: BrowserProfile, connection: AdapterConnection) { return profile.artifactDirectory || `/app/data/browser-artifacts/${connection.organisationId}/${connection.id}`; }
 async function connect(profile: BrowserProfile) { const endpoint = profile.browserEndpoint || process.env.BROWSERLESS_WS_ENDPOINT; if (!endpoint) throw new Error("No Chromium/CDP endpoint is configured for this browser connector."); return chromium.connectOverCDP(endpoint); }
-async function authenticate(page: Page, profile: BrowserProfile, secret: ConnectionSecretPayload, provider: string) {
+async function authorizeNavigation(connection: AdapterConnection, rawUrl: string) {
+  await assertAuthorisedConnectionUrl({ organisationId: connection.organisationId, connectedSystemId: connection.id, rawUrl });
+}
+async function authenticate(page: Page, connection: AdapterConnection, profile: BrowserProfile, secret: ConnectionSecretPayload, provider: string) {
   if (!profile.login) return;
   const creds = credentials(secret, provider);
+  await authorizeNavigation(connection, profile.login.url);
   await page.goto(profile.login.url, { waitUntil: "domcontentloaded", timeout: 45_000 });
+  await authorizeNavigation(connection, page.url());
   if (profile.login.usernameSelector) { if (!creds.username) throw new Error("Browser connector username is not configured."); await page.locator(profile.login.usernameSelector).fill(creds.username); }
   if (profile.login.passwordSelector) { if (!creds.password) throw new Error("Browser connector password is not configured."); await page.locator(profile.login.passwordSelector).fill(creds.password); }
   if (profile.login.submitSelector) await page.locator(profile.login.submitSelector).click();
   await page.locator(profile.login.readySelector).waitFor({ state: "visible", timeout: 45_000 });
+  await authorizeNavigation(connection, page.url());
 }
 async function withPage<T>(connection: AdapterConnection, secret: ConnectionSecretPayload, provider: string, profile: BrowserProfile, run: (page: Page, context: BrowserContext) => Promise<T>) {
   const browser: Browser = await connect(profile);
   const context = await browser.newContext(secret.browserSession ? { storageState: secret.browserSession as never } : undefined);
   const page = await context.newPage();
-  try { await authenticate(page, profile, secret, provider); return await run(page, context); }
+  await page.route("**/*", async route => {
+    const request = route.request();
+    if (!request.isNavigationRequest() || request.frame() !== page.mainFrame()) return route.continue();
+    try {
+      await authorizeNavigation(connection, request.url());
+      return route.continue();
+    } catch {
+      return route.abort("blockedbyclient");
+    }
+  });
+  try { await authenticate(page, connection, profile, secret, provider); return await run(page, context); }
   finally { await context.close().catch(() => undefined); await browser.close().catch(() => undefined); }
 }
 async function runOperation(input: { connection: AdapterConnection; secret: ConnectionSecretPayload; provider: string; operation: string; payload?: Record<string, unknown>; correlationId: string }) {
@@ -135,7 +151,7 @@ async function runOperation(input: { connection: AdapterConnection; secret: Conn
   if (!profile) throw new Error("This browser CRM has no calibrated connector profile. Add a reviewed browser profile before verification.");
   const script = operationScript(profile, input.operation);
   if (!script) throw new Error(`The calibrated browser connector does not define '${input.operation}'.`);
-  const result = await withPage(input.connection, input.secret, input.provider, profile, page => executeSavedBrowserScript({ page, script, inputs: input.payload || {}, artifactDirectory: artifactDirectory(profile, input.connection), artifactPrefix: `${input.provider}-${input.operation}` }));
+  const result = await withPage(input.connection, input.secret, input.provider, profile, page => executeSavedBrowserScript({ page, script, inputs: input.payload || {}, artifactDirectory: artifactDirectory(profile, input.connection), artifactPrefix: `${input.provider}-${input.operation}`, authorizeNavigation: url => authorizeNavigation(input.connection, url) }));
   if (!result.success) throw new Error(result.detail);
   return { result, profile };
 }
@@ -160,7 +176,9 @@ export function browserCrmAdapter(provider: Extract<CrmProvider, "genie" | "cust
       const profile = await profileFor(input.connection, provider); if (!profile) throw new Error("No calibrated browser connector profile is configured.");
       const secret = await browserSecret(input.connection, input.secret);
       const healthScript = operationScript(profile, "healthCheck");
-      if (healthScript) await runOperation({ connection: input.connection, secret, provider, operation: "healthCheck", correlationId: input.correlationId }); else await withPage(input.connection, secret, provider, profile, async () => undefined);
+      if (healthScript) await runOperation({ connection: input.connection, secret, provider, operation: "healthCheck", correlationId: input.correlationId });
+      else if (profile.login) await withPage(input.connection, secret, provider, profile, async page => { await authorizeNavigation(input.connection, page.url()); });
+      else throw new Error("A browser CRM requires either an authorised login URL or a reviewed health-check script before it can be verified.");
       const requested = Array.from(new Set([...input.connection.allowedReadCapabilities, ...input.connection.allowedWriteCapabilities]));
       const capabilities = requested.filter((value): value is CrmCapability => value in CAPABILITY_OPERATIONS).map(capability => { const available = CAPABILITY_OPERATIONS[capability].some(operation => Boolean(operationScript(profile, operation))); return { capability, available, detail: available ? "Verified calibrated deterministic browser operation is configured." : "No reviewed deterministic browser operation is mapped for this capability." } satisfies CapabilityResult; });
       const available = capabilities.filter(item => item.available);
