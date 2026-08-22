@@ -1,0 +1,56 @@
+name: Refresh production security lockfile
+
+on:
+  push:
+    branches: ["release/go-live-20260822"]
+    paths: [".github/workflows/refresh-security-lockfile.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/go-live-20260822
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.15.0
+          cache: pnpm
+      - name: Refresh lockfile and validate dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "amarktai-release-bot"
+          git config user.email "release-bot@users.noreply.github.com"
+          pnpm install --lockfile-only
+          pnpm install --frozen-lockfile
+          set +e
+          pnpm audit --prod --audit-level=high > /tmp/audit.log 2>&1
+          audit_code=$?
+          set -e
+          pnpm test
+          pnpm check
+          pnpm build
+          {
+            echo '# Production dependency refresh'
+            echo
+            echo "- axios requested: $(node -p \"require('./package.json').dependencies.axios\")"
+            echo "- nanoid requested: $(node -p \"require('./package.json').dependencies.nanoid\")"
+            echo "- production audit exit: $audit_code"
+            echo
+            echo '```text'
+            tail -n 120 /tmp/audit.log
+            echo '```'
+          } > docs/dependency-refresh-20260822.md
+          git rm .github/workflows/refresh-security-lockfile.yml
+          git add package.json pnpm-lock.yaml docs/dependency-refresh-20260822.md
+          git commit -m "security: refresh patched production dependency lockfile"
+          git push origin HEAD:release/go-live-20260822
+          [ "$audit_code" -eq 0 ]
