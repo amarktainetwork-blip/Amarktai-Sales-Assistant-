@@ -37,6 +37,7 @@ export const integrationProfiles = mysqlTable(
   {
     id: int("id").autoincrement().primaryKey(),
     userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    organisationId: int("organisationId").references(() => organisations.id, { onDelete: "cascade" }),
     provider: mysqlEnum("provider", ["genie", "outlook", "genx"]).notNull(),
     displayName: varchar("displayName", { length: 140 }).notNull(),
     status: mysqlEnum("status", ["needs_credentials", "ready", "paused", "error"])
@@ -46,7 +47,7 @@ export const integrationProfiles = mysqlTable(
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   },
-  table => [index("integrationProfiles_user_provider_idx").on(table.userId, table.provider)],
+  table => [index("integrationProfiles_user_provider_idx").on(table.userId, table.provider), index("integrationProfiles_org_provider_idx").on(table.organisationId, table.provider)],
 );
 
 /**
@@ -56,6 +57,7 @@ export const integrationProfiles = mysqlTable(
 export const companyProfiles = mysqlTable("companyProfiles", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }).unique(),
+  organisationId: int("organisationId").references(() => organisations.id, { onDelete: "cascade" }),
   companyName: varchar("companyName", { length: 220 }).notNull(),
   websiteUrl: varchar("websiteUrl", { length: 1024 }),
   industry: varchar("industry", { length: 180 }),
@@ -67,11 +69,12 @@ export const companyProfiles = mysqlTable("companyProfiles", {
   confirmedAt: timestamp("confirmedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-}, table => [index("companyProfiles_user_idx").on(table.userId)]);
+}, table => [index("companyProfiles_user_idx").on(table.userId), index("companyProfiles_org_idx").on(table.organisationId)]);
 
 export const websiteDiscoveries = mysqlTable("websiteDiscoveries", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  organisationId: int("organisationId").references(() => organisations.id, { onDelete: "cascade" }),
   companyProfileId: int("companyProfileId").notNull().references(() => companyProfiles.id, { onDelete: "cascade" }),
   sourceUrl: varchar("sourceUrl", { length: 1024 }).notNull(),
   pageTitle: varchar("pageTitle", { length: 500 }),
@@ -81,11 +84,12 @@ export const websiteDiscoveries = mysqlTable("websiteDiscoveries", {
   status: mysqlEnum("status", ["review_required", "confirmed", "rejected", "failed"]).default("review_required").notNull(),
   reviewedAt: timestamp("reviewedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, table => [index("websiteDiscoveries_user_created_idx").on(table.userId, table.createdAt)]);
+}, table => [index("websiteDiscoveries_user_created_idx").on(table.userId, table.createdAt), index("websiteDiscoveries_org_created_idx").on(table.organisationId, table.createdAt)]);
 
 export const crmConnections = mysqlTable("crmConnections", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  organisationId: int("organisationId").references(() => organisations.id, { onDelete: "cascade" }),
   provider: mysqlEnum("provider", ["genie", "hubspot", "salesforce", "pipedrive", "custom_browser"]).notNull(),
   displayName: varchar("displayName", { length: 180 }).notNull(),
   status: mysqlEnum("status", ["draft", "needs_credentials", "ready", "paused", "error"]).default("draft").notNull(),
@@ -94,11 +98,12 @@ export const crmConnections = mysqlTable("crmConnections", {
   configurationHint: text("configurationHint"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-}, table => [index("crmConnections_user_provider_idx").on(table.userId, table.provider)]);
+}, table => [index("crmConnections_user_provider_idx").on(table.userId, table.provider), index("crmConnections_org_provider_idx").on(table.organisationId, table.provider)]);
 
 export const automationPlaybooks = mysqlTable("automationPlaybooks", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  organisationId: int("organisationId").references(() => organisations.id, { onDelete: "cascade" }),
   title: varchar("title", { length: 220 }).notNull(),
   trigger: varchar("trigger", { length: 160 }).notNull(),
   description: text("description").notNull(),
@@ -108,7 +113,7 @@ export const automationPlaybooks = mysqlTable("automationPlaybooks", {
   status: mysqlEnum("status", ["draft", "active", "paused"]).default("draft").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-}, table => [index("automationPlaybooks_user_status_idx").on(table.userId, table.status)]);
+}, table => [index("automationPlaybooks_user_status_idx").on(table.userId, table.status), index("automationPlaybooks_org_status_idx").on(table.organisationId, table.status)]);
 
 export const workflowRuns = mysqlTable(
   "workflowRuns",

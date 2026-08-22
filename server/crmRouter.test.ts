@@ -36,4 +36,9 @@ describe("multi-CRM capability router", () => {
     const [sms] = routeConnectedSystemActions([{ actionType: "send_sms", payload: {} }], systems);
     expect(sms.payload.crmRoute).toMatchObject({ routable: false, requiredCapability: expect.stringContaining("sms.send") });
   });
+  it("blocks a ready-labelled connector when backend verification did not record the action capability", () => {
+    const systems = [{ id: 9, provider: "custom_api", displayName: "Unverified adapter", status: "ready", connectionMethod: "custom_adapter", verifiedCapabilities: [] }];
+    const [proposal] = routeConnectedSystemActions([{ actionType: "update_contact", payload: {} }], systems);
+    expect(proposal.payload.crmRoute).toMatchObject({ routable: false, reason: expect.stringContaining("backend-verified") });
+  });
 });

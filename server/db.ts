@@ -7,7 +7,6 @@ import {
   callbackTasks,
   callSessions,
   companyProfiles,
-  crmConnections,
   dailyReports,
   integrationProfiles,
   knowledgeSources,
@@ -456,13 +455,12 @@ export async function releaseDailyReportDelivery(reportId: number, deliveryKey: 
 
 export async function getCompanySetup(userId: number) {
   const db = await requireDb();
-  const [profile, discoveries, connections, playbooks] = await Promise.all([
+  const [profile, discoveries, playbooks] = await Promise.all([
     db.select().from(companyProfiles).where(eq(companyProfiles.userId, userId)).limit(1),
     db.select().from(websiteDiscoveries).where(eq(websiteDiscoveries.userId, userId)).orderBy(desc(websiteDiscoveries.createdAt)).limit(8),
-    db.select().from(crmConnections).where(eq(crmConnections.userId, userId)).orderBy(desc(crmConnections.updatedAt)),
     db.select().from(automationPlaybooks).where(eq(automationPlaybooks.userId, userId)).orderBy(desc(automationPlaybooks.updatedAt)),
   ]);
-  return { profile: profile[0] ?? null, discoveries, connections, playbooks };
+  return { profile: profile[0] ?? null, discoveries, playbooks };
 }
 
 export async function upsertCompanyProfile(input: {
@@ -502,14 +500,6 @@ export async function confirmWebsiteDiscovery(input: {
   const confirmed = (await db.select().from(websiteDiscoveries).where(and(eq(websiteDiscoveries.companyProfileId, input.companyProfileId), eq(websiteDiscoveries.userId, input.userId), eq(websiteDiscoveries.status, "confirmed"))).orderBy(desc(websiteDiscoveries.createdAt)).limit(1))[0];
   await recordAudit({ userId: input.userId, eventType: "website_discovery_confirmed", entityType: "website_discovery", entityId: String(confirmed?.id ?? ""), summary: "Confirmed website knowledge is now available to the assistant.", metadata: { sourceUrl: input.sourceUrl, confirmedKnowledgeItems: input.confirmedKnowledge.length } });
   return { discoveryId: confirmed?.id ?? null, confirmedKnowledgeItems: input.confirmedKnowledge.length };
-}
-
-export async function saveCrmConnection(input: { userId: number; provider: "genie" | "hubspot" | "salesforce" | "pipedrive" | "custom_browser"; displayName: string; status: "draft" | "needs_credentials" | "ready" | "paused" | "error"; capabilities: Array<"contacts" | "tasks" | "opportunities" | "notes" | "activities" | "email" | "calendar">; connectionMode: "api" | "browser_automation" | "custom"; configurationHint?: string | null }) {
-  const db = await requireDb();
-  const result = await db.insert(crmConnections).values(input);
-  const id = Number(result[0].insertId);
-  await recordAudit({ userId: input.userId, eventType: "crm_connection_registered", entityType: "crm_connection", entityId: String(id), summary: `${input.displayName} was registered for review-first automation.`, metadata: { provider: input.provider, capabilities: input.capabilities, connectionMode: input.connectionMode } });
-  return id;
 }
 
 export async function saveAutomationPlaybook(input: { userId: number; title: string; trigger: string; description: string; agentKey: string; requiredCapabilities: string[]; status: "draft" | "active" | "paused" }) {

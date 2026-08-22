@@ -110,3 +110,6 @@
 - [x] Bind an explicitly selected active organisation to the local session and expose validated list/current/switch APIs.
 - [x] Replace first-active-membership inference in tenant-sensitive REST and tRPC flows with the explicit active-organisation resolver.
 - [x] Add membership, active-organisation switching, and cross-tenant denial regression coverage.
+- [x] Add and generate reviewed nullable organisation references for legacy company, discovery, connection-profile, and playbook records without destructive constraint changes.
+- [x] Replace onboarding CRM registration and main workflow capability routing with canonical active-organisation connected systems and backend verification.
+- [x] Retire the client-controlled legacy CRM registration mutation and persistence helper; preserve legacy data tables only for controlled migration.

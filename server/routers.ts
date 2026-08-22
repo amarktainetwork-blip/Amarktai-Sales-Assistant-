@@ -27,7 +27,6 @@ import {
   listProposalAuditEntries,
   reviewActionProposal,
   saveAutomationPlaybook,
-  saveCrmConnection,
   upsertCompanyProfile,
   appendLiveTranscript,
   completeLiveCallSession,
@@ -48,7 +47,7 @@ import { routeSalesCommand } from "./supervisor";
 import { prepareLiveCoachingTip, preparePostCallSummary } from "./liveCoach";
 import { getOutlookReadiness, validateEmailPreview } from "./outlook";
 import { discoverPublicWebsite } from "./companyDiscovery";
-import { routeWorkflowActions } from "./crmRouter";
+import { routeConnectedSystemActions } from "./crmRouter";
 import { ensureDefaultOrganisation, canManageOrganisation, listOrganisationMemberships, requireOrganisationMembership, type OrganisationMembership } from "./organisation";
 import { addAuthorisedDomain, createConnectedSystem, getConnectedSystemForUser, listConnectedSystemsForUser, loadConnectionSecret, recordConnectionVerification, toAdapterConnection } from "./connectedSystems";
 import { getCrmAdapter } from "./crm/adapterRegistry";
@@ -154,8 +153,10 @@ export const appRouter = router({
       .query(({ ctx, input }) => listActionProposals(ctx.user.id, input?.workflowRunId)),
     prepareWorkflow: secondFactorProcedure.input(workflowInput).mutation(async ({ ctx, input }) => {
       const plan = buildWorkflowPlan(input);
-      const companySetup = await getCompanySetup(ctx.user.id);
-      const routedActions = routeWorkflowActions(plan.actions, companySetup.connections);
+      const organisation = ctx.activeOrganisation;
+      if (!organisation) throw new Error("Choose an organisation before preparing workflow actions.");
+      const systems = await listConnectedSystemsForUser(ctx.user.id, organisation.organisationId);
+      const routedActions = routeConnectedSystemActions(plan.actions, systems);
       const workflowRunId = await createWorkflowRun({
         userId: ctx.user.id,
         workflowKey: input.workflowKey,
@@ -295,11 +296,6 @@ export const appRouter = router({
       const confirmedKnowledge = result.proposedKnowledge.filter((_, index) => input.knowledgeIndexes.includes(index));
       return confirmWebsiteDiscovery({ userId: ctx.user.id, companyProfileId: setup.profile.id, sourceUrl: result.sourceUrl, pageTitle: result.pageTitle, confirmedKnowledge });
     }),
-    registerCrm: secondFactorProcedure.input(z.object({
-      provider: z.enum(["genie", "hubspot", "salesforce", "pipedrive", "custom_browser"]), displayName: z.string().trim().min(2).max(180),
-      status: z.enum(["draft", "needs_credentials", "ready", "paused", "error"]), capabilities: z.array(z.enum(["contacts", "tasks", "opportunities", "notes", "activities", "email", "calendar"])).min(1).max(7),
-      connectionMode: z.enum(["api", "browser_automation", "custom"]), configurationHint: z.string().trim().max(2_000).optional().nullable(),
-    })).mutation(({ ctx, input }) => saveCrmConnection({ userId: ctx.user.id, ...input })),
     savePlaybook: secondFactorProcedure.input(z.object({
       title: z.string().trim().min(2).max(220), trigger: z.string().trim().min(2).max(160), description: z.string().trim().min(5).max(8_000),
       agentKey: z.string().trim().min(2).max(80), requiredCapabilities: z.array(z.string().trim().min(2).max(80)).min(1).max(12), status: z.enum(["draft", "active", "paused"]),
