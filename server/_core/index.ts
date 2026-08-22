@@ -3,9 +3,7 @@ import express from "express";
 import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
-import { sql } from "drizzle-orm";
 import { appRouter } from "../routers";
-import { getDb } from "../db";
 import { registerCrmOAuthRoutes } from "../crm/oauthRoutes";
 import { registerSidecarRoutes } from "../sidecar/routes";
 import { registerLiveCallRoutes } from "../liveCalls/routes";
@@ -18,6 +16,7 @@ import { registerAiCreditsRoutes } from "../aiCreditsRoutes";
 import { registerConnectorWebhookRoutes } from "../connectors/webhookRoutes";
 import { withAiRequestIdentity } from "../aiRequestContext";
 import { allowSidecarOrigin, enforceAppOrigin, rateLimit, securityHeaders } from "../security/http";
+import { getProductionReadiness } from "../readiness";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 
@@ -43,19 +42,15 @@ async function startServer() {
   app.use("/api/connector-webhooks", rateLimit({ limit: 120, windowMs: 60_000 }));
   app.use("/api/connector-webhooks", express.raw({ type: "application/json", limit: "1mb" }));
   registerConnectorWebhookRoutes(app);
-  app.use(express.json({ limit: "1mb" }));
-  app.use(express.urlencoded({ limit: "32kb", extended: true }));
+  // Live-call audio is base64 encoded. A 2 MB JSON ceiling keeps the existing 800 KB
+  // decoded chunk limit safely below the parser boundary while remaining bounded.
+  app.use(express.json({ limit: "2mb" }));
+  app.use(express.urlencoded({ limit: "64kb", extended: true }));
   app.get("/healthz", (_req, res) => res.status(200).json({ status: "ok", service: "amarktai-sales" }));
   app.get("/api/health", (_req, res) => res.status(200).json({ status: "ok", service: "amarktai-sales" }));
   app.get("/readyz", async (_req, res) => {
-    try {
-      const db = await getDb();
-      if (!db) return res.status(503).json({ status: "not_ready", reason: "database_unavailable" });
-      await db.execute(sql`SELECT 1`);
-      return res.status(200).json({ status: "ready", service: "amarktai-sales" });
-    } catch {
-      return res.status(503).json({ status: "not_ready", reason: "database_unavailable" });
-    }
+    const readiness = await getProductionReadiness();
+    return res.status(readiness.status === "ready" ? 200 : 503).json(readiness);
   });
   registerCrmOAuthRoutes(app);
   app.use("/api/live-calls", rateLimit({ limit: 40, windowMs: 60_000 }), enforceAppOrigin);
