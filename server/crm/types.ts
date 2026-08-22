@@ -13,6 +13,10 @@ export const CRM_CAPABILITIES = [
   "notes.write",
   "owners.read",
   "pipelines.read",
+  "email.send",
+  "sms.send",
+  "whatsapp.send",
+  "sequences.apply",
 ] as const;
 
 export type CrmCapability = (typeof CRM_CAPABILITIES)[number];
@@ -39,7 +43,12 @@ export type ConnectionSecretPayload = {
   expiresAt?: string;
   accountExternalId?: string;
   scopes?: string[];
+  apiBaseUrl?: string;
+  instanceUrl?: string;
+  accountsUrl?: string;
+  tokenType?: string;
   browserSession?: Record<string, unknown>;
+  credentials?: Record<string, string>;
 };
 
 export type AdapterEvidence = {
@@ -48,7 +57,7 @@ export type AdapterEvidence = {
   correlationId: string;
   providerResult?: Record<string, unknown>;
   screenshotPath?: string;
-  errorClassification?: "authentication" | "permission" | "rate_limit" | "network" | "validation" | "unknown";
+  errorClassification?: "authentication" | "permission" | "rate_limit" | "network" | "validation" | "unsupported" | "unknown";
   retryable?: boolean;
 };
 
@@ -67,10 +76,22 @@ export type ConnectionTest = {
   scopes?: string[];
 };
 
+export type OutboundMessageInput = {
+  connection: AdapterConnection;
+  secret: ConnectionSecretPayload;
+  to: string;
+  subject?: string;
+  body: string;
+  contactExternalId?: string;
+  opportunityExternalId?: string;
+  templateName?: string;
+  correlationId: string;
+};
+
 export type CrmAdapter = {
   provider: CrmProvider;
   createAuthorizationUrl?: (input: { connection: AdapterConnection; state: string; redirectUri: string }) => string;
-  exchangeAuthorizationCode?: (input: { connection: AdapterConnection; code: string; redirectUri: string }) => Promise<ConnectionSecretPayload>;
+  exchangeAuthorizationCode?: (input: { connection: AdapterConnection; code: string; redirectUri: string; callbackParams?: Record<string, string> }) => Promise<ConnectionSecretPayload>;
   disconnect: (input: { connection: AdapterConnection; secret?: ConnectionSecretPayload; correlationId: string }) => Promise<AdapterEvidence>;
   refreshAuthentication: (input: { connection: AdapterConnection; secret: ConnectionSecretPayload; correlationId: string }) => Promise<ConnectionSecretPayload>;
   testConnection: (input: { connection: AdapterConnection; secret?: ConnectionSecretPayload; correlationId: string }) => Promise<ConnectionTest>;
@@ -84,12 +105,20 @@ export type CrmAdapter = {
   getContact: (input: { connection: AdapterConnection; secret: ConnectionSecretPayload; externalId: string }) => Promise<NormalizedContact | null>;
   getCompany: (input: { connection: AdapterConnection; secret: ConnectionSecretPayload; externalId: string }) => Promise<NormalizedCompany | null>;
   getOpportunity: (input: { connection: AdapterConnection; secret: ConnectionSecretPayload; externalId: string }) => Promise<NormalizedOpportunity | null>;
+  createContact?: (input: { connection: AdapterConnection; secret: ConnectionSecretPayload; fields: Record<string, unknown>; correlationId: string }) => Promise<AdapterEvidence>;
+  createCompany?: (input: { connection: AdapterConnection; secret: ConnectionSecretPayload; fields: Record<string, unknown>; correlationId: string }) => Promise<AdapterEvidence>;
+  createOpportunity?: (input: { connection: AdapterConnection; secret: ConnectionSecretPayload; fields: Record<string, unknown>; correlationId: string }) => Promise<AdapterEvidence>;
   createNote: (input: { connection: AdapterConnection; secret: ConnectionSecretPayload; externalId: string; body: string; correlationId: string }) => Promise<AdapterEvidence>;
   createTask: (input: { connection: AdapterConnection; secret: ConnectionSecretPayload; title: string; dueAt?: string; contactExternalId?: string; opportunityExternalId?: string; correlationId: string }) => Promise<AdapterEvidence>;
   completeTask: (input: { connection: AdapterConnection; secret: ConnectionSecretPayload; externalId: string; correlationId: string }) => Promise<AdapterEvidence>;
   updateContact: (input: { connection: AdapterConnection; secret: ConnectionSecretPayload; externalId: string; patch: Record<string, unknown>; correlationId: string }) => Promise<AdapterEvidence>;
   updateOpportunity: (input: { connection: AdapterConnection; secret: ConnectionSecretPayload; externalId: string; patch: Record<string, unknown>; correlationId: string }) => Promise<AdapterEvidence>;
   createActivity: (input: { connection: AdapterConnection; secret: ConnectionSecretPayload; activity: Record<string, unknown>; correlationId: string }) => Promise<AdapterEvidence>;
+  sendEmail?: (input: OutboundMessageInput) => Promise<AdapterEvidence>;
+  sendSms?: (input: OutboundMessageInput) => Promise<AdapterEvidence>;
+  sendWhatsApp?: (input: OutboundMessageInput) => Promise<AdapterEvidence>;
+  applySequence?: (input: { connection: AdapterConnection; secret: ConnectionSecretPayload; externalId: string; sequence: string; correlationId: string }) => Promise<AdapterEvidence>;
+  executeCustomAction?: (input: { connection: AdapterConnection; secret: ConnectionSecretPayload; actionName: string; payload: Record<string, unknown>; correlationId: string }) => Promise<AdapterEvidence>;
   listPipelines: (input: { connection: AdapterConnection; secret: ConnectionSecretPayload }) => Promise<Array<{ externalId: string; label: string; stages: Array<{ externalId: string; label: string }> }>>;
   healthCheck: (input: { connection: AdapterConnection; secret?: ConnectionSecretPayload; correlationId: string }) => Promise<ConnectionTest>;
 };

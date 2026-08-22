@@ -17,6 +17,12 @@ export function crmOAuthCallbackUrl(request: { protocol: string; get(name: strin
   return `${appOrigin(request)}/api/crm/oauth/callback`;
 }
 
+function callbackParams(query: Record<string, unknown>) {
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(query)) if (typeof value === "string" && value.length <= 2048) result[key] = value;
+  return result;
+}
+
 /**
  * Callback endpoints intentionally read only a single-use server-side nonce.
  * Tokens are encrypted before persistence and are never rendered in the reply.
@@ -37,7 +43,7 @@ export function registerCrmOAuthRoutes(app: Express) {
       const adapter = getCrmAdapter(system.provider);
       if (!adapter.exchangeAuthorizationCode) throw new Error("This CRM adapter does not support OAuth authorization.");
       const connection = toAdapterConnection(system);
-      const secret = await adapter.exchangeAuthorizationCode({ connection, code, redirectUri: state.redirectUri });
+      const secret = await adapter.exchangeAuthorizationCode({ connection, code, redirectUri: state.redirectUri, callbackParams: callbackParams(req.query as Record<string, unknown>) });
       await saveConnectionSecret({ userId: state.userId, organisationId: system.organisationId, connectedSystemId: system.id, secretKind: "oauth", secret });
       const correlationId = randomUUID();
       const test = await adapter.testConnection({ connection, secret, correlationId });

@@ -3,7 +3,7 @@ import { crmActivities, crmCompanies, crmContacts, crmOpportunities, crmSyncCurs
 import { getDb } from "../db";
 import { getConnectedSystemForUser, loadConnectionSecret, saveConnectionSecret, toAdapterConnection } from "../connectedSystems";
 import { getCrmAdapter } from "./adapterRegistry";
-import type { AdapterConnection, ConnectionSecretPayload, NormalizedActivity, NormalizedCompany, NormalizedContact, NormalizedOpportunity, NormalizedTask } from "./types";
+import type { AdapterConnection, NormalizedActivity, NormalizedCompany, NormalizedContact, NormalizedOpportunity, NormalizedTask } from "./types";
 
 async function cursorFor(systemId: number, resourceType: string) {
   const db = await getDb();
@@ -17,13 +17,19 @@ async function saveCursor(systemId: number, resourceType: string, cursor?: strin
   await db.insert(crmSyncCursors).values({ connectedSystemId: systemId, resourceType, cursor: cursor ?? null, sourceCheckpoint: new Date().toISOString(), lastSuccessfulAt: error ? null : new Date(), lastError: error ?? null }).onDuplicateKeyUpdate({ set: { cursor: cursor ?? null, sourceCheckpoint: new Date().toISOString(), lastSuccessfulAt: error ? null : new Date(), lastError: error ?? null } });
 }
 
+function secretKind(connection: AdapterConnection) {
+  return connection.connectionMethod === "browser" || connection.connectionMethod === "sidecar" ? "browser" : "oauth";
+}
+
 async function usableSecret(input: { userId: number; organisationId: number; connection: AdapterConnection }) {
-  const secret = await loadConnectionSecret({ organisationId: input.organisationId, connectedSystemId: input.connection.id, secretKind: "oauth" });
-  if (!secret) throw new Error("No encrypted credentials are available for this connected system.");
-  if (!secret.expiresAt || new Date(secret.expiresAt).valueOf() > Date.now() + 60_000) return secret;
+  const kind = secretKind(input.connection);
+  const secret = await loadConnectionSecret({ organisationId: input.organisationId, connectedSystemId: input.connection.id, secretKind: kind });
+  if (!secret && kind !== "browser") throw new Error("No encrypted credentials are available for this connected system.");
+  const current = secret ?? {};
+  if (kind === "browser" || !current.expiresAt || new Date(current.expiresAt).valueOf() > Date.now() + 60_000) return current;
   const adapter = getCrmAdapter(input.connection.provider);
-  const refreshed = await adapter.refreshAuthentication({ connection: input.connection, secret, correlationId: crypto.randomUUID() });
-  await saveConnectionSecret({ userId: input.userId, organisationId: input.organisationId, connectedSystemId: input.connection.id, secretKind: "oauth", secret: refreshed });
+  const refreshed = await adapter.refreshAuthentication({ connection: input.connection, secret: current, correlationId: crypto.randomUUID() });
+  await saveConnectionSecret({ userId: input.userId, organisationId: input.organisationId, connectedSystemId: input.connection.id, secretKind: kind, secret: refreshed });
   return refreshed;
 }
 
