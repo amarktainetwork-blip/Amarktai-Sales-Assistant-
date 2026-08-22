@@ -3,6 +3,7 @@ import { authorisedDomains, connectedSystems, connectionSecrets, connectorVerifi
 import { getDb } from "./db";
 import { canManageOrganisation, requireOrganisationMembership } from "./organisation";
 import { decryptConnectionSecret, encryptConnectionSecret } from "./security/connectionSecrets";
+import { assertPublicHttpUrl } from "./security/networkPolicy";
 import type { AdapterConnection, ConnectionSecretPayload, ConnectionTest, CrmProvider } from "./crm/types";
 
 const connectionMethods = ["oauth", "browser", "sidecar", "custom_adapter", "import"] as const;
@@ -85,16 +86,26 @@ export async function addAuthorisedDomain(input: { userId: number; organisationI
   if (!/^[a-z0-9.-]{1,253}$/i.test(hostname) || hostname.includes("..")) throw new Error("Enter a valid authorised business hostname.");
   const allowedPaths = input.allowedPaths.map(path => path.trim()).filter(Boolean);
   if (allowedPaths.some(path => !path.startsWith("/") || path.includes("//"))) throw new Error("Authorised paths must be absolute path prefixes.");
+  await assertPublicHttpUrl(`https://${hostname}${allowedPaths[0] || "/"}`);
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
   await db.insert(authorisedDomains).values({ organisationId: input.organisationId, connectedSystemId: system.id, hostname, allowedPaths, status: "verified", verifiedAt: new Date() }).onDuplicateKeyUpdate({ set: { allowedPaths, status: "verified", verifiedAt: new Date() } });
 }
 
-export async function isAuthorisedDomain(input: { organisationId: number; hostname: string; pathname: string }) {
+export async function isAuthorisedDomain(input: { organisationId: number; hostname: string; pathname: string; connectedSystemId?: number }) {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
-  const entries = await db.select().from(authorisedDomains).where(and(eq(authorisedDomains.organisationId, input.organisationId), eq(authorisedDomains.hostname, input.hostname.toLowerCase()), eq(authorisedDomains.status, "verified")));
+  const conditions = [eq(authorisedDomains.organisationId, input.organisationId), eq(authorisedDomains.hostname, input.hostname.toLowerCase()), eq(authorisedDomains.status, "verified")];
+  if (input.connectedSystemId) conditions.push(eq(authorisedDomains.connectedSystemId, input.connectedSystemId));
+  const entries = await db.select().from(authorisedDomains).where(and(...conditions));
   return entries.some(entry => entry.allowedPaths.length === 0 || entry.allowedPaths.some(prefix => input.pathname.startsWith(prefix)));
+}
+
+export async function assertAuthorisedConnectionUrl(input: { organisationId: number; connectedSystemId: number; rawUrl: string }) {
+  const url = await assertPublicHttpUrl(input.rawUrl);
+  const allowed = await isAuthorisedDomain({ organisationId: input.organisationId, connectedSystemId: input.connectedSystemId, hostname: url.hostname, pathname: url.pathname || "/" });
+  if (!allowed) throw new Error("Browser navigation is outside this connected system's authorised business domain/path.");
+  return url;
 }
 
 export async function saveConnectionSecret(input: { userId: number; organisationId: number; connectedSystemId: number; secretKind: string; secret: ConnectionSecretPayload }) {
