@@ -96,5 +96,5 @@
 - [x] Preserve rescue branch and bundle for commit 57eced26, then verify the local tree is the Sales Assistant application.
 - [x] Reconnect the local release to amarktainetwork-blip/Amarktai-Sales-Assistant and determine the merge base with its canonical main.
 - [x] Integrate the completed release onto the correct Sales history without touching Amarktai-Network-V2, then verify Sales-specific production controls.
-- [ ] Run final recovery release gates and push release/production-ready-sales-20260822 to the correct Sales repository.
+- [x] Run final recovery release gates and push release/production-ready-sales-20260822 to the correct Sales repository.
 - [ ] Deliver the exact repository recovery and Webdock deployment handoff report with the deployable SHA.
