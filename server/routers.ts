@@ -308,8 +308,8 @@ export const appRouter = router({
   connectedSystems: router({
     list: secondFactorProcedure.input(z.object({ organisationId: z.number().int().positive() })).query(({ ctx, input }) => { requireActiveOrganisationContext(ctx, input.organisationId); return listConnectedSystemsForUser(ctx.user.id, input.organisationId); }),
     create: secondFactorProcedure.input(z.object({
-      organisationId: z.number().int().positive(), provider: z.enum(["genie", "hubspot", "salesforce", "pipedrive", "zoho", "custom_browser", "custom_api", "csv_import"]),
-      displayName: z.string().trim().min(2).max(180), baseUrl: z.string().url().max(1024).optional().nullable(), connectionMethod: z.enum(["oauth", "browser", "sidecar", "custom_adapter", "import"]),
+      organisationId: z.number().int().positive(), provider: z.enum(["genie", "hubspot", "salesforce", "pipedrive", "zoho", "custom_browser"]),
+      displayName: z.string().trim().min(2).max(180), baseUrl: z.string().url().max(1024).optional().nullable(), connectionMethod: z.enum(["oauth", "browser", "sidecar"]),
       allowedReadCapabilities: z.array(z.string().trim().min(3).max(80)).max(20), allowedWriteCapabilities: z.array(z.string().trim().min(3).max(80)).max(20),
     })).mutation(({ ctx, input }) => { requireActiveOrganisationContext(ctx, input.organisationId); return createConnectedSystem({ userId: ctx.user.id, ...input }); }),
     addDomain: secondFactorProcedure.input(z.object({ organisationId: z.number().int().positive(), connectedSystemId: z.number().int().positive(), hostname: z.string().trim().min(3).max(253), allowedPaths: z.array(z.string().trim().min(1).max(500)).max(40) })).mutation(({ ctx, input }) => { requireActiveOrganisationContext(ctx, input.organisationId); return addAuthorisedDomain({ userId: ctx.user.id, ...input }); }),
