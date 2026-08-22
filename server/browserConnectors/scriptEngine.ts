@@ -67,6 +67,7 @@ export async function executeSavedBrowserScript(input: {
   inputs: Record<string, unknown>;
   artifactDirectory: string;
   artifactPrefix: string;
+  authorizeNavigation?: (url: string) => Promise<void>;
 }): Promise<BrowserScriptResult> {
   const script = validateSavedBrowserScript(input.script);
   const data: Record<string, string> = {};
@@ -76,12 +77,15 @@ export async function executeSavedBrowserScript(input: {
       if (step.action === "goto") {
         const target = renderBrowserTemplate(step.value, input.inputs);
         if (!/^https?:\/\//i.test(target)) throw new Error("Browser connector navigation only permits HTTP(S) URLs.");
+        await input.authorizeNavigation?.(target);
         await input.page.goto(target, { waitUntil: "domcontentloaded", timeout: 45_000 });
+        await input.authorizeNavigation?.(input.page.url());
         continue;
       }
       if (step.action === "wait_for_url") {
         const target = renderBrowserTemplate(step.value, input.inputs);
         await input.page.waitForURL(target, { timeout: 30_000 });
+        await input.authorizeNavigation?.(input.page.url());
         continue;
       }
       const locator = input.page.locator(renderBrowserTemplate(step.selector, input.inputs));
