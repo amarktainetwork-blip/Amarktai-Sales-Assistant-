@@ -2,7 +2,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
-import { BellRing, CheckCircle2, MailPlus, RefreshCw, ShieldCheck, UserRoundCog, Users } from "lucide-react";
+import { BellRing, CheckCircle2, FileLock2, Landmark, MailPlus, RefreshCw, ShieldCheck, UserRoundCog, Users } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -29,6 +29,9 @@ type ManagementSettings = {
   noNextStepThreshold: number;
   includeHealthyPeople: boolean;
 };
+type CompliancePolicy = { transcriptRetentionDays: number; auditRetentionDays: number; operationalRetentionDays: number; outboundConsentRequired: boolean; deletionApprovalRequired: boolean; policyText: string | null };
+type DataSubjectRequest = { id: number; requestType: "export" | "deletion"; subjectType: string; subjectReference: string; status: string; createdAt: string };
+type EnterpriseSettings = { identityConnections: { id: number; protocol: string; displayName: string; status: string }[]; entitlement: { planKey: string; status: string; providerReference: string | null } | null };
 
 async function api<T>(path: string, init?: RequestInit) {
   const response = await fetch(path, { credentials: "include", ...init, headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) } });
@@ -42,6 +45,10 @@ export default function TeamManagement() {
   const [mappings, setMappings] = useState<OwnerMapping[]>([]);
   const [pipelineMappings, setPipelineMappings] = useState<PipelineStageMapping[]>([]);
   const [settings, setSettings] = useState<ManagementSettings | null>(null);
+  const [compliance, setCompliance] = useState<CompliancePolicy | null>(null);
+  const [dataSubjectRequests, setDataSubjectRequests] = useState<DataSubjectRequest[]>([]);
+  const [enterprise, setEnterprise] = useState<EnterpriseSettings | null>(null);
+  const [savingCompliance, setSavingCompliance] = useState(false);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -58,16 +65,22 @@ export default function TeamManagement() {
 
   const refresh = useCallback(async () => {
     try {
-      const [team, management, ownerMappings, savedPipelineMappings] = await Promise.all([
+      const [team, management, ownerMappings, savedPipelineMappings, savedCompliance, subjectRequests, enterpriseSettings] = await Promise.all([
         api<TeamResponse>("/api/team-admin/members"),
         api<ManagementSettings>("/api/management-settings"),
         api<OwnerMappingResponse>("/api/team-admin/crm-owner-mappings"),
         api<PipelineStageMappingResponse>("/api/team-admin/crm-pipeline-stage-mappings"),
+        api<{ policy: CompliancePolicy | null }>("/api/team-admin/compliance-policy"),
+        api<{ requests: DataSubjectRequest[] }>("/api/team-admin/data-subject-requests"),
+        api<EnterpriseSettings>("/api/team-admin/enterprise-settings"),
       ]);
       setData(team);
       setSettings(management);
       setMappings(ownerMappings.mappings);
       setPipelineMappings(savedPipelineMappings.mappings);
+      setCompliance(savedCompliance.policy ?? { transcriptRetentionDays: 90, auditRetentionDays: 365, operationalRetentionDays: 365, outboundConsentRequired: true, deletionApprovalRequired: true, policyText: null });
+      setDataSubjectRequests(subjectRequests.requests);
+      setEnterprise(enterpriseSettings);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not load team administration.");
     } finally {
@@ -112,6 +125,30 @@ export default function TeamManagement() {
       toast.error(error instanceof Error ? error.message : "Could not save Management Intelligence settings.");
     } finally {
       setSavingSettings(false);
+    }
+  }
+
+  async function saveCompliance() {
+    if (!compliance) return;
+    setSavingCompliance(true);
+    try {
+      await api<{ ok: boolean }>("/api/team-admin/compliance-policy", { method: "PUT", body: JSON.stringify(compliance) });
+      toast.success("Privacy and retention policy saved.");
+      await refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save privacy policy.");
+    } finally {
+      setSavingCompliance(false);
+    }
+  }
+
+  async function reviewDataSubjectRequest(id: number, decision: "approved" | "rejected") {
+    try {
+      await api<{ ok: boolean }>(`/api/team-admin/data-subject-requests/${id}/review`, { method: "PUT", body: JSON.stringify({ decision }) });
+      toast.success(`Request ${decision}.`);
+      await refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not review request.");
     }
   }
 
@@ -206,6 +243,15 @@ export default function TeamManagement() {
       {!((systems.data as ConnectedSystem[] | undefined)?.some(system => system.status === "ready")) && <p className="mt-3 text-xs text-amber-100">Verify a CRM connection before recording pipeline stages.</p>}
       <div className="mt-6 overflow-x-auto"><table className="w-full min-w-[720px] text-left"><thead className="border-b border-white/10 text-[10px] font-black uppercase tracking-[.12em] text-[#7896C1]"><tr><th className="pb-3 pr-4">Pipeline</th><th className="pb-3 pr-4">Stage</th><th className="pb-3 pr-4">Provider IDs</th><th className="pb-3">Reporting category</th></tr></thead><tbody>{pipelineMappings.map(item => <tr key={item.id} className="border-b border-white/[.07]"><td className="py-3 pr-4 font-semibold text-white">{item.pipelineLabel}</td><td className="py-3 pr-4 text-sm text-[#B6C9E8]">{item.stageLabel}</td><td className="py-3 pr-4 font-mono text-xs text-[#8FA9CE]">{item.externalPipelineId} / {item.externalStageId}</td><td className="py-3 text-sm capitalize text-[#B6C9E8]">{item.category}</td></tr>)}{!pipelineMappings.length && <tr><td colSpan={4} className="py-8 text-center text-sm text-[#A9BFDF]">No pipeline stage mappings yet.</td></tr>}</tbody></table></div>
     </section>
+
+    {compliance && <section className="mt-6 rounded-[1.5rem] border border-white/10 bg-[#0E2142] p-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between"><div className="flex gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#153B7A] text-[#9FC2FF]"><FileLock2 size={18}/></span><div><p className="text-[10px] font-black uppercase tracking-[.14em] text-[#7FAAF8]">PRIVACY & RETENTION</p><h2 className="font-display text-2xl font-bold tracking-[-.05em] text-white">Set evidence-preserving lifecycle controls.</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-[#9EB6DB]">Retention defaults to a dry run and destructive work requires an approved request. These settings never bypass CRM action review.</p></div></div><Button disabled={savingCompliance} onClick={() => void saveCompliance()} className="bg-[#1B64F2] hover:bg-[#2B76FF]">{savingCompliance ? "Saving…" : "Save privacy policy"}</Button></div>
+      <div className="mt-6 grid gap-4 lg:grid-cols-3">{([['transcriptRetentionDays', 'Conversation & transcript days'], ['auditRetentionDays', 'Audit evidence days'], ['operationalRetentionDays', 'Operational event days']] as const).map(([field, label]) => <label key={field} className="rounded-xl border border-white/10 bg-[#0B1B37] p-4 text-xs font-black uppercase tracking-[.1em] text-[#9EB6DB]">{label}<Input type="number" min={1} max={3650} value={compliance[field]} onChange={event => setCompliance({ ...compliance, [field]: Number(event.target.value) || 1 })} className="mt-3 border-white/15 bg-[#08172F] text-white"/></label>)}</div>
+      <div className="mt-4 flex flex-wrap gap-x-6 gap-y-3 text-sm text-[#C9D7ED]"><label className="flex items-center gap-2"><input type="checkbox" checked={compliance.outboundConsentRequired} onChange={event => setCompliance({ ...compliance, outboundConsentRequired: event.target.checked })}/>Require outbound consent</label><label className="flex items-center gap-2"><input type="checkbox" checked={compliance.deletionApprovalRequired} onChange={event => setCompliance({ ...compliance, deletionApprovalRequired: event.target.checked })}/>Require deletion approval</label></div>
+      <div className="mt-6 rounded-xl border border-white/10 bg-[#0B1B37] p-4"><p className="text-[10px] font-black uppercase tracking-[.12em] text-[#7FAAF8]">DATA-SUBJECT REQUEST QUEUE</p>{dataSubjectRequests.length ? <div className="mt-3 space-y-2">{dataSubjectRequests.map(request => <div key={request.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 px-3 py-2 text-sm"><span className="text-[#D7E5FF]"><b className="capitalize">{request.requestType}</b> · {request.subjectType}: {request.subjectReference} <span className="text-[#8FA9CE]">({request.status.replace('_', ' ')})</span></span>{request.status === "review_required" && <span className="flex gap-2"><Button size="sm" onClick={() => void reviewDataSubjectRequest(request.id, "approved")} className="bg-[#1B64F2]">Approve</Button><Button size="sm" variant="outline" onClick={() => void reviewDataSubjectRequest(request.id, "rejected")} className="border-white/15 text-white">Reject</Button></span>}</div>)}</div> : <p className="mt-3 text-sm text-[#A9BFDF]">No privacy export or deletion requests are awaiting review.</p>}</div>
+    </section>}
+
+    <section className="mt-6 rounded-[1.5rem] border border-white/10 bg-[#0E2142] p-6"><div className="flex gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#153B7A] text-[#9FC2FF]"><Landmark size={18}/></span><div><p className="text-[10px] font-black uppercase tracking-[.14em] text-[#7FAAF8]">ENTERPRISE CONFIGURATION</p><h2 className="font-display text-2xl font-bold tracking-[-.05em] text-white">Identity and entitlement status.</h2><p className="mt-2 text-sm leading-6 text-[#9EB6DB]">SAML/SCIM configurations remain drafts until an authorised identity provider is verified. The self-hosted entitlement record stays active without any payment provider being assumed or activated.</p></div></div><div className="mt-5 grid gap-3 lg:grid-cols-3">{enterprise?.identityConnections.map(connection => <div key={connection.id} className="rounded-xl border border-white/10 bg-[#0B1B37] p-4 text-sm text-[#C9D7ED]"><p className="font-bold text-white">{connection.displayName}</p><p className="mt-1 uppercase text-xs text-[#8FA9CE]">{connection.protocol} · {connection.status}</p></div>)}<div className="rounded-xl border border-white/10 bg-[#0B1B37] p-4 text-sm text-[#C9D7ED]"><p className="font-bold text-white">{enterprise?.entitlement?.planKey ?? "self_hosted"}</p><p className="mt-1 text-xs text-[#8FA9CE]">Entitlement: {enterprise?.entitlement?.status ?? "active by local deployment default"}</p></div></div></section>
 
     {settings && <section className="mt-6 rounded-[1.5rem] border border-white/10 bg-[#0E2142] p-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between"><div className="flex items-start gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#153B7A] text-[#9FC2FF]"><BellRing size={18}/></span><div><p className="text-[10px] font-black uppercase tracking-[.14em] text-[#7FAAF8]">MANAGEMENT INTELLIGENCE</p><h2 className="font-display text-2xl font-bold tracking-[-.05em] text-white">Choose when management gets interrupted.</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-[#9EB6DB]">These thresholds are deterministic CRM rules. They do not monitor private browsing, keystrokes, webcams or unrelated employee activity and do not consume GenX credits.</p></div></div><Button disabled={savingSettings} onClick={() => void saveSettings()} className="bg-[#1B64F2] hover:bg-[#2B76FF]">{savingSettings ? "Saving…" : "Save management rules"}</Button></div>

@@ -140,3 +140,14 @@
 - [x] Document CSV/PDF exports, workspace favorites/tags, migration 0013, and the new API-feedback behavior in the Webdock operator guide.
 - [x] Complete a full release audit of implemented features, code-controlled gates, deployment readiness, remaining commissioning requirements, and prioritized additions for a complete sales assistant.
 - [x] Reconcile historical implementation-status and release-evidence documents with the current audited release head, tests, migrations, exports, favorites/tags, and API-feedback behavior.
+- [ ] Add organisation-configurable compliance policy, retention schedules, deletion/export workflows, and audit-access controls for operational records.
+- [ ] Add versioned review-first playbooks and approval templates with manager draft/publish/rollback controls and execution history.
+- [ ] Add connector operational controls: verified sync jobs, signed webhook intake, retry/dead-letter visibility, and an organisation operator console.
+- [ ] Add a provider-neutral lead-prioritization work queue using factual CRM, callback, pipeline, and call-signal evidence with transparent scoring.
+- [ ] Add review-first inbound-message classification and reply drafting through the configured communication boundary.
+- [ ] Add manager-defined conversation QA scorecards, sampled review queues, calibration feedback, and coaching history.
+- [ ] Add explainable forecasting, quota pacing, territories, and capacity-planning controls based on configured pipeline mappings and factual performance data.
+- [ ] Add enterprise identity foundations for SAML/SCIM-ready connection configuration and controlled user lifecycle provisioning.
+- [ ] Add billing/subscription architecture with a disabled-by-default provider boundary and durable entitlement enforcement.
+- [ ] Add configurable optional text-to-speech with voice selection, explicit consent/policy controls, and no unreviewed outbound delivery.
+- [ ] Add production observability, backup-age/worker/connector alerts, structured operational events, and deployment acceptance validation.

@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { and, eq } from "drizzle-orm";
 import { jwtVerify, SignJWT } from "jose";
 import { COOKIE_NAME } from "@shared/const";
-import { connectedSystems, crmPipelineStageMappings, externalUserMappings, organisationMembers, users } from "../../drizzle/schema";
+import { connectedSystems, crmPipelineStageMappings, dataSubjectRequests, enterpriseIdentityConnections, externalUserMappings, organisationCompliancePolicies, organisationEntitlements, organisationMembers, users } from "../../drizzle/schema";
 import { getDb, getUserByEmail, getUserById, recordAudit } from "../db";
 import { isLocalAuthMode } from "../localAuth";
 import { canManageOrganisation } from "../organisationAccess";
@@ -87,6 +87,107 @@ export function registerTeamAdminRoutes(app: Express) {
     } catch (error) {
       return sendError(res, error);
     }
+  });
+
+  app.get("/api/team-admin/compliance-policy", async (req, res) => {
+    try {
+      const { membership } = await requireManager(req);
+      const db = await getDb();
+      if (!db) throw new Error("Database connection is unavailable.");
+      const policy = (await db.select().from(organisationCompliancePolicies).where(eq(organisationCompliancePolicies.organisationId, membership.organisationId)).limit(1))[0] ?? null;
+      return res.json({ policy });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  });
+
+  app.put("/api/team-admin/compliance-policy", async (req, res) => {
+    try {
+      const { user: actor, membership } = await requireManager(req);
+      const boundedDays = (value: unknown, fallback: number) => {
+        const parsed = Number(value ?? fallback);
+        if (!Number.isInteger(parsed) || parsed < 1 || parsed > 3_650) throw new Error("Retention periods must be whole days between 1 and 3650.");
+        return parsed;
+      };
+      const transcriptRetentionDays = boundedDays(req.body?.transcriptRetentionDays, 90);
+      const auditRetentionDays = boundedDays(req.body?.auditRetentionDays, 365);
+      const operationalRetentionDays = boundedDays(req.body?.operationalRetentionDays, 365);
+      const outboundConsentRequired = req.body?.outboundConsentRequired === undefined ? true : Boolean(req.body.outboundConsentRequired);
+      const deletionApprovalRequired = req.body?.deletionApprovalRequired === undefined ? true : Boolean(req.body.deletionApprovalRequired);
+      const policyText = typeof req.body?.policyText === "string" ? req.body.policyText.trim().slice(0, 12_000) || null : null;
+      const db = await getDb();
+      if (!db) throw new Error("Database connection is unavailable.");
+      await db.insert(organisationCompliancePolicies).values({ organisationId: membership.organisationId, transcriptRetentionDays, auditRetentionDays, operationalRetentionDays, outboundConsentRequired, deletionApprovalRequired, policyText, createdByUserId: actor.id, updatedByUserId: actor.id }).onDuplicateKeyUpdate({ set: { transcriptRetentionDays, auditRetentionDays, operationalRetentionDays, outboundConsentRequired, deletionApprovalRequired, policyText, updatedByUserId: actor.id } });
+      await recordAudit({ userId: actor.id, eventType: "compliance_policy_saved", entityType: "organisation_compliance_policy", entityId: String(membership.organisationId), summary: "Organisation compliance and retention policy was updated.", metadata: { organisationId: membership.organisationId, transcriptRetentionDays, auditRetentionDays, operationalRetentionDays, outboundConsentRequired, deletionApprovalRequired } });
+      return res.json({ ok: true });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  });
+
+  app.get("/api/team-admin/enterprise-settings", async (req, res) => {
+    try {
+      const { membership } = await requireManager(req);
+      const db = await getDb(); if (!db) throw new Error("Database connection is unavailable.");
+      const [identityConnections, entitlement] = await Promise.all([
+        db.select().from(enterpriseIdentityConnections).where(eq(enterpriseIdentityConnections.organisationId, membership.organisationId)),
+        db.select().from(organisationEntitlements).where(eq(organisationEntitlements.organisationId, membership.organisationId)).limit(1),
+      ]);
+      return res.json({ identityConnections, entitlement: entitlement[0] ?? null });
+    } catch (error) { return sendError(res, error); }
+  });
+
+  app.put("/api/team-admin/enterprise-identity", async (req, res) => {
+    try {
+      const { user: actor, membership } = await requireManager(req);
+      const protocol = req.body?.protocol === "saml" || req.body?.protocol === "scim" ? req.body.protocol : null;
+      const displayName = typeof req.body?.displayName === "string" ? req.body.displayName.trim().slice(0, 180) : "";
+      const configuration = req.body?.configuration && typeof req.body.configuration === "object" && !Array.isArray(req.body.configuration) ? req.body.configuration as Record<string, unknown> : {};
+      if (!protocol || !displayName) throw new Error("Protocol and display name are required.");
+      const db = await getDb(); if (!db) throw new Error("Database connection is unavailable.");
+      await db.insert(enterpriseIdentityConnections).values({ organisationId: membership.organisationId, protocol, displayName, configuration, status: "draft" }).onDuplicateKeyUpdate({ set: { displayName, configuration, status: "draft", verifiedAt: null, lastError: null } });
+      await recordAudit({ userId: actor.id, eventType: "enterprise_identity_configured", entityType: "enterprise_identity_connection", entityId: protocol, summary: `${protocol.toUpperCase()} configuration saved as draft pending verification.`, metadata: { organisationId: membership.organisationId, protocol } });
+      return res.json({ ok: true });
+    } catch (error) { return sendError(res, error); }
+  });
+
+  app.get("/api/team-admin/data-subject-requests", async (req, res) => {
+    try {
+      const { membership } = await requireManager(req);
+      const db = await getDb(); if (!db) throw new Error("Database connection is unavailable.");
+      const requests = await db.select().from(dataSubjectRequests).where(eq(dataSubjectRequests.organisationId, membership.organisationId));
+      return res.json({ requests });
+    } catch (error) { return sendError(res, error); }
+  });
+
+  app.post("/api/team-admin/data-subject-requests", async (req, res) => {
+    try {
+      const { user: actor, membership } = await requireManager(req);
+      const requestType = req.body?.requestType === "export" || req.body?.requestType === "deletion" ? req.body.requestType : null;
+      const subjectType = ["contact", "company", "user", "operational_record"].includes(req.body?.subjectType) ? req.body.subjectType : null;
+      const subjectReference = typeof req.body?.subjectReference === "string" ? req.body.subjectReference.trim().slice(0, 220) : "";
+      const reason = typeof req.body?.reason === "string" ? req.body.reason.trim().slice(0, 6_000) || null : null;
+      if (!requestType || !subjectType || !subjectReference) throw new Error("Request type, subject type, and subject reference are required.");
+      const db = await getDb(); if (!db) throw new Error("Database connection is unavailable.");
+      const result = await db.insert(dataSubjectRequests).values({ organisationId: membership.organisationId, requestedByUserId: actor.id, requestType, subjectType, subjectReference, reason });
+      await recordAudit({ userId: actor.id, eventType: "data_subject_request_created", entityType: "data_subject_request", entityId: String(result[0].insertId), summary: `${requestType} request queued for manager review.`, metadata: { organisationId: membership.organisationId, subjectType, subjectReference } });
+      return res.status(201).json({ id: Number(result[0].insertId), status: "review_required" });
+    } catch (error) { return sendError(res, error); }
+  });
+
+  app.put("/api/team-admin/data-subject-requests/:id/review", async (req, res) => {
+    try {
+      const { user: actor, membership } = await requireManager(req);
+      const id = Number(req.params.id); const decision = req.body?.decision === "approved" || req.body?.decision === "rejected" ? req.body.decision : null;
+      if (!Number.isInteger(id) || id <= 0 || !decision) throw new Error("A valid request and review decision are required.");
+      const db = await getDb(); if (!db) throw new Error("Database connection is unavailable.");
+      const request = (await db.select().from(dataSubjectRequests).where(and(eq(dataSubjectRequests.id, id), eq(dataSubjectRequests.organisationId, membership.organisationId))).limit(1))[0];
+      if (!request) throw new Error("Data-subject request was not found in the active organisation.");
+      if (request.status !== "review_required") throw new Error("Only requests awaiting review can be decided.");
+      await db.update(dataSubjectRequests).set({ status: decision, reviewedByUserId: actor.id, reviewedAt: new Date() }).where(eq(dataSubjectRequests.id, id));
+      await recordAudit({ userId: actor.id, eventType: "data_subject_request_reviewed", entityType: "data_subject_request", entityId: String(id), summary: `Data-subject ${request.requestType} request ${decision}.`, metadata: { organisationId: membership.organisationId, decision, requestType: request.requestType } });
+      return res.json({ ok: true, status: decision });
+    } catch (error) { return sendError(res, error); }
   });
 
   app.get("/api/team-admin/crm-owner-mappings", async (req, res) => {
