@@ -58,6 +58,7 @@ import { getTodayWork } from "./today";
 import { issueSidecarSession, revokeSidecarSessions } from "./sidecar/sidecarSessions";
 import { getTeamIntelligence } from "./teamIntelligence";
 import { randomUUID } from "node:crypto";
+import { requireActiveOrganisationContext } from "./activeOrganisationGuard";
 
 const workflowInput = z.object({
   workflowKey: z.enum(WORKFLOW_KEYS),
@@ -79,12 +80,6 @@ function presentConnectionProfile<T extends { provider: keyof typeof publicConne
     displayName: productLabel,
     scopeSummary: `Amarktai Network ${productLabel.toLowerCase()} profile. Technical configuration details remain server-side.`,
   };
-}
-
-function requireActiveOrganisationContext(ctx: { activeOrganisation: OrganisationMembership | null }, organisationId: number) {
-  if (!ctx.activeOrganisation) throw new Error("Choose an organisation before accessing workspace data.");
-  if (ctx.activeOrganisation.organisationId !== organisationId) throw new Error("ACTIVE_ORGANISATION_MISMATCH");
-  return ctx.activeOrganisation;
 }
 
 export const appRouter = router({

@@ -101,7 +101,7 @@
 - [x] Freeze and verify amarktainetwork-blip/Amarktai-Sales-Assistant- at the current canonical main before creating release/go-live-20260822.
 - [x] Audit the advanced repository’s existing integrations, tenant model, authentication, storage, and deployment profiles without discarding completed capabilities.
 - [ ] Consolidate active-organisation membership, cross-tenant authorisation, and organisation-scoped shared and operational data with safe migrations and isolation tests.
-- [ ] Retire legacy CRM connection routing in favour of the canonical connectedSystems readiness model across onboarding, workflows, dashboards, playbooks, communications, and call closeout.
+- [x] Retire legacy CRM connection routing in favour of the canonical connectedSystems readiness model across onboarding, workflows, dashboards, playbooks, communications, and call closeout.
 - [ ] Rebuild onboarding around server-verified supported CRM connections, CRM/team/pipeline mapping, communications, policies, targets, credits, and go-live readiness.
 - [ ] Complete self-hosted authentication, generic organisation configuration, review-first playbooks, provider capability verification, and Manus-free production boundaries.
 - [ ] Run migrations, security and tenant-isolation tests, production build, Compose/Docker gates, authenticated flow tests, and provider readiness verification without credentials in source control.
@@ -113,3 +113,6 @@
 - [x] Add and generate reviewed nullable organisation references for legacy company, discovery, connection-profile, and playbook records without destructive constraint changes.
 - [x] Replace onboarding CRM registration and main workflow capability routing with canonical active-organisation connected systems and backend verification.
 - [x] Retire the client-controlled legacy CRM registration mutation and persistence helper; preserve legacy data tables only for controlled migration.
+- [x] Add regression coverage that organisation switching reissues a signed session for the selected verified membership.
+- [x] Add tRPC regression coverage that active-organisation mismatches are denied on connected systems, sales, management, and sidecar procedures.
+- [x] Add REST regression coverage that protected active-organisation context blocks cross-tenant access.
