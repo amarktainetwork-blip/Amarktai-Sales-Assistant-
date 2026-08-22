@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { and, eq } from "drizzle-orm";
 import { jwtVerify, SignJWT } from "jose";
 import { COOKIE_NAME } from "@shared/const";
-import { approvalTemplates, connectedSystems, connectorSyncJobs, connectorWebhookReceipts, crmPipelineStageMappings, dataSubjectRequests, enterpriseIdentityConnections, externalUserMappings, inboundMessages, inboundReplyDrafts, organisationCompliancePolicies, organisationEntitlements, organisationMembers, playbookVersions, users } from "../../drizzle/schema";
+import { approvalTemplates, connectedSystems, connectorSyncJobs, connectorWebhookReceipts, crmPipelineStageMappings, dataSubjectRequests, enterpriseIdentityConnections, externalUserMappings, inboundMessages, inboundReplyDrafts, organisationCompliancePolicies, organisationEntitlements, organisationMembers, playbookVersions, qaRubrics, users } from "../../drizzle/schema";
 import { getDb, getUserByEmail, getUserById, recordAudit } from "../db";
 import { isLocalAuthMode } from "../localAuth";
 import { canManageOrganisation } from "../organisationAccess";
@@ -292,6 +292,30 @@ export function registerTeamAdminRoutes(app: Express) {
       await db.update(inboundMessages).set({ classification: { category: classification.category, reasons: classification.reasons }, status: "draft_ready" }).where(eq(inboundMessages.id, id));
       await recordAudit({ userId: actor.id, eventType: "inbound_reply_draft_created", entityType: "inbound_reply_draft", entityId: String(result[0].insertId), summary: "Review-only inbound reply draft created; no send action was performed.", metadata: { organisationId: membership.organisationId, inboundMessageId: id, category: classification.category } });
       return res.status(201).json({ id: Number(result[0].insertId), status: "draft", classification });
+    } catch (error) { return sendError(res, error); }
+  });
+
+  app.get("/api/team-admin/qa-rubrics", async (req, res) => {
+    try {
+      const { membership } = await requireManager(req);
+      const db = await getDb(); if (!db) throw new Error("Database connection is unavailable.");
+      return res.json({ rubrics: await db.select().from(qaRubrics).where(eq(qaRubrics.organisationId, membership.organisationId)) });
+    } catch (error) { return sendError(res, error); }
+  });
+
+  app.post("/api/team-admin/qa-rubrics", async (req, res) => {
+    try {
+      const { user: actor, membership } = await requireManager(req);
+      const name = typeof req.body?.name === "string" ? req.body.name.trim().slice(0, 180) : "";
+      const criteria = Array.isArray(req.body?.criteria) ? req.body.criteria.map((item: unknown) => {
+        const row = item && typeof item === "object" ? item as Record<string, unknown> : {};
+        return { key: typeof row.key === "string" ? row.key.trim().slice(0, 80) : "", label: typeof row.label === "string" ? row.label.trim().slice(0, 180) : "", weight: Number(row.weight) };
+      }).filter((item: { key: string; label: string; weight: number }) => item.key && item.label && Number.isFinite(item.weight) && item.weight > 0 && item.weight <= 100) : [];
+      if (!name || !criteria.length) throw new Error("A rubric name and at least one weighted criterion are required.");
+      const db = await getDb(); if (!db) throw new Error("Database connection is unavailable.");
+      const result = await db.insert(qaRubrics).values({ organisationId: membership.organisationId, name, criteria, createdByUserId: actor.id });
+      await recordAudit({ userId: actor.id, eventType: "qa_rubric_created", entityType: "qa_rubric", entityId: String(result[0].insertId), summary: "Quality-assurance rubric created.", metadata: { organisationId: membership.organisationId, criteriaCount: criteria.length } });
+      return res.status(201).json({ id: Number(result[0].insertId) });
     } catch (error) { return sendError(res, error); }
   });
 
