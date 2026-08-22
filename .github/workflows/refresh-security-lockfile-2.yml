@@ -1,0 +1,78 @@
+name: Verify final production dependency remediation
+
+on:
+  push:
+    branches: ["release/go-live-20260822"]
+    paths: [".github/workflows/refresh-security-lockfile-2.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/go-live-20260822
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.15.0
+          cache: pnpm
+      - name: Refresh lockfile and run dependency release gates
+        shell: bash
+        run: |
+          set +e
+          git config user.name "amarktai-release-bot"
+          git config user.email "release-bot@users.noreply.github.com"
+          REPORT=/tmp/dependency-final.md
+          : > "$REPORT"
+          failures=0
+          gate() {
+            name="$1"; shift
+            log="/tmp/${name}.log"
+            "$@" >"$log" 2>&1
+            code=$?
+            printf -- '- %s exit: %s\n' "$name" "$code" >> "$REPORT"
+            if [ "$code" -ne 0 ]; then
+              failures=$((failures+1))
+              printf '\n```text\n' >> "$REPORT"
+              tail -n 140 "$log" >> "$REPORT"
+              printf '\n```\n' >> "$REPORT"
+            fi
+          }
+          printf '# Final production dependency remediation\n\n' >> "$REPORT"
+          gate lockfile pnpm install --lockfile-only
+          gate frozen_install pnpm install --frozen-lockfile
+          gate production_audit pnpm audit --prod --audit-level=high
+          gate unit_tests pnpm test
+          gate typescript pnpm check
+          gate drizzle_check env DATABASE_URL=mysql://migration:placeholder@127.0.0.1:3306/amarktai pnpm exec drizzle-kit check
+          cp -R drizzle /tmp/drizzle-before
+          gate drizzle_generate env DATABASE_URL=mysql://migration:placeholder@127.0.0.1:3306/amarktai pnpm exec drizzle-kit generate
+          if diff -qr /tmp/drizzle-before drizzle >/tmp/drizzle-diff.log 2>&1; then
+            printf -- '- migration_generation_clean: PASS\n' >> "$REPORT"
+          else
+            failures=$((failures+1))
+            printf -- '- migration_generation_clean: FAIL\n\n```text\n' >> "$REPORT"
+            tail -n 100 /tmp/drizzle-diff.log >> "$REPORT"
+            printf '\n```\n' >> "$REPORT"
+          fi
+          rm -rf drizzle && cp -R /tmp/drizzle-before drizzle
+          gate production_build pnpm build
+          printf '\n- express requested: `%s`\n' "$(node -p \"require('./package.json').dependencies.express\")" >> "$REPORT"
+          printf -- '- drizzle-orm requested: `%s`\n' "$(node -p \"require('./package.json').dependencies['drizzle-orm']\")" >> "$REPORT"
+          printf -- '- lodash override: `%s`\n' "$(node -p \"require('./package.json').pnpm.overrides.lodash\")" >> "$REPORT"
+          printf -- '- lodash-es override: `%s`\n' "$(node -p \"require('./package.json').pnpm.overrides['lodash-es']\")" >> "$REPORT"
+          printf '\nFAILURES=%s\n' "$failures" >> "$REPORT"
+          cp "$REPORT" docs/dependency-final-20260822.md
+          git rm .github/workflows/refresh-security-lockfile-2.yml
+          git add package.json pnpm-lock.yaml docs/dependency-final-20260822.md
+          git commit -m "security: lock final patched production dependencies"
+          git push origin HEAD:release/go-live-20260822
+          cat "$REPORT"
+          [ "$failures" -eq 0 ]
