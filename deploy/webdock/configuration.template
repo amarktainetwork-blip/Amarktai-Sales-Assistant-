@@ -84,6 +84,7 @@ GENIE_DASHBOARD_SELECTOR=body
 OUTLOOK_TENANT_ID=
 OUTLOOK_CLIENT_ID=
 OUTLOOK_CLIENT_SECRET=
+OUTLOOK_SENDER_EMAIL=
 
 # SMTP: used for access codes, invitations, management reports and fallback outbound sales email.
 SMTP_HOST=smtp.example.com

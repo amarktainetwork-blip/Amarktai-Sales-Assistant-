@@ -52,6 +52,10 @@ STT_MODEL="$(env_get STT_MODEL)"
 SMTP_HOST="$(env_get SMTP_HOST)"
 SMTP_USER="$(env_get SMTP_USER)"
 SMTP_PASSWORD="$(env_get SMTP_PASSWORD)"
+OUTLOOK_TENANT_ID="$(env_get OUTLOOK_TENANT_ID)"
+OUTLOOK_CLIENT_ID="$(env_get OUTLOOK_CLIENT_ID)"
+OUTLOOK_CLIENT_SECRET="$(env_get OUTLOOK_CLIENT_SECRET)"
+OUTLOOK_SENDER_EMAIL="$(env_get OUTLOOK_SENDER_EMAIL)"
 
 case "$APP_PUBLIC_URL" in
   https://*) : ;;
@@ -100,6 +104,12 @@ if is_placeholder "$SMTP_HOST" || is_placeholder "$SMTP_USER" || is_placeholder 
   warn "SMTP is not configured; email 2FA, team invitations and management reports cannot be activated."
 else
   info "SMTP configuration is present."
+fi
+
+if is_placeholder "$OUTLOOK_TENANT_ID" || is_placeholder "$OUTLOOK_CLIENT_ID" || is_placeholder "$OUTLOOK_CLIENT_SECRET" || is_placeholder "$OUTLOOK_SENDER_EMAIL"; then
+  warn "Microsoft Graph mail/calendar is not configured; review-first Outlook actions will remain unavailable until tenant, client, sender, and secret settings are supplied."
+else
+  info "Microsoft Graph configuration is present; run an authorised provider verification before enabling production mail/calendar actions."
 fi
 
 info "Deployment preflight passed for profile '$PROFILE'."

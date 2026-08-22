@@ -1,8 +1,11 @@
 import type { NextFunction, Request, Response } from "express";
+import { createClient } from "redis";
 
 type RateState = { count: number; resetAt: number };
 const windows = new Map<string, RateState>();
 let lastCleanupAt = 0;
+let redisClient: any = null;
+let redisConnectPromise: Promise<any | null> | null = null;
 
 function clientKey(req: Request) {
   return `${req.ip || req.socket.remoteAddress || "unknown"}:${req.path}`;
@@ -16,20 +19,67 @@ function cleanupExpiredWindows(now: number) {
   });
 }
 
-export function rateLimit(options: { limit: number; windowMs: number }) {
-  return (req: Request, res: Response, next: NextFunction) => {
-    const now = Date.now();
-    cleanupExpiredWindows(now);
-    const key = clientKey(req);
-    const current = windows.get(key);
-    const state = !current || current.resetAt <= now ? { count: 0, resetAt: now + options.windowMs } : current;
-    state.count += 1;
-    windows.set(key, state);
-    if (state.count > options.limit) {
-      res.setHeader("Retry-After", Math.max(1, Math.ceil((state.resetAt - now) / 1000)));
-      return res.status(429).json({ error: "Too many requests. Try again shortly." });
+function incrementLocalWindow(key: string, limit: number, windowMs: number) {
+  const now = Date.now();
+  cleanupExpiredWindows(now);
+  const current = windows.get(key);
+  const state = !current || current.resetAt <= now ? { count: 0, resetAt: now + windowMs } : current;
+  state.count += 1;
+  windows.set(key, state);
+  return { allowed: state.count <= limit, retryAfterSeconds: Math.max(1, Math.ceil((state.resetAt - now) / 1000)) };
+}
+
+async function sharedRateLimit(key: string, limit: number, windowMs: number) {
+  const url = process.env.REDIS_URL;
+  if (!url) return null;
+  if (!redisClient?.isOpen) {
+    if (!redisConnectPromise) {
+      redisConnectPromise = (async () => {
+        const client = createClient({ url, socket: { reconnectStrategy: retries => Math.min(1_000, retries * 100) } });
+        client.on("error", error => console.warn(JSON.stringify({ event: "rate_limit_valkey_error", detail: error instanceof Error ? error.message.slice(0, 160) : String(error).slice(0, 160) })));
+        await client.connect();
+        redisClient = client;
+        return client;
+      })().catch(error => {
+        console.warn(JSON.stringify({ event: "rate_limit_valkey_unavailable", detail: error instanceof Error ? error.message.slice(0, 160) : String(error).slice(0, 160) }));
+        redisConnectPromise = null;
+        return null;
+      });
     }
-    next();
+    const connected = await redisConnectPromise;
+    if (!connected) return null;
+  }
+  const client = redisClient;
+  if (!client) return null;
+  const result = await client.eval(
+    "local count = redis.call('INCR', KEYS[1]); if count == 1 then redis.call('PEXPIRE', KEYS[1], ARGV[1]); end; local ttl = redis.call('PTTL', KEYS[1]); return {count, ttl};",
+    { keys: [key], arguments: [String(windowMs)] },
+  ) as [number, number];
+  return { allowed: result[0] <= limit, retryAfterSeconds: Math.max(1, Math.ceil(result[1] / 1000)) };
+}
+
+export function rateLimit(options: { limit: number; windowMs: number; securitySensitive?: boolean }) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    const key = `amarktai:rate-limit:${req.baseUrl || req.path}:${clientKey(req)}`;
+    try {
+      const shared = await sharedRateLimit(key, options.limit, options.windowMs);
+      const result = shared ?? (process.env.NODE_ENV === "production" && options.securitySensitive !== false ? null : incrementLocalWindow(key, options.limit, options.windowMs));
+      if (!result) return res.status(503).json({ error: "Security rate limiter is temporarily unavailable. Try again shortly." });
+      if (!result.allowed) {
+        res.setHeader("Retry-After", result.retryAfterSeconds);
+        return res.status(429).json({ error: "Too many requests. Try again shortly." });
+      }
+      return next();
+    } catch (error) {
+      console.warn(JSON.stringify({ event: "rate_limit_error", detail: error instanceof Error ? error.message.slice(0, 160) : String(error).slice(0, 160) }));
+      if (process.env.NODE_ENV === "production" && options.securitySensitive !== false) return res.status(503).json({ error: "Security rate limiter is temporarily unavailable. Try again shortly." });
+      const fallback = incrementLocalWindow(key, options.limit, options.windowMs);
+      if (!fallback.allowed) {
+        res.setHeader("Retry-After", fallback.retryAfterSeconds);
+        return res.status(429).json({ error: "Too many requests. Try again shortly." });
+      }
+      return next();
+    }
   };
 }
 

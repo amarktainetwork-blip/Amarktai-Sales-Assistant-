@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { organisations, salesActivityEvents } from "../drizzle/schema";
 import { PRICING_PLANS, type PlanKey } from "../shared/pricing";
 import { getDb, recordAudit } from "./db";
@@ -28,6 +28,13 @@ function meta(event: typeof salesActivityEvents.$inferSelect): CreditLedgerMetad
   const delta = Number(value.creditsDelta);
   if (!Number.isFinite(delta)) return null;
   return { ...value, creditsDelta: Math.trunc(delta), transactionType: String(value.transactionType || "adjustment") as CreditLedgerMetadata["transactionType"] };
+}
+
+export function assessAiCreditDebit(entries: CreditLedgerMetadata[], credits: number, reference?: string) {
+  const balance = entries.reduce((sum, entry) => sum + entry.creditsDelta, 0);
+  if (reference && entries.some(entry => entry.transactionType === "usage" && entry.reference === reference)) return { idempotent: true as const, balance };
+  if (balance < credits) throw new Error(`This organisation has ${balance} AI Credits remaining but this operation requires ${credits}. Add credits or change the AI budget.`);
+  return { idempotent: false as const, balance };
 }
 
 async function ensureMonthlyAllowance(input: { organisationId: number; userId: number; timezone: string }) {
@@ -79,9 +86,19 @@ export async function consumeAiCredits(input: { userId: number; organisationId: 
   await requireOrganisationMembership(input.userId, input.organisationId);
   const credits = Math.max(0, Math.floor(input.credits));
   if (!credits) return getAiCreditWallet({ userId: input.userId, organisationId: input.organisationId });
-  const wallet = await getAiCreditWallet({ userId: input.userId, organisationId: input.organisationId });
-  if (wallet.balance < credits) throw new Error(`This organisation has ${wallet.balance} AI Credits remaining but this operation requires ${credits}. Add credits or change the AI budget.`);
-  await append({ actorUserId: input.userId, organisationId: input.organisationId, metadata: { creditsDelta: -credits, transactionType: "usage", feature: input.feature.slice(0, 120), model: input.model?.slice(0, 160), providerUsage: input.providerUsage, reference: input.reference?.slice(0, 180) } });
+  await ensureMonthlyAllowance({ organisationId: input.organisationId, userId: input.userId, timezone: (await requireOrganisationMembership(input.userId, input.organisationId)).timezone });
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const reference = input.reference?.slice(0, 180);
+  await db.transaction(async tx => {
+    const [locked] = await tx.execute(sql`SELECT id FROM ${organisations} WHERE ${organisations.id} = ${input.organisationId} FOR UPDATE`) as unknown as [Array<{ id: number }>, unknown];
+    if (!locked.length) throw new Error("Organisation was not found.");
+    const events = await tx.select().from(salesActivityEvents).where(and(eq(salesActivityEvents.organisationId, input.organisationId), eq(salesActivityEvents.source, "ai_credit"))).limit(20_000);
+    const entries = events.map(event => meta(event)).filter((item): item is CreditLedgerMetadata => Boolean(item));
+    const debit = assessAiCreditDebit(entries, credits, reference);
+    if (debit.idempotent) return;
+    await tx.insert(salesActivityEvents).values({ organisationId: input.organisationId, salespersonUserId: input.userId, eventType: "ai_credit_usage", source: "ai_credit", occurredAt: new Date(), metadata: { creditsDelta: -credits, transactionType: "usage", feature: input.feature.slice(0, 120), model: input.model?.slice(0, 160), providerUsage: input.providerUsage, reference } satisfies CreditLedgerMetadata });
+  });
   return getAiCreditWallet({ userId: input.userId, organisationId: input.organisationId });
 }
 
