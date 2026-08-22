@@ -120,6 +120,7 @@ export const workflowRuns = mysqlTable(
   {
     id: int("id").autoincrement().primaryKey(),
     userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    organisationId: int("organisationId").references(() => organisations.id, { onDelete: "set null" }),
     workflowKey: varchar("workflowKey", { length: 80 }).notNull(),
     leadLabel: varchar("leadLabel", { length: 160 }).notNull(),
     status: mysqlEnum("status", ["prepared", "blocked", "approved", "completed", "failed"])
@@ -130,7 +131,7 @@ export const workflowRuns = mysqlTable(
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   },
-  table => [index("workflowRuns_user_created_idx").on(table.userId, table.createdAt)],
+  table => [index("workflowRuns_user_created_idx").on(table.userId, table.createdAt), index("workflowRuns_organisation_created_idx").on(table.organisationId, table.createdAt)],
 );
 
 /**
@@ -143,6 +144,7 @@ export const actionProposals = mysqlTable(
   {
     id: int("id").autoincrement().primaryKey(),
     userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    organisationId: int("organisationId").references(() => organisations.id, { onDelete: "set null" }),
     workflowRunId: int("workflowRunId").notNull().references(() => workflowRuns.id, { onDelete: "cascade" }),
     actionType: varchar("actionType", { length: 80 }).notNull(),
     title: varchar("title", { length: 220 }).notNull(),
@@ -161,6 +163,7 @@ export const actionProposals = mysqlTable(
   },
   table => [
     index("actionProposals_user_state_idx").on(table.userId, table.state),
+    index("actionProposals_organisation_state_idx").on(table.organisationId, table.state),
     index("actionProposals_claim_expiry_idx").on(table.state, table.executionClaimedAt),
     index("actionProposals_run_idx").on(table.workflowRunId),
     uniqueIndex("actionProposals_idempotency_uq").on(table.userId, table.idempotencyKey),

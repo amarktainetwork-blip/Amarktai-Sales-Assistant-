@@ -82,24 +82,24 @@ export function registerSalesAutomationRoutes(app: Express) {
       const policy = await getAutomationPolicy({ userId, organisationId: membership.organisationId });
       if (policy.mode === "advise") return res.json({ mode: policy.mode, persisted: false, actions: routed, blockedActionCount: routed.filter(action => !((action.payload.crmRoute as { routable?: boolean } | undefined)?.routable)).length });
 
-      const workflowRunId = await createWorkflowRun({ userId, workflowKey: "generic_sales_automation", leadLabel: String(req.body?.label || actions[0].targetLabel).slice(0, 160), payload: { source: "generic_sales_automation", actionCount: actions.length }, verificationSummary: "Amarktai routed these actions only through backend-verified organisation CRM capabilities. External actions require review unless explicitly pre-approved by organisation policy.", actions: routed });
-      const proposals = await listActionProposals(userId, workflowRunId);
+      const workflowRunId = await createWorkflowRun({ userId, organisationId: membership.organisationId, workflowKey: "generic_sales_automation", leadLabel: String(req.body?.label || actions[0].targetLabel).slice(0, 160), payload: { source: "generic_sales_automation", actionCount: actions.length }, verificationSummary: "Amarktai routed these actions only through backend-verified organisation CRM capabilities. External actions require review unless explicitly pre-approved by organisation policy.", actions: routed });
+      const proposals = await listActionProposals(userId, membership.organisationId, workflowRunId);
       const executions: Array<Record<string, unknown>> = [];
       if (policy.mode === "auto_preapproved") {
         for (const proposal of proposals) {
           const route = (proposal.payload as Record<string, unknown>).crmRoute as { routable?: boolean } | undefined;
           if (!route?.routable || !mayAutoExecute(policy, proposal.actionType)) continue;
-          await reviewActionProposal(userId, proposal.id, "approved");
+          await reviewActionProposal(userId, membership.organisationId, proposal.id, "approved");
           const correlationId = randomUUID();
-          const approved = await claimApprovedActionProposal({ userId, proposalId: proposal.id, correlationId });
+          const approved = await claimApprovedActionProposal({ userId, organisationId: membership.organisationId, proposalId: proposal.id, correlationId });
           if (!approved) continue;
           try {
             const result = await executeApprovedCrmAction({ organisationId: membership.organisationId, proposal: approved, correlationId });
-            await recordActionExecution({ userId, proposalId: approved.id, correlationId, success: result.success, result });
+            await recordActionExecution({ userId, organisationId: membership.organisationId, proposalId: approved.id, correlationId, success: result.success, result });
             executions.push({ proposalId: approved.id, success: result.success, provider: result.provider, detail: result.detail });
           } catch (error) {
             const result = { success: false, detail: error instanceof Error ? error.message : String(error), correlationId };
-            await recordActionExecution({ userId, proposalId: approved.id, correlationId, success: false, result });
+            await recordActionExecution({ userId, organisationId: membership.organisationId, proposalId: approved.id, correlationId, success: false, result });
             executions.push({ proposalId: approved.id, ...result });
           }
         }

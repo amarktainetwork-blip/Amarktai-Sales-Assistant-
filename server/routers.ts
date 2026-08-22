@@ -176,9 +176,13 @@ export const appRouter = router({
     }),
   }),
   assistant: router({
-    dashboard: secondFactorProcedure.query(({ ctx }) => getAssistantDashboard(ctx.user.id)),
+    dashboard: secondFactorProcedure.query(({ ctx }) => {
+      if (!ctx.activeOrganisation) throw new Error("Choose an organisation before accessing workspace data.");
+      return getAssistantDashboard(ctx.user.id, ctx.activeOrganisation.organisationId);
+    }),
     operationsDashboard: secondFactorProcedure.query(async ({ ctx }) => {
-      const dashboard = await getOperationsDashboard(ctx.user.id);
+      if (!ctx.activeOrganisation) throw new Error("Choose an organisation before accessing workspace data.");
+      const dashboard = await getOperationsDashboard(ctx.user.id, ctx.activeOrganisation.organisationId);
       return {
         ...dashboard,
         connectionReadiness: {
@@ -193,7 +197,10 @@ export const appRouter = router({
     agents: secondFactorProcedure.query(() => ({ agents: AGENT_CATALOG, genx: getGenxReadiness() })),
     actions: secondFactorProcedure
       .input(z.object({ workflowRunId: z.number().int().positive().optional() }).optional())
-      .query(({ ctx, input }) => listActionProposals(ctx.user.id, input?.workflowRunId)),
+      .query(({ ctx, input }) => {
+        if (!ctx.activeOrganisation) throw new Error("Choose an organisation before accessing workspace actions.");
+        return listActionProposals(ctx.user.id, ctx.activeOrganisation.organisationId, input?.workflowRunId);
+      }),
     prepareWorkflow: secondFactorProcedure.input(workflowInput).mutation(async ({ ctx, input }) => {
       const plan = buildWorkflowPlan(input);
       const organisation = ctx.activeOrganisation;
@@ -202,6 +209,7 @@ export const appRouter = router({
       const routedActions = routeConnectedSystemActions(plan.actions, systems);
       const workflowRunId = await createWorkflowRun({
         userId: ctx.user.id,
+        organisationId: organisation.organisationId,
         workflowKey: input.workflowKey,
         leadLabel: input.leadLabel,
         payload: input,
@@ -213,18 +221,22 @@ export const appRouter = router({
     reviewAction: secondFactorProcedure
       .input(z.object({ proposalId: z.number().int().positive(), state: z.enum(["approved", "skipped"]) }))
       .mutation(async ({ ctx, input }) => {
-        await reviewActionProposal(ctx.user.id, input.proposalId, input.state);
+        if (!ctx.activeOrganisation) throw new Error("Choose an organisation before reviewing actions.");
+        await reviewActionProposal(ctx.user.id, ctx.activeOrganisation.organisationId, input.proposalId, input.state);
         return { success: true };
       }),
-    proposalAudit: secondFactorProcedure.input(z.object({ proposalId: z.number().int().positive() })).query(({ ctx, input }) => listProposalAuditEntries(ctx.user.id, input.proposalId)),
+    proposalAudit: secondFactorProcedure.input(z.object({ proposalId: z.number().int().positive() })).query(({ ctx, input }) => {
+      if (!ctx.activeOrganisation) throw new Error("Choose an organisation before accessing action audit.");
+      return listProposalAuditEntries(ctx.user.id, ctx.activeOrganisation.organisationId, input.proposalId);
+    }),
     executeApprovedCrmAction: secondFactorProcedure.input(z.object({ proposalId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
       const correlationId = randomUUID();
-      const proposal = await claimApprovedActionProposal({ userId: ctx.user.id, proposalId: input.proposalId, correlationId });
-      if (!proposal) throw new Error("Only an approved action proposal may be executed, and it must be owned by your workspace.");
       const organisation = ctx.activeOrganisation;
       if (!organisation) throw new Error("Choose an organisation before executing CRM actions.");
+      const proposal = await claimApprovedActionProposal({ userId: ctx.user.id, organisationId: organisation.organisationId, proposalId: input.proposalId, correlationId });
+      if (!proposal) throw new Error("Only an approved action proposal may be executed, and it must be owned by your workspace.");
       const result = await executeApprovedCrmAction({ organisationId: organisation.organisationId, proposal, correlationId });
-      await recordActionExecution({ userId: ctx.user.id, proposalId: proposal.id, correlationId, success: result.success, result });
+      await recordActionExecution({ userId: ctx.user.id, organisationId: organisation.organisationId, proposalId: proposal.id, correlationId, success: result.success, result });
       if (!result.success) throw new Error(`CRM action failed: ${result.detail}`);
       return result;
     }),

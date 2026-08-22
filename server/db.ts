@@ -105,14 +105,14 @@ export async function createLocalAdminIfMissing() {
   return getUserByEmail(email);
 }
 
-export async function getAssistantDashboard(userId: number) {
+export async function getAssistantDashboard(userId: number, organisationId: number) {
   const db = await requireDb();
   const [reviewCount, openTaskCount, knowledgeCount, runs, proposals] = await Promise.all([
-    db.select({ value: count() }).from(actionProposals).where(and(eq(actionProposals.userId, userId), eq(actionProposals.state, "review_required"))),
+    db.select({ value: count() }).from(actionProposals).where(and(eq(actionProposals.userId, userId), eq(actionProposals.organisationId, organisationId), eq(actionProposals.state, "review_required"))),
     db.select({ value: count() }).from(callbackTasks).where(and(eq(callbackTasks.userId, userId), eq(callbackTasks.state, "open"))),
     db.select({ value: count() }).from(knowledgeSources).where(eq(knowledgeSources.userId, userId)),
-    db.select().from(workflowRuns).where(eq(workflowRuns.userId, userId)).orderBy(desc(workflowRuns.createdAt)).limit(6),
-    db.select().from(actionProposals).where(and(eq(actionProposals.userId, userId), eq(actionProposals.state, "review_required"))).orderBy(desc(actionProposals.createdAt)).limit(8),
+    db.select().from(workflowRuns).where(and(eq(workflowRuns.userId, userId), eq(workflowRuns.organisationId, organisationId))).orderBy(desc(workflowRuns.createdAt)).limit(6),
+    db.select().from(actionProposals).where(and(eq(actionProposals.userId, userId), eq(actionProposals.organisationId, organisationId), eq(actionProposals.state, "review_required"))).orderBy(desc(actionProposals.createdAt)).limit(8),
   ]);
 
   return {
@@ -126,16 +126,16 @@ export async function getAssistantDashboard(userId: number) {
   };
 }
 
-export async function getOperationsDashboard(userId: number) {
+export async function getOperationsDashboard(userId: number, organisationId: number) {
   const db = await requireDb();
   const now = new Date();
   const todayEnd = new Date(now);
   todayEnd.setHours(23, 59, 59, 999);
   const [proposals, callbacks, calls, runs, profiles, audit] = await Promise.all([
-    db.select().from(actionProposals).where(eq(actionProposals.userId, userId)).orderBy(desc(actionProposals.createdAt)).limit(100),
+    db.select().from(actionProposals).where(and(eq(actionProposals.userId, userId), eq(actionProposals.organisationId, organisationId))).orderBy(desc(actionProposals.createdAt)).limit(100),
     db.select().from(callbackTasks).where(eq(callbackTasks.userId, userId)).orderBy(desc(callbackTasks.createdAt)).limit(80),
     db.select().from(callSessions).where(eq(callSessions.userId, userId)).orderBy(desc(callSessions.updatedAt)).limit(40),
-    db.select().from(workflowRuns).where(eq(workflowRuns.userId, userId)).orderBy(desc(workflowRuns.updatedAt)).limit(40),
+    db.select().from(workflowRuns).where(and(eq(workflowRuns.userId, userId), eq(workflowRuns.organisationId, organisationId))).orderBy(desc(workflowRuns.updatedAt)).limit(40),
     db.select().from(integrationProfiles).where(eq(integrationProfiles.userId, userId)).orderBy(desc(integrationProfiles.updatedAt)).limit(20),
     db.select().from(auditEntries).where(eq(auditEntries.userId, userId)).orderBy(desc(auditEntries.createdAt)).limit(30),
   ]);
@@ -173,6 +173,7 @@ export async function getOperationsDashboard(userId: number) {
 
 export async function createWorkflowRun(input: {
   userId: number;
+  organisationId: number;
   workflowKey: string;
   leadLabel: string;
   payload: Record<string, unknown>;
@@ -182,6 +183,7 @@ export async function createWorkflowRun(input: {
   const db = await requireDb();
   const inserted = await db.insert(workflowRuns).values({
     userId: input.userId,
+    organisationId: input.organisationId,
     workflowKey: input.workflowKey,
     leadLabel: input.leadLabel,
     input: input.payload,
@@ -193,6 +195,7 @@ export async function createWorkflowRun(input: {
     await db.insert(actionProposals).values(
       input.actions.map(action => ({
         userId: input.userId,
+        organisationId: input.organisationId,
         workflowRunId,
         actionType: action.actionType,
         title: action.title,
@@ -216,20 +219,20 @@ export async function createWorkflowRun(input: {
   return workflowRunId;
 }
 
-export async function listActionProposals(userId: number, workflowRunId?: number) {
+export async function listActionProposals(userId: number, organisationId: number, workflowRunId?: number) {
   const db = await requireDb();
   const whereClause = workflowRunId
-    ? and(eq(actionProposals.userId, userId), eq(actionProposals.workflowRunId, workflowRunId))
-    : eq(actionProposals.userId, userId);
+    ? and(eq(actionProposals.userId, userId), eq(actionProposals.organisationId, organisationId), eq(actionProposals.workflowRunId, workflowRunId))
+    : and(eq(actionProposals.userId, userId), eq(actionProposals.organisationId, organisationId));
   return db.select().from(actionProposals).where(whereClause).orderBy(desc(actionProposals.createdAt)).limit(40);
 }
 
-export async function reviewActionProposal(userId: number, proposalId: number, state: "approved" | "skipped") {
+export async function reviewActionProposal(userId: number, organisationId: number, proposalId: number, state: "approved" | "skipped") {
   const db = await requireDb();
   await db
     .update(actionProposals)
     .set({ state, reviewedAt: new Date() })
-    .where(and(eq(actionProposals.id, proposalId), eq(actionProposals.userId, userId), eq(actionProposals.state, "review_required")));
+    .where(and(eq(actionProposals.id, proposalId), eq(actionProposals.userId, userId), eq(actionProposals.organisationId, organisationId), eq(actionProposals.state, "review_required")));
   await recordAudit({
     userId,
     eventType: `action_${state}`,
@@ -240,12 +243,12 @@ export async function reviewActionProposal(userId: number, proposalId: number, s
   });
 }
 
-export async function getApprovedActionProposal(userId: number, proposalId: number) {
+export async function getApprovedActionProposal(userId: number, organisationId: number, proposalId: number) {
   const db = await requireDb();
   return (await db
     .select()
     .from(actionProposals)
-    .where(and(eq(actionProposals.id, proposalId), eq(actionProposals.userId, userId), eq(actionProposals.state, "approved")))
+    .where(and(eq(actionProposals.id, proposalId), eq(actionProposals.userId, userId), eq(actionProposals.organisationId, organisationId), eq(actionProposals.state, "approved")))
     .limit(1))[0];
 }
 
@@ -259,7 +262,7 @@ export function isCurrentActionExecutionClaim(activeCorrelationId: string | null
   return Boolean(activeCorrelationId && activeCorrelationId === correlationId);
 }
 
-export async function claimApprovedActionProposal(input: { userId: number; proposalId: number; correlationId: string }) {
+export async function claimApprovedActionProposal(input: { userId: number; organisationId: number; proposalId: number; correlationId: string }) {
   const db = await requireDb();
   const claimedAt = new Date();
   const claim = { status: "executing", correlationId: input.correlationId, claimedAt: claimedAt.toISOString() };
@@ -267,6 +270,7 @@ export async function claimApprovedActionProposal(input: { userId: number; propo
   const result = await db.update(actionProposals).set({ executionClaimId: input.correlationId, executionClaimedAt: claimedAt, executionResult: claim }).where(and(
     eq(actionProposals.id, input.proposalId),
     eq(actionProposals.userId, input.userId),
+    eq(actionProposals.organisationId, input.organisationId),
     eq(actionProposals.state, "approved"),
     or(
       and(isNull(actionProposals.executionClaimId), isNull(actionProposals.executionResult)),
@@ -274,13 +278,13 @@ export async function claimApprovedActionProposal(input: { userId: number; propo
     ),
   ));
   if (result[0].affectedRows !== 1) return undefined;
-  const proposal = (await db.select().from(actionProposals).where(and(eq(actionProposals.id, input.proposalId), eq(actionProposals.userId, input.userId), eq(actionProposals.state, "approved"))).limit(1))[0];
+  const proposal = (await db.select().from(actionProposals).where(and(eq(actionProposals.id, input.proposalId), eq(actionProposals.userId, input.userId), eq(actionProposals.organisationId, input.organisationId), eq(actionProposals.state, "approved"))).limit(1))[0];
   if (!proposal) throw new Error("Claimed action proposal could not be loaded.");
   await recordAudit({ userId: input.userId, eventType: "crm_action_claimed", entityType: "action_proposal", entityId: String(input.proposalId), summary: "Approved CRM action claimed for one-time execution.", metadata: claim });
   return proposal;
 }
 
-export async function recordActionExecution(input: { userId: number; proposalId: number; correlationId: string; success: boolean; result: Record<string, unknown> }) {
+export async function recordActionExecution(input: { userId: number; organisationId: number; proposalId: number; correlationId: string; success: boolean; result: Record<string, unknown> }) {
   const db = await requireDb();
   const state: "executed" | "blocked" = input.success ? "executed" : "blocked";
   const screenshotPath = typeof input.result.screenshotPath === "string" ? input.result.screenshotPath : null;
@@ -296,7 +300,7 @@ export async function recordActionExecution(input: { userId: number; proposalId:
   const finalized = await db
     .update(actionProposals)
     .set({ state, executedAt: new Date(), executionClaimId: null, executionClaimedAt: null, executionResult: normalizedResult })
-    .where(and(eq(actionProposals.id, input.proposalId), eq(actionProposals.userId, input.userId), eq(actionProposals.state, "approved"), eq(actionProposals.executionClaimId, input.correlationId)));
+    .where(and(eq(actionProposals.id, input.proposalId), eq(actionProposals.userId, input.userId), eq(actionProposals.organisationId, input.organisationId), eq(actionProposals.state, "approved"), eq(actionProposals.executionClaimId, input.correlationId)));
   if (finalized[0].affectedRows !== 1) throw new Error("Action execution claim is no longer current; the result was not recorded.");
   await recordAudit({
     userId: input.userId,
@@ -308,8 +312,10 @@ export async function recordActionExecution(input: { userId: number; proposalId:
   });
 }
 
-export async function listProposalAuditEntries(userId: number, proposalId: number) {
+export async function listProposalAuditEntries(userId: number, organisationId: number, proposalId: number) {
   const db = await requireDb();
+  const proposal = (await db.select({ id: actionProposals.id }).from(actionProposals).where(and(eq(actionProposals.id, proposalId), eq(actionProposals.userId, userId), eq(actionProposals.organisationId, organisationId))).limit(1))[0];
+  if (!proposal) return [];
   return db.select().from(auditEntries).where(and(eq(auditEntries.userId, userId), eq(auditEntries.entityType, "action_proposal"), eq(auditEntries.entityId, String(proposalId)))).orderBy(desc(auditEntries.createdAt)).limit(12);
 }
 

@@ -127,3 +127,4 @@
 - [x] Restore standalone development SPA route fallback so direct authentication URLs resolve through the client Vite root.
 - [x] Add bounded stale-claim recovery and correlation-bound finalization for approved external actions so a process crash cannot permanently trap a review-approved proposal.
 - [x] Apply dedicated shared, fail-closed rate limits to public registration and password-recovery/reset operations.
+- [x] Add reviewed nullable organisation references and active-organisation guards for new workflow runs and reviewable action proposals.

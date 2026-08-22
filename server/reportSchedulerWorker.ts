@@ -34,7 +34,7 @@ async function deliver(report: typeof dailyReports.$inferSelect) {
   if (memberships.length !== 1) throw new Error("REPORT_ORGANISATION_REQUIRED");
   const membership = memberships[0];
   if (!canManageOrganisation(membership.role)) {
-    const dashboard = await getAssistantDashboard(report.userId);
+    const dashboard = await getAssistantDashboard(report.userId, membership.organisationId);
     await sendDailyWorkspaceReport({ to: report.recipientEmail, ...dashboard.metrics });
     return { kind: "workspace" as const, sent: true, exceptions: 0 };
   }
