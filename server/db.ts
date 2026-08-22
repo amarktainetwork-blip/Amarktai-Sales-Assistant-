@@ -16,8 +16,10 @@ import {
   websiteDiscoveries,
   automationPlaybooks,
   workflowRuns,
+  workspaceSavedItems,
 } from "../drizzle/schema";
 import type { ProposedAction } from "./workflowRules";
+import { normalizeSavedItemTags, type SavedItemTargetType } from "./savedItems";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -228,6 +230,32 @@ export async function listActionProposals(userId: number, organisationId: number
   return db.select().from(actionProposals).where(whereClause).orderBy(desc(actionProposals.createdAt)).limit(40);
 }
 
+export async function listWorkspaceSavedItems(userId: number, organisationId: number) {
+  const db = await requireDb();
+  return db.select().from(workspaceSavedItems).where(and(eq(workspaceSavedItems.userId, userId), eq(workspaceSavedItems.organisationId, organisationId))).orderBy(desc(workspaceSavedItems.updatedAt)).limit(200);
+}
+
+export async function saveWorkspaceSavedItem(input: { userId: number; organisationId: number; targetType: SavedItemTargetType; targetKey: string; title: string; tags: string[]; isFavorite: boolean }) {
+  const db = await requireDb();
+  if (input.targetType === "action_proposal") {
+    const proposalId = Number(input.targetKey);
+    if (!Number.isInteger(proposalId) || proposalId < 1) throw new Error("A valid action proposal is required.");
+    const proposal = (await db.select({ id: actionProposals.id }).from(actionProposals).where(and(eq(actionProposals.id, proposalId), eq(actionProposals.userId, input.userId), eq(actionProposals.organisationId, input.organisationId))).limit(1))[0];
+    if (!proposal) throw new Error("That action proposal is unavailable in the selected workspace.");
+  }
+  const tags = normalizeSavedItemTags(input.tags);
+  await db.insert(workspaceSavedItems).values({ ...input, tags }).onDuplicateKeyUpdate({ set: { title: input.title, tags, isFavorite: input.isFavorite, updatedAt: new Date() } });
+  const saved = (await db.select().from(workspaceSavedItems).where(and(eq(workspaceSavedItems.userId, input.userId), eq(workspaceSavedItems.organisationId, input.organisationId), eq(workspaceSavedItems.targetType, input.targetType), eq(workspaceSavedItems.targetKey, input.targetKey))).limit(1))[0];
+  if (!saved) throw new Error("Saved item could not be recorded.");
+  await recordAudit({ userId: input.userId, organisationId: input.organisationId, eventType: "workspace_item_saved", entityType: "workspace_saved_item", entityId: String(saved.id), summary: `Saved ${input.targetType} for quick access.`, metadata: { targetType: input.targetType, targetKey: input.targetKey, tags, isFavorite: input.isFavorite } });
+  return saved;
+}
+
+export async function removeWorkspaceSavedItem(input: { userId: number; organisationId: number; id: number }) {
+  const db = await requireDb();
+  await db.delete(workspaceSavedItems).where(and(eq(workspaceSavedItems.id, input.id), eq(workspaceSavedItems.userId, input.userId), eq(workspaceSavedItems.organisationId, input.organisationId)));
+}
+
 export async function reviewActionProposal(userId: number, organisationId: number, proposalId: number, state: "approved" | "skipped") {
   const db = await requireDb();
   await db
@@ -434,6 +462,23 @@ export async function getOperationalAnalytics(userId: number, organisationId: nu
     db.select({ value: count() }).from(callSessions).where(and(eq(callSessions.userId, userId), eq(callSessions.organisationId, organisationId))),
   ]);
   return { reviewRequired: review[0]?.value ?? 0, approved: approved[0]?.value ?? 0, executed: executed[0]?.value ?? 0, blocked: blocked[0]?.value ?? 0, openCallbacks: callbacks[0]?.value ?? 0, callSessions: calls[0]?.value ?? 0 };
+}
+
+export async function getWorkspaceExportData(input: { userId: number; organisationId: number; kind: "operational_report" | "conversation_log"; callSessionId?: number }) {
+  const db = await requireDb();
+  if (input.kind === "conversation_log") {
+    const filters = [eq(callSessions.userId, input.userId), eq(callSessions.organisationId, input.organisationId)];
+    if (input.callSessionId) filters.push(eq(callSessions.id, input.callSessionId));
+    const calls = await db.select().from(callSessions).where(and(...filters)).orderBy(desc(callSessions.updatedAt)).limit(input.callSessionId ? 1 : 30);
+    return { calls };
+  }
+  const [proposals, callbacks, calls, audit] = await Promise.all([
+    db.select().from(actionProposals).where(and(eq(actionProposals.userId, input.userId), eq(actionProposals.organisationId, input.organisationId))).orderBy(desc(actionProposals.createdAt)).limit(250),
+    db.select().from(callbackTasks).where(and(eq(callbackTasks.userId, input.userId), eq(callbackTasks.organisationId, input.organisationId))).orderBy(desc(callbackTasks.updatedAt)).limit(250),
+    db.select().from(callSessions).where(and(eq(callSessions.userId, input.userId), eq(callSessions.organisationId, input.organisationId))).orderBy(desc(callSessions.updatedAt)).limit(100),
+    db.select().from(auditEntries).where(and(eq(auditEntries.userId, input.userId), eq(auditEntries.organisationId, input.organisationId))).orderBy(desc(auditEntries.createdAt)).limit(250),
+  ]);
+  return { proposals, callbacks, calls, audit };
 }
 
 export async function listAuditEntries(userId: number, organisationId: number, limit = 60) {

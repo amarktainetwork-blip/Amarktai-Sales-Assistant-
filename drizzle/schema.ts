@@ -170,6 +170,27 @@ export const actionProposals = mysqlTable(
   ],
 );
 
+/** User-managed favourites and tags for reviewable pitches, leads, and action proposals. */
+export const workspaceSavedItems = mysqlTable(
+  "workspaceSavedItems",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    organisationId: int("organisationId").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+    targetType: mysqlEnum("targetType", ["action_proposal", "lead", "pitch"]).notNull(),
+    targetKey: varchar("targetKey", { length: 160 }).notNull(),
+    title: varchar("title", { length: 220 }).notNull(),
+    tags: json("tags").$type<string[]>().notNull(),
+    isFavorite: boolean("isFavorite").default(true).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    uniqueIndex("workspaceSavedItems_user_organisation_target_unique").on(table.userId, table.organisationId, table.targetType, table.targetKey),
+    index("workspaceSavedItems_organisation_updated_idx").on(table.organisationId, table.updatedAt),
+  ],
+);
+
 /**
  * Internal callback planning record. It mirrors planned tasks and deliberately
  * keeps external CRM task identifiers separate for a future verified connector.

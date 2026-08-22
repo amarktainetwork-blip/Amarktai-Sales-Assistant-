@@ -133,3 +133,7 @@
 - [x] Enforce signed active-organisation reads and writes for company setup, website discovery, confirmed knowledge, and review-first playbooks.
 - [x] Enforce signed active-organisation reads and writes for legacy integration profiles and dashboard integration visibility.
 - [x] Remove residual customer-specific names and workflow labels from active onboarding and workspace UI so generic deployments carry no client identity or vertical-specific defaults.
+- [x] Add active-organisation-scoped CSV and PDF export for generated operational reports and factual conversation logs, with protected server-side data access and regression coverage.
+- [x] Add an active-organisation-scoped favorites and tags model for reviewable sales pitches, leads, and action proposals, with secure UI controls and isolation tests.
+- [x] Improve loading states and actionable API error feedback across the export, review, workspace, and operational management interactions.
+- [x] Perform a fresh feature, source, deployment, and checklist audit; document exact code gaps, deployment-time commissioning steps, and go-live blockers without overstating live proof.

@@ -15,6 +15,7 @@ import {
   getCompanySetup,
   getOperationsDashboard,
   getOperationalAnalytics,
+  getWorkspaceExportData,
   getUserByEmail,
   claimApprovedActionProposal,
   recordActionExecution,
@@ -22,6 +23,7 @@ import {
   consumeValidTwoFactorChallenge,
   listDailyReports,
   listActionProposals,
+  listWorkspaceSavedItems,
   listIntegrationProfiles,
   listKnowledgeSources,
   searchApprovedKnowledge,
@@ -29,6 +31,8 @@ import {
   listProposalAuditEntries,
   reviewActionProposal,
   saveAutomationPlaybook,
+  saveWorkspaceSavedItem,
+  removeWorkspaceSavedItem,
   upsertCompanyProfile,
   appendLiveTranscript,
   completeLiveCallSession,
@@ -62,6 +66,7 @@ import { getTeamIntelligence } from "./teamIntelligence";
 import { createHash, randomUUID } from "node:crypto";
 import { requireActiveOrganisationContext } from "./activeOrganisationGuard";
 import { checkRateLimit } from "./security/http";
+import { createExportDownload, type ExportSection } from "./exportDocuments";
 
 const workflowInput = z.object({
   workflowKey: z.enum(WORKFLOW_KEYS),
@@ -193,6 +198,22 @@ export const appRouter = router({
         },
       };
     }),
+    exportWorkspaceData: secondFactorProcedure.input(z.object({ kind: z.enum(["operational_report", "conversation_log"]), format: z.enum(["csv", "pdf"]), callSessionId: z.number().int().positive().optional() })).mutation(async ({ ctx, input }) => {
+      const organisation = ctx.activeOrganisation;
+      if (!organisation) throw new Error("Choose an organisation before exporting workspace data.");
+      const data = await getWorkspaceExportData({ userId: ctx.user.id, organisationId: organisation.organisationId, kind: input.kind, callSessionId: input.callSessionId });
+      const compactText = (value: string | null) => value ? value.replace(/\s+/g, " ").trim().slice(0, 12_000) : "";
+      const sections: ExportSection[] = input.kind === "conversation_log"
+        ? [{ title: "Factual conversation logs", columns: ["Call ID", "Contact", "Status", "Transcript", "Coach notes", "Summary", "Updated"], rows: data.calls.map(call => [call.id, call.leadLabel, call.status, compactText(call.transcript), compactText(call.coachNotes), compactText(call.summary), call.updatedAt]) }]
+        : [
+            { title: "Action proposals", columns: ["Proposal ID", "Contact", "Action", "Title", "State", "Created", "Executed"], rows: (data.proposals ?? []).map(proposal => [proposal.id, proposal.targetLabel, proposal.actionType, proposal.title, proposal.state, proposal.createdAt, proposal.executedAt]) },
+            { title: "Callback tasks", columns: ["Task ID", "Contact", "Title", "Priority", "State", "Due", "Updated"], rows: (data.callbacks ?? []).map(task => [task.id, task.leadLabel, task.title, task.priority, task.state, task.dueAt, task.updatedAt]) },
+            { title: "Call sessions", columns: ["Call ID", "Contact", "Status", "Created", "Updated"], rows: data.calls.map(call => [call.id, call.leadLabel, call.status, call.createdAt, call.updatedAt]) },
+            { title: "Decision audit", columns: ["Audit ID", "Event", "Entity", "Summary", "Created"], rows: (data.audit ?? []).map(entry => [entry.id, entry.eventType, `${entry.entityType}:${entry.entityId ?? ""}`, entry.summary, entry.createdAt]) },
+          ];
+      const stem = input.kind === "conversation_log" ? "amarktai-conversation-logs" : "amarktai-operational-report";
+      return createExportDownload({ title: input.kind === "conversation_log" ? "Amarktai factual conversation logs" : "Amarktai operational report", filenameStem: `${stem}-${organisation.organisationId}-${new Date().toISOString().slice(0, 10)}`, format: input.format, sections });
+    }),
     routeCommand: secondFactorProcedure.input(z.object({ command: z.string().trim().min(4).max(4_000) })).mutation(({ input }) => routeSalesCommand(input.command)),
     agents: secondFactorProcedure.query(() => ({ agents: AGENT_CATALOG, genx: getGenxReadiness() })),
     actions: secondFactorProcedure
@@ -201,6 +222,21 @@ export const appRouter = router({
         if (!ctx.activeOrganisation) throw new Error("Choose an organisation before accessing workspace actions.");
         return listActionProposals(ctx.user.id, ctx.activeOrganisation.organisationId, input?.workflowRunId);
       }),
+    savedItems: router({
+      list: secondFactorProcedure.query(({ ctx }) => {
+        if (!ctx.activeOrganisation) throw new Error("Choose an organisation before accessing saved items.");
+        return listWorkspaceSavedItems(ctx.user.id, ctx.activeOrganisation.organisationId);
+      }),
+      save: secondFactorProcedure.input(z.object({ targetType: z.enum(["action_proposal", "lead", "pitch"]), targetKey: z.string().trim().min(1).max(160), title: z.string().trim().min(1).max(220), tags: z.array(z.string().trim().min(1).max(48)).max(12), isFavorite: z.boolean() })).mutation(({ ctx, input }) => {
+        if (!ctx.activeOrganisation) throw new Error("Choose an organisation before saving an item.");
+        return saveWorkspaceSavedItem({ userId: ctx.user.id, organisationId: ctx.activeOrganisation.organisationId, ...input });
+      }),
+      remove: secondFactorProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+        if (!ctx.activeOrganisation) throw new Error("Choose an organisation before removing a saved item.");
+        await removeWorkspaceSavedItem({ userId: ctx.user.id, organisationId: ctx.activeOrganisation.organisationId, id: input.id });
+        return { success: true };
+      }),
+    }),
     prepareWorkflow: secondFactorProcedure.input(workflowInput).mutation(async ({ ctx, input }) => {
       const plan = buildWorkflowPlan(input);
       const organisation = ctx.activeOrganisation;
