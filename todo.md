@@ -128,3 +128,4 @@
 - [x] Add bounded stale-claim recovery and correlation-bound finalization for approved external actions so a process crash cannot permanently trap a review-approved proposal.
 - [x] Apply dedicated shared, fail-closed rate limits to public registration and password-recovery/reset operations.
 - [x] Add reviewed nullable organisation references and active-organisation guards for new workflow runs and reviewable action proposals.
+- [x] Add an organisation-scoped, audited CRM pipeline-stage mapping model and management control backed by verified connected systems.

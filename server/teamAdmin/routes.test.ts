@@ -42,4 +42,15 @@ describe("team-admin CRM owner mapping boundary", () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: "ACTIVE_ORGANISATION_ACCESS_DENIED" }));
     expect(mocks.getDb).not.toHaveBeenCalled();
   });
+
+  it("denies a cross-tenant pipeline-stage mapping request before any database operation", async () => {
+    mocks.requireLocalHttpContext.mockRejectedValue(new Error("ACTIVE_ORGANISATION_ACCESS_DENIED"));
+    const res = { status: vi.fn(), json: vi.fn() };
+    res.status.mockReturnValue(res);
+    const handler = routes.get("PUT /api/team-admin/crm-pipeline-stage-mappings");
+    await handler?.({ body: { connectedSystemId: 1, externalPipelineId: "pipeline", externalStageId: "stage", pipelineLabel: "Pipeline", stageLabel: "Stage", category: "won" } }, res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: "ACTIVE_ORGANISATION_ACCESS_DENIED" }));
+    expect(mocks.getDb).not.toHaveBeenCalled();
+  });
 });

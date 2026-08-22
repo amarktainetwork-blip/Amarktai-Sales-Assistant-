@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { and, eq } from "drizzle-orm";
 import { jwtVerify, SignJWT } from "jose";
 import { COOKIE_NAME } from "@shared/const";
-import { connectedSystems, externalUserMappings, organisationMembers, users } from "../../drizzle/schema";
+import { connectedSystems, crmPipelineStageMappings, externalUserMappings, organisationMembers, users } from "../../drizzle/schema";
 import { getDb, getUserByEmail, getUserById, recordAudit } from "../db";
 import { isLocalAuthMode } from "../localAuth";
 import { canManageOrganisation } from "../organisationAccess";
@@ -127,6 +127,48 @@ export function registerTeamAdminRoutes(app: Express) {
       }
       await db.insert(externalUserMappings).values({ organisationId: membership.organisationId, connectedSystemId, userId, externalUserId, displayName, email, isActive }).onDuplicateKeyUpdate({ set: { userId, displayName, email, isActive } });
       await recordAudit({ userId: actor.id, eventType: "crm_owner_mapping_saved", entityType: "external_user_mapping", entityId: `${connectedSystemId}:${externalUserId}`, summary: `CRM owner '${displayName}' mapping was saved.`, metadata: { organisationId: membership.organisationId, connectedSystemId, externalUserId, mappedUserId: userId, isActive } });
+      return res.json({ ok: true });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  });
+
+  app.get("/api/team-admin/crm-pipeline-stage-mappings", async (req, res) => {
+    try {
+      const { membership } = await requireManager(req);
+      const connectedSystemId = req.query.connectedSystemId === undefined ? undefined : Number(req.query.connectedSystemId);
+      if (connectedSystemId !== undefined && (!Number.isInteger(connectedSystemId) || connectedSystemId <= 0)) throw new Error("A valid connected system is required.");
+      const db = await getDb();
+      if (!db) throw new Error("Database connection is unavailable.");
+      const predicates = [eq(crmPipelineStageMappings.organisationId, membership.organisationId)];
+      if (connectedSystemId) predicates.push(eq(crmPipelineStageMappings.connectedSystemId, connectedSystemId));
+      const mappings = await db.select().from(crmPipelineStageMappings).where(and(...predicates));
+      return res.json({ mappings });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  });
+
+  app.put("/api/team-admin/crm-pipeline-stage-mappings", async (req, res) => {
+    try {
+      const { user: actor, membership } = await requireManager(req);
+      const connectedSystemId = Number(req.body?.connectedSystemId);
+      const externalPipelineId = typeof req.body?.externalPipelineId === "string" ? req.body.externalPipelineId.trim().slice(0, 180) : "";
+      const externalStageId = typeof req.body?.externalStageId === "string" ? req.body.externalStageId.trim().slice(0, 180) : "";
+      const pipelineLabel = typeof req.body?.pipelineLabel === "string" ? req.body.pipelineLabel.trim().slice(0, 220) : "";
+      const stageLabel = typeof req.body?.stageLabel === "string" ? req.body.stageLabel.trim().slice(0, 220) : "";
+      const category = typeof req.body?.category === "string" ? req.body.category : "other";
+      const isActive = req.body?.isActive === undefined ? true : Boolean(req.body.isActive);
+      if (!Number.isInteger(connectedSystemId) || connectedSystemId <= 0) throw new Error("A valid connected system is required.");
+      if (!externalPipelineId || !externalStageId || !pipelineLabel || !stageLabel) throw new Error("Pipeline ID, stage ID, pipeline name, and stage name are required.");
+      if (!(["open", "qualified", "proposal", "won", "lost", "other"] as const).includes(category as "open" | "qualified" | "proposal" | "won" | "lost" | "other")) throw new Error("A valid reporting category is required.");
+      const db = await getDb();
+      if (!db) throw new Error("Database connection is unavailable.");
+      const system = (await db.select({ id: connectedSystems.id, status: connectedSystems.status }).from(connectedSystems).where(and(eq(connectedSystems.id, connectedSystemId), eq(connectedSystems.organisationId, membership.organisationId))).limit(1))[0];
+      if (!system) throw new Error("Connected system was not found in the active organisation.");
+      if (system.status !== "ready") throw new Error("Pipeline mappings can only be saved for a backend-verified connected system.");
+      await db.insert(crmPipelineStageMappings).values({ organisationId: membership.organisationId, connectedSystemId, externalPipelineId, externalStageId, pipelineLabel, stageLabel, category: category as "open" | "qualified" | "proposal" | "won" | "lost" | "other", isActive }).onDuplicateKeyUpdate({ set: { externalPipelineId, pipelineLabel, stageLabel, category: category as "open" | "qualified" | "proposal" | "won" | "lost" | "other", isActive } });
+      await recordAudit({ userId: actor.id, eventType: "crm_pipeline_stage_mapping_saved", entityType: "crm_pipeline_stage_mapping", entityId: `${connectedSystemId}:${externalStageId}`, summary: `CRM stage '${stageLabel}' mapping was saved.`, metadata: { organisationId: membership.organisationId, connectedSystemId, externalPipelineId, externalStageId, category, isActive } });
       return res.json({ ok: true });
     } catch (error) {
       return sendError(res, error);

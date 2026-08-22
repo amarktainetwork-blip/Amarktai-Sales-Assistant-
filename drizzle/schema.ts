@@ -388,6 +388,24 @@ export const externalUserMappings = mysqlTable("externalUserMappings", {
   index("external_user_mapping_org_user_idx").on(table.organisationId, table.userId),
 ]);
 
+/** Explicit CRM pipeline/stage interpretation set by a manager after connector verification. */
+export const crmPipelineStageMappings = mysqlTable("crmPipelineStageMappings", {
+  id: int("id").autoincrement().primaryKey(),
+  organisationId: int("organisationId").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+  connectedSystemId: int("connectedSystemId").notNull().references(() => connectedSystems.id, { onDelete: "cascade" }),
+  externalPipelineId: varchar("externalPipelineId", { length: 180 }).notNull(),
+  externalStageId: varchar("externalStageId", { length: 180 }).notNull(),
+  pipelineLabel: varchar("pipelineLabel", { length: 220 }).notNull(),
+  stageLabel: varchar("stageLabel", { length: 220 }).notNull(),
+  category: mysqlEnum("category", ["open", "qualified", "proposal", "won", "lost", "other"]).notNull().default("other"),
+  isActive: boolean("isActive").notNull().default(true),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [
+  uniqueIndex("crm_pipeline_stage_mapping_system_stage_unique").on(table.connectedSystemId, table.externalStageId),
+  index("crm_pipeline_stage_mapping_org_category_idx").on(table.organisationId, table.category, table.isActive),
+]);
+
 export const crmCompanies = mysqlTable("crmCompanies", {
   id: int("id").autoincrement().primaryKey(),
   organisationId: int("organisationId").notNull().references(() => organisations.id, { onDelete: "cascade" }),

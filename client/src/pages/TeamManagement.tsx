@@ -19,6 +19,9 @@ type Member = {
 type TeamResponse = { organisation: { id: number; name: string; role: string }; members: Member[] };
 type OwnerMapping = { id: number; connectedSystemId: number; externalUserId: string; displayName: string; email: string | null; isActive: boolean; userId: number | null; memberName: string | null; memberEmail: string | null };
 type OwnerMappingResponse = { mappings: OwnerMapping[] };
+type PipelineStageMapping = { id: number; connectedSystemId: number; externalPipelineId: string; externalStageId: string; pipelineLabel: string; stageLabel: string; category: "open" | "qualified" | "proposal" | "won" | "lost" | "other"; isActive: boolean };
+type PipelineStageMappingResponse = { mappings: PipelineStageMapping[] };
+type ConnectedSystem = { id: number; displayName: string; status: string };
 type ManagementSettings = {
   reportMode: "daily_full" | "exceptions_only";
   overdueTaskThreshold: number;
@@ -37,6 +40,7 @@ async function api<T>(path: string, init?: RequestInit) {
 export default function TeamManagement() {
   const [data, setData] = useState<TeamResponse | null>(null);
   const [mappings, setMappings] = useState<OwnerMapping[]>([]);
+  const [pipelineMappings, setPipelineMappings] = useState<PipelineStageMapping[]>([]);
   const [settings, setSettings] = useState<ManagementSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");
@@ -46,20 +50,24 @@ export default function TeamManagement() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [mapping, setMapping] = useState({ connectedSystemId: "", externalUserId: "", displayName: "", email: "", userId: "" });
   const [savingMapping, setSavingMapping] = useState(false);
+  const [pipelineMapping, setPipelineMapping] = useState({ connectedSystemId: "", externalPipelineId: "", externalStageId: "", pipelineLabel: "", stageLabel: "", category: "other" as PipelineStageMapping["category"] });
+  const [savingPipelineMapping, setSavingPipelineMapping] = useState(false);
   const organisation = trpc.organisation.current.useQuery();
   const organisationId = organisation.data?.organisationId;
   const systems = trpc.connectedSystems.list.useQuery({ organisationId: organisationId ?? 0 }, { enabled: Boolean(organisationId) });
 
   const refresh = useCallback(async () => {
     try {
-      const [team, management, ownerMappings] = await Promise.all([
+      const [team, management, ownerMappings, savedPipelineMappings] = await Promise.all([
         api<TeamResponse>("/api/team-admin/members"),
         api<ManagementSettings>("/api/management-settings"),
         api<OwnerMappingResponse>("/api/team-admin/crm-owner-mappings"),
+        api<PipelineStageMappingResponse>("/api/team-admin/crm-pipeline-stage-mappings"),
       ]);
       setData(team);
       setSettings(management);
       setMappings(ownerMappings.mappings);
+      setPipelineMappings(savedPipelineMappings.mappings);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not load team administration.");
     } finally {
@@ -122,6 +130,21 @@ export default function TeamManagement() {
     }
   }
 
+  async function savePipelineMapping(event: React.FormEvent) {
+    event.preventDefault();
+    setSavingPipelineMapping(true);
+    try {
+      await api<{ ok: boolean }>("/api/team-admin/crm-pipeline-stage-mappings", { method: "PUT", body: JSON.stringify({ ...pipelineMapping, connectedSystemId: Number(pipelineMapping.connectedSystemId) }) });
+      toast.success("CRM pipeline stage mapping saved.");
+      setPipelineMapping({ connectedSystemId: pipelineMapping.connectedSystemId, externalPipelineId: "", externalStageId: "", pipelineLabel: "", stageLabel: "", category: "other" });
+      await refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save CRM pipeline stage mapping.");
+    } finally {
+      setSavingPipelineMapping(false);
+    }
+  }
+
   const threshold = (key: keyof Pick<ManagementSettings, "overdueTaskThreshold" | "staleOpportunityThreshold" | "noNextStepThreshold">, value: string) => {
     if (!settings) return;
     setSettings({ ...settings, [key]: Math.max(0, Math.min(1000, Number.parseInt(value || "0", 10) || 0)) });
@@ -167,6 +190,21 @@ export default function TeamManagement() {
       </form>
       {!systems.data?.length && <p className="mt-3 text-xs text-amber-100">Connect a CRM before recording owner mappings.</p>}
       <div className="mt-6 overflow-x-auto"><table className="w-full min-w-[700px] text-left"><thead className="border-b border-white/10 text-[10px] font-black uppercase tracking-[.12em] text-[#7896C1]"><tr><th className="pb-3 pr-4">CRM owner</th><th className="pb-3 pr-4">External ID</th><th className="pb-3 pr-4">Connected system</th><th className="pb-3">Amarktai member</th></tr></thead><tbody>{mappings.map(item => <tr key={item.id} className="border-b border-white/[.07]"><td className="py-3 pr-4"><p className="font-semibold text-white">{item.displayName}</p><p className="text-xs text-[#8FA9CE]">{item.email || "No CRM email"}</p></td><td className="py-3 pr-4 font-mono text-xs text-[#B6C9E8]">{item.externalUserId}</td><td className="py-3 pr-4 text-sm text-[#B6C9E8]">#{item.connectedSystemId}</td><td className="py-3 text-sm text-[#B6C9E8]">{item.memberName || item.memberEmail || "Unmapped"}</td></tr>)}{!mappings.length && <tr><td colSpan={4} className="py-8 text-center text-sm text-[#A9BFDF]">No CRM owner mappings yet.</td></tr>}</tbody></table></div>
+    </section>
+
+    <section className="mt-6 rounded-[1.5rem] border border-white/10 bg-[#0E2142] p-6">
+      <div className="flex gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#153B7A] text-[#9FC2FF]"><UserRoundCog size={18}/></span><div><p className="text-[10px] font-black uppercase tracking-[.14em] text-[#7FAAF8]">PIPELINE STAGE MAPPING</p><h2 className="font-display text-2xl font-bold tracking-[-.05em] text-white">Interpret your CRM pipeline without guessing.</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-[#9EB6DB]">Record the real pipeline and stage identifiers supplied by a backend-verified CRM, then choose their reporting meaning. Mappings are organisation-scoped and audited; unmapped stages stay unclassified rather than being silently treated as won or lost.</p></div></div>
+      <form onSubmit={savePipelineMapping} className="mt-6 grid gap-3 lg:grid-cols-3">
+        <label className="text-xs font-black uppercase tracking-[.12em] text-[#9EB6DB]">Verified connected system<select required value={pipelineMapping.connectedSystemId} onChange={event => setPipelineMapping({ ...pipelineMapping, connectedSystemId: event.target.value })} className="mt-2 h-11 w-full rounded-xl border border-white/15 bg-[#08172F] px-3 text-sm normal-case tracking-normal text-white"><option value="">Select a ready system</option>{(systems.data as ConnectedSystem[] | undefined)?.filter(system => system.status === "ready").map(system => <option key={system.id} value={system.id}>{system.displayName}</option>)}</select></label>
+        <label className="text-xs font-black uppercase tracking-[.12em] text-[#9EB6DB]">Pipeline ID<Input required value={pipelineMapping.externalPipelineId} onChange={event => setPipelineMapping({ ...pipelineMapping, externalPipelineId: event.target.value })} placeholder="Provider pipeline ID" className="mt-2 border-white/15 bg-[#08172F] text-white"/></label>
+        <label className="text-xs font-black uppercase tracking-[.12em] text-[#9EB6DB]">Stage ID<Input required value={pipelineMapping.externalStageId} onChange={event => setPipelineMapping({ ...pipelineMapping, externalStageId: event.target.value })} placeholder="Provider stage ID" className="mt-2 border-white/15 bg-[#08172F] text-white"/></label>
+        <label className="text-xs font-black uppercase tracking-[.12em] text-[#9EB6DB]">Pipeline name<Input required value={pipelineMapping.pipelineLabel} onChange={event => setPipelineMapping({ ...pipelineMapping, pipelineLabel: event.target.value })} placeholder="e.g. New business" className="mt-2 border-white/15 bg-[#08172F] text-white"/></label>
+        <label className="text-xs font-black uppercase tracking-[.12em] text-[#9EB6DB]">Stage name<Input required value={pipelineMapping.stageLabel} onChange={event => setPipelineMapping({ ...pipelineMapping, stageLabel: event.target.value })} placeholder="e.g. Proposal sent" className="mt-2 border-white/15 bg-[#08172F] text-white"/></label>
+        <label className="text-xs font-black uppercase tracking-[.12em] text-[#9EB6DB]">Reporting category<select value={pipelineMapping.category} onChange={event => setPipelineMapping({ ...pipelineMapping, category: event.target.value as PipelineStageMapping["category"] })} className="mt-2 h-11 w-full rounded-xl border border-white/15 bg-[#08172F] px-3 text-sm normal-case tracking-normal text-white"><option value="open">Open</option><option value="qualified">Qualified</option><option value="proposal">Proposal</option><option value="won">Won</option><option value="lost">Lost</option><option value="other">Other / do not classify</option></select></label>
+        <div className="flex items-end"><Button disabled={savingPipelineMapping || !(systems.data as ConnectedSystem[] | undefined)?.some(system => system.status === "ready")} className="h-11 w-full bg-[#1B64F2] hover:bg-[#2B76FF]">{savingPipelineMapping ? "Saving…" : "Save pipeline stage"}</Button></div>
+      </form>
+      {!((systems.data as ConnectedSystem[] | undefined)?.some(system => system.status === "ready")) && <p className="mt-3 text-xs text-amber-100">Verify a CRM connection before recording pipeline stages.</p>}
+      <div className="mt-6 overflow-x-auto"><table className="w-full min-w-[720px] text-left"><thead className="border-b border-white/10 text-[10px] font-black uppercase tracking-[.12em] text-[#7896C1]"><tr><th className="pb-3 pr-4">Pipeline</th><th className="pb-3 pr-4">Stage</th><th className="pb-3 pr-4">Provider IDs</th><th className="pb-3">Reporting category</th></tr></thead><tbody>{pipelineMappings.map(item => <tr key={item.id} className="border-b border-white/[.07]"><td className="py-3 pr-4 font-semibold text-white">{item.pipelineLabel}</td><td className="py-3 pr-4 text-sm text-[#B6C9E8]">{item.stageLabel}</td><td className="py-3 pr-4 font-mono text-xs text-[#8FA9CE]">{item.externalPipelineId} / {item.externalStageId}</td><td className="py-3 text-sm capitalize text-[#B6C9E8]">{item.category}</td></tr>)}{!pipelineMappings.length && <tr><td colSpan={4} className="py-8 text-center text-sm text-[#A9BFDF]">No pipeline stage mappings yet.</td></tr>}</tbody></table></div>
     </section>
 
     {settings && <section className="mt-6 rounded-[1.5rem] border border-white/10 bg-[#0E2142] p-6">
