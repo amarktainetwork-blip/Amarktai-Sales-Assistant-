@@ -4,12 +4,13 @@ import bcrypt from "bcryptjs";
 import { and, eq } from "drizzle-orm";
 import { jwtVerify, SignJWT } from "jose";
 import { COOKIE_NAME } from "@shared/const";
-import { approvalTemplates, connectedSystems, connectorSyncJobs, connectorWebhookReceipts, crmPipelineStageMappings, dataSubjectRequests, enterpriseIdentityConnections, externalUserMappings, organisationCompliancePolicies, organisationEntitlements, organisationMembers, playbookVersions, users } from "../../drizzle/schema";
+import { approvalTemplates, connectedSystems, connectorSyncJobs, connectorWebhookReceipts, crmPipelineStageMappings, dataSubjectRequests, enterpriseIdentityConnections, externalUserMappings, inboundMessages, inboundReplyDrafts, organisationCompliancePolicies, organisationEntitlements, organisationMembers, playbookVersions, users } from "../../drizzle/schema";
 import { getDb, getUserByEmail, getUserById, recordAudit } from "../db";
 import { isLocalAuthMode } from "../localAuth";
 import { canManageOrganisation } from "../organisationAccess";
 import { getSmtpReadiness, sendEmail } from "../smtp";
 import { requireLocalHttpContext } from "../httpAuth";
+import { classifyInboundMessage } from "../communications/inboundReview";
 
 const INVITE_TTL_SECONDS = 48 * 60 * 60;
 type ManagedRole = "manager" | "salesperson" | "auditor";
@@ -262,6 +263,35 @@ export function registerTeamAdminRoutes(app: Express) {
       await db.insert(connectorSyncJobs).values({ organisationId: membership.organisationId, connectedSystemId, resourceType, scheduleExpression, capabilityKey, status: verified ? "ready" : "draft" }).onDuplicateKeyUpdate({ set: { scheduleExpression, capabilityKey, status: verified ? "ready" : "draft", lastError: verified ? null : "Connector is not ready or capability is not verified." } });
       await recordAudit({ userId: actor.id, eventType: "connector_sync_job_saved", entityType: "connector_sync_job", entityId: `${connectedSystemId}:${resourceType}`, summary: `Connector sync job saved as ${verified ? "ready" : "draft"}.`, metadata: { organisationId: membership.organisationId, connectedSystemId, resourceType, capabilityKey, verified } });
       return res.status(201).json({ ok: true, status: verified ? "ready" : "draft" });
+    } catch (error) { return sendError(res, error); }
+  });
+
+  app.get("/api/team-admin/inbound-review", async (req, res) => {
+    try {
+      const { membership } = await requireManager(req);
+      const db = await getDb(); if (!db) throw new Error("Database connection is unavailable.");
+      const [messages, drafts] = await Promise.all([
+        db.select().from(inboundMessages).where(eq(inboundMessages.organisationId, membership.organisationId)),
+        db.select().from(inboundReplyDrafts).where(eq(inboundReplyDrafts.organisationId, membership.organisationId)),
+      ]);
+      return res.json({ messages, drafts });
+    } catch (error) { return sendError(res, error); }
+  });
+
+  app.post("/api/team-admin/inbound-review/:id/drafts", async (req, res) => {
+    try {
+      const { user: actor, membership } = await requireManager(req); const id = Number(req.params.id);
+      const draftBody = typeof req.body?.draftBody === "string" ? req.body.draftBody.trim().slice(0, 20_000) : "";
+      const rationale = typeof req.body?.rationale === "string" ? req.body.rationale.trim().slice(0, 6_000) : "";
+      if (!Number.isInteger(id) || id <= 0 || !draftBody || !rationale) throw new Error("A valid message, draft text, and rationale are required.");
+      const db = await getDb(); if (!db) throw new Error("Database connection is unavailable.");
+      const message = (await db.select().from(inboundMessages).where(and(eq(inboundMessages.id, id), eq(inboundMessages.organisationId, membership.organisationId))).limit(1))[0];
+      if (!message) throw new Error("Inbound message was not found in the active organisation.");
+      const classification = classifyInboundMessage({ subject: message.subject, body: message.body });
+      const result = await db.insert(inboundReplyDrafts).values({ organisationId: membership.organisationId, inboundMessageId: id, draftBody, rationale, qualityChecks: { reviewRequired: true, sendEligible: false, optOutDetected: classification.category === "unsubscribe" } });
+      await db.update(inboundMessages).set({ classification: { category: classification.category, reasons: classification.reasons }, status: "draft_ready" }).where(eq(inboundMessages.id, id));
+      await recordAudit({ userId: actor.id, eventType: "inbound_reply_draft_created", entityType: "inbound_reply_draft", entityId: String(result[0].insertId), summary: "Review-only inbound reply draft created; no send action was performed.", metadata: { organisationId: membership.organisationId, inboundMessageId: id, category: classification.category } });
+      return res.status(201).json({ id: Number(result[0].insertId), status: "draft", classification });
     } catch (error) { return sendError(res, error); }
   });
 
