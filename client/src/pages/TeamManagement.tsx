@@ -1,6 +1,7 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { trpc } from "@/lib/trpc";
 import { BellRing, CheckCircle2, MailPlus, RefreshCw, ShieldCheck, UserRoundCog, Users } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -16,6 +17,8 @@ type Member = {
   createdAt: string;
 };
 type TeamResponse = { organisation: { id: number; name: string; role: string }; members: Member[] };
+type OwnerMapping = { id: number; connectedSystemId: number; externalUserId: string; displayName: string; email: string | null; isActive: boolean; userId: number | null; memberName: string | null; memberEmail: string | null };
+type OwnerMappingResponse = { mappings: OwnerMapping[] };
 type ManagementSettings = {
   reportMode: "daily_full" | "exceptions_only";
   overdueTaskThreshold: number;
@@ -33,6 +36,7 @@ async function api<T>(path: string, init?: RequestInit) {
 
 export default function TeamManagement() {
   const [data, setData] = useState<TeamResponse | null>(null);
+  const [mappings, setMappings] = useState<OwnerMapping[]>([]);
   const [settings, setSettings] = useState<ManagementSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");
@@ -40,15 +44,22 @@ export default function TeamManagement() {
   const [role, setRole] = useState<"manager" | "salesperson" | "auditor">("salesperson");
   const [sending, setSending] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [mapping, setMapping] = useState({ connectedSystemId: "", externalUserId: "", displayName: "", email: "", userId: "" });
+  const [savingMapping, setSavingMapping] = useState(false);
+  const organisation = trpc.organisation.current.useQuery();
+  const organisationId = organisation.data?.organisationId;
+  const systems = trpc.connectedSystems.list.useQuery({ organisationId: organisationId ?? 0 }, { enabled: Boolean(organisationId) });
 
   const refresh = useCallback(async () => {
     try {
-      const [team, management] = await Promise.all([
+      const [team, management, ownerMappings] = await Promise.all([
         api<TeamResponse>("/api/team-admin/members"),
         api<ManagementSettings>("/api/management-settings"),
+        api<OwnerMappingResponse>("/api/team-admin/crm-owner-mappings"),
       ]);
       setData(team);
       setSettings(management);
+      setMappings(ownerMappings.mappings);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not load team administration.");
     } finally {
@@ -96,6 +107,21 @@ export default function TeamManagement() {
     }
   }
 
+  async function saveOwnerMapping(event: React.FormEvent) {
+    event.preventDefault();
+    setSavingMapping(true);
+    try {
+      await api<{ ok: boolean }>("/api/team-admin/crm-owner-mappings", { method: "PUT", body: JSON.stringify({ connectedSystemId: Number(mapping.connectedSystemId), externalUserId: mapping.externalUserId, displayName: mapping.displayName, email: mapping.email || null, userId: mapping.userId ? Number(mapping.userId) : null }) });
+      toast.success("CRM owner mapping saved.");
+      setMapping({ connectedSystemId: mapping.connectedSystemId, externalUserId: "", displayName: "", email: "", userId: "" });
+      await refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save CRM owner mapping.");
+    } finally {
+      setSavingMapping(false);
+    }
+  }
+
   const threshold = (key: keyof Pick<ManagementSettings, "overdueTaskThreshold" | "staleOpportunityThreshold" | "noNextStepThreshold">, value: string) => {
     if (!settings) return;
     setSettings({ ...settings, [key]: Math.max(0, Math.min(1000, Number.parseInt(value || "0", 10) || 0)) });
@@ -128,6 +154,20 @@ export default function TeamManagement() {
         {loading ? <p className="mt-6 text-sm text-[#A9BFDF]">Loading members…</p> : <div className="mt-5 space-y-3">{data?.members.map(member => <article key={member.memberId} className="flex flex-col gap-4 rounded-xl border border-white/10 bg-[#0B1B37] p-4 lg:flex-row lg:items-center lg:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="font-bold text-white">{member.name || member.email || `Member ${member.userId}`}</p><span className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${member.isActive ? "bg-emerald-400/10 text-emerald-200" : "bg-white/10 text-[#A9BFDF]"}`}>{member.isActive ? "Active" : "Inactive"}</span>{member.hasPassword ? <CheckCircle2 className="size-4 text-emerald-300"/> : <span className="text-xs text-amber-200">Invite pending</span>}</div><p className="mt-1 text-xs text-[#8FA9CE]">{member.email} · {member.role}</p></div><div className="flex flex-wrap items-center gap-2">{member.role !== "owner" && <><select value={member.role} onChange={event => void updateMember(member, { role: event.target.value })} className="h-9 rounded-lg border border-white/15 bg-[#08172F] px-2 text-xs text-white"><option value="salesperson">Salesperson</option><option value="manager">Manager</option><option value="auditor">Auditor</option></select><Button size="sm" variant="outline" onClick={() => void updateMember(member, { isActive: !member.isActive })} className="border-white/15 bg-white/5 text-white hover:bg-white/10">{member.isActive ? "Deactivate" : "Reactivate"}</Button></>} {member.role === "owner" && <span className="inline-flex items-center gap-1 text-xs font-bold text-[#9FC2FF]"><ShieldCheck size={14}/>Owner</span>}</div></article>)}{!data?.members.length && <p className="text-sm text-[#A9BFDF]">No members yet.</p>}</div>}
       </section>
     </div>
+
+    <section className="mt-6 rounded-[1.5rem] border border-white/10 bg-[#0E2142] p-6">
+      <div className="flex gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#153B7A] text-[#9FC2FF]"><UserRoundCog size={18}/></span><div><p className="text-[10px] font-black uppercase tracking-[.14em] text-[#7FAAF8]">CRM OWNER MAPPING</p><h2 className="font-display text-2xl font-bold tracking-[-.05em] text-white">Attribute synchronized CRM work to the right person.</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-[#9EB6DB]">Map the external owner identifier returned by a connected CRM to an active Amarktai member. Mappings are constrained to this organisation and audited; an unmapped owner remains visible as unmapped rather than being guessed.</p></div></div>
+      <form onSubmit={saveOwnerMapping} className="mt-6 grid gap-3 lg:grid-cols-3">
+        <label className="text-xs font-black uppercase tracking-[.12em] text-[#9EB6DB]">Connected system<select required value={mapping.connectedSystemId} onChange={event => setMapping({ ...mapping, connectedSystemId: event.target.value })} className="mt-2 h-11 w-full rounded-xl border border-white/15 bg-[#08172F] px-3 text-sm normal-case tracking-normal text-white"><option value="">Select a system</option>{systems.data?.map(system => <option key={system.id} value={system.id}>{system.displayName} · {system.status}</option>)}</select></label>
+        <label className="text-xs font-black uppercase tracking-[.12em] text-[#9EB6DB]">CRM owner ID<Input required value={mapping.externalUserId} onChange={event => setMapping({ ...mapping, externalUserId: event.target.value })} placeholder="Provider owner ID" className="mt-2 border-white/15 bg-[#08172F] text-white"/></label>
+        <label className="text-xs font-black uppercase tracking-[.12em] text-[#9EB6DB]">CRM owner name<Input required value={mapping.displayName} onChange={event => setMapping({ ...mapping, displayName: event.target.value })} placeholder="Name in CRM" className="mt-2 border-white/15 bg-[#08172F] text-white"/></label>
+        <label className="text-xs font-black uppercase tracking-[.12em] text-[#9EB6DB]">CRM email (optional)<Input type="email" value={mapping.email} onChange={event => setMapping({ ...mapping, email: event.target.value })} placeholder="owner@company.example" className="mt-2 border-white/15 bg-[#08172F] text-white"/></label>
+        <label className="text-xs font-black uppercase tracking-[.12em] text-[#9EB6DB]">Amarktai member<select value={mapping.userId} onChange={event => setMapping({ ...mapping, userId: event.target.value })} className="mt-2 h-11 w-full rounded-xl border border-white/15 bg-[#08172F] px-3 text-sm normal-case tracking-normal text-white"><option value="">Leave unmapped</option>{data?.members.filter(member => member.isActive).map(member => <option key={member.userId} value={member.userId}>{member.name || member.email} · {member.role}</option>)}</select></label>
+        <div className="flex items-end"><Button disabled={savingMapping || !systems.data?.length} className="h-11 w-full bg-[#1B64F2] hover:bg-[#2B76FF]">{savingMapping ? "Saving…" : "Save CRM owner mapping"}</Button></div>
+      </form>
+      {!systems.data?.length && <p className="mt-3 text-xs text-amber-100">Connect a CRM before recording owner mappings.</p>}
+      <div className="mt-6 overflow-x-auto"><table className="w-full min-w-[700px] text-left"><thead className="border-b border-white/10 text-[10px] font-black uppercase tracking-[.12em] text-[#7896C1]"><tr><th className="pb-3 pr-4">CRM owner</th><th className="pb-3 pr-4">External ID</th><th className="pb-3 pr-4">Connected system</th><th className="pb-3">Amarktai member</th></tr></thead><tbody>{mappings.map(item => <tr key={item.id} className="border-b border-white/[.07]"><td className="py-3 pr-4"><p className="font-semibold text-white">{item.displayName}</p><p className="text-xs text-[#8FA9CE]">{item.email || "No CRM email"}</p></td><td className="py-3 pr-4 font-mono text-xs text-[#B6C9E8]">{item.externalUserId}</td><td className="py-3 pr-4 text-sm text-[#B6C9E8]">#{item.connectedSystemId}</td><td className="py-3 text-sm text-[#B6C9E8]">{item.memberName || item.memberEmail || "Unmapped"}</td></tr>)}{!mappings.length && <tr><td colSpan={4} className="py-8 text-center text-sm text-[#A9BFDF]">No CRM owner mappings yet.</td></tr>}</tbody></table></div>
+    </section>
 
     {settings && <section className="mt-6 rounded-[1.5rem] border border-white/10 bg-[#0E2142] p-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between"><div className="flex items-start gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#153B7A] text-[#9FC2FF]"><BellRing size={18}/></span><div><p className="text-[10px] font-black uppercase tracking-[.14em] text-[#7FAAF8]">MANAGEMENT INTELLIGENCE</p><h2 className="font-display text-2xl font-bold tracking-[-.05em] text-white">Choose when management gets interrupted.</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-[#9EB6DB]">These thresholds are deterministic CRM rules. They do not monitor private browsing, keystrokes, webcams or unrelated employee activity and do not consume GenX credits.</p></div></div><Button disabled={savingSettings} onClick={() => void saveSettings()} className="bg-[#1B64F2] hover:bg-[#2B76FF]">{savingSettings ? "Saving…" : "Save management rules"}</Button></div>

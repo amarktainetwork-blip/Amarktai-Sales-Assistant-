@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { and, eq } from "drizzle-orm";
 import { jwtVerify, SignJWT } from "jose";
 import { COOKIE_NAME } from "@shared/const";
-import { organisationMembers, users } from "../../drizzle/schema";
+import { connectedSystems, externalUserMappings, organisationMembers, users } from "../../drizzle/schema";
 import { getDb, getUserByEmail, getUserById, recordAudit } from "../db";
 import { isLocalAuthMode } from "../localAuth";
 import { canManageOrganisation } from "../organisationAccess";
@@ -84,6 +84,50 @@ export function registerTeamAdminRoutes(app: Express) {
       const { membership } = await requireManager(req);
       const members = await listMembers(membership.organisationId);
       return res.json({ organisation: { id: membership.organisationId, name: membership.organisationName, role: membership.role }, members: members.map(member => ({ ...member, hasPassword: Boolean(member.hasPassword) })) });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  });
+
+  app.get("/api/team-admin/crm-owner-mappings", async (req, res) => {
+    try {
+      const { membership } = await requireManager(req);
+      const connectedSystemId = req.query.connectedSystemId === undefined ? undefined : Number(req.query.connectedSystemId);
+      if (connectedSystemId !== undefined && (!Number.isInteger(connectedSystemId) || connectedSystemId <= 0)) throw new Error("A valid connected system is required.");
+      const db = await getDb();
+      if (!db) throw new Error("Database connection is unavailable.");
+      const predicates = [eq(externalUserMappings.organisationId, membership.organisationId)];
+      if (connectedSystemId) predicates.push(eq(externalUserMappings.connectedSystemId, connectedSystemId));
+      const mappings = await db.select({ id: externalUserMappings.id, connectedSystemId: externalUserMappings.connectedSystemId, externalUserId: externalUserMappings.externalUserId, displayName: externalUserMappings.displayName, email: externalUserMappings.email, isActive: externalUserMappings.isActive, userId: externalUserMappings.userId, memberName: users.name, memberEmail: users.email }).from(externalUserMappings).leftJoin(users, eq(users.id, externalUserMappings.userId)).where(and(...predicates));
+      return res.json({ mappings });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  });
+
+  app.put("/api/team-admin/crm-owner-mappings", async (req, res) => {
+    try {
+      const { user: actor, membership } = await requireManager(req);
+      const connectedSystemId = Number(req.body?.connectedSystemId);
+      const externalUserId = typeof req.body?.externalUserId === "string" ? req.body.externalUserId.trim().slice(0, 180) : "";
+      const displayName = typeof req.body?.displayName === "string" ? req.body.displayName.trim().slice(0, 220) : "";
+      const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase().slice(0, 320) || null : null;
+      const userId = req.body?.userId === null || req.body?.userId === undefined || req.body?.userId === "" ? null : Number(req.body.userId);
+      const isActive = req.body?.isActive === undefined ? true : Boolean(req.body.isActive);
+      if (!Number.isInteger(connectedSystemId) || connectedSystemId <= 0) throw new Error("A valid connected system is required.");
+      if (!externalUserId || !displayName) throw new Error("External owner ID and display name are required.");
+      if (userId !== null && (!Number.isInteger(userId) || userId <= 0)) throw new Error("A valid Amarktai team member is required.");
+      const db = await getDb();
+      if (!db) throw new Error("Database connection is unavailable.");
+      const system = (await db.select({ id: connectedSystems.id }).from(connectedSystems).where(and(eq(connectedSystems.id, connectedSystemId), eq(connectedSystems.organisationId, membership.organisationId))).limit(1))[0];
+      if (!system) throw new Error("Connected system was not found in the active organisation.");
+      if (userId !== null) {
+        const member = (await db.select({ id: organisationMembers.id }).from(organisationMembers).where(and(eq(organisationMembers.organisationId, membership.organisationId), eq(organisationMembers.userId, userId), eq(organisationMembers.isActive, true))).limit(1))[0];
+        if (!member) throw new Error("Mapped Amarktai member must be active in the organisation.");
+      }
+      await db.insert(externalUserMappings).values({ organisationId: membership.organisationId, connectedSystemId, userId, externalUserId, displayName, email, isActive }).onDuplicateKeyUpdate({ set: { userId, displayName, email, isActive } });
+      await recordAudit({ userId: actor.id, eventType: "crm_owner_mapping_saved", entityType: "external_user_mapping", entityId: `${connectedSystemId}:${externalUserId}`, summary: `CRM owner '${displayName}' mapping was saved.`, metadata: { organisationId: membership.organisationId, connectedSystemId, externalUserId, mappedUserId: userId, isActive } });
+      return res.json({ ok: true });
     } catch (error) {
       return sendError(res, error);
     }

@@ -116,3 +116,5 @@
 - [x] Add regression coverage that organisation switching reissues a signed session for the selected verified membership.
 - [x] Add tRPC regression coverage that active-organisation mismatches are denied on connected systems, sales, management, and sidecar procedures.
 - [x] Add REST regression coverage that protected active-organisation context blocks cross-tenant access.
+- [x] Add a generic onboarding go-live review that reports server-verified CRM readiness and directs teams to existing mapping, policy, target, credit, and deployment controls without claiming live-provider proof.
+- [x] Add audited organisation-scoped CRM-owner mapping controls for active members and connected systems, with cross-tenant denial coverage.
