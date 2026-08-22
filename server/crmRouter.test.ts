@@ -18,8 +18,8 @@ describe("canonical connected-system capability router", () => {
     expect(sms.payload.crmRoute).toMatchObject({ routable: false, requiredCapability: expect.stringContaining("sms.send") });
   });
 
-  it("blocks a ready-labelled connector when backend verification did not record the action capability", () => {
-    const systems = [{ id: 9, provider: "custom_api", displayName: "Unverified adapter", status: "ready", connectionMethod: "custom_adapter", verifiedCapabilities: [] }];
+  it("blocks a ready-labelled browser connector when verification did not record the required capability", () => {
+    const systems = [{ id: 9, provider: "custom_browser", displayName: "Other CRM", status: "ready", connectionMethod: "browser", verifiedCapabilities: [] }];
     const [proposal] = routeConnectedSystemActions([{ actionType: "update_contact", payload: {} }], systems);
     expect(proposal.payload.crmRoute).toMatchObject({ routable: false, reason: expect.stringContaining("backend-verified") });
   });
@@ -31,5 +31,26 @@ describe("canonical connected-system capability router", () => {
     ];
     const [proposal] = routeConnectedSystemActions([{ actionType: "update_contact", payload: { preferredProvider: "salesforce" } }], systems);
     expect(proposal.payload.crmRoute).toMatchObject({ routable: true, provider: "salesforce", connectedSystemId: 2 });
+  });
+
+  it("routes calendar creation only when the installation-level Outlook boundary is configured", () => {
+    const keys = ["OUTLOOK_TENANT_ID", "OUTLOOK_CLIENT_ID", "OUTLOOK_CLIENT_SECRET", "OUTLOOK_SENDER_EMAIL"] as const;
+    const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+    try {
+      for (const key of keys) delete process.env[key];
+      const [blocked] = routeConnectedSystemActions([{ actionType: "create_calendar_event", payload: {} }], []);
+      expect(blocked.payload.crmRoute).toMatchObject({ routable: false, requiredCapability: "calendar.create" });
+      process.env.OUTLOOK_TENANT_ID = "tenant";
+      process.env.OUTLOOK_CLIENT_ID = "client";
+      process.env.OUTLOOK_CLIENT_SECRET = "secret";
+      process.env.OUTLOOK_SENDER_EMAIL = "sales@example.test";
+      const [ready] = routeConnectedSystemActions([{ actionType: "create_calendar_event", payload: {} }], []);
+      expect(ready.payload.crmRoute).toMatchObject({ routable: true, provider: "outlook", connectionMode: "microsoft_graph" });
+    } finally {
+      for (const key of keys) {
+        const value = previous[key];
+        if (value === undefined) delete process.env[key]; else process.env[key] = value;
+      }
+    }
   });
 });
