@@ -1,12 +1,12 @@
 # Amarktai Sales Assistant — Webdock Release Evidence
 
-This record covers the externally pushed release candidate at `9967a4d8dc91bb8c181069e21f84a43d559f1900`. It is a **deployment-ready package**: all repository-controlled checks passed, while secrets, provider authorization, DNS/TLS issuance, and live-service verification remain intentionally deferred to the Webdock installation environment.
+This record covers the externally pushed release candidate at `ac9af7c2465c6426233360c5cd1c1977ac6082aa`. It is a **deployment-ready package**: all repository-controlled checks passed, while secrets, provider authorization, DNS/TLS issuance, and live-service verification remain intentionally deferred to the Webdock installation environment.
 
 REPOSITORY=amarktainetwork-blip/Amarktai-Sales-Assistant-
 REMOTE=https://github.com/amarktainetwork-blip/Amarktai-Sales-Assistant-.git
 BASE_SHA=20522bc1be5b90edc79892ed5ad2c192e769ea1f
 BRANCH=release/go-live-20260822
-FINAL_SHA=9967a4d8dc91bb8c181069e21f84a43d559f1900
+FINAL_SHA=ac9af7c2465c6426233360c5cd1c1977ac6082aa
 
 MANUS_RUNTIME_REMOVED=Yes; executable-source audit found zero managed-runtime references.
 FORGE_RUNTIME_REMOVED=Yes; executable-source audit found zero Forge runtime references.
@@ -17,7 +17,7 @@ AUTH_CANONICAL=Local signed-session authentication with active organisation bind
 PUBLIC_REGISTRATION=Implemented; public local registration creates a password-hashed user and bootstrap workspace, then follows the existing 2FA gate.
 PASSWORD_RECOVERY=Implemented; generic non-enumerating reset request and signed, password-hash-bound reset tokens.
 2FA=Implemented; local email second factor is enforced for protected operations when SMTP is configured.
-TENANT_ISOLATION=Implemented for active new paths, including company setup, workflows, action proposals, callbacks, calls, knowledge, audits, reports, pipeline mappings, and integration profiles; migrations 0007–0012 are additive and nullable-first for legacy reconciliation.
+TENANT_ISOLATION=Implemented for active new paths, including company setup, workflows, action proposals, callbacks, calls, knowledge, audits, reports, pipeline mappings, integration profiles, exports, and saved items; migrations 0007–0013 are additive and nullable-first for legacy reconciliation.
 ORGANISATION_SWITCHING=Implemented; verified membership selection is embedded in the signed local session and enforced by tRPC and protected HTTP routes.
 
 CONNECTED_SYSTEMS_SINGLE_SOURCE_OF_TRUTH=Yes; canonical active-organisation connected systems govern CRM readiness and action routing.
@@ -66,15 +66,19 @@ BACKUP=Self-hosted Webdock backup procedure is included in deployment documentat
 ROLLBACK=Self-hosted Webdock rollback procedure is included in deployment documentation.
 PRODUCTION_VERIFIER=Included in `deploy/webdock`; it validates configuration and reports provider readiness truthfully without inventing live proof.
 
-TESTS=56 tests passed across 23 files locally at the final code state.
+EXPORTS=Implemented; active-organisation-scoped CSV operational-report and PDF factual conversation-log downloads are protected by the signed session.
+WORKSPACE_FAVORITES_AND_TAGS=Implemented; migration 0013 adds organisation-scoped saved items with normalized tags and action-proposal re-authorization.
+API_FEEDBACK=Implemented; dashboard/review loading, error, retry, and mutation progress feedback is explicit.
+
+TESTS=61 tests passed across 25 files locally at the final code state.
 TYPECHECK=Passed locally at the final code state.
 BUILD=Standalone production build passed locally at the final code state.
 DRIZZLE_CHECK=Passed locally before final generic runtime cleanup; the final generic cleanup did not change the schema or migrations and GitHub CI validated Drizzle at the final SHA.
-DOCKER_APP_BUILD=Passed in GitHub CI run 32577831866.
-DOCKER_BROWSER_BUILD=Passed in GitHub CI run 32577831866.
-COMPOSE_FULL=Passed in GitHub CI run 32577831866.
-COMPOSE_PILOT=Passed in GitHub CI run 32577831866.
-CI_RUN=https://github.com/amarktainetwork-blip/Amarktai-Sales-Assistant-/actions/runs/32577831866
+DOCKER_APP_BUILD=Passed in GitHub CI run 32579295685.
+DOCKER_BROWSER_BUILD=Passed in GitHub CI run 32579295685.
+COMPOSE_FULL=Passed in GitHub CI run 32579295685.
+COMPOSE_PILOT=Passed in GitHub CI run 32579295685.
+CI_RUN=https://github.com/amarktainetwork-blip/Amarktai-Sales-Assistant-/actions/runs/32579295685
 CI_STATUS=completed success for FINAL_SHA.
 
 FORBIDDEN_MANUS_SEARCH=0 executable-source matches.

@@ -138,3 +138,5 @@
 - [x] Improve loading states and actionable API error feedback across the export, review, workspace, and operational management interactions.
 - [x] Perform a fresh feature, source, deployment, and checklist audit; document exact code gaps, deployment-time commissioning steps, and go-live blockers without overstating live proof.
 - [x] Document CSV/PDF exports, workspace favorites/tags, migration 0013, and the new API-feedback behavior in the Webdock operator guide.
+- [x] Complete a full release audit of implemented features, code-controlled gates, deployment readiness, remaining commissioning requirements, and prioritized additions for a complete sales assistant.
+- [x] Reconcile historical implementation-status and release-evidence documents with the current audited release head, tests, migrations, exports, favorites/tags, and API-feedback behavior.
