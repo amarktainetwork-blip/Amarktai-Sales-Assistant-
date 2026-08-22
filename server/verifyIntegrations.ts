@@ -20,7 +20,12 @@ async function main() {
     genie: genie ? { configured: true, ready: genie.success } : { configured: false, ready: false },
     outlook: { configured: outlook.ready, senderValid: outlookSenderValid },
   };
-  console.log(JSON.stringify(result));
+  console.log(`SMTP=${result.smtp.ready ? "PASS" : "BLOCKED"}`);
+  console.log(`SMTP_REASON=${result.smtp.reason}`);
+  console.log(`GENX=${result.genx.ready ? "PASS" : "BLOCKED"}`);
+  console.log(`GENX_REASON=${result.genx.reason}`);
+  console.log(`CRM=${result.genie.ready ? "PASS" : "BLOCKED"}`);
+  console.log(`OUTLOOK=${result.outlook.configured && result.outlook.senderValid ? "CONFIGURED" : "BLOCKED"}`);
   if (!smtp.ready || (genxConfigured && !genx.ready) || (genie && !genie.success) || !outlookSenderValid) process.exitCode = 1;
 }
 
