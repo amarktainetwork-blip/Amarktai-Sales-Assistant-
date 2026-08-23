@@ -220,7 +220,7 @@ export async function verifyGenxConnection() {
       model: selected,
       messages: [{ role: "user", content: "Return READY." }],
       temperature: 0,
-      max_tokens: 8,
+      max_tokens: 16,
     },
     { timeoutMs: 20_000, retries: 1 }
   );
