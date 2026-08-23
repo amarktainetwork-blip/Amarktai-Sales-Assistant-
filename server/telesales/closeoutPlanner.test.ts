@@ -1,0 +1,75 @@
+import { describe, expect, it } from "vitest";
+import { planTelesalesCloseout } from "./closeoutPlanner";
+
+const base = {
+  callSessionId: 41,
+  leadLabel: "John Smith",
+  summary: "No answer.",
+  opportunityState: "unchanged" as const,
+  commitmentsConfirmed: true,
+};
+
+describe("telesales closeout planner", () => {
+  it("prepares deterministic no-answer administration", () => {
+    const actions = planTelesalesCloseout({
+      ...base,
+      outcome: "no_answer",
+      taskExternalId: "task-9",
+      callbackAt: "2026-08-25T08:00:00.000Z",
+    });
+    expect(actions.map(action => action.actionType)).toEqual([
+      "append_contact_note",
+      "create_activity",
+      "complete_active_task",
+      "schedule_callback",
+    ]);
+  });
+
+  it("creates a governed callback with stable idempotency", () => {
+    const actions = planTelesalesCloseout({
+      ...base,
+      outcome: "callback",
+      callbackAt: "2026-08-25T08:00:00.000Z",
+      nextStep: "Discuss pricing",
+    });
+    expect(
+      actions.find(action => action.actionType === "schedule_callback")
+    ).toMatchObject({
+      idempotencyKey: "live-call:41:callback",
+      payload: {
+        dueAt: "2026-08-25T08:00:00.000Z",
+        taskTitle: "Discuss pricing",
+      },
+    });
+  });
+
+  it("proposes explicitly confirmed information follow-up", () => {
+    const actions = planTelesalesCloseout({
+      ...base,
+      outcome: "information_requested",
+      communication: {
+        channel: "email",
+        templateName: "Product brochure",
+        to: "john@example.com",
+      },
+    });
+    expect(
+      actions.some(action => action.actionType === "send_email_template")
+    ).toBe(true);
+  });
+
+  it("does not silently create commitments when confirmation is absent", () => {
+    const actions = planTelesalesCloseout({
+      ...base,
+      outcome: "other",
+      commitmentsConfirmed: false,
+      callbackAt: "2026-08-25T08:00:00.000Z",
+      contactStatus: "Interested",
+      communication: { channel: "sms", templateName: "Follow-up" },
+    });
+    expect(actions.map(action => action.actionType)).toEqual([
+      "append_contact_note",
+      "create_activity",
+    ]);
+  });
+});
