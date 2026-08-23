@@ -135,17 +135,29 @@ services:
     security_opt:
       - no-new-privileges:true
 
-  # Internal-only sandboxed Chromium/CDP runtime for deterministic browser connectors.
-  # No host port is published; only application containers can reach DevTools on 9222.
-  # Chromium's Debian setuid sandbox requires privilege transitions inside this container,
-  # so no-new-privileges is intentionally not applied to this one isolated service.
+  # Internal-only Chromium/CDP runtime for deterministic browser connectors.
+  # Chromium's inner namespace sandbox is disabled because nested namespace
+  # creation is blocked on the target Docker hosts. The container itself is the
+  # isolation boundary: non-root image user, default Docker seccomp, no host port,
+  # no privilege escalation, no Linux capabilities, read-only rootfs, ephemeral
+  # writable home/tmp and bounded process/memory limits.
   browser:
     build:
       context: ../..
       dockerfile: deploy/browser/Dockerfile
     restart: unless-stopped
     init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     shm_size: 1gb
+    mem_limit: 2g
+    pids_limit: 512
+    tmpfs:
+      - /home/chrome:rw,noexec,nosuid,size=512m,uid=10001,gid=10001
+      - /tmp:rw,noexec,nosuid,size=256m,uid=10001,gid=10001
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9222/json/version"]
       interval: 20s
