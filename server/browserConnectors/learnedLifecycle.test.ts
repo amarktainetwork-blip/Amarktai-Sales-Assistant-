@@ -32,4 +32,21 @@ describe("guided learned-operation lifecycle", () => {
       })
     ).toBe("LEARNED");
   });
+
+  it("degrades only the affected LIVE_PROVEN operation after a runtime failure", () => {
+    const statuses = {
+      add_note: "LIVE_PROVEN" as const,
+      create_next_task: "LIVE_PROVEN" as const,
+    };
+    const affected = browserOperationStatusAfterResult({
+      currentStatus: statuses.add_note,
+      success: false,
+      publish: false,
+      watchdog: true,
+    });
+    expect({ ...statuses, add_note: affected }).toEqual({
+      add_note: "DEGRADED",
+      create_next_task: "LIVE_PROVEN",
+    });
+  });
 });

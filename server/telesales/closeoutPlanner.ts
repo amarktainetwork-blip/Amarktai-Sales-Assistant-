@@ -12,6 +12,7 @@ export const TELESALES_OUTCOMES = [
 export type TelesalesOutcome = (typeof TELESALES_OUTCOMES)[number];
 
 export type ConfirmedCloseout = {
+  organisationId: number;
   callSessionId: number;
   leadLabel: string;
   summary: string;
@@ -22,10 +23,13 @@ export type ConfirmedCloseout = {
   contactStatus?: string;
   communication?: {
     channel: "email" | "sms" | "whatsapp";
-    templateName: string;
-    to?: string;
+    templateName?: string;
+    approvalTemplateId?: number;
+    approvalTemplateKey?: string;
+    approvalTemplateVersion?: number;
+    to: string;
     subject?: string;
-    body?: string;
+    body: string;
   };
   contactExternalId?: string;
   taskExternalId?: string;
@@ -63,7 +67,8 @@ export function planTelesalesCloseout(
 ): CloseoutAction[] {
   if (!input.leadLabel.trim() || !input.summary.trim())
     throw new Error("A contact and factual summary are required.");
-  const key = (suffix: string) => `live-call:${input.callSessionId}:${suffix}`;
+  const key = (suffix: string) =>
+    `live-call:${input.organisationId}:${input.callSessionId}:${suffix}`;
   const common = basePayload(input);
   const actions: CloseoutAction[] = [
     {
@@ -145,17 +150,32 @@ export function planTelesalesCloseout(
     });
   if (input.communication && input.commitmentsConfirmed) {
     const channel = input.communication.channel;
+    const body = input.communication.body.trim();
+    if (!body)
+      throw new Error(
+        "TEMPLATE_CONTENT_REQUIRED: executable post-call communication cannot be blank."
+      );
+    if (!input.communication.to.trim())
+      throw new Error(`A ${channel} destination is required.`);
+    if (channel === "email" && !input.communication.subject?.trim())
+      throw new Error("Outbound sales email requires a subject.");
+    const approvedTemplate = Number.isInteger(
+      input.communication.approvalTemplateId
+    );
     actions.push({
-      actionType: `send_${channel}_template`,
-      title: `Prepare approved ${channel.toUpperCase()} follow-up`,
+      actionType: `send_${channel}${approvedTemplate ? "_template" : ""}`,
+      title: `Prepare ${approvedTemplate ? "approved " : "custom "}${channel.toUpperCase()} follow-up`,
       targetLabel: input.leadLabel,
       idempotencyKey: key(`${channel}-follow-up`),
       payload: {
         ...common,
         templateName: input.communication.templateName,
+        approvalTemplateId: input.communication.approvalTemplateId,
+        approvalTemplateKey: input.communication.approvalTemplateKey,
+        approvalTemplateVersion: input.communication.approvalTemplateVersion,
         to: input.communication.to,
         subject: input.communication.subject,
-        body: input.communication.body || "",
+        body,
       },
     });
   }

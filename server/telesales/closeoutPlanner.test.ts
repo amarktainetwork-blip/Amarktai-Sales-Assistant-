@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { planTelesalesCloseout } from "./closeoutPlanner";
 
 const base = {
+  organisationId: 3,
   callSessionId: 41,
   leadLabel: "John Smith",
   summary: "No answer.",
@@ -35,7 +36,7 @@ describe("telesales closeout planner", () => {
     expect(
       actions.find(action => action.actionType === "schedule_callback")
     ).toMatchObject({
-      idempotencyKey: "live-call:41:callback",
+      idempotencyKey: "live-call:3:41:callback",
       payload: {
         dueAt: "2026-08-25T08:00:00.000Z",
         taskTitle: "Discuss pricing",
@@ -51,6 +52,9 @@ describe("telesales closeout planner", () => {
         channel: "email",
         templateName: "Product brochure",
         to: "john@example.com",
+        subject: "Product brochure",
+        body: "Here is the product brochure.",
+        approvalTemplateId: 12,
       },
     });
     expect(
@@ -65,7 +69,12 @@ describe("telesales closeout planner", () => {
       commitmentsConfirmed: false,
       callbackAt: "2026-08-25T08:00:00.000Z",
       contactStatus: "Interested",
-      communication: { channel: "sms", templateName: "Follow-up" },
+      communication: {
+        channel: "sms",
+        templateName: "Follow-up",
+        to: "+27820000000",
+        body: "Follow-up",
+      },
     });
     expect(actions.map(action => action.actionType)).toEqual([
       "append_contact_note",

@@ -89,6 +89,15 @@ export async function getConnectedSystemForUser(userId: number, organisationId: 
   return result[0];
 }
 
+export async function markConnectionAuthenticationExpired(input: { organisationId: number; connectedSystemId: number; summary: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  await db.update(connectedSystems).set({ status: "authentication_expired", lastHealthCheckAt: new Date(), lastHealthSummary: input.summary.slice(0, 2_000) }).where(and(
+    eq(connectedSystems.id, input.connectedSystemId),
+    eq(connectedSystems.organisationId, input.organisationId)
+  ));
+}
+
 export async function addAuthorisedDomain(input: { userId: number; organisationId: number; connectedSystemId: number; hostname: string; allowedPaths: string[] }) {
   const membership = await requireOrganisationMembership(input.userId, input.organisationId);
   if (!(await canManageOrganisationForUser(input.userId, membership.role))) throw new Error("Only organisation owners, managers, and platform owners can approve domains.");

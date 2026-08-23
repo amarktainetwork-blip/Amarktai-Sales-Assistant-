@@ -2,7 +2,6 @@ import type { Express, Request, Response } from "express";
 import { requireLocalHttpContext } from "../httpAuth";
 import {
   appendLiveTranscript,
-  createWorkflowRun,
   listActionProposals,
 } from "../db";
 import {
@@ -20,6 +19,8 @@ import { getAutomationPolicy } from "../automationPolicy";
 import { executeAutoPreapprovedActions } from "../governedActions";
 import { resolveLiveCallCloseoutIdentity } from "./context";
 import { persistConfirmedCommitment } from "../memory";
+import { prepareCustomCommunication, resolveApprovedCommunicationTemplate } from "../approvedTemplates";
+import { prepareClaimedCloseoutWorkflow, runCanonicalCallCloseout, saveCallCloseoutSummary } from "./closeoutIdempotency";
 
 const MAX_AUDIO_BYTES = 800_000;
 const ALLOWED_MIME = new Set([
@@ -117,6 +118,9 @@ function sendLiveCallError(res: Response, error: unknown) {
   if (detail === "Speech-to-text is not configured.")
     return res.status(503).json({ error: detail });
   if (/AI Credit/i.test(detail)) return res.status(402).json({ error: detail });
+  if (/^(TEMPLATE_NOT_FOUND|TEMPLATE_CONTENT_REQUIRED)|destination is required|requires a subject|supported communication channel/i.test(detail))
+    return res.status(400).json({ error: detail.slice(0, 300) });
+  if (detail.startsWith("CLOSEOUT_PROCESSING")) return res.status(409).json({ error: detail });
   console.error(
     JSON.stringify({
       event: "live_call_api_error",
@@ -258,211 +262,254 @@ export function registerLiveCallRoutes(app: Express) {
         callSessionId
       );
       const leadLabel = session.leadLabel;
-      const systems = await listConnectedSystemsForUser(
-        user.id,
-        user.membership.organisationId
-      );
-      const communicationSource =
-        req.body?.communication &&
-        typeof req.body.communication === "object" &&
-        !Array.isArray(req.body.communication)
-          ? (req.body.communication as Record<string, unknown>)
-          : undefined;
-      const communication =
-        communicationSource &&
-        ["email", "sms", "whatsapp"].includes(
-          String(communicationSource.channel)
-        ) &&
-        typeof communicationSource.templateName === "string" &&
-        communicationSource.templateName.trim()
-          ? {
-              channel: communicationSource.channel as
-                | "email"
-                | "sms"
-                | "whatsapp",
-              templateName: communicationSource.templateName
-                .trim()
-                .slice(0, 180),
-              to:
-                typeof communicationSource.to === "string"
-                  ? communicationSource.to.trim().slice(0, 320)
-                  : undefined,
-              subject:
-                typeof communicationSource.subject === "string"
-                  ? communicationSource.subject.trim().slice(0, 500)
-                  : undefined,
-              body:
-                typeof communicationSource.body === "string"
-                  ? communicationSource.body.trim().slice(0, 20_000)
-                  : undefined,
-            }
-          : undefined;
-      const structuredOutcome = {
-        outcome,
-        nextStep:
-          typeof req.body?.nextStep === "string"
-            ? req.body.nextStep.trim().slice(0, 500)
-            : undefined,
-        callbackAt:
-          typeof req.body?.callbackAt === "string" &&
-          !Number.isNaN(new Date(req.body.callbackAt).valueOf())
-            ? new Date(req.body.callbackAt).toISOString()
-            : undefined,
-        templateName: communication?.templateName,
-        opportunityState: ["open", "won", "lost", "unchanged"].includes(
-          req.body?.opportunityState
-        )
-          ? req.body.opportunityState
-          : "unchanged",
-      };
-      const summary = await prepareOutcomeAwarePostCallSummary({
-        leadLabel,
-        transcript,
-        structured: structuredOutcome,
-        billing: {
+      const result = await runCanonicalCallCloseout(
+        {
           userId: user.id,
           organisationId: user.membership.organisationId,
-          feature: "post_call_summary",
-          reference: `call:${callSessionId}`,
-        },
-      });
-      const identity = await resolveLiveCallCloseoutIdentity({
-        organisationId: user.membership.organisationId,
-        session,
-        advanced: {
-          contactExternalId:
-            typeof req.body?.contactExternalId === "string"
-              ? req.body.contactExternalId
-              : undefined,
-          taskExternalId:
-            typeof req.body?.taskExternalId === "string"
-              ? req.body.taskExternalId
-              : undefined,
-          opportunityExternalId:
-            typeof req.body?.opportunityExternalId === "string"
-              ? req.body.opportunityExternalId
-              : undefined,
-        },
-      });
-      await completeLiveCallExact({
-        userId: user.id,
-        organisationId: user.membership.organisationId,
-        callSessionId,
-        transcript,
-        summary: summary.content,
-        structuredOutcome,
-      });
-      if (structuredOutcome.callbackAt && req.body?.commitmentsConfirmed === true) {
-        await persistConfirmedCommitment({
-          userId: user.id,
-          organisationId: user.membership.organisationId,
-          title: structuredOutcome.nextStep || `Follow up with ${leadLabel}`,
-          dueAt: new Date(structuredOutcome.callbackAt),
-          timezone: user.membership.timezone,
-          source: "call_commitment",
-          sourceReference: `call:${callSessionId}:callback`,
-          contactExternalId: identity?.contactExternalId,
-          opportunityExternalId: identity?.opportunityExternalId,
-        });
-      }
-      const routedCommunication = communication
-        ? {
-            ...communication,
-            to:
-              communication.to ||
-              (communication.channel === "email"
-                ? identity?.email
-                : identity?.phone),
-          }
-        : undefined;
-      const planned = planTelesalesCloseout({
-        callSessionId,
-        leadLabel,
-        summary: summary.content,
-        outcome,
-        nextStep: structuredOutcome.nextStep,
-        callbackAt: structuredOutcome.callbackAt,
-        opportunityState: structuredOutcome.opportunityState,
-        contactStatus:
-          typeof req.body?.contactStatus === "string"
-            ? req.body.contactStatus.trim().slice(0, 120)
-            : undefined,
-        communication: routedCommunication,
-        contactExternalId: identity?.contactExternalId,
-        taskExternalId: identity?.taskExternalId,
-        opportunityExternalId: identity?.opportunityExternalId,
-        connectedSystemId: identity?.connectedSystemId,
-        provider: identity?.provider,
-        commitmentsConfirmed: req.body?.commitmentsConfirmed === true,
-      });
-      const proposed = routeConnectedSystemActions(planned, systems);
-      const workflowRunId = await createWorkflowRun({
-        userId: user.id,
-        organisationId: user.membership.organisationId,
-        workflowKey: "post_call_closeout",
-        leadLabel,
-        payload: {
-          sourceCallSessionId: callSessionId,
-          confirmedOutcome: outcome,
-          commitmentsConfirmed: req.body?.commitmentsConfirmed === true,
-        },
-        verificationSummary:
-          "The salesperson confirmed this structured outcome. Actions use the existing policy, review, claim, deterministic execution, postcondition evidence, and idempotency path.",
-        actions: proposed,
-      });
-      const proposals = await listActionProposals(
-        user.id,
-        user.membership.organisationId,
-        workflowRunId
-      );
-      const policy = await getAutomationPolicy({
-        userId: user.id,
-        organisationId: user.membership.organisationId,
-      });
-      const autoExecutions = await executeAutoPreapprovedActions({
-        userId: user.id,
-        organisationId: user.membership.organisationId,
-        proposals,
-        policy,
-      });
-      const blockedActionCount = proposed.filter(
-        action =>
-          (action.payload.crmRoute as { routable?: boolean } | undefined)
-            ?.routable === false
-      ).length;
-      console.log(
-        JSON.stringify({
-          event: "live_call_completed",
-          userId: user.id,
           callSessionId,
-          outcome,
-          transcriptChars: transcript.length,
-          genxUsage: summary.usage ?? {},
-          creditsCharged: summary.creditsCharged ?? 0,
-          postCallGenxCalls: summary.genxCalls,
-          workflowRunId,
-          blockedActionCount,
-          autoExecutionCount: autoExecutions.length,
-        })
+          leadLabel,
+        },
+        async claim => {
+          const systems = await listConnectedSystemsForUser(
+            user.id,
+            user.membership.organisationId
+          );
+          const communicationSource =
+            req.body?.communication &&
+            typeof req.body.communication === "object" &&
+            !Array.isArray(req.body.communication)
+              ? (req.body.communication as Record<string, unknown>)
+              : undefined;
+          if (
+            communicationSource &&
+            !["email", "sms", "whatsapp"].includes(
+              String(communicationSource.channel)
+            )
+          )
+            throw new Error("A supported communication channel is required.");
+          const communicationIntent = communicationSource
+            ? {
+                channel: communicationSource.channel as
+                  | "email"
+                  | "sms"
+                  | "whatsapp",
+                templateName:
+                  typeof communicationSource.templateName === "string"
+                    ? communicationSource.templateName.trim().slice(0, 180)
+                    : "",
+                to:
+                  typeof communicationSource.to === "string"
+                    ? communicationSource.to.trim().slice(0, 320)
+                    : "",
+                subject:
+                  typeof communicationSource.subject === "string"
+                    ? communicationSource.subject.trim().slice(0, 500)
+                    : undefined,
+                body:
+                  typeof communicationSource.body === "string"
+                    ? communicationSource.body.trim().slice(0, 20_000)
+                    : "",
+              }
+            : undefined;
+          const structuredOutcome = {
+            outcome,
+            nextStep:
+              typeof req.body?.nextStep === "string"
+                ? req.body.nextStep.trim().slice(0, 500)
+                : undefined,
+            callbackAt:
+              typeof req.body?.callbackAt === "string" &&
+              !Number.isNaN(new Date(req.body.callbackAt).valueOf())
+                ? new Date(req.body.callbackAt).toISOString()
+                : undefined,
+            templateName: communicationIntent?.templateName || undefined,
+            opportunityState: ["open", "won", "lost", "unchanged"].includes(
+              req.body?.opportunityState
+            )
+              ? req.body.opportunityState
+              : "unchanged",
+          };
+          const identity = await resolveLiveCallCloseoutIdentity({
+            organisationId: user.membership.organisationId,
+            session,
+            advanced: {
+              contactExternalId:
+                typeof req.body?.contactExternalId === "string"
+                  ? req.body.contactExternalId
+                  : undefined,
+              taskExternalId:
+                typeof req.body?.taskExternalId === "string"
+                  ? req.body.taskExternalId
+                  : undefined,
+              opportunityExternalId:
+                typeof req.body?.opportunityExternalId === "string"
+                  ? req.body.opportunityExternalId
+                  : undefined,
+            },
+          });
+          const destination =
+            communicationIntent?.to ||
+            (communicationIntent?.channel === "email"
+              ? identity?.email
+              : identity?.phone) ||
+            "";
+          const communication =
+            communicationIntent && req.body?.commitmentsConfirmed === true
+              ? communicationIntent.templateName
+                ? await resolveApprovedCommunicationTemplate({
+                    organisationId: user.membership.organisationId,
+                    channel: communicationIntent.channel,
+                    templateName: communicationIntent.templateName,
+                    to: destination,
+                  })
+                : prepareCustomCommunication({
+                    channel: communicationIntent.channel,
+                    to: destination,
+                    subject: communicationIntent.subject,
+                    body: communicationIntent.body,
+                  })
+              : undefined;
+          const savedSummary = claim.input.summaryResult as
+            | Awaited<ReturnType<typeof prepareOutcomeAwarePostCallSummary>>
+            | undefined;
+          const summary = savedSummary?.content
+            ? savedSummary
+            : await prepareOutcomeAwarePostCallSummary({
+                leadLabel,
+                transcript,
+                structured: structuredOutcome,
+                billing: {
+                  userId: user.id,
+                  organisationId: user.membership.organisationId,
+                  feature: "post_call_summary",
+                  reference: `call:${callSessionId}`,
+                },
+              });
+          if (!savedSummary?.content)
+            await saveCallCloseoutSummary({
+              workflowRunId: claim.workflowRunId,
+              claimToken: claim.claimToken,
+              summaryResult: summary as unknown as Record<string, unknown>,
+            });
+          await completeLiveCallExact({
+            userId: user.id,
+            organisationId: user.membership.organisationId,
+            callSessionId,
+            transcript,
+            summary: summary.content,
+            structuredOutcome,
+          });
+          if (
+            structuredOutcome.callbackAt &&
+            req.body?.commitmentsConfirmed === true
+          ) {
+            await persistConfirmedCommitment({
+              userId: user.id,
+              organisationId: user.membership.organisationId,
+              title:
+                structuredOutcome.nextStep || `Follow up with ${leadLabel}`,
+              dueAt: new Date(structuredOutcome.callbackAt),
+              timezone: user.membership.timezone,
+              source: "call_commitment",
+              sourceReference: `call:${callSessionId}:callback`,
+              contactExternalId: identity?.contactExternalId,
+              opportunityExternalId: identity?.opportunityExternalId,
+            });
+          }
+          const planned = planTelesalesCloseout({
+            organisationId: user.membership.organisationId,
+            callSessionId,
+            leadLabel,
+            summary: summary.content,
+            outcome,
+            nextStep: structuredOutcome.nextStep,
+            callbackAt: structuredOutcome.callbackAt,
+            opportunityState: structuredOutcome.opportunityState,
+            contactStatus:
+              typeof req.body?.contactStatus === "string"
+                ? req.body.contactStatus.trim().slice(0, 120)
+                : undefined,
+            communication,
+            contactExternalId: identity?.contactExternalId,
+            taskExternalId: identity?.taskExternalId,
+            opportunityExternalId: identity?.opportunityExternalId,
+            connectedSystemId: identity?.connectedSystemId,
+            provider: identity?.provider,
+            commitmentsConfirmed: req.body?.commitmentsConfirmed === true,
+          });
+          const proposed = routeConnectedSystemActions(planned, systems);
+          const workflowRunId = claim.workflowRunId;
+          await prepareClaimedCloseoutWorkflow({
+            workflowRunId,
+            claimToken: claim.claimToken,
+            payload: {
+              userId: user.id,
+              organisationId: user.membership.organisationId,
+              sourceCallSessionId: callSessionId,
+              confirmedOutcome: outcome,
+              commitmentsConfirmed: req.body?.commitmentsConfirmed === true,
+              summaryResult: summary,
+            },
+            verificationSummary:
+              "The salesperson confirmed this structured outcome. Actions use the existing policy, review, claim, deterministic execution, postcondition evidence, and idempotency path.",
+            actions: proposed,
+          });
+          const proposals = await listActionProposals(
+            user.id,
+            user.membership.organisationId,
+            workflowRunId
+          );
+          const policy = await getAutomationPolicy({
+            userId: user.id,
+            organisationId: user.membership.organisationId,
+          });
+          const autoExecutions = await executeAutoPreapprovedActions({
+            userId: user.id,
+            organisationId: user.membership.organisationId,
+            proposals,
+            policy,
+          });
+          const blockedActionCount = proposed.filter(
+            action =>
+              (action.payload.crmRoute as { routable?: boolean } | undefined)
+                ?.routable === false
+          ).length;
+          console.log(
+            JSON.stringify({
+              event: "live_call_completed",
+              userId: user.id,
+              callSessionId,
+              outcome,
+              transcriptChars: transcript.length,
+              genxUsage: summary.usage ?? {},
+              creditsCharged: summary.creditsCharged ?? 0,
+              postCallGenxCalls: summary.genxCalls,
+              workflowRunId,
+              blockedActionCount,
+              autoExecutionCount: autoExecutions.length,
+            })
+          );
+          return {
+            content: summary.content,
+            usage: summary.usage ?? {},
+            creditsCharged: summary.creditsCharged ?? 0,
+            closeoutWorkflowRunId: workflowRunId,
+            closeoutActionCount: proposed.length,
+            blockedActionCount,
+            autoExecutions,
+            actions: proposals.map(proposal => ({
+              id: proposal.id,
+              actionType: proposal.actionType,
+              title: proposal.title,
+              state: proposal.state,
+              autoEligible:
+                policy.mode === "auto_preapproved" &&
+                policy.autoActionTypes.includes(proposal.actionType),
+            })),
+          };
+        }
       );
-      return res.json({
-        content: summary.content,
-        usage: summary.usage ?? {},
-        creditsCharged: summary.creditsCharged ?? 0,
-        closeoutWorkflowRunId: workflowRunId,
-        closeoutActionCount: proposed.length,
-        blockedActionCount,
-        autoExecutions,
-        actions: proposals.map(proposal => ({
-          id: proposal.id,
-          actionType: proposal.actionType,
-          title: proposal.title,
-          state: proposal.state,
-          autoEligible:
-            policy.mode === "auto_preapproved" &&
-            policy.autoActionTypes.includes(proposal.actionType),
-        })),
-      });
+      return res.json(result);
     } catch (error) {
       return sendLiveCallError(res, error);
     }

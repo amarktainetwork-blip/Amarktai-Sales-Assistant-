@@ -39,6 +39,19 @@ function assertDestination(channel: SalesChannel, destination: string) {
   return value;
 }
 
+export function validateSalesMessage<T extends SalesMessage>(message: T): T {
+  const to = assertDestination(message.channel, message.to);
+  const body = message.body.trim();
+  if (!body)
+    throw new Error(
+      "TEMPLATE_CONTENT_REQUIRED: outbound communication body cannot be blank."
+    );
+  const subject = message.subject?.trim();
+  if (message.channel === "email" && !subject)
+    throw new Error("Outbound sales email requires a subject.");
+  return { ...message, to, body, subject };
+}
+
 async function assertNotSuppressed(
   organisationId: number,
   message: SalesMessage,
@@ -203,8 +216,8 @@ export async function sendSalesMessage(input: {
   message: SalesMessage;
   correlationId: string;
 }): Promise<AdapterEvidence> {
-  const to = assertDestination(input.message.channel, input.message.to);
-  const message = { ...input.message, to };
+  const message = validateSalesMessage(input.message);
+  const to = message.to;
   await assertNotSuppressed(input.connection.organisationId, message, to);
   const native =
     message.channel === "email"
@@ -227,7 +240,7 @@ export async function sendSalesMessage(input: {
 
   let delivery: Record<string, unknown>;
   if (message.channel === "email") {
-    if (!message.subject?.trim())
+    if (!message.subject)
       throw new Error("Outbound sales email requires a subject.");
     const provider = emailProvider();
     if (provider === "outlook") {

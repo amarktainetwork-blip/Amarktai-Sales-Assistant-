@@ -44,6 +44,7 @@ import {
   verifyBrowserTarget,
   type BrowserTargetIdentity,
 } from "./operationContracts";
+import { recordLearnedRuntimeFailure } from "./runtimeFailure";
 
 const DEFAULT_GENIE_OPERATION_MAP: Record<string, string> = {
   searchContacts: "search_candidate",
@@ -360,10 +361,19 @@ async function runOperation(input: {
   };
   const script =
     learned?.definition.execute || operationScript(profile, input.operation);
-  if (!script)
-    throw new Error(
-      `OPERATION_NOT_LEARNED: '${operationKey}' has no deterministic definition.`
-    );
+  if (!script) {
+    const detail = `OPERATION_NOT_LEARNED: '${operationKey}' has no deterministic definition.`;
+    if (learned)
+      await recordLearnedRuntimeFailure({
+        organisationId: input.connection.organisationId,
+        connectedSystemId: input.connection.id,
+        operationKey,
+        version: learned.version,
+        correlationId: input.correlationId,
+        detail,
+      });
+    throw new Error(detail);
+  }
   const runScript = (
     page: Page,
     selected: SavedBrowserScript,
@@ -462,7 +472,7 @@ async function runOperation(input: {
       }
     );
     if (!result.success) throw new Error(result.detail);
-    if (learned && result.data.shadowMode !== "true")
+    if (learned)
       await recordBrowserOperationResult({
         organisationId: input.connection.organisationId,
         connectedSystemId: input.connection.id,
@@ -474,7 +484,10 @@ async function runOperation(input: {
           correlationId: input.correlationId,
           completedAt: result.completedAt,
           targetVerified: learned.definition.mode === "write",
-          postconditionVerified: learned.definition.mode === "write",
+          postconditionVerified:
+            learned.definition.mode === "write" &&
+            result.data.shadowMode !== "true",
+          shadowMode: result.data.shadowMode === "true",
           screenshotPath: result.screenshotPath,
         },
       });
@@ -493,18 +506,14 @@ async function runOperation(input: {
     };
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    if (
-      learned &&
-      /^EXECUTION_UNVERIFIED|^TARGET_VERIFICATION_FAILED/.test(detail)
-    )
-      await recordBrowserOperationResult({
+    if (learned)
+      await recordLearnedRuntimeFailure({
         organisationId: input.connection.organisationId,
         connectedSystemId: input.connection.id,
         operationKey,
         version: learned.version,
-        success: false,
-        error: detail,
-        evidence: { correlationId: input.correlationId, failure: detail },
+        correlationId: input.correlationId,
+        detail,
       });
     throw error;
   }

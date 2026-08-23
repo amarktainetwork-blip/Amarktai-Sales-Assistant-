@@ -259,6 +259,7 @@ export const workflowRuns = mysqlTable(
       onDelete: "set null",
     }),
     workflowKey: varchar("workflowKey", { length: 80 }).notNull(),
+    idempotencyKey: varchar("idempotencyKey", { length: 255 }),
     leadLabel: varchar("leadLabel", { length: 160 }).notNull(),
     status: mysqlEnum("status", [
       "prepared",
@@ -270,6 +271,9 @@ export const workflowRuns = mysqlTable(
       .default("prepared")
       .notNull(),
     input: json("input").$type<Record<string, unknown>>().notNull(),
+    claimToken: varchar("claimToken", { length: 64 }),
+    claimExpiresAt: timestamp("claimExpiresAt"),
+    result: json("result").$type<Record<string, unknown>>(),
     verificationSummary: text("verificationSummary").notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -280,6 +284,8 @@ export const workflowRuns = mysqlTable(
       table.organisationId,
       table.createdAt
     ),
+    uniqueIndex("workflowRuns_user_idempotency_uq").on(table.userId, table.idempotencyKey),
+    index("workflowRuns_claim_expiry_idx").on(table.status, table.claimExpiresAt),
   ]
 );
 
