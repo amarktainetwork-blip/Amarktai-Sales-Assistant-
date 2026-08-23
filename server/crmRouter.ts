@@ -7,6 +7,7 @@ export type ConnectedSystemRoute = {
   status: string;
   connectionMethod: string;
   verifiedCapabilities: string[];
+  configuration?: Record<string, unknown>;
 };
 
 export const ACTION_CONNECTED_CAPABILITIES: Record<string, string[][]> = {
@@ -32,29 +33,80 @@ export const ACTION_CONNECTED_CAPABILITIES: Record<string, string[][]> = {
   custom_crm_action: [["activities.write"]],
 };
 
-export function connectedSystemSupportsAction(system: ConnectedSystemRoute, actionType: string) {
-  const alternatives = ACTION_CONNECTED_CAPABILITIES[actionType] || [["activities.write"]];
-  return alternatives.some(required => required.every(capability => system.verifiedCapabilities.includes(capability)));
+export function connectedSystemSupportsAction(
+  system: ConnectedSystemRoute,
+  actionType: string
+) {
+  const alternatives = ACTION_CONNECTED_CAPABILITIES[actionType] || [
+    ["activities.write"],
+  ];
+  return alternatives.some(required =>
+    required.every(capability =>
+      system.verifiedCapabilities.includes(capability)
+    )
+  );
 }
 
-export function routeConnectedSystemActions<T extends { actionType: string; payload: Record<string, unknown> }>(actions: T[], systems: ConnectedSystemRoute[]) {
+export function routeConnectedSystemActions<
+  T extends { actionType: string; payload: Record<string, unknown> },
+>(actions: T[], systems: ConnectedSystemRoute[]) {
   const ready = systems.filter(system => system.status === "ready");
   return actions.map(action => {
     if (action.actionType === "create_calendar_event") {
       const outlook = getOutlookReadiness();
       const crmRoute = outlook.ready
-        ? { routable: true as const, provider: "outlook", displayName: "Microsoft Outlook", connectionMode: "microsoft_graph", requiredCapability: "calendar.create" }
-        : { routable: false as const, reason: "Microsoft Outlook calendar is not configured and verified for this deployment.", requiredCapability: "calendar.create" };
+        ? {
+            routable: true as const,
+            provider: "outlook",
+            displayName: "Microsoft Outlook",
+            connectionMode: "microsoft_graph",
+            requiredCapability: "calendar.create",
+          }
+        : {
+            routable: false as const,
+            reason:
+              "Microsoft Outlook calendar is not configured and verified for this deployment.",
+            requiredCapability: "calendar.create",
+          };
       return { ...action, payload: { ...action.payload, crmRoute } };
     }
-    const alternatives = ACTION_CONNECTED_CAPABILITIES[action.actionType] || [["activities.write"]];
-    const preferred = typeof action.payload.preferredProvider === "string" ? action.payload.preferredProvider : undefined;
-    const eligible = ready.filter(system => connectedSystemSupportsAction(system, action.actionType));
-    const chosen = preferred ? eligible.find(system => system.provider === preferred) : eligible[0];
-    const requiredCapability = alternatives.map(set => set.join("+")).join(" OR ");
+    const alternatives = ACTION_CONNECTED_CAPABILITIES[action.actionType] || [
+      ["activities.write"],
+    ];
+    const preferred =
+      typeof action.payload.preferredProvider === "string"
+        ? action.payload.preferredProvider
+        : undefined;
+    const preferredConnectedSystemId =
+      typeof action.payload.preferredConnectedSystemId === "number"
+        ? action.payload.preferredConnectedSystemId
+        : undefined;
+    const eligible = ready.filter(system =>
+      connectedSystemSupportsAction(system, action.actionType)
+    );
+    const chosen = preferredConnectedSystemId
+      ? eligible.find(system => system.id === preferredConnectedSystemId)
+      : preferred
+        ? eligible.find(system => system.provider === preferred)
+        : eligible[0];
+    const requiredCapability = alternatives
+      .map(set => set.join("+"))
+      .join(" OR ");
     const crmRoute = chosen
-      ? { routable: true as const, provider: chosen.provider, displayName: chosen.displayName, connectionMode: chosen.connectionMethod, connectedSystemId: chosen.id, requiredCapability }
-      : { routable: false as const, reason: `No backend-verified organisation CRM connection can perform '${action.actionType}' (${requiredCapability}).`, requiredCapability };
+      ? {
+          routable: true as const,
+          provider: chosen.provider,
+          displayName: chosen.displayName,
+          connectionMode: chosen.connectionMethod,
+          connectedSystemId: chosen.id,
+          requiredCapability,
+          shadowMode: chosen.configuration?.shadowMode === true,
+        }
+      : {
+          routable: false as const,
+          reason: `No backend-verified organisation CRM connection can perform '${action.actionType}' (${requiredCapability}).`,
+          requiredCapability,
+        };
     return { ...action, payload: { ...action.payload, crmRoute } };
   });
 }

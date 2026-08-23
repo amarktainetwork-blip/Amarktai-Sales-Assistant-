@@ -1,6 +1,14 @@
 import { sendEmail as sendSmtpEmail, getSmtpReadiness } from "./smtp";
 import { getOutlookReadiness, sendOutlookMail } from "./outlook";
-import type { AdapterConnection, AdapterEvidence, ConnectionSecretPayload, CrmAdapter } from "./crm/types";
+import type {
+  AdapterConnection,
+  AdapterEvidence,
+  ConnectionSecretPayload,
+  CrmAdapter,
+} from "./crm/types";
+import { and, eq, or } from "drizzle-orm";
+import { contactCommunicationSuppressions } from "../drizzle/schema";
+import { getDb } from "./db";
 
 export type SalesChannel = "email" | "sms" | "whatsapp";
 
@@ -24,62 +32,175 @@ function webhookConfig(channel: Exclude<SalesChannel, "email">) {
 function assertDestination(channel: SalesChannel, destination: string) {
   const value = destination.trim();
   if (!value) throw new Error(`A ${channel} destination is required.`);
-  if (channel === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) throw new Error("The outbound email address is invalid.");
-  if (channel !== "email" && !/^\+?[0-9][0-9 ()-]{5,30}$/.test(value)) throw new Error(`The outbound ${channel} number is invalid.`);
+  if (channel === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value))
+    throw new Error("The outbound email address is invalid.");
+  if (channel !== "email" && !/^\+?[0-9][0-9 ()-]{5,30}$/.test(value))
+    throw new Error(`The outbound ${channel} number is invalid.`);
   return value;
 }
 
-async function webhookSend(channel: Exclude<SalesChannel, "email">, message: SalesMessage, correlationId: string) {
-  const config = webhookConfig(channel);
-  if (!config.url) throw new Error(`${channel.toUpperCase()} delivery is not configured. Set ${channel === "sms" ? "SMS" : "WHATSAPP"}_WEBHOOK_URL or configure a CRM-native channel action.`);
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 15_000);
-  const headers: Record<string, string> = { "Content-Type": "application/json", Accept: "application/json", "Idempotency-Key": correlationId };
-  if (config.token) headers.Authorization = `Bearer ${config.token}`;
-  try {
-    const response = await fetch(config.url, { method: "POST", headers, signal: controller.signal, body: JSON.stringify({ to: assertDestination(channel, message.to), body: message.body, templateName: message.templateName, contactExternalId: message.contactExternalId, opportunityExternalId: message.opportunityExternalId, correlationId }) });
-    const text = await response.text();
-    if (!response.ok) throw new Error(`${channel.toUpperCase()} provider returned ${response.status}.`);
-    let providerResult: unknown = text;
-    try { providerResult = text ? JSON.parse(text) : {}; } catch { /* retain text */ }
-    return { delivered: true, provider: "webhook", result: providerResult };
-  } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") throw new Error(`${channel.toUpperCase()} delivery timed out.`);
-    throw error;
-  } finally { clearTimeout(timer); }
+export function validateSalesMessage<T extends SalesMessage>(message: T): T {
+  const to = assertDestination(message.channel, message.to);
+  const body = message.body.trim();
+  if (!body)
+    throw new Error(
+      "TEMPLATE_CONTENT_REQUIRED: outbound communication body cannot be blank."
+    );
+  const subject = message.subject?.trim();
+  if (message.channel === "email" && !subject)
+    throw new Error("Outbound sales email requires a subject.");
+  return { ...message, to, body, subject };
 }
 
-async function recordCommunication(adapter: CrmAdapter, connection: AdapterConnection, secret: ConnectionSecretPayload, message: SalesMessage, correlationId: string) {
+async function assertNotSuppressed(
+  organisationId: number,
+  message: SalesMessage,
+  destination: string
+) {
+  const db = await getDb();
+  if (!db)
+    throw new Error(
+      "Database connection is unavailable; outbound suppression cannot be verified."
+    );
+  const channel = message.channel === "whatsapp" ? "chat" : message.channel;
+  const senderReference =
+    message.channel === "email"
+      ? destination.toLowerCase()
+      : destination.replace(/[^0-9+]/g, "").replace(/^00/, "+");
+  const identity = message.contactExternalId
+    ? or(
+        eq(contactCommunicationSuppressions.senderReference, senderReference),
+        eq(
+          contactCommunicationSuppressions.contactExternalId,
+          message.contactExternalId
+        )
+      )
+    : eq(contactCommunicationSuppressions.senderReference, senderReference);
+  const suppressed = (
+    await db
+      .select({ id: contactCommunicationSuppressions.id })
+      .from(contactCommunicationSuppressions)
+      .where(
+        and(
+          eq(contactCommunicationSuppressions.organisationId, organisationId),
+          eq(contactCommunicationSuppressions.channel, channel),
+          identity
+        )
+      )
+      .limit(1)
+  )[0];
+  if (suppressed)
+    throw new Error(
+      "OUTBOUND_SUPPRESSED: this contact or destination has an active inbound opt-out."
+    );
+}
+
+async function webhookSend(
+  channel: Exclude<SalesChannel, "email">,
+  message: SalesMessage,
+  correlationId: string
+) {
+  const config = webhookConfig(channel);
+  if (!config.url)
+    throw new Error(
+      `${channel.toUpperCase()} delivery is not configured. Set ${channel === "sms" ? "SMS" : "WHATSAPP"}_WEBHOOK_URL or configure a CRM-native channel action.`
+    );
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15_000);
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+    "Idempotency-Key": correlationId,
+  };
+  if (config.token) headers.Authorization = `Bearer ${config.token}`;
   try {
-    const evidence = await adapter.createActivity({ connection, secret, correlationId: `${correlationId}:log`, activity: {
-      subject: `${message.channel.toUpperCase()} sent by Amarktai`,
-      title: `${message.channel.toUpperCase()} sent by Amarktai`,
-      body: message.body,
-      description: message.body,
-      channel: message.channel,
-      contactExternalId: message.contactExternalId,
-      opportunityExternalId: message.opportunityExternalId,
-      occurredAt: new Date().toISOString(),
-      status: "Completed",
-    } });
+    const response = await fetch(config.url, {
+      method: "POST",
+      headers,
+      signal: controller.signal,
+      body: JSON.stringify({
+        to: assertDestination(channel, message.to),
+        body: message.body,
+        templateName: message.templateName,
+        contactExternalId: message.contactExternalId,
+        opportunityExternalId: message.opportunityExternalId,
+        correlationId,
+      }),
+    });
+    const text = await response.text();
+    if (!response.ok)
+      throw new Error(
+        `${channel.toUpperCase()} provider returned ${response.status}.`
+      );
+    let providerResult: unknown = text;
+    try {
+      providerResult = text ? JSON.parse(text) : {};
+    } catch {
+      /* retain text */
+    }
+    return { delivered: true, provider: "webhook", result: providerResult };
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError")
+      throw new Error(`${channel.toUpperCase()} delivery timed out.`);
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function recordCommunication(
+  adapter: CrmAdapter,
+  connection: AdapterConnection,
+  secret: ConnectionSecretPayload,
+  message: SalesMessage,
+  correlationId: string
+) {
+  try {
+    const evidence = await adapter.createActivity({
+      connection,
+      secret,
+      correlationId: `${correlationId}:log`,
+      activity: {
+        subject: `${message.channel.toUpperCase()} sent by Amarktai`,
+        title: `${message.channel.toUpperCase()} sent by Amarktai`,
+        body: message.body,
+        description: message.body,
+        channel: message.channel,
+        contactExternalId: message.contactExternalId,
+        opportunityExternalId: message.opportunityExternalId,
+        occurredAt: new Date().toISOString(),
+        status: "Completed",
+      },
+    });
     return { logged: true, evidence };
   } catch (error) {
-    return { logged: false, error: error instanceof Error ? error.message : String(error) };
+    return {
+      logged: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
   }
 }
 
 function emailProvider() {
-  const requested = process.env.OUTBOUND_EMAIL_PROVIDER?.trim().toLowerCase() || "auto";
-  if (!["auto", "outlook", "smtp"].includes(requested)) throw new Error("OUTBOUND_EMAIL_PROVIDER must be auto, outlook, or smtp.");
+  const requested =
+    process.env.OUTBOUND_EMAIL_PROVIDER?.trim().toLowerCase() || "auto";
+  if (!["auto", "outlook", "smtp"].includes(requested))
+    throw new Error("OUTBOUND_EMAIL_PROVIDER must be auto, outlook, or smtp.");
   if (requested === "outlook") {
-    if (!getOutlookReadiness().ready) throw new Error("Outlook is selected for outbound sales email but Microsoft Graph is not configured.");
+    if (!getOutlookReadiness().ready)
+      throw new Error(
+        "Outlook is selected for outbound sales email but Microsoft Graph is not configured."
+      );
     return "outlook" as const;
   }
   if (requested === "smtp") {
-    if (!getSmtpReadiness().ready) throw new Error("SMTP is selected for outbound sales email but SMTP is not configured.");
+    if (!getSmtpReadiness().ready)
+      throw new Error(
+        "SMTP is selected for outbound sales email but SMTP is not configured."
+      );
     return "smtp" as const;
   }
-  return getOutlookReadiness().ready ? "outlook" as const : "smtp" as const;
+  return getOutlookReadiness().ready ? ("outlook" as const) : ("smtp" as const);
 }
 
 /**
@@ -95,27 +216,72 @@ export async function sendSalesMessage(input: {
   message: SalesMessage;
   correlationId: string;
 }): Promise<AdapterEvidence> {
-  const to = assertDestination(input.message.channel, input.message.to);
-  const message = { ...input.message, to };
-  const native = message.channel === "email" ? input.adapter.sendEmail : message.channel === "sms" ? input.adapter.sendSms : input.adapter.sendWhatsApp;
-  if (native) return native({ connection: input.connection, secret: input.secret, to, subject: message.subject, body: message.body, contactExternalId: message.contactExternalId, opportunityExternalId: message.opportunityExternalId, templateName: message.templateName, correlationId: input.correlationId });
+  const message = validateSalesMessage(input.message);
+  const to = message.to;
+  await assertNotSuppressed(input.connection.organisationId, message, to);
+  const native =
+    message.channel === "email"
+      ? input.adapter.sendEmail
+      : message.channel === "sms"
+        ? input.adapter.sendSms
+        : input.adapter.sendWhatsApp;
+  if (native)
+    return native({
+      connection: input.connection,
+      secret: input.secret,
+      to,
+      subject: message.subject,
+      body: message.body,
+      contactExternalId: message.contactExternalId,
+      opportunityExternalId: message.opportunityExternalId,
+      templateName: message.templateName,
+      correlationId: input.correlationId,
+    });
 
   let delivery: Record<string, unknown>;
   if (message.channel === "email") {
-    if (!message.subject?.trim()) throw new Error("Outbound sales email requires a subject.");
+    if (!message.subject)
+      throw new Error("Outbound sales email requires a subject.");
     const provider = emailProvider();
     if (provider === "outlook") {
-      await sendOutlookMail({ to, subject: message.subject.trim(), body: message.body, templateName: message.templateName?.trim() || "Amarktai approved sales email", reviewReference: input.correlationId });
+      await sendOutlookMail({
+        to,
+        subject: message.subject.trim(),
+        body: message.body,
+        templateName:
+          message.templateName?.trim() || "Amarktai approved sales email",
+        reviewReference: input.correlationId,
+      });
       delivery = { delivered: true, provider: "outlook" };
     } else {
-      await sendSmtpEmail({ to, subject: message.subject.trim(), text: message.body, html: `<main style="font-family:Arial,sans-serif;white-space:pre-wrap">${message.body.replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c] || c)}</main>` });
+      await sendSmtpEmail({
+        to,
+        subject: message.subject.trim(),
+        text: message.body,
+        html: `<main style="font-family:Arial,sans-serif;white-space:pre-wrap">${message.body.replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c] || c)}</main>`,
+      });
       delivery = { delivered: true, provider: "smtp" };
     }
   } else {
-    delivery = await webhookSend(message.channel, message, input.correlationId) as unknown as Record<string, unknown>;
+    delivery = (await webhookSend(
+      message.channel,
+      message,
+      input.correlationId
+    )) as unknown as Record<string, unknown>;
   }
-  const crmLog = await recordCommunication(input.adapter, input.connection, input.secret, message, input.correlationId);
-  return { operation: `send_${message.channel}`, correlationId: input.correlationId, completedAt: new Date().toISOString(), providerResult: { delivery, crmLog } };
+  const crmLog = await recordCommunication(
+    input.adapter,
+    input.connection,
+    input.secret,
+    message,
+    input.correlationId
+  );
+  return {
+    operation: `send_${message.channel}`,
+    correlationId: input.correlationId,
+    completedAt: new Date().toISOString(),
+    providerResult: { delivery, crmLog },
+  };
 }
 
 export function getSalesCommunicationsReadiness() {

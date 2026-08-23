@@ -1,12 +1,12 @@
 import { and, eq, sql } from "drizzle-orm";
-import { organisations, salesActivityEvents } from "../drizzle/schema";
+import { organisations, salesActivityEvents, users } from "../drizzle/schema";
 import { PRICING_PLANS, type PlanKey } from "../shared/pricing";
 import { getDb, recordAudit } from "./db";
-import { canManageOrganisation, requireOrganisationMembership } from "./organisation";
+import { canManageOrganisationForUser, requireOrganisationMembership } from "./organisation";
 
 export type CreditLedgerMetadata = {
   creditsDelta: number;
-  transactionType: "allowance" | "purchase" | "usage" | "adjustment" | "refund";
+  transactionType: "allowance" | "purchase" | "usage" | "usage_exempt" | "adjustment" | "refund";
   feature?: string;
   model?: string;
   providerUsage?: Record<string, unknown>;
@@ -30,11 +30,24 @@ function meta(event: typeof salesActivityEvents.$inferSelect): CreditLedgerMetad
   return { ...value, creditsDelta: Math.trunc(delta), transactionType: String(value.transactionType || "adjustment") as CreditLedgerMetadata["transactionType"] };
 }
 
-export function assessAiCreditDebit(entries: CreditLedgerMetadata[], credits: number, reference?: string) {
+export function assessAiCreditDebit(entries: CreditLedgerMetadata[], credits: number, reference?: string, billingExempt = false) {
   const balance = entries.reduce((sum, entry) => sum + entry.creditsDelta, 0);
-  if (reference && entries.some(entry => entry.transactionType === "usage" && entry.reference === reference)) return { idempotent: true as const, balance };
+  if (reference && entries.some(entry => ["usage", "usage_exempt"].includes(entry.transactionType) && entry.reference === reference)) return { idempotent: true as const, balance };
+  if (billingExempt) return { idempotent: false as const, balance, billingExempt: true as const };
   if (balance < credits) throw new Error(`This organisation has ${balance} AI Credits remaining but this operation requires ${credits}. Add credits or change the AI budget.`);
   return { idempotent: false as const, balance };
+}
+
+export function aiUsageMetadata(input: { credits: number; feature: string; model?: string; providerUsage?: Record<string, unknown>; reference?: string; billingExempt: boolean }): CreditLedgerMetadata {
+  return {
+    creditsDelta: input.billingExempt ? 0 : -input.credits,
+    transactionType: input.billingExempt ? "usage_exempt" : "usage",
+    feature: input.feature,
+    model: input.model,
+    providerUsage: input.providerUsage,
+    reference: input.reference,
+    note: input.billingExempt ? "platform_owner_billing_exemption" : undefined,
+  };
 }
 
 async function lockOrganisation(tx: Parameters<Parameters<NonNullable<Awaited<ReturnType<typeof getDb>>>["transaction"]>[0]>[0], organisationId: number) {
@@ -71,7 +84,11 @@ async function ledger(organisationId: number) {
 
 export async function getAiCreditWallet(input: { userId: number; organisationId: number }) {
   const membership = await requireOrganisationMembership(input.userId, input.organisationId);
-  await ensureMonthlyAllowance({ organisationId: input.organisationId, userId: input.userId, timezone: membership.timezone });
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const actor = (await db.select({ isPlatformOwner: users.isPlatformOwner }).from(users).where(eq(users.id, input.userId)).limit(1))[0];
+  const billingExempt = actor?.isPlatformOwner === true;
+  if (!billingExempt) await ensureMonthlyAllowance({ organisationId: input.organisationId, userId: input.userId, timezone: membership.timezone });
   const events = await ledger(input.organisationId);
   const entries = events.map(event => ({ event, metadata: meta(event) })).filter((item): item is { event: typeof events[number]; metadata: CreditLedgerMetadata } => Boolean(item.metadata));
   const balance = entries.reduce((sum, item) => sum + item.metadata.creditsDelta, 0);
@@ -80,7 +97,7 @@ export async function getAiCreditWallet(input: { userId: number; organisationId:
   const organisationDb = await getDb();
   const organisation = organisationDb ? (await organisationDb.select().from(organisations).where(eq(organisations.id, input.organisationId)).limit(1))[0] : undefined;
   const selectedPlan = plan((organisation?.settings as Record<string, unknown> | undefined)?.planKey);
-  return { balance, used, purchased, plan: selectedPlan, entries: entries.sort((a, b) => Number(b.event.occurredAt) - Number(a.event.occurredAt)).slice(0, 200).map(item => ({ id: item.event.id, userId: item.event.salespersonUserId, occurredAt: item.event.occurredAt, ...item.metadata })) };
+  return { balance, used, purchased, billingExempt, plan: selectedPlan, entries: entries.sort((a, b) => Number(b.event.occurredAt) - Number(a.event.occurredAt)).slice(0, 200).map(item => ({ id: item.event.id, userId: item.event.salespersonUserId, occurredAt: item.event.occurredAt, ...item.metadata })) };
 }
 
 async function append(input: { actorUserId: number; organisationId: number; salespersonUserId?: number; metadata: CreditLedgerMetadata }) {
@@ -94,24 +111,27 @@ export async function consumeAiCredits(input: { userId: number; organisationId: 
   const membership = await requireOrganisationMembership(input.userId, input.organisationId);
   const credits = Math.max(0, Math.floor(input.credits));
   if (!credits) return getAiCreditWallet({ userId: input.userId, organisationId: input.organisationId });
-  await ensureMonthlyAllowance({ organisationId: input.organisationId, userId: input.userId, timezone: membership.timezone });
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
+  const actor = (await db.select({ isPlatformOwner: users.isPlatformOwner }).from(users).where(eq(users.id, input.userId)).limit(1))[0];
+  const billingExempt = actor?.isPlatformOwner === true;
+  if (!billingExempt) await ensureMonthlyAllowance({ organisationId: input.organisationId, userId: input.userId, timezone: membership.timezone });
   const reference = input.reference?.slice(0, 180);
   await db.transaction(async tx => {
     await lockOrganisation(tx, input.organisationId);
     const events = await tx.select().from(salesActivityEvents).where(and(eq(salesActivityEvents.organisationId, input.organisationId), eq(salesActivityEvents.source, "ai_credit"))).limit(20_000);
     const entries = events.map(event => meta(event)).filter((item): item is CreditLedgerMetadata => Boolean(item));
-    const debit = assessAiCreditDebit(entries, credits, reference);
+    const debit = assessAiCreditDebit(entries, credits, reference, billingExempt);
     if (debit.idempotent) return;
-    await tx.insert(salesActivityEvents).values({ organisationId: input.organisationId, salespersonUserId: input.userId, eventType: "ai_credit_usage", source: "ai_credit", occurredAt: new Date(), metadata: { creditsDelta: -credits, transactionType: "usage", feature: input.feature.slice(0, 120), model: input.model?.slice(0, 160), providerUsage: input.providerUsage, reference } satisfies CreditLedgerMetadata });
+    const metadata = aiUsageMetadata({ credits, feature: input.feature.slice(0, 120), model: input.model?.slice(0, 160), providerUsage: input.providerUsage, reference, billingExempt });
+    await tx.insert(salesActivityEvents).values({ organisationId: input.organisationId, salespersonUserId: input.userId, eventType: billingExempt ? "ai_provider_usage" : "ai_credit_usage", source: "ai_credit", occurredAt: new Date(), metadata });
   });
   return getAiCreditWallet({ userId: input.userId, organisationId: input.organisationId });
 }
 
 export async function adjustAiCredits(input: { userId: number; organisationId: number; creditsDelta: number; transactionType: "purchase" | "adjustment" | "refund"; note?: string; reference?: string }) {
   const membership = await requireOrganisationMembership(input.userId, input.organisationId);
-  if (!canManageOrganisation(membership.role)) throw new Error("Only organisation owners and managers can adjust AI Credits.");
+  if (!(await canManageOrganisationForUser(input.userId, membership.role))) throw new Error("Only organisation owners, managers, and platform owners can adjust AI Credits.");
   const delta = Math.trunc(input.creditsDelta);
   if (!delta || Math.abs(delta) > 10_000_000) throw new Error("AI credit adjustment is invalid.");
   if ((input.transactionType === "purchase" || input.transactionType === "refund") && delta < 0) throw new Error(`${input.transactionType} transactions must add credits.`);
@@ -122,7 +142,7 @@ export async function adjustAiCredits(input: { userId: number; organisationId: n
 
 export async function setOrganisationPlan(input: { userId: number; organisationId: number; planKey: PlanKey }) {
   const membership = await requireOrganisationMembership(input.userId, input.organisationId);
-  if (!canManageOrganisation(membership.role)) throw new Error("Only organisation owners and managers can change the plan assignment.");
+  if (!(await canManageOrganisationForUser(input.userId, membership.role))) throw new Error("Only organisation owners, managers, and platform owners can change the plan assignment.");
   const selected = plan(input.planKey);
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");

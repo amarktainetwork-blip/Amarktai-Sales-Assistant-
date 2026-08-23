@@ -1,2 +1,77 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Amarktai Sidecar</title><link rel="stylesheet" href="sidepanel.css"></head><body><main><header><p class="eyebrow">AMARKTAI SIDECAR</p><h1>Work beside your CRM.</h1><p class="muted">Context is requested only for the active tab and only after the Amarktai server confirms that its domain is authorised.</p></header><section id="setup" class="card"><h2>Connect this sidecar</h2><label>Amarktai URL<input id="app-url" placeholder="https://amarktai.company.example"></label><label>Short-lived sidecar session<input id="session-token" type="password" placeholder="Paste a session issued from Amarktai"></label><button id="save">Save securely in this browser</button><p class="hint">The extension never receives CRM passwords, OAuth tokens, or server secrets.</p></section><section id="context" class="card hidden"><div class="row"><h2>Current page</h2><button id="refresh" class="quiet">Refresh</button></div><p id="domain" class="domain"></p><div id="status" class="status"></div><div id="priority"></div><p id="notice" class="hint"></p></section><footer><button id="disconnect" class="quiet">Clear sidecar session from this browser</button></footer></main><script type="module" src="sidepanel.js"></script></body></html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Amarktai Sidecar</title>
+    <link rel="stylesheet" href="sidepanel.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="eyebrow">AMARKTAI SIDECAR</p>
+        <h1>Work beside your CRM.</h1>
+        <p class="muted">
+          Context is requested only for the active tab and only after the
+          Amarktai server confirms that its domain is authorised.
+        </p>
+      </header>
+      <section id="setup" class="card">
+        <h2>Connect this sidecar</h2>
+        <label
+          >Amarktai URL<input
+            id="app-url"
+            placeholder="https://amarktai.company.example" /></label
+        ><label
+          >Short-lived sidecar session<input
+            id="session-token"
+            type="password"
+            placeholder="Paste a session issued from Amarktai" /></label
+        ><button id="save">Save securely in this browser</button>
+        <p class="hint">
+          The extension never receives CRM passwords, OAuth tokens, or server
+          secrets.
+        </p>
+      </section>
+      <section id="context" class="card hidden">
+        <div class="row">
+          <h2>Current page</h2>
+          <button id="refresh" class="quiet">Refresh</button>
+        </div>
+        <p id="domain" class="domain"></p>
+        <div id="status" class="status"></div>
+        <div id="priority"></div>
+        <p id="notice" class="hint"></p>
+        <div id="training">
+          <h2>Teach Amarktai</h2>
+          <p class="hint">
+            Start a manager-created training session, demonstrate one operation,
+            then submit the masked semantic steps.
+          </p>
+          <label
+            >Connected System ID<input
+              id="training-system-id"
+              inputmode="numeric" /></label
+          ><label
+            >Training Session ID<input
+              id="training-session-id"
+              inputmode="numeric"
+          /></label>
+          <div class="training-actions">
+            <button id="training-start">Start training</button
+            ><button id="training-stop" class="quiet" disabled>
+              Stop and submit
+            </button>
+          </div>
+          <p id="training-status" class="hint"></p>
+        </div>
+      </section>
+      <footer>
+        <button id="disconnect" class="quiet">
+          Clear sidecar session from this browser
+        </button>
+      </footer>
+    </main>
+    <script type="module" src="sidepanel.js"></script>
+  </body>
+</html>

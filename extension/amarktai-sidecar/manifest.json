@@ -3,7 +3,7 @@
   "name": "Amarktai Sidecar",
   "version": "0.1.0",
   "description": "Shows governed Amarktai sales context beside explicitly authorised company systems.",
-  "permissions": ["sidePanel", "storage", "tabs"],
+  "permissions": ["sidePanel", "storage", "tabs", "scripting"],
   "optional_host_permissions": ["https://*/*", "http://*/*"],
   "action": { "default_title": "Open Amarktai Sidecar" },
   "background": { "service_worker": "background.js", "type": "module" },

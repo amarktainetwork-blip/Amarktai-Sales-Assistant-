@@ -33,6 +33,24 @@ describe("canonical connected-system capability router", () => {
     expect(proposal.payload.crmRoute).toMatchObject({ routable: true, provider: "salesforce", connectedSystemId: 2 });
   });
 
+  it("routes inherited call context to the exact connected system before considering provider", () => {
+    const systems = [
+      { id: 11, provider: "custom_browser", displayName: "Other CRM", status: "ready", connectionMethod: "browser", verifiedCapabilities: ["notes.write"] },
+      { id: 12, provider: "custom_browser", displayName: "Genie", status: "ready", connectionMethod: "browser", verifiedCapabilities: ["notes.write"] },
+    ];
+    const [note] = routeConnectedSystemActions([
+      {
+        actionType: "append_contact_note",
+        payload: { preferredConnectedSystemId: 12, preferredProvider: "custom_browser" },
+      },
+    ], systems);
+    expect(note.payload.crmRoute).toMatchObject({
+      routable: true,
+      connectedSystemId: 12,
+      displayName: "Genie",
+    });
+  });
+
   it("routes calendar creation only when the installation-level Outlook boundary is configured", () => {
     const keys = ["OUTLOOK_TENANT_ID", "OUTLOOK_CLIENT_ID", "OUTLOOK_CLIENT_SECRET", "OUTLOOK_SENDER_EMAIL"] as const;
     const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));

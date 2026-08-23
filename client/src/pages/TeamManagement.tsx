@@ -1,4 +1,5 @@
 import DashboardLayout from "@/components/DashboardLayout";
+import ManagementElevation from "@/components/ManagementElevation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -240,7 +241,7 @@ export default function TeamManagement() {
     setSettings({ ...settings, [key]: Math.max(0, Math.min(1000, Number.parseInt(value || "0", 10) || 0)) });
   };
 
-  return <DashboardLayout><div className="mx-auto max-w-[1500px]">
+  return <DashboardLayout><div className="mx-auto max-w-[1500px]"><ManagementElevation />
     <header className="flex flex-col gap-5 border-b border-white/10 pb-7 xl:flex-row xl:items-end xl:justify-between">
       <div>
         <p className="text-[10px] font-black uppercase tracking-[.16em] text-[#83AEFF]">AMARKTAI / TEAM ADMINISTRATION</p>

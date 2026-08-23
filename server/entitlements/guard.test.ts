@@ -12,4 +12,8 @@ describe("organisation entitlement guard", () => {
     expect(() => assertEntitledFeature({ ...entitlement, status: "suspended" }, "advanced_automation")).toThrow("ENTITLEMENT_INACTIVE");
     expect(() => assertEntitlementLimit(entitlement, "connected_systems", 2)).toThrow("ENTITLEMENT_LIMIT_REACHED");
   });
+  it("allows an explicitly identified platform owner without changing normal users", () => {
+    expect(() => assertEntitledFeature(null, "tts", true)).not.toThrow();
+    expect(() => assertEntitlementLimit(null, "connected_systems", 100, true)).not.toThrow();
+  });
 });

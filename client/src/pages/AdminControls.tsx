@@ -1,4 +1,5 @@
 import DashboardLayout from "@/components/DashboardLayout";
+import ManagementElevation from "@/components/ManagementElevation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { BadgeDollarSign, Bot, Loader2, Save, ShieldCheck, Target, Users } from "lucide-react";
@@ -61,7 +62,7 @@ export default function AdminControls() {
   }
 
   if (loading) return <DashboardLayout><div className="grid min-h-[60vh] place-items-center"><Loader2 className="size-7 animate-spin text-[#8CB7FF]"/></div></DashboardLayout>;
-  return <DashboardLayout><div className="mx-auto max-w-[1500px] space-y-6">
+  return <DashboardLayout><div className="mx-auto max-w-[1500px] space-y-6"><ManagementElevation />
     <header className="border-b border-white/10 pb-7"><p className="text-[10px] font-black uppercase tracking-[.16em] text-[#83AEFF]">MANAGEMENT CONTROLS</p><h1 className="mt-2 font-display text-5xl font-bold tracking-[-.07em] text-white">Decide what Amarktai may do automatically.</h1><p className="mt-3 max-w-4xl text-sm leading-6 text-[#A9BFDF]">Set the automation boundary, salesperson targets and AI budget. CRM monitoring, task arithmetic and management exceptions remain deterministic and do not consume AI Credits.</p></header>
 
     <section className="grid gap-5 xl:grid-cols-[1.05fr_.95fr]"><article className="rounded-[1.75rem] border border-white/10 bg-[#0E2142] p-6"><div className="flex items-center gap-3"><span className="grid size-11 place-items-center rounded-xl bg-[#153B7A] text-[#9FC2FF]"><ShieldCheck size={20}/></span><div><p className="text-[10px] font-black uppercase tracking-[.13em] text-[#7FAAF8]">AUTOMATION POLICY</p><h2 className="font-display text-3xl font-bold text-white">Human control where it matters.</h2></div></div>

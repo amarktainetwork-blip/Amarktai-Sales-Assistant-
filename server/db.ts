@@ -64,6 +64,10 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     values.role = user.role;
     updateSet.role = user.role;
   }
+  if (user.isPlatformOwner !== undefined) {
+    values.isPlatformOwner = user.isPlatformOwner;
+    updateSet.isPlatformOwner = user.isPlatformOwner;
+  }
 
   await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
 }
@@ -87,13 +91,24 @@ export async function getUserByEmail(email: string) {
   return (await db.select().from(users).where(eq(users.email, email)).limit(1))[0];
 }
 
+export function localAdminPlatformOwnerEnabled(value = process.env.LOCAL_ADMIN_PLATFORM_OWNER) {
+  return value === "true";
+}
+
 export async function createLocalAdminIfMissing() {
   const email = process.env.LOCAL_ADMIN_EMAIL?.trim().toLowerCase();
   const password = process.env.LOCAL_ADMIN_PASSWORD;
   if (!email || !password) throw new Error("LOCAL_ADMIN_EMAIL and LOCAL_ADMIN_PASSWORD are required for Webdock local authentication.");
   const db = await requireDb();
   const existing = await getUserByEmail(email);
-  if (existing) return existing;
+  const platformOwner = localAdminPlatformOwnerEnabled();
+  if (existing) {
+    if (platformOwner && (!existing.isPlatformOwner || existing.role !== "admin")) {
+      await db.update(users).set({ role: "admin", isPlatformOwner: true }).where(eq(users.id, existing.id));
+      return getUserByEmail(email);
+    }
+    return existing;
+  }
   const passwordHash = await bcrypt.hash(password, 12);
   await db.insert(users).values({
     openId: `local:${email}`,
@@ -102,6 +117,7 @@ export async function createLocalAdminIfMissing() {
     loginMethod: "local",
     passwordHash,
     role: "admin",
+    isPlatformOwner: platformOwner,
     lastSignedIn: new Date(),
   });
   return getUserByEmail(email);
@@ -428,9 +444,9 @@ export async function createCallSession(input: {
   return id;
 }
 
-export async function createLiveCallSession(input: { userId: number; organisationId: number; leadLabel: string }) {
+export async function createLiveCallSession(input: { userId: number; organisationId: number; leadLabel: string; crmContext?: Record<string, unknown> }) {
   const db = await requireDb();
-  const result = await db.insert(callSessions).values({ userId: input.userId, organisationId: input.organisationId, leadLabel: input.leadLabel, status: "in_progress" });
+  const result = await db.insert(callSessions).values({ userId: input.userId, organisationId: input.organisationId, leadLabel: input.leadLabel, crmContext: input.crmContext, status: "in_progress" });
   const id = Number(result[0].insertId);
   await recordAudit({ userId: input.userId, organisationId: input.organisationId, eventType: "live_call_started", entityType: "call_session", entityId: String(id), summary: "Live coaching session started.", metadata: { leadLabel: input.leadLabel } });
   return id;

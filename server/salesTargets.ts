@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { organisations } from "../drizzle/schema";
 import { getDb, recordAudit } from "./db";
-import { canManageOrganisation, requireOrganisationMembership } from "./organisation";
+import { canManageOrganisationForUser, requireOrganisationMembership } from "./organisation";
 
 export type SalespersonTarget = {
   userId: number;
@@ -44,7 +44,7 @@ export async function getSalesTargets(input: { userId: number; organisationId: n
 
 export async function saveSalesTargets(input: { userId: number; organisationId: number; targets: SalespersonTarget[] }) {
   const membership = await requireOrganisationMembership(input.userId, input.organisationId);
-  if (!canManageOrganisation(membership.role)) throw new Error("Only organisation owners and managers can change salesperson targets.");
+  if (!(await canManageOrganisationForUser(input.userId, membership.role))) throw new Error("Only organisation owners, managers, and platform owners can change salesperson targets.");
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
   const organisation = (await db.select().from(organisations).where(eq(organisations.id, input.organisationId)).limit(1))[0];
