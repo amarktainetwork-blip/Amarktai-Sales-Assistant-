@@ -1,0 +1,7 @@
+.git
+node_modules
+dist
+.env
+deploy/webdock/config
+deploy/webdock/files
+deploy/webdock/backups
