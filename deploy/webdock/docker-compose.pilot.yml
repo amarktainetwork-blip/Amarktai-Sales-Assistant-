@@ -66,7 +66,7 @@ services:
       GENIE_SCRIPTS_CONFIG_PATH: /app/config/genie-scripts.json
       GENIE_ARTIFACT_DIR: /app/data/connector-evidence
       CRM_HEALTH_INTERVAL_MS: 43200000
-    command: ["node", "dist/healthWorker.js"]
+    command: ["node", "dist/genie/healthWorker.js"]
     volumes:
       - ./config:/app/config:ro
       - ./files/connector-evidence:/app/data/connector-evidence
