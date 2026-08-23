@@ -15,5 +15,5 @@ CREATE TABLE `crmPipelineStageMappings` (
 );
 --> statement-breakpoint
 ALTER TABLE `crmPipelineStageMappings` ADD CONSTRAINT `crmPipelineStageMappings_organisationId_organisations_id_fk` FOREIGN KEY (`organisationId`) REFERENCES `organisations`(`id`) ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE `crmPipelineStageMappings` ADD CONSTRAINT `crmPipelineStageMappings_connectedSystemId_connectedSystems_id_fk` FOREIGN KEY (`connectedSystemId`) REFERENCES `connectedSystems`(`id`) ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE `crmPipelineStageMappings` ADD CONSTRAINT `crm_pipeline_stage_mappings_connected_system_fk` FOREIGN KEY (`connectedSystemId`) REFERENCES `connectedSystems`(`id`) ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX `crm_pipeline_stage_mapping_org_category_idx` ON `crmPipelineStageMappings` (`organisationId`,`category`,`isActive`);
