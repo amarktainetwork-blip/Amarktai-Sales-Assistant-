@@ -74,8 +74,7 @@ GENIE_LOGIN_SUBMIT_SELECTOR=button[type="submit"]
 GENIE_DASHBOARD_SELECTOR=body
 
 # Microsoft 365 / Outlook Graph (optional).
-# When configured, reviewed outbound sales email can use Outlook and approved
-# create_calendar_event actions can create calendar events.
+# Used only when explicitly commissioned for Microsoft 365 mail/calendar workflows.
 OUTLOOK_TENANT_ID=
 OUTLOOK_CLIENT_ID=
 OUTLOOK_CLIENT_SECRET=
@@ -83,23 +82,17 @@ OUTLOOK_SENDER_EMAIL=
 OUTLOOK_WEBHOOK_CLIENT_STATE=
 OUTLOOK_INBOUND_ORGANISATION_ID=
 OUTLOOK_INBOUND_POLL_MS=5000
-# auto prefers Outlook when Graph is configured, otherwise SMTP. Values: auto|outlook|smtp
 OUTBOUND_EMAIL_PROVIDER=auto
 
-# SMTP is mandatory for login second factor, password recovery, invitations and reports.
+# SMTP is mandatory for Amarktai login second factor, password recovery,
+# invitations and reports. Client sales communication is performed through
+# the connected CRM's own verified functions, not through deployment-level
+# SMS/WhatsApp gateways or SMTP fallbacks.
 SMTP_HOST=smtp.example.com
 SMTP_PORT=587
 SMTP_SECURE=false
 SMTP_USER=replace_with_smtp_username
 SMTP_PASSWORD=replace_with_smtp_password
 SMTP_FROM=Amarktai Sales Assistant <no-reply@example.com>
-
-# Optional generic SMS / WhatsApp bridge. CRM-native/browser channel actions take precedence.
-# Endpoint JSON: {to, body, templateName?, contactExternalId?, opportunityExternalId?, correlationId}
-# The bridge must honour the Idempotency-Key header.
-SMS_WEBHOOK_URL=
-SMS_WEBHOOK_TOKEN=
-WHATSAPP_WEBHOOK_URL=
-WHATSAPP_WEBHOOK_TOKEN=
 
 ALLOW_MANUAL_PLAN_ASSIGNMENT=false
