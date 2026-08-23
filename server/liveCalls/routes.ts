@@ -14,11 +14,8 @@ import { listConnectedSystemsForUser } from "../connectedSystems";
 import { routeConnectedSystemActions } from "../crmRouter";
 import { detectLiveSignals } from "./signals";
 import { completeLiveCallExact, requireLiveCallOwner } from "./store";
-import {
-  TELESALES_OUTCOMES,
-  planTelesalesCloseout,
-  type TelesalesOutcome,
-} from "../telesales/closeoutPlanner";
+import { parseLiveCallCompletion } from "./completion";
+import { planTelesalesCloseout } from "../telesales/closeoutPlanner";
 import { getAutomationPolicy } from "../automationPolicy";
 import { executeAutoPreapprovedActions } from "../governedActions";
 import { resolveLiveCallCloseoutIdentity } from "./context";
@@ -248,20 +245,12 @@ export function registerLiveCallRoutes(app: Express) {
   app.post("/api/live-calls/complete", async (req, res) => {
     try {
       const user = await requireAuthorisedUser(req);
-      const callSessionId = Number(req.body?.callSessionId);
-      const transcript =
-        typeof req.body?.transcript === "string"
-          ? req.body.transcript.trim().slice(-40_000)
-          : "";
-      const outcome =
-        typeof req.body?.outcome === "string" &&
-        TELESALES_OUTCOMES.includes(req.body.outcome as TelesalesOutcome)
-          ? (req.body.outcome as TelesalesOutcome)
-          : undefined;
-      if (!Number.isInteger(callSessionId) || callSessionId <= 0 || !outcome)
+      const completion = parseLiveCallCompletion(req.body);
+      if (!completion.ok)
         return res.status(400).json({
           error: "A live call and salesperson-confirmed outcome are required.",
         });
+      const { callSessionId, transcript, outcome } = completion;
       const session = await requireLiveCallOwner(
         user.id,
         user.membership.organisationId,

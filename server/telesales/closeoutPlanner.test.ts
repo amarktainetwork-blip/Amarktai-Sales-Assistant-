@@ -99,4 +99,34 @@ describe("telesales closeout planner", () => {
       ).toBe(true);
     }
   );
+
+  it("reuses inherited contact, task and opportunity identity across closeout actions", () => {
+    const actions = planTelesalesCloseout({
+      ...base,
+      outcome: "callback",
+      contactExternalId: "contact-1",
+      taskExternalId: "task-1",
+      opportunityExternalId: "opportunity-1",
+      connectedSystemId: 12,
+      provider: "custom_browser",
+      callbackAt: "2026-08-25T08:00:00.000Z",
+      opportunityState: "open",
+    });
+    expect(actions.map(action => action.actionType)).toEqual(
+      expect.arrayContaining([
+        "create_activity",
+        "complete_active_task",
+        "schedule_callback",
+        "update_current_opportunity",
+      ])
+    );
+    for (const action of actions) {
+      expect(action.payload).toMatchObject({
+        contactExternalId: "contact-1",
+        taskExternalId: "task-1",
+        opportunityExternalId: "opportunity-1",
+        preferredConnectedSystemId: 12,
+      });
+    }
+  });
 });

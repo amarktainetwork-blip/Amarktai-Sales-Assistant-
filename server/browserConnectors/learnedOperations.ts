@@ -27,6 +27,9 @@ import {
   type LearnedBrowserOperationDefinition,
 } from "./operationContracts";
 
+export const CAPTURED_BROWSER_OPERATION_STATUS = "LEARNED" as const;
+export const REVIEWED_BROWSER_OPERATION_STATUS = "TEST_READY" as const;
+
 async function scopedSystem(organisationId: number, connectedSystemId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
@@ -296,7 +299,7 @@ export async function saveLearnedBrowserOperation(input: {
     connectedSystemId: input.connectedSystemId,
     operationKey,
     version,
-    status: "TEST_READY",
+    status: REVIEWED_BROWSER_OPERATION_STATUS,
     definition,
     prerequisites,
     targetAssertions,
@@ -512,7 +515,7 @@ export async function submitBrowserTrainingCapture(input: {
       connectedSystemId: input.connectedSystemId,
       operationKey: session.operationKey,
       version,
-      status: "LEARNED",
+      status: CAPTURED_BROWSER_OPERATION_STATUS,
       definition,
       prerequisites: {},
       targetAssertions: {},
@@ -544,7 +547,7 @@ export async function submitBrowserTrainingCapture(input: {
     operationKey: session.operationKey,
     version,
     capture,
-    status: "LEARNED" as const,
+    status: CAPTURED_BROWSER_OPERATION_STATUS,
   };
 }
 
