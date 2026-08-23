@@ -428,9 +428,9 @@ export async function createCallSession(input: {
   return id;
 }
 
-export async function createLiveCallSession(input: { userId: number; organisationId: number; leadLabel: string }) {
+export async function createLiveCallSession(input: { userId: number; organisationId: number; leadLabel: string; crmContext?: Record<string, unknown> }) {
   const db = await requireDb();
-  const result = await db.insert(callSessions).values({ userId: input.userId, organisationId: input.organisationId, leadLabel: input.leadLabel, status: "in_progress" });
+  const result = await db.insert(callSessions).values({ userId: input.userId, organisationId: input.organisationId, leadLabel: input.leadLabel, crmContext: input.crmContext, status: "in_progress" });
   const id = Number(result[0].insertId);
   await recordAudit({ userId: input.userId, organisationId: input.organisationId, eventType: "live_call_started", entityType: "call_session", entityId: String(id), summary: "Live coaching session started.", metadata: { leadLabel: input.leadLabel } });
   return id;

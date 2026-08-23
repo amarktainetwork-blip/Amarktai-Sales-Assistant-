@@ -5,7 +5,10 @@ import {
   createWorkflowRun,
   listActionProposals,
 } from "../db";
-import { prepareLiveCoachingTip, preparePostCallSummary } from "../liveCoach";
+import {
+  prepareLiveCoachingTip,
+  prepareOutcomeAwarePostCallSummary,
+} from "../liveCoach";
 import type { OrganisationMembership } from "../organisation";
 import { listConnectedSystemsForUser } from "../connectedSystems";
 import { routeConnectedSystemActions } from "../crmRouter";
@@ -18,6 +21,7 @@ import {
 } from "../telesales/closeoutPlanner";
 import { getAutomationPolicy } from "../automationPolicy";
 import { executeAutoPreapprovedActions } from "../governedActions";
+import { resolveLiveCallCloseoutIdentity } from "./context";
 
 const MAX_AUDIO_BYTES = 800_000;
 const ALLOWED_MIME = new Set([
@@ -121,11 +125,9 @@ function sendLiveCallError(res: Response, error: unknown) {
       detail: detail.slice(0, 300),
     })
   );
-  return res
-    .status(502)
-    .json({
-      error: detail.slice(0, 300) || "Live Call Companion request failed.",
-    });
+  return res.status(502).json({
+    error: detail.slice(0, 300) || "Live Call Companion request failed.",
+  });
 }
 
 export function registerLiveCallRoutes(app: Express) {
@@ -195,10 +197,6 @@ export function registerLiveCallRoutes(app: Express) {
     try {
       const user = await requireAuthorisedUser(req);
       const callSessionId = Number(req.body?.callSessionId);
-      const leadLabel =
-        typeof req.body?.leadLabel === "string"
-          ? req.body.leadLabel.trim().slice(0, 160)
-          : "";
       const transcriptChunk =
         typeof req.body?.transcriptChunk === "string"
           ? req.body.transcriptChunk.trim().slice(-8_000)
@@ -206,19 +204,17 @@ export function registerLiveCallRoutes(app: Express) {
       if (
         !Number.isInteger(callSessionId) ||
         callSessionId <= 0 ||
-        !leadLabel ||
         transcriptChunk.length < 2
       )
-        return res
-          .status(400)
-          .json({
-            error: "A live call, contact and transcript segment are required.",
-          });
-      await requireLiveCallOwner(
+        return res.status(400).json({
+          error: "A live call, contact and transcript segment are required.",
+        });
+      const session = await requireLiveCallOwner(
         user.id,
         user.membership.organisationId,
         callSessionId
       );
+      const leadLabel = session.leadLabel;
       const result = await prepareLiveCoachingTip({
         leadLabel,
         transcript: transcriptChunk,
@@ -253,10 +249,6 @@ export function registerLiveCallRoutes(app: Express) {
     try {
       const user = await requireAuthorisedUser(req);
       const callSessionId = Number(req.body?.callSessionId);
-      const leadLabel =
-        typeof req.body?.leadLabel === "string"
-          ? req.body.leadLabel.trim().slice(0, 160)
-          : "";
       const transcript =
         typeof req.body?.transcript === "string"
           ? req.body.transcript.trim().slice(-40_000)
@@ -266,41 +258,16 @@ export function registerLiveCallRoutes(app: Express) {
         TELESALES_OUTCOMES.includes(req.body.outcome as TelesalesOutcome)
           ? (req.body.outcome as TelesalesOutcome)
           : undefined;
-      if (
-        !Number.isInteger(callSessionId) ||
-        callSessionId <= 0 ||
-        !leadLabel ||
-        transcript.length < 4 ||
-        !outcome
-      )
-        return res
-          .status(400)
-          .json({
-            error:
-              "A live call, contact, transcript and salesperson-confirmed outcome are required.",
-          });
-      await requireLiveCallOwner(
+      if (!Number.isInteger(callSessionId) || callSessionId <= 0 || !outcome)
+        return res.status(400).json({
+          error: "A live call and salesperson-confirmed outcome are required.",
+        });
+      const session = await requireLiveCallOwner(
         user.id,
         user.membership.organisationId,
         callSessionId
       );
-      const summary = await preparePostCallSummary({
-        leadLabel,
-        transcript,
-        billing: {
-          userId: user.id,
-          organisationId: user.membership.organisationId,
-          feature: "post_call_summary",
-          reference: `call:${callSessionId}`,
-        },
-      });
-      await completeLiveCallExact({
-        userId: user.id,
-        organisationId: user.membership.organisationId,
-        callSessionId,
-        transcript,
-        summary: summary.content,
-      });
+      const leadLabel = session.leadLabel;
       const systems = await listConnectedSystemsForUser(
         user.id,
         user.membership.organisationId
@@ -340,10 +307,7 @@ export function registerLiveCallRoutes(app: Express) {
                   : undefined,
             }
           : undefined;
-      const planned = planTelesalesCloseout({
-        callSessionId,
-        leadLabel,
-        summary: summary.content,
+      const structuredOutcome = {
         outcome,
         nextStep:
           typeof req.body?.nextStep === "string"
@@ -354,28 +318,78 @@ export function registerLiveCallRoutes(app: Express) {
           !Number.isNaN(new Date(req.body.callbackAt).valueOf())
             ? new Date(req.body.callbackAt).toISOString()
             : undefined,
+        templateName: communication?.templateName,
         opportunityState: ["open", "won", "lost", "unchanged"].includes(
           req.body?.opportunityState
         )
           ? req.body.opportunityState
           : "unchanged",
+      };
+      const summary = await prepareOutcomeAwarePostCallSummary({
+        leadLabel,
+        transcript,
+        structured: structuredOutcome,
+        billing: {
+          userId: user.id,
+          organisationId: user.membership.organisationId,
+          feature: "post_call_summary",
+          reference: `call:${callSessionId}`,
+        },
+      });
+      const identity = await resolveLiveCallCloseoutIdentity({
+        organisationId: user.membership.organisationId,
+        session,
+        advanced: {
+          contactExternalId:
+            typeof req.body?.contactExternalId === "string"
+              ? req.body.contactExternalId
+              : undefined,
+          taskExternalId:
+            typeof req.body?.taskExternalId === "string"
+              ? req.body.taskExternalId
+              : undefined,
+          opportunityExternalId:
+            typeof req.body?.opportunityExternalId === "string"
+              ? req.body.opportunityExternalId
+              : undefined,
+        },
+      });
+      await completeLiveCallExact({
+        userId: user.id,
+        organisationId: user.membership.organisationId,
+        callSessionId,
+        transcript,
+        summary: summary.content,
+        structuredOutcome,
+      });
+      const routedCommunication = communication
+        ? {
+            ...communication,
+            to:
+              communication.to ||
+              (communication.channel === "email"
+                ? identity?.email
+                : identity?.phone),
+          }
+        : undefined;
+      const planned = planTelesalesCloseout({
+        callSessionId,
+        leadLabel,
+        summary: summary.content,
+        outcome,
+        nextStep: structuredOutcome.nextStep,
+        callbackAt: structuredOutcome.callbackAt,
+        opportunityState: structuredOutcome.opportunityState,
         contactStatus:
           typeof req.body?.contactStatus === "string"
             ? req.body.contactStatus.trim().slice(0, 120)
             : undefined,
-        communication,
-        contactExternalId:
-          typeof req.body?.contactExternalId === "string"
-            ? req.body.contactExternalId.trim().slice(0, 180)
-            : undefined,
-        taskExternalId:
-          typeof req.body?.taskExternalId === "string"
-            ? req.body.taskExternalId.trim().slice(0, 180)
-            : undefined,
-        opportunityExternalId:
-          typeof req.body?.opportunityExternalId === "string"
-            ? req.body.opportunityExternalId.trim().slice(0, 180)
-            : undefined,
+        communication: routedCommunication,
+        contactExternalId: identity?.contactExternalId,
+        taskExternalId: identity?.taskExternalId,
+        opportunityExternalId: identity?.opportunityExternalId,
+        connectedSystemId: identity?.connectedSystemId,
+        provider: identity?.provider,
         commitmentsConfirmed: req.body?.commitmentsConfirmed === true,
       });
       const proposed = routeConnectedSystemActions(planned, systems);
@@ -422,6 +436,7 @@ export function registerLiveCallRoutes(app: Express) {
           transcriptChars: transcript.length,
           genxUsage: summary.usage ?? {},
           creditsCharged: summary.creditsCharged ?? 0,
+          postCallGenxCalls: summary.genxCalls,
           workflowRunId,
           blockedActionCount,
           autoExecutionCount: autoExecutions.length,

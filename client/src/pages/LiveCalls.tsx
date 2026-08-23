@@ -39,6 +39,25 @@ type CoachingResult = {
   }>;
   autoExecutions?: Array<Record<string, unknown>>;
 };
+type CallContext = {
+  connectedSystemId: number;
+  provider: string;
+  contactExternalId: string;
+  contactName: string;
+  companyName?: string;
+  email?: string;
+  phone?: string;
+  taskExternalId?: string;
+  taskTitle?: string;
+  opportunityExternalId?: string;
+  opportunityName?: string;
+  pipeline?: string;
+  stage?: string;
+  lastInteraction?: string;
+  recentInbound?: string;
+  reasons: string[];
+  objective?: string;
+};
 
 function blobToBase64(blob: Blob) {
   return blob.arrayBuffer().then(buffer => {
@@ -122,6 +141,9 @@ export default function LiveCalls() {
   const [taskExternalId, setTaskExternalId] = useState("");
   const [contactExternalId, setContactExternalId] = useState("");
   const [opportunityExternalId, setOpportunityExternalId] = useState("");
+  const [selectedContactId, setSelectedContactId] = useState<
+    number | undefined
+  >();
   const [communicationChannel, setCommunicationChannel] = useState("");
   const [templateName, setTemplateName] = useState("");
   const [closeoutActions, setCloseoutActions] = useState<
@@ -136,6 +158,37 @@ export default function LiveCalls() {
   const coachingRef = useRef(false);
 
   const startSession = trpc.calls.startLive.useMutation();
+  const initialSessionId = Number(
+    new URLSearchParams(window.location.search).get("sessionId") || 0
+  );
+  const callContext = trpc.calls.context.useQuery(
+    { callSessionId: sessionId || initialSessionId },
+    { enabled: Boolean(sessionId || initialSessionId), retry: false }
+  );
+  const contactMatches = trpc.calls.searchContacts.useQuery(
+    { query: leadLabel.trim() || "--" },
+    { enabled: !sessionId && leadLabel.trim().length >= 2, retry: false }
+  );
+
+  useEffect(() => {
+    if (initialSessionId > 0 && !sessionId) setSessionId(initialSessionId);
+  }, [initialSessionId, sessionId]);
+  useEffect(() => {
+    if (!callContext.data) return;
+    setLeadLabel(callContext.data.leadLabel);
+    const context = callContext.data.context as CallContext | undefined;
+    setContactExternalId(context?.contactExternalId || "");
+    setTaskExternalId(context?.taskExternalId || "");
+    setOpportunityExternalId(context?.opportunityExternalId || "");
+  }, [callContext.data]);
+  useEffect(() => {
+    if (contactMatches.data?.length === 1)
+      setSelectedContactId(contactMatches.data[0].id);
+    else if (
+      !contactMatches.data?.some(contact => contact.id === selectedContactId)
+    )
+      setSelectedContactId(undefined);
+  }, [contactMatches.data]);
 
   useEffect(() => {
     fetch("/api/live-calls/readiness", { credentials: "include" })
@@ -238,9 +291,14 @@ export default function LiveCalls() {
         "Speech-to-text is not configured for this deployment."
       );
     try {
-      const activeSessionId =
-        sessionId ??
-        (await startSession.mutateAsync({ leadLabel: leadLabel.trim() }));
+      const started = sessionId
+        ? undefined
+        : await startSession.mutateAsync({
+            leadLabel: leadLabel.trim(),
+            contactId: selectedContactId,
+          });
+      const activeSessionId = sessionId ?? started!.callSessionId;
+      if (started?.leadLabel) setLeadLabel(started.leadLabel);
       setSessionId(activeSessionId);
       const capture = await getCaptureStream(captureMode);
       sourcesRef.current = capture.sources;
@@ -304,8 +362,27 @@ export default function LiveCalls() {
     await audioContextRef.current?.close().catch(() => undefined);
     audioContextRef.current = undefined;
     await pendingRef.current;
-    if (sessionId && transcriptRef.current.trim().length >= 4)
+    if (sessionId) setAwaitingCloseout(true);
+  }
+
+  async function recordAttemptWithoutAudio() {
+    try {
+      const started = sessionId
+        ? undefined
+        : await startSession.mutateAsync({
+            leadLabel: leadLabel.trim(),
+            contactId: selectedContactId,
+          });
+      const activeSessionId = sessionId ?? started!.callSessionId;
+      setSessionId(activeSessionId);
+      if (started?.leadLabel) setLeadLabel(started.leadLabel);
+      setOutcome("no_answer");
       setAwaitingCloseout(true);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Could not start call attempt."
+      );
+    }
   }
 
   async function completeCloseout() {
@@ -373,6 +450,49 @@ export default function LiveCalls() {
           service and are not retained by this bridge.
         </p>
       </header>
+      {callContext.data?.context && (
+        <section className="mt-6 rounded-[1.5rem] border border-[#3D69AD]/40 bg-[#0E2142] p-6">
+          <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#7FAAF8]">
+            DETERMINISTIC PRE-CALL BRIEF
+          </p>
+          <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+            {[
+              [
+                "Customer",
+                `${callContext.data.context.contactName}${callContext.data.context.companyName ? ` · ${callContext.data.context.companyName}` : ""}\n${callContext.data.context.phone || callContext.data.context.email || "No synchronized phone/email"}`,
+              ],
+              [
+                "CRM",
+                `${callContext.data.context.provider} · ${callContext.data.context.pipeline || "No pipeline"} / ${callContext.data.context.stage || "No stage"}\n${callContext.data.context.opportunityName || "No open opportunity"}`,
+              ],
+              [
+                "Current work",
+                callContext.data.context.taskTitle ||
+                  "No current synchronized task",
+              ],
+              [
+                "Recent history",
+                callContext.data.context.recentInbound ||
+                  callContext.data.context.lastInteraction ||
+                  "No recent synchronized interaction",
+              ],
+              [
+                "Why call now / objective",
+                `${callContext.data.context.reasons.join(" · ") || "Manual verified contact"}\n${callContext.data.context.objective || "Confirm the next factual step"}`,
+              ],
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-xl bg-[#08172F] p-4">
+                <p className="text-[10px] font-black uppercase text-[#7896C1]">
+                  {label}
+                </p>
+                <p className="mt-2 whitespace-pre-line text-sm leading-6 text-[#DCE6F6]">
+                  {value}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.05fr_.95fr]">
         <section className="rounded-[1.5rem] border border-white/10 bg-[#0E2142] p-6">
           <div className="flex items-center justify-between gap-4">
@@ -405,10 +525,38 @@ export default function LiveCalls() {
           <Input
             disabled={recording}
             value={leadLabel}
-            onChange={event => setLeadLabel(event.target.value)}
-            placeholder="Jane Smith"
+            onChange={event => {
+              setLeadLabel(event.target.value);
+              setSelectedContactId(undefined);
+            }}
+            placeholder="Jane Smith, exact email, or CRM ID"
             className="mt-2 border-white/15 bg-[#08172F] text-white placeholder:text-[#607EA8]"
           />
+          {!sessionId && !!contactMatches.data?.length && (
+            <div className="mt-2 space-y-1 rounded-xl border border-white/10 bg-[#071326] p-2">
+              <p className="px-2 py-1 text-[10px] font-black uppercase text-[#7896C1]">
+                Choose the verified normalized CRM contact
+              </p>
+              {contactMatches.data.map(contact => (
+                <button
+                  key={contact.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedContactId(contact.id);
+                    setLeadLabel(contact.name);
+                  }}
+                  className={`block w-full rounded-lg px-3 py-2 text-left text-xs ${selectedContactId === contact.id ? "bg-[#153B7A] text-white" : "text-[#B7CAE7] hover:bg-white/5"}`}
+                >
+                  <b>{contact.name}</b>
+                  <span className="ml-2 text-[#8FA9CE]">
+                    {contact.email ||
+                      contact.phone ||
+                      `CRM contact ${contact.id}`}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
           <div className="mt-5 grid gap-3 md:grid-cols-2">
             <button
               disabled={recording}
@@ -458,6 +606,9 @@ export default function LiveCalls() {
                   !leadLabel.trim() ||
                   !consent ||
                   !sttReady ||
+                  (!!contactMatches.data &&
+                    contactMatches.data.length > 1 &&
+                    !selectedContactId) ||
                   startSession.isPending ||
                   completing
                 }
@@ -474,6 +625,22 @@ export default function LiveCalls() {
               >
                 <Square className="mr-2 size-4" />
                 Stop & prepare closeout
+              </Button>
+            )}
+            {!recording && (
+              <Button
+                variant="outline"
+                disabled={
+                  !leadLabel.trim() ||
+                  startSession.isPending ||
+                  (!!contactMatches.data &&
+                    contactMatches.data.length > 1 &&
+                    !selectedContactId)
+                }
+                onClick={() => void recordAttemptWithoutAudio()}
+                className="h-12 border-white/15 bg-white/5 text-white hover:bg-white/10"
+              >
+                Record no-answer / voicemail
               </Button>
             )}
             {recording && (
@@ -521,6 +688,7 @@ export default function LiveCalls() {
                     <option value="meeting_booked">Meeting booked</option>
                     <option value="no_answer">No answer</option>
                     <option value="voicemail">Voicemail</option>
+                    <option value="wrong_number">Wrong number</option>
                     <option value="not_interested">Not interested</option>
                     <option value="other">Other</option>
                   </select>
@@ -571,8 +739,13 @@ export default function LiveCalls() {
               </div>
               <details className="mt-4">
                 <summary className="cursor-pointer text-xs font-bold text-[#8FB7FF]">
-                  Exact CRM identifiers (recommended for verified writes)
+                  Advanced commissioning identifiers
                 </summary>
+                <p className="mt-2 text-xs text-[#8FA9CE]">
+                  Normal Today and resolved-contact calls inherit verified IDs
+                  automatically. Values entered here are still checked against
+                  the active organisation before use.
+                </p>
                 <div className="mt-3 grid gap-3 md:grid-cols-3">
                   <Input
                     value={contactExternalId}
@@ -597,6 +770,9 @@ export default function LiveCalls() {
                 </div>
               </details>
               <div className="mt-4 rounded-xl bg-[#153B7A]/45 p-3 text-xs leading-5 text-[#DCE7F8]">
+                {callContext.data?.context
+                  ? "Verified CRM identity inherited. "
+                  : "No verified CRM identity is attached; external actions will fail closed. "}
                 Preview: factual note + call activity
                 {taskExternalId ? " + complete current task" : ""}
                 {callbackAt ? " + create callback" : ""}

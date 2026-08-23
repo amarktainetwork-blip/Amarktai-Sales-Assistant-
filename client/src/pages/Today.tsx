@@ -37,6 +37,10 @@ export default function Today() {
     { organisationId: organisationId ?? 0 },
     { enabled: Boolean(organisationId) }
   );
+  const startCall = trpc.calls.startFromToday.useMutation({
+    onSuccess: result =>
+      navigate(`/live-calls?sessionId=${result.callSessionId}`),
+  });
   const priority = today.data?.queues.priority ?? [];
   const [selected, setSelected] = useState(0);
   const current = priority[selected];
@@ -228,11 +232,11 @@ export default function Today() {
                             variant="outline"
                             onClick={event => {
                               event.stopPropagation();
-                              navigate("/workflows");
+                              startCall.mutate({ opportunityId: record.id });
                             }}
                             className="border-white/15 bg-white/5 text-white hover:bg-white/10"
                           >
-                            Prepare <ArrowRight className="ml-1 size-3" />
+                            Start call <ArrowRight className="ml-1 size-3" />
                           </Button>
                         </td>
                       </tr>
@@ -260,6 +264,10 @@ export default function Today() {
               setSelected(index => (index + 1) % priority.length)
             }
             onPrepare={() => navigate("/workflows")}
+            onStart={() =>
+              current && startCall.mutate({ opportunityId: current.id })
+            }
+            starting={startCall.isPending}
           />
         </section>
         <section className="mt-6 grid gap-6 xl:grid-cols-2">
@@ -284,6 +292,8 @@ function SalesSession({
   record,
   onNext,
   onPrepare,
+  onStart,
+  starting,
 }: {
   record:
     | {
@@ -293,10 +303,13 @@ function SalesSession({
         currency: string | null;
         reasons: string[];
         staleDays: number;
+        id: number;
       }
     | undefined;
   onNext: () => void;
   onPrepare: () => void;
+  onStart: () => void;
+  starting: boolean;
 }) {
   return (
     <aside className="rounded-[1.5rem] border border-[#3D69AD]/40 bg-[#0E2142] p-6 shadow-[0_18px_40px_rgba(0,0,0,.2)]">
@@ -331,11 +344,19 @@ function SalesSession({
           </div>
           <div className="mt-5 grid gap-2">
             <Button
-              onClick={onPrepare}
+              onClick={onStart}
+              disabled={starting}
               className="bg-[#1B64F2] hover:bg-[#2B76FF]"
             >
               <Play className="mr-2 size-4" />
-              Prepare next action
+              {starting ? "Opening call…" : "Start call"}
+            </Button>
+            <Button
+              onClick={onPrepare}
+              variant="outline"
+              className="border-white/15 bg-white/5 text-white hover:bg-white/10"
+            >
+              Prepare governed work
             </Button>
             <Button
               onClick={onNext}

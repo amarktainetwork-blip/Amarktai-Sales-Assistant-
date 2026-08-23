@@ -5,6 +5,7 @@ export const TELESALES_OUTCOMES = [
   "meeting_booked",
   "no_answer",
   "voicemail",
+  "wrong_number",
   "not_interested",
   "other",
 ] as const;
@@ -29,6 +30,8 @@ export type ConfirmedCloseout = {
   contactExternalId?: string;
   taskExternalId?: string;
   opportunityExternalId?: string;
+  connectedSystemId?: number;
+  provider?: string;
   commitmentsConfirmed: boolean;
 };
 
@@ -48,6 +51,8 @@ function basePayload(input: ConfirmedCloseout) {
     contactExternalId: input.contactExternalId,
     taskExternalId: input.taskExternalId,
     opportunityExternalId: input.opportunityExternalId,
+    preferredConnectedSystemId: input.connectedSystemId,
+    preferredProvider: input.provider,
     contactName: input.leadLabel,
   };
 }

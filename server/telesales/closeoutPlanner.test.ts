@@ -72,4 +72,31 @@ describe("telesales closeout planner", () => {
       "create_activity",
     ]);
   });
+
+  it.each(["no_answer", "voicemail"] as const)(
+    "closes %s with no transcript-derived commitment",
+    outcome => {
+      const actions = planTelesalesCloseout({
+        ...base,
+        outcome,
+        summary:
+          outcome === "no_answer"
+            ? "Call attempt recorded. No customer conversation occurred."
+            : "Call reached voicemail. No customer conversation was completed.",
+        transcript: undefined,
+        contactExternalId: "contact-1",
+        taskExternalId: "task-1",
+      } as Parameters<typeof planTelesalesCloseout>[0]);
+      expect(actions.map(action => action.actionType)).toEqual([
+        "append_contact_note",
+        "create_activity",
+        "complete_active_task",
+      ]);
+      expect(
+        actions.every(
+          action => action.payload.contactExternalId === "contact-1"
+        )
+      ).toBe(true);
+    }
+  );
 });

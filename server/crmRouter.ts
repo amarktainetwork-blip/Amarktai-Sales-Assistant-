@@ -77,12 +77,18 @@ export function routeConnectedSystemActions<
       typeof action.payload.preferredProvider === "string"
         ? action.payload.preferredProvider
         : undefined;
+    const preferredConnectedSystemId =
+      typeof action.payload.preferredConnectedSystemId === "number"
+        ? action.payload.preferredConnectedSystemId
+        : undefined;
     const eligible = ready.filter(system =>
       connectedSystemSupportsAction(system, action.actionType)
     );
-    const chosen = preferred
-      ? eligible.find(system => system.provider === preferred)
-      : eligible[0];
+    const chosen = preferredConnectedSystemId
+      ? eligible.find(system => system.id === preferredConnectedSystemId)
+      : preferred
+        ? eligible.find(system => system.provider === preferred)
+        : eligible[0];
     const requiredCapability = alternatives
       .map(set => set.join("+"))
       .join(" OR ");

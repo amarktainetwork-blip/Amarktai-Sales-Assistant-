@@ -111,6 +111,12 @@ import {
   saveLearnedBrowserOperation,
   setBrowserShadowMode,
 } from "./browserConnectors/learnedOperations";
+import {
+  getLiveCallContext,
+  searchLiveCallContacts,
+  startLiveCallForContact,
+  startLiveCallFromToday,
+} from "./liveCalls/context";
 
 const workflowInput = z.object({
   workflowKey: z.enum(WORKFLOW_KEYS),
@@ -1335,6 +1341,42 @@ export const appRouter = router({
       }),
   }),
   calls: router({
+    startFromToday: secondFactorProcedure
+      .input(z.object({ opportunityId: z.number().int().positive() }))
+      .mutation(({ ctx, input }) => {
+        if (!ctx.activeOrganisation)
+          throw new Error(
+            "Choose an organisation before starting a live call."
+          );
+        return startLiveCallFromToday({
+          userId: ctx.user.id,
+          organisationId: ctx.activeOrganisation.organisationId,
+          opportunityId: input.opportunityId,
+        });
+      }),
+    searchContacts: secondFactorProcedure
+      .input(z.object({ query: z.string().trim().min(2).max(320) }))
+      .query(({ ctx, input }) => {
+        if (!ctx.activeOrganisation)
+          throw new Error(
+            "Choose an organisation before resolving a CRM contact."
+          );
+        return searchLiveCallContacts({
+          organisationId: ctx.activeOrganisation.organisationId,
+          query: input.query,
+        });
+      }),
+    context: secondFactorProcedure
+      .input(z.object({ callSessionId: z.number().int().positive() }))
+      .query(({ ctx, input }) => {
+        if (!ctx.activeOrganisation)
+          throw new Error("Choose an organisation before opening a live call.");
+        return getLiveCallContext({
+          userId: ctx.user.id,
+          organisationId: ctx.activeOrganisation.organisationId,
+          callSessionId: input.callSessionId,
+        });
+      }),
     saveNotes: secondFactorProcedure
       .input(
         z.object({
@@ -1353,17 +1395,29 @@ export const appRouter = router({
         });
       }),
     startLive: secondFactorProcedure
-      .input(z.object({ leadLabel: z.string().trim().min(1).max(160) }))
-      .mutation(({ ctx, input }) => {
+      .input(
+        z.object({
+          leadLabel: z.string().trim().min(1).max(160),
+          contactId: z.number().int().positive().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
         if (!ctx.activeOrganisation)
           throw new Error(
             "Choose an organisation before starting a live call."
           );
-        return createLiveCallSession({
+        if (input.contactId)
+          return startLiveCallForContact({
+            userId: ctx.user.id,
+            organisationId: ctx.activeOrganisation.organisationId,
+            contactId: input.contactId,
+          });
+        const callSessionId = await createLiveCallSession({
           userId: ctx.user.id,
           organisationId: ctx.activeOrganisation.organisationId,
-          ...input,
+          leadLabel: input.leadLabel,
         });
+        return { callSessionId, leadLabel: input.leadLabel };
       }),
     coachTranscript: secondFactorProcedure
       .input(

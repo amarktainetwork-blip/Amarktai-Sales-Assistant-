@@ -8,29 +8,67 @@ async function dbOrThrow() {
   return db;
 }
 
-export async function requireLiveCallOwner(userId: number, organisationId: number, callSessionId: number) {
+export async function requireLiveCallOwner(
+  userId: number,
+  organisationId: number,
+  callSessionId: number
+) {
   const db = await dbOrThrow();
-  const session = (await db.select().from(callSessions).where(and(eq(callSessions.id, callSessionId), eq(callSessions.userId, userId), eq(callSessions.organisationId, organisationId))).limit(1))[0];
+  const session = (
+    await db
+      .select()
+      .from(callSessions)
+      .where(
+        and(
+          eq(callSessions.id, callSessionId),
+          eq(callSessions.userId, userId),
+          eq(callSessions.organisationId, organisationId)
+        )
+      )
+      .limit(1)
+  )[0];
   if (!session) throw new Error("Live call session was not found.");
   return session;
 }
 
-export async function completeLiveCallExact(input: { userId: number; organisationId: number; callSessionId: number; transcript: string; summary: string }) {
+export async function completeLiveCallExact(input: {
+  userId: number;
+  organisationId: number;
+  callSessionId: number;
+  transcript: string;
+  summary: string;
+  structuredOutcome: Record<string, unknown>;
+}) {
   const db = await dbOrThrow();
-  await requireLiveCallOwner(input.userId, input.organisationId, input.callSessionId);
+  await requireLiveCallOwner(
+    input.userId,
+    input.organisationId,
+    input.callSessionId
+  );
   const transcript = input.transcript.trim().slice(-40_000);
-  await db.update(callSessions).set({
-    transcript,
-    summary: input.summary.slice(0, 20_000),
-    status: "ready_for_review",
-  }).where(and(eq(callSessions.id, input.callSessionId), eq(callSessions.userId, input.userId), eq(callSessions.organisationId, input.organisationId)));
+  await db
+    .update(callSessions)
+    .set({
+      transcript,
+      summary: input.summary.slice(0, 20_000),
+      structuredOutcome: input.structuredOutcome,
+      status: "ready_for_review",
+    })
+    .where(
+      and(
+        eq(callSessions.id, input.callSessionId),
+        eq(callSessions.userId, input.userId),
+        eq(callSessions.organisationId, input.organisationId)
+      )
+    );
   await recordAudit({
     userId: input.userId,
     organisationId: input.organisationId,
     eventType: "live_call_completed",
     entityType: "call_session",
     entityId: String(input.callSessionId),
-    summary: "Live Call Companion completed and prepared a reviewable post-call summary.",
+    summary:
+      "Live Call Companion completed and prepared a reviewable post-call summary.",
     metadata: { transcriptChars: transcript.length, rawAudioRetained: false },
   });
 }
