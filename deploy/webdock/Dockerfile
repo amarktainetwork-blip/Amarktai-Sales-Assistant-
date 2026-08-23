@@ -27,4 +27,4 @@ COPY --from=build --chown=amarktai:amarktai /app/package.json ./package.json
 RUN chmod +x /app/scripts/run-genie-health-check.sh
 USER amarktai
 EXPOSE 3000
-CMD ["node", "dist/index.js"]
+CMD ["node", "dist/_core/index.js"]
