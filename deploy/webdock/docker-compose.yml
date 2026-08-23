@@ -135,8 +135,10 @@ services:
     security_opt:
       - no-new-privileges:true
 
-  # Internal-only permissive Chromium/CDP runtime for deterministic browser connectors.
+  # Internal-only sandboxed Chromium/CDP runtime for deterministic browser connectors.
   # No host port is published; only application containers can reach DevTools on 9222.
+  # Chromium's Debian setuid sandbox requires privilege transitions inside this container,
+  # so no-new-privileges is intentionally not applied to this one isolated service.
   browser:
     build:
       context: ../..
@@ -150,8 +152,6 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
-    security_opt:
-      - no-new-privileges:true
 
 volumes:
   caddy_data:
