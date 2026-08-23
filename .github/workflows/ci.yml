@@ -66,6 +66,9 @@ jobs:
       - name: Validate Webdock Compose profiles
         run: |
           cp deploy/webdock/configuration.template .env
+          mkdir -p deploy/webdock/config deploy/webdock/files/connector-evidence
+          cp deploy/webdock/genie-scripts.template.json deploy/webdock/config/genie-scripts.json
+          chmod 644 deploy/webdock/config/genie-scripts.json
           docker compose -f deploy/webdock/docker-compose.yml --env-file .env config >/dev/null
           docker compose -f deploy/webdock/docker-compose.pilot.yml --env-file .env config >/dev/null
       - name: Build Webdock production images
@@ -135,9 +138,6 @@ jobs:
         run: |
           set -euo pipefail
           COMPOSE="docker compose -f deploy/webdock/docker-compose.yml --env-file .env"
-          mkdir -p deploy/webdock/config deploy/webdock/files/connector-evidence
-          cp deploy/webdock/genie-scripts.template.json deploy/webdock/config/genie-scripts.json
-          chmod 644 deploy/webdock/config/genie-scripts.json
           $COMPOSE up -d app worker reporter
           app_cid="$($COMPOSE ps -q app)"
           worker_cid="$($COMPOSE ps -q worker)"
