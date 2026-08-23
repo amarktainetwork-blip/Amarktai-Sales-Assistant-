@@ -31,7 +31,7 @@ async function check() {
 }
 
 void check();
-setInterval(() => void check(), intervalMs).unref();
+setInterval(() => void check(), intervalMs);
 
 let processingOutlook = false;
 async function processOutlook() {
@@ -60,7 +60,7 @@ void processOutlook();
 setInterval(
   () => void processOutlook(),
   Math.max(2_000, Number(process.env.OUTLOOK_INBOUND_POLL_MS || 5_000))
-).unref();
+);
 
 process.on("SIGTERM", () => process.exit(0));
 process.on("SIGINT", () => process.exit(0));

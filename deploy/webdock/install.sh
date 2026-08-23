@@ -16,6 +16,11 @@ if ! docker compose version >/dev/null 2>&1; then
   exit 1
 fi
 
+if ! command -v sudo >/dev/null 2>&1; then
+  echo "sudo is required so host bind-mount permissions can be aligned to the non-root application container." >&2
+  exit 1
+fi
+
 if [ ! -f .env ]; then
   cp deploy/webdock/configuration.template .env
   chmod 600 .env
@@ -44,6 +49,23 @@ fi
 COMPOSE="docker compose -f $COMPOSE_FILE --env-file .env"
 $COMPOSE config >/dev/null
 $COMPOSE build
+
+# The production image runs as an unprivileged application user. Resolve its
+# numeric uid/gid from the built image so host bind mounts remain least-privilege
+# even if the image's system-user allocation changes in a future base image.
+APP_RUNTIME_IDS="$($COMPOSE run --no-deps --rm --entrypoint sh app -c 'printf "%s:%s" "$(id -u)" "$(id -g)"')"
+case "$APP_RUNTIME_IDS" in
+  *:*) ;;
+  *)
+    echo "Could not resolve application runtime uid/gid from the built image." >&2
+    exit 1
+    ;;
+esac
+sudo chown "$APP_RUNTIME_IDS" deploy/webdock/config/genie-scripts.json
+sudo chmod 600 deploy/webdock/config/genie-scripts.json
+sudo chown -R "$APP_RUNTIME_IDS" deploy/webdock/files/connector-evidence
+sudo chmod 700 deploy/webdock/files/connector-evidence
+
 $COMPOSE up -d db redis
 if [ "$PROFILE" = "full" ]; then
   $COMPOSE up -d browser

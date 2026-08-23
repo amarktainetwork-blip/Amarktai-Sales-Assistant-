@@ -66,10 +66,25 @@ jobs:
       - name: Validate Webdock Compose profiles
         run: |
           cp deploy/webdock/configuration.template .env
+          mkdir -p deploy/webdock/config deploy/webdock/files/connector-evidence
+          cp deploy/webdock/genie-scripts.template.json deploy/webdock/config/genie-scripts.json
+          chmod 644 deploy/webdock/config/genie-scripts.json
           docker compose -f deploy/webdock/docker-compose.yml --env-file .env config >/dev/null
           docker compose -f deploy/webdock/docker-compose.pilot.yml --env-file .env config >/dev/null
       - name: Build Webdock production images
         run: docker compose -f deploy/webdock/docker-compose.yml --env-file .env build app browser
+      - name: Verify production image runtime entrypoints
+        run: |
+          docker compose -f deploy/webdock/docker-compose.yml --env-file .env run --no-deps --rm --entrypoint sh app -eu -c '
+            test -f dist/_core/index.js
+            test -f dist/genie/healthWorker.js
+            test -f dist/reportSchedulerWorker.js
+            test -f dist/compliance/retentionWorker.js
+            test -f dist/migrate.js
+            test -f dist/verifyIntegrations.js
+            test -f drizzle/meta/_journal.json
+            test -f dist/public/index.html
+          '
       - name: Prove fresh MariaDB production migrations
         shell: bash
         run: |
@@ -118,8 +133,33 @@ jobs:
           $COMPOSE logs --no-color browser
           docker inspect "$cid" --format '{{json .State}}'
           exit 1
-      - name: Verify production image contains runtime migrations and verifiers
+      - name: Prove production app and worker runtime
+        shell: bash
         run: |
-          docker compose -f deploy/webdock/docker-compose.yml --env-file .env run --no-deps --rm app sh -eu -c 'test -f dist/migrate.js; test -f dist/verifyIntegrations.js; test -f drizzle/meta/_journal.json; test -f dist/public/index.html'
+          set -euo pipefail
+          COMPOSE="docker compose -f deploy/webdock/docker-compose.yml --env-file .env"
+          $COMPOSE up -d app worker reporter
+          app_cid="$($COMPOSE ps -q app)"
+          worker_cid="$($COMPOSE ps -q worker)"
+          reporter_cid="$($COMPOSE ps -q reporter)"
+          for attempt in $(seq 1 30); do
+            app_health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}starting{{end}}' "$app_cid")"
+            worker_state="$(docker inspect --format '{{.State.Status}}' "$worker_cid")"
+            reporter_state="$(docker inspect --format '{{.State.Status}}' "$reporter_cid")"
+            if [ "$app_health" = "healthy" ] && [ "$worker_state" = "running" ] && [ "$reporter_state" = "running" ]; then
+              sleep 5
+              test "$(docker inspect --format '{{.State.Status}}' "$worker_cid")" = "running"
+              test "$(docker inspect --format '{{.State.Status}}' "$reporter_cid")" = "running"
+              docker exec "$app_cid" node -e "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+              exit 0
+            fi
+            if [ "$(docker inspect --format '{{.State.Status}}' "$app_cid")" = "exited" ]; then
+              break
+            fi
+            sleep 2
+          done
+          $COMPOSE ps
+          $COMPOSE logs --no-color --tail=200 app worker reporter
+          exit 1
       - name: Diff sanity
         run: git diff --check
