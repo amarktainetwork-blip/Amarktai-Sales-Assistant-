@@ -1,65 +1,121 @@
-# Amarktai Network Sales Assistant
+# Amarktai Sales Assistant
 
-**Amarktai Network Sales Assistant** is a governed sales-operations application for the Course2Career pilot. It provides a public product site, secure workspace access, a real data-backed operations dashboard, workflow preparation, review queues, call-context capture, approved knowledge, connection readiness, and a retained operational audit trail.
+Amarktai Sales Assistant is a self-hosted, multi-tenant sales operating layer for Webdock. It combines approved company knowledge, CRM context, review-first automation, sales/team intelligence, live-call support and audited external actions without giving AI an unreviewed path to customer systems.
 
-> The application is deliberately review-first. It can prepare work and retain decisions, but it must not claim that an external CRM, message, calendar, or email action occurred unless the configured integration reports the result and records the evidence.
+## Supported connections
 
-## Read the current implementation status first
+Native OAuth adapters are included for **HubSpot, Salesforce, Pipedrive and Zoho CRM**. **Genie** and other authorised web CRMs use the deterministic browser connector. The **Other CRM** path is designed for a company CRM that has a usable web interface but no dedicated Amarktai API adapter; selectors and operations must be calibrated and verified before the connection can become ready.
 
-The source brief describes a much larger system than is currently live. Before installing or evaluating this project, read the code-grounded status report at [`docs/implementation-status.md`](docs/implementation-status.md).
+Microsoft 365 / Outlook is optional. When the approved tenant/application is configured, reviewed sales email can use Microsoft Graph and approved `create_calendar_event` actions can create Outlook calendar events. SMTP remains mandatory for login second factor, password recovery, invitations and reports.
 
-It separates features into three states:
+No CRM, mailbox, calendar, SMS, WhatsApp or speech provider is represented as live merely because environment variables exist. The backend verification/capability result is the readiness source of truth.
 
-| State | Meaning |
-| --- | --- |
-| **Built** | The interface and backend contract exist in this repository. |
-| **Configuration-dependent** | The code exists but needs real production credentials, a permitted account, or calibration on Webdock before it can operate. |
-| **Not yet built** | The source brief calls for it, but this repository does not yet provide the complete data model, service, or end-to-end interface. |
+## Product areas
 
-## What is available now
+- Secure local registration/login, signed sessions, email second factor and organisation switching.
+- Guided company onboarding with safe public-website discovery and explicit knowledge approval.
+- Connected-system onboarding, encrypted connection credentials, OAuth, deterministic browser connectors, authorised-domain restrictions, health verification and synchronisation.
+- HubSpot, Salesforce, Pipedrive, Zoho, Genie and Other CRM execution through normalized adapter contracts.
+- Review/approve/skip queues with atomic action claims, idempotency protection and retained evidence/audit history.
+- GenX-backed specialist sales agents grounded in confirmed company knowledge.
+- Today workspace, pipeline/team intelligence, targets, management reporting and protected exports.
+- Live Call Companion with explicit microphone/consent flow and optional OpenAI-compatible STT.
+- Approved email/SMS/WhatsApp proposals, Microsoft 365 mail/calendar support and CRM logging.
+- AI-credit accounting with concurrency-safe debits and monthly allowance grants.
+- Self-hosted Webdock package with Caddy, MariaDB, Valkey and internal Chromium/CDP.
 
-| Product area | Current capability |
-| --- | --- |
-| Operations dashboard | A data-backed dashboard for review load, callbacks, overdue and due-today work, live/reviewable calls, workflow activity, connection profiles, and audit activity. |
-| Controlled workflows | First contact, Cyber final close, and Cyber post-consultation paths create reviewable action proposals with idempotency and historical-record safeguards. |
-| Review and evidence | Proposed actions can be approved or skipped. Approved CRM actions have a guarded execution route with normalized evidence status and proposal-specific audit history. |
-| Secure access | A self-hosted administrator sign-in path, signed sessions, role field, and email second-factor implementation are included. Live email verification needs SMTP configuration. |
-| Call desk | Manual live-call sessions, factual notes/transcript capture, coaching request contract, and post-call summary contract are included. Audio and telephony ingestion are not yet included. |
-| Knowledge | Approved notes and URLs can be added and used to ground the knowledge guidance route. Advanced document ingestion and vector search are not yet included. |
-| Connections | Browser-automation, Microsoft Graph, email, and intelligence-provider readiness/configuration surfaces exist. A real connection must be configured and tested before it is treated as active. |
+## Repository and release
 
-## Local development
+Canonical repository:
 
-```bash
-pnpm install
-pnpm dev
+```text
+https://github.com/amarktainetwork-blip/Amarktai-Sales-Assistant-.git
 ```
 
-Run the required checks before committing:
+Production release work is validated on `release/go-live-20260822` before merge into `main`. Never deploy a SHA that has not passed the repository production gates.
+
+## Webdock installation
+
+Use Ubuntu 24.04 with a non-root sudo user, Docker Engine and the Docker Compose plugin. Point the chosen domain to the VPS before public TLS acceptance.
 
 ```bash
+sudo mkdir -p /opt/amarktai-sales
+sudo chown "$USER":"$USER" /opt/amarktai-sales
+git clone https://github.com/amarktainetwork-blip/Amarktai-Sales-Assistant-.git /opt/amarktai-sales
+cd /opt/amarktai-sales
+git checkout release/go-live-20260822
+cp deploy/webdock/configuration.template .env
+chmod 600 .env
+nano .env
+```
+
+Generate the encrypted-connection master key separately:
+
+```bash
+openssl rand -base64 32
+```
+
+Do not commit `.env` or paste client secrets into tickets/chat.
+
+For a full self-hosted deployment:
+
+```bash
+AMARKTAI_DEPLOY_PROFILE=full sh deploy/webdock/install.sh
+```
+
+For a smaller pilot that uses an authorised external Playwright-compatible CDP endpoint:
+
+```bash
+AMARKTAI_DEPLOY_PROFILE=pilot sh deploy/webdock/install.sh
+```
+
+The installer runs preflight, builds the production image, starts infrastructure, applies versioned migrations through the compiled runtime migration runner, and starts the application/workers.
+
+## Production acceptance
+
+After DNS/TLS is active, run:
+
+```bash
+VERIFY_PUBLIC_URL="https://YOUR_DOMAIN" \
+AMARKTAI_DEPLOY_PROFILE=full \
+sh deploy/webdock/verify-production.sh
+```
+
+A client handover requires the core verifier to pass plus browser acceptance under a real account: login + SMTP code, company setup, confirmed knowledge, a real GenX response, the selected CRM's verification/sync, one authorised read and one safe reviewed write. Optional Outlook, STT, SMS and WhatsApp are only called live when their own authorised commissioning test succeeds.
+
+## Backup and recovery
+
+Create a backup before updates/schema changes:
+
+```bash
+AMARKTAI_DEPLOY_PROFILE=full sh deploy/webdock/backup.sh
+```
+
+The backup includes a compressed MariaDB dump plus the connector calibration/evidence trees, each with checksums and a manifest. `.env`, raw deployment secrets and the connection-secret master key are intentionally excluded. Keep encrypted copies off the VPS and protect the master key separately.
+
+Restore only with an explicit destructive confirmation:
+
+```bash
+AMARKTAI_CONFIRM_RESTORE=YES \
+AMARKTAI_DEPLOY_PROFILE=full \
+sh deploy/webdock/restore.sh \
+  deploy/webdock/backups/amarktai-YYYYMMDDTHHMMSSZ.sql.gz \
+  deploy/webdock/backups/amarktai-YYYYMMDDTHHMMSSZ-connector-files.tar.gz
+```
+
+To roll back application code after a failed release, use the **pre-update database backup**, check out the previously verified application SHA, rebuild the selected Compose profile, restore that matching backup, then run `smoke-test.sh` and `verify-production.sh`. Do not attempt schema downgrades against a newer database without restoring its matching pre-update backup.
+
+## Development/release gates
+
+```bash
+pnpm install --frozen-lockfile
 pnpm test
 pnpm check
+DATABASE_URL=mysql://migration:placeholder@127.0.0.1:3306/amarktai pnpm exec drizzle-kit check
 pnpm build
+pnpm audit --prod --audit-level=high
 ```
 
-## Webdock VPS package
+CI additionally validates migration-generation cleanliness, shell scripts, full/pilot Compose definitions, production Docker builds/runtime contents, removal of hosted preview/runtime dependencies and Git diff sanity.
 
-The self-hosted deployment package is located in [`deploy/webdock`](deploy/webdock). It includes the application container, reverse proxy configuration, MariaDB, Redis, Browserless Chromium, a CRM health worker, an environment template, and operational scripts.
-
-```bash
-git clone https://github.com/amarktainetwork-blip/Amarktai-Sales-Assistant.git /opt/amarktai-network
-cd /opt/amarktai-network
-cp deploy/webdock/configuration.template .env
-nano .env
-chmod +x deploy/webdock/install.sh scripts/run-genie-health-check.sh
-./deploy/webdock/install.sh
-```
-
-The Webdock package has been packaged and syntax-checked in development, but it still needs an end-to-end run on the target VPS. The installation guide at [`docs/webdock-vps-install.md`](docs/webdock-vps-install.md) documents the required production configuration, CRM selector calibration, and health-check steps.
-
-## Integration safety
-
-The browser CRM bridge intentionally has **no CRM API key**. It requires an authorised login, reviewed saved scripts, calibrated selectors, and evidence capture. Microsoft Graph mail/calendar capability is likewise configuration-dependent until the tenant, application permissions, sender, and test mailbox have been verified.
-
-The customer-facing application is branded as **Amarktai Network**. Provider names and credentials are technical deployment details, not product branding.
+See [`docs/webdock-vps-install.md`](docs/webdock-vps-install.md) for operator details and [`docs/implementation-status.md`](docs/implementation-status.md) for the evidence boundary between repository-complete and live-provider commissioned behavior.

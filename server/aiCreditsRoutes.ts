@@ -1,19 +1,10 @@
 import type { Express, Request, Response } from "express";
-import { parse as parseCookieHeader } from "cookie";
-import { COOKIE_NAME } from "@shared/const";
-import { getLocalSessionUser, isLocalAuthMode } from "./localAuth";
-import { sdk } from "./_core/sdk";
-import { TWO_FACTOR_COOKIE, verifyTwoFactorSession } from "./twoFactor";
-import { ensureDefaultOrganisation } from "./organisation";
+import { requireLocalHttpContext } from "./httpAuth";
 import { adjustAiCredits, getAiCreditWallet, setOrganisationPlan } from "./aiCredits";
 import type { PlanKey } from "../shared/pricing";
 
 async function authenticated(req: Request) {
-  const cookies = parseCookieHeader(req.headers.cookie ?? "");
-  const user = isLocalAuthMode() ? await getLocalSessionUser(cookies[COOKIE_NAME]) : await sdk.authenticateRequest(req);
-  if (!user || ("isCron" in user && user.isCron)) throw new Error("AUTH_REQUIRED");
-  if (!(await verifyTwoFactorSession(cookies[TWO_FACTOR_COOKIE], user.id))) throw new Error("TWO_FACTOR_REQUIRED");
-  return { userId: user.id, membership: await ensureDefaultOrganisation(user.id) };
+  return requireLocalHttpContext(req);
 }
 function sendError(res: Response, error: unknown) {
   const detail = error instanceof Error ? error.message : String(error);

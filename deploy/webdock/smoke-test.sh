@@ -9,7 +9,8 @@ COMPOSE_FILE="deploy/webdock/docker-compose.yml"
 COMPOSE="docker compose -f $COMPOSE_FILE --env-file .env"
 $COMPOSE ps
 
-$COMPOSE exec -T app node -e "fetch('http://127.0.0.1:3000/api/health').then(async r=>{const b=await r.text(); if(!r.ok) throw new Error(b); console.log(b)}).catch(e=>{console.error(e);process.exit(1)})"
+$COMPOSE exec -T app node -e "fetch('http://127.0.0.1:3000/healthz').then(async r=>{const b=await r.text(); if(!r.ok) throw new Error(b); console.log(b)}).catch(e=>{console.error(e);process.exit(1)})"
+$COMPOSE exec -T app node -e "fetch('http://127.0.0.1:3000/readyz').then(async r=>{const b=await r.text(); if(!r.ok) throw new Error(b); console.log(b)}).catch(e=>{console.error(e);process.exit(1)})"
 $COMPOSE exec -T db sh -eu -c 'mariadb-admin ping -uroot -p"$MARIADB_ROOT_PASSWORD" --silent'
 $COMPOSE exec -T redis valkey-cli ping | grep -qx PONG
 

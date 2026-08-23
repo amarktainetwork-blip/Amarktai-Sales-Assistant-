@@ -1,26 +1,17 @@
 import type { Express, Request, Response } from "express";
-import { parse as parseCookieHeader } from "cookie";
 import { and, eq } from "drizzle-orm";
-import { COOKIE_NAME } from "@shared/const";
 import { connectedSystems } from "../drizzle/schema";
 import { getDb, recordAudit } from "./db";
-import { getLocalSessionUser, isLocalAuthMode } from "./localAuth";
-import { ensureDefaultOrganisation } from "./organisation";
 import { canManageOrganisation } from "./organisationAccess";
-import { sdk } from "./_core/sdk";
-import { TWO_FACTOR_COOKIE, verifyTwoFactorSession } from "./twoFactor";
+import { requireLocalHttpContext } from "./httpAuth";
 import { getConnectedSystemForUser, recordConnectionVerification, saveConnectionSecret, toAdapterConnection } from "./connectedSystems";
 import { getCrmAdapter } from "./crm/adapterRegistry";
 import { randomUUID } from "node:crypto";
 
 async function requireManager(req: Request) {
-  const cookies = parseCookieHeader(req.headers.cookie ?? "");
-  const user = isLocalAuthMode() ? await getLocalSessionUser(cookies[COOKIE_NAME]) : await sdk.authenticateRequest(req);
-  if (!user || ("isCron" in user && user.isCron)) throw new Error("AUTH_REQUIRED");
-  if (!(await verifyTwoFactorSession(cookies[TWO_FACTOR_COOKIE], user.id))) throw new Error("TWO_FACTOR_REQUIRED");
-  const membership = await ensureDefaultOrganisation(user.id);
+  const { userId, membership } = await requireLocalHttpContext(req);
   if (!canManageOrganisation(membership.role)) throw new Error("MANAGER_REQUIRED");
-  return { userId: user.id, membership };
+  return { userId, membership };
 }
 
 function sendError(res: Response, error: unknown) {

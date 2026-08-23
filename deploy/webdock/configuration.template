@@ -1,26 +1,23 @@
 # Copy this file to .env at the repository root during Webdock installation.
 # Keep it private: deploy/webdock/install.sh enforces mode 0600.
 
-# Deployment profile is selected in the shell when running install.sh:
+# Deployment profile:
 #   AMARKTAI_DEPLOY_PROFILE=pilot sh deploy/webdock/install.sh
 #   AMARKTAI_DEPLOY_PROFILE=full  sh deploy/webdock/install.sh
 
-# Public network and persistent data
 DOMAIN=assistant.example.com
 DB_PASSWORD=replace_with_a_long_random_database_password
 DB_ROOT_PASSWORD=replace_with_a_different_long_random_root_password
-# The service is Valkey but retains the Redis protocol/URL name for library compatibility.
 REDIS_URL=redis://redis:6379
 
-# Full profile builds the repository's internal Chromium/CDP runtime automatically.
-# Pilot profile should point at an external authorised Chrome/Chromium CDP service.
+# Full profile builds internal Chromium/CDP. Pilot mode needs an external authorised CDP endpoint.
 BROWSERLESS_WS_ENDPOINT=
 
 # Application security
 JWT_SECRET=replace_with_a_long_random_jwt_secret
 SECRET_KEY=replace_with_a_long_random_application_secret
 APP_PUBLIC_URL=https://assistant.example.com
-# Exactly 32 random bytes encoded in base64; generate with: openssl rand -base64 32
+# Exactly 32 random bytes encoded in base64: openssl rand -base64 32
 CONNECTION_SECRETS_MASTER_KEY=replace_with_base64_encoded_32_byte_key
 CONNECTION_SECRETS_KEY_VERSION=v1
 VITE_APP_TITLE=Amarktai Sales Assistant
@@ -30,7 +27,7 @@ LOCAL_ADMIN_NAME=Amarktai Administrator
 LOCAL_ADMIN_EMAIL=admin@example.com
 LOCAL_ADMIN_PASSWORD=replace_with_a_long_unique_admin_password
 
-# GenX model router — all generative/reasoning AI stays behind this abstraction.
+# Mandatory generative/reasoning service
 GENX_CHAT_COMPLETIONS_URL=https://your-genx-endpoint.example/v1/chat/completions
 GENX_API_KEY=replace_with_your_genx_api_key
 GENX_DEFAULT_MODEL=replace_with_an_approved_genx_model_id
@@ -38,40 +35,34 @@ GENX_FAST_MODEL=
 GENX_REASONING_MODEL=
 GENX_MAX_OUTPUT_TOKENS=900
 GENX_MAX_CONTEXT_CHARS=24000
+GENX_TIMEOUT_MS=15000
 
-# Live Call Companion speech-to-text.
-# Use an authorised OpenAI-compatible transcription API. A self-hosted/open-source
-# Speaches/faster-whisper endpoint is a recommended production option.
+# Live Call Companion speech-to-text (optional until calls are commissioned)
 STT_PROVIDER_LABEL=Self-hosted speech-to-text
 STT_TRANSCRIPTIONS_URL=
 STT_API_KEY=
 STT_MODEL=
 
-# All OAuth CRM apps below should register:
+# Native OAuth CRM applications register exactly:
 #   ${APP_PUBLIC_URL}/api/crm/oauth/callback
-
-# HubSpot — current 2026-03 OAuth/CRM object families.
 HUBSPOT_CLIENT_ID=
 HUBSPOT_CLIENT_SECRET=
 
-# Salesforce — OAuth web-server flow. API defaults to Summer '26 v67.0.
 SALESFORCE_CLIENT_ID=
 SALESFORCE_CLIENT_SECRET=
 SALESFORCE_LOGIN_BASE=https://login.salesforce.com
 SALESFORCE_API_VERSION=v67.0
 
-# Pipedrive OAuth.
 PIPEDRIVE_CLIENT_ID=
 PIPEDRIVE_CLIENT_SECRET=
 
-# Zoho CRM V8 OAuth. Change accounts URL for the app's Zoho data centre when needed.
 ZOHO_CLIENT_ID=
 ZOHO_CLIENT_SECRET=
 ZOHO_ACCOUNTS_URL=https://accounts.zoho.com
 
-# Genie CRM browser automation — no Genie API key is used.
-# These values are a pilot fallback; the UI also supports encrypted per-connection
-# browser credentials. Calibrate deploy/webdock/config/genie-scripts.json before live use.
+# Genie / Other CRM deterministic browser automation.
+# Installation-level Genie credentials are an optional single-client fallback.
+# Per-connection browser credentials are encrypted by the application.
 GENIE_LOGIN_URL=https://your-genie-login-url.example
 GENIE_USERNAME=replace_with_genie_username
 GENIE_PASSWORD=replace_with_genie_password
@@ -80,12 +71,17 @@ GENIE_PASSWORD_SELECTOR=input[type="password"]
 GENIE_LOGIN_SUBMIT_SELECTOR=button[type="submit"]
 GENIE_DASHBOARD_SELECTOR=body
 
-# Microsoft Outlook / Microsoft Graph (optional connector)
+# Microsoft 365 / Outlook Graph (optional).
+# When configured, reviewed outbound sales email can use Outlook and approved
+# create_calendar_event actions can create calendar events.
 OUTLOOK_TENANT_ID=
 OUTLOOK_CLIENT_ID=
 OUTLOOK_CLIENT_SECRET=
+OUTLOOK_SENDER_EMAIL=
+# auto prefers Outlook when Graph is configured, otherwise SMTP. Values: auto|outlook|smtp
+OUTBOUND_EMAIL_PROVIDER=auto
 
-# SMTP: used for access codes, invitations, management reports and fallback outbound sales email.
+# SMTP is mandatory for login second factor, password recovery, invitations and reports.
 SMTP_HOST=smtp.example.com
 SMTP_PORT=587
 SMTP_SECURE=false
@@ -93,15 +89,12 @@ SMTP_USER=replace_with_smtp_username
 SMTP_PASSWORD=replace_with_smtp_password
 SMTP_FROM=Amarktai Sales Assistant <no-reply@example.com>
 
-# Generic SMS / WhatsApp delivery bridge. The endpoint should accept JSON:
-# {to, body, templateName?, contactExternalId?, opportunityExternalId?, correlationId}
-# and honour the Idempotency-Key header. Leave blank if communication is performed
-# natively by a calibrated CRM/browser connector.
+# Optional generic SMS / WhatsApp bridge. CRM-native/browser channel actions take precedence.
+# Endpoint JSON: {to, body, templateName?, contactExternalId?, opportunityExternalId?, correlationId}
+# The bridge must honour the Idempotency-Key header.
 SMS_WEBHOOK_URL=
 SMS_WEBHOOK_TOKEN=
 WHATSAPP_WEBHOOK_URL=
 WHATSAPP_WEBHOOK_TOKEN=
 
-# Pilot/manual commercial administration only. Leave false in customer production;
-# a verified billing provider should assign plans/credit purchases server-side.
 ALLOW_MANUAL_PLAN_ASSIGNMENT=false

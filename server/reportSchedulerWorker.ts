@@ -4,7 +4,7 @@ import { dailyReports } from "../drizzle/schema";
 import { getAssistantDashboard, getDb, markDailyReportDelivery, releaseDailyReportDelivery } from "./db";
 import { loadManagementReportSettings } from "./managementSettings";
 import { sendTargetAwareManagementReport } from "./managementEmail";
-import { ensureDefaultOrganisation } from "./organisation";
+import { listOrganisationMemberships } from "./organisation";
 import { canManageOrganisation } from "./organisationAccess";
 import { sendDailyWorkspaceReport } from "./smtp";
 import { getTeamIntelligence } from "./teamIntelligence";
@@ -30,9 +30,11 @@ export function cronMatchesUtc(expression: string, now: Date) {
 function deliveryKey(reportId: number, now: Date) { return `${reportId}:${now.toISOString().slice(0, 16)}`; }
 
 async function deliver(report: typeof dailyReports.$inferSelect) {
-  const membership = await ensureDefaultOrganisation(report.userId);
+  const memberships = await listOrganisationMemberships(report.userId);
+  const membership = report.organisationId ? memberships.find(item => item.organisationId === report.organisationId) : memberships.length === 1 ? memberships[0] : undefined;
+  if (!membership) throw new Error("REPORT_ORGANISATION_REQUIRED");
   if (!canManageOrganisation(membership.role)) {
-    const dashboard = await getAssistantDashboard(report.userId);
+    const dashboard = await getAssistantDashboard(report.userId, membership.organisationId);
     await sendDailyWorkspaceReport({ to: report.recipientEmail, ...dashboard.metrics });
     return { kind: "workspace" as const, sent: true, exceptions: 0 };
   }

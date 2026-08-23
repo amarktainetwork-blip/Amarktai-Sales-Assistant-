@@ -1,67 +1,27 @@
-import express, { type Express } from "express";
-import fs from "fs";
-import { type Server } from "http";
-import { nanoid } from "nanoid";
-import path from "path";
+import type { Server } from "node:http";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+import type { Express } from "express";
+import express from "express";
 import { createServer as createViteServer } from "vite";
-import viteConfig from "../../vite.config";
 
+const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const clientDir = path.join(rootDir, "client");
+const productionPublicDir = path.join(rootDir, "dist", "public");
+
+/** Serve the local Vite SPA during development; no managed middleware is registered. */
 export async function setupVite(app: Express, server: Server) {
-  const serverOptions = {
-    middlewareMode: true,
-    hmr: { server },
-    allowedHosts: true as const,
-  };
-
   const vite = await createViteServer({
-    ...viteConfig,
-    configFile: false,
-    server: serverOptions,
-    appType: "custom",
+    configFile: path.join(rootDir, "vite.config.ts"),
+    root: clientDir,
+    appType: "spa",
+    server: { middlewareMode: true, hmr: { server } },
   });
-
   app.use(vite.middlewares);
-  app.use("*", async (req, res, next) => {
-    const url = req.originalUrl;
-
-    try {
-      const clientTemplate = path.resolve(
-        import.meta.dirname,
-        "../..",
-        "client",
-        "index.html"
-      );
-
-      // always reload the index.html file from disk incase it changes
-      let template = await fs.promises.readFile(clientTemplate, "utf-8");
-      template = template.replace(
-        `src="/src/main.tsx"`,
-        `src="/src/main.tsx?v=${nanoid()}"`
-      );
-      const page = await vite.transformIndexHtml(url, template);
-      res.status(200).set({ "Content-Type": "text/html" }).end(page);
-    } catch (e) {
-      vite.ssrFixStacktrace(e as Error);
-      next(e);
-    }
-  });
 }
 
+/** Serve only the bundled local SPA in the self-hosted production container. */
 export function serveStatic(app: Express) {
-  const distPath =
-    process.env.NODE_ENV === "development"
-      ? path.resolve(import.meta.dirname, "../..", "dist", "public")
-      : path.resolve(import.meta.dirname, "..", "public");
-  if (!fs.existsSync(distPath)) {
-    console.error(
-      `Could not find the build directory: ${distPath}, make sure to build the client first`
-    );
-  }
-
-  app.use(express.static(distPath));
-
-  // fall through to index.html if the file doesn't exist
-  app.use("*", (_req, res) => {
-    res.sendFile(path.resolve(distPath, "index.html"));
-  });
+  app.use(express.static(productionPublicDir, { index: false, maxAge: "1h" }));
+  app.get("*", (_req, res) => res.sendFile(path.join(productionPublicDir, "index.html")));
 }

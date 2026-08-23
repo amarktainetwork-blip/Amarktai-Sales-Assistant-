@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gt, isNull } from "drizzle-orm";
+import { and, count, desc, eq, gt, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import bcrypt from "bcryptjs";
 import {
@@ -7,7 +7,6 @@ import {
   callbackTasks,
   callSessions,
   companyProfiles,
-  crmConnections,
   dailyReports,
   integrationProfiles,
   knowledgeSources,
@@ -17,9 +16,10 @@ import {
   websiteDiscoveries,
   automationPlaybooks,
   workflowRuns,
+  workspaceSavedItems,
 } from "../drizzle/schema";
-import { ENV } from "./_core/env";
 import type { ProposedAction } from "./workflowRules";
+import { normalizeSavedItemTags, type SavedItemTargetType } from "./savedItems";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -63,9 +63,6 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   if (user.role !== undefined) {
     values.role = user.role;
     updateSet.role = user.role;
-  } else if (user.openId === ENV.ownerOpenId) {
-    values.role = "admin";
-    updateSet.role = "admin";
   }
 
   await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
@@ -110,14 +107,14 @@ export async function createLocalAdminIfMissing() {
   return getUserByEmail(email);
 }
 
-export async function getAssistantDashboard(userId: number) {
+export async function getAssistantDashboard(userId: number, organisationId: number) {
   const db = await requireDb();
   const [reviewCount, openTaskCount, knowledgeCount, runs, proposals] = await Promise.all([
-    db.select({ value: count() }).from(actionProposals).where(and(eq(actionProposals.userId, userId), eq(actionProposals.state, "review_required"))),
-    db.select({ value: count() }).from(callbackTasks).where(and(eq(callbackTasks.userId, userId), eq(callbackTasks.state, "open"))),
-    db.select({ value: count() }).from(knowledgeSources).where(eq(knowledgeSources.userId, userId)),
-    db.select().from(workflowRuns).where(eq(workflowRuns.userId, userId)).orderBy(desc(workflowRuns.createdAt)).limit(6),
-    db.select().from(actionProposals).where(and(eq(actionProposals.userId, userId), eq(actionProposals.state, "review_required"))).orderBy(desc(actionProposals.createdAt)).limit(8),
+    db.select({ value: count() }).from(actionProposals).where(and(eq(actionProposals.userId, userId), eq(actionProposals.organisationId, organisationId), eq(actionProposals.state, "review_required"))),
+    db.select({ value: count() }).from(callbackTasks).where(and(eq(callbackTasks.userId, userId), eq(callbackTasks.organisationId, organisationId), eq(callbackTasks.state, "open"))),
+    db.select({ value: count() }).from(knowledgeSources).where(and(eq(knowledgeSources.userId, userId), eq(knowledgeSources.organisationId, organisationId))),
+    db.select().from(workflowRuns).where(and(eq(workflowRuns.userId, userId), eq(workflowRuns.organisationId, organisationId))).orderBy(desc(workflowRuns.createdAt)).limit(6),
+    db.select().from(actionProposals).where(and(eq(actionProposals.userId, userId), eq(actionProposals.organisationId, organisationId), eq(actionProposals.state, "review_required"))).orderBy(desc(actionProposals.createdAt)).limit(8),
   ]);
 
   return {
@@ -131,18 +128,18 @@ export async function getAssistantDashboard(userId: number) {
   };
 }
 
-export async function getOperationsDashboard(userId: number) {
+export async function getOperationsDashboard(userId: number, organisationId: number) {
   const db = await requireDb();
   const now = new Date();
   const todayEnd = new Date(now);
   todayEnd.setHours(23, 59, 59, 999);
   const [proposals, callbacks, calls, runs, profiles, audit] = await Promise.all([
-    db.select().from(actionProposals).where(eq(actionProposals.userId, userId)).orderBy(desc(actionProposals.createdAt)).limit(100),
-    db.select().from(callbackTasks).where(eq(callbackTasks.userId, userId)).orderBy(desc(callbackTasks.createdAt)).limit(80),
-    db.select().from(callSessions).where(eq(callSessions.userId, userId)).orderBy(desc(callSessions.updatedAt)).limit(40),
-    db.select().from(workflowRuns).where(eq(workflowRuns.userId, userId)).orderBy(desc(workflowRuns.updatedAt)).limit(40),
-    db.select().from(integrationProfiles).where(eq(integrationProfiles.userId, userId)).orderBy(desc(integrationProfiles.updatedAt)).limit(20),
-    db.select().from(auditEntries).where(eq(auditEntries.userId, userId)).orderBy(desc(auditEntries.createdAt)).limit(30),
+    db.select().from(actionProposals).where(and(eq(actionProposals.userId, userId), eq(actionProposals.organisationId, organisationId))).orderBy(desc(actionProposals.createdAt)).limit(100),
+    db.select().from(callbackTasks).where(and(eq(callbackTasks.userId, userId), eq(callbackTasks.organisationId, organisationId))).orderBy(desc(callbackTasks.createdAt)).limit(80),
+    db.select().from(callSessions).where(and(eq(callSessions.userId, userId), eq(callSessions.organisationId, organisationId))).orderBy(desc(callSessions.updatedAt)).limit(40),
+    db.select().from(workflowRuns).where(and(eq(workflowRuns.userId, userId), eq(workflowRuns.organisationId, organisationId))).orderBy(desc(workflowRuns.updatedAt)).limit(40),
+    db.select().from(integrationProfiles).where(and(eq(integrationProfiles.userId, userId), eq(integrationProfiles.organisationId, organisationId))).orderBy(desc(integrationProfiles.updatedAt)).limit(20),
+    db.select().from(auditEntries).where(and(eq(auditEntries.userId, userId), eq(auditEntries.organisationId, organisationId))).orderBy(desc(auditEntries.createdAt)).limit(30),
   ]);
   const openCallbacks = callbacks.filter(task => task.state === "open");
   const overdueCallbacks = openCallbacks.filter(task => task.dueAt && task.dueAt < now);
@@ -178,6 +175,7 @@ export async function getOperationsDashboard(userId: number) {
 
 export async function createWorkflowRun(input: {
   userId: number;
+  organisationId: number;
   workflowKey: string;
   leadLabel: string;
   payload: Record<string, unknown>;
@@ -187,6 +185,7 @@ export async function createWorkflowRun(input: {
   const db = await requireDb();
   const inserted = await db.insert(workflowRuns).values({
     userId: input.userId,
+    organisationId: input.organisationId,
     workflowKey: input.workflowKey,
     leadLabel: input.leadLabel,
     input: input.payload,
@@ -198,6 +197,7 @@ export async function createWorkflowRun(input: {
     await db.insert(actionProposals).values(
       input.actions.map(action => ({
         userId: input.userId,
+        organisationId: input.organisationId,
         workflowRunId,
         actionType: action.actionType,
         title: action.title,
@@ -211,6 +211,7 @@ export async function createWorkflowRun(input: {
 
   await recordAudit({
     userId: input.userId,
+    organisationId: input.organisationId,
     eventType: "workflow_prepared",
     entityType: "workflow_run",
     entityId: String(workflowRunId),
@@ -221,22 +222,49 @@ export async function createWorkflowRun(input: {
   return workflowRunId;
 }
 
-export async function listActionProposals(userId: number, workflowRunId?: number) {
+export async function listActionProposals(userId: number, organisationId: number, workflowRunId?: number) {
   const db = await requireDb();
   const whereClause = workflowRunId
-    ? and(eq(actionProposals.userId, userId), eq(actionProposals.workflowRunId, workflowRunId))
-    : eq(actionProposals.userId, userId);
+    ? and(eq(actionProposals.userId, userId), eq(actionProposals.organisationId, organisationId), eq(actionProposals.workflowRunId, workflowRunId))
+    : and(eq(actionProposals.userId, userId), eq(actionProposals.organisationId, organisationId));
   return db.select().from(actionProposals).where(whereClause).orderBy(desc(actionProposals.createdAt)).limit(40);
 }
 
-export async function reviewActionProposal(userId: number, proposalId: number, state: "approved" | "skipped") {
+export async function listWorkspaceSavedItems(userId: number, organisationId: number) {
+  const db = await requireDb();
+  return db.select().from(workspaceSavedItems).where(and(eq(workspaceSavedItems.userId, userId), eq(workspaceSavedItems.organisationId, organisationId))).orderBy(desc(workspaceSavedItems.updatedAt)).limit(200);
+}
+
+export async function saveWorkspaceSavedItem(input: { userId: number; organisationId: number; targetType: SavedItemTargetType; targetKey: string; title: string; tags: string[]; isFavorite: boolean }) {
+  const db = await requireDb();
+  if (input.targetType === "action_proposal") {
+    const proposalId = Number(input.targetKey);
+    if (!Number.isInteger(proposalId) || proposalId < 1) throw new Error("A valid action proposal is required.");
+    const proposal = (await db.select({ id: actionProposals.id }).from(actionProposals).where(and(eq(actionProposals.id, proposalId), eq(actionProposals.userId, input.userId), eq(actionProposals.organisationId, input.organisationId))).limit(1))[0];
+    if (!proposal) throw new Error("That action proposal is unavailable in the selected workspace.");
+  }
+  const tags = normalizeSavedItemTags(input.tags);
+  await db.insert(workspaceSavedItems).values({ ...input, tags }).onDuplicateKeyUpdate({ set: { title: input.title, tags, isFavorite: input.isFavorite, updatedAt: new Date() } });
+  const saved = (await db.select().from(workspaceSavedItems).where(and(eq(workspaceSavedItems.userId, input.userId), eq(workspaceSavedItems.organisationId, input.organisationId), eq(workspaceSavedItems.targetType, input.targetType), eq(workspaceSavedItems.targetKey, input.targetKey))).limit(1))[0];
+  if (!saved) throw new Error("Saved item could not be recorded.");
+  await recordAudit({ userId: input.userId, organisationId: input.organisationId, eventType: "workspace_item_saved", entityType: "workspace_saved_item", entityId: String(saved.id), summary: `Saved ${input.targetType} for quick access.`, metadata: { targetType: input.targetType, targetKey: input.targetKey, tags, isFavorite: input.isFavorite } });
+  return saved;
+}
+
+export async function removeWorkspaceSavedItem(input: { userId: number; organisationId: number; id: number }) {
+  const db = await requireDb();
+  await db.delete(workspaceSavedItems).where(and(eq(workspaceSavedItems.id, input.id), eq(workspaceSavedItems.userId, input.userId), eq(workspaceSavedItems.organisationId, input.organisationId)));
+}
+
+export async function reviewActionProposal(userId: number, organisationId: number, proposalId: number, state: "approved" | "skipped") {
   const db = await requireDb();
   await db
     .update(actionProposals)
     .set({ state, reviewedAt: new Date() })
-    .where(and(eq(actionProposals.id, proposalId), eq(actionProposals.userId, userId), eq(actionProposals.state, "review_required")));
+    .where(and(eq(actionProposals.id, proposalId), eq(actionProposals.userId, userId), eq(actionProposals.organisationId, organisationId), eq(actionProposals.state, "review_required")));
   await recordAudit({
     userId,
+    organisationId,
     eventType: `action_${state}`,
     entityType: "action_proposal",
     entityId: String(proposalId),
@@ -245,33 +273,68 @@ export async function reviewActionProposal(userId: number, proposalId: number, s
   });
 }
 
-export async function getApprovedActionProposal(userId: number, proposalId: number) {
+export async function getApprovedActionProposal(userId: number, organisationId: number, proposalId: number) {
   const db = await requireDb();
   return (await db
     .select()
     .from(actionProposals)
-    .where(and(eq(actionProposals.id, proposalId), eq(actionProposals.userId, userId), eq(actionProposals.state, "approved")))
+    .where(and(eq(actionProposals.id, proposalId), eq(actionProposals.userId, userId), eq(actionProposals.organisationId, organisationId), eq(actionProposals.state, "approved")))
     .limit(1))[0];
 }
 
-export async function recordActionExecution(input: { userId: number; proposalId: number; success: boolean; result: Record<string, unknown> }) {
+export const ACTION_EXECUTION_CLAIM_TTL_MS = 15 * 60 * 1000;
+
+export function isActionExecutionClaimStale(claimedAt: Date | null | undefined, now = Date.now()) {
+  return Boolean(claimedAt && now - claimedAt.getTime() >= ACTION_EXECUTION_CLAIM_TTL_MS);
+}
+
+export function isCurrentActionExecutionClaim(activeCorrelationId: string | null | undefined, correlationId: string) {
+  return Boolean(activeCorrelationId && activeCorrelationId === correlationId);
+}
+
+export async function claimApprovedActionProposal(input: { userId: number; organisationId: number; proposalId: number; correlationId: string }) {
+  const db = await requireDb();
+  const claimedAt = new Date();
+  const claim = { status: "executing", correlationId: input.correlationId, claimedAt: claimedAt.toISOString() };
+  const staleBefore = new Date(claimedAt.getTime() - ACTION_EXECUTION_CLAIM_TTL_MS);
+  const result = await db.update(actionProposals).set({ executionClaimId: input.correlationId, executionClaimedAt: claimedAt, executionResult: claim }).where(and(
+    eq(actionProposals.id, input.proposalId),
+    eq(actionProposals.userId, input.userId),
+    eq(actionProposals.organisationId, input.organisationId),
+    eq(actionProposals.state, "approved"),
+    or(
+      and(isNull(actionProposals.executionClaimId), isNull(actionProposals.executionResult)),
+      and(isNotNull(actionProposals.executionClaimId), isNotNull(actionProposals.executionClaimedAt), lt(actionProposals.executionClaimedAt, staleBefore)),
+    ),
+  ));
+  if (result[0].affectedRows !== 1) return undefined;
+  const proposal = (await db.select().from(actionProposals).where(and(eq(actionProposals.id, input.proposalId), eq(actionProposals.userId, input.userId), eq(actionProposals.organisationId, input.organisationId), eq(actionProposals.state, "approved"))).limit(1))[0];
+  if (!proposal) throw new Error("Claimed action proposal could not be loaded.");
+  await recordAudit({ userId: input.userId, organisationId: input.organisationId, eventType: "crm_action_claimed", entityType: "action_proposal", entityId: String(input.proposalId), summary: "Approved CRM action claimed for one-time execution.", metadata: claim });
+  return proposal;
+}
+
+export async function recordActionExecution(input: { userId: number; organisationId: number; proposalId: number; correlationId: string; success: boolean; result: Record<string, unknown> }) {
   const db = await requireDb();
   const state: "executed" | "blocked" = input.success ? "executed" : "blocked";
   const screenshotPath = typeof input.result.screenshotPath === "string" ? input.result.screenshotPath : null;
   const normalizedResult = {
     ...input.result,
+    correlationId: input.correlationId,
     evidence: {
       screenshotPath,
       availability: screenshotPath ? "captured" : "unavailable",
       reason: screenshotPath ? null : "The saved script completed without a configured screenshot step. Add a screenshot step during Genie script calibration to retain visual evidence.",
     },
   };
-  await db
+  const finalized = await db
     .update(actionProposals)
-    .set({ state, executedAt: new Date(), executionResult: normalizedResult })
-    .where(and(eq(actionProposals.id, input.proposalId), eq(actionProposals.userId, input.userId), eq(actionProposals.state, "approved")));
+    .set({ state, executedAt: new Date(), executionClaimId: null, executionClaimedAt: null, executionResult: normalizedResult })
+    .where(and(eq(actionProposals.id, input.proposalId), eq(actionProposals.userId, input.userId), eq(actionProposals.organisationId, input.organisationId), eq(actionProposals.state, "approved"), eq(actionProposals.executionClaimId, input.correlationId)));
+  if (finalized[0].affectedRows !== 1) throw new Error("Action execution claim is no longer current; the result was not recorded.");
   await recordAudit({
     userId: input.userId,
+    organisationId: input.organisationId,
     eventType: input.success ? "crm_action_executed" : "crm_action_blocked",
     entityType: "action_proposal",
     entityId: String(input.proposalId),
@@ -280,18 +343,21 @@ export async function recordActionExecution(input: { userId: number; proposalId:
   });
 }
 
-export async function listProposalAuditEntries(userId: number, proposalId: number) {
+export async function listProposalAuditEntries(userId: number, organisationId: number, proposalId: number) {
   const db = await requireDb();
-  return db.select().from(auditEntries).where(and(eq(auditEntries.userId, userId), eq(auditEntries.entityType, "action_proposal"), eq(auditEntries.entityId, String(proposalId)))).orderBy(desc(auditEntries.createdAt)).limit(12);
+  const proposal = (await db.select({ id: actionProposals.id }).from(actionProposals).where(and(eq(actionProposals.id, proposalId), eq(actionProposals.userId, userId), eq(actionProposals.organisationId, organisationId))).limit(1))[0];
+  if (!proposal) return [];
+  return db.select().from(auditEntries).where(and(eq(auditEntries.userId, userId), eq(auditEntries.organisationId, organisationId), eq(auditEntries.entityType, "action_proposal"), eq(auditEntries.entityId, String(proposalId)))).orderBy(desc(auditEntries.createdAt)).limit(12);
 }
 
-export async function listIntegrationProfiles(userId: number) {
+export async function listIntegrationProfiles(userId: number, organisationId: number) {
   const db = await requireDb();
-  return db.select().from(integrationProfiles).where(eq(integrationProfiles.userId, userId)).orderBy(desc(integrationProfiles.updatedAt));
+  return db.select().from(integrationProfiles).where(and(eq(integrationProfiles.userId, userId), eq(integrationProfiles.organisationId, organisationId))).orderBy(desc(integrationProfiles.updatedAt));
 }
 
 export async function createIntegrationProfile(input: {
   userId: number;
+  organisationId: number;
   provider: "genie" | "outlook" | "genx";
   displayName: string;
   scopeSummary?: string;
@@ -301,23 +367,24 @@ export async function createIntegrationProfile(input: {
   const id = Number(result[0].insertId);
   await recordAudit({
     userId: input.userId,
+    organisationId: input.organisationId,
     eventType: "integration_profile_created",
     entityType: "integration_profile",
     entityId: String(id),
     summary: `${input.provider} profile saved without secrets.`,
-    metadata: { provider: input.provider },
+    metadata: { provider: input.provider, organisationId: input.organisationId },
   });
   return id;
 }
 
-export async function listKnowledgeSources(userId: number) {
+export async function listKnowledgeSources(userId: number, organisationId: number) {
   const db = await requireDb();
-  return db.select().from(knowledgeSources).where(eq(knowledgeSources.userId, userId)).orderBy(desc(knowledgeSources.updatedAt));
+  return db.select().from(knowledgeSources).where(and(eq(knowledgeSources.userId, userId), eq(knowledgeSources.organisationId, organisationId))).orderBy(desc(knowledgeSources.updatedAt));
 }
 
-export async function searchApprovedKnowledge(userId: number, query: string) {
+export async function searchApprovedKnowledge(userId: number, organisationId: number, query: string) {
   const db = await requireDb();
-  const sources = await db.select().from(knowledgeSources).where(and(eq(knowledgeSources.userId, userId), eq(knowledgeSources.status, "ready"))).orderBy(desc(knowledgeSources.updatedAt)).limit(80);
+  const sources = await db.select().from(knowledgeSources).where(and(eq(knowledgeSources.userId, userId), eq(knowledgeSources.organisationId, organisationId), eq(knowledgeSources.status, "ready"))).orderBy(desc(knowledgeSources.updatedAt)).limit(80);
   const terms = query.toLowerCase().split(/[^a-z0-9]+/).filter(term => term.length > 2).slice(0, 18);
   const score = (source: typeof sources[number]) => {
     const haystack = `${source.title}\n${source.content ?? ""}\n${source.sourceUrl ?? ""}`.toLowerCase();
@@ -328,6 +395,7 @@ export async function searchApprovedKnowledge(userId: number, query: string) {
 
 export async function createKnowledgeSource(input: {
   userId: number;
+  organisationId: number;
   title: string;
   sourceType: "note" | "url" | "document";
   sourceUrl?: string;
@@ -340,6 +408,7 @@ export async function createKnowledgeSource(input: {
 
 export async function createCallSession(input: {
   userId: number;
+  organisationId: number;
   leadLabel: string;
   transcript?: string;
   coachNotes?: string;
@@ -349,6 +418,7 @@ export async function createCallSession(input: {
   const id = Number(result[0].insertId);
   await recordAudit({
     userId: input.userId,
+    organisationId: input.organisationId,
     eventType: "call_note_saved",
     entityType: "call_session",
     entityId: String(id),
@@ -358,49 +428,67 @@ export async function createCallSession(input: {
   return id;
 }
 
-export async function createLiveCallSession(input: { userId: number; leadLabel: string }) {
+export async function createLiveCallSession(input: { userId: number; organisationId: number; leadLabel: string }) {
   const db = await requireDb();
-  const result = await db.insert(callSessions).values({ userId: input.userId, leadLabel: input.leadLabel, status: "in_progress" });
+  const result = await db.insert(callSessions).values({ userId: input.userId, organisationId: input.organisationId, leadLabel: input.leadLabel, status: "in_progress" });
   const id = Number(result[0].insertId);
-  await recordAudit({ userId: input.userId, eventType: "live_call_started", entityType: "call_session", entityId: String(id), summary: "Live coaching session started.", metadata: { leadLabel: input.leadLabel } });
+  await recordAudit({ userId: input.userId, organisationId: input.organisationId, eventType: "live_call_started", entityType: "call_session", entityId: String(id), summary: "Live coaching session started.", metadata: { leadLabel: input.leadLabel } });
   return id;
 }
 
-export async function appendLiveTranscript(input: { userId: number; callSessionId: number; transcriptChunk: string; coachTip?: string }) {
+export async function appendLiveTranscript(input: { userId: number; organisationId: number; callSessionId: number; transcriptChunk: string; coachTip?: string }) {
   const db = await requireDb();
-  const current = (await db.select().from(callSessions).where(and(eq(callSessions.id, input.callSessionId), eq(callSessions.userId, input.userId))).limit(1))[0];
+  const current = (await db.select().from(callSessions).where(and(eq(callSessions.id, input.callSessionId), eq(callSessions.userId, input.userId), eq(callSessions.organisationId, input.organisationId))).limit(1))[0];
   if (!current) throw new Error("Live call session was not found.");
   const transcript = `${current.transcript ? `${current.transcript}\n` : ""}${input.transcriptChunk}`.slice(-40_000);
   await db.update(callSessions).set({ transcript, coachNotes: input.coachTip ?? current.coachNotes, status: "in_progress" }).where(eq(callSessions.id, input.callSessionId));
   return { transcript };
 }
 
-export async function completeLiveCallSession(input: { userId: number; callSessionId: number; summary?: string }) {
+export async function completeLiveCallSession(input: { userId: number; organisationId: number; callSessionId: number; summary?: string }) {
   const db = await requireDb();
-  await db.update(callSessions).set({ status: "ready_for_review", summary: input.summary }).where(and(eq(callSessions.id, input.callSessionId), eq(callSessions.userId, input.userId)));
-  await recordAudit({ userId: input.userId, eventType: "live_call_completed", entityType: "call_session", entityId: String(input.callSessionId), summary: "Live coaching session completed and is ready for review.", metadata: {} });
+  await db.update(callSessions).set({ status: "ready_for_review", summary: input.summary }).where(and(eq(callSessions.id, input.callSessionId), eq(callSessions.userId, input.userId), eq(callSessions.organisationId, input.organisationId)));
+  await recordAudit({ userId: input.userId, organisationId: input.organisationId, eventType: "live_call_completed", entityType: "call_session", entityId: String(input.callSessionId), summary: "Live coaching session completed and is ready for review.", metadata: {} });
 }
 
-export async function getOperationalAnalytics(userId: number) {
+export async function getOperationalAnalytics(userId: number, organisationId: number) {
   const db = await requireDb();
   const [review, approved, executed, blocked, callbacks, calls] = await Promise.all([
-    db.select({ value: count() }).from(actionProposals).where(and(eq(actionProposals.userId, userId), eq(actionProposals.state, "review_required"))),
-    db.select({ value: count() }).from(actionProposals).where(and(eq(actionProposals.userId, userId), eq(actionProposals.state, "approved"))),
-    db.select({ value: count() }).from(actionProposals).where(and(eq(actionProposals.userId, userId), eq(actionProposals.state, "executed"))),
-    db.select({ value: count() }).from(actionProposals).where(and(eq(actionProposals.userId, userId), eq(actionProposals.state, "blocked"))),
-    db.select({ value: count() }).from(callbackTasks).where(and(eq(callbackTasks.userId, userId), eq(callbackTasks.state, "open"))),
-    db.select({ value: count() }).from(callSessions).where(eq(callSessions.userId, userId)),
+    db.select({ value: count() }).from(actionProposals).where(and(eq(actionProposals.userId, userId), eq(actionProposals.organisationId, organisationId), eq(actionProposals.state, "review_required"))),
+    db.select({ value: count() }).from(actionProposals).where(and(eq(actionProposals.userId, userId), eq(actionProposals.organisationId, organisationId), eq(actionProposals.state, "approved"))),
+    db.select({ value: count() }).from(actionProposals).where(and(eq(actionProposals.userId, userId), eq(actionProposals.organisationId, organisationId), eq(actionProposals.state, "executed"))),
+    db.select({ value: count() }).from(actionProposals).where(and(eq(actionProposals.userId, userId), eq(actionProposals.organisationId, organisationId), eq(actionProposals.state, "blocked"))),
+    db.select({ value: count() }).from(callbackTasks).where(and(eq(callbackTasks.userId, userId), eq(callbackTasks.organisationId, organisationId), eq(callbackTasks.state, "open"))),
+    db.select({ value: count() }).from(callSessions).where(and(eq(callSessions.userId, userId), eq(callSessions.organisationId, organisationId))),
   ]);
   return { reviewRequired: review[0]?.value ?? 0, approved: approved[0]?.value ?? 0, executed: executed[0]?.value ?? 0, blocked: blocked[0]?.value ?? 0, openCallbacks: callbacks[0]?.value ?? 0, callSessions: calls[0]?.value ?? 0 };
 }
 
-export async function listAuditEntries(userId: number, limit = 60) {
+export async function getWorkspaceExportData(input: { userId: number; organisationId: number; kind: "operational_report" | "conversation_log"; callSessionId?: number }) {
   const db = await requireDb();
-  return db.select().from(auditEntries).where(eq(auditEntries.userId, userId)).orderBy(desc(auditEntries.createdAt)).limit(limit);
+  if (input.kind === "conversation_log") {
+    const filters = [eq(callSessions.userId, input.userId), eq(callSessions.organisationId, input.organisationId)];
+    if (input.callSessionId) filters.push(eq(callSessions.id, input.callSessionId));
+    const calls = await db.select().from(callSessions).where(and(...filters)).orderBy(desc(callSessions.updatedAt)).limit(input.callSessionId ? 1 : 30);
+    return { calls };
+  }
+  const [proposals, callbacks, calls, audit] = await Promise.all([
+    db.select().from(actionProposals).where(and(eq(actionProposals.userId, input.userId), eq(actionProposals.organisationId, input.organisationId))).orderBy(desc(actionProposals.createdAt)).limit(250),
+    db.select().from(callbackTasks).where(and(eq(callbackTasks.userId, input.userId), eq(callbackTasks.organisationId, input.organisationId))).orderBy(desc(callbackTasks.updatedAt)).limit(250),
+    db.select().from(callSessions).where(and(eq(callSessions.userId, input.userId), eq(callSessions.organisationId, input.organisationId))).orderBy(desc(callSessions.updatedAt)).limit(100),
+    db.select().from(auditEntries).where(and(eq(auditEntries.userId, input.userId), eq(auditEntries.organisationId, input.organisationId))).orderBy(desc(auditEntries.createdAt)).limit(250),
+  ]);
+  return { proposals, callbacks, calls, audit };
+}
+
+export async function listAuditEntries(userId: number, organisationId: number, limit = 60) {
+  const db = await requireDb();
+  return db.select().from(auditEntries).where(and(eq(auditEntries.userId, userId), eq(auditEntries.organisationId, organisationId))).orderBy(desc(auditEntries.createdAt)).limit(limit);
 }
 
 export async function recordAudit(input: {
   userId: number;
+  organisationId?: number;
   eventType: string;
   entityType: string;
   entityId?: string;
@@ -408,7 +496,8 @@ export async function recordAudit(input: {
   metadata: Record<string, unknown>;
 }) {
   const db = await requireDb();
-  await db.insert(auditEntries).values(input);
+  const metadataOrganisationId = typeof input.metadata.organisationId === "number" && Number.isInteger(input.metadata.organisationId) && input.metadata.organisationId > 0 ? input.metadata.organisationId : undefined;
+  await db.insert(auditEntries).values({ ...input, organisationId: input.organisationId ?? metadataOrganisationId });
 }
 
 export async function createTwoFactorChallenge(input: { userId: number; codeHash: string; expiresAt: Date }) {
@@ -427,20 +516,20 @@ export async function consumeValidTwoFactorChallenge(input: { userId: number; is
   return true;
 }
 
-export async function createDailyReport(input: { userId: number; recipientEmail: string; cronExpression: string }) {
+export async function createDailyReport(input: { userId: number; organisationId: number; recipientEmail: string; cronExpression: string }) {
   const db = await requireDb();
   const result = await db.insert(dailyReports).values(input);
   return Number(result[0].insertId);
 }
 
-export async function attachDailyReportTask(input: { reportId: number; userId: number; taskUid: string }) {
+export async function attachDailyReportTask(input: { reportId: number; userId: number; organisationId: number; taskUid: string }) {
   const db = await requireDb();
-  await db.update(dailyReports).set({ scheduleCronTaskUid: input.taskUid }).where(and(eq(dailyReports.id, input.reportId), eq(dailyReports.userId, input.userId)));
+  await db.update(dailyReports).set({ scheduleCronTaskUid: input.taskUid }).where(and(eq(dailyReports.id, input.reportId), eq(dailyReports.userId, input.userId), eq(dailyReports.organisationId, input.organisationId)));
 }
 
-export async function listDailyReports(userId: number) {
+export async function listDailyReports(userId: number, organisationId: number) {
   const db = await requireDb();
-  return db.select().from(dailyReports).where(eq(dailyReports.userId, userId)).orderBy(desc(dailyReports.createdAt));
+  return db.select().from(dailyReports).where(and(eq(dailyReports.userId, userId), eq(dailyReports.organisationId, organisationId))).orderBy(desc(dailyReports.createdAt));
 }
 
 export async function getDailyReportByTaskUid(taskUid: string) {
@@ -458,19 +547,18 @@ export async function releaseDailyReportDelivery(reportId: number, deliveryKey: 
   await db.update(dailyReports).set({ lastDeliveryKey: null }).where(and(eq(dailyReports.id, reportId), eq(dailyReports.lastDeliveryKey, deliveryKey)));
 }
 
-export async function getCompanySetup(userId: number) {
+export async function getCompanySetup(userId: number, organisationId: number) {
   const db = await requireDb();
-  const [profile, discoveries, connections, playbooks] = await Promise.all([
-    db.select().from(companyProfiles).where(eq(companyProfiles.userId, userId)).limit(1),
-    db.select().from(websiteDiscoveries).where(eq(websiteDiscoveries.userId, userId)).orderBy(desc(websiteDiscoveries.createdAt)).limit(8),
-    db.select().from(crmConnections).where(eq(crmConnections.userId, userId)).orderBy(desc(crmConnections.updatedAt)),
-    db.select().from(automationPlaybooks).where(eq(automationPlaybooks.userId, userId)).orderBy(desc(automationPlaybooks.updatedAt)),
+  const [profile, discoveries, playbooks] = await Promise.all([
+    db.select().from(companyProfiles).where(and(eq(companyProfiles.userId, userId), eq(companyProfiles.organisationId, organisationId))).limit(1),
+    db.select().from(websiteDiscoveries).where(and(eq(websiteDiscoveries.userId, userId), eq(websiteDiscoveries.organisationId, organisationId))).orderBy(desc(websiteDiscoveries.createdAt)).limit(8),
+    db.select().from(automationPlaybooks).where(and(eq(automationPlaybooks.userId, userId), eq(automationPlaybooks.organisationId, organisationId))).orderBy(desc(automationPlaybooks.updatedAt)),
   ]);
-  return { profile: profile[0] ?? null, discoveries, connections, playbooks };
+  return { profile: profile[0] ?? null, discoveries, playbooks };
 }
 
 export async function upsertCompanyProfile(input: {
-  userId: number; companyName: string; websiteUrl?: string | null; industry?: string | null; companySize?: string | null;
+  userId: number; organisationId: number; companyName: string; websiteUrl?: string | null; industry?: string | null; companySize?: string | null;
   primaryMarket?: string | null; salesMotion?: string | null; brandVoice?: string | null;
 }) {
   const db = await requireDb();
@@ -479,47 +567,39 @@ export async function upsertCompanyProfile(input: {
     companySize: input.companySize ?? null, primaryMarket: input.primaryMarket ?? null, salesMotion: input.salesMotion ?? null,
     brandVoice: input.brandVoice ?? null,
   } });
-  const profile = (await db.select().from(companyProfiles).where(eq(companyProfiles.userId, input.userId)).limit(1))[0];
+  const profile = (await db.select().from(companyProfiles).where(and(eq(companyProfiles.userId, input.userId), eq(companyProfiles.organisationId, input.organisationId))).limit(1))[0];
   if (!profile) throw new Error("Company profile could not be saved.");
-  await recordAudit({ userId: input.userId, eventType: "company_profile_saved", entityType: "company_profile", entityId: String(profile.id), summary: "Company setup profile saved.", metadata: { hasWebsite: Boolean(profile.websiteUrl) } });
+  await recordAudit({ userId: input.userId, organisationId: input.organisationId, eventType: "company_profile_saved", entityType: "company_profile", entityId: String(profile.id), summary: "Company setup profile saved.", metadata: { hasWebsite: Boolean(profile.websiteUrl) } });
   return profile;
 }
 
 export async function confirmWebsiteDiscovery(input: {
-  userId: number; companyProfileId: number; sourceUrl: string; pageTitle: string | null;
+  userId: number; organisationId: number; companyProfileId: number; sourceUrl: string; pageTitle: string | null;
   confirmedKnowledge: Array<{ title: string; content: string }>;
 }) {
   const db = await requireDb();
-  const profile = (await db.select().from(companyProfiles).where(and(eq(companyProfiles.id, input.companyProfileId), eq(companyProfiles.userId, input.userId))).limit(1))[0];
+  const profile = (await db.select().from(companyProfiles).where(and(eq(companyProfiles.id, input.companyProfileId), eq(companyProfiles.userId, input.userId), eq(companyProfiles.organisationId, input.organisationId))).limit(1))[0];
   if (!profile) throw new Error("Company profile is unavailable for confirmation.");
   await db.transaction(async tx => {
     const result = await tx.insert(websiteDiscoveries).values({
-      userId: input.userId, companyProfileId: input.companyProfileId, sourceUrl: input.sourceUrl, pageTitle: input.pageTitle,
+      userId: input.userId, organisationId: input.organisationId, companyProfileId: input.companyProfileId, sourceUrl: input.sourceUrl, pageTitle: input.pageTitle,
       extractedText: null, proposedFacts: { confirmedKnowledgeTitles: input.confirmedKnowledge.map(item => item.title) },
       proposedKnowledge: input.confirmedKnowledge, status: "confirmed", reviewedAt: new Date(),
     });
     const discoveryId = Number(result[0].insertId);
-    await tx.update(companyProfiles).set({ discoveryStatus: "confirmed", confirmedAt: new Date() }).where(and(eq(companyProfiles.id, input.companyProfileId), eq(companyProfiles.userId, input.userId)));
-    if (input.confirmedKnowledge.length) await tx.insert(knowledgeSources).values(input.confirmedKnowledge.map(item => ({ userId: input.userId, title: item.title, sourceType: "url" as const, sourceUrl: input.sourceUrl, content: item.content, status: "ready" as const })));
+    await tx.update(companyProfiles).set({ discoveryStatus: "confirmed", confirmedAt: new Date() }).where(and(eq(companyProfiles.id, input.companyProfileId), eq(companyProfiles.userId, input.userId), eq(companyProfiles.organisationId, input.organisationId)));
+    if (input.confirmedKnowledge.length) await tx.insert(knowledgeSources).values(input.confirmedKnowledge.map(item => ({ userId: input.userId, organisationId: input.organisationId, title: item.title, sourceType: "url" as const, sourceUrl: input.sourceUrl, content: item.content, status: "ready" as const })));
     return discoveryId;
   });
-  const confirmed = (await db.select().from(websiteDiscoveries).where(and(eq(websiteDiscoveries.companyProfileId, input.companyProfileId), eq(websiteDiscoveries.userId, input.userId), eq(websiteDiscoveries.status, "confirmed"))).orderBy(desc(websiteDiscoveries.createdAt)).limit(1))[0];
-  await recordAudit({ userId: input.userId, eventType: "website_discovery_confirmed", entityType: "website_discovery", entityId: String(confirmed?.id ?? ""), summary: "Confirmed website knowledge is now available to the assistant.", metadata: { sourceUrl: input.sourceUrl, confirmedKnowledgeItems: input.confirmedKnowledge.length } });
+  const confirmed = (await db.select().from(websiteDiscoveries).where(and(eq(websiteDiscoveries.companyProfileId, input.companyProfileId), eq(websiteDiscoveries.userId, input.userId), eq(websiteDiscoveries.organisationId, input.organisationId), eq(websiteDiscoveries.status, "confirmed"))).orderBy(desc(websiteDiscoveries.createdAt)).limit(1))[0];
+  await recordAudit({ userId: input.userId, organisationId: input.organisationId, eventType: "website_discovery_confirmed", entityType: "website_discovery", entityId: String(confirmed?.id ?? ""), summary: "Confirmed website knowledge is now available to the assistant.", metadata: { sourceUrl: input.sourceUrl, confirmedKnowledgeItems: input.confirmedKnowledge.length } });
   return { discoveryId: confirmed?.id ?? null, confirmedKnowledgeItems: input.confirmedKnowledge.length };
 }
 
-export async function saveCrmConnection(input: { userId: number; provider: "genie" | "hubspot" | "salesforce" | "pipedrive" | "custom_browser"; displayName: string; status: "draft" | "needs_credentials" | "ready" | "paused" | "error"; capabilities: Array<"contacts" | "tasks" | "opportunities" | "notes" | "activities" | "email" | "calendar">; connectionMode: "api" | "browser_automation" | "custom"; configurationHint?: string | null }) {
-  const db = await requireDb();
-  const result = await db.insert(crmConnections).values(input);
-  const id = Number(result[0].insertId);
-  await recordAudit({ userId: input.userId, eventType: "crm_connection_registered", entityType: "crm_connection", entityId: String(id), summary: `${input.displayName} was registered for review-first automation.`, metadata: { provider: input.provider, capabilities: input.capabilities, connectionMode: input.connectionMode } });
-  return id;
-}
-
-export async function saveAutomationPlaybook(input: { userId: number; title: string; trigger: string; description: string; agentKey: string; requiredCapabilities: string[]; status: "draft" | "active" | "paused" }) {
+export async function saveAutomationPlaybook(input: { userId: number; organisationId: number; title: string; trigger: string; description: string; agentKey: string; requiredCapabilities: string[]; status: "draft" | "active" | "paused" }) {
   const db = await requireDb();
   const result = await db.insert(automationPlaybooks).values({ ...input, reviewRequired: true });
   const id = Number(result[0].insertId);
-  await recordAudit({ userId: input.userId, eventType: "automation_playbook_saved", entityType: "automation_playbook", entityId: String(id), summary: `Review-first playbook '${input.title}' saved.`, metadata: { agentKey: input.agentKey, status: input.status } });
+  await recordAudit({ userId: input.userId, organisationId: input.organisationId, eventType: "automation_playbook_saved", entityType: "automation_playbook", entityId: String(id), summary: `Review-first playbook '${input.title}' saved.`, metadata: { agentKey: input.agentKey, status: input.status } });
   return id;
 }

@@ -1,194 +1,79 @@
-# Amarktai Sales Assistant — implementation status
+# Amarktai Sales Assistant — Implementation Status
 
-Updated: 19 August 2026
+**Updated:** 22 August 2026
 
-This document distinguishes **implemented code**, **independently validated repository checks**, and **external activation that still requires authorised credentials/accounts**. A healthy container is not evidence that an external CRM or speech provider was successfully authorised.
+This document separates repository-complete behavior from target-environment commissioning. The exact final release SHA and gate results are recorded in `docs/final-release-validation-20260822.md` after the release branch is reconciled with `main`; do not rely on a hard-coded SHA in this status page.
 
-## Current product shape
+## Product shape
 
-Amarktai is a desktop-first sales operating layer built on the existing React/Vite + Express/tRPC + Drizzle/MariaDB stack. The launch architecture supports deep Genie browser automation, current HubSpot OAuth/API integration, multi-person organisations, normalized CRM data, Team Intelligence, live call transcription/coaching, review-first CRM actions, and Webdock pilot/full deployment profiles.
+Amarktai Sales Assistant is a self-hosted multi-tenant sales operating layer built with React/Vite, Express/tRPC, Drizzle/MariaDB, Valkey, Caddy and optional self-hosted Chromium/CDP. It prepares and executes governed sales work from confirmed organisation context while retaining human review, idempotency, execution evidence and audit history.
 
-The application remains a modular monolith plus isolated workers. It has not been rewritten around the pilot VPS.
+The production source has no executable Manus/Forge hosted-preview dependency. Local signed sessions and email second factor are the self-hosted identity boundary.
 
-## Independently validated repository gate
+## Implemented and release-gated
 
-The deployment branch reached a full green GitHub Actions gate during this completion pass, including locked `pnpm` install, unit tests, TypeScript, Drizzle schema/migration validation, and the production build. After any later commit, use the PR's latest CI result as the source of truth before merging/deploying.
+- Public/local account registration, login, password recovery, signed sessions, email second factor and organisation switching.
+- Organisation-scoped company setup, safe website discovery and explicitly approved knowledge.
+- Command Centre, Today workspace, workflow preparation, review/approve/skip, callbacks, targets, management intelligence, exports and audit history.
+- Atomic action claims and correlation-bound finalisation to prevent duplicate approved writes.
+- GenX agent execution with bounded context/output, timeouts/retries, live commissioning probe and AI-credit accounting.
+- Native OAuth CRM adapters for **HubSpot, Salesforce, Pipedrive and Zoho CRM**.
+- **Genie** and **Other CRM** deterministic browser adapters with encrypted credentials, reviewed saved scripts, screenshot evidence and authorised-domain/private-network controls.
+- CRM synchronization, normalized contacts/companies/opportunities/tasks/activities, pipeline reads and verified-capability routing.
+- Review-first sales email/SMS/WhatsApp actions. CRM-native delivery is preferred where supported; generic SMTP/webhook delivery can log the completed communication back to CRM.
+- Microsoft 365 / Outlook Graph support for reviewed outbound sales mail and approved calendar-event creation when the installation tenant is configured and commissioned.
+- Live Call Companion with organisation isolation, explicit consent/media boundary, factual transcript storage, coaching, post-call proposals and optional OpenAI-compatible STT.
+- Team administration, owner mappings, QA rubrics, compliance/retention dry-run records, connector webhook intake, observability and worker records.
+- Webdock full/pilot packaging, runtime migration executable, preflight, install/update, backup, guarded restore, smoke test and production verifier.
 
-## Organisation and multiple salespeople
+## Connection truth
 
-Implemented:
+`connectedSystems` is the CRM readiness source of truth. A CRM can become `ready` only after its backend adapter tests the requested capabilities. Merely registering a CRM or completing OAuth is not proof of usable capabilities.
 
-- organisations and organisation memberships;
-- roles: owner, manager, salesperson, auditor;
-- management-only access controls;
-- secure team administration page;
-- email invitations for local/Webdock auth;
-- signed 48-hour password-setup link;
-- setup link becomes unusable after the account has a password;
-- member activation/deactivation and role changes;
-- external CRM owner/user mapping to Amarktai members;
-- normalized activity can therefore be attributed without re-syncing the CRM once per salesperson.
+The user-facing connection choices intentionally expose only executable paths:
 
-Not yet implemented: enterprise SCIM/SAML provisioning, many-to-many named team hierarchy, and formal per-person revenue quota/target objects.
+| Connection | Method |
+|---|---|
+| HubSpot | Native OAuth/API |
+| Salesforce | Native OAuth/API |
+| Pipedrive | Native OAuth/API |
+| Zoho CRM | Native OAuth/API |
+| Genie | Deterministic authorised browser connector |
+| Other web CRM | Organisation-specific deterministic browser connector |
 
-## Genie
+A company with another browser-accessible CRM can use **Other CRM** after its authorised hostname, login and reviewed operation profile are calibrated. The product does not pretend to have a native API adapter for every CRM.
 
-Implemented:
+## Microsoft 365 / communications
 
-- deterministic Playwright/CDP browser connector architecture;
-- generic reusable browser connector primitives;
-- saved scripts with controlled navigation/fill/click/expect/read/screenshot steps;
-- approved-action execution and audit/evidence boundary;
-- connector capability routing;
-- full Webdock profile with a repository-built internal Chromium/CDP runtime rather than a required Browserless service.
+SMTP is mandatory for account second factor, password recovery, invitations and reports. Reviewed sales email uses a CRM-native sender when the verified CRM provides one; otherwise `OUTBOUND_EMAIL_PROVIDER=auto` prefers configured Outlook Graph and falls back to SMTP. Approved `create_calendar_event` proposals route through Outlook Graph and retain the same approval/correlation evidence boundary as CRM writes.
 
-External activation still required:
+SMS/WhatsApp require either a verified CRM/browser-native channel or an explicitly configured idempotent webhook bridge. They are not called live until target acceptance succeeds.
 
-- authorised Genie URL/account;
-- real login and page/action selector calibration in `deploy/webdock/config/genie-scripts.json`;
-- authorised read/write smoke testing;
-- confirmation that the target Genie authentication/MFA/session behaviour works with the bridge.
+## Security / tenancy
 
-The first pilot still accepts install-level Genie credentials. Before multi-customer commercial SaaS use, authenticated browser state must be isolated per organisation/connection rather than sharing one global account.
-
-## HubSpot
-
-Implemented:
-
-- provider-neutral adapter;
-- date-versioned 2026-03 OAuth token exchange/refresh/introspection/revocation flow;
-- 2026-03 CRM object paths;
-- encrypted connection material;
-- requested scope verification;
-- real read-endpoint capability tests before a requested read capability is marked available;
-- contacts, companies, deals/opportunities, tasks, activities, pipeline reads and approved writes supported by the adapter;
-- normalized owner IDs for team attribution.
-
-External activation still required: real HubSpot app/client, registered callback URL, authorised portal, live OAuth/capability testing, and webhook/incremental-sync validation where used.
-
-## Live Call Companion
-
-Implemented:
-
-- real browser microphone capture;
-- microphone + explicitly shared browser-tab/system-audio capture mode;
-- local browser mixing of call audio + microphone;
-- short MediaRecorder chunks;
-- authenticated/2FA protected STT bridge;
-- deployment-controlled OpenAI-compatible `STT_TRANSCRIPTIONS_URL` with no direct OpenAI dependency;
-- incremental transcript persistence;
-- deterministic detection of common price/timing/trust objections, questions, callback requests, commitments, competitor mentions and buying signals;
-- selective GenX coaching only when important semantic help is useful;
-- coaching separated from transcript persistence;
-- exact final transcript replacement at closeout;
-- post-call GenX summary prepared for review;
-- per-call explicit confirmation that organisational transcription/consent requirements have been handled;
-- raw audio chunks are not retained by the current bridge.
-
-External activation/validation still required: configured STT endpoint/model, accuracy/latency tests on the target accents/languages/headsets/dialler, direct SIP/WebRTC/provider media adapters where browser capture is unsuitable, and organisation-level retention/legal policy controls before retained audio recording is introduced.
-
-## GenX / token economy
-
-Implemented:
-
-- all generative/reasoning AI stays behind GenX;
-- bounded recent context and approved-knowledge budgets;
-- bounded output tokens;
-- optional fast/default/reasoning model tiers;
-- provider usage capture when returned;
-- no GenX for CRM sync, health arithmetic, Team Intelligence thresholds, management exception detection, or normal deterministic browser execution.
-
-Not yet implemented: persistent organisation AI-credit wallet/ledger, paid checkout enforcement, and a complete customer-facing usage dashboard.
-
-A public pricing page and centralized plan definition exist, but checkout is intentionally not presented as active billing until a verified billing provider and durable credit ledger are implemented.
-
-## Management Intelligence
-
-Implemented:
-
-- Team Intelligence from synchronized CRM owners, tasks and opportunities;
-- overdue-task, stale-opportunity and missing-next-step metrics;
-- pipeline-at-risk amount from known opportunity values;
-- management-only team administration/configuration;
-- organisation-level Management Intelligence settings;
-- report modes: Exceptions Only and Daily Full Brief;
-- configurable overdue/stale/no-next-step thresholds;
-- Webdock-owned scheduled management-email worker, not a Manus heartbeat dependency;
-- Exceptions Only suppresses email when no configured exception exists;
-- deterministic management emails with factual metrics;
-- no webcam, keystroke, personal-browsing or unrelated-device monitoring.
-
-Not yet implemented: formal per-salesperson quota/target pacing, closed-won revenue target forecasting, one-on-one preparation history, and richer longitudinal coaching analytics.
-
-## Pricing
-
-Implemented public plan source/page:
-
-- Trial: 50 AI Credits;
-- Starter: $29/month, 500 credits, one user;
-- Professional: $79/month, 2,000 credits, up to three users;
-- Team: $199/month, 5,000 credits, up to ten users;
-- additional 1,000 AI Credits: $35;
-- upstream cost assumption recorded as $10 per 1,000 upstream units;
-- page explains that deterministic CRM work does not consume AI Credits.
-
-Billing remains deliberately disabled until a payment provider and durable wallet/ledger are configured and tested.
+Active operational paths are organisation-scoped. Controls include request-size/origin protection, secure cookies, shared Valkey rate limits with fail-closed sensitive paths, SSRF-safe website discovery, encrypted connection secrets, browser-domain/private-network enforcement, Caddy security headers, atomic AI-credit debits, audit records and review-first external execution.
 
 ## Webdock deployment
 
-Implemented:
+The full profile runs Caddy, app, CRM health worker, reporter, MariaDB, Valkey and internal Chromium/CDP. The pilot profile uses an authorised external Playwright-compatible CDP endpoint. Production migrations run from the compiled runtime (`node dist/migrate.js`) rather than relying on pruned development tooling.
 
-- multi-stage non-root Node image;
-- Caddy TLS/reverse proxy;
-- MariaDB;
-- Valkey 8.1.9 using the Redis protocol;
-- app, CRM-health worker and self-hosted report-scheduler worker;
-- full profile with internal Chromium/CDP runtime;
-- pilot profile that omits local Chromium and uses an external CDP endpoint;
-- preflight validation;
-- exact production port binding;
-- migrations during install/update;
-- application/database/cache/browser health checks;
-- database backup + checksum;
-- guarded update and smoke-test scripts;
-- correct Genie config/evidence bind mounts;
-- pinned infrastructure images where applicable.
+`backup.sh` protects MariaDB plus connector calibration/evidence with checksums and a manifest while deliberately excluding `.env` and raw deployment secrets. `restore.sh` requires explicit destructive confirmation and validates checksums/archive paths before replacing the application database.
 
-The full profile no longer depends on a Browserless commercial licence. Pilot mode can target any authorised Playwright-compatible external CDP service.
+## Target-environment commissioning still required
 
-External validation still required: run the selected profile on the actual Webdock host, confirm public DNS/TLS, SMTP delivery, and real external integration credentials.
+These actions cannot truthfully be proven by repository code alone:
 
-## Website discovery and security
+- Webdock host, DNS and Caddy TLS.
+- Real SMTP delivery and login second-factor completion.
+- Real GenX model/API response.
+- OAuth/credentials and capability verification for the client's chosen CRM.
+- Selector/profile calibration for Genie/Other CRM.
+- Microsoft Graph token/mail/calendar acceptance if Outlook is used.
+- Real STT audio acceptance if Live Call Companion transcription is enabled.
+- SMS/WhatsApp sender acceptance if those channels are enabled.
+- One real authorised CRM read and one safe reviewed external write.
+- Backup creation/checksum and recovery rehearsal according to the client's operational policy.
 
-Implemented:
+## Go-live boundary
 
-- authentication + second factor for protected operations;
-- httpOnly session cookies;
-- request origin checks and rate limiting;
-- CSP/security headers/HSTS behind HTTPS;
-- 1 MB JSON body limit;
-- encrypted CRM connection secrets;
-- SSRF protections for website discovery including public DNS validation and every redirect hop;
-- private/link-local/local target rejection;
-- connector domain allowlisting foundation;
-- audit events for sensitive management/action operations.
-
-## Open-source-first infrastructure
-
-Default self-hosted deployment uses MariaDB, Valkey, Caddy, Chromium from Debian packages, Playwright Core and the existing open application stack. Optional/future candidates such as self-hosted faster-whisper/Speaches, whisper.cpp, LiveKit, BullMQ and OpenTelemetry remain behind replaceable boundaries. See `docs/open-source-dependencies.md`.
-
-## What can be tested immediately after deployment
-
-Without external CRM/STT credentials: local admin login, organisation setup, team invitation/member lifecycle once SMTP is configured, management settings, pricing, dashboard/Today/Team Intelligence with normalized test/synced data, database/cache/report-worker/app/browser health, public website discovery, and review/audit architecture.
-
-With the respective authorised credentials: Genie deterministic browser operations after selector calibration, HubSpot OAuth/API, live call transcription/coaching, and outbound email/2FA/management reports.
-
-## Do not call these externally verified until proven
-
-- Genie live automation on the customer's account;
-- HubSpot OAuth on a real portal;
-- STT accuracy/latency on real calls;
-- Webdock public deployment;
-- commercial billing/credit enforcement.
-
-Those are the remaining activation/validation gates, not hidden completed work.
+The repository is **ready for Webdock deployment only after the exact release SHA passes the final release validation ledger**. Client handover is complete only after `deploy/webdock/verify-production.sh` passes on the target and the selected external integrations have their authorised acceptance evidence. Optional integrations that are not configured remain explicitly `NOT_CONFIGURED`; they do not prevent the core product from operating unless the client requires them for handover.

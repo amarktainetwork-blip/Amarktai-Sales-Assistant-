@@ -1,14 +1,9 @@
 import type { Express, Request, Response } from "express";
 import { createHash, randomUUID } from "node:crypto";
-import { parse as parseCookieHeader } from "cookie";
-import { COOKIE_NAME } from "@shared/const";
-import { getLocalSessionUser, isLocalAuthMode } from "./localAuth";
-import { sdk } from "./_core/sdk";
-import { TWO_FACTOR_COOKIE, verifyTwoFactorSession } from "./twoFactor";
-import { ensureDefaultOrganisation } from "./organisation";
+import { requireLocalHttpContext } from "./httpAuth";
 import { listConnectedSystemsForUser } from "./connectedSystems";
 import { routeConnectedSystemActions } from "./crmRouter";
-import { createWorkflowRun, getApprovedActionProposal, listActionProposals, recordActionExecution, reviewActionProposal } from "./db";
+import { claimApprovedActionProposal, createWorkflowRun, listActionProposals, recordActionExecution, reviewActionProposal } from "./db";
 import { executeApprovedCrmAction } from "./crm/executeApprovedAction";
 import { getAutomationPolicy, mayAutoExecute, normalizeAutomationPolicy, saveAutomationPolicy } from "./automationPolicy";
 
@@ -17,7 +12,7 @@ const ACTION_TYPES = [
   "update_contact_status", "update_contact", "create_contact", "create_company",
   "update_current_opportunity", "update_opportunity", "create_opportunity", "create_activity",
   "send_email", "send_email_template", "send_sms", "send_sms_template", "send_whatsapp", "send_whatsapp_template",
-  "apply_sequence", "custom_crm_action",
+  "create_calendar_event", "apply_sequence", "custom_crm_action",
 ] as const;
 type ActionType = (typeof ACTION_TYPES)[number];
 
@@ -29,14 +24,7 @@ type PreparedSalesAction = {
   payload: Record<string, unknown>;
 };
 
-async function authenticated(req: Request) {
-  const cookies = parseCookieHeader(req.headers.cookie ?? "");
-  const user = isLocalAuthMode() ? await getLocalSessionUser(cookies[COOKIE_NAME]) : await sdk.authenticateRequest(req);
-  if (!user || ("isCron" in user && user.isCron)) throw new Error("AUTH_REQUIRED");
-  if (!(await verifyTwoFactorSession(cookies[TWO_FACTOR_COOKIE], user.id))) throw new Error("TWO_FACTOR_REQUIRED");
-  const membership = await ensureDefaultOrganisation(user.id);
-  return { userId: user.id, membership };
-}
+async function authenticated(req: Request) { return requireLocalHttpContext(req); }
 
 function sendError(res: Response, error: unknown) {
   const detail = error instanceof Error ? error.message : String(error);
@@ -51,13 +39,13 @@ function cleanAction(value: unknown, index: number): PreparedSalesAction {
   const source = value as Record<string, unknown>;
   const actionType = String(source.actionType || "") as ActionType;
   if (!ACTION_TYPES.includes(actionType)) throw new Error(`Action ${index + 1} uses unsupported type '${actionType}'.`);
-  const targetLabel = String(source.targetLabel || source.externalId || "").trim().slice(0, 180);
-  if (!targetLabel) throw new Error(`Action ${index + 1} requires a target label or external record ID.`);
+  const targetLabel = String(source.targetLabel || source.externalId || source.to || "").trim().slice(0, 180);
+  if (!targetLabel) throw new Error(`Action ${index + 1} requires a target label, destination, or external record ID.`);
   const title = String(source.title || actionType.replaceAll("_", " ")).trim().slice(0, 220);
   const payload = source.payload && typeof source.payload === "object" && !Array.isArray(source.payload) ? { ...(source.payload as Record<string, unknown>) } : {};
-  if (source.externalId !== undefined && payload.externalId === undefined) payload.externalId = String(source.externalId);
-  if (source.contactExternalId !== undefined && payload.contactExternalId === undefined) payload.contactExternalId = String(source.contactExternalId);
-  if (source.opportunityExternalId !== undefined && payload.opportunityExternalId === undefined) payload.opportunityExternalId = String(source.opportunityExternalId);
+  for (const key of ["externalId", "contactExternalId", "opportunityExternalId", "to", "subject", "body", "startIso", "endIso", "timezone", "attendees"] as const) {
+    if (source[key] !== undefined && payload[key] === undefined) payload[key] = source[key];
+  }
   const encoded = JSON.stringify(payload);
   if (encoded.length > 80_000) throw new Error(`Action ${index + 1} payload is too large.`);
   const fingerprint = createHash("sha256").update(`${actionType}\0${targetLabel}\0${encoded}`).digest("hex").slice(0, 28);
@@ -92,23 +80,24 @@ export function registerSalesAutomationRoutes(app: Express) {
       const policy = await getAutomationPolicy({ userId, organisationId: membership.organisationId });
       if (policy.mode === "advise") return res.json({ mode: policy.mode, persisted: false, actions: routed, blockedActionCount: routed.filter(action => !((action.payload.crmRoute as { routable?: boolean } | undefined)?.routable)).length });
 
-      const workflowRunId = await createWorkflowRun({ userId, workflowKey: "generic_sales_automation", leadLabel: String(req.body?.label || actions[0].targetLabel).slice(0, 160), payload: { source: "generic_sales_automation", actionCount: actions.length }, verificationSummary: "Amarktai routed these actions only through backend-verified organisation CRM capabilities. External actions require review unless explicitly pre-approved by organisation policy.", actions: routed });
-      const proposals = await listActionProposals(userId, workflowRunId);
+      const workflowRunId = await createWorkflowRun({ userId, organisationId: membership.organisationId, workflowKey: "generic_sales_automation", leadLabel: String(req.body?.label || actions[0].targetLabel).slice(0, 160), payload: { source: "generic_sales_automation", actionCount: actions.length }, verificationSummary: "Amarktai routed these actions only through backend-verified CRM capabilities or a configured Microsoft Graph calendar boundary. External actions require review unless explicitly pre-approved by organisation policy.", actions: routed });
+      const proposals = await listActionProposals(userId, membership.organisationId, workflowRunId);
       const executions: Array<Record<string, unknown>> = [];
       if (policy.mode === "auto_preapproved") {
         for (const proposal of proposals) {
           const route = (proposal.payload as Record<string, unknown>).crmRoute as { routable?: boolean } | undefined;
           if (!route?.routable || !mayAutoExecute(policy, proposal.actionType)) continue;
-          await reviewActionProposal(userId, proposal.id, "approved");
-          const approved = await getApprovedActionProposal(userId, proposal.id);
+          await reviewActionProposal(userId, membership.organisationId, proposal.id, "approved");
+          const correlationId = randomUUID();
+          const approved = await claimApprovedActionProposal({ userId, organisationId: membership.organisationId, proposalId: proposal.id, correlationId });
           if (!approved) continue;
           try {
-            const result = await executeApprovedCrmAction({ organisationId: membership.organisationId, proposal: approved, correlationId: randomUUID() });
-            await recordActionExecution({ userId, proposalId: approved.id, success: result.success, result });
+            const result = await executeApprovedCrmAction({ organisationId: membership.organisationId, proposal: approved, correlationId });
+            await recordActionExecution({ userId, organisationId: membership.organisationId, proposalId: approved.id, correlationId, success: result.success, result });
             executions.push({ proposalId: approved.id, success: result.success, provider: result.provider, detail: result.detail });
           } catch (error) {
-            const result = { success: false, detail: error instanceof Error ? error.message : String(error), correlationId: randomUUID() };
-            await recordActionExecution({ userId, proposalId: approved.id, success: false, result });
+            const result = { success: false, detail: error instanceof Error ? error.message : String(error), correlationId };
+            await recordActionExecution({ userId, organisationId: membership.organisationId, proposalId: approved.id, correlationId, success: false, result });
             executions.push({ proposalId: approved.id, ...result });
           }
         }

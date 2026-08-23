@@ -1,42 +1,4 @@
-export const CRM_CAPABILITIES = ["contacts", "tasks", "opportunities", "notes", "activities", "email", "calendar"] as const;
-export type CrmCapability = (typeof CRM_CAPABILITIES)[number];
-export type CrmProvider = "genie" | "hubspot" | "salesforce" | "pipedrive" | "custom_browser";
-
-export type CrmConnectionRoute = {
-  provider: CrmProvider;
-  displayName: string;
-  status: "draft" | "needs_credentials" | "ready" | "paused" | "error";
-  capabilities: CrmCapability[];
-  connectionMode: "api" | "browser_automation" | "custom";
-};
-
-export function routeCrmCapability(input: { connections: CrmConnectionRoute[]; requiredCapability: CrmCapability; preferredProvider?: CrmProvider }) {
-  const eligible = input.connections.filter(connection => connection.status === "ready" && connection.capabilities.includes(input.requiredCapability));
-  const chosen = input.preferredProvider ? eligible.find(connection => connection.provider === input.preferredProvider) : eligible[0];
-  if (!chosen) return { routable: false as const, reason: `No ready legacy CRM connection has the '${input.requiredCapability}' capability.` };
-  return { routable: true as const, provider: chosen.provider, displayName: chosen.displayName, connectionMode: chosen.connectionMode };
-}
-
-const ACTION_CAPABILITY: Record<string, CrmCapability> = {
-  verify_contact_context: "contacts", update_contact_status: "contacts", complete_active_task: "tasks", schedule_callback: "tasks",
-  update_current_opportunity: "opportunities", append_contact_note: "notes", apply_sequence: "activities",
-  send_sms_template: "activities", send_email_template: "activities", send_whatsapp_template: "activities",
-};
-
-/**
- * Existing hard-coded playbooks pre-date organisation-scoped Connected Systems.
- * When no legacy per-user route exists, preserve a reviewable proposal and let
- * execution resolve a verified organisation connector. Execution still fails
- * closed if no backend-verified connector can satisfy the action.
- */
-export function routeWorkflowActions<T extends { actionType: string; payload: Record<string, unknown> }>(actions: T[], connections: CrmConnectionRoute[]) {
-  return actions.map(action => {
-    const requiredCapability = ACTION_CAPABILITY[action.actionType] ?? "activities";
-    const legacy = routeCrmCapability({ connections, requiredCapability });
-    const crmRoute = legacy.routable ? { ...legacy, requiredCapability } : { routable: true as const, provider: "auto", deferredToOrganisationConnector: true, requiredCapability, legacyReason: legacy.reason };
-    return { ...action, payload: { ...action.payload, crmRoute } };
-  });
-}
+import { getOutlookReadiness } from "./outlook";
 
 export type ConnectedSystemRoute = {
   id: number;
@@ -78,6 +40,13 @@ export function connectedSystemSupportsAction(system: ConnectedSystemRoute, acti
 export function routeConnectedSystemActions<T extends { actionType: string; payload: Record<string, unknown> }>(actions: T[], systems: ConnectedSystemRoute[]) {
   const ready = systems.filter(system => system.status === "ready");
   return actions.map(action => {
+    if (action.actionType === "create_calendar_event") {
+      const outlook = getOutlookReadiness();
+      const crmRoute = outlook.ready
+        ? { routable: true as const, provider: "outlook", displayName: "Microsoft Outlook", connectionMode: "microsoft_graph", requiredCapability: "calendar.create" }
+        : { routable: false as const, reason: "Microsoft Outlook calendar is not configured and verified for this deployment.", requiredCapability: "calendar.create" };
+      return { ...action, payload: { ...action.payload, crmRoute } };
+    }
     const alternatives = ACTION_CONNECTED_CAPABILITIES[action.actionType] || [["activities.write"]];
     const preferred = typeof action.payload.preferredProvider === "string" ? action.payload.preferredProvider : undefined;
     const eligible = ready.filter(system => connectedSystemSupportsAction(system, action.actionType));

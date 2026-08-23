@@ -62,3 +62,92 @@
 - [ ] Run authenticated Company Setup end-to-end validation: save profile, preview website, confirm knowledge, register CRM capability, and save a playbook.
 - [ ] Add API smoke coverage for Company Setup procedures and CRM-routed workflow-proposal blocking behaviour.
 - [x] Add direct smoke coverage for CRM-routed workflow proposal blocking and ready-route attachment.
+- [x] Audit every agent, workflow, dashboard, CRM, communication, and efficiency requirement against the original brief and record the remaining operating-model gaps.
+- [x] Add a Human Communications Agent with structured draft-quality controls that make email replies sound natural, company-aware, concise, and non-generic while preserving human approval before sending.
+- [x] Add a Manager Assurance Agent and manager dashboard queue to check workflow completion, missing CRM evidence, overdue work, blocked proposals, and quality exceptions without silently changing records.
+- [x] Extend the CRM workspace model so assistants can prepare a single reviewable workboard from CRM context, surface record-linked next actions, and avoid forcing agents to repeat CRM research.
+- [x] Expand the governed generic workflow/playbook model for the repository-defined tasks while retaining explicitly customer-approved sequences as optional configuration work.
+- [x] Implement token-efficiency controls: company-context retrieval, action-memory reuse, prompt budgeting, deterministic routing, duplicate suppression, and per-agent usage visibility.
+- [x] Add tests and documentation for human-email quality gates, manager assurance findings, CRM context reuse, workflow coverage, and token-efficiency safeguards.
+- [x] Wire company profile and brand-voice context into agent prompts and prove company-aware human-email drafting behavior with tests.
+- [x] Extend Manager Assurance with missing CRM evidence and workflow-completion correctness checks, with regression coverage.
+- [x] Add executable active-playbook preparation, remaining approved workflow templates, and review-first UI controls.
+- [x] Cover CRM context reuse, response-cache, usage-ledger, and duplicate-draft suppression through the existing focused regression suite and operating-model documentation.
+- [x] Preserve uncodified customer-specific outcome branches and exact templates as organisation-approved optional configuration, not generic production defaults.
+- [x] Document customer-approved exact sequence templates as intentional organisation-level configuration beyond the neutral generic runtime.
+- [x] Replace the managed preview sign-in path with a visually uniform Amarktai Network local-login screen that provides a clear dashboard-testing route.
+- [x] Add a safe development-only preview path and document Webdock local-administrator creation and controlled credential recovery.
+- [x] Validate the local login/dashboard code paths and update deployment/Genie commissioning guidance; real mailbox second-factor validation is documented as a VPS action.
+- [x] Add a disposable development-only local access route that is unavailable in production and does not require or persist VPS credentials.
+- [x] Document the Webdock administrator credential-reset procedure and explicit SMTP two-factor test command; real mailbox/dashboard validation remains a documented VPS commissioning action.
+- [x] Audit and remove all repository-controlled Manus preview, storage, Forge, Heartbeat, notification, analytics, runtime-plugin, and debug dependencies from production paths.
+- [x] Move all critical landing, auth, metadata, and favicon visual assets into repository-owned production paths and prove no `/manus-storage` reference remains in production output.
+- [x] Replace managed daily-report scheduling with a self-hosted, idempotent worker backed by MariaDB and SMTP; remove inactive hosted owner-notification code so no production feature depends on it.
+- [x] Add production environment validation, deterministic port behavior, `/healthz` and `/readyz`, integration readiness, asset checks, and production-safe error handling.
+- [x] Harden authentication, cookies, CSRF/origin controls, rate limiting, request limits, SSRF-safe website discovery, security headers, and GenX/SMTP readiness checks.
+- [x] Generalise all runtime company behaviour and move Course2Career/Cyber-specific content to an optional inactive preset with no default customer identity, templates, stages, or contact data.
+- [x] Make CRM readiness server-verified, stale-safe, capability-specific, and truthful for unimplemented providers; add verification evidence and execution guards.
+- [x] Rebuild Webdock configuration, Docker Compose, Dockerfile, installer, verifier, backup/upgrade/rollback scripts, CI, and acceptance documentation as a deterministic production gate; Docker execution remains target-VPS/CI validation.
+- [x] Add GitHub Actions CI and focused regression coverage for production configuration, readiness, scheduler, security, SSRF, CRM verification, company context, migrations, and review-first controls.
+- [x] Run every available local release gate, document unavailable Docker/VPS checks truthfully, commit and push the final production release with the required readiness report.
+- [x] Wire bounded GenX and SMTP transport probes into the production verifier and add regression coverage for configured-but-unreachable integrations.
+- [x] Audit and remove or replace every remaining hosted owner-notification path with self-hosted SMTP delivery or persisted administrator events.
+- [x] Record truthful daily-report success/failure delivery bookkeeping and regression coverage before the production checkpoint.
+- [x] Preserve rescue branch and bundle for commit 57eced26, then verify the local tree is the Sales Assistant application.
+- [x] Reconnect the local release to amarktainetwork-blip/Amarktai-Sales-Assistant and determine the merge base with its canonical main.
+- [x] Integrate the completed release onto the correct Sales history without touching Amarktai-Network-V2, then verify Sales-specific production controls.
+- [x] Run final recovery release gates and push release/production-ready-sales-20260822 to the correct Sales repository.
+- [x] Deliver the exact repository recovery and Webdock deployment handoff report with the deployable SHA.
+- [x] Freeze and verify amarktainetwork-blip/Amarktai-Sales-Assistant- at the current canonical main before creating release/go-live-20260822.
+- [x] Audit the advanced repository’s existing integrations, tenant model, authentication, storage, and deployment profiles without discarding completed capabilities.
+- [ ] Consolidate active-organisation membership, cross-tenant authorisation, and organisation-scoped shared and operational data with safe migrations and isolation tests.
+- [x] Retire legacy CRM connection routing in favour of the canonical connectedSystems readiness model across onboarding, workflows, dashboards, playbooks, communications, and call closeout.
+- [ ] Rebuild onboarding around server-verified supported CRM connections, CRM/team/pipeline mapping, communications, policies, targets, credits, and go-live readiness.
+- [ ] Complete self-hosted authentication, generic organisation configuration, review-first playbooks, provider capability verification, and Manus-free production boundaries.
+- [ ] Run migrations, security and tenant-isolation tests, production build, Compose/Docker gates, authenticated flow tests, and provider readiness verification without credentials in source control.
+- [ ] Commit, push, and deliver the trailing-hyphen repository go-live release with exact status and only real external commissioning requirements outstanding.
+- [x] Replace active managed SDK, OAuth, Forge, storage proxy, preview instrumentation, and hosted scheduler fallbacks with local-session and Webdock-worker-compatible runtime boundaries; pass standalone type check, tests, and production build.
+- [x] Bind an explicitly selected active organisation to the local session and expose validated list/current/switch APIs.
+- [x] Replace first-active-membership inference in tenant-sensitive REST and tRPC flows with the explicit active-organisation resolver.
+- [x] Add membership, active-organisation switching, and cross-tenant denial regression coverage.
+- [x] Add and generate reviewed nullable organisation references for legacy company, discovery, connection-profile, and playbook records without destructive constraint changes.
+- [x] Replace onboarding CRM registration and main workflow capability routing with canonical active-organisation connected systems and backend verification.
+- [x] Retire the client-controlled legacy CRM registration mutation and persistence helper; preserve legacy data tables only for controlled migration.
+- [x] Add regression coverage that organisation switching reissues a signed session for the selected verified membership.
+- [x] Add tRPC regression coverage that active-organisation mismatches are denied on connected systems, sales, management, and sidecar procedures.
+- [x] Add REST regression coverage that protected active-organisation context blocks cross-tenant access.
+- [x] Add a generic onboarding go-live review that reports server-verified CRM readiness and directs teams to existing mapping, policy, target, credit, and deployment controls without claiming live-provider proof.
+- [x] Add audited organisation-scoped CRM-owner mapping controls for active members and connected systems, with cross-tenant denial coverage.
+- [x] Replace security-sensitive process-local rate limiting with a shared Valkey-backed limiter and bounded local fallback policy.
+- [x] Make AI-credit debits transactional, organisation-serialized, and idempotent by reference so concurrent requests cannot overspend the ledger.
+- [x] Implement real Microsoft Graph mail/calendar request boundaries with review-first validation and truthful unverified provider readiness.
+- [x] Atomically claim approved action proposals before manual or policy-driven CRM execution so duplicate concurrent actions are rejected.
+- [x] Run GitHub CI on release branches and verify the exact trailing-hyphen release branch checks before final handoff.
+- [x] Add generic public local registration and password recovery/reset flows that preserve local 2FA and do not expose account existence.
+- [x] Restore standalone development SPA route fallback so direct authentication URLs resolve through the client Vite root.
+- [x] Add bounded stale-claim recovery and correlation-bound finalization for approved external actions so a process crash cannot permanently trap a review-approved proposal.
+- [x] Apply dedicated shared, fail-closed rate limits to public registration and password-recovery/reset operations.
+- [x] Add reviewed nullable organisation references and active-organisation guards for new workflow runs and reviewable action proposals.
+- [x] Add an organisation-scoped, audited CRM pipeline-stage mapping model and management control backed by verified connected systems.
+- [x] Add reviewed nullable organisation references and active-organisation guards for callback work, live-call records, knowledge, audit entries, and daily reports.
+- [x] Enforce signed active-organisation reads and writes for company setup, website discovery, confirmed knowledge, and review-first playbooks.
+- [x] Enforce signed active-organisation reads and writes for legacy integration profiles and dashboard integration visibility.
+- [x] Remove residual customer-specific names and workflow labels from active onboarding and workspace UI so generic deployments carry no client identity or vertical-specific defaults.
+- [x] Add active-organisation-scoped CSV and PDF export for generated operational reports and factual conversation logs, with protected server-side data access and regression coverage.
+- [x] Add an active-organisation-scoped favorites and tags model for reviewable sales pitches, leads, and action proposals, with secure UI controls and isolation tests.
+- [x] Improve loading states and actionable API error feedback across the export, review, workspace, and operational management interactions.
+- [x] Perform a fresh feature, source, deployment, and checklist audit; document exact code gaps, deployment-time commissioning steps, and go-live blockers without overstating live proof.
+- [x] Document CSV/PDF exports, workspace favorites/tags, migration 0013, and the new API-feedback behavior in the Webdock operator guide.
+- [x] Complete a full release audit of implemented features, code-controlled gates, deployment readiness, remaining commissioning requirements, and prioritized additions for a complete sales assistant.
+- [x] Reconcile historical implementation-status and release-evidence documents with the current audited release head, tests, migrations, exports, favorites/tags, and API-feedback behavior.
+- [ ] Add organisation-configurable compliance policy, retention schedules, deletion/export workflows, and audit-access controls for operational records.
+- [ ] Add versioned review-first playbooks and approval templates with manager draft/publish/rollback controls and execution history.
+- [ ] Add connector operational controls: verified sync jobs, signed webhook intake, retry/dead-letter visibility, and an organisation operator console.
+- [ ] Add a provider-neutral lead-prioritization work queue using factual CRM, callback, pipeline, and call-signal evidence with transparent scoring.
+- [ ] Add review-first inbound-message classification and reply drafting through the configured communication boundary.
+- [ ] Add manager-defined conversation QA scorecards, sampled review queues, calibration feedback, and coaching history.
+- [ ] Add explainable forecasting, quota pacing, territories, and capacity-planning controls based on configured pipeline mappings and factual performance data.
+- [ ] Add enterprise identity foundations for SAML/SCIM-ready connection configuration and controlled user lifecycle provisioning.
+- [ ] Add billing/subscription architecture with a disabled-by-default provider boundary and durable entitlement enforcement.
+- [ ] Add configurable optional text-to-speech with voice selection, explicit consent/policy controls, and no unreviewed outbound delivery.
+- [ ] Add production observability, backup-age/worker/connector alerts, structured operational events, and deployment acceptance validation.

@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { crmActivities, crmOpportunities, crmTasks, externalUserMappings } from "../drizzle/schema";
+import { crmActivities, crmOpportunities, crmPipelineStageMappings, crmTasks, externalUserMappings } from "../drizzle/schema";
 import { getDb } from "./db";
 import { canViewTeamData, requireOrganisationMembership } from "./organisation";
 import { getSalesTargets } from "./salesTargets";
@@ -25,13 +25,15 @@ export async function getTeamIntelligence(input: { userId: number; organisationI
   const nowParts = zonedParts(now, membership.timezone || "UTC");
   const daysInMonth = new Date(Date.UTC(nowParts.year, nowParts.month, 0)).getUTCDate();
   const expectedMonthlyPace = Math.min(1, Math.max(0, nowParts.day / daysInMonth));
-  const [mappings, tasks, opportunities, activities, targets] = await Promise.all([
+  const [mappings, tasks, opportunities, activities, targets, stageMappings] = await Promise.all([
     db.select().from(externalUserMappings).where(and(eq(externalUserMappings.organisationId, input.organisationId), eq(externalUserMappings.isActive, true))),
     db.select().from(crmTasks).where(eq(crmTasks.organisationId, input.organisationId)).limit(5000),
     db.select().from(crmOpportunities).where(eq(crmOpportunities.organisationId, input.organisationId)).limit(5000),
     db.select().from(crmActivities).where(eq(crmActivities.organisationId, input.organisationId)).limit(10_000),
     getSalesTargets({ userId: input.userId, organisationId: input.organisationId }),
+    db.select().from(crmPipelineStageMappings).where(and(eq(crmPipelineStageMappings.organisationId, input.organisationId), eq(crmPipelineStageMappings.isActive, true))),
   ]);
+  const stageCategoryBySystemAndStage = new Map(stageMappings.map(mapping => [`${mapping.connectedSystemId}:${mapping.externalStageId}`, mapping.category]));
   const targetByUser = new Map(targets.map(target => [target.userId, target]));
   const people = new Map(mappings.map(mapping => [mapping.externalUserId, {
     externalUserId: mapping.externalUserId, name: mapping.displayName, userId: mapping.userId,
@@ -45,10 +47,13 @@ export async function getTeamIntelligence(input: { userId: number; organisationI
   for (const opportunity of opportunities) {
     if (!opportunity.ownerExternalId || !people.has(opportunity.ownerExternalId)) continue;
     const person = people.get(opportunity.ownerExternalId)!;
+    const mappedCategory = opportunity.stage ? stageCategoryBySystemAndStage.get(`${opportunity.connectedSystemId}:${opportunity.stage}`) : undefined;
+    const isWon = mappedCategory === "won" || (!mappedCategory && won(opportunity.stage));
+    const isClosed = isWon || mappedCategory === "lost";
     const isStale = stale(opportunity.lastActivityAt, now);
-    if (isStale && !won(opportunity.stage)) { person.staleOpportunities += 1; person.pipelineAtRiskMinor += opportunity.valueMinor ?? 0; }
-    if (!opportunity.nextStepAt && !won(opportunity.stage)) person.noNextStep += 1;
-    if (won(opportunity.stage) && monthKey(opportunity.closeAt ?? opportunity.sourceUpdatedAt, membership.timezone) === nowParts.monthKey) person.wonValueThisMonthMinor += opportunity.valueMinor ?? 0;
+    if (isStale && !isClosed) { person.staleOpportunities += 1; person.pipelineAtRiskMinor += opportunity.valueMinor ?? 0; }
+    if (!opportunity.nextStepAt && !isClosed) person.noNextStep += 1;
+    if (isWon && monthKey(opportunity.closeAt ?? opportunity.sourceUpdatedAt, membership.timezone) === nowParts.monthKey) person.wonValueThisMonthMinor += opportunity.valueMinor ?? 0;
   }
   for (const activity of activities) {
     if (!activity.ownerExternalId || !people.has(activity.ownerExternalId)) continue;

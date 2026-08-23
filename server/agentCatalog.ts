@@ -1,4 +1,4 @@
-export const WORKFLOW_KEYS = ["first_contact", "cyber_final_close", "cyber_post_consultation"] as const;
+export const WORKFLOW_KEYS = ["first_contact", "final_close", "post_consultation_follow_up"] as const;
 export type WorkflowKey = (typeof WORKFLOW_KEYS)[number];
 
 export type AgentDefinition = {
@@ -45,8 +45,8 @@ export const AGENT_CATALOG: AgentDefinition[] = [
   },
   {
     key: "knowledge_guide",
-    name: "Programme Knowledge Agent",
-    purpose: "Answers sales questions from approved Course2Career programme and policy sources.",
+    name: "Knowledge Agent",
+    purpose: "Answers sales questions only from approved organisation knowledge and policy sources.",
     category: "knowledge",
     requiresModel: true,
     modelRole: "GenX retrieval and explanation model",
@@ -101,8 +101,8 @@ export const AGENT_CATALOG: AgentDefinition[] = [
   },
   {
     key: "recommendation_agent",
-    name: "Course Recommendation Agent",
-    purpose: "Maps verified prospect needs to approved programme information, while escalating eligibility and suitability decisions for human review.",
+    name: "Solution Recommendation Agent",
+    purpose: "Maps verified prospect needs to approved organisation offerings, while escalating eligibility and suitability decisions for human review.",
     category: "knowledge",
     requiresModel: true,
     modelRole: "GenX grounded recommendation model",
@@ -127,6 +127,6 @@ export const AGENT_CATALOG: AgentDefinition[] = [
 
 export const WORKFLOW_LABELS: Record<WorkflowKey, string> = {
   first_contact: "First contact sequence",
-  cyber_final_close: "Cyber Security final close",
-  cyber_post_consultation: "Cyber post-consultation follow-up",
+  final_close: "Final close review",
+  post_consultation_follow_up: "Post-consultation follow-up",
 };

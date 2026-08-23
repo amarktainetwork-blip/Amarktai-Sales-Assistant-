@@ -10,7 +10,7 @@ Microsoft Graph supports webhook subscriptions for Outlook messages, contacts, a
 
 ## Genie CRM
 
-The approved Course2Career architecture uses **browser automation rather than a Genie API**. The Webdock installation starts an internal Browserless Chromium service, and the application connects through Playwright using `GENIE_LOGIN_URL`, `GENIE_USERNAME`, `GENIE_PASSWORD`, and reviewed page selectors. It deliberately has no `GENIE_CRM_API_KEY` setting.
+The approved generic CRM-browser architecture uses **authorised browser automation rather than an assumed CRM API**. The Webdock installation starts an internal Chromium/CDP service, and the application connects through Playwright using installation-time login configuration and reviewed page selectors. It deliberately has no hard-coded CRM API-key requirement.
 
 The browser bridge follows a **learn once, save script, replay script** approach. A scheduled worker checks the Genie login and dashboard selector every 12 hours. When Genie changes, risky scripts should pause pending a selector repair and reviewed retest; the assistant must not guess a substitute action.
 

@@ -1,18 +1,16 @@
 import type { Express, Request, Response } from "express";
 import { randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
-import { parse as parseCookieHeader } from "cookie";
 import { and, eq } from "drizzle-orm";
 import { jwtVerify, SignJWT } from "jose";
 import { COOKIE_NAME } from "@shared/const";
-import { organisationMembers, users } from "../../drizzle/schema";
+import { approvalTemplates, connectedSystems, connectorSyncJobs, connectorWebhookReceipts, crmPipelineStageMappings, dataSubjectRequests, enterpriseIdentityConnections, externalUserMappings, inboundMessages, inboundReplyDrafts, organisationCompliancePolicies, organisationEntitlements, organisationMembers, playbookVersions, qaRubrics, users } from "../../drizzle/schema";
 import { getDb, getUserByEmail, getUserById, recordAudit } from "../db";
-import { getLocalSessionUser, isLocalAuthMode } from "../localAuth";
+import { isLocalAuthMode } from "../localAuth";
 import { canManageOrganisation } from "../organisationAccess";
-import { ensureDefaultOrganisation } from "../organisation";
 import { getSmtpReadiness, sendEmail } from "../smtp";
-import { TWO_FACTOR_COOKIE, verifyTwoFactorSession } from "../twoFactor";
-import { sdk } from "../_core/sdk";
+import { requireLocalHttpContext } from "../httpAuth";
+import { classifyInboundMessage } from "../communications/inboundReview";
 
 const INVITE_TTL_SECONDS = 48 * 60 * 60;
 type ManagedRole = "manager" | "salesperson" | "auditor";
@@ -25,14 +23,9 @@ function inviteKey() {
 }
 
 async function requireManager(req: Request) {
-  const cookies = parseCookieHeader(req.headers.cookie ?? "");
-  const user = isLocalAuthMode() ? await getLocalSessionUser(cookies[COOKIE_NAME]) : await sdk.authenticateRequest(req);
-  if (!user || ("isCron" in user && user.isCron)) throw new Error("AUTH_REQUIRED");
-  const verified = await verifyTwoFactorSession(cookies[TWO_FACTOR_COOKIE], user.id);
-  if (!verified) throw new Error("TWO_FACTOR_REQUIRED");
-  const membership = await ensureDefaultOrganisation(user.id);
+  const { userId, membership } = await requireLocalHttpContext(req);
   if (!canManageOrganisation(membership.role)) throw new Error("MANAGER_REQUIRED");
-  return { user: { id: user.id } as Authenticated, membership };
+  return { user: { id: userId } as Authenticated, membership };
 }
 
 async function listMembers(organisationId: number) {
@@ -92,6 +85,321 @@ export function registerTeamAdminRoutes(app: Express) {
       const { membership } = await requireManager(req);
       const members = await listMembers(membership.organisationId);
       return res.json({ organisation: { id: membership.organisationId, name: membership.organisationName, role: membership.role }, members: members.map(member => ({ ...member, hasPassword: Boolean(member.hasPassword) })) });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  });
+
+  app.get("/api/team-admin/compliance-policy", async (req, res) => {
+    try {
+      const { membership } = await requireManager(req);
+      const db = await getDb();
+      if (!db) throw new Error("Database connection is unavailable.");
+      const policy = (await db.select().from(organisationCompliancePolicies).where(eq(organisationCompliancePolicies.organisationId, membership.organisationId)).limit(1))[0] ?? null;
+      return res.json({ policy });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  });
+
+  app.put("/api/team-admin/compliance-policy", async (req, res) => {
+    try {
+      const { user: actor, membership } = await requireManager(req);
+      const boundedDays = (value: unknown, fallback: number) => {
+        const parsed = Number(value ?? fallback);
+        if (!Number.isInteger(parsed) || parsed < 1 || parsed > 3_650) throw new Error("Retention periods must be whole days between 1 and 3650.");
+        return parsed;
+      };
+      const transcriptRetentionDays = boundedDays(req.body?.transcriptRetentionDays, 90);
+      const auditRetentionDays = boundedDays(req.body?.auditRetentionDays, 365);
+      const operationalRetentionDays = boundedDays(req.body?.operationalRetentionDays, 365);
+      const outboundConsentRequired = req.body?.outboundConsentRequired === undefined ? true : Boolean(req.body.outboundConsentRequired);
+      const deletionApprovalRequired = req.body?.deletionApprovalRequired === undefined ? true : Boolean(req.body.deletionApprovalRequired);
+      const policyText = typeof req.body?.policyText === "string" ? req.body.policyText.trim().slice(0, 12_000) || null : null;
+      const db = await getDb();
+      if (!db) throw new Error("Database connection is unavailable.");
+      await db.insert(organisationCompliancePolicies).values({ organisationId: membership.organisationId, transcriptRetentionDays, auditRetentionDays, operationalRetentionDays, outboundConsentRequired, deletionApprovalRequired, policyText, createdByUserId: actor.id, updatedByUserId: actor.id }).onDuplicateKeyUpdate({ set: { transcriptRetentionDays, auditRetentionDays, operationalRetentionDays, outboundConsentRequired, deletionApprovalRequired, policyText, updatedByUserId: actor.id } });
+      await recordAudit({ userId: actor.id, eventType: "compliance_policy_saved", entityType: "organisation_compliance_policy", entityId: String(membership.organisationId), summary: "Organisation compliance and retention policy was updated.", metadata: { organisationId: membership.organisationId, transcriptRetentionDays, auditRetentionDays, operationalRetentionDays, outboundConsentRequired, deletionApprovalRequired } });
+      return res.json({ ok: true });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  });
+
+  app.get("/api/team-admin/enterprise-settings", async (req, res) => {
+    try {
+      const { membership } = await requireManager(req);
+      const db = await getDb(); if (!db) throw new Error("Database connection is unavailable.");
+      const [identityConnections, entitlement] = await Promise.all([
+        db.select().from(enterpriseIdentityConnections).where(eq(enterpriseIdentityConnections.organisationId, membership.organisationId)),
+        db.select().from(organisationEntitlements).where(eq(organisationEntitlements.organisationId, membership.organisationId)).limit(1),
+      ]);
+      return res.json({ identityConnections, entitlement: entitlement[0] ?? null });
+    } catch (error) { return sendError(res, error); }
+  });
+
+  app.put("/api/team-admin/enterprise-identity", async (req, res) => {
+    try {
+      const { user: actor, membership } = await requireManager(req);
+      const protocol = req.body?.protocol === "saml" || req.body?.protocol === "scim" ? req.body.protocol : null;
+      const displayName = typeof req.body?.displayName === "string" ? req.body.displayName.trim().slice(0, 180) : "";
+      const configuration = req.body?.configuration && typeof req.body.configuration === "object" && !Array.isArray(req.body.configuration) ? req.body.configuration as Record<string, unknown> : {};
+      if (!protocol || !displayName) throw new Error("Protocol and display name are required.");
+      const db = await getDb(); if (!db) throw new Error("Database connection is unavailable.");
+      await db.insert(enterpriseIdentityConnections).values({ organisationId: membership.organisationId, protocol, displayName, configuration, status: "draft" }).onDuplicateKeyUpdate({ set: { displayName, configuration, status: "draft", verifiedAt: null, lastError: null } });
+      await recordAudit({ userId: actor.id, eventType: "enterprise_identity_configured", entityType: "enterprise_identity_connection", entityId: protocol, summary: `${protocol.toUpperCase()} configuration saved as draft pending verification.`, metadata: { organisationId: membership.organisationId, protocol } });
+      return res.json({ ok: true });
+    } catch (error) { return sendError(res, error); }
+  });
+
+  app.get("/api/team-admin/data-subject-requests", async (req, res) => {
+    try {
+      const { membership } = await requireManager(req);
+      const db = await getDb(); if (!db) throw new Error("Database connection is unavailable.");
+      const requests = await db.select().from(dataSubjectRequests).where(eq(dataSubjectRequests.organisationId, membership.organisationId));
+      return res.json({ requests });
+    } catch (error) { return sendError(res, error); }
+  });
+
+  app.post("/api/team-admin/data-subject-requests", async (req, res) => {
+    try {
+      const { user: actor, membership } = await requireManager(req);
+      const requestType = req.body?.requestType === "export" || req.body?.requestType === "deletion" ? req.body.requestType : null;
+      const subjectType = ["contact", "company", "user", "operational_record"].includes(req.body?.subjectType) ? req.body.subjectType : null;
+      const subjectReference = typeof req.body?.subjectReference === "string" ? req.body.subjectReference.trim().slice(0, 220) : "";
+      const reason = typeof req.body?.reason === "string" ? req.body.reason.trim().slice(0, 6_000) || null : null;
+      if (!requestType || !subjectType || !subjectReference) throw new Error("Request type, subject type, and subject reference are required.");
+      const db = await getDb(); if (!db) throw new Error("Database connection is unavailable.");
+      const result = await db.insert(dataSubjectRequests).values({ organisationId: membership.organisationId, requestedByUserId: actor.id, requestType, subjectType, subjectReference, reason });
+      await recordAudit({ userId: actor.id, eventType: "data_subject_request_created", entityType: "data_subject_request", entityId: String(result[0].insertId), summary: `${requestType} request queued for manager review.`, metadata: { organisationId: membership.organisationId, subjectType, subjectReference } });
+      return res.status(201).json({ id: Number(result[0].insertId), status: "review_required" });
+    } catch (error) { return sendError(res, error); }
+  });
+
+  app.put("/api/team-admin/data-subject-requests/:id/review", async (req, res) => {
+    try {
+      const { user: actor, membership } = await requireManager(req);
+      const id = Number(req.params.id); const decision = req.body?.decision === "approved" || req.body?.decision === "rejected" ? req.body.decision : null;
+      if (!Number.isInteger(id) || id <= 0 || !decision) throw new Error("A valid request and review decision are required.");
+      const db = await getDb(); if (!db) throw new Error("Database connection is unavailable.");
+      const request = (await db.select().from(dataSubjectRequests).where(and(eq(dataSubjectRequests.id, id), eq(dataSubjectRequests.organisationId, membership.organisationId))).limit(1))[0];
+      if (!request) throw new Error("Data-subject request was not found in the active organisation.");
+      if (request.status !== "review_required") throw new Error("Only requests awaiting review can be decided.");
+      await db.update(dataSubjectRequests).set({ status: decision, reviewedByUserId: actor.id, reviewedAt: new Date() }).where(eq(dataSubjectRequests.id, id));
+      await recordAudit({ userId: actor.id, eventType: "data_subject_request_reviewed", entityType: "data_subject_request", entityId: String(id), summary: `Data-subject ${request.requestType} request ${decision}.`, metadata: { organisationId: membership.organisationId, decision, requestType: request.requestType } });
+      return res.json({ ok: true, status: decision });
+    } catch (error) { return sendError(res, error); }
+  });
+
+  app.get("/api/team-admin/playbook-versions", async (req, res) => {
+    try {
+      const { membership } = await requireManager(req);
+      const db = await getDb(); if (!db) throw new Error("Database connection is unavailable.");
+      const [playbooks, templates] = await Promise.all([
+        db.select().from(playbookVersions).where(eq(playbookVersions.organisationId, membership.organisationId)),
+        db.select().from(approvalTemplates).where(eq(approvalTemplates.organisationId, membership.organisationId)),
+      ]);
+      return res.json({ playbooks, templates });
+    } catch (error) { return sendError(res, error); }
+  });
+
+  app.post("/api/team-admin/playbook-versions", async (req, res) => {
+    try {
+      const { user: actor, membership } = await requireManager(req);
+      const playbookKey = typeof req.body?.playbookKey === "string" ? req.body.playbookKey.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").slice(0, 140) : "";
+      const title = typeof req.body?.title === "string" ? req.body.title.trim().slice(0, 220) : "";
+      const instructions = typeof req.body?.instructions === "string" ? req.body.instructions.trim().slice(0, 20_000) : "";
+      const inputSchema = req.body?.inputSchema && typeof req.body.inputSchema === "object" && !Array.isArray(req.body.inputSchema) ? req.body.inputSchema as Record<string, unknown> : {};
+      if (!playbookKey || !title || !instructions) throw new Error("Playbook key, title, and instructions are required.");
+      const db = await getDb(); if (!db) throw new Error("Database connection is unavailable.");
+      const existing = await db.select({ version: playbookVersions.version }).from(playbookVersions).where(and(eq(playbookVersions.organisationId, membership.organisationId), eq(playbookVersions.playbookKey, playbookKey)));
+      const version = Math.max(0, ...existing.map(item => item.version)) + 1;
+      const result = await db.insert(playbookVersions).values({ organisationId: membership.organisationId, playbookKey, version, title, instructions, inputSchema, createdByUserId: actor.id });
+      await recordAudit({ userId: actor.id, eventType: "playbook_version_created", entityType: "playbook_version", entityId: String(result[0].insertId), summary: `Draft playbook version ${version} created.`, metadata: { organisationId: membership.organisationId, playbookKey, version } });
+      return res.status(201).json({ id: Number(result[0].insertId), version, status: "draft" });
+    } catch (error) { return sendError(res, error); }
+  });
+
+  app.put("/api/team-admin/playbook-versions/:id/publish", async (req, res) => {
+    try {
+      const { user: actor, membership } = await requireManager(req); const id = Number(req.params.id);
+      if (!Number.isInteger(id) || id <= 0) throw new Error("A valid playbook version is required.");
+      const db = await getDb(); if (!db) throw new Error("Database connection is unavailable.");
+      const version = (await db.select().from(playbookVersions).where(and(eq(playbookVersions.id, id), eq(playbookVersions.organisationId, membership.organisationId))).limit(1))[0];
+      if (!version) throw new Error("Playbook version was not found in the active organisation.");
+      await db.transaction(async tx => {
+        await tx.update(playbookVersions).set({ status: "archived" }).where(and(eq(playbookVersions.organisationId, membership.organisationId), eq(playbookVersions.playbookKey, version.playbookKey), eq(playbookVersions.status, "published")));
+        await tx.update(playbookVersions).set({ status: "published", publishedByUserId: actor.id, publishedAt: new Date() }).where(eq(playbookVersions.id, id));
+      });
+      await recordAudit({ userId: actor.id, eventType: "playbook_version_published", entityType: "playbook_version", entityId: String(id), summary: `Playbook version ${version.version} published.`, metadata: { organisationId: membership.organisationId, playbookKey: version.playbookKey, version: version.version } });
+      return res.json({ ok: true, status: "published" });
+    } catch (error) { return sendError(res, error); }
+  });
+
+  app.get("/api/team-admin/connector-operations", async (req, res) => {
+    try {
+      const { membership } = await requireManager(req);
+      const db = await getDb(); if (!db) throw new Error("Database connection is unavailable.");
+      const [jobs, receipts] = await Promise.all([
+        db.select().from(connectorSyncJobs).where(eq(connectorSyncJobs.organisationId, membership.organisationId)),
+        db.select().from(connectorWebhookReceipts).where(eq(connectorWebhookReceipts.organisationId, membership.organisationId)),
+      ]);
+      return res.json({ jobs, receipts });
+    } catch (error) { return sendError(res, error); }
+  });
+
+  app.post("/api/team-admin/connector-sync-jobs", async (req, res) => {
+    try {
+      const { user: actor, membership } = await requireManager(req);
+      const connectedSystemId = Number(req.body?.connectedSystemId);
+      const resourceType = typeof req.body?.resourceType === "string" ? req.body.resourceType.trim().slice(0, 80) : "";
+      const scheduleExpression = typeof req.body?.scheduleExpression === "string" ? req.body.scheduleExpression.trim().slice(0, 120) : "";
+      const capabilityKey = typeof req.body?.capabilityKey === "string" ? req.body.capabilityKey.trim().slice(0, 120) : "";
+      if (!Number.isInteger(connectedSystemId) || connectedSystemId <= 0 || !resourceType || !scheduleExpression || !capabilityKey) throw new Error("Connected system, resource, schedule, and verified capability are required.");
+      const db = await getDb(); if (!db) throw new Error("Database connection is unavailable.");
+      const system = (await db.select().from(connectedSystems).where(and(eq(connectedSystems.id, connectedSystemId), eq(connectedSystems.organisationId, membership.organisationId))).limit(1))[0];
+      if (!system) throw new Error("Connected system was not found in the active organisation.");
+      const verified = system.status === "ready" && system.verifiedCapabilities.includes(capabilityKey);
+      await db.insert(connectorSyncJobs).values({ organisationId: membership.organisationId, connectedSystemId, resourceType, scheduleExpression, capabilityKey, status: verified ? "ready" : "draft" }).onDuplicateKeyUpdate({ set: { scheduleExpression, capabilityKey, status: verified ? "ready" : "draft", lastError: verified ? null : "Connector is not ready or capability is not verified." } });
+      await recordAudit({ userId: actor.id, eventType: "connector_sync_job_saved", entityType: "connector_sync_job", entityId: `${connectedSystemId}:${resourceType}`, summary: `Connector sync job saved as ${verified ? "ready" : "draft"}.`, metadata: { organisationId: membership.organisationId, connectedSystemId, resourceType, capabilityKey, verified } });
+      return res.status(201).json({ ok: true, status: verified ? "ready" : "draft" });
+    } catch (error) { return sendError(res, error); }
+  });
+
+  app.get("/api/team-admin/inbound-review", async (req, res) => {
+    try {
+      const { membership } = await requireManager(req);
+      const db = await getDb(); if (!db) throw new Error("Database connection is unavailable.");
+      const [messages, drafts] = await Promise.all([
+        db.select().from(inboundMessages).where(eq(inboundMessages.organisationId, membership.organisationId)),
+        db.select().from(inboundReplyDrafts).where(eq(inboundReplyDrafts.organisationId, membership.organisationId)),
+      ]);
+      return res.json({ messages, drafts });
+    } catch (error) { return sendError(res, error); }
+  });
+
+  app.post("/api/team-admin/inbound-review/:id/drafts", async (req, res) => {
+    try {
+      const { user: actor, membership } = await requireManager(req); const id = Number(req.params.id);
+      const draftBody = typeof req.body?.draftBody === "string" ? req.body.draftBody.trim().slice(0, 20_000) : "";
+      const rationale = typeof req.body?.rationale === "string" ? req.body.rationale.trim().slice(0, 6_000) : "";
+      if (!Number.isInteger(id) || id <= 0 || !draftBody || !rationale) throw new Error("A valid message, draft text, and rationale are required.");
+      const db = await getDb(); if (!db) throw new Error("Database connection is unavailable.");
+      const message = (await db.select().from(inboundMessages).where(and(eq(inboundMessages.id, id), eq(inboundMessages.organisationId, membership.organisationId))).limit(1))[0];
+      if (!message) throw new Error("Inbound message was not found in the active organisation.");
+      const classification = classifyInboundMessage({ subject: message.subject, body: message.body });
+      const result = await db.insert(inboundReplyDrafts).values({ organisationId: membership.organisationId, inboundMessageId: id, draftBody, rationale, qualityChecks: { reviewRequired: true, sendEligible: false, optOutDetected: classification.category === "unsubscribe" } });
+      await db.update(inboundMessages).set({ classification: { category: classification.category, reasons: classification.reasons }, status: "draft_ready" }).where(eq(inboundMessages.id, id));
+      await recordAudit({ userId: actor.id, eventType: "inbound_reply_draft_created", entityType: "inbound_reply_draft", entityId: String(result[0].insertId), summary: "Review-only inbound reply draft created; no send action was performed.", metadata: { organisationId: membership.organisationId, inboundMessageId: id, category: classification.category } });
+      return res.status(201).json({ id: Number(result[0].insertId), status: "draft", classification });
+    } catch (error) { return sendError(res, error); }
+  });
+
+  app.get("/api/team-admin/qa-rubrics", async (req, res) => {
+    try {
+      const { membership } = await requireManager(req);
+      const db = await getDb(); if (!db) throw new Error("Database connection is unavailable.");
+      return res.json({ rubrics: await db.select().from(qaRubrics).where(eq(qaRubrics.organisationId, membership.organisationId)) });
+    } catch (error) { return sendError(res, error); }
+  });
+
+  app.post("/api/team-admin/qa-rubrics", async (req, res) => {
+    try {
+      const { user: actor, membership } = await requireManager(req);
+      const name = typeof req.body?.name === "string" ? req.body.name.trim().slice(0, 180) : "";
+      const criteria = Array.isArray(req.body?.criteria) ? req.body.criteria.map((item: unknown) => {
+        const row = item && typeof item === "object" ? item as Record<string, unknown> : {};
+        return { key: typeof row.key === "string" ? row.key.trim().slice(0, 80) : "", label: typeof row.label === "string" ? row.label.trim().slice(0, 180) : "", weight: Number(row.weight) };
+      }).filter((item: { key: string; label: string; weight: number }) => item.key && item.label && Number.isFinite(item.weight) && item.weight > 0 && item.weight <= 100) : [];
+      if (!name || !criteria.length) throw new Error("A rubric name and at least one weighted criterion are required.");
+      const db = await getDb(); if (!db) throw new Error("Database connection is unavailable.");
+      const result = await db.insert(qaRubrics).values({ organisationId: membership.organisationId, name, criteria, createdByUserId: actor.id });
+      await recordAudit({ userId: actor.id, eventType: "qa_rubric_created", entityType: "qa_rubric", entityId: String(result[0].insertId), summary: "Quality-assurance rubric created.", metadata: { organisationId: membership.organisationId, criteriaCount: criteria.length } });
+      return res.status(201).json({ id: Number(result[0].insertId) });
+    } catch (error) { return sendError(res, error); }
+  });
+
+  app.get("/api/team-admin/crm-owner-mappings", async (req, res) => {
+    try {
+      const { membership } = await requireManager(req);
+      const connectedSystemId = req.query.connectedSystemId === undefined ? undefined : Number(req.query.connectedSystemId);
+      if (connectedSystemId !== undefined && (!Number.isInteger(connectedSystemId) || connectedSystemId <= 0)) throw new Error("A valid connected system is required.");
+      const db = await getDb();
+      if (!db) throw new Error("Database connection is unavailable.");
+      const predicates = [eq(externalUserMappings.organisationId, membership.organisationId)];
+      if (connectedSystemId) predicates.push(eq(externalUserMappings.connectedSystemId, connectedSystemId));
+      const mappings = await db.select({ id: externalUserMappings.id, connectedSystemId: externalUserMappings.connectedSystemId, externalUserId: externalUserMappings.externalUserId, displayName: externalUserMappings.displayName, email: externalUserMappings.email, isActive: externalUserMappings.isActive, userId: externalUserMappings.userId, memberName: users.name, memberEmail: users.email }).from(externalUserMappings).leftJoin(users, eq(users.id, externalUserMappings.userId)).where(and(...predicates));
+      return res.json({ mappings });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  });
+
+  app.put("/api/team-admin/crm-owner-mappings", async (req, res) => {
+    try {
+      const { user: actor, membership } = await requireManager(req);
+      const connectedSystemId = Number(req.body?.connectedSystemId);
+      const externalUserId = typeof req.body?.externalUserId === "string" ? req.body.externalUserId.trim().slice(0, 180) : "";
+      const displayName = typeof req.body?.displayName === "string" ? req.body.displayName.trim().slice(0, 220) : "";
+      const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase().slice(0, 320) || null : null;
+      const userId = req.body?.userId === null || req.body?.userId === undefined || req.body?.userId === "" ? null : Number(req.body.userId);
+      const isActive = req.body?.isActive === undefined ? true : Boolean(req.body.isActive);
+      if (!Number.isInteger(connectedSystemId) || connectedSystemId <= 0) throw new Error("A valid connected system is required.");
+      if (!externalUserId || !displayName) throw new Error("External owner ID and display name are required.");
+      if (userId !== null && (!Number.isInteger(userId) || userId <= 0)) throw new Error("A valid Amarktai team member is required.");
+      const db = await getDb();
+      if (!db) throw new Error("Database connection is unavailable.");
+      const system = (await db.select({ id: connectedSystems.id }).from(connectedSystems).where(and(eq(connectedSystems.id, connectedSystemId), eq(connectedSystems.organisationId, membership.organisationId))).limit(1))[0];
+      if (!system) throw new Error("Connected system was not found in the active organisation.");
+      if (userId !== null) {
+        const member = (await db.select({ id: organisationMembers.id }).from(organisationMembers).where(and(eq(organisationMembers.organisationId, membership.organisationId), eq(organisationMembers.userId, userId), eq(organisationMembers.isActive, true))).limit(1))[0];
+        if (!member) throw new Error("Mapped Amarktai member must be active in the organisation.");
+      }
+      await db.insert(externalUserMappings).values({ organisationId: membership.organisationId, connectedSystemId, userId, externalUserId, displayName, email, isActive }).onDuplicateKeyUpdate({ set: { userId, displayName, email, isActive } });
+      await recordAudit({ userId: actor.id, eventType: "crm_owner_mapping_saved", entityType: "external_user_mapping", entityId: `${connectedSystemId}:${externalUserId}`, summary: `CRM owner '${displayName}' mapping was saved.`, metadata: { organisationId: membership.organisationId, connectedSystemId, externalUserId, mappedUserId: userId, isActive } });
+      return res.json({ ok: true });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  });
+
+  app.get("/api/team-admin/crm-pipeline-stage-mappings", async (req, res) => {
+    try {
+      const { membership } = await requireManager(req);
+      const connectedSystemId = req.query.connectedSystemId === undefined ? undefined : Number(req.query.connectedSystemId);
+      if (connectedSystemId !== undefined && (!Number.isInteger(connectedSystemId) || connectedSystemId <= 0)) throw new Error("A valid connected system is required.");
+      const db = await getDb();
+      if (!db) throw new Error("Database connection is unavailable.");
+      const predicates = [eq(crmPipelineStageMappings.organisationId, membership.organisationId)];
+      if (connectedSystemId) predicates.push(eq(crmPipelineStageMappings.connectedSystemId, connectedSystemId));
+      const mappings = await db.select().from(crmPipelineStageMappings).where(and(...predicates));
+      return res.json({ mappings });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  });
+
+  app.put("/api/team-admin/crm-pipeline-stage-mappings", async (req, res) => {
+    try {
+      const { user: actor, membership } = await requireManager(req);
+      const connectedSystemId = Number(req.body?.connectedSystemId);
+      const externalPipelineId = typeof req.body?.externalPipelineId === "string" ? req.body.externalPipelineId.trim().slice(0, 180) : "";
+      const externalStageId = typeof req.body?.externalStageId === "string" ? req.body.externalStageId.trim().slice(0, 180) : "";
+      const pipelineLabel = typeof req.body?.pipelineLabel === "string" ? req.body.pipelineLabel.trim().slice(0, 220) : "";
+      const stageLabel = typeof req.body?.stageLabel === "string" ? req.body.stageLabel.trim().slice(0, 220) : "";
+      const category = typeof req.body?.category === "string" ? req.body.category : "other";
+      const isActive = req.body?.isActive === undefined ? true : Boolean(req.body.isActive);
+      if (!Number.isInteger(connectedSystemId) || connectedSystemId <= 0) throw new Error("A valid connected system is required.");
+      if (!externalPipelineId || !externalStageId || !pipelineLabel || !stageLabel) throw new Error("Pipeline ID, stage ID, pipeline name, and stage name are required.");
+      if (!(["open", "qualified", "proposal", "won", "lost", "other"] as const).includes(category as "open" | "qualified" | "proposal" | "won" | "lost" | "other")) throw new Error("A valid reporting category is required.");
+      const db = await getDb();
+      if (!db) throw new Error("Database connection is unavailable.");
+      const system = (await db.select({ id: connectedSystems.id, status: connectedSystems.status }).from(connectedSystems).where(and(eq(connectedSystems.id, connectedSystemId), eq(connectedSystems.organisationId, membership.organisationId))).limit(1))[0];
+      if (!system) throw new Error("Connected system was not found in the active organisation.");
+      if (system.status !== "ready") throw new Error("Pipeline mappings can only be saved for a backend-verified connected system.");
+      await db.insert(crmPipelineStageMappings).values({ organisationId: membership.organisationId, connectedSystemId, externalPipelineId, externalStageId, pipelineLabel, stageLabel, category: category as "open" | "qualified" | "proposal" | "won" | "lost" | "other", isActive }).onDuplicateKeyUpdate({ set: { externalPipelineId, pipelineLabel, stageLabel, category: category as "open" | "qualified" | "proposal" | "won" | "lost" | "other", isActive } });
+      await recordAudit({ userId: actor.id, eventType: "crm_pipeline_stage_mapping_saved", entityType: "crm_pipeline_stage_mapping", entityId: `${connectedSystemId}:${externalStageId}`, summary: `CRM stage '${stageLabel}' mapping was saved.`, metadata: { organisationId: membership.organisationId, connectedSystemId, externalPipelineId, externalStageId, category, isActive } });
+      return res.json({ ok: true });
     } catch (error) {
       return sendError(res, error);
     }

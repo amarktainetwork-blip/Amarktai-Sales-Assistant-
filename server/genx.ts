@@ -6,6 +6,8 @@ export type ChatMessage = { role: "user" | "assistant"; content: string };
 export type GenxUsage = { promptTokens?: number; completionTokens?: number; totalTokens?: number };
 export type GenxBillingContext = { userId: number; organisationId: number; feature: string; creditCost?: number; reference?: string };
 
+type GenxPayload = { choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number; input_tokens?: number; output_tokens?: number } };
+
 function positiveInt(value: string | undefined, fallback: number) {
   const parsed = Number.parseInt(value || "", 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -37,10 +39,73 @@ function boundedMessages(messages: ChatMessage[], maxChars: number) {
 }
 
 export function getGenxReadiness() {
-  const endpointConfigured = Boolean(process.env.GENX_CHAT_COMPLETIONS_URL);
-  const keyConfigured = Boolean(process.env.GENX_API_KEY);
-  const modelConfigured = Boolean(process.env.GENX_DEFAULT_MODEL);
-  return { ready: endpointConfigured && keyConfigured && modelConfigured, endpointConfigured, keyConfigured, modelConfigured };
+  const endpointConfigured = Boolean(process.env.GENX_CHAT_COMPLETIONS_URL?.trim());
+  const keyConfigured = Boolean(process.env.GENX_API_KEY?.trim());
+  const modelConfigured = Boolean(process.env.GENX_DEFAULT_MODEL?.trim());
+  const configured = endpointConfigured && keyConfigured && modelConfigured;
+  return { ready: configured, configured, providerState: configured ? "INSTALLATION_CREDENTIALS_PRESENT_UNVERIFIED" as const : "NOT_CONFIGURED" as const, endpointConfigured, keyConfigured, modelConfigured };
+}
+
+function delay(ms: number) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+async function genxFetch(url: string, init: RequestInit, options?: { timeoutMs?: number; retries?: number }) {
+  const timeoutMs = options?.timeoutMs ?? Math.min(60_000, positiveInt(process.env.GENX_TIMEOUT_MS, 30_000));
+  const retries = Math.min(3, Math.max(0, options?.retries ?? positiveInt(process.env.GENX_RETRY_COUNT, 2)));
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const response = await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+      if ((response.status === 429 || response.status >= 500) && attempt < retries) {
+        await response.body?.cancel().catch(() => undefined);
+        await delay(Math.min(4_000, 300 * (2 ** attempt)));
+        continue;
+      }
+      return response;
+    } catch (error) {
+      lastError = error;
+      if (attempt >= retries) break;
+      await delay(Math.min(4_000, 300 * (2 ** attempt)));
+    }
+  }
+  const detail = lastError instanceof Error ? lastError.message : String(lastError || "network failure");
+  throw new Error(`GenX request could not be completed: ${detail.slice(0, 180)}`);
+}
+
+function modelsEndpoint(chatEndpoint: string) {
+  const url = new URL(chatEndpoint);
+  if (/\/chat\/completions\/?$/.test(url.pathname)) url.pathname = url.pathname.replace(/\/chat\/completions\/?$/, "/models");
+  else url.pathname = `${url.pathname.replace(/\/$/, "")}/models`;
+  url.search = "";
+  return url.toString();
+}
+
+async function completionRequest(body: Record<string, unknown>, options?: { timeoutMs?: number; retries?: number }) {
+  const response = await genxFetch(process.env.GENX_CHAT_COMPLETIONS_URL!, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.GENX_API_KEY!}` },
+    body: JSON.stringify(body),
+  }, options);
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(`GenX request failed with ${response.status}${detail ? `: ${detail.slice(0, 240)}` : ""}`);
+  }
+  return response.json() as Promise<GenxPayload>;
+}
+
+export async function verifyGenxConnection() {
+  const readiness = getGenxReadiness();
+  if (!readiness.configured) throw new Error("GenX endpoint, API key, and default model must be configured before verification.");
+  const headers = { Authorization: `Bearer ${process.env.GENX_API_KEY!}`, Accept: "application/json" };
+  const modelResponse = await genxFetch(modelsEndpoint(process.env.GENX_CHAT_COMPLETIONS_URL!), { headers }, { timeoutMs: 12_000, retries: 1 });
+  if (!modelResponse.ok) throw new Error(`GenX model catalogue verification failed with ${modelResponse.status}.`);
+  const modelPayload = await modelResponse.json().catch(() => ({})) as { data?: Array<{ id?: string }> };
+  const modelIds = (modelPayload.data ?? []).map(item => item.id).filter((id): id is string => Boolean(id));
+  const selected = process.env.GENX_DEFAULT_MODEL!.trim();
+  if (modelIds.length && !modelIds.includes(selected)) throw new Error(`Configured GenX default model '${selected}' is not present in the current model catalogue.`);
+  const probe = await completionRequest({ model: selected, messages: [{ role: "user", content: "Return READY." }], temperature: 0, max_tokens: 8 }, { timeoutMs: 20_000, retries: 1 });
+  const content = probe.choices?.[0]?.message?.content?.trim();
+  if (!content) throw new Error("GenX verification completion returned no assistant content.");
+  return { verified: true as const, model: selected, advertisedModelCount: modelIds.length, verifiedAt: new Date().toISOString() };
 }
 
 export async function runGenxAgent(input: { agentKey: string; messages: ChatMessage[]; approvedKnowledge?: string; modelTier?: "fast" | "default" | "reasoning"; billing?: GenxBillingContext }) {
@@ -48,7 +113,7 @@ export async function runGenxAgent(input: { agentKey: string; messages: ChatMess
   const agent = AGENT_CATALOG.find(item => item.key === input.agentKey) ?? AGENT_CATALOG[1];
   const billing = resolvedBilling(input);
 
-  if (!readiness.ready) {
+  if (!readiness.configured) {
     return { content: "Amarktai intelligence is not connected yet. Configure the GenX chat-completions URL, API key, and default model in deployment secrets.", provider: "not_configured" as const, usage: {} as GenxUsage, creditsCharged: 0 };
   }
 
@@ -76,17 +141,7 @@ export async function runGenxAgent(input: { agentKey: string; messages: ChatMess
       ? process.env.GENX_REASONING_MODEL.trim()
       : process.env.GENX_DEFAULT_MODEL!;
 
-  const response = await fetch(process.env.GENX_CHAT_COMPLETIONS_URL!, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.GENX_API_KEY!}` },
-    body: JSON.stringify({ model, messages: [systemMessage, ...messages], temperature: 0.2, max_tokens: maxOutputTokens }),
-  });
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw new Error(`GenX request failed with ${response.status}${detail ? `: ${detail.slice(0, 240)}` : ""}`);
-  }
-
-  const payload = (await response.json()) as { choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number; input_tokens?: number; output_tokens?: number } };
+  const payload = await completionRequest({ model, messages: [systemMessage, ...messages], temperature: 0.2, max_tokens: maxOutputTokens });
   const content = payload.choices?.[0]?.message?.content?.trim();
   if (!content) throw new Error("GenX returned no assistant content.");
   const usage: GenxUsage = { promptTokens: payload.usage?.prompt_tokens ?? payload.usage?.input_tokens, completionTokens: payload.usage?.completion_tokens ?? payload.usage?.output_tokens, totalTokens: payload.usage?.total_tokens };
