@@ -27,6 +27,8 @@ jobs:
         run: pnpm test
       - name: TypeScript
         run: pnpm check
+      - name: Enforce MariaDB identifier limit
+        run: node scripts/check-mariadb-identifiers.mjs
       - name: Validate Drizzle schema and migrations
         env:
           DATABASE_URL: mysql://migration:placeholder@127.0.0.1:3306/amarktai
