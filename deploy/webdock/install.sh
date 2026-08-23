@@ -19,7 +19,8 @@ fi
 if [ ! -f .env ]; then
   cp deploy/webdock/configuration.template .env
   chmod 600 .env
-  echo "Created .env from deploy/webdock/configuration.template. Fill every required value before continuing." >&2
+  echo "Created .env from deploy/webdock/configuration.template. For the easiest setup run: AMARKTAI_DEPLOY_PROFILE=full sh deploy/webdock/quick-install.sh" >&2
+  echo "Or fill every required value in .env and rerun this installer." >&2
   exit 1
 fi
 
@@ -51,6 +52,26 @@ $COMPOSE run --rm app node dist/migrate.js
 $COMPOSE up -d
 $COMPOSE ps
 
-printf '\nAmarktai deployment started using profile: %s\n' "$PROFILE"
-printf 'Health check: https://%s/healthz\n' "$(grep '^DOMAIN=' .env | tail -1 | cut -d= -f2-)"
-printf 'Readiness check: https://%s/readyz\n' "$(grep '^DOMAIN=' .env | tail -1 | cut -d= -f2-)"
+SMOKE_LOG="$(mktemp)"
+trap 'rm -f "$SMOKE_LOG"' EXIT INT TERM
+attempt=1
+while [ "$attempt" -le 30 ]; do
+  if AMARKTAI_DEPLOY_PROFILE="$PROFILE" sh deploy/webdock/smoke-test.sh >"$SMOKE_LOG" 2>&1; then
+    cat "$SMOKE_LOG"
+    break
+  fi
+  if [ "$attempt" -eq 30 ]; then
+    echo "Deployment started but the internal smoke test did not become healthy." >&2
+    cat "$SMOKE_LOG" >&2
+    echo "Inspect with: $COMPOSE ps && $COMPOSE logs --tail=200 app" >&2
+    exit 1
+  fi
+  attempt=$((attempt + 1))
+  sleep 2
+done
+
+DOMAIN="$(grep '^DOMAIN=' .env | tail -1 | cut -d= -f2-)"
+printf '\nAmarktai deployment is internally healthy using profile: %s\n' "$PROFILE"
+printf 'Health check: https://%s/healthz\n' "$DOMAIN"
+printf 'Readiness check: https://%s/readyz\n' "$DOMAIN"
+printf 'After DNS/TLS is active, run: VERIFY_PUBLIC_URL=https://%s AMARKTAI_DEPLOY_PROFILE=%s sh deploy/webdock/verify-production.sh\n' "$DOMAIN" "$PROFILE"
