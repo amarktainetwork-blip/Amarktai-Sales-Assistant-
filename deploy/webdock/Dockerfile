@@ -13,7 +13,7 @@ FROM dependencies AS build
 COPY . .
 RUN chmod +x scripts/run-genie-health-check.sh \
   && pnpm run build \
-  && pnpm prune --prod \
+  && CI=true pnpm prune --prod \
   && test ! -e node_modules/vite \
   && ! grep -F 'from "vite"' dist/_core/index.js
 
