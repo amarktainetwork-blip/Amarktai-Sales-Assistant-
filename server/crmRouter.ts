@@ -57,16 +57,6 @@ function connectionCanRoute(status: string) {
   return status === "ready" || status === "limited_permissions";
 }
 
-function customConnectionCanRoute(status: string) {
-  // `needs_attention` may represent incomplete unrelated standard capability
-  // coverage. Exact custom execution remains independently LIVE_PROVEN-gated.
-  return (
-    status === "ready" ||
-    status === "limited_permissions" ||
-    status === "needs_attention"
-  );
-}
-
 export function routeConnectedSystemActions<
   T extends { actionType: string; payload: Record<string, unknown> },
 >(actions: T[], systems: ConnectedSystemRoute[]) {
@@ -103,10 +93,7 @@ export function routeConnectedSystemActions<
       typeof action.payload.preferredConnectedSystemId === "number"
         ? action.payload.preferredConnectedSystemId
         : undefined;
-    const candidates = customAction
-      ? systems.filter(system => customConnectionCanRoute(system.status))
-      : eligibleSystems;
-    const eligible = candidates.filter(system =>
+    const eligible = eligibleSystems.filter(system =>
       connectedSystemSupportsAction(system, action.actionType)
     );
     const chosen = preferredConnectedSystemId
