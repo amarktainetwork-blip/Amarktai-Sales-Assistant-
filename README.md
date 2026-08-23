@@ -8,7 +8,7 @@ Native OAuth adapters are included for **HubSpot, Salesforce, Pipedrive and Zoho
 
 Microsoft 365 / Outlook is optional. When the approved tenant/application is configured, reviewed sales email can use Microsoft Graph and approved `create_calendar_event` actions can create Outlook calendar events. SMTP remains mandatory for login second factor, password recovery, invitations and reports.
 
-No CRM, mailbox, calendar, SMS, WhatsApp or speech provider is represented as live merely because environment variables exist. The backend verification/capability result is the readiness source of truth.
+No CRM, mailbox, calendar, SMS, WhatsApp or speech provider is represented as live merely because environment variables exist. Backend verification/capability results are the readiness source of truth.
 
 ## Product areas
 
@@ -24,17 +24,15 @@ No CRM, mailbox, calendar, SMS, WhatsApp or speech provider is represented as li
 - AI-credit accounting with concurrency-safe debits and monthly allowance grants.
 - Self-hosted Webdock package with Caddy, MariaDB, Valkey and internal Chromium/CDP.
 
-## Repository and release
-
-Canonical repository:
+## Canonical repository
 
 ```text
 https://github.com/amarktainetwork-blip/Amarktai-Sales-Assistant-.git
 ```
 
-Production release work is validated on `release/go-live-20260822` before merge into `main`. Never deploy a SHA that has not passed the repository production gates.
+Deploy only a `main` SHA that has passed the repository production gates.
 
-## Webdock installation
+## Fast Webdock installation
 
 Use Ubuntu 24.04 with a non-root sudo user, Docker Engine and the Docker Compose plugin. Point the chosen domain to the VPS before public TLS acceptance.
 
@@ -43,33 +41,50 @@ sudo mkdir -p /opt/amarktai-sales
 sudo chown "$USER":"$USER" /opt/amarktai-sales
 git clone https://github.com/amarktainetwork-blip/Amarktai-Sales-Assistant-.git /opt/amarktai-sales
 cd /opt/amarktai-sales
-git checkout release/go-live-20260822
+git checkout main
+git pull --ff-only origin main
+```
+
+For the easiest full self-hosted setup, run:
+
+```bash
+AMARKTAI_DEPLOY_PROFILE=full sh deploy/webdock/quick-install.sh
+```
+
+The guided installer:
+
+- auto-generates strong database, JWT, application and connection-encryption secrets;
+- asks only for the domain, administrator, GenX and SMTP values required for the core product;
+- writes `.env` with mode `0600`;
+- runs production preflight;
+- builds and starts the full Webdock stack;
+- applies versioned migrations through the compiled production migration runner;
+- waits for the stack to become healthy;
+- runs the internal smoke test automatically;
+- prints the exact public production-verifier command for the chosen domain.
+
+Optional HubSpot/Salesforce/Pipedrive/Zoho, Outlook, STT, SMS and WhatsApp credentials can be added after the core installation without rebuilding the product.
+
+For a smaller pilot using an authorised external Playwright-compatible CDP endpoint:
+
+```bash
+AMARKTAI_DEPLOY_PROFILE=pilot sh deploy/webdock/quick-install.sh
+```
+
+### Manual install path
+
+Experienced operators may instead copy and fill the configuration directly:
+
+```bash
 cp deploy/webdock/configuration.template .env
 chmod 600 .env
 nano .env
-```
-
-Generate the encrypted-connection master key separately:
-
-```bash
-openssl rand -base64 32
-```
-
-Do not commit `.env` or paste client secrets into tickets/chat.
-
-For a full self-hosted deployment:
-
-```bash
 AMARKTAI_DEPLOY_PROFILE=full sh deploy/webdock/install.sh
 ```
 
-For a smaller pilot that uses an authorised external Playwright-compatible CDP endpoint:
+The standard installer now waits for the application to become internally ready and runs `deploy/webdock/smoke-test.sh` before returning success.
 
-```bash
-AMARKTAI_DEPLOY_PROFILE=pilot sh deploy/webdock/install.sh
-```
-
-The installer runs preflight, builds the production image, starts infrastructure, applies versioned migrations through the compiled runtime migration runner, and starts the application/workers.
+Do not commit `.env` or paste client secrets into tickets/chat.
 
 ## Production acceptance
 
@@ -116,6 +131,6 @@ pnpm build
 pnpm audit --prod --audit-level=high
 ```
 
-CI additionally validates migration-generation cleanliness, shell scripts, full/pilot Compose definitions, production Docker builds/runtime contents, removal of hosted preview/runtime dependencies and Git diff sanity.
+CI additionally validates migration-generation cleanliness, all deployment shell scripts, full/pilot Compose definitions, production Docker builds/runtime contents, removal of hosted preview/runtime dependencies and Git diff sanity.
 
 See [`docs/webdock-vps-install.md`](docs/webdock-vps-install.md) for operator details and [`docs/implementation-status.md`](docs/implementation-status.md) for the evidence boundary between repository-complete and live-provider commissioned behavior.
