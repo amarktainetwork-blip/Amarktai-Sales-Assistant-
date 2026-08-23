@@ -23,34 +23,44 @@ export const ACTION_CONNECTED_CAPABILITIES: Record<string, string[][]> = {
   update_opportunity: [["opportunities.write"]],
   create_opportunity: [["opportunities.write"]],
   create_activity: [["activities.write"]],
-  send_email_template: [["email.send"], ["activities.write"]],
-  send_email: [["email.send"], ["activities.write"]],
-  send_sms_template: [["sms.send"], ["activities.write"]],
-  send_sms: [["sms.send"], ["activities.write"]],
-  send_whatsapp_template: [["whatsapp.send"], ["activities.write"]],
-  send_whatsapp: [["whatsapp.send"], ["activities.write"]],
-  apply_sequence: [["sequences.apply"], ["activities.write"]],
-  custom_crm_action: [["activities.write"]],
+  send_email_template: [["email.send"]],
+  send_email: [["email.send"]],
+  send_sms_template: [["sms.send"]],
+  send_sms: [["sms.send"]],
+  send_whatsapp_template: [["whatsapp.send"]],
+  send_whatsapp: [["whatsapp.send"]],
+  apply_sequence: [["sequences.apply"]],
 };
+
+function isBrowserConnection(system: ConnectedSystemRoute) {
+  return system.connectionMethod === "browser" || system.connectionMethod === "sidecar";
+}
 
 export function connectedSystemSupportsAction(
   system: ConnectedSystemRoute,
   actionType: string
 ) {
+  // A CRM-specific learned action is gated by the exact operation at execution
+  // time. Browser runtime requires that operation to be LIVE_PROVEN, so an
+  // unrelated broad capability must not be used as a proxy here.
+  if (actionType === "custom_crm_action") return isBrowserConnection(system);
+
   const alternatives = ACTION_CONNECTED_CAPABILITIES[actionType] || [
     ["activities.write"],
   ];
   return alternatives.some(required =>
-    required.every(capability =>
-      system.verifiedCapabilities.includes(capability)
-    )
+    required.every(capability => system.verifiedCapabilities.includes(capability))
   );
+}
+
+function connectionCanRoute(status: string) {
+  return status === "ready" || status === "limited_permissions";
 }
 
 export function routeConnectedSystemActions<
   T extends { actionType: string; payload: Record<string, unknown> },
 >(actions: T[], systems: ConnectedSystemRoute[]) {
-  const ready = systems.filter(system => system.status === "ready");
+  const eligibleSystems = systems.filter(system => connectionCanRoute(system.status));
   return actions.map(action => {
     if (action.actionType === "create_calendar_event") {
       const outlook = getOutlookReadiness();
@@ -65,14 +75,16 @@ export function routeConnectedSystemActions<
         : {
             routable: false as const,
             reason:
-              "Microsoft Outlook calendar is not configured and verified for this deployment.",
+              "Microsoft Outlook calendar is not configured and verified for this deployment. A CRM-native appointment/calendar function may instead be commissioned as a CRM-specific learned action.",
             requiredCapability: "calendar.create",
           };
       return { ...action, payload: { ...action.payload, crmRoute } };
     }
-    const alternatives = ACTION_CONNECTED_CAPABILITIES[action.actionType] || [
-      ["activities.write"],
-    ];
+
+    const customAction = action.actionType === "custom_crm_action";
+    const alternatives = customAction
+      ? []
+      : ACTION_CONNECTED_CAPABILITIES[action.actionType] || [["activities.write"]];
     const preferred =
       typeof action.payload.preferredProvider === "string"
         ? action.payload.preferredProvider
@@ -81,7 +93,7 @@ export function routeConnectedSystemActions<
       typeof action.payload.preferredConnectedSystemId === "number"
         ? action.payload.preferredConnectedSystemId
         : undefined;
-    const eligible = ready.filter(system =>
+    const eligible = eligibleSystems.filter(system =>
       connectedSystemSupportsAction(system, action.actionType)
     );
     const chosen = preferredConnectedSystemId
@@ -89,9 +101,9 @@ export function routeConnectedSystemActions<
       : preferred
         ? eligible.find(system => system.provider === preferred)
         : eligible[0];
-    const requiredCapability = alternatives
-      .map(set => set.join("+"))
-      .join(" OR ");
+    const requiredCapability = customAction
+      ? "exact LIVE_PROVEN CRM-specific operation"
+      : alternatives.map(set => set.join("+")).join(" OR ");
     const crmRoute = chosen
       ? {
           routable: true as const,

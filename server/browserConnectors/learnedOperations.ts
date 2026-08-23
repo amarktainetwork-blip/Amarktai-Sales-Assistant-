@@ -21,6 +21,7 @@ import {
   assertBrowserOperationScope,
   validateLearnedOperationDefinition,
   validateOperationKey,
+  type BrowserOperationCatalogueItem,
   type BrowserOperationStatus,
   type BrowserPostcondition,
   type GuidedBrowserOperationReview,
@@ -29,6 +30,38 @@ import {
 
 export const CAPTURED_BROWSER_OPERATION_STATUS = "LEARNED" as const;
 export const REVIEWED_BROWSER_OPERATION_STATUS = "TEST_READY" as const;
+
+function customOperationMetadata(
+  operationKey: string
+): BrowserOperationCatalogueItem | undefined {
+  const mode = operationKey.startsWith("custom.write.")
+    ? ("write" as const)
+    : operationKey.startsWith("custom.read.")
+      ? ("read" as const)
+      : undefined;
+  if (!mode) return undefined;
+  const rawLabel = operationKey
+    .replace(/^custom\.(?:read|write)\./, "")
+    .replace(/[_.:-]+/g, " ")
+    .trim();
+  const label = rawLabel
+    ? rawLabel.replace(/\b\w/g, character => character.toUpperCase())
+    : "Custom CRM function";
+  return {
+    key: operationKey,
+    label,
+    area: "CRM-specific functions",
+    mode,
+    safeWatchdog: mode === "read",
+  };
+}
+
+function operationMetadata(operationKey: string) {
+  return (
+    BROWSER_OPERATION_CATALOGUE.find(item => item.key === operationKey) ||
+    customOperationMetadata(operationKey)
+  );
+}
 
 async function scopedSystem(organisationId: number, connectedSystemId: number) {
   const db = await getDb();
@@ -161,14 +194,12 @@ export async function getGuidedBrowserOperationReview(input: {
     : [];
   if (!capture.length)
     throw new Error("The learned operation has no sanitized training capture.");
-  const catalogue = BROWSER_OPERATION_CATALOGUE.find(
-    item => item.key === operation.operationKey
-  );
+  const metadata = operationMetadata(operation.operationKey);
   return {
     id: operation.id,
     operationKey: operation.operationKey,
     version: operation.version,
-    mode: catalogue?.mode || "read",
+    mode: metadata?.mode || "read",
     capture,
     proposedSteps: proposeGuidedBrowserSteps(capture),
   };
@@ -226,18 +257,35 @@ export async function browserOperationReadinessForSystem(input: {
   const latest = new Map<string, (typeof rows)[number]>();
   for (const row of rows)
     if (!latest.has(row.operationKey)) latest.set(row.operationKey, row);
-  const operations = BROWSER_OPERATION_CATALOGUE.map(item => ({
+
+  const empty = {
+    status: "NOT_LEARNED" as const,
+    version: 0,
+    lastTestAt: null,
+    lastSuccessAt: null,
+    lastFailureAt: null,
+    lastError: null,
+    evidence: {},
+  };
+  const standardOperations = BROWSER_OPERATION_CATALOGUE.map(item => ({
     ...item,
-    ...(latest.get(item.key) || {
-      status: "NOT_LEARNED" as const,
-      version: 0,
-      lastTestAt: null,
-      lastSuccessAt: null,
-      lastFailureAt: null,
-      lastError: null,
-      evidence: {},
-    }),
+    ...(latest.get(item.key) || empty),
   }));
+  const standardKeys = new Set(BROWSER_OPERATION_CATALOGUE.map(item => item.key));
+  const customOperations = Array.from(latest.entries())
+    .filter(([key]) => !standardKeys.has(key))
+    .map(([key, row]) => ({
+      ...(operationMetadata(key) || {
+        key,
+        label: key,
+        area: "CRM-specific functions",
+        mode: "read" as const,
+        safeWatchdog: false,
+      }),
+      ...row,
+    }));
+  const operations = [...standardOperations, ...customOperations];
+
   const statuses = Object.fromEntries(
     operations.map(item => [item.key, item.status])
   ) as Record<string, BrowserOperationStatus>;
@@ -440,6 +488,14 @@ export async function createBrowserTrainingSession(input: {
       "Only organisation owners and managers can start Teach Amarktai training."
     );
   await scopedSystem(input.organisationId, input.connectedSystemId);
+  const operationKey = validateOperationKey(input.operationKey);
+  if (
+    !BROWSER_OPERATION_CATALOGUE.some(item => item.key === operationKey) &&
+    !customOperationMetadata(operationKey)
+  )
+    throw new Error(
+      "Custom CRM functions must use 'custom.read.<name>' or 'custom.write.<name>' so Teach Amarktai can enforce the correct read/write safety model."
+    );
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
   const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
@@ -447,7 +503,7 @@ export async function createBrowserTrainingSession(input: {
     organisationId: input.organisationId,
     connectedSystemId: input.connectedSystemId,
     userId: input.userId,
-    operationKey: validateOperationKey(input.operationKey),
+    operationKey,
     capture: [],
     expiresAt,
   });
@@ -493,11 +549,9 @@ export async function submitBrowserTrainingCapture(input: {
     operationKey: session.operationKey,
   });
   const version = (previous?.version ?? 0) + 1;
-  const catalogue = BROWSER_OPERATION_CATALOGUE.find(
-    item => item.key === session.operationKey
-  );
+  const metadata = operationMetadata(session.operationKey);
   const definition = {
-    mode: catalogue?.mode || "read",
+    mode: metadata?.mode || "read",
     trainingCapture: capture,
     candidateOnly: true,
   };
