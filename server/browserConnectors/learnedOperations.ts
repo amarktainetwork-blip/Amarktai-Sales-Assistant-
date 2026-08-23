@@ -6,7 +6,7 @@ import {
 } from "../../drizzle/schema";
 import { getDb, recordAudit } from "../db";
 import {
-  canManageOrganisation,
+  canManageOrganisationForUser,
   requireOrganisationMembership,
 } from "../organisation";
 import { recordOperationalEvent } from "../observability/events";
@@ -140,7 +140,7 @@ export async function getGuidedBrowserOperationReview(input: {
     input.userId,
     input.organisationId
   );
-  if (!canManageOrganisation(membership.role))
+  if (!(await canManageOrganisationForUser(input.userId, membership.role)))
     throw new Error(
       "Only organisation managers can review learned operations."
     );
@@ -265,7 +265,7 @@ export async function saveLearnedBrowserOperation(input: {
     input.userId,
     input.organisationId
   );
-  if (!canManageOrganisation(membership.role))
+  if (!(await canManageOrganisationForUser(input.userId, membership.role)))
     throw new Error(
       "Only organisation owners and managers can teach browser CRM operations."
     );
@@ -435,7 +435,7 @@ export async function createBrowserTrainingSession(input: {
     input.userId,
     input.organisationId
   );
-  if (!canManageOrganisation(membership.role))
+  if (!(await canManageOrganisationForUser(input.userId, membership.role)))
     throw new Error(
       "Only organisation owners and managers can start Teach Amarktai training."
     );
@@ -565,7 +565,7 @@ export async function setBrowserShadowMode(input: {
     input.userId,
     input.organisationId
   );
-  if (!canManageOrganisation(membership.role))
+  if (!(await canManageOrganisationForUser(input.userId, membership.role)))
     throw new Error(
       "Only organisation owners and managers can change Genie shadow mode."
     );

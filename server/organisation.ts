@@ -1,10 +1,18 @@
 import { and, eq } from "drizzle-orm";
-import { organisationMembers, organisations } from "../drizzle/schema";
+import { organisationMembers, organisations, users } from "../drizzle/schema";
 import { getDb } from "./db";
-import { hasOrganisationAccess, type OrganisationRole } from "./organisationAccess";
+import { canManageOrganisation, hasOrganisationAccess, type OrganisationRole } from "./organisationAccess";
 
 export { canManageOrganisation, canViewTeamData } from "./organisationAccess";
 export type { OrganisationRole } from "./organisationAccess";
+
+export async function canManageOrganisationForUser(userId: number, role: OrganisationRole) {
+  if (canManageOrganisation(role)) return true;
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const actor = (await db.select({ isPlatformOwner: users.isPlatformOwner }).from(users).where(eq(users.id, userId)).limit(1))[0];
+  return actor?.isPlatformOwner === true;
+}
 
 export type OrganisationMembership = {
   organisationId: number;

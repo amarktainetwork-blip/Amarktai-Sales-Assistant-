@@ -1,4 +1,5 @@
 import DashboardLayout from "@/components/DashboardLayout";
+import ManagementElevation from "@/components/ManagementElevation";
 import { BrowserOperationMatrix } from "./ConnectionsV2";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -425,6 +426,7 @@ export default function Onboarding() {
           ))}
         </nav>
 
+        <ManagementElevation />
         {step === 1 && (
           <Card>
             <StepHeading

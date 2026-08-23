@@ -3,7 +3,9 @@ import { createHash } from "node:crypto";
 import {
   contactCommunicationSuppressions,
   crmContacts,
+  externalUserMappings,
   inboundMessages,
+  organisations,
 } from "../../drizzle/schema";
 import { getDb } from "../db";
 import { recordOperationalEvent } from "../observability/events";
@@ -12,6 +14,7 @@ import {
   classifyInboundMessage,
   type InboundClassification,
 } from "./inboundReview";
+import { parseDeterministicReminder, persistConfirmedCommitment } from "../memory";
 
 export type InboundEnvelope = {
   externalMessageId: string;
@@ -228,6 +231,33 @@ export async function ingestInboundMessage(input: {
           sourceMessageId: message.id,
         },
       });
+  if (classification.category === "meeting_request" && contact?.ownerExternalId && contact.connectedSystemId) {
+    const owner = (await db.select({ userId: externalUserMappings.userId }).from(externalUserMappings).where(and(
+      eq(externalUserMappings.organisationId, input.organisationId),
+      eq(externalUserMappings.connectedSystemId, contact.connectedSystemId),
+      eq(externalUserMappings.externalUserId, contact.ownerExternalId),
+      eq(externalUserMappings.isActive, true)
+    )).limit(1))[0];
+    if (owner?.userId != null) {
+      const organisation = (await db.select({ timezone: organisations.timezone }).from(organisations).where(eq(organisations.id, input.organisationId)).limit(1))[0];
+      const timezone = organisation?.timezone || "UTC";
+      try {
+        const parsed = parseDeterministicReminder(`Remind me ${input.envelope.body}`, input.envelope.receivedAt, timezone);
+        if (parsed) await persistConfirmedCommitment({
+          userId: owner.userId,
+          organisationId: input.organisationId,
+          title: parsed.title,
+          dueAt: parsed.dueAt,
+          timezone,
+          source: "inbound",
+          sourceReference: `inbound:${message.id}:commitment`,
+          contactExternalId: contact.externalId,
+        });
+      } catch {
+        // Ambiguous inbound dates remain reviewable messages; no inferred schedule is stored.
+      }
+    }
+  }
   await recordOperationalEvent({
     organisationId: input.organisationId,
     connectedSystemId: input.connectedSystemId,

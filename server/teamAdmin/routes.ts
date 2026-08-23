@@ -26,7 +26,7 @@ import { getDb, getUserByEmail, getUserById, recordAudit } from "../db";
 import { isLocalAuthMode } from "../localAuth";
 import { canManageOrganisation } from "../organisationAccess";
 import { getSmtpReadiness, sendEmail } from "../smtp";
-import { requireLocalHttpContext } from "../httpAuth";
+import { requireManagementHttpContext } from "../managementElevation";
 import { classifyInboundMessage } from "../communications/inboundReview";
 
 const INVITE_TTL_SECONDS = 48 * 60 * 60;
@@ -40,8 +40,8 @@ function inviteKey() {
 }
 
 async function requireManager(req: Request) {
-  const { userId, membership } = await requireLocalHttpContext(req);
-  if (!canManageOrganisation(membership.role))
+  const { userId, membership, user } = await requireManagementHttpContext(req);
+  if (!user.isPlatformOwner && !canManageOrganisation(membership.role))
     throw new Error("MANAGER_REQUIRED");
   return { user: { id: userId } as Authenticated, membership };
 }
@@ -120,6 +120,8 @@ function sendError(res: Response, error: unknown) {
       .json({ error: "Second-factor verification is required." });
   if (detail === "MANAGER_REQUIRED")
     return res.status(403).json({ error: "A management role is required." });
+  if (detail.startsWith("MANAGEMENT_ELEVATION_"))
+    return res.status(403).json({ error: detail });
   console.error(
     JSON.stringify({ event: "team_admin_error", detail: detail.slice(0, 300) })
   );

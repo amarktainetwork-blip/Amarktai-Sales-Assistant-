@@ -19,6 +19,7 @@ import { planTelesalesCloseout } from "../telesales/closeoutPlanner";
 import { getAutomationPolicy } from "../automationPolicy";
 import { executeAutoPreapprovedActions } from "../governedActions";
 import { resolveLiveCallCloseoutIdentity } from "./context";
+import { persistConfirmedCommitment } from "../memory";
 
 const MAX_AUDIO_BYTES = 800_000;
 const ALLOWED_MIME = new Set([
@@ -351,6 +352,19 @@ export function registerLiveCallRoutes(app: Express) {
         summary: summary.content,
         structuredOutcome,
       });
+      if (structuredOutcome.callbackAt && req.body?.commitmentsConfirmed === true) {
+        await persistConfirmedCommitment({
+          userId: user.id,
+          organisationId: user.membership.organisationId,
+          title: structuredOutcome.nextStep || `Follow up with ${leadLabel}`,
+          dueAt: new Date(structuredOutcome.callbackAt),
+          timezone: user.membership.timezone,
+          source: "call_commitment",
+          sourceReference: `call:${callSessionId}:callback`,
+          contactExternalId: identity?.contactExternalId,
+          opportunityExternalId: identity?.opportunityExternalId,
+        });
+      }
       const routedCommunication = communication
         ? {
             ...communication,

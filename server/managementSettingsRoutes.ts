@@ -2,11 +2,11 @@ import type { Express, Request, Response } from "express";
 import { canManageOrganisation } from "./organisationAccess";
 import { loadManagementReportSettings, saveManagementReportSettings, type ManagementReportSettings } from "./managementSettings";
 import { recordAudit } from "./db";
-import { requireLocalHttpContext } from "./httpAuth";
+import { requireManagementHttpContext } from "./managementElevation";
 
 async function manager(req: Request) {
-  const { userId, membership } = await requireLocalHttpContext(req);
-  if (!canManageOrganisation(membership.role)) throw new Error("MANAGER_REQUIRED");
+  const { userId, membership, user } = await requireManagementHttpContext(req);
+  if (!user.isPlatformOwner && !canManageOrganisation(membership.role)) throw new Error("MANAGER_REQUIRED");
   return { userId, membership };
 }
 
@@ -32,6 +32,7 @@ function fail(res: Response, error: unknown) {
   if (detail === "AUTH_REQUIRED") return res.status(401).json({ error: "Authentication is required." });
   if (detail === "TWO_FACTOR_REQUIRED") return res.status(403).json({ error: "Second-factor verification is required." });
   if (detail === "MANAGER_REQUIRED") return res.status(403).json({ error: "A management role is required." });
+  if (detail.startsWith("MANAGEMENT_ELEVATION_")) return res.status(403).json({ error: detail });
   return res.status(400).json({ error: detail.slice(0, 300) });
 }
 

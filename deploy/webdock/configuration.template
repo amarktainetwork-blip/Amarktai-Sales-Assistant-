@@ -26,6 +26,8 @@ VITE_AUTH_MODE=local
 LOCAL_ADMIN_NAME=Amarktai Administrator
 LOCAL_ADMIN_EMAIL=admin@example.com
 LOCAL_ADMIN_PASSWORD=replace_with_a_long_unique_admin_password
+LOCAL_ADMIN_PLATFORM_OWNER=true
+MANAGEMENT_ELEVATION_TTL_MINUTES=45
 
 # Mandatory generative/reasoning service
 GENX_CHAT_COMPLETIONS_URL=https://your-genx-endpoint.example/v1/chat/completions

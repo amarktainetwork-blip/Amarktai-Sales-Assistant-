@@ -1,5 +1,6 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
 import {
@@ -15,6 +16,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
+import { toast } from "sonner";
 
 function money(valueMinor: number | null, currency: string | null) {
   if (valueMinor == null) return "—";
@@ -37,6 +39,20 @@ export default function Today() {
     { organisationId: organisationId ?? 0 },
     { enabled: Boolean(organisationId) }
   );
+  const utils = trpc.useUtils();
+  const [memoryCommand, setMemoryCommand] = useState("");
+  const saveMemoryCommand = trpc.memory.command.useMutation({
+    onSuccess: result => {
+      setMemoryCommand("");
+      utils.sales.today.invalidate();
+      toast.success(result.kind === "reminder" ? "Reminder saved." : "Memory saved with provenance.");
+    },
+    onError: error => toast.error(error.message),
+  });
+  const updateReminder = trpc.memory.updateReminder.useMutation({
+    onSuccess: () => utils.sales.today.invalidate(),
+    onError: error => toast.error(error.message),
+  });
   const startCall = trpc.calls.startFromToday.useMutation({
     onSuccess: result =>
       navigate(`/live-calls?sessionId=${result.callSessionId}`),
@@ -121,6 +137,13 @@ export default function Today() {
             to the signed-in salesperson.
           </div>
         )}
+        <section className="mt-6 rounded-2xl border border-white/10 bg-[#0E2142] p-4 sm:flex sm:items-end sm:gap-3">
+          <label className="block flex-1 text-xs font-bold text-[#A9BFDF]">
+            REMINDERS & MEMORY
+            <Input value={memoryCommand} onChange={event => setMemoryCommand(event.target.value)} placeholder="Remind me tomorrow at 2 to call John" className="mt-2 border-white/15 bg-[#08172F] text-white" />
+          </label>
+          <Button disabled={memoryCommand.trim().length < 8 || saveMemoryCommand.isPending} onClick={() => saveMemoryCommand.mutate({ command: memoryCommand })} className="mt-3 bg-[#1B64F2] sm:mt-0">Save command</Button>
+        </section>
         <section className="mt-7 grid gap-4 md:grid-cols-2 2xl:grid-cols-6">
           <Metric
             icon={CalendarClock}
@@ -282,10 +305,17 @@ export default function Today() {
             empty="No tasks are due today."
           />
         </section>
+        <section className="mt-6 grid gap-6 xl:grid-cols-2">
+          <InternalWorkList title="Amarktai reminders" items={today.data?.queues.reminders ?? []} empty="No reminders are due." onComplete={id => updateReminder.mutate({ reminderId: id, status: "completed" })} />
+          <InternalWorkList title="Callbacks" items={today.data?.queues.callbacks ?? []} empty="No callbacks are due." />
+        </section>
         <InboundList items={today.data?.queues.inbound ?? []} />
       </div>
     </DashboardLayout>
   );
+}
+function InternalWorkList({ title, items, empty, onComplete }: { title: string; items: Array<{ id: number; title: string; dueAt: Date | null; status?: string; state?: string }>; empty: string; onComplete?: (id: number) => void }) {
+  return <article className="rounded-[1.5rem] border border-white/10 bg-[#0E2142] p-6"><h2 className="font-display text-2xl font-bold text-white">{title}</h2><div className="mt-4 space-y-2">{items.length ? items.map(item => <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl bg-[#08172F] p-3"><div><p className="font-semibold text-white">{item.title}</p><p className="mt-1 text-xs text-[#8FA9CE]">{item.dueAt ? new Date(item.dueAt).toLocaleString() : "No due date"} · {item.status || item.state}</p></div>{onComplete && <Button size="sm" variant="outline" onClick={() => onComplete(item.id)} className="border-white/15 text-white">Complete</Button>}</div>) : <p className="rounded-xl border border-dashed border-white/15 p-5 text-sm text-[#8FA9CE]">{empty}</p>}</div></article>;
 }
 
 function SalesSession({

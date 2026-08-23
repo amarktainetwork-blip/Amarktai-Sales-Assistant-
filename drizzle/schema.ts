@@ -23,6 +23,7 @@ export const users = mysqlTable("users", {
   loginMethod: varchar("loginMethod", { length: 64 }),
   passwordHash: varchar("passwordHash", { length: 255 }),
   role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
+  isPlatformOwner: boolean("isPlatformOwner").default(false).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
@@ -419,6 +420,75 @@ export const callbackTasks = mysqlTable(
       table.userId,
       table.idempotencyKey
     ),
+  ]
+);
+
+/** Durable user-owned reminders shown in Today; CRM tasks remain in the normalized CRM tables. */
+export const assistantReminders = mysqlTable(
+  "assistantReminders",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    organisationId: int("organisationId")
+      .notNull()
+      .references(() => organisations.id, { onDelete: "cascade" }),
+    userId: int("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    contactExternalId: varchar("contactExternalId", { length: 160 }),
+    opportunityExternalId: varchar("opportunityExternalId", { length: 160 }),
+    title: varchar("title", { length: 300 }).notNull(),
+    details: text("details"),
+    dueAt: timestamp("dueAt").notNull(),
+    timezone: varchar("timezone", { length: 80 }).notNull(),
+    status: mysqlEnum("status", ["open", "snoozed", "completed", "cancelled"])
+      .default("open")
+      .notNull(),
+    source: mysqlEnum("source", ["manual", "assistant", "call_commitment", "crm", "inbound", "automation", "appointment"])
+      .default("manual")
+      .notNull(),
+    sourceReference: varchar("sourceReference", { length: 220 }),
+    snoozedUntil: timestamp("snoozedUntil"),
+    completedAt: timestamp("completedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    index("assistantReminders_org_user_status_due_idx").on(table.organisationId, table.userId, table.status, table.dueAt),
+    index("assistantReminders_org_contact_idx").on(table.organisationId, table.contactExternalId),
+    uniqueIndex("assistantReminders_org_source_ref_uq").on(table.organisationId, table.source, table.sourceReference),
+  ]
+);
+
+/** Structured assistant memory with explicit provenance and trust; AI inference is never confirmed implicitly. */
+export const assistantMemories = mysqlTable(
+  "assistantMemories",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    organisationId: int("organisationId")
+      .notNull()
+      .references(() => organisations.id, { onDelete: "cascade" }),
+    userId: int("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    contactExternalId: varchar("contactExternalId", { length: 160 }),
+    opportunityExternalId: varchar("opportunityExternalId", { length: 160 }),
+    memoryType: mysqlEnum("memoryType", ["user_preference", "customer_fact", "commitment", "conversation_reference"]).notNull(),
+    subject: varchar("subject", { length: 220 }).notNull(),
+    content: text("content").notNull(),
+    provenance: mysqlEnum("provenance", ["user_asserted", "crm", "call", "message", "approved_ai_extraction"]).notNull(),
+    trust: mysqlEnum("trust", ["confirmed", "user_asserted", "inferred"]).notNull(),
+    sourceReference: varchar("sourceReference", { length: 220 }),
+    status: mysqlEnum("status", ["active", "superseded", "removed"])
+      .default("active")
+      .notNull(),
+    occurredAt: timestamp("occurredAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    index("assistantMemories_org_user_type_idx").on(table.organisationId, table.userId, table.memoryType),
+    index("assistantMemories_org_contact_idx").on(table.organisationId, table.contactExternalId),
+    uniqueIndex("assistantMemories_org_provenance_ref_uq").on(table.organisationId, table.provenance, table.sourceReference),
   ]
 );
 

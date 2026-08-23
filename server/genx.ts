@@ -260,12 +260,14 @@ export async function runGenxAgent(input: {
   }
 
   const charge = creditCost(billing);
+  let billingExempt = false;
   if (billing && charge > 0) {
     const wallet = await getAiCreditWallet({
       userId: billing.userId,
       organisationId: billing.organisationId,
     });
-    if (wallet.balance < charge)
+    billingExempt = wallet.billingExempt;
+    if (!billingExempt && wallet.balance < charge)
       throw new Error(
         `This AI operation needs ${charge} Amarktai AI Credit${charge === 1 ? "" : "s"}, but the organisation has ${wallet.balance} remaining.`
       );
@@ -332,7 +334,7 @@ export async function runGenxAgent(input: {
       provider: "genx" as const,
       model,
       usage,
-      creditsCharged: billing ? charge : 0,
+      creditsCharged: billing && !billingExempt ? charge : 0,
     };
   };
   if (!billing) return request();

@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { organisations } from "../drizzle/schema";
 import { getDb, recordAudit } from "./db";
-import { canManageOrganisation, requireOrganisationMembership } from "./organisation";
+import { canManageOrganisationForUser, requireOrganisationMembership } from "./organisation";
 
 export type AutomationMode = "advise" | "review" | "auto_preapproved";
 export type AutomationPolicy = {
@@ -47,7 +47,7 @@ export async function getAutomationPolicy(input: { userId: number; organisationI
 
 export async function saveAutomationPolicy(input: { userId: number; organisationId: number; policy: AutomationPolicy }) {
   const membership = await requireOrganisationMembership(input.userId, input.organisationId);
-  if (!canManageOrganisation(membership.role)) throw new Error("Only organisation owners and managers can change automation policy.");
+  if (!(await canManageOrganisationForUser(input.userId, membership.role))) throw new Error("Only organisation owners, managers, and platform owners can change automation policy.");
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
   const organisation = (await db.select().from(organisations).where(eq(organisations.id, input.organisationId)).limit(1))[0];

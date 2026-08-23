@@ -1,13 +1,23 @@
 import { and, desc, eq } from "drizzle-orm";
 import { authorisedDomains, connectedSystems, connectionSecrets, connectorVerificationRuns } from "../drizzle/schema";
 import { getDb } from "./db";
-import { canManageOrganisation, requireOrganisationMembership } from "./organisation";
+import { canManageOrganisationForUser, requireOrganisationMembership } from "./organisation";
 import { decryptConnectionSecret, encryptConnectionSecret } from "./security/connectionSecrets";
 import { assertPublicHttpUrl } from "./security/networkPolicy";
 import type { AdapterConnection, ConnectionSecretPayload, ConnectionTest, CrmProvider } from "./crm/types";
 
 const connectionMethods = ["oauth", "browser", "sidecar", "custom_adapter", "import"] as const;
 type ConnectionMethod = (typeof connectionMethods)[number];
+const privateExecutionKey = /(?:password|secret|token|cookie|authorization|credential|storageState|browserProfile|authenticated|session)/i;
+
+export function sanitizeConnectedSystemForApi<T extends Record<string, unknown>>(system: T): T {
+  const sanitize = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(sanitize);
+    if (!value || typeof value !== "object") return value;
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).filter(([key]) => !privateExecutionKey.test(key)).map(([key, nested]) => [key, sanitize(nested)]));
+  };
+  return { ...system, configuration: sanitize(system.configuration || {}) } as T;
+}
 
 function hostnameFromUrl(baseUrl?: string | null) {
   if (!baseUrl) return null;
@@ -36,7 +46,8 @@ export async function listConnectedSystemsForUser(userId: number, organisationId
   await requireOrganisationMembership(userId, organisationId);
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
-  return db.select().from(connectedSystems).where(eq(connectedSystems.organisationId, organisationId)).orderBy(desc(connectedSystems.updatedAt));
+  const systems = await db.select().from(connectedSystems).where(eq(connectedSystems.organisationId, organisationId)).orderBy(desc(connectedSystems.updatedAt));
+  return systems.map(system => sanitizeConnectedSystemForApi(system));
 }
 
 export async function createConnectedSystem(input: {
@@ -50,7 +61,7 @@ export async function createConnectedSystem(input: {
   allowedWriteCapabilities: string[];
 }) {
   const membership = await requireOrganisationMembership(input.userId, input.organisationId);
-  if (!canManageOrganisation(membership.role)) throw new Error("Only organisation owners and managers can add connected systems.");
+  if (!(await canManageOrganisationForUser(input.userId, membership.role))) throw new Error("Only organisation owners, managers, and platform owners can add connected systems.");
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
   const result = await db.insert(connectedSystems).values({
@@ -80,7 +91,7 @@ export async function getConnectedSystemForUser(userId: number, organisationId: 
 
 export async function addAuthorisedDomain(input: { userId: number; organisationId: number; connectedSystemId: number; hostname: string; allowedPaths: string[] }) {
   const membership = await requireOrganisationMembership(input.userId, input.organisationId);
-  if (!canManageOrganisation(membership.role)) throw new Error("Only organisation owners and managers can approve domains.");
+  if (!(await canManageOrganisationForUser(input.userId, membership.role))) throw new Error("Only organisation owners, managers, and platform owners can approve domains.");
   const system = await getConnectedSystemForUser(input.userId, input.organisationId, input.connectedSystemId);
   const hostname = input.hostname.trim().toLowerCase();
   if (!/^[a-z0-9.-]{1,253}$/i.test(hostname) || hostname.includes("..")) throw new Error("Enter a valid authorised business hostname.");
@@ -110,7 +121,7 @@ export async function assertAuthorisedConnectionUrl(input: { organisationId: num
 
 export async function saveConnectionSecret(input: { userId: number; organisationId: number; connectedSystemId: number; secretKind: string; secret: ConnectionSecretPayload }) {
   const membership = await requireOrganisationMembership(input.userId, input.organisationId);
-  if (!canManageOrganisation(membership.role)) throw new Error("Only organisation owners and managers can manage connection credentials.");
+  if (!(await canManageOrganisationForUser(input.userId, membership.role))) throw new Error("Only organisation owners, managers, and platform owners can manage connection credentials.");
   await getConnectedSystemForUser(input.userId, input.organisationId, input.connectedSystemId);
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");

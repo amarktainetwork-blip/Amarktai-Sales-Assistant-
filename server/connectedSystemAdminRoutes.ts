@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { connectedSystems } from "../drizzle/schema";
 import { getDb, recordAudit } from "./db";
 import { canManageOrganisation } from "./organisationAccess";
-import { requireLocalHttpContext } from "./httpAuth";
+import { requireManagementHttpContext } from "./managementElevation";
 import {
   getConnectedSystemForUser,
   loadConnectionSecret,
@@ -16,8 +16,8 @@ import { randomUUID } from "node:crypto";
 import { testLearnedBrowserOperation } from "./browserConnectors/browserCrmAdapter";
 
 async function requireManager(req: Request) {
-  const { userId, membership } = await requireLocalHttpContext(req);
-  if (!canManageOrganisation(membership.role))
+  const { userId, membership, user } = await requireManagementHttpContext(req);
+  if (!user.isPlatformOwner && !canManageOrganisation(membership.role))
     throw new Error("MANAGER_REQUIRED");
   return { userId, membership };
 }
@@ -32,6 +32,8 @@ function sendError(res: Response, error: unknown) {
       .json({ error: "Second-factor verification is required." });
   if (detail === "MANAGER_REQUIRED")
     return res.status(403).json({ error: "A management role is required." });
+  if (detail.startsWith("MANAGEMENT_ELEVATION_"))
+    return res.status(403).json({ error: detail });
   console.error(
     JSON.stringify({
       event: "connected_system_admin_error",

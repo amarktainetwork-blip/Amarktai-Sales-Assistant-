@@ -1,5 +1,7 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, lte, or } from "drizzle-orm";
 import {
+  assistantReminders,
+  callbackTasks,
   crmContacts,
   crmOpportunities,
   crmTasks,
@@ -34,7 +36,7 @@ export async function getTodayWork(input: {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
   const now = new Date();
-  const [mappings, tasks, opportunities, inboundRows] = await Promise.all([
+  const [mappings, tasks, opportunities, inboundRows, reminders, callbacks] = await Promise.all([
     db
       .select()
       .from(externalUserMappings)
@@ -79,6 +81,18 @@ export async function getTodayWork(input: {
       )
       .orderBy(desc(inboundMessages.receivedAt))
       .limit(100),
+    db.select().from(assistantReminders).where(and(
+      eq(assistantReminders.organisationId, input.organisationId),
+      eq(assistantReminders.userId, input.userId),
+      or(eq(assistantReminders.status, "open"), eq(assistantReminders.status, "snoozed")),
+      lte(assistantReminders.dueAt, dayEnd(now))
+    )).orderBy(desc(assistantReminders.dueAt)).limit(100),
+    db.select().from(callbackTasks).where(and(
+      eq(callbackTasks.organisationId, input.organisationId),
+      eq(callbackTasks.userId, input.userId),
+      eq(callbackTasks.state, "open"),
+      lte(callbackTasks.dueAt, dayEnd(now))
+    )).orderBy(desc(callbackTasks.dueAt)).limit(100),
   ]);
   const ownerIds = new Set(mappings.map(mapping => mapping.externalUserId));
   const unrestricted = canViewTeamData(membership.role);
@@ -155,17 +169,21 @@ export async function getTodayWork(input: {
     role: membership.role,
     requiresOwnerMapping: !unrestricted && ownerIds.size === 0,
     metrics: {
-      dueToday: dueToday.length,
+      dueToday: dueToday.length + reminders.length + callbacks.length,
       overdue: overdueTasks.length,
       staleOpportunities: staleOpportunities.length,
       noNextStep: noNextStep.length,
       priorityRecords: priority.length,
       inboundNeedsAction: actionableInbound.length,
+      remindersDue: reminders.length,
+      callbacksDue: callbacks.length,
     },
     queues: {
       dueToday: dueToday.slice(0, 12),
       overdueTasks: overdueTasks.slice(0, 12),
       inbound: actionableInbound.slice(0, 20),
+      reminders: reminders.slice(0, 20),
+      callbacks: callbacks.slice(0, 20),
       priority,
     },
   };

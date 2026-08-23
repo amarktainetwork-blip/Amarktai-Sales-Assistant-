@@ -36,6 +36,7 @@ import {
   upsertCompanyProfile,
   appendLiveTranscript,
   completeLiveCallSession,
+  recordAudit,
 } from "./db";
 import { getGenxReadiness, runGenxAgent } from "./genx";
 import { getGenieReadiness } from "./genie/config";
@@ -48,6 +49,7 @@ import {
   publicProcedure,
   router,
   secondFactorProcedure,
+  managementProcedure,
 } from "./_core/trpc";
 import { buildWorkflowPlan } from "./workflowRules";
 import {
@@ -117,6 +119,19 @@ import {
   startLiveCallForContact,
   startLiveCallFromToday,
 } from "./liveCalls/context";
+import {
+  createAssistantMemory,
+  createReminder,
+  executeAssistantMemoryCommand,
+  listUserReminders,
+  updateReminderStatus,
+} from "./memory";
+import {
+  issueManagementElevation,
+  managementElevationMaxAgeMs,
+  MANAGEMENT_ELEVATION_COOKIE,
+  verifyManagementPassword,
+} from "./managementElevation";
 
 const workflowInput = z.object({
   workflowKey: z.enum(WORKFLOW_KEYS),
@@ -339,6 +354,7 @@ export const appRouter = router({
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
+      ctx.res.clearCookie(MANAGEMENT_ELEVATION_COOKIE, { ...cookieOptions, maxAge: -1 });
       return { success: true } as const;
     }),
   }),
@@ -386,6 +402,29 @@ export const appRouter = router({
         });
         return { success: true };
       }),
+  }),
+  managementElevation: router({
+    status: secondFactorProcedure.query(({ ctx }) => ({
+      eligible: Boolean(ctx.activeOrganisation && (ctx.user.isPlatformOwner || canManageOrganisation(ctx.activeOrganisation.role))),
+      elevated: ctx.managementElevationStatus === "valid",
+      status: ctx.managementElevationStatus,
+      ttlMinutes: Math.round(managementElevationMaxAgeMs() / 60_000),
+    })),
+    start: secondFactorProcedure
+      .input(z.object({ password: z.string().min(1).max(200) }))
+      .mutation(async ({ ctx, input }) => {
+        if (!ctx.activeOrganisation || (!ctx.user.isPlatformOwner && !canManageOrganisation(ctx.activeOrganisation.role))) throw new Error("MANAGER_REQUIRED");
+        if (!(await verifyManagementPassword(ctx.user.id, input.password))) throw new Error("Management identity verification failed.");
+        const token = await issueManagementElevation(ctx.user.id);
+        ctx.res.cookie(MANAGEMENT_ELEVATION_COOKIE, token, { ...getSessionCookieOptions(ctx.req), maxAge: managementElevationMaxAgeMs() });
+        await recordAudit({ userId: ctx.user.id, organisationId: ctx.activeOrganisation.organisationId, eventType: "management_elevation_started", entityType: "user", entityId: String(ctx.user.id), summary: "Sensitive management mode was activated after identity re-verification.", metadata: { ttlMinutes: Math.round(managementElevationMaxAgeMs() / 60_000) } });
+        return { success: true, ttlMinutes: Math.round(managementElevationMaxAgeMs() / 60_000) };
+      }),
+    revoke: secondFactorProcedure.mutation(async ({ ctx }) => {
+      ctx.res.clearCookie(MANAGEMENT_ELEVATION_COOKIE, { ...getSessionCookieOptions(ctx.req), maxAge: -1 });
+      if (ctx.activeOrganisation) await recordAudit({ userId: ctx.user.id, organisationId: ctx.activeOrganisation.organisationId, eventType: "management_elevation_revoked", entityType: "user", entityId: String(ctx.user.id), summary: "Sensitive management mode was revoked.", metadata: {} });
+      return { success: true };
+    }),
   }),
   assistant: router({
     dashboard: secondFactorProcedure.query(({ ctx }) => {
@@ -807,7 +846,7 @@ export const appRouter = router({
         requireActiveOrganisationContext(ctx, input.organisationId);
         return listConnectedSystemsForUser(ctx.user.id, input.organisationId);
       }),
-    create: secondFactorProcedure
+    create: managementProcedure
       .input(
         z.object({
           organisationId: z.number().int().positive(),
@@ -834,7 +873,7 @@ export const appRouter = router({
         requireActiveOrganisationContext(ctx, input.organisationId);
         return createConnectedSystem({ userId: ctx.user.id, ...input });
       }),
-    addDomain: secondFactorProcedure
+    addDomain: managementProcedure
       .input(
         z.object({
           organisationId: z.number().int().positive(),
@@ -847,7 +886,7 @@ export const appRouter = router({
         requireActiveOrganisationContext(ctx, input.organisationId);
         return addAuthorisedDomain({ userId: ctx.user.id, ...input });
       }),
-    beginOAuth: secondFactorProcedure
+    beginOAuth: managementProcedure
       .input(
         z.object({
           organisationId: z.number().int().positive(),
@@ -859,7 +898,7 @@ export const appRouter = router({
           ctx,
           input.organisationId
         );
-        if (!canManageOrganisation(membership.role))
+        if (!ctx.user.isPlatformOwner && !canManageOrganisation(membership.role))
           throw new Error(
             "Only organisation owners and managers can authenticate connected systems."
           );
@@ -890,7 +929,7 @@ export const appRouter = router({
           }),
         };
       }),
-    verify: secondFactorProcedure
+    verify: managementProcedure
       .input(
         z.object({
           organisationId: z.number().int().positive(),
@@ -902,7 +941,7 @@ export const appRouter = router({
           ctx,
           input.organisationId
         );
-        if (!canManageOrganisation(membership.role))
+        if (!ctx.user.isPlatformOwner && !canManageOrganisation(membership.role))
           throw new Error(
             "Only organisation owners and managers can test connected systems."
           );
@@ -975,7 +1014,7 @@ export const appRouter = router({
           ...input,
         });
       }),
-    reviewBrowserOperation: secondFactorProcedure
+    reviewBrowserOperation: managementProcedure
       .input(
         z.object({
           organisationId: z.number().int().positive(),
@@ -1067,7 +1106,7 @@ export const appRouter = router({
           ...input,
         });
       }),
-    saveBrowserOperation: secondFactorProcedure
+    saveBrowserOperation: managementProcedure
       .input(
         z.object({
           organisationId: z.number().int().positive(),
@@ -1095,7 +1134,7 @@ export const appRouter = router({
         requireActiveOrganisationContext(ctx, input.organisationId);
         return saveLearnedBrowserOperation({ userId: ctx.user.id, ...input });
       }),
-    startBrowserTraining: secondFactorProcedure
+    startBrowserTraining: managementProcedure
       .input(
         z.object({
           organisationId: z.number().int().positive(),
@@ -1107,7 +1146,7 @@ export const appRouter = router({
         requireActiveOrganisationContext(ctx, input.organisationId);
         return createBrowserTrainingSession({ userId: ctx.user.id, ...input });
       }),
-    setBrowserShadowMode: secondFactorProcedure
+    setBrowserShadowMode: managementProcedure
       .input(
         z.object({
           organisationId: z.number().int().positive(),
@@ -1129,6 +1168,38 @@ export const appRouter = router({
           userId: ctx.user.id,
           organisationId: input.organisationId,
         });
+      }),
+  }),
+  memory: router({
+    command: secondFactorProcedure
+      .input(z.object({ command: z.string().trim().min(8).max(2_000), contactExternalId: z.string().trim().max(160).optional(), opportunityExternalId: z.string().trim().max(160).optional() }))
+      .mutation(({ ctx, input }) => {
+        if (!ctx.activeOrganisation) throw new Error("Choose an organisation before saving memory.");
+        return executeAssistantMemoryCommand({ userId: ctx.user.id, organisationId: ctx.activeOrganisation.organisationId, timezone: ctx.activeOrganisation.timezone, ...input });
+      }),
+    createReminder: secondFactorProcedure
+      .input(z.object({ title: z.string().trim().min(1).max(300), dueAt: z.coerce.date(), timezone: z.string().trim().min(1).max(80), details: z.string().max(10_000).optional(), contactExternalId: z.string().trim().max(160).optional(), opportunityExternalId: z.string().trim().max(160).optional() }))
+      .mutation(({ ctx, input }) => {
+        if (!ctx.activeOrganisation) throw new Error("Choose an organisation before saving a reminder.");
+        return createReminder({ userId: ctx.user.id, organisationId: ctx.activeOrganisation.organisationId, source: "manual", ...input });
+      }),
+    createFact: secondFactorProcedure
+      .input(z.object({ memoryType: z.enum(["user_preference", "customer_fact", "conversation_reference"]), subject: z.string().trim().min(1).max(220), content: z.string().trim().min(1).max(20_000), contactExternalId: z.string().trim().max(160).optional(), opportunityExternalId: z.string().trim().max(160).optional() }))
+      .mutation(({ ctx, input }) => {
+        if (!ctx.activeOrganisation) throw new Error("Choose an organisation before saving memory.");
+        return createAssistantMemory({ userId: ctx.user.id, organisationId: ctx.activeOrganisation.organisationId, provenance: "user_asserted", ...input });
+      }),
+    reminders: secondFactorProcedure
+      .input(z.object({ includeHistory: z.boolean().optional() }).optional())
+      .query(({ ctx, input }) => {
+        if (!ctx.activeOrganisation) throw new Error("Choose an organisation before loading reminders.");
+        return listUserReminders({ userId: ctx.user.id, organisationId: ctx.activeOrganisation.organisationId, includeHistory: input?.includeHistory });
+      }),
+    updateReminder: secondFactorProcedure
+      .input(z.object({ reminderId: z.number().int().positive(), status: z.enum(["open", "snoozed", "completed", "cancelled"]), snoozedUntil: z.coerce.date().optional() }))
+      .mutation(({ ctx, input }) => {
+        if (!ctx.activeOrganisation) throw new Error("Choose an organisation before updating a reminder.");
+        return updateReminderStatus({ userId: ctx.user.id, organisationId: ctx.activeOrganisation.organisationId, ...input });
       }),
   }),
   management: router({

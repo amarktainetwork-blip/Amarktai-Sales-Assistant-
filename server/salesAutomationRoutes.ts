@@ -10,6 +10,7 @@ import {
   saveAutomationPolicy,
 } from "./automationPolicy";
 import { executeAutoPreapprovedActions } from "./governedActions";
+import { requireManagementHttpContext } from "./managementElevation";
 
 const ACTION_TYPES = [
   "verify_contact_context",
@@ -56,6 +57,8 @@ function sendError(res: Response, error: unknown) {
     return res
       .status(403)
       .json({ error: "Second-factor verification is required." });
+  if (detail === "MANAGER_REQUIRED" || detail.startsWith("MANAGEMENT_ELEVATION_"))
+    return res.status(403).json({ error: detail });
   console.error(
     JSON.stringify({
       event: "sales_automation_error",
@@ -163,7 +166,7 @@ export function registerSalesAutomationRoutes(app: Express) {
 
   app.put("/api/sales-automation/policy", async (req, res) => {
     try {
-      const { userId, membership } = await authenticated(req);
+      const { userId, membership } = await requireManagementHttpContext(req);
       const policy = normalizeAutomationPolicy(req.body);
       return res.json({
         policy: await saveAutomationPolicy({
