@@ -156,9 +156,7 @@ export default function ConnectionsV2() {
     onSuccess: async result => {
       await systems.refetch();
       result.status === "ready"
-        ? toast.success(
-            "All requested capability operation sets are LIVE_PROVEN."
-          )
+        ? toast.success("All requested CRM capability sets are verified.")
         : toast.warning(result.summary);
     },
     onError: error => toast.error(error.message),
@@ -252,9 +250,11 @@ export default function ConnectionsV2() {
               Connect the CRM your team already works in.
             </h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-[#A9BFDF]">
-              Native CRMs use OAuth. Genie and other authorised web CRMs use
-              reviewed deterministic operations. Connected means authenticated;
-              only independently tested operations become LIVE_PROVEN.
+              Amarktai uses the functions the connected CRM already provides.
+              Email, SMS, WhatsApp, tasks, notes, dialler actions and CRM-specific
+              workflows are capabilities of that CRM—not separate Amarktai
+              messaging integrations. Browser functions become usable only after
+              deterministic testing publishes them LIVE_PROVEN.
             </p>
           </div>
           <Button
@@ -546,17 +546,17 @@ export default function ConnectionsV2() {
           <Info
             icon={<CheckCircle2 />}
             title="One CRM connection, the whole team"
-            copy="Amarktai synchronizes into the existing normalized CRM model and calculates personal/team work from verified owner mappings."
+            copy="Amarktai synchronizes into the existing normalized CRM model and uses each connected system's independently verified functions."
           />
           <Info
             icon={<CircleAlert />}
-            title="Capabilities fail closed"
-            copy="A drifted operation is disabled independently. A broad capability becomes full only when every required operation is LIVE_PROVEN."
+            title="Functions fail closed independently"
+            copy="A drifted operation is disabled without taking unrelated proven CRM functions offline. Broad capabilities become full only when their required operations are LIVE_PROVEN."
           />
           <Info
-            title="Microsoft 365"
-            copy="Reviewed outbound mail/calendar and commissioned inbound Graph notifications use the existing Microsoft 365 boundary."
-            badge={outlook.data?.ready ? "Configured" : "Not configured"}
+            title="System email and optional Microsoft 365"
+            copy="SMTP protects Amarktai login/recovery/reporting. Client-facing CRM communication stays inside the connected CRM. Microsoft 365 is optional for explicitly commissioned Graph workflows."
+            badge={outlook.data?.ready ? "Configured" : "Optional"}
           />
         </section>
         <section className="rounded-[1.5rem] border border-white/10 bg-[#0E2142] p-6">
@@ -623,6 +623,18 @@ export default function ConnectionsV2() {
   );
 }
 
+function customOperationKey(name: string, mode: "read" | "write") {
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ".")
+    .replace(/^\.+|\.+$/g, "")
+    .slice(0, 90);
+  if (slug.length < 2)
+    throw new Error("Give the CRM function a clear name before starting training.");
+  return `custom.${mode}.${slug}`;
+}
+
 export function BrowserOperationMatrix({
   organisationId,
   system,
@@ -635,6 +647,10 @@ export function BrowserOperationMatrix({
     { enabled: Boolean(organisationId) }
   );
   const [shadowOverride, setShadowOverride] = useState<boolean | undefined>();
+  const [customFunctionName, setCustomFunctionName] = useState("");
+  const [customFunctionMode, setCustomFunctionMode] = useState<"read" | "write">(
+    "write"
+  );
   const startTraining = trpc.connectedSystems.startBrowserTraining.useMutation({
     onSuccess: result => {
       navigator.clipboard.writeText(String(result.id)).catch(() => undefined);
@@ -657,6 +673,27 @@ export function BrowserOperationMatrix({
     onError: error => toast.error(error.message),
   });
   const shadowMode = shadowOverride ?? system.configuration.shadowMode === true;
+
+  function startCustomFunctionTraining() {
+    if (!organisationId) return;
+    try {
+      const operationKey = customOperationKey(
+        customFunctionName,
+        customFunctionMode
+      );
+      startTraining.mutate({
+        organisationId,
+        connectedSystemId: system.id,
+        operationKey,
+      });
+      setCustomFunctionName("");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "CRM function name is invalid."
+      );
+    }
+  }
+
   async function testOperation(operationKey: string, mode: string) {
     if (
       !window.confirm(
@@ -723,6 +760,45 @@ export function BrowserOperationMatrix({
           Shadow mode
         </label>
       </div>
+
+      <div className="mt-4 rounded-xl border border-[#3D69AD]/30 bg-[#0B1B36] p-4">
+        <p className="text-[10px] font-black uppercase tracking-[.12em] text-[#8CB7FF]">
+          Teach another CRM function
+        </p>
+        <p className="mt-2 text-xs leading-5 text-[#91A9CF]">
+          Use this for any function the CRM already has that is not listed below:
+          send a quote, book an appointment, start a dialler action, assign an
+          owner, run a workflow, or another client-specific function. Reads can
+          inspect data. Writes must prove the exact target and success state
+          before they can become LIVE_PROVEN.
+        </p>
+        <div className="mt-3 grid gap-2 md:grid-cols-[1fr_150px_auto]">
+          <Input
+            value={customFunctionName}
+            onChange={event => setCustomFunctionName(event.target.value)}
+            placeholder="Function name, e.g. Send quote"
+            className="border-white/15 bg-[#071326] text-white"
+          />
+          <select
+            value={customFunctionMode}
+            onChange={event =>
+              setCustomFunctionMode(event.target.value as "read" | "write")
+            }
+            className="h-10 rounded-lg border border-white/15 bg-[#071326] px-3 text-xs font-bold text-white"
+          >
+            <option value="write">Changes CRM (write)</option>
+            <option value="read">Reads only</option>
+          </select>
+          <Button
+            onClick={startCustomFunctionTraining}
+            disabled={startTraining.isPending || !customFunctionName.trim()}
+            className="bg-[#1B64F2] hover:bg-[#2B76FF]"
+          >
+            Teach this function
+          </Button>
+        </div>
+      </div>
+
       <div className="mt-4 max-h-[430px] space-y-2 overflow-y-auto pr-1">
         {matrix.data?.operations.map(operation => (
           <BrowserOperationRow
@@ -1015,48 +1091,101 @@ function BrowserOperationRow({
           {operation.mode === "read" ? (
             <div className="mt-4">
               <div className="grid gap-2 md:grid-cols-3">
-              <select
-                value={output.action}
-                onChange={event =>
-                  setOutput({
-                    ...output,
-                    action: event.target.value as typeof output.action,
-                  })
-                }
-                className="h-9 rounded-lg border border-white/15 bg-[#071326] px-2 text-xs text-white"
-              >
-                <option value="read_text">Read text</option>
-                <option value="read_value">Read value</option>
-                <option value="read_rows">Read structured rows</option>
-              </select>
-              <Input
-                value={output.selector}
-                onChange={event =>
-                  setOutput({ ...output, selector: event.target.value })
-                }
-                placeholder="Result selector"
-                className="h-9 border-white/15 bg-[#071326] text-xs text-white"
-              />
-              <Input
-                value={output.key}
-                onChange={event =>
-                  setOutput({ ...output, key: event.target.value })
-                }
-                placeholder="Result key"
-                className="h-9 border-white/15 bg-[#071326] text-xs text-white"
-              />
+                <select
+                  value={output.action}
+                  onChange={event =>
+                    setOutput({
+                      ...output,
+                      action: event.target.value as typeof output.action,
+                    })
+                  }
+                  className="h-9 rounded-lg border border-white/15 bg-[#071326] px-2 text-xs text-white"
+                >
+                  <option value="read_text">Read text</option>
+                  <option value="read_value">Read value</option>
+                  <option value="read_rows">Read structured rows</option>
+                </select>
+                <Input
+                  value={output.selector}
+                  onChange={event =>
+                    setOutput({ ...output, selector: event.target.value })
+                  }
+                  placeholder="Result selector"
+                  className="h-9 border-white/15 bg-[#071326] text-xs text-white"
+                />
+                <Input
+                  value={output.key}
+                  onChange={event =>
+                    setOutput({ ...output, key: event.target.value })
+                  }
+                  placeholder="Result key"
+                  className="h-9 border-white/15 bg-[#071326] text-xs text-white"
+                />
               </div>
               {output.action === "read_rows" && (
                 <div className="mt-2 space-y-2">
-                  <p className="text-[10px] font-black uppercase text-[#8FA9CE]">Structured row fields</p>
+                  <p className="text-[10px] font-black uppercase text-[#8FA9CE]">
+                    Structured row fields
+                  </p>
                   {outputFields.map((field, index) => (
                     <div key={index} className="grid gap-2 md:grid-cols-3">
-                      <Input value={field.key} onChange={event => setOutputFields(current => current.map((item, position) => position === index ? { ...item, key: event.target.value } : item))} placeholder="Field key, e.g. externalId" className="h-9 border-white/15 bg-[#071326] text-xs text-white" />
-                      <Input value={field.selector} onChange={event => setOutputFields(current => current.map((item, position) => position === index ? { ...item, selector: event.target.value } : item))} placeholder="Field selector relative to row" className="h-9 border-white/15 bg-[#071326] text-xs text-white" />
-                      <Input value={field.attribute} onChange={event => setOutputFields(current => current.map((item, position) => position === index ? { ...item, attribute: event.target.value } : item))} placeholder="Optional attribute" className="h-9 border-white/15 bg-[#071326] text-xs text-white" />
+                      <Input
+                        value={field.key}
+                        onChange={event =>
+                          setOutputFields(current =>
+                            current.map((item, position) =>
+                              position === index
+                                ? { ...item, key: event.target.value }
+                                : item
+                            )
+                          )
+                        }
+                        placeholder="Field key, e.g. externalId"
+                        className="h-9 border-white/15 bg-[#071326] text-xs text-white"
+                      />
+                      <Input
+                        value={field.selector}
+                        onChange={event =>
+                          setOutputFields(current =>
+                            current.map((item, position) =>
+                              position === index
+                                ? { ...item, selector: event.target.value }
+                                : item
+                            )
+                          )
+                        }
+                        placeholder="Field selector relative to row"
+                        className="h-9 border-white/15 bg-[#071326] text-xs text-white"
+                      />
+                      <Input
+                        value={field.attribute}
+                        onChange={event =>
+                          setOutputFields(current =>
+                            current.map((item, position) =>
+                              position === index
+                                ? { ...item, attribute: event.target.value }
+                                : item
+                            )
+                          )
+                        }
+                        placeholder="Optional attribute"
+                        className="h-9 border-white/15 bg-[#071326] text-xs text-white"
+                      />
                     </div>
                   ))}
-                  <Button size="sm" variant="outline" onClick={() => setOutputFields(current => [...current, { key: "", selector: "", attribute: "" }])} className="border-white/15 bg-white/5 text-white">Add extraction field</Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      setOutputFields(current => [
+                        ...current,
+                        { key: "", selector: "", attribute: "" },
+                      ])
+                    }
+                    className="border-white/15 bg-white/5 text-white"
+                  >
+                    Add extraction field
+                  </Button>
                 </div>
               )}
             </div>
@@ -1076,12 +1205,65 @@ function BrowserOperationRow({
                 />
                 <div className="space-y-2">
                   {target.fields.map((field, index) => (
-                    <div key={index} className="grid grid-cols-[150px_1fr] gap-2">
-                      <select value={field.key} onChange={event => setTarget({ ...target, fields: target.fields.map((item, position) => position === index ? { ...item, key: event.target.value } : item) })} className="h-9 rounded-lg border border-white/15 bg-[#071326] px-2 text-xs text-white"><option value="externalId">CRM record ID</option><option value="taskId">Task ID</option><option value="opportunityId">Opportunity ID</option><option value="email">Email</option><option value="phone">Phone</option><option value="name">Name</option><option value="company">Company</option></select>
-                      <Input value={field.selector} onChange={event => setTarget({ ...target, fields: target.fields.map((item, position) => position === index ? { ...item, selector: event.target.value } : item) })} placeholder="Stable field selector" className="h-9 border-white/15 bg-[#071326] text-xs text-white" />
+                    <div
+                      key={index}
+                      className="grid grid-cols-[150px_1fr] gap-2"
+                    >
+                      <select
+                        value={field.key}
+                        onChange={event =>
+                          setTarget({
+                            ...target,
+                            fields: target.fields.map((item, position) =>
+                              position === index
+                                ? { ...item, key: event.target.value }
+                                : item
+                            ),
+                          })
+                        }
+                        className="h-9 rounded-lg border border-white/15 bg-[#071326] px-2 text-xs text-white"
+                      >
+                        <option value="externalId">CRM record ID</option>
+                        <option value="taskId">Task ID</option>
+                        <option value="opportunityId">Opportunity ID</option>
+                        <option value="email">Email</option>
+                        <option value="phone">Phone</option>
+                        <option value="name">Name</option>
+                        <option value="company">Company</option>
+                      </select>
+                      <Input
+                        value={field.selector}
+                        onChange={event =>
+                          setTarget({
+                            ...target,
+                            fields: target.fields.map((item, position) =>
+                              position === index
+                                ? { ...item, selector: event.target.value }
+                                : item
+                            ),
+                          })
+                        }
+                        placeholder="Stable field selector"
+                        className="h-9 border-white/15 bg-[#071326] text-xs text-white"
+                      />
                     </div>
                   ))}
-                  <Button size="sm" variant="outline" onClick={() => setTarget({ ...target, fields: [...target.fields, { key: "email", selector: "" }] })} className="border-white/15 bg-white/5 text-white">Add identity field</Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      setTarget({
+                        ...target,
+                        fields: [
+                          ...target.fields,
+                          { key: "email", selector: "" },
+                        ],
+                      })
+                    }
+                    className="border-white/15 bg-white/5 text-white"
+                  >
+                    Add identity field
+                  </Button>
                 </div>
               </div>
               <p className="text-[10px] font-black uppercase tracking-[.12em] text-[#8FA9CE]">
