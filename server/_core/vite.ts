@@ -3,14 +3,14 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import type { Express } from "express";
 import express from "express";
-import { createServer as createViteServer } from "vite";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const clientDir = path.join(rootDir, "client");
 const productionPublicDir = path.join(rootDir, "dist", "public");
 
-/** Serve the local Vite SPA during development; no managed middleware is registered. */
+/** Serve the local Vite SPA during development; Vite is loaded only on demand. */
 export async function setupVite(app: Express, server: Server) {
+  const { createServer: createViteServer } = await import("vite");
   const vite = await createViteServer({
     configFile: path.join(rootDir, "vite.config.ts"),
     root: clientDir,
