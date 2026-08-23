@@ -38,11 +38,9 @@ function sendError(res: Response, error: unknown) {
       detail: detail.slice(0, 300),
     })
   );
-  return res
-    .status(400)
-    .json({
-      error: detail.slice(0, 300) || "Connected-system operation failed.",
-    });
+  return res.status(400).json({
+    error: detail.slice(0, 300) || "Connected-system operation failed.",
+  });
 }
 
 function profile(value: unknown) {
@@ -138,6 +136,77 @@ export function registerConnectedSystemAdminRoutes(app: Express) {
       return sendError(res, error);
     }
   });
+
+  app.put(
+    "/api/connected-system-admin/:id/business-mapping",
+    async (req, res) => {
+      try {
+        const { userId, membership } = await requireManager(req);
+        const connectedSystemId = Number(req.params.id);
+        const system = await getConnectedSystemForUser(
+          userId,
+          membership.organisationId,
+          connectedSystemId
+        );
+        const lines = (value: unknown, maximum: number) =>
+          (Array.isArray(value) ? value : [])
+            .filter(item => typeof item === "string" && item.trim())
+            .slice(0, maximum)
+            .map(item => String(item).trim().slice(0, 300));
+        const channels = lines(req.body?.permittedCommunicationChannels, 8)
+          .map(item => item.toLowerCase())
+          .filter(item => ["email", "sms", "whatsapp"].includes(item));
+        const businessMapping = {
+          owners: lines(req.body?.owners, 100),
+          pipelinesAndStages: lines(req.body?.pipelinesAndStages, 200),
+          leadStatuses: lines(req.body?.leadStatuses, 100),
+          taskMeanings: lines(req.body?.taskMeanings, 100),
+          customFields: lines(req.body?.customFields, 200),
+          permittedCommunicationChannels: channels,
+          automationMode: ["advise", "review", "auto_preapproved"].includes(
+            req.body?.automationMode
+          )
+            ? req.body.automationMode
+            : "review",
+          reviewedAt: new Date().toISOString(),
+        };
+        const db = await getDb();
+        if (!db) throw new Error("Database connection is unavailable.");
+        await db
+          .update(connectedSystems)
+          .set({
+            configuration: {
+              ...(system.configuration || {}),
+              businessMapping,
+            },
+          })
+          .where(
+            and(
+              eq(connectedSystems.id, connectedSystemId),
+              eq(connectedSystems.organisationId, membership.organisationId)
+            )
+          );
+        await recordAudit({
+          userId,
+          organisationId: membership.organisationId,
+          eventType: "browser_crm_business_mapping_reviewed",
+          entityType: "connected_system",
+          entityId: String(connectedSystemId),
+          summary: `${system.displayName} business mappings and permitted channels were reviewed during onboarding.`,
+          metadata: {
+            counts: Object.fromEntries(
+              Object.entries(businessMapping)
+                .filter(([, value]) => Array.isArray(value))
+                .map(([key, value]) => [key, value.length])
+            ),
+          },
+        });
+        return res.json({ ok: true, businessMapping });
+      } catch (error) {
+        return sendError(res, error);
+      }
+    }
+  );
 
   app.post("/api/connected-system-admin/:id/verify", async (req, res) => {
     try {

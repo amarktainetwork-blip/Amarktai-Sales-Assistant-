@@ -12,8 +12,10 @@ import {
 import { recordOperationalEvent } from "../observability/events";
 import {
   BROWSER_OPERATION_CATALOGUE,
+  compileGuidedBrowserOperation,
   deriveBrowserCapabilityReadiness,
   operationChecksum,
+  proposeGuidedBrowserSteps,
   sanitizeTrainingCapture,
   assertBrowserOperationRuntimeStatus,
   assertBrowserOperationScope,
@@ -21,6 +23,7 @@ import {
   validateOperationKey,
   type BrowserOperationStatus,
   type BrowserPostcondition,
+  type GuidedBrowserOperationReview,
   type LearnedBrowserOperationDefinition,
 } from "./operationContracts";
 
@@ -124,6 +127,83 @@ export async function listBrowserOperationMatrix(input: {
   return browserOperationReadinessForSystem(input);
 }
 
+export async function getGuidedBrowserOperationReview(input: {
+  userId: number;
+  organisationId: number;
+  connectedSystemId: number;
+  operationKey: string;
+}) {
+  const membership = await requireOrganisationMembership(
+    input.userId,
+    input.organisationId
+  );
+  if (!canManageOrganisation(membership.role))
+    throw new Error(
+      "Only organisation managers can review learned operations."
+    );
+  await scopedSystem(input.organisationId, input.connectedSystemId);
+  const operation = await latestBrowserOperation({
+    organisationId: input.organisationId,
+    connectedSystemId: input.connectedSystemId,
+    operationKey: input.operationKey,
+    allowedStatuses: ["LEARNED"],
+  });
+  if (!operation)
+    throw new Error("No LEARNED demonstration is waiting for manager review.");
+  const definition = operation.definition as {
+    trainingCapture?: unknown[];
+  };
+  const capture = Array.isArray(definition.trainingCapture)
+    ? sanitizeTrainingCapture(definition.trainingCapture)
+    : [];
+  if (!capture.length)
+    throw new Error("The learned operation has no sanitized training capture.");
+  const catalogue = BROWSER_OPERATION_CATALOGUE.find(
+    item => item.key === operation.operationKey
+  );
+  return {
+    id: operation.id,
+    operationKey: operation.operationKey,
+    version: operation.version,
+    mode: catalogue?.mode || "read",
+    capture,
+    proposedSteps: proposeGuidedBrowserSteps(capture),
+  };
+}
+
+export async function saveGuidedBrowserOperationReview(input: {
+  userId: number;
+  organisationId: number;
+  connectedSystemId: number;
+  learnedOperationId: number;
+  operationKey: string;
+  review: GuidedBrowserOperationReview;
+}) {
+  const learned = await getGuidedBrowserOperationReview(input);
+  if (learned.id !== input.learnedOperationId)
+    throw new Error(
+      "The reviewed demonstration is no longer the latest LEARNED version."
+    );
+  const compiled = compileGuidedBrowserOperation({
+    mode: learned.mode,
+    review: input.review,
+  });
+  return saveLearnedBrowserOperation({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    connectedSystemId: input.connectedSystemId,
+    operationKey: input.operationKey,
+    definition: compiled.definition,
+    prerequisites: {
+      reviewedFromLearnedOperationId: learned.id,
+      reviewedFromVersion: learned.version,
+      guidedReview: true,
+    },
+    targetAssertions: compiled.targetAssertions,
+    postconditionAssertions: compiled.postconditionAssertions,
+  });
+}
+
 export async function browserOperationReadinessForSystem(input: {
   organisationId: number;
   connectedSystemId: number;
@@ -211,22 +291,20 @@ export async function saveLearnedBrowserOperation(input: {
     targetAssertions,
     postconditionAssertions: postconditions,
   });
-  const result = await db
-    .insert(browserLearnedOperations)
-    .values({
-      organisationId: input.organisationId,
-      connectedSystemId: input.connectedSystemId,
-      operationKey,
-      version,
-      status: "TEST_READY",
-      definition,
-      prerequisites,
-      targetAssertions,
-      postconditionAssertions: postconditions,
-      checksum,
-      evidence: { repositoryImplemented: true },
-      createdByUserId: input.userId,
-    });
+  const result = await db.insert(browserLearnedOperations).values({
+    organisationId: input.organisationId,
+    connectedSystemId: input.connectedSystemId,
+    operationKey,
+    version,
+    status: "TEST_READY",
+    definition,
+    prerequisites,
+    targetAssertions,
+    postconditionAssertions: postconditions,
+    checksum,
+    evidence: { repositoryImplemented: true },
+    createdByUserId: input.userId,
+  });
   await recordAudit({
     userId: input.userId,
     organisationId: input.organisationId,
@@ -285,14 +363,12 @@ export async function recordBrowserOperationResult(input: {
       "The learned browser operation was not found in this organisation and connected system."
     );
   const now = new Date();
-  const status: BrowserOperationStatus =
-    input.success && input.publishByUserId
-      ? "LIVE_PROVEN"
-      : input.success
-        ? operation.status
-        : input.watchdog && operation.status === "LIVE_PROVEN"
-          ? "DEGRADED"
-          : "BLOCKED";
+  const status = browserOperationStatusAfterResult({
+    currentStatus: operation.status,
+    success: input.success,
+    publish: Boolean(input.publishByUserId),
+    watchdog: Boolean(input.watchdog),
+  });
   await db
     .update(browserLearnedOperations)
     .set({
@@ -331,6 +407,21 @@ export async function recordBrowserOperationResult(input: {
   return { status };
 }
 
+export function browserOperationStatusAfterResult(input: {
+  currentStatus: BrowserOperationStatus;
+  success: boolean;
+  publish: boolean;
+  watchdog: boolean;
+}): BrowserOperationStatus {
+  return input.success && input.publish
+    ? "LIVE_PROVEN"
+    : input.success
+      ? input.currentStatus
+      : input.watchdog && input.currentStatus === "LIVE_PROVEN"
+        ? "DEGRADED"
+        : "BLOCKED";
+}
+
 export async function createBrowserTrainingSession(input: {
   userId: number;
   organisationId: number;
@@ -349,16 +440,14 @@ export async function createBrowserTrainingSession(input: {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
   const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
-  const result = await db
-    .insert(browserTrainingSessions)
-    .values({
-      organisationId: input.organisationId,
-      connectedSystemId: input.connectedSystemId,
-      userId: input.userId,
-      operationKey: validateOperationKey(input.operationKey),
-      capture: [],
-      expiresAt,
-    });
+  const result = await db.insert(browserTrainingSessions).values({
+    organisationId: input.organisationId,
+    connectedSystemId: input.connectedSystemId,
+    userId: input.userId,
+    operationKey: validateOperationKey(input.operationKey),
+    capture: [],
+    expiresAt,
+  });
   return { id: Number(result[0].insertId), expiresAt };
 }
 
@@ -418,26 +507,24 @@ export async function submitBrowserTrainingCapture(input: {
       .update(browserTrainingSessions)
       .set({ capture, status: "submitted", completedAt: new Date() })
       .where(eq(browserTrainingSessions.id, session.id));
-    await tx
-      .insert(browserLearnedOperations)
-      .values({
-        organisationId: input.organisationId,
-        connectedSystemId: input.connectedSystemId,
-        operationKey: session.operationKey,
-        version,
-        status: "LEARNED",
-        definition,
-        prerequisites: {},
-        targetAssertions: {},
-        postconditionAssertions: [],
-        checksum,
-        evidence: {
-          trainingSessionId: session.id,
-          capturedStepCount: capture.length,
-          privacyFiltered: true,
-        },
-        createdByUserId: input.userId,
-      });
+    await tx.insert(browserLearnedOperations).values({
+      organisationId: input.organisationId,
+      connectedSystemId: input.connectedSystemId,
+      operationKey: session.operationKey,
+      version,
+      status: "LEARNED",
+      definition,
+      prerequisites: {},
+      targetAssertions: {},
+      postconditionAssertions: [],
+      checksum,
+      evidence: {
+        trainingSessionId: session.id,
+        capturedStepCount: capture.length,
+        privacyFiltered: true,
+      },
+      createdByUserId: input.userId,
+    });
   });
   await recordAudit({
     userId: input.userId,

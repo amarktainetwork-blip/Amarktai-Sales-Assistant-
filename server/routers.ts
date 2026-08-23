@@ -105,7 +105,9 @@ import { checkRateLimit } from "./security/http";
 import { createExportDownload, type ExportSection } from "./exportDocuments";
 import {
   createBrowserTrainingSession,
+  getGuidedBrowserOperationReview,
   listBrowserOperationMatrix,
+  saveGuidedBrowserOperationReview,
   saveLearnedBrowserOperation,
   setBrowserShadowMode,
 } from "./browserConnectors/learnedOperations";
@@ -951,6 +953,113 @@ export const appRouter = router({
       .query(({ ctx, input }) => {
         requireActiveOrganisationContext(ctx, input.organisationId);
         return listBrowserOperationMatrix({ userId: ctx.user.id, ...input });
+      }),
+    browserOperationReview: secondFactorProcedure
+      .input(
+        z.object({
+          organisationId: z.number().int().positive(),
+          connectedSystemId: z.number().int().positive(),
+          operationKey: z.string().trim().min(3).max(120),
+        })
+      )
+      .query(({ ctx, input }) => {
+        requireActiveOrganisationContext(ctx, input.organisationId);
+        return getGuidedBrowserOperationReview({
+          userId: ctx.user.id,
+          ...input,
+        });
+      }),
+    reviewBrowserOperation: secondFactorProcedure
+      .input(
+        z.object({
+          organisationId: z.number().int().positive(),
+          connectedSystemId: z.number().int().positive(),
+          learnedOperationId: z.number().int().positive(),
+          operationKey: z.string().trim().min(3).max(120),
+          review: z.object({
+            steps: z
+              .array(
+                z.object({
+                  action: z.enum([
+                    "goto",
+                    "fill",
+                    "click",
+                    "press",
+                    "select_option",
+                    "check",
+                    "uncheck",
+                    "expect_visible",
+                    "wait_for_url",
+                  ]),
+                  selector: z.string().max(2_000).optional(),
+                  value: z.string().max(4_000).optional(),
+                })
+              )
+              .min(1)
+              .max(80),
+            output: z
+              .object({
+                action: z.enum(["read_text", "read_value", "read_rows"]),
+                selector: z.string().trim().min(1).max(2_000),
+                key: z.string().trim().min(1).max(120),
+                fields: z
+                  .array(
+                    z.object({
+                      key: z.string().trim().min(1).max(120),
+                      selector: z.string().max(2_000).optional(),
+                      attribute: z.string().max(120).optional(),
+                    })
+                  )
+                  .max(40)
+                  .optional(),
+              })
+              .optional(),
+            target: z
+              .object({
+                rowSelector: z.string().trim().min(1).max(2_000),
+                mode: z.enum(["must_match", "must_not_exist"]).optional(),
+                fields: z
+                  .array(
+                    z.object({
+                      key: z.enum([
+                        "externalId",
+                        "taskId",
+                        "opportunityId",
+                        "name",
+                        "email",
+                        "phone",
+                        "company",
+                      ]),
+                      selector: z.string().max(2_000).optional(),
+                      attribute: z.string().max(120).optional(),
+                    })
+                  )
+                  .min(1)
+                  .max(7),
+              })
+              .optional(),
+            postcondition: z
+              .object({
+                action: z.enum(["read_text", "read_value", "read_attribute"]),
+                selector: z.string().trim().min(1).max(2_000),
+                key: z.string().trim().min(1).max(120),
+                attribute: z.string().max(120).optional(),
+                expectedInput: z.string().max(120).optional(),
+                expectedValue: z.string().max(2_000).optional(),
+                comparator: z
+                  .enum(["equals", "contains", "exists", "not_equals"])
+                  .optional(),
+              })
+              .optional(),
+          }),
+        })
+      )
+      .mutation(({ ctx, input }) => {
+        requireActiveOrganisationContext(ctx, input.organisationId);
+        return saveGuidedBrowserOperationReview({
+          userId: ctx.user.id,
+          ...input,
+        });
       }),
     saveBrowserOperation: secondFactorProcedure
       .input(

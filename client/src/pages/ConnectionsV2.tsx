@@ -15,7 +15,7 @@ import {
   Save,
   ShieldCheck,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 type Provider =
@@ -623,7 +623,7 @@ export default function ConnectionsV2() {
   );
 }
 
-function BrowserOperationMatrix({
+export function BrowserOperationMatrix({
   organisationId,
   system,
 }: {
@@ -725,57 +725,22 @@ function BrowserOperationMatrix({
       </div>
       <div className="mt-4 max-h-[430px] space-y-2 overflow-y-auto pr-1">
         {matrix.data?.operations.map(operation => (
-          <div
+          <BrowserOperationRow
             key={operation.key}
-            className="rounded-xl border border-white/[.07] bg-white/[.025] p-3"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-bold text-white">
-                  {operation.label}
-                </p>
-                <p className="mt-1 text-[10px] uppercase tracking-wide text-[#7896C1]">
-                  {operation.area} · {operation.key} · {operation.mode}
-                </p>
-              </div>
-              <span
-                className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-black ${statusClass(operation.status)}`}
-              >
-                {operation.status.replaceAll("_", " ")}
-              </span>
-            </div>
-            {operation.lastError && (
-              <p className="mt-2 text-xs text-rose-200">
-                {operation.lastError}
-              </p>
-            )}
-            <div className="mt-3 flex gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() =>
-                  organisationId &&
-                  startTraining.mutate({
-                    organisationId,
-                    connectedSystemId: system.id,
-                    operationKey: operation.key,
-                  })
-                }
-                className="h-8 border-white/15 bg-white/5 text-xs text-white hover:bg-white/10"
-              >
-                {operation.status === "NOT_LEARNED" ? "Teach" : "Relearn / fix"}
-              </Button>
-              {operation.status === "TEST_READY" && (
-                <Button
-                  size="sm"
-                  onClick={() => testOperation(operation.key, operation.mode)}
-                  className="h-8 bg-[#1B64F2] text-xs hover:bg-[#2B76FF]"
-                >
-                  Controlled test
-                </Button>
-              )}
-            </div>
-          </div>
+            organisationId={organisationId}
+            connectedSystemId={system.id}
+            operation={operation}
+            onTeach={() =>
+              organisationId &&
+              startTraining.mutate({
+                organisationId,
+                connectedSystemId: system.id,
+                operationKey: operation.key,
+              })
+            }
+            onTest={() => testOperation(operation.key, operation.mode)}
+            onChanged={() => matrix.refetch()}
+          />
         )) ?? (
           <p className="text-xs text-[#91A9CF]">Loading operation truth…</p>
         )}
@@ -790,6 +755,387 @@ function BrowserOperationMatrix({
               {capability.capability}: {capability.state}
             </span>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+type MatrixOperation = {
+  key: string;
+  label: string;
+  area: string;
+  mode: "read" | "write";
+  status: string;
+  lastError: string | null;
+};
+type ReviewStep = {
+  action:
+    | "goto"
+    | "fill"
+    | "click"
+    | "press"
+    | "select_option"
+    | "check"
+    | "uncheck"
+    | "expect_visible"
+    | "wait_for_url";
+  selector?: string;
+  value?: string;
+};
+
+function BrowserOperationRow({
+  organisationId,
+  connectedSystemId,
+  operation,
+  onTeach,
+  onTest,
+  onChanged,
+}: {
+  organisationId?: number;
+  connectedSystemId: number;
+  operation: MatrixOperation;
+  onTeach: () => void;
+  onTest: () => void;
+  onChanged: () => Promise<unknown> | void;
+}) {
+  const review = trpc.connectedSystems.browserOperationReview.useQuery(
+    {
+      organisationId: organisationId ?? 0,
+      connectedSystemId,
+      operationKey: operation.key,
+    },
+    {
+      enabled: Boolean(organisationId) && operation.status === "LEARNED",
+      retry: false,
+    }
+  );
+  const [steps, setSteps] = useState<ReviewStep[]>([]);
+  const [output, setOutput] = useState({
+    action: "read_text" as "read_text" | "read_value" | "read_rows",
+    selector: "",
+    key: "result",
+  });
+  const [outputFields, setOutputFields] = useState([
+    { key: "externalId", selector: "", attribute: "" },
+  ]);
+  const [target, setTarget] = useState({
+    rowSelector: "",
+    fields: [
+      { key: "externalId", selector: "" },
+      { key: "email", selector: "" },
+    ],
+  });
+  const [postcondition, setPostcondition] = useState({
+    action: "read_text" as "read_text" | "read_value",
+    selector: "",
+    key: "verifiedResult",
+    expectedInput: "",
+    expectedValue: "",
+    comparator: "contains" as "equals" | "contains" | "exists" | "not_equals",
+  });
+  useEffect(() => {
+    if (review.data?.proposedSteps)
+      setSteps(review.data.proposedSteps as ReviewStep[]);
+  }, [review.data?.id]);
+  const saveReview = trpc.connectedSystems.reviewBrowserOperation.useMutation({
+    onSuccess: async () => {
+      await onChanged();
+      toast.success(
+        `${operation.label} saved as TEST_READY for controlled replay.`
+      );
+    },
+    onError: error => toast.error(error.message),
+  });
+  function patchStep(index: number, patch: Partial<ReviewStep>) {
+    setSteps(current =>
+      current.map((step, position) =>
+        position === index ? { ...step, ...patch } : step
+      )
+    );
+  }
+  function saveGuidedReview() {
+    if (!organisationId || !review.data) return;
+    const isWrite = operation.mode === "write";
+    const fields = target.fields
+      .filter(field => field.selector.trim())
+      .map(field => ({
+        key: field.key as
+          | "externalId"
+          | "taskId"
+          | "opportunityId"
+          | "name"
+          | "email"
+          | "phone"
+          | "company",
+        selector: field.selector.trim(),
+      }));
+    saveReview.mutate({
+      organisationId,
+      connectedSystemId,
+      learnedOperationId: review.data.id,
+      operationKey: operation.key,
+      review: {
+        steps,
+        output: !isWrite
+          ? {
+              ...output,
+              fields:
+                output.action === "read_rows"
+                  ? outputFields.filter(field => field.key.trim())
+                  : undefined,
+            }
+          : undefined,
+        target: isWrite
+          ? { rowSelector: target.rowSelector, fields }
+          : undefined,
+        postcondition: isWrite ? postcondition : undefined,
+      },
+    });
+  }
+  return (
+    <div className="rounded-xl border border-white/[.07] bg-white/[.025] p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-bold text-white">{operation.label}</p>
+          <p className="mt-1 text-[10px] uppercase tracking-wide text-[#7896C1]">
+            {operation.area} · {operation.key} · {operation.mode}
+          </p>
+        </div>
+        <span
+          className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-black ${statusClass(operation.status)}`}
+        >
+          {operation.status.replaceAll("_", " ")}
+        </span>
+      </div>
+      {operation.lastError && (
+        <p className="mt-2 text-xs text-rose-200">{operation.lastError}</p>
+      )}
+      <div className="mt-3 flex gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onTeach}
+          className="h-8 border-white/15 bg-white/5 text-xs text-white hover:bg-white/10"
+        >
+          {operation.status === "NOT_LEARNED" ? "Teach" : "Relearn / fix"}
+        </Button>
+        {operation.status === "TEST_READY" && (
+          <Button
+            size="sm"
+            onClick={onTest}
+            className="h-8 bg-[#1B64F2] text-xs hover:bg-[#2B76FF]"
+          >
+            Controlled test
+          </Button>
+        )}
+      </div>
+      {operation.status === "LEARNED" && review.data && (
+        <div className="mt-4 rounded-xl border border-amber-300/20 bg-amber-400/[.04] p-4">
+          <p className="text-xs font-black uppercase tracking-[.12em] text-amber-100">
+            Manager review · sanitized capture
+          </p>
+          <div className="mt-3 space-y-2">
+            {review.data.capture.map((event, index) => (
+              <div
+                key={index}
+                className="rounded-lg bg-[#071326] p-3 text-xs text-[#C8D8F2]"
+              >
+                <b>
+                  {index + 1}. {String(event.action).replaceAll("_", " ")}
+                </b>
+                <span className="ml-2 text-[#8FA9CE]">
+                  {event.name ||
+                    event.label ||
+                    event.url ||
+                    "Sensitive field masked"}
+                </span>
+                {event.selector && (
+                  <code className="mt-1 block break-all text-[#8CB7FF]">
+                    {event.selector}
+                  </code>
+                )}
+                {event.value && (
+                  <code className="mt-1 block text-emerald-200">
+                    {event.value}
+                  </code>
+                )}
+              </div>
+            ))}
+          </div>
+          <p className="mt-4 text-[10px] font-black uppercase tracking-[.12em] text-[#8FA9CE]">
+            Deterministic replay steps
+          </p>
+          <div className="mt-2 space-y-2">
+            {steps.map((step, index) => (
+              <div
+                key={index}
+                className="grid gap-2 md:grid-cols-[130px_1fr_1fr]"
+              >
+                <select
+                  value={step.action}
+                  onChange={event =>
+                    patchStep(index, {
+                      action: event.target.value as ReviewStep["action"],
+                    })
+                  }
+                  className="h-9 rounded-lg border border-white/15 bg-[#071326] px-2 text-xs text-white"
+                >
+                  <option value="goto">Navigate</option>
+                  <option value="click">Click</option>
+                  <option value="fill">Fill placeholder</option>
+                  <option value="select_option">Select placeholder</option>
+                  <option value="check">Check</option>
+                  <option value="uncheck">Uncheck</option>
+                  <option value="press">Press key</option>
+                  <option value="expect_visible">Expect visible</option>
+                </select>
+                <Input
+                  value={step.selector || ""}
+                  disabled={
+                    step.action === "goto" || step.action === "wait_for_url"
+                  }
+                  onChange={event =>
+                    patchStep(index, { selector: event.target.value })
+                  }
+                  placeholder="Stable selector"
+                  className="h-9 border-white/15 bg-[#071326] text-xs text-white"
+                />
+                <Input
+                  value={step.value || ""}
+                  onChange={event =>
+                    patchStep(index, { value: event.target.value })
+                  }
+                  placeholder="Navigation or {{placeholder}}"
+                  className="h-9 border-white/15 bg-[#071326] font-mono text-xs text-white"
+                />
+              </div>
+            ))}
+          </div>
+          {operation.mode === "read" ? (
+            <div className="mt-4">
+              <div className="grid gap-2 md:grid-cols-3">
+              <select
+                value={output.action}
+                onChange={event =>
+                  setOutput({
+                    ...output,
+                    action: event.target.value as typeof output.action,
+                  })
+                }
+                className="h-9 rounded-lg border border-white/15 bg-[#071326] px-2 text-xs text-white"
+              >
+                <option value="read_text">Read text</option>
+                <option value="read_value">Read value</option>
+                <option value="read_rows">Read structured rows</option>
+              </select>
+              <Input
+                value={output.selector}
+                onChange={event =>
+                  setOutput({ ...output, selector: event.target.value })
+                }
+                placeholder="Result selector"
+                className="h-9 border-white/15 bg-[#071326] text-xs text-white"
+              />
+              <Input
+                value={output.key}
+                onChange={event =>
+                  setOutput({ ...output, key: event.target.value })
+                }
+                placeholder="Result key"
+                className="h-9 border-white/15 bg-[#071326] text-xs text-white"
+              />
+              </div>
+              {output.action === "read_rows" && (
+                <div className="mt-2 space-y-2">
+                  <p className="text-[10px] font-black uppercase text-[#8FA9CE]">Structured row fields</p>
+                  {outputFields.map((field, index) => (
+                    <div key={index} className="grid gap-2 md:grid-cols-3">
+                      <Input value={field.key} onChange={event => setOutputFields(current => current.map((item, position) => position === index ? { ...item, key: event.target.value } : item))} placeholder="Field key, e.g. externalId" className="h-9 border-white/15 bg-[#071326] text-xs text-white" />
+                      <Input value={field.selector} onChange={event => setOutputFields(current => current.map((item, position) => position === index ? { ...item, selector: event.target.value } : item))} placeholder="Field selector relative to row" className="h-9 border-white/15 bg-[#071326] text-xs text-white" />
+                      <Input value={field.attribute} onChange={event => setOutputFields(current => current.map((item, position) => position === index ? { ...item, attribute: event.target.value } : item))} placeholder="Optional attribute" className="h-9 border-white/15 bg-[#071326] text-xs text-white" />
+                    </div>
+                  ))}
+                  <Button size="sm" variant="outline" onClick={() => setOutputFields(current => [...current, { key: "", selector: "", attribute: "" }])} className="border-white/15 bg-white/5 text-white">Add extraction field</Button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="mt-4 space-y-3">
+              <p className="text-[10px] font-black uppercase tracking-[.12em] text-[#8FA9CE]">
+                Target verification
+              </p>
+              <div className="grid gap-2 md:grid-cols-[1fr_2fr]">
+                <Input
+                  value={target.rowSelector}
+                  onChange={event =>
+                    setTarget({ ...target, rowSelector: event.target.value })
+                  }
+                  placeholder="Matching result row"
+                  className="h-9 border-white/15 bg-[#071326] text-xs text-white"
+                />
+                <div className="space-y-2">
+                  {target.fields.map((field, index) => (
+                    <div key={index} className="grid grid-cols-[150px_1fr] gap-2">
+                      <select value={field.key} onChange={event => setTarget({ ...target, fields: target.fields.map((item, position) => position === index ? { ...item, key: event.target.value } : item) })} className="h-9 rounded-lg border border-white/15 bg-[#071326] px-2 text-xs text-white"><option value="externalId">CRM record ID</option><option value="taskId">Task ID</option><option value="opportunityId">Opportunity ID</option><option value="email">Email</option><option value="phone">Phone</option><option value="name">Name</option><option value="company">Company</option></select>
+                      <Input value={field.selector} onChange={event => setTarget({ ...target, fields: target.fields.map((item, position) => position === index ? { ...item, selector: event.target.value } : item) })} placeholder="Stable field selector" className="h-9 border-white/15 bg-[#071326] text-xs text-white" />
+                    </div>
+                  ))}
+                  <Button size="sm" variant="outline" onClick={() => setTarget({ ...target, fields: [...target.fields, { key: "email", selector: "" }] })} className="border-white/15 bg-white/5 text-white">Add identity field</Button>
+                </div>
+              </div>
+              <p className="text-[10px] font-black uppercase tracking-[.12em] text-[#8FA9CE]">
+                Success verification
+              </p>
+              <div className="grid gap-2 md:grid-cols-3">
+                <Input
+                  value={postcondition.selector}
+                  onChange={event =>
+                    setPostcondition({
+                      ...postcondition,
+                      selector: event.target.value,
+                    })
+                  }
+                  placeholder="Result selector"
+                  className="h-9 border-white/15 bg-[#071326] text-xs text-white"
+                />
+                <Input
+                  value={postcondition.expectedInput}
+                  onChange={event =>
+                    setPostcondition({
+                      ...postcondition,
+                      expectedInput: event.target.value,
+                    })
+                  }
+                  placeholder="Expected placeholder, e.g. noteBody"
+                  className="h-9 border-white/15 bg-[#071326] text-xs text-white"
+                />
+                <select
+                  value={postcondition.comparator}
+                  onChange={event =>
+                    setPostcondition({
+                      ...postcondition,
+                      comparator: event.target
+                        .value as typeof postcondition.comparator,
+                    })
+                  }
+                  className="h-9 rounded-lg border border-white/15 bg-[#071326] px-2 text-xs text-white"
+                >
+                  <option value="contains">Contains expected</option>
+                  <option value="equals">Equals expected</option>
+                  <option value="exists">Exists</option>
+                  <option value="not_equals">Changed from expected</option>
+                </select>
+              </div>
+            </div>
+          )}
+          <Button
+            onClick={saveGuidedReview}
+            disabled={saveReview.isPending}
+            className="mt-4 bg-[#1B64F2] hover:bg-[#2B76FF]"
+          >
+            Save for testing
+          </Button>
         </div>
       )}
     </div>

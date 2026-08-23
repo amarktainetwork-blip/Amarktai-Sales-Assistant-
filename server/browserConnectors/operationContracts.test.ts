@@ -3,6 +3,8 @@ import {
   assertBrowserOperationRuntimeStatus,
   assertBrowserOperationScope,
   deriveBrowserCapabilityReadiness,
+  compileGuidedBrowserOperation,
+  proposeGuidedBrowserSteps,
   sanitizeTrainingCapture,
   validateLearnedOperationDefinition,
   verifyBrowserCreateTarget,
@@ -170,5 +172,80 @@ describe("operation truth and training privacy", () => {
         execute: { steps: [{ action: "click", selector: "button" }] },
       })
     ).toThrow(/target-read/i);
+  });
+
+  it("turns a sanitized demonstration into guided deterministic review steps", () => {
+    const steps = proposeGuidedBrowserSteps([
+      {
+        action: "click",
+        url: "https://crm.example/contacts",
+        name: "Notes",
+        selector: "[data-testid='notes']",
+      },
+      {
+        action: "fill",
+        url: "https://crm.example/contact/48129",
+        label: "Note",
+        selector: "textarea[name='note']",
+        value: "private customer text",
+      },
+      {
+        action: "click",
+        url: "https://crm.example/contact/48129",
+        name: "Save",
+        selector: "[data-testid='save-note']",
+      },
+    ]);
+    expect(steps).toEqual([
+      { action: "goto", value: "https://crm.example/contacts" },
+      { action: "click", selector: "[data-testid='notes']", value: undefined },
+      {
+        action: "fill",
+        selector: "textarea[name='note']",
+        value: "{{noteBody}}",
+      },
+      {
+        action: "click",
+        selector: "[data-testid='save-note']",
+        value: undefined,
+      },
+    ]);
+    expect(JSON.stringify(steps)).not.toContain("private customer text");
+  });
+
+  it("compiles a manager guided write review without raw operation JSON", () => {
+    const result = compileGuidedBrowserOperation({
+      mode: "write",
+      review: {
+        steps: [{ action: "click", selector: "[data-testid='save-note']" }],
+        target: {
+          rowSelector: "[data-testid='contact-row']",
+          fields: [
+            { key: "externalId", selector: "[data-field='id']" },
+            { key: "email", selector: "[data-field='email']" },
+          ],
+        },
+        postcondition: {
+          action: "read_text",
+          selector: "[data-testid='latest-note']",
+          key: "latestNote",
+          expectedInput: "noteBody",
+          comparator: "contains",
+        },
+      },
+    });
+    expect(result.definition).toMatchObject({
+      mode: "write",
+      targetRead: { steps: [{ action: "read_rows", key: "targets" }] },
+      postconditionRead: {
+        steps: [{ action: "read_text", key: "latestNote" }],
+      },
+    });
+    expect(result.postconditionAssertions).toEqual([
+      expect.objectContaining({
+        actualKey: "latestNote",
+        expectedInput: "noteBody",
+      }),
+    ]);
   });
 });

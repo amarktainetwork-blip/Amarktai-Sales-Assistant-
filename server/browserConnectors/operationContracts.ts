@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   validateSavedBrowserScript,
+  type BrowserScriptStep,
   type SavedBrowserScript,
 } from "./scriptEngine";
 
@@ -40,6 +41,41 @@ export type LearnedBrowserOperationDefinition = {
   postconditionRead?: SavedBrowserScript;
   resultKey?: string;
   cursorKey?: string;
+};
+
+export type GuidedBrowserStep = Pick<
+  BrowserScriptStep,
+  "action" | "selector" | "value"
+>;
+export type GuidedReadOutput = {
+  action: "read_text" | "read_value" | "read_rows";
+  selector: string;
+  key: string;
+  fields?: Array<{ key: string; selector?: string; attribute?: string }>;
+};
+export type GuidedTargetReview = {
+  rowSelector: string;
+  mode?: "must_match" | "must_not_exist";
+  fields: Array<{
+    key: keyof BrowserTargetIdentity;
+    selector?: string;
+    attribute?: string;
+  }>;
+};
+export type GuidedPostconditionReview = {
+  action: "read_text" | "read_value" | "read_attribute";
+  selector: string;
+  key: string;
+  attribute?: string;
+  expectedInput?: string;
+  expectedValue?: string;
+  comparator?: "equals" | "contains" | "exists" | "not_equals";
+};
+export type GuidedBrowserOperationReview = {
+  steps: GuidedBrowserStep[];
+  output?: GuidedReadOutput;
+  target?: GuidedTargetReview;
+  postcondition?: GuidedPostconditionReview;
 };
 
 export type BrowserOperationCatalogueItem = {
@@ -720,4 +756,166 @@ export function sanitizeTrainingCapture(events: unknown[]) {
       value: /input|fill|select/i.test(action) ? placeholder(event) : undefined,
     };
   });
+}
+
+const guidedCaptureActions = new Set([
+  "click",
+  "fill",
+  "select",
+  "select_option",
+  "check",
+  "uncheck",
+  "press",
+]);
+
+/** Proposes declarative replay steps from already-sanitized capture evidence. */
+export function proposeGuidedBrowserSteps(capture: unknown[]) {
+  const events = sanitizeTrainingCapture(capture);
+  const steps: GuidedBrowserStep[] = [];
+  const firstUrl = events.find(event => event.url)?.url;
+  if (firstUrl) steps.push({ action: "goto", value: firstUrl });
+  for (const event of events) {
+    if (
+      event.redacted ||
+      !guidedCaptureActions.has(event.action) ||
+      !event.selector
+    )
+      continue;
+    const action = event.action === "select" ? "select_option" : event.action;
+    steps.push({
+      action: action as GuidedBrowserStep["action"],
+      selector: event.selector,
+      value:
+        action === "fill" || action === "select_option" || action === "press"
+          ? event.value || "{{value}}"
+          : undefined,
+    });
+  }
+  if (!steps.length)
+    throw new Error("The demonstration contains no reviewable browser steps.");
+  return steps;
+}
+
+function guidedFields(
+  fields: Array<{ key: string; selector?: string; attribute?: string }>
+) {
+  if (!fields.length || fields.length > 40)
+    throw new Error(
+      "Choose between one and forty structured extraction fields."
+    );
+  const result: Record<string, { selector?: string; attribute?: string }> = {};
+  for (const field of fields) {
+    const key = clean(field.key);
+    if (!/^[a-zA-Z][a-zA-Z0-9_]{0,119}$/.test(key))
+      throw new Error("Structured extraction fields require a stable key.");
+    if (result[key]) throw new Error(`Duplicate extraction field '${key}'.`);
+    result[key] = {
+      selector: clean(field.selector) || undefined,
+      attribute: clean(field.attribute) || undefined,
+    };
+  }
+  return result;
+}
+
+/** Builds the executable definition server-side from ordinary guided controls. */
+export function compileGuidedBrowserOperation(input: {
+  mode: BrowserOperationMode;
+  review: GuidedBrowserOperationReview;
+}) {
+  const executeSteps = input.review.steps.map(step => ({
+    action: step.action,
+    selector: clean(step.selector) || undefined,
+    value: clean(step.value) || undefined,
+  })) as BrowserScriptStep[];
+  if (input.mode === "read") {
+    const output = input.review.output;
+    if (!output)
+      throw new Error("A read operation requires a structured result step.");
+    executeSteps.push({
+      action: output.action,
+      selector: clean(output.selector),
+      key: clean(output.key),
+      fields:
+        output.action === "read_rows"
+          ? guidedFields(output.fields || [])
+          : undefined,
+    });
+    const definition = validateLearnedOperationDefinition({
+      mode: "read",
+      execute: { steps: executeSteps },
+      resultKey: clean(output.key),
+    });
+    return {
+      definition,
+      targetAssertions: {},
+      postconditionAssertions: [] as BrowserPostcondition[],
+    };
+  }
+  const target = input.review.target;
+  const postcondition = input.review.postcondition;
+  if (!target || !postcondition)
+    throw new Error(
+      "A write operation requires guided target and success verification."
+    );
+  const stableFields = target.fields.filter(field =>
+    [
+      "externalId",
+      "taskId",
+      "opportunityId",
+      "name",
+      "email",
+      "phone",
+      "company",
+    ].includes(field.key)
+  );
+  const exact = stableFields.some(field =>
+    ["externalId", "taskId", "opportunityId"].includes(field.key)
+  );
+  if (!exact && stableFields.length < 2)
+    throw new Error(
+      "Target verification requires an external ID or at least two stable identity fields."
+    );
+  const definition = validateLearnedOperationDefinition({
+    mode: "write",
+    targetRead: {
+      steps: [
+        {
+          action: "read_rows",
+          selector: clean(target.rowSelector),
+          key: "targets",
+          fields: guidedFields(stableFields),
+        },
+      ],
+    },
+    execute: { steps: executeSteps },
+    postconditionRead: {
+      steps: [
+        {
+          action: postcondition.action,
+          selector: clean(postcondition.selector),
+          key: clean(postcondition.key),
+          attribute: clean(postcondition.attribute) || undefined,
+        },
+      ],
+    },
+  });
+  const assertion: BrowserPostcondition = {
+    actualKey: clean(postcondition.key),
+    expectedInput: clean(postcondition.expectedInput) || undefined,
+    expectedValue: clean(postcondition.expectedValue) || undefined,
+    comparator: postcondition.comparator || "equals",
+  };
+  if (
+    assertion.comparator !== "exists" &&
+    !assertion.expectedInput &&
+    !assertion.expectedValue
+  )
+    throw new Error(
+      "Success verification requires an expected placeholder or exact value."
+    );
+  return {
+    definition,
+    targetAssertions: { mode: target.mode || "must_match" },
+    postconditionAssertions: [assertion],
+  };
 }
