@@ -57,6 +57,16 @@ function connectionCanRoute(status: string) {
   return status === "ready" || status === "limited_permissions";
 }
 
+function customConnectionCanRoute(status: string) {
+  // `needs_attention` may represent incomplete unrelated standard capability
+  // coverage. Exact custom execution remains independently LIVE_PROVEN-gated.
+  return (
+    status === "ready" ||
+    status === "limited_permissions" ||
+    status === "needs_attention"
+  );
+}
+
 export function routeConnectedSystemActions<
   T extends { actionType: string; payload: Record<string, unknown> },
 >(actions: T[], systems: ConnectedSystemRoute[]) {
@@ -75,7 +85,7 @@ export function routeConnectedSystemActions<
         : {
             routable: false as const,
             reason:
-              "Microsoft Outlook calendar is not configured and verified for this deployment.",
+              "Microsoft Outlook calendar is not configured and verified for this deployment. A CRM-native appointment/calendar function may instead be commissioned as a CRM-specific learned action.",
             requiredCapability: "calendar.create",
           };
       return { ...action, payload: { ...action.payload, crmRoute } };
@@ -93,7 +103,10 @@ export function routeConnectedSystemActions<
       typeof action.payload.preferredConnectedSystemId === "number"
         ? action.payload.preferredConnectedSystemId
         : undefined;
-    const eligible = eligibleSystems.filter(system =>
+    const candidates = customAction
+      ? systems.filter(system => customConnectionCanRoute(system.status))
+      : eligibleSystems;
+    const eligible = candidates.filter(system =>
       connectedSystemSupportsAction(system, action.actionType)
     );
     const chosen = preferredConnectedSystemId
