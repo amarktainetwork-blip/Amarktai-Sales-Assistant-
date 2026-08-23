@@ -1,8 +1,8 @@
 import "dotenv/config";
-import { runGenieHealthCheck } from "./bridge";
+import { runGenieOperationWatchdog } from "./operationWatchdog";
 
 async function main() {
-  const result = await runGenieHealthCheck();
+  const result = await runGenieOperationWatchdog();
   console.log(JSON.stringify(result));
   process.exitCode = result.success ? 0 : 1;
 }
