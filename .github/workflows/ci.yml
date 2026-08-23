@@ -68,6 +68,28 @@ jobs:
           docker compose -f deploy/webdock/docker-compose.pilot.yml --env-file .env config >/dev/null
       - name: Build Webdock production images
         run: docker compose -f deploy/webdock/docker-compose.yml --env-file .env build app browser
+      - name: Prove fresh MariaDB production migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          COMPOSE="docker compose -f deploy/webdock/docker-compose.yml --env-file .env"
+          $COMPOSE up -d db
+          cid="$($COMPOSE ps -q db)"
+          for attempt in $(seq 1 30); do
+            status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}starting{{end}}' "$cid")"
+            if [ "$status" = "healthy" ]; then
+              $COMPOSE run --no-deps --rm app node dist/migrate.js
+              $COMPOSE run --no-deps --rm app node dist/migrate.js
+              exit 0
+            fi
+            if [ "$status" = "unhealthy" ]; then
+              break
+            fi
+            sleep 2
+          done
+          $COMPOSE logs --no-color db
+          docker inspect "$cid" --format '{{json .State}}'
+          exit 1
       - name: Prove hardened Webdock Chromium CDP runtime
         shell: bash
         run: |
