@@ -30,13 +30,21 @@ export const ACTION_CONNECTED_CAPABILITIES: Record<string, string[][]> = {
   send_whatsapp_template: [["whatsapp.send"]],
   send_whatsapp: [["whatsapp.send"]],
   apply_sequence: [["sequences.apply"]],
-  custom_crm_action: [["activities.write"]],
 };
+
+function isBrowserConnection(system: ConnectedSystemRoute) {
+  return system.connectionMethod === "browser" || system.connectionMethod === "sidecar";
+}
 
 export function connectedSystemSupportsAction(
   system: ConnectedSystemRoute,
   actionType: string
 ) {
+  // A CRM-specific learned action is gated by the exact operation at execution
+  // time. Browser runtime requires that operation to be LIVE_PROVEN, so an
+  // unrelated broad capability must not be used as a proxy here.
+  if (actionType === "custom_crm_action") return isBrowserConnection(system);
+
   const alternatives = ACTION_CONNECTED_CAPABILITIES[actionType] || [
     ["activities.write"],
   ];
@@ -72,9 +80,11 @@ export function routeConnectedSystemActions<
           };
       return { ...action, payload: { ...action.payload, crmRoute } };
     }
-    const alternatives = ACTION_CONNECTED_CAPABILITIES[action.actionType] || [
-      ["activities.write"],
-    ];
+
+    const customAction = action.actionType === "custom_crm_action";
+    const alternatives = customAction
+      ? []
+      : ACTION_CONNECTED_CAPABILITIES[action.actionType] || [["activities.write"]];
     const preferred =
       typeof action.payload.preferredProvider === "string"
         ? action.payload.preferredProvider
@@ -91,7 +101,9 @@ export function routeConnectedSystemActions<
       : preferred
         ? eligible.find(system => system.provider === preferred)
         : eligible[0];
-    const requiredCapability = alternatives.map(set => set.join("+")).join(" OR ");
+    const requiredCapability = customAction
+      ? "exact LIVE_PROVEN CRM-specific operation"
+      : alternatives.map(set => set.join("+")).join(" OR ");
     const crmRoute = chosen
       ? {
           routable: true as const,
