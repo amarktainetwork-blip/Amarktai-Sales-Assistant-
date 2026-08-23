@@ -1,7 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
-import type { Express } from "express";
-import { ingestInboundMessage } from "./inboundPipeline";
-import { readOutlookInboundMessage } from "../outlook";
+import type { Express, Request, Response } from "express";
+import { enqueueOutlookInboundBatch } from "./outlookInboundQueue";
 
 function sameSecret(actual: unknown, expected: string) {
   const left = Buffer.from(typeof actual === "string" ? actual : "");
@@ -9,8 +8,13 @@ function sameSecret(actual: unknown, expected: string) {
   return left.length === right.length && timingSafeEqual(left, right);
 }
 
-export function registerOutlookInboundRoutes(app: Express) {
-  app.post("/api/outlook/inbound", async (req, res) => {
+export function createOutlookInboundHandler(
+  input: {
+    enqueue?: typeof enqueueOutlookInboundBatch;
+  } = {}
+) {
+  const enqueue = input.enqueue || enqueueOutlookInboundBatch;
+  return async (req: Request, res: Response) => {
     const validationToken =
       typeof req.query.validationToken === "string"
         ? req.query.validationToken
@@ -33,7 +37,12 @@ export function registerOutlookInboundRoutes(app: Express) {
         .status(202)
         .json({ accepted: true, processingStatus: "not_configured" });
     const notifications = Array.isArray(req.body?.value) ? req.body.value : [];
-    const results: Array<Record<string, unknown>> = [];
+    const queued: Array<{
+      organisationId: number;
+      messageId: string;
+      subscriptionId?: string;
+    }> = [];
+    let rejected = 0;
     for (const notification of notifications.slice(0, 100)) {
       if (
         !notification ||
@@ -43,7 +52,7 @@ export function registerOutlookInboundRoutes(app: Express) {
           clientState
         )
       ) {
-        results.push({ accepted: false, reason: "client_state_mismatch" });
+        rejected += 1;
         continue;
       }
       const source = notification as {
@@ -54,35 +63,35 @@ export function registerOutlookInboundRoutes(app: Express) {
         source.resourceData?.id ||
         source.resource?.match(/messages\/([^/?]+)/i)?.[1];
       if (!messageId) {
-        results.push({ accepted: false, reason: "message_id_missing" });
+        rejected += 1;
         continue;
       }
+      let decodedMessageId = "";
       try {
-        results.push({
-          accepted: true,
-          ...(await ingestInboundMessage({
-            organisationId,
-            envelope: await readOutlookInboundMessage(
-              decodeURIComponent(messageId)
-            ),
-          })),
-        });
-      } catch (error) {
-        results.push({
-          accepted: false,
-          reason:
-            error instanceof Error
-              ? error.message.slice(0, 300)
-              : String(error).slice(0, 300),
-        });
+        decodedMessageId = decodeURIComponent(messageId);
+      } catch {
+        rejected += 1;
+        continue;
       }
-    }
-    return res
-      .status(202)
-      .json({
-        accepted: true,
-        processed: results.filter(result => result.accepted).length,
-        results,
+      queued.push({
+        organisationId,
+        messageId: decodedMessageId,
+        subscriptionId:
+          typeof (notification as Record<string, unknown>).subscriptionId ===
+          "string"
+            ? String((notification as Record<string, unknown>).subscriptionId)
+            : undefined,
       });
-  });
+    }
+    const result = await enqueue(queued);
+    return res.status(202).json({
+      accepted: true,
+      queued: result.accepted,
+      rejected,
+    });
+  };
+}
+
+export function registerOutlookInboundRoutes(app: Express) {
+  app.post("/api/outlook/inbound", createOutlookInboundHandler());
 }
