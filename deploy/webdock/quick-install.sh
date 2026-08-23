@@ -133,7 +133,8 @@ fi
 
 info ""
 info "Core .env configuration written with mode 0600."
-info "Optional CRM, Outlook, STT, SMS and WhatsApp credentials can be added after the core install."
+info "Optional CRM, Outlook and STT credentials can be added after the core install."
+info "Client-facing communication uses each connected CRM's own verified functions."
 info "Running production preflight and installer now..."
 info ""
 

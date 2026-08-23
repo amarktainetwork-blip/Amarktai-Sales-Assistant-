@@ -68,6 +68,32 @@ jobs:
           docker compose -f deploy/webdock/docker-compose.pilot.yml --env-file .env config >/dev/null
       - name: Build Webdock production images
         run: docker compose -f deploy/webdock/docker-compose.yml --env-file .env build app browser
+      - name: Prove hardened Webdock Chromium CDP runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          COMPOSE="docker compose -f deploy/webdock/docker-compose.yml --env-file .env"
+          $COMPOSE up -d browser
+          cid="$($COMPOSE ps -q browser)"
+          for attempt in $(seq 1 30); do
+            status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}starting{{end}}' "$cid")"
+            if [ "$status" = "healthy" ]; then
+              docker exec "$cid" curl -fsS http://127.0.0.1:9222/json/version >/dev/null
+              test "$(docker exec "$cid" id -u)" = "10001"
+              test "$(docker inspect --format '{{.HostConfig.ReadonlyRootfs}}' "$cid")" = "true"
+              docker inspect --format '{{json .HostConfig.CapDrop}}' "$cid" | grep -q '"ALL"'
+              docker inspect --format '{{json .HostConfig.SecurityOpt}}' "$cid" | grep -q 'no-new-privileges:true'
+              test -z "$(docker port "$cid")"
+              exit 0
+            fi
+            if [ "$status" = "unhealthy" ]; then
+              break
+            fi
+            sleep 2
+          done
+          $COMPOSE logs --no-color browser
+          docker inspect "$cid" --format '{{json .State}}'
+          exit 1
       - name: Verify production image contains runtime migrations and verifiers
         run: |
           docker compose -f deploy/webdock/docker-compose.yml --env-file .env run --no-deps --rm app sh -eu -c 'test -f dist/migrate.js; test -f dist/verifyIntegrations.js; test -f drizzle/meta/_journal.json; test -f dist/public/index.html'
