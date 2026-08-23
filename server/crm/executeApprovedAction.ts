@@ -37,14 +37,10 @@ async function verifiedSystem(
   const all = await db
     .select()
     .from(connectedSystems)
-    .where(
-      and(
-        eq(connectedSystems.organisationId, organisationId),
-        eq(connectedSystems.status, "ready")
-      )
-    );
+    .where(eq(connectedSystems.organisationId, organisationId));
   const candidates = all.filter(
     system =>
+      (system.status === "ready" || system.status === "limited_permissions") &&
       (!requested || system.id === requested) &&
       (provider === "auto" || system.provider === provider) &&
       connectedSystemSupportsAction(system, actionType)
@@ -63,7 +59,7 @@ async function verifiedSystem(
   const system = candidates[0];
   if (!system)
     throw new Error(
-      `No backend-verified organisation CRM can perform '${actionType}'. Verify an appropriate connected system and retry.`
+      `No organisation CRM with an independently verified capability can perform '${actionType}'. Verify that specific CRM function and retry.`
     );
   return system;
 }
