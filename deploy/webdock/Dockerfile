@@ -13,7 +13,9 @@ FROM dependencies AS build
 COPY . .
 RUN chmod +x scripts/run-genie-health-check.sh \
   && pnpm run build \
-  && pnpm prune --prod
+  && pnpm prune --prod \
+  && test ! -e node_modules/vite \
+  && ! grep -Eq 'from[[:space:]]+["'"']vite["'"']' dist/_core/index.js
 
 FROM node:22.15.0-bookworm-slim AS runtime
 ENV NODE_ENV=production
