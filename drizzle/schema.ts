@@ -448,6 +448,9 @@ export const callSessions = mysqlTable(
     transcript: text("transcript"),
     coachNotes: text("coachNotes"),
     summary: text("summary"),
+    crmContext: json("crmContext").$type<Record<string, unknown>>(),
+    structuredOutcome:
+      json("structuredOutcome").$type<Record<string, unknown>>(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   },
@@ -874,6 +877,8 @@ export const crmContacts = mysqlTable(
     lastName: varchar("lastName", { length: 160 }),
     email: varchar("email", { length: 320 }),
     phone: varchar("phone", { length: 80 }),
+    normalizedEmail: varchar("normalizedEmail", { length: 320 }),
+    normalizedPhone: varchar("normalizedPhone", { length: 80 }),
     lifecycleStage: varchar("lifecycleStage", { length: 120 }),
     sourceUpdatedAt: timestamp("sourceUpdatedAt"),
     sourceRevision: varchar("sourceRevision", { length: 180 }),
@@ -891,6 +896,14 @@ export const crmContacts = mysqlTable(
       table.ownerExternalId
     ),
     index("crm_contacts_org_email_idx").on(table.organisationId, table.email),
+    index("crm_contacts_org_normalized_email_idx").on(
+      table.organisationId,
+      table.normalizedEmail
+    ),
+    index("crm_contacts_org_normalized_phone_idx").on(
+      table.organisationId,
+      table.normalizedPhone
+    ),
   ]
 );
 
@@ -1790,6 +1803,44 @@ export const inboundMessages = mysqlTable(
       table.organisationId,
       table.needsAction,
       table.receivedAt
+    ),
+  ]
+);
+
+/** Durable, idempotent Microsoft Graph notification intake queue. */
+export const outlookInboundQueue = mysqlTable(
+  "outlookInboundQueue",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    organisationId: int("organisationId")
+      .notNull()
+      .references(() => organisations.id, { onDelete: "cascade" }),
+    messageId: varchar("messageId", { length: 512 }).notNull(),
+    subscriptionId: varchar("subscriptionId", { length: 180 }),
+    status: mysqlEnum("status", [
+      "queued",
+      "processing",
+      "processed",
+      "dead_letter",
+    ])
+      .default("queued")
+      .notNull(),
+    attempts: int("attempts").default(0).notNull(),
+    nextAttemptAt: timestamp("nextAttemptAt").defaultNow().notNull(),
+    claimedAt: timestamp("claimedAt"),
+    processedAt: timestamp("processedAt"),
+    lastError: text("lastError"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    uniqueIndex("outlook_inbound_queue_org_message_unique").on(
+      table.organisationId,
+      table.messageId
+    ),
+    index("outlook_inbound_queue_status_due_idx").on(
+      table.status,
+      table.nextAttemptAt
     ),
   ]
 );
