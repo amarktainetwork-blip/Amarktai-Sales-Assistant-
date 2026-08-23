@@ -34,48 +34,52 @@ export async function getTodayWork(input: {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
   const now = new Date();
-  const [mappings, tasks, opportunities, contacts, inbound] = await Promise.all(
-    [
-      db
-        .select()
-        .from(externalUserMappings)
-        .where(
-          and(
-            eq(externalUserMappings.organisationId, input.organisationId),
-            eq(externalUserMappings.userId, input.userId),
-            eq(externalUserMappings.isActive, true)
-          )
-        ),
-      db
-        .select()
-        .from(crmTasks)
-        .where(eq(crmTasks.organisationId, input.organisationId))
-        .orderBy(desc(crmTasks.dueAt))
-        .limit(600),
-      db
-        .select()
-        .from(crmOpportunities)
-        .where(eq(crmOpportunities.organisationId, input.organisationId))
-        .orderBy(desc(crmOpportunities.updatedAt))
-        .limit(600),
-      db
-        .select()
-        .from(crmContacts)
-        .where(eq(crmContacts.organisationId, input.organisationId))
-        .limit(2_000),
-      db
-        .select()
-        .from(inboundMessages)
-        .where(
-          and(
-            eq(inboundMessages.organisationId, input.organisationId),
-            eq(inboundMessages.needsAction, true)
-          )
+  const [mappings, tasks, opportunities, inboundRows] = await Promise.all([
+    db
+      .select()
+      .from(externalUserMappings)
+      .where(
+        and(
+          eq(externalUserMappings.organisationId, input.organisationId),
+          eq(externalUserMappings.userId, input.userId),
+          eq(externalUserMappings.isActive, true)
         )
-        .orderBy(desc(inboundMessages.receivedAt))
-        .limit(100),
-    ]
-  );
+      ),
+    db
+      .select()
+      .from(crmTasks)
+      .where(eq(crmTasks.organisationId, input.organisationId))
+      .orderBy(desc(crmTasks.dueAt))
+      .limit(600),
+    db
+      .select()
+      .from(crmOpportunities)
+      .where(eq(crmOpportunities.organisationId, input.organisationId))
+      .orderBy(desc(crmOpportunities.updatedAt))
+      .limit(600),
+    db
+      .select({
+        message: inboundMessages,
+        contactOwnerExternalId: crmContacts.ownerExternalId,
+      })
+      .from(inboundMessages)
+      .leftJoin(
+        crmContacts,
+        and(
+          eq(crmContacts.organisationId, inboundMessages.organisationId),
+          eq(crmContacts.connectedSystemId, inboundMessages.connectedSystemId),
+          eq(crmContacts.externalId, inboundMessages.contactExternalId)
+        )
+      )
+      .where(
+        and(
+          eq(inboundMessages.organisationId, input.organisationId),
+          eq(inboundMessages.needsAction, true)
+        )
+      )
+      .orderBy(desc(inboundMessages.receivedAt))
+      .limit(100),
+  ]);
   const ownerIds = new Set(mappings.map(mapping => mapping.externalUserId));
   const unrestricted = canViewTeamData(membership.role);
   const belongsToUser = (ownerExternalId: string | null) =>
@@ -96,16 +100,12 @@ export async function getTodayWork(input: {
   const noNextStep = scopedOpportunities.filter(
     opportunity => !opportunity.nextStepAt
   );
-  const contactByExternalId = new Map(
-    contacts.map(contact => [contact.externalId, contact])
-  );
-  const actionableInbound = inbound.filter(message => {
-    if (unrestricted) return true;
-    const contact = message.contactExternalId
-      ? contactByExternalId.get(message.contactExternalId)
-      : undefined;
-    return Boolean(contact && belongsToUser(contact.ownerExternalId));
-  });
+  const actionableInbound = inboundRows
+    .filter(row => {
+      if (unrestricted) return true;
+      return belongsToUser(row.contactOwnerExternalId);
+    })
+    .map(row => row.message);
   const priority = scopedOpportunities
     .map(opportunity => {
       const staleDays = ageDays(opportunity.lastActivityAt, now) ?? 14;

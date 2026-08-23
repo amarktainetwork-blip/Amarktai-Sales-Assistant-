@@ -4,6 +4,7 @@ import { getDb } from "../db";
 import { getConnectedSystemForUser, loadConnectionSecret, saveConnectionSecret, toAdapterConnection } from "../connectedSystems";
 import { getCrmAdapter } from "./adapterRegistry";
 import type { AdapterConnection, NormalizedActivity, NormalizedCompany, NormalizedContact, NormalizedOpportunity, NormalizedTask } from "./types";
+import { normalizeCrmEmail, normalizeCrmPhone } from "./identity";
 
 async function cursorFor(systemId: number, resourceType: string) {
   const db = await getDb();
@@ -42,7 +43,11 @@ async function upsertCompanies(organisationId: number, systemId: number, records
 async function upsertContacts(organisationId: number, systemId: number, records: NormalizedContact[]) {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
-  for (const record of records) await db.insert(crmContacts).values({ organisationId, connectedSystemId: systemId, ...record }).onDuplicateKeyUpdate({ set: { companyExternalId: record.companyExternalId ?? null, ownerExternalId: record.ownerExternalId ?? null, firstName: record.firstName ?? null, lastName: record.lastName ?? null, email: record.email ?? null, phone: record.phone ?? null, lifecycleStage: record.lifecycleStage ?? null, sourceUpdatedAt: record.sourceUpdatedAt ?? null, sourceRevision: record.sourceRevision ?? null, raw: record.raw } });
+  for (const record of records) {
+    const normalizedEmail = normalizeCrmEmail(record.email);
+    const normalizedPhone = normalizeCrmPhone(record.phone);
+    await db.insert(crmContacts).values({ organisationId, connectedSystemId: systemId, ...record, normalizedEmail, normalizedPhone }).onDuplicateKeyUpdate({ set: { companyExternalId: record.companyExternalId ?? null, ownerExternalId: record.ownerExternalId ?? null, firstName: record.firstName ?? null, lastName: record.lastName ?? null, email: record.email ?? null, phone: record.phone ?? null, normalizedEmail, normalizedPhone, lifecycleStage: record.lifecycleStage ?? null, sourceUpdatedAt: record.sourceUpdatedAt ?? null, sourceRevision: record.sourceRevision ?? null, raw: record.raw } });
+  }
 }
 
 async function upsertOpportunities(organisationId: number, systemId: number, records: NormalizedOpportunity[]) {

@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import {
   contactCommunicationSuppressions,
@@ -7,6 +7,7 @@ import {
 } from "../../drizzle/schema";
 import { getDb } from "../db";
 import { recordOperationalEvent } from "../observability/events";
+import { normalizeCrmEmail, normalizeCrmPhone } from "../crm/identity";
 import {
   classifyInboundMessage,
   type InboundClassification,
@@ -72,10 +73,9 @@ export function inboundIdempotencyKey(
 }
 
 function normalizedSender(channel: InboundEnvelope["channel"], value: string) {
-  const trimmed = value.trim();
   return channel === "email"
-    ? trimmed.toLowerCase()
-    : trimmed.replace(/[^0-9+]/g, "").replace(/^00/, "+");
+    ? normalizeCrmEmail(value) || ""
+    : normalizeCrmPhone(value) || "";
 }
 
 export function shouldSurfaceInbound(classification: InboundClassification) {
@@ -93,23 +93,29 @@ export function mayPrepareInboundReply(
   );
 }
 
-async function matchContact(organisationId: number, envelope: InboundEnvelope) {
+export async function matchInboundContact(
+  organisationId: number,
+  envelope: InboundEnvelope
+) {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
-  const candidates = await db
+  const sender = normalizedSender(envelope.channel, envelope.senderReference);
+  if (!sender) return { contact: undefined, ambiguous: false };
+  const field =
+    envelope.channel === "email"
+      ? crmContacts.normalizedEmail
+      : crmContacts.normalizedPhone;
+  const matches = await db
     .select()
     .from(crmContacts)
-    .where(eq(crmContacts.organisationId, organisationId))
-    .limit(2_000);
-  const sender = normalizedSender(envelope.channel, envelope.senderReference);
-  const matches = candidates.filter(
-    contact =>
-      normalizedSender(
-        envelope.channel,
-        envelope.channel === "email" ? contact.email || "" : contact.phone || ""
-      ) === sender
-  );
-  return matches.length === 1 ? matches[0] : undefined;
+    .where(
+      and(eq(crmContacts.organisationId, organisationId), eq(field, sender))
+    )
+    .limit(2);
+  return {
+    contact: matches.length === 1 ? matches[0] : undefined,
+    ambiguous: matches.length > 1,
+  };
 }
 
 /** Idempotent, tenant-scoped deterministic message ingestion and opt-out handling. */
@@ -135,10 +141,11 @@ export async function ingestInboundMessage(input: {
     subject: input.envelope.subject,
     body: input.envelope.body,
   });
-  const contact = await matchContact(input.organisationId, {
+  const match = await matchInboundContact(input.organisationId, {
     ...input.envelope,
     senderReference,
   });
+  const contact = match.contact;
   const idempotencyKey = inboundIdempotencyKey(
     input.organisationId,
     input.envelope.channel,
@@ -155,7 +162,8 @@ export async function ingestInboundMessage(input: {
     .insert(inboundMessages)
     .values({
       organisationId: input.organisationId,
-      connectedSystemId: input.connectedSystemId ?? null,
+      connectedSystemId:
+        input.connectedSystemId ?? contact?.connectedSystemId ?? null,
       externalMessageId,
       idempotencyKey,
       channel: input.envelope.channel,
@@ -167,6 +175,7 @@ export async function ingestInboundMessage(input: {
         category: classification.category,
         reasons: classification.reasons,
         contactMatched: Boolean(contact),
+        contactAmbiguous: match.ambiguous,
       },
       status: "classified",
       needsAction: shouldSurfaceInbound(classification),
@@ -175,6 +184,8 @@ export async function ingestInboundMessage(input: {
     .onDuplicateKeyUpdate({
       set: {
         idempotencyKey,
+        connectedSystemId:
+          input.connectedSystemId ?? contact?.connectedSystemId ?? null,
         senderReference,
         contactExternalId: contact?.externalId ?? null,
         subject: input.envelope.subject?.trim().slice(0, 500) || null,
@@ -183,6 +194,7 @@ export async function ingestInboundMessage(input: {
           category: classification.category,
           reasons: classification.reasons,
           contactMatched: Boolean(contact),
+          contactAmbiguous: match.ambiguous,
         },
         status: "classified",
         needsAction: shouldSurfaceInbound(classification),
@@ -226,6 +238,7 @@ export async function ingestInboundMessage(input: {
       inboundMessageId: message.id,
       category: classification.category,
       contactMatched: Boolean(contact),
+      contactAmbiguous: match.ambiguous,
       needsAction: shouldSurfaceInbound(classification),
       replyEligible: mayPrepareInboundReply(
         classification,
