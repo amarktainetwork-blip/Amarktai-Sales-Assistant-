@@ -14,6 +14,12 @@ import {
 import { getCrmAdapter } from "./crm/adapterRegistry";
 import { randomUUID } from "node:crypto";
 import { testLearnedBrowserOperation } from "./browserConnectors/browserCrmAdapter";
+import {
+  beginGenieInteractiveAuthentication,
+  completeGenieInteractiveAuthentication,
+  genieInteractiveAuthIsFresh,
+  type GenieBrowserSecret,
+} from "./browserConnectors/genieInteractiveAuth";
 import { requireLocalHttpContext } from "./httpAuth";
 import {
   automaticCommissioningStatus,
@@ -103,6 +109,169 @@ function calibration(value: unknown, baseUrl: string | null) {
   };
 }
 
+function interactiveCommissioningResponse(expired = false) {
+  return {
+    id: 0,
+    state: "AUTHENTICATE",
+    status: "needs_attention",
+    humanStatus: expired ? "Verification expired" : "Verification required",
+    safeTestRequired: false,
+    temporaryRecordSupported: false,
+    temporaryRecordGuidance: "",
+    advancedFallback: false,
+    interactiveAuthRequired: true,
+    verificationExpired: expired,
+    progress: {
+      authentication: expired ? "New code required" : "Verification code required",
+    },
+    optionalFailures: {},
+  };
+}
+
+async function persistGenieLoginProfile(input: {
+  system: Awaited<ReturnType<typeof getConnectedSystemForUser>>;
+  organisationId: number;
+  loginCalibration: {
+    usernameSelector: string;
+    passwordSelector: string;
+    submitSelector: string;
+    readySelector?: string;
+  };
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const currentProfile =
+    input.system.configuration?.browserProfile &&
+    typeof input.system.configuration.browserProfile === "object" &&
+    !Array.isArray(input.system.configuration.browserProfile)
+      ? (input.system.configuration.browserProfile as Record<string, unknown>)
+      : {};
+  const currentLogin =
+    currentProfile.login &&
+    typeof currentProfile.login === "object" &&
+    !Array.isArray(currentProfile.login)
+      ? (currentProfile.login as Record<string, unknown>)
+      : {};
+  const login = {
+    ...currentLogin,
+    url: input.system.baseUrl,
+    usernameSelector: input.loginCalibration.usernameSelector,
+    passwordSelector: input.loginCalibration.passwordSelector,
+    submitSelector: input.loginCalibration.submitSelector,
+    ...(input.loginCalibration.readySelector
+      ? { readySelector: input.loginCalibration.readySelector }
+      : {}),
+  };
+  await db
+    .update(connectedSystems)
+    .set({
+      configuration: {
+        ...(input.system.configuration || {}),
+        browserProfile: { ...currentProfile, login },
+      },
+      status: "testing",
+      lastHealthSummary:
+        "Genie sign-in was approved; backend capability verification is continuing.",
+    })
+    .where(
+      and(
+        eq(connectedSystems.id, input.system.id),
+        eq(connectedSystems.organisationId, input.organisationId)
+      )
+    );
+}
+
+async function prepareGenieCommissioning(input: {
+  userId: number;
+  organisationId: number;
+  connectedSystemId: number;
+}) {
+  const system = await getConnectedSystemForUser(
+    input.userId,
+    input.organisationId,
+    input.connectedSystemId
+  );
+  if (system.provider !== "genie") return null;
+  if (system.connectionMethod !== "browser" && system.connectionMethod !== "sidecar")
+    return null;
+
+  const existing = ((await loadConnectionSecret({
+    organisationId: input.organisationId,
+    connectedSystemId: input.connectedSystemId,
+    secretKind: "browser",
+  })) || {}) as GenieBrowserSecret;
+  const result = await beginGenieInteractiveAuthentication({
+    connection: toAdapterConnection(system),
+    secret: existing,
+  });
+  if (result.status === "verification_required") {
+    const {
+      browserSession: _expiredSession,
+      pendingInteractiveAuth: _previousChallenge,
+      ...rest
+    } = existing;
+    await saveConnectionSecret({
+      userId: input.userId,
+      organisationId: input.organisationId,
+      connectedSystemId: input.connectedSystemId,
+      secretKind: "browser",
+      secret: {
+        ...rest,
+        pendingInteractiveAuth: result.pendingInteractiveAuth,
+      } as GenieBrowserSecret,
+    });
+    const db = await getDb();
+    if (!db) throw new Error("Database connection is unavailable.");
+    await db
+      .update(connectedSystems)
+      .set({
+        status: "needs_attention",
+        lastHealthSummary:
+          "Genie sent a verification code. Enter it in Amarktai to finish sign-in.",
+      })
+      .where(
+        and(
+          eq(connectedSystems.id, input.connectedSystemId),
+          eq(connectedSystems.organisationId, input.organisationId)
+        )
+      );
+    await recordAudit({
+      userId: input.userId,
+      organisationId: input.organisationId,
+      eventType: "genie_interactive_auth_requested",
+      entityType: "connected_system",
+      entityId: String(input.connectedSystemId),
+      summary: "Genie requested an interactive verification code during approved sign-in.",
+      metadata: { codeStored: false, pendingSessionEncrypted: true },
+    });
+    return interactiveCommissioningResponse(false);
+  }
+
+  const { pendingInteractiveAuth: _pendingChallenge, ...rest } = existing;
+  await saveConnectionSecret({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    connectedSystemId: input.connectedSystemId,
+    secretKind: "browser",
+    secret: { ...rest, browserSession: result.browserSession },
+  });
+  await persistGenieLoginProfile({
+    system,
+    organisationId: input.organisationId,
+    loginCalibration: result.loginCalibration,
+  });
+  await recordAudit({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    eventType: "genie_browser_session_approved",
+    entityType: "connected_system",
+    entityId: String(input.connectedSystemId),
+    summary: "Genie browser authentication was confirmed and the approved session was encrypted.",
+    metadata: { interactiveCodeStored: false },
+  });
+  return null;
+}
+
 export function registerConnectedSystemAdminRoutes(app: Express) {
   app.post("/api/connected-system-admin/:id/commissioning", async (req, res) => {
     try {
@@ -110,6 +279,12 @@ export function registerConnectedSystemAdminRoutes(app: Express) {
       const connectedSystemId = Number(req.params.id);
       if (!Number.isInteger(connectedSystemId) || connectedSystemId <= 0)
         throw new Error("A valid connected system is required.");
+      const interactive = await prepareGenieCommissioning({
+        userId,
+        organisationId: membership.organisationId,
+        connectedSystemId,
+      });
+      if (interactive) return res.json(interactive);
       return res.json(await startAutomaticCommissioning({
         userId,
         organisationId: membership.organisationId,
@@ -127,6 +302,17 @@ export function registerConnectedSystemAdminRoutes(app: Express) {
       const connectedSystemId = Number(req.params.id);
       if (!Number.isInteger(connectedSystemId) || connectedSystemId <= 0)
         throw new Error("A valid connected system is required.");
+      const secret = (await loadConnectionSecret({
+        organisationId: membership.organisationId,
+        connectedSystemId,
+        secretKind: "browser",
+      }).catch(() => undefined)) as GenieBrowserSecret | undefined;
+      if (secret?.pendingInteractiveAuth)
+        return res.json({
+          job: interactiveCommissioningResponse(
+            !genieInteractiveAuthIsFresh(secret.pendingInteractiveAuth)
+          ),
+        });
       const job = await automaticCommissioningStatus({
         organisationId: membership.organisationId,
         connectedSystemId,
@@ -136,6 +322,70 @@ export function registerConnectedSystemAdminRoutes(app: Express) {
       return sendError(res, error);
     }
   });
+
+  app.post(
+    "/api/connected-system-admin/:id/interactive-auth/verify",
+    async (req, res) => {
+      try {
+        const { userId, membership } = await requireManager(req);
+        const connectedSystemId = Number(req.params.id);
+        if (!Number.isInteger(connectedSystemId) || connectedSystemId <= 0)
+          throw new Error("A valid connected system is required.");
+        const system = await getConnectedSystemForUser(
+          userId,
+          membership.organisationId,
+          connectedSystemId
+        );
+        if (system.provider !== "genie")
+          throw new Error(
+            "Interactive verification is currently available only for Genie."
+          );
+        const existing = ((await loadConnectionSecret({
+          organisationId: membership.organisationId,
+          connectedSystemId,
+          secretKind: "browser",
+        })) || {}) as GenieBrowserSecret;
+        if (!existing.pendingInteractiveAuth)
+          throw new Error(
+            "GENIE_VERIFICATION_CHALLENGE_REQUIRED: Request a fresh Genie verification code first."
+          );
+        const result = await completeGenieInteractiveAuthentication({
+          connection: toAdapterConnection(system),
+          pending: existing.pendingInteractiveAuth,
+          code: req.body?.code,
+        });
+        const { pendingInteractiveAuth: _pendingChallenge, ...rest } = existing;
+        await saveConnectionSecret({
+          userId,
+          organisationId: membership.organisationId,
+          connectedSystemId,
+          secretKind: "browser",
+          secret: { ...rest, browserSession: result.browserSession },
+        });
+        await persistGenieLoginProfile({
+          system,
+          organisationId: membership.organisationId,
+          loginCalibration: result.loginCalibration,
+        });
+        await recordAudit({
+          userId,
+          organisationId: membership.organisationId,
+          eventType: "genie_interactive_auth_completed",
+          entityType: "connected_system",
+          entityId: String(connectedSystemId),
+          summary: "Genie interactive verification succeeded and the approved browser session was encrypted.",
+          metadata: { codeStored: false, approvedSessionEncrypted: true },
+        });
+        return res.json(await startAutomaticCommissioning({
+          userId,
+          organisationId: membership.organisationId,
+          connectedSystemId,
+        }));
+      } catch (error) {
+        return sendError(res, error);
+      }
+    }
+  );
 
   app.post(
     "/api/connected-system-admin/:id/commissioning/safe-test",
