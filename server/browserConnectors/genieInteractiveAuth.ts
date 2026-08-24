@@ -17,9 +17,13 @@ export const GENIE_MFA_SELECTOR = [
   'input[name*="mfa" i]',
   'input[name*="verification" i]',
   'input[name*="code" i]',
+  'input[name*="token" i]',
   'input[id*="otp" i]',
   'input[id*="verification" i]',
   'input[id*="code" i]',
+  'input[id*="token" i]',
+  'input[placeholder*="code" i]',
+  'input[aria-label*="code" i]',
   'input[inputmode="numeric"]',
 ].join(", ");
 const READY_SELECTORS = [
@@ -258,6 +262,23 @@ export function genieInteractiveAuthIsFresh(
   return Number.isFinite(created) && now - created >= 0 && now - created <= INTERACTIVE_AUTH_TTL_MS;
 }
 
+async function fillVerificationCode(page: Page, code: string) {
+  const fields = await visibleLocators(page.locator(GENIE_MFA_SELECTOR));
+  if (fields.length === 1) {
+    await fields[0].fill(code);
+    return;
+  }
+  const compact = code.replace(/[ -]/g, "");
+  if (fields.length >= 4 && fields.length <= 12 && compact.length === fields.length) {
+    for (let index = 0; index < fields.length; index += 1)
+      await fields[index].fill(compact[index]);
+    return;
+  }
+  throw new Error(
+    `GENIE_VERIFICATION_CALIBRATION_REQUIRED: Genie showed ${fields.length} verification code controls and Amarktai could not safely map the supplied code.`
+  );
+}
+
 export async function beginGenieInteractiveAuthentication(input: {
   connection: AdapterConnection;
   secret: GenieBrowserSecret;
@@ -352,20 +373,25 @@ export async function completeGenieInteractiveAuthentication(input: {
         "GENIE_VERIFICATION_CHALLENGE_EXPIRED: Genie no longer shows the verification challenge. Request a new code."
       );
     }
-    const codeInput = await oneVisible(page, GENIE_MFA_SELECTOR, "verification code");
-    await codeInput.fill(code);
 
-    let submitMatches = await visibleLocators(page.locator(LOGIN_SUBMIT_SELECTOR));
-    if (submitMatches.length !== 1) {
-      submitMatches = await visibleLocators(
-        page.getByRole("button", { name: /verify|continue|confirm|submit|sign in/i })
-      );
+    await fillVerificationCode(page, code);
+    await page.waitForTimeout(500);
+
+    if (await pageSuggestsInteractiveAuth(page)) {
+      let submitMatches = await visibleLocators(page.locator(LOGIN_SUBMIT_SELECTOR));
+      if (submitMatches.length !== 1) {
+        submitMatches = await visibleLocators(
+          page.getByRole("button", { name: /verify|continue|confirm|submit|sign in/i })
+        );
+      }
+      if (submitMatches.length === 1) await submitMatches[0].click();
+      else if (submitMatches.length > 1)
+        throw new Error(
+          `GENIE_VERIFICATION_CALIBRATION_REQUIRED: Genie showed ${submitMatches.length} verification submit controls; exactly one is required.`
+        );
+      // Zero submit controls is valid for OTP widgets that auto-submit once the
+      // final code character is entered.
     }
-    if (submitMatches.length !== 1)
-      throw new Error(
-        `GENIE_VERIFICATION_CALIBRATION_REQUIRED: Genie showed ${submitMatches.length} verification submit controls; exactly one is required.`
-      );
-    await submitMatches[0].click();
 
     const deadline = Date.now() + 30_000;
     let challengeGoneAt = 0;
