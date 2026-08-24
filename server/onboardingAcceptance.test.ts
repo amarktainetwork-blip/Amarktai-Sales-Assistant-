@@ -29,7 +29,8 @@ describe("new-user Genie commissioning journey contract", () => {
     expect(onboarding).toContain("confirm.mutate");
     expect(onboarding).toContain("browserCredentials.username");
     expect(onboarding).toContain("browserCredentials.password");
-    expect(onboarding).toContain("Check CRM setup");
+    expect(onboarding).toContain("Start automatic setup");
+    expect(onboarding).toContain("/commissioning");
     expect(administration).toContain('secretKind: "browser"');
     expect(administration).toContain("saveConnectionSecret");
     expect(adapter).toContain("connection.baseUrl");

@@ -5,6 +5,7 @@ import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "../routers";
 import { registerCrmOAuthRoutes } from "../crm/oauthRoutes";
+import { startAutomaticCommissioningWorker } from "../crm/automaticCommissioning";
 import { registerSidecarRoutes } from "../sidecar/routes";
 import { registerLiveCallRoutes } from "../liveCalls/routes";
 import { registerTeamAdminRoutes } from "../teamAdmin/routes";
@@ -150,6 +151,7 @@ async function startServer() {
   server.listen(port, "0.0.0.0", () =>
     console.log(`Server running on http://0.0.0.0:${port}/`)
   );
+  startAutomaticCommissioningWorker();
 }
 
 startServer().catch(error => {

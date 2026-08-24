@@ -8,6 +8,7 @@ import { BROWSER_OPERATION_CATALOGUE } from "../browserConnectors/operationContr
 import { recordBrowserOperationResult } from "../browserConnectors/learnedOperations";
 import { loadConnectionSecret, toAdapterConnection } from "../connectedSystems";
 import { getDb } from "../db";
+import { attemptBoundedAutomaticRepair } from "../crm/automaticCommissioning";
 
 /** Verifies only non-destructive learned reads and degrades one failed operation. */
 export async function runGenieOperationWatchdog() {
@@ -95,6 +96,17 @@ export async function runGenieOperationWatchdog() {
             checkedAt: new Date().toISOString(),
           },
         });
+        await attemptBoundedAutomaticRepair({
+          system,
+          operationKey: operation.operationKey,
+          previousVersion: operation.version,
+        }).catch(repairError =>
+          console.warn("[genie-watchdog] automatic repair candidate unavailable", {
+            connectedSystemId: system.id,
+            operationKey: operation.operationKey,
+            detail: repairError instanceof Error ? repairError.message : String(repairError),
+          })
+        );
         results.push({
           connectedSystemId: system.id,
           operationKey: operation.operationKey,

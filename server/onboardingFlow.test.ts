@@ -17,7 +17,8 @@ describe("browser CRM onboarding commissioning flow", () => {
     expect(source).toContain("Zoho CRM");
     expect(source).toContain("Other CRM");
     expect(source).toContain("/browser");
-    expect(source).toContain("/verify");
+    expect(source).toContain("/commissioning");
+    expect(source).toContain("Approve and test automatically");
     expect(source).toContain("Advanced CRM Setup");
     expect(source).not.toContain("Teach Amarktai");
     expect(source).not.toContain("BrowserOperationMatrix");

@@ -176,6 +176,13 @@
       "when": 1787558212972,
       "tag": "0024_luxuriant_raza",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "5",
+      "when": 1787574999612,
+      "tag": "0025_lucky_ravenous",
+      "breakpoints": true
     }
   ]
 }

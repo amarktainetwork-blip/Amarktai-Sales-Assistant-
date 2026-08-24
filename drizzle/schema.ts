@@ -1194,6 +1194,75 @@ export const connectorVerificationRuns = mysqlTable(
   ]
 );
 
+/** Durable, resumable orchestration for automatic CRM commissioning. */
+export const crmCommissioningJobs = mysqlTable(
+  "crmCommissioningJobs",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    organisationId: int("organisationId")
+      .notNull()
+      .references(() => organisations.id, { onDelete: "cascade" }),
+    connectedSystemId: int("connectedSystemId")
+      .notNull()
+      .references(() => connectedSystems.id, { onDelete: "cascade" }),
+    requestedByUserId: int("requestedByUserId").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    connectorClass: mysqlEnum("connectorClass", [
+      "native_api",
+      "known_browser",
+      "unknown_browser",
+    ]).notNull(),
+    state: mysqlEnum("state", [
+      "AUTHENTICATE",
+      "DISCOVER_NAVIGATION",
+      "DISCOVER_CAPABILITIES",
+      "TEST_SAFE_READS",
+      "AWAIT_SAFE_TEST_RECORD",
+      "TEST_CONTROLLED_WRITES",
+      "VERIFY_READBACK",
+      "PUBLISH_PROVEN_OPERATIONS",
+      "READY",
+    ]).notNull(),
+    status: mysqlEnum("status", [
+      "queued",
+      "running",
+      "waiting_for_approval",
+      "ready",
+      "needs_attention",
+      "failed",
+      "cancelled",
+    ]).notNull().default("queued"),
+    progress: json("progress").$type<Record<string, unknown>>().notNull(),
+    safeTestRecord: json("safeTestRecord").$type<Record<string, unknown>>(),
+    discoveredOperationKeys: json("discoveredOperationKeys")
+      .$type<string[]>()
+      .notNull(),
+    optionalFailures: json("optionalFailures")
+      .$type<Record<string, string>>()
+      .notNull(),
+    attempt: int("attempt").notNull().default(0),
+    cancelRequested: boolean("cancelRequested").notNull().default(false),
+    leaseExpiresAt: timestamp("leaseExpiresAt"),
+    lastError: text("lastError"),
+    startedAt: timestamp("startedAt"),
+    completedAt: timestamp("completedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    uniqueIndex("crm_commissioning_system_unique").on(table.connectedSystemId),
+    index("crm_commissioning_org_status_idx").on(
+      table.organisationId,
+      table.status
+    ),
+    index("crm_commissioning_status_lease_idx").on(
+      table.status,
+      table.leaseExpiresAt
+    ),
+  ]
+);
+
 /**
  * Versioned, organisation-scoped deterministic browser operations learned
  * through Teach Amarktai. Definitions never contain credentials or captured
@@ -2245,6 +2314,7 @@ export type WebsiteDiscovery = typeof websiteDiscoveries.$inferSelect;
 export type CrmConnection = typeof crmConnections.$inferSelect;
 export type AutomationPlaybook = typeof automationPlaybooks.$inferSelect;
 export type WorkflowRun = typeof workflowRuns.$inferSelect;
+export type CrmCommissioningJob = typeof crmCommissioningJobs.$inferSelect;
 export type ActionProposal = typeof actionProposals.$inferSelect;
 export type CallbackTask = typeof callbackTasks.$inferSelect;
 export type CallSession = typeof callSessions.$inferSelect;

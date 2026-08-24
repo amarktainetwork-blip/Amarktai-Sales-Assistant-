@@ -90,12 +90,21 @@ type BrowserLoginProfile = {
   submitSelector?: string;
   readySelector?: string;
 };
-type BrowserProfile = {
+export type BrowserProfile = {
   browserEndpoint?: string;
   login?: BrowserLoginProfile;
   scripts: Record<string, SavedBrowserScript>;
   operationMap?: Record<string, string>;
   resultKeys?: Record<string, string>;
+  operationDefinitions?: Record<
+    string,
+    {
+      definition: unknown;
+      prerequisites?: Record<string, unknown>;
+      targetAssertions?: Record<string, unknown>;
+      postconditionAssertions?: Array<Record<string, unknown>>;
+    }
+  >;
   artifactDirectory?: string;
 };
 
@@ -148,6 +157,13 @@ function asProfile(value: unknown): BrowserProfile | undefined {
           )
         )
       : undefined,
+    operationDefinitions: isObject(value.operationDefinitions)
+      ? Object.fromEntries(
+          Object.entries(value.operationDefinitions).filter((entry) =>
+            isObject(entry[1])
+          )
+        ) as BrowserProfile["operationDefinitions"]
+      : undefined,
     artifactDirectory:
       typeof value.artifactDirectory === "string"
         ? value.artifactDirectory
@@ -161,6 +177,7 @@ async function genieProfile(): Promise<BrowserProfile | undefined> {
   try {
     const parsed = JSON.parse(await readFile(path, "utf8")) as {
       scripts?: Record<string, SavedBrowserScript>;
+      operationDefinitions?: BrowserProfile["operationDefinitions"];
     };
     if (!parsed.scripts) return undefined;
     const loginUrl = process.env.GENIE_LOGIN_URL;
@@ -186,6 +203,7 @@ async function genieProfile(): Promise<BrowserProfile | undefined> {
         ])
       ),
       operationMap: DEFAULT_GENIE_OPERATION_MAP,
+      operationDefinitions: parsed.operationDefinitions,
       artifactDirectory:
         process.env.GENIE_ARTIFACT_DIR || "/app/data/genie-artifacts",
     };
@@ -216,6 +234,10 @@ export async function resolveBrowserProfile(
         operationMap: {
           ...(installed?.operationMap || DEFAULT_GENIE_OPERATION_MAP),
           ...(configured.operationMap || {}),
+        },
+        operationDefinitions: {
+          ...(installed?.operationDefinitions || {}),
+          ...(configured.operationDefinitions || {}),
         },
       } satisfies BrowserProfile;
     if (connection.baseUrl)
@@ -604,6 +626,108 @@ async function withPage<T>(
     await context.close().catch(() => undefined);
     await browser.close().catch(() => undefined);
   }
+}
+
+export type BrowserDiscoveryControl = {
+  tag: string;
+  role: string;
+  label: string;
+  selector: string;
+  href?: string;
+};
+
+/**
+ * Reads a bounded, secret-free navigation/control snapshot after the normal
+ * authorised authentication boundary. It never clicks a CRM control or reads
+ * input values, table rows, messages, notes, or customer data.
+ */
+export async function inspectBrowserCrmNavigation(input: {
+  connection: AdapterConnection;
+  secret?: ConnectionSecretPayload;
+  provider: Extract<CrmProvider, "genie" | "custom_browser">;
+}) {
+  const profile = await resolveBrowserProfile(input.connection, input.provider);
+  if (!profile)
+    throw new Error("No browser connector profile is available for discovery.");
+  const secret = await browserSecret(input.connection, input.secret);
+  return withPage(
+    input.connection,
+    secret,
+    input.provider,
+    profile,
+    async page => {
+      if (page.url() === "about:blank" && input.connection.baseUrl) {
+        await authorizeNavigation(input.connection, input.connection.baseUrl);
+        await page.goto(input.connection.baseUrl, {
+          waitUntil: "domcontentloaded",
+          timeout: 45_000,
+        });
+        await authorizeNavigation(input.connection, page.url());
+      }
+      const raw = await page
+        .locator(
+          "nav a, aside a, [role='navigation'] a, a[href], button, [role='button'], [role='tab'], label, h1, h2, h3"
+        )
+        .evaluateAll(elements =>
+          elements.slice(0, 300).map(element => {
+            const html = element as HTMLElement;
+            const tag = html.tagName.toLowerCase();
+            const id = html.id?.trim();
+            const testId = html.getAttribute("data-testid")?.trim();
+            const aria = html.getAttribute("aria-label")?.trim();
+            const name = html.getAttribute("name")?.trim();
+            const role = html.getAttribute("role")?.trim() || tag;
+            const href = (html as HTMLAnchorElement).href || undefined;
+            const safeAttribute = (key: string, value?: string | null) =>
+              value && /^[a-zA-Z0-9_.:-]{1,120}$/.test(value)
+                ? `[${key}="${CSS.escape(value)}"]`
+                : "";
+            const selector = testId
+              ? safeAttribute("data-testid", testId)
+              : id && /^[a-zA-Z][a-zA-Z0-9_.:-]{0,119}$/.test(id)
+                ? `#${CSS.escape(id)}`
+                : aria
+                  ? safeAttribute("aria-label", aria)
+                  : name
+                    ? safeAttribute("name", name)
+                    : tag;
+            return {
+              tag,
+              role,
+              label: (aria || html.innerText || html.textContent || "")
+                .replace(/\s+/g, " ")
+                .trim()
+                .slice(0, 160),
+              selector,
+              href,
+            };
+          })
+        );
+      const controls: BrowserDiscoveryControl[] = [];
+      for (const item of raw) {
+        let href: string | undefined;
+        if (item.href) {
+          try {
+            const authorised = await assertAuthorisedConnectionUrl({
+              organisationId: input.connection.organisationId,
+              connectedSystemId: input.connection.id,
+              rawUrl: item.href,
+            });
+            href = `${authorised.origin}${authorised.pathname}`;
+          } catch {
+            continue;
+          }
+        }
+        if (!item.label && !href) continue;
+        controls.push({ ...item, href });
+      }
+      return {
+        pageUrl: new URL(page.url()).origin + new URL(page.url()).pathname,
+        controls: controls.slice(0, 250),
+        readOnly: true as const,
+      };
+    }
+  );
 }
 async function runOperation(input: {
   connection: AdapterConnection;

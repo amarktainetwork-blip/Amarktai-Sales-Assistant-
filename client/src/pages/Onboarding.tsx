@@ -61,6 +61,17 @@ type CrmForm = {
   capabilities: CrmCapability[];
 };
 
+type AutomaticCommissioning = {
+  id: number;
+  state: string;
+  status: string;
+  humanStatus: string;
+  safeTestRequired: boolean;
+  advancedFallback: boolean;
+  progress: Record<string, unknown>;
+  optionalFailures: Record<string, string>;
+};
+
 async function jsonRequest(url: string, init?: RequestInit) {
   const response = await fetch(url, {
     ...init,
@@ -201,6 +212,8 @@ export default function Onboarding() {
   const [browserConnectionId, setBrowserConnectionId] = useState<number | null>(
     null
   );
+  const [commissioning, setCommissioning] = useState<AutomaticCommissioning | null>(null);
+  const [commissioningPending, setCommissioningPending] = useState(false);
   const [playbook, setPlaybook] = useState({
     title: "",
     trigger: "",
@@ -322,20 +335,11 @@ export default function Onboarding() {
         setFeedback({ kind: "loading", title: "Setting up your CRM", detail: "Secure sign-in was saved. Amarktai is now checking the connection and every function it can safely verify." });
         try {
           const result = await jsonRequest(
-            `/api/connected-system-admin/${id}/verify`,
+            `/api/connected-system-admin/${id}/commissioning`,
             { method: "POST", body: "{}" }
           );
-          await systems.refetch();
-          const connected =
-            result.status === "ready" ||
-            result.status === "limited_permissions";
-          const detail = connected
-            ? "CRM sign-in was verified. Ready functions are available now; optional functions that still need setup remain safely unavailable."
-            : humanizeCrmFailure(String(result.summary || ""));
-          setFeedback(connected
-            ? { kind: "success", title: "CRM connection verified", detail }
-            : { kind: "error", title: "Fix connection", detail });
-          toast[connected ? "success" : "warning"](detail);
+          setCommissioning(result as AutomaticCommissioning);
+          setFeedback({ kind: "loading", title: "Setting up your CRM", detail: "Amarktai is signing in, discovering functions and testing safe reads in the background." });
         } catch (error) {
           console.error("[crm-onboarding] automatic setup failed", error);
           setFeedback({
@@ -369,26 +373,12 @@ export default function Onboarding() {
     },
     onError: error => toast.error(error.message),
   });
-  const verifyBrowser = trpc.connectedSystems.verify.useMutation({
-    onMutate: () => setFeedback({ kind: "loading", title: "Setting up your CRM", detail: "Amarktai is checking sign-in, customer context, tasks, notes, opportunities and any additional functions it can safely verify." }),
-    onSuccess: result => {
-      systems.refetch();
-      const connected = result.status === "ready" || result.status === "limited_permissions";
-      const detail = connected
-        ? "CRM sign-in was verified. Ready functions are available now; optional functions that still need setup remain safely unavailable."
-        : humanizeCrmFailure(result.summary);
-      toast[connected ? "success" : "warning"](detail);
-      setFeedback(connected ? { kind: "success", title: "CRM connection verified", detail } : { kind: "error", title: "Fix connection", detail, actionLabel: "Check again", onAction: () => browserConnectionId && verifyBrowser.mutate({ organisationId: organisationId ?? 0, connectedSystemId: browserConnectionId }) });
-    },
-    onError: error => {
-      console.error("[crm-onboarding] verification failed", error);
-      setFeedback({ kind: "error", title: "CRM setup could not finish", detail: humanizeCrmFailure(error.message), actionLabel: "Check again", onAction: () => browserConnectionId && verifyBrowser.mutate({ organisationId: organisationId ?? 0, connectedSystemId: browserConnectionId }) });
-    },
-  });
   const [safeTestMode, setSafeTestMode] = useState<"existing" | "temporary">(
     "existing"
   );
   const [safeTestCustomer, setSafeTestCustomer] = useState("");
+  const [safeTestEmail, setSafeTestEmail] = useState("");
+  const [safeTestPhone, setSafeTestPhone] = useState("");
   const profileSaved = Boolean(setup.data?.profile);
   const knowledgeConfirmed =
     setup.data?.profile?.discoveryStatus === "confirmed";
@@ -399,6 +389,40 @@ export default function Onboarding() {
     { organisationId: organisationId ?? 0, connectedSystemId: browserSystem?.id ?? 0 },
     { enabled: Boolean(organisationId && browserSystem?.id), retry: false }
   );
+  useEffect(() => {
+    if (!browserSystem?.id || !canManage) return;
+    let cancelled = false;
+    let terminal = ["ready", "needs_attention", "failed", "cancelled"].includes(
+      commissioning?.status || ""
+    );
+    const refresh = async () => {
+      try {
+        const result = await jsonRequest(
+          `/api/connected-system-admin/${browserSystem.id}/commissioning`
+        );
+        if (cancelled) return;
+        setCommissioning((result.job || null) as AutomaticCommissioning | null);
+        terminal = ["ready", "needs_attention", "failed", "cancelled"].includes(
+          result.job?.status
+        );
+        if (result.job?.status === "ready") {
+          await Promise.all([systems.refetch(), browserReadiness.refetch()]);
+          setFeedback({ kind: "success", title: "Your CRM is ready", detail: "Core sales functions were automatically verified. Optional functions that need attention remain safely unavailable." });
+        }
+      } catch (error) {
+        if (!cancelled)
+          console.error("[crm-onboarding] commissioning status failed", error);
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(() => {
+      if (!terminal) void refresh();
+    }, 2_500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [browserSystem?.id, canManage, commissioning?.status]);
   const sellingReadiness = onboardingSellingReadiness({
     profileSaved,
     knowledgeConfirmed,
@@ -433,6 +457,52 @@ export default function Onboarding() {
       allowedReadCapabilities,
       allowedWriteCapabilities,
     });
+  }
+
+  async function startBrowserCommissioning() {
+    if (!browserSystem) return;
+    try {
+      setCommissioningPending(true);
+      setFeedback({ kind: "loading", title: "Setting up your CRM", detail: "Automatic discovery and safe read testing are starting in the background." });
+      const result = await jsonRequest(
+        `/api/connected-system-admin/${browserSystem.id}/commissioning`,
+        { method: "POST", body: "{}" }
+      );
+      setCommissioning(result as AutomaticCommissioning);
+    } catch (error) {
+      setFeedback({ kind: "error", title: "CRM setup could not start", detail: humanizeCrmFailure(error instanceof Error ? error.message : String(error)) });
+    } finally {
+      setCommissioningPending(false);
+    }
+  }
+
+  async function approveSafeTestRecord() {
+    if (!browserSystem || !safeTestCustomer.trim()) return;
+    try {
+      setCommissioningPending(true);
+      const result = await jsonRequest(
+        `/api/connected-system-admin/${browserSystem.id}/commissioning/safe-test`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            mode: safeTestMode,
+            reference: safeTestCustomer.trim(),
+            authorisedDestinations: {
+              email: safeTestEmail.trim() || undefined,
+              sms: safeTestPhone.trim() || undefined,
+              whatsapp: safeTestPhone.trim() || undefined,
+              dialler: safeTestPhone.trim() || undefined,
+            },
+          }),
+        }
+      );
+      setCommissioning(result as AutomaticCommissioning);
+      setFeedback({ kind: "loading", title: "Testing updates", detail: "Amarktai is running only the controlled tests authorised for this setup record and checking every result." });
+    } catch (error) {
+      setFeedback({ kind: "error", title: "Safe test could not start", detail: humanizeCrmFailure(error instanceof Error ? error.message : String(error)) });
+    } finally {
+      setCommissioningPending(false);
+    }
   }
 
   if (organisation.data && !canManage)
@@ -793,17 +863,37 @@ export default function Onboarding() {
                     blocking your core sales work.
                   </p>
                 </div>
+                {commissioning && (
+                  <div className="rounded-xl border border-white/10 bg-[#08172F] p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-bold text-white">{commissioning.humanStatus}</p>
+                      <span className={`text-xs font-bold ${commissioning.status === "ready" ? "text-emerald-200" : commissioning.advancedFallback ? "text-amber-100" : "text-[#9FC2FF]"}`}>
+                        {commissioning.status === "ready" ? "Ready" : commissioning.advancedFallback ? "Needs setup" : "Working"}
+                      </span>
+                    </div>
+                    <div className="mt-3 grid gap-2 text-xs text-[#B7CAE7] sm:grid-cols-2">
+                      {[
+                        ["Signing in", commissioning.progress.authentication],
+                        ["Finding CRM navigation", commissioning.progress.navigation],
+                        ["Finding sales functions", commissioning.progress.capabilities],
+                        ["Testing safe reads", commissioning.progress.safeReads],
+                        ["Testing updates", commissioning.progress.controlledWrites],
+                        ["Checking results", commissioning.progress.readback],
+                      ].map(([label, value]) => (
+                        <div key={String(label)} className="flex items-center justify-between rounded-lg bg-black/15 px-3 py-2">
+                          <span>{String(label)}</span>
+                          <span className={value ? "font-bold text-emerald-200" : "text-[#7896C1]"}>{value ? "Ready" : "Checking"}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <Button
-                  onClick={() =>
-                    verifyBrowser.mutate({
-                      organisationId,
-                      connectedSystemId: browserSystem.id,
-                    })
-                  }
-                  disabled={verifyBrowser.isPending}
+                  onClick={() => void startBrowserCommissioning()}
+                  disabled={commissioningPending || commissioning?.status === "running" || commissioning?.status === "queued"}
                   className="bg-[#1B64F2]"
                 >
-                  {verifyBrowser.isPending ? "Checking CRM…" : "Check CRM setup"}
+                  {commissioningPending || commissioning?.status === "running" || commissioning?.status === "queued" ? "Setting up CRM…" : commissioning ? "Restart automatic setup" : "Start automatic setup"}
                 </Button>
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   {CRM_CAPABILITY_PRESENTATION.map(capability => {
@@ -821,13 +911,13 @@ export default function Onboarding() {
                     );
                   })}
                 </div>
-                {!sellingReadiness.coreGenieReady && (
+                {commissioning?.safeTestRequired && (
                   <div className="rounded-xl border border-amber-300/20 bg-amber-400/[.06] p-4">
                     <h4 className="font-bold text-amber-100">Complete your CRM setup</h4>
                     <p className="mt-2 text-xs leading-5 text-[#D7C9A4]">
                       To make sure Amarktai can update your CRM safely, choose a
-                      test customer. No message or CRM change is made from this
-                      screen; a manager must still confirm each controlled test.
+                      test customer. Amarktai will then run the available
+                      controlled tests automatically and verify each result.
                     </p>
                     <div className="mt-3 grid gap-2 sm:grid-cols-2">
                       <label className="flex items-center gap-2 text-xs text-white">
@@ -845,32 +935,46 @@ export default function Onboarding() {
                       placeholder="Test customer name or CRM reference"
                       className="mt-3 border-white/15 bg-[#071326] text-white"
                     />
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <Input
+                        value={safeTestEmail}
+                        onChange={event => setSafeTestEmail(event.target.value)}
+                        placeholder="Authorised test email (optional)"
+                        className="border-white/15 bg-[#071326] text-white"
+                      />
+                      <Input
+                        value={safeTestPhone}
+                        onChange={event => setSafeTestPhone(event.target.value)}
+                        placeholder="Authorised test phone (optional)"
+                        className="border-white/15 bg-[#071326] text-white"
+                      />
+                    </div>
+                    <p className="mt-2 text-xs leading-5 text-[#D7C9A4]">
+                      Messaging and calling are tested only when you provide the
+                      matching authorised destination. Otherwise those optional
+                      functions remain unavailable.
+                    </p>
                     {canManage && (
                       <Button
                         variant="outline"
-                        disabled={!safeTestCustomer.trim()}
-                        onClick={() => {
-                          sessionStorage.setItem(
-                            `amarktai-safe-test-${browserSystem.id}`,
-                            JSON.stringify({ mode: safeTestMode, reference: safeTestCustomer.trim() })
-                          );
-                          navigate("/connections");
-                        }}
+                        disabled={!safeTestCustomer.trim() || commissioningPending}
+                        onClick={() => void approveSafeTestRecord()}
                         className="mt-3 border-white/15 bg-white/5 text-white"
                       >
-                        Continue safe setup
+                        Approve and test automatically
                       </Button>
                     )}
                   </div>
                 )}
-                {canManage && (
+                {canManage && commissioning?.advancedFallback && (
                   <details className="rounded-xl border border-white/10 bg-[#08172F] p-4">
                     <summary className="cursor-pointer text-sm font-bold text-[#A9C7FF]">
                       Advanced CRM Setup
                     </summary>
                     <p className="mt-2 text-xs leading-5 text-[#91A9CF]">
-                      Manager-only calibration, diagnostics and controlled setup
-                      tools remain available on the Connections page.
+                      Automatic setup could not safely finish one or more
+                      functions. Manager-only calibration, diagnostics and
+                      individual replay remain available as fallback.
                     </p>
                     <Button variant="outline" onClick={() => navigate("/connections")} className="mt-3 border-white/15 bg-white/5 text-white">
                       Open Advanced CRM Setup
@@ -880,6 +984,7 @@ export default function Onboarding() {
                 <div className="flex justify-end">
                   <Button
                     onClick={() => setStep(5)}
+                    disabled={!sellingReadiness.coreGenieReady}
                     className="bg-emerald-600 hover:bg-emerald-500"
                   >
                     Continue to automation rules

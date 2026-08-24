@@ -14,6 +14,12 @@ import {
 import { getCrmAdapter } from "./crm/adapterRegistry";
 import { randomUUID } from "node:crypto";
 import { testLearnedBrowserOperation } from "./browserConnectors/browserCrmAdapter";
+import { requireLocalHttpContext } from "./httpAuth";
+import {
+  automaticCommissioningStatus,
+  authoriseCommissioningSafeTest,
+  startAutomaticCommissioning,
+} from "./crm/automaticCommissioning";
 
 async function requireManager(req: Request) {
   const { userId, membership, user } = await requireManagementHttpContext(req);
@@ -98,6 +104,70 @@ function calibration(value: unknown, baseUrl: string | null) {
 }
 
 export function registerConnectedSystemAdminRoutes(app: Express) {
+  app.post("/api/connected-system-admin/:id/commissioning", async (req, res) => {
+    try {
+      const { userId, membership } = await requireManager(req);
+      const connectedSystemId = Number(req.params.id);
+      if (!Number.isInteger(connectedSystemId) || connectedSystemId <= 0)
+        throw new Error("A valid connected system is required.");
+      return res.json(await startAutomaticCommissioning({
+        userId,
+        organisationId: membership.organisationId,
+        connectedSystemId,
+      }));
+    } catch (error) {
+      return sendError(res, error);
+    }
+  });
+
+  app.get("/api/connected-system-admin/:id/commissioning", async (req, res) => {
+    try {
+      const { membership } = await requireLocalHttpContext(req);
+      if (!canManageOrganisation(membership.role)) throw new Error("MANAGER_REQUIRED");
+      const connectedSystemId = Number(req.params.id);
+      if (!Number.isInteger(connectedSystemId) || connectedSystemId <= 0)
+        throw new Error("A valid connected system is required.");
+      const job = await automaticCommissioningStatus({
+        organisationId: membership.organisationId,
+        connectedSystemId,
+      });
+      return res.json({ job });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  });
+
+  app.post(
+    "/api/connected-system-admin/:id/commissioning/safe-test",
+    async (req, res) => {
+      try {
+        const { userId, membership } = await requireManager(req);
+        const connectedSystemId = Number(req.params.id);
+        if (!Number.isInteger(connectedSystemId) || connectedSystemId <= 0)
+          throw new Error("A valid connected system is required.");
+        const mode = req.body?.mode === "temporary" ? "temporary" : "existing";
+        const reference = typeof req.body?.reference === "string" ? req.body.reference : "";
+        const authorisedDestinations =
+          req.body?.authorisedDestinations &&
+          typeof req.body.authorisedDestinations === "object" &&
+          !Array.isArray(req.body.authorisedDestinations)
+            ? req.body.authorisedDestinations
+            : {};
+        const authorisedOperationKeys = Array.isArray(req.body?.authorisedOperationKeys)
+          ? req.body.authorisedOperationKeys.filter((key: unknown): key is string => typeof key === "string")
+          : [];
+        return res.json(await authoriseCommissioningSafeTest({
+          userId,
+          organisationId: membership.organisationId,
+          connectedSystemId,
+          record: { mode, reference, authorisedDestinations, authorisedOperationKeys },
+        }));
+      } catch (error) {
+        return sendError(res, error);
+      }
+    }
+  );
+
   app.put("/api/connected-system-admin/:id/browser", async (req, res) => {
     try {
       const { userId, membership } = await requireManager(req);
