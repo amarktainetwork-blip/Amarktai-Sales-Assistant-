@@ -13,6 +13,7 @@ import {
   createLiveCallSession,
   getAssistantDashboard,
   getCompanySetup,
+  getAssistantOperationalContext,
   getOperationsDashboard,
   getOperationalAnalytics,
   getWorkspaceExportData,
@@ -795,12 +796,13 @@ export const appRouter = router({
           .join("\n");
         if (!ctx.activeOrganisation)
           throw new Error("Choose an organisation before using the assistant.");
-        const [sources, today, contactContext] = await Promise.all([
+        const [sources, today, contactContext, operationalContext] = await Promise.all([
           searchApprovedKnowledge(ctx.user.id, ctx.activeOrganisation.organisationId, query),
           getTodayWork({ userId: ctx.user.id, organisationId: ctx.activeOrganisation.organisationId }),
           input.contactId
             ? getWorkingContextForContact({ organisationId: ctx.activeOrganisation.organisationId, contactId: input.contactId })
             : Promise.resolve(undefined),
+          getAssistantOperationalContext(ctx.user.id, ctx.activeOrganisation.organisationId),
         ]);
         const approvedKnowledge = sources.length
           ? sources
@@ -819,6 +821,10 @@ export const appRouter = router({
             callbacks: today.queues.callbacks.slice(0, 5).map(item => ({ title: item.title, leadLabel: item.leadLabel, dueAt: item.dueAt })),
             reminders: today.queues.reminders.slice(0, 5).map(item => ({ title: item.title, dueAt: item.dueAt })),
           },
+          recentCalls: operationalContext.recentCalls,
+          approvedPlaybooks: operationalContext.approvedPlaybooks,
+          allowedActions: operationalContext.allowedActions,
+          connections: operationalContext.connections,
         });
         return runGenxAgent({ ...input, approvedKnowledge, workingContext });
       }),
@@ -1398,6 +1404,7 @@ export const appRouter = router({
         z.object({
           discoveryId: z.number().int().positive(),
           knowledgeIndexes: z.array(z.number().int().min(0).max(24)).max(12),
+          corrections: z.array(z.object({ index: z.number().int().min(0).max(24), title: z.string().trim().min(1).max(220), content: z.string().trim().min(1).max(40_000) })).max(12).optional(),
         })
       )
       .mutation(async ({ ctx, input }) => {
@@ -1419,6 +1426,7 @@ export const appRouter = router({
           companyProfileId: setup.profile.id,
           discoveryId: input.discoveryId,
           knowledgeIndexes: input.knowledgeIndexes,
+          corrections: input.corrections,
         });
       }),
     savePlaybook: secondFactorProcedure

@@ -243,6 +243,16 @@ export default function Onboarding() {
   }, [setup.data?.profile]);
 
   useEffect(() => {
+    if (preview) return;
+    const saved = setup.data?.discoveries.find(discovery => discovery.status === "review_required");
+    if (!saved) return;
+    const proposedKnowledge = saved.proposedKnowledge as Array<{ title: string; content: string; sourceUrl: string; fetchedAt: string; category: string }>;
+    const facts = saved.proposedFacts as { pages?: Array<{ url: string; title: string | null; category: string; fetchedAt: string; rendered: boolean; textChars: number }> };
+    setPreview({ discoveryId: saved.id, sourceUrl: saved.sourceUrl, proposedKnowledge, pages: facts.pages ?? [] });
+    setSelectedKnowledge(proposedKnowledge.map((_, index) => index));
+  }, [preview, setup.data?.discoveries]);
+
+  useEffect(() => {
     const savedMode = organisation.data?.settings?.workspaceMode;
     if (savedMode === "individual" || savedMode === "team") setWorkspaceMode(savedMode);
     const savedOnboarding = organisation.data?.settings?.onboarding;
@@ -303,7 +313,7 @@ export default function Onboarding() {
       toast.success("Selected knowledge was confirmed.");
       setFeedback({ kind: "success", title: "Knowledge approved", detail: "Sales assistance can now use the confirmed facts and their source references." });
     },
-    onError: error => setFeedback({ kind: "error", title: "Knowledge was not approved", detail: `The review remains available and no unconfirmed facts were trusted. ${error.message}`, actionLabel: "Retry approval", onAction: () => preview && confirm.mutate({ discoveryId: preview.discoveryId, knowledgeIndexes: selectedKnowledge }) }),
+    onError: error => setFeedback({ kind: "error", title: "Knowledge was not approved", detail: `The review remains available and no unconfirmed facts were trusted. ${error.message}`, actionLabel: "Retry approval", onAction: () => preview && confirm.mutate({ discoveryId: preview.discoveryId, knowledgeIndexes: selectedKnowledge, corrections: selectedKnowledge.map(index => ({ index, title: preview.proposedKnowledge[index].title, content: preview.proposedKnowledge[index].content })) }) }),
   });
   const addDomain = trpc.connectedSystems.addDomain.useMutation();
   const beginOAuth = trpc.connectedSystems.beginOAuth.useMutation();
@@ -652,10 +662,16 @@ export default function Onboarding() {
                         }
                       />
                       <span>
-                        <b>{item.title}</b>
-                        <span className="mt-1 block text-sm text-[#A9BFDF]">
-                          {item.content}
-                        </span>
+                        <Input
+                          value={item.title}
+                          onChange={event => setPreview(current => current ? { ...current, proposedKnowledge: current.proposedKnowledge.map((candidate, position) => position === index ? { ...candidate, title: event.target.value } : candidate) } : current)}
+                          className="border-white/15 bg-[#071326] font-bold text-white"
+                          aria-label={`Correct the title for ${item.title}`}
+                        />
+                        <Textarea value={item.content} onChange={event => setPreview(current => current ? { ...current, proposedKnowledge: current.proposedKnowledge.map((candidate, position) => position === index ? { ...candidate, content: event.target.value } : candidate) } : current)} className="mt-2 min-h-24 border-white/15 bg-[#071326] text-sm text-[#DCE7F8]" aria-label={`Correct ${item.title}`} />
+                        {item.sourceUrl ? <a href={item.sourceUrl} target="_blank" rel="noreferrer" className="mt-2 block text-xs font-bold text-[#83AEFF]">
+                          Source: {item.sourceUrl} · {item.fetchedAt ? `read ${new Date(item.fetchedAt).toLocaleString()}` : "saved discovery"}
+                        </a> : null}
                       </span>
                     </label>
                   ))}
@@ -663,7 +679,7 @@ export default function Onboarding() {
                 <Button
                   disabled={confirm.isPending}
                   onClick={() =>
-                    confirm.mutate({ discoveryId: preview.discoveryId, knowledgeIndexes: selectedKnowledge })
+                    confirm.mutate({ discoveryId: preview.discoveryId, knowledgeIndexes: selectedKnowledge, corrections: selectedKnowledge.map(index => ({ index, title: preview.proposedKnowledge[index].title, content: preview.proposedKnowledge[index].content })) })
                   }
                   className="mt-5 bg-[#1B64F2]"
                 >

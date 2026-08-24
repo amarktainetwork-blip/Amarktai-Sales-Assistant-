@@ -119,6 +119,32 @@ async function boundedFetch(initialUrl: URL, approvedHostname: string, accept: s
   throw new Error("The website could not be fetched safely.");
 }
 
+async function readTextBounded(response: Response, maxBytes: number) {
+  if (!response.body) return (await response.text()).slice(0, maxBytes);
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > maxBytes) throw new Error("A discovered website response exceeded the safe size limit.");
+      chunks.push(value);
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+}
+
 function clean(value: string) {
   return value.replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
 }
@@ -214,7 +240,7 @@ async function loadRobots(origin: URL, approvedHostname: string) {
   try {
     const { response } = await boundedFetch(new URL("/robots.txt", origin), approvedHostname, "text/plain,*/*;q=0.2");
     if (!response.ok) return parseRobots("", origin);
-    return parseRobots((await response.text()).slice(0, 250_000), origin);
+    return parseRobots(await readTextBounded(response, 250_000), origin);
   } catch {
     return parseRobots("", origin);
   }
@@ -228,7 +254,7 @@ async function loadSitemapUrls(origin: URL, approvedHostname: string, policy: Ro
       const sitemapUrl = await assertPublicUrl(sitemap, approvedHostname);
       const { response } = await boundedFetch(sitemapUrl, approvedHostname, "application/xml,text/xml,*/*;q=0.2");
       if (!response.ok) continue;
-      const xml = (await response.text()).slice(0, MAX_PAGE_BYTES);
+      const xml = await readTextBounded(response, MAX_PAGE_BYTES);
       const $ = load(xml, { xmlMode: true });
       for (const location of $("url > loc").map((_, element) => $(element).text().trim()).get()) {
         try {
@@ -252,7 +278,7 @@ async function fetchPage(candidate: PageCandidate, approvedHostname: string) {
   if (!response.ok) return null;
   const contentType = response.headers.get("content-type")?.toLowerCase() || "";
   if (!contentType.includes("text/html") && !contentType.includes("application/xhtml+xml")) return null;
-  let page = parseHtml((await response.text()).slice(0, MAX_PAGE_BYTES), finalUrl, false);
+  let page = parseHtml(await readTextBounded(response, MAX_PAGE_BYTES), finalUrl, false);
   if (page.text.length < 500 && process.env.BROWSERLESS_WS_ENDPOINT?.trim()) {
     const rendered = await renderPublicPage(finalUrl, approvedHostname).catch(() => null);
     if (rendered) page = parseHtml(rendered.html, rendered.url, true);
@@ -299,6 +325,7 @@ export async function discoverPublicWebsite(rawUrl: string): Promise<DiscoveryRe
     batch.forEach(candidate => visited.add(candidate.url.toString()));
     const results = await Promise.all(batch.map(candidate => fetchPage(candidate, approvedHostname).catch(() => null)));
     for (let index = 0; index < results.length; index += 1) {
+      if (pages.length >= MAX_PAGES || totalText >= MAX_TOTAL_TEXT) break;
       const page = results[index];
       const candidate = batch[index];
       if (!page) continue;

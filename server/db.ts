@@ -7,6 +7,7 @@ import {
   callbackTasks,
   callSessions,
   companyProfiles,
+  connectedSystems,
   dailyReports,
   integrationProfiles,
   knowledgeSources,
@@ -594,6 +595,24 @@ export async function upsertCompanyProfile(input: {
   return profile;
 }
 
+export async function getAssistantOperationalContext(userId: number, organisationId: number) {
+  const db = await requireDb();
+  const [calls, playbooks, systems] = await Promise.all([
+    db.select({ id: callSessions.id, leadLabel: callSessions.leadLabel, status: callSessions.status, summary: callSessions.summary, structuredOutcome: callSessions.structuredOutcome, createdAt: callSessions.createdAt })
+      .from(callSessions).where(and(eq(callSessions.userId, userId), eq(callSessions.organisationId, organisationId))).orderBy(desc(callSessions.createdAt)).limit(10),
+    db.select({ id: automationPlaybooks.id, title: automationPlaybooks.title, trigger: automationPlaybooks.trigger, description: automationPlaybooks.description, status: automationPlaybooks.status, requiredCapabilities: automationPlaybooks.requiredCapabilities })
+      .from(automationPlaybooks).where(and(eq(automationPlaybooks.userId, userId), eq(automationPlaybooks.organisationId, organisationId))).orderBy(desc(automationPlaybooks.updatedAt)).limit(12),
+    db.select({ id: connectedSystems.id, provider: connectedSystems.provider, displayName: connectedSystems.displayName, status: connectedSystems.status, verifiedCapabilities: connectedSystems.verifiedCapabilities })
+      .from(connectedSystems).where(eq(connectedSystems.organisationId, organisationId)).limit(20),
+  ]);
+  return {
+    recentCalls: calls.map(call => ({ ...call, summary: call.summary?.slice(0, 2_000) ?? null })),
+    approvedPlaybooks: playbooks,
+    connections: systems,
+    allowedActions: Array.from(new Set(systems.flatMap(system => system.verifiedCapabilities))).sort(),
+  };
+}
+
 export async function listCrmCustomers(organisationId: number) {
   const db = await requireDb();
   const [contacts, companies] = await Promise.all([
@@ -644,6 +663,7 @@ export async function confirmWebsiteDiscovery(input: {
   companyProfileId: number;
   discoveryId: number;
   knowledgeIndexes: number[];
+  corrections?: Array<{ index: number; title: string; content: string }>;
 }) {
   const db = await requireDb();
   const profile = (await db.select().from(companyProfiles).where(and(eq(companyProfiles.id, input.companyProfileId), eq(companyProfiles.userId, input.userId), eq(companyProfiles.organisationId, input.organisationId))).limit(1))[0];
@@ -652,7 +672,14 @@ export async function confirmWebsiteDiscovery(input: {
   if (!discovery) throw new Error("The website review is unavailable or has already been completed. Run discovery again.");
   const candidates = discovery.proposedKnowledge as Array<{ title: string; content: string; sourceUrl?: string; fetchedAt?: string; category?: string }>;
   const selectedIndexes = Array.from(new Set(input.knowledgeIndexes)).filter(index => index >= 0 && index < candidates.length);
-  const confirmedKnowledge = selectedIndexes.map(index => candidates[index]);
+  const corrections = new Map((input.corrections ?? []).map(item => [item.index, item]));
+  const confirmedKnowledge = selectedIndexes.map(index => {
+    const candidate = candidates[index];
+    const correction = corrections.get(index);
+    return correction
+      ? { ...candidate, title: correction.title.trim().slice(0, 220), content: correction.content.trim().slice(0, 40_000) }
+      : candidate;
+  }).filter(item => item.title && item.content);
   await db.transaction(async tx => {
     await tx.update(websiteDiscoveries).set({ status: "confirmed", reviewedAt: new Date(), proposedFacts: { ...discovery.proposedFacts, confirmedKnowledgeTitles: confirmedKnowledge.map(item => item.title), confirmedKnowledgeIndexes: selectedIndexes } }).where(eq(websiteDiscoveries.id, discovery.id));
     await tx.update(companyProfiles).set({ discoveryStatus: "confirmed", confirmedAt: new Date() }).where(and(eq(companyProfiles.id, input.companyProfileId), eq(companyProfiles.userId, input.userId), eq(companyProfiles.organisationId, input.organisationId)));
