@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import React from "react";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Router } from "wouter";
 import ContactPage from "./ContactPage";
 import HomePage from "./HomePage";
@@ -15,6 +15,7 @@ import {
   TeamsPage,
 } from "./SecondaryPages";
 import { accountLinks, marketingNavigation } from "./site";
+import { scrollPublicRouteToTop } from "./MarketingLayout";
 import NotFound from "@/pages/NotFound";
 
 const pages = [
@@ -73,6 +74,24 @@ describe("public marketing website", () => {
     expect(layout).toContain('aria-label="Mobile navigation"');
     expect(layout).toContain("marketingNavigation.map");
     expect(layout).toContain("marketing-mobile-nav__account");
+  });
+
+  it("restores scroll on public route transitions without touching dashboard routes", () => {
+    const scrollTo = vi.fn();
+    expect(scrollPublicRouteToTop("/product", scrollTo)).toBe(true);
+    expect(scrollPublicRouteToTop("/contact", scrollTo)).toBe(true);
+    expect(scrollTo).toHaveBeenNthCalledWith(1, {
+      top: 0,
+      left: 0,
+      behavior: "auto",
+    });
+    expect(scrollTo).toHaveBeenNthCalledWith(2, {
+      top: 0,
+      left: 0,
+      behavior: "auto",
+    });
+    expect(scrollPublicRouteToTop("/dashboard", scrollTo)).toBe(false);
+    expect(scrollTo).toHaveBeenCalledTimes(2);
   });
 
   it("renders a finished pricing framework without fake commercial figures", () => {

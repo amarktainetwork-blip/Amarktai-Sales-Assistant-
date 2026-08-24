@@ -2,14 +2,28 @@ import { BrandMark } from "@/components/BrandMark";
 import { ArrowRight, Menu, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { accountLinks, marketingNavigation } from "./site";
+import { accountLinks, marketingNavigation, publicPageMetadata } from "./site";
 import "./marketing.css";
+
+export function scrollPublicRouteToTop(
+  location: string,
+  scrollTo: (options: ScrollToOptions) => void = options =>
+    window.scrollTo(options)
+) {
+  const pathname = location.split(/[?#]/, 1)[0];
+  if (!Object.hasOwn(publicPageMetadata, pathname)) return false;
+  scrollTo({ top: 0, left: 0, behavior: "auto" });
+  return true;
+}
 
 export function MarketingLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
-  useEffect(() => setMenuOpen(false), [location]);
+  useEffect(() => {
+    setMenuOpen(false);
+    scrollPublicRouteToTop(location);
+  }, [location]);
   useEffect(() => {
     if (!menuOpen) return;
     const close = (event: KeyboardEvent) => {

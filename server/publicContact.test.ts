@@ -73,6 +73,24 @@ describe("public contact form backend", () => {
     expect(mailer.mock.calls[0][0].html).toContain("North Star Sales");
   });
 
+  it.each([" user@example.com ", "USER@example.com"])(
+    "trims a valid email before validation and delivery: %s",
+    async email => {
+      process.env.CONTACT_RECIPIENT_EMAIL = "contact@amarktai.example";
+      const mailer = vi.fn().mockResolvedValue(undefined);
+      const res = response();
+      await createContactHandler(mailer as any)(
+        { body: { ...validPayload, email } } as any,
+        res
+      );
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(mailer).toHaveBeenCalledOnce();
+      expect(mailer.mock.calls[0][0].text).toContain(
+        `Email: ${email.trim()}`
+      );
+    }
+  );
+
   it("returns a visible-safe failure when SMTP delivery fails", async () => {
     process.env.CONTACT_RECIPIENT_EMAIL = "contact@amarktai.example";
     const res = response();
@@ -90,7 +108,7 @@ describe("public contact form backend", () => {
     const mailer = vi.fn();
     const res = response();
     await createContactHandler(mailer as any)(
-      { body: { ...validPayload, email: "invalid", message: "short" } } as any,
+      { body: { ...validPayload, email: "invalid" } } as any,
       res
     );
     expect(res.status).toHaveBeenCalledWith(400);

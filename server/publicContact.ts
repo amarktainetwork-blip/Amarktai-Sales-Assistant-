@@ -34,7 +34,7 @@ const optionalPlainText = (maximum: number) =>
 export const contactPayloadSchema = z
   .object({
     name: plainText(2, 100),
-    email: z.email().max(254),
+    email: z.string().trim().pipe(z.email().max(254)),
     company: plainText(2, 120),
     phone: optionalPlainText(40),
     teamSize: optionalPlainText(40),
