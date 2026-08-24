@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
-import { connectedSystems, type ActionProposal } from "../../drizzle/schema";
-import { getDb } from "../db";
+import { auditEntries, connectedSystems, type ActionProposal } from "../../drizzle/schema";
+import { getDb, recordAudit } from "../db";
 import { getCrmAdapter } from "./adapterRegistry";
 import { loadConnectionSecret, toAdapterConnection } from "../connectedSystems";
 import { sendSalesMessage } from "../communications";
@@ -12,6 +12,11 @@ import type {
   CrmAdapter,
   NormalizedContact,
 } from "./types";
+import {
+  executeAssistantCrmBatch,
+  validateAssistantCrmBatchPlan,
+} from "./assistantBatchExecution";
+import { runGenxAgent } from "../genx";
 
 function explicitExternalId(
   payload: Record<string, unknown>,
@@ -210,15 +215,108 @@ export async function executeApprovedCrmAction(input: {
     };
   }
 
+  const batchPlan = input.proposal.actionType === "deterministic_crm_batch"
+    ? validateAssistantCrmBatchPlan(payload.batchPlan)
+    : undefined;
+  const effectiveActionType = batchPlan?.actionType || input.proposal.actionType;
   const system = await verifiedSystem(
     input.organisationId,
     route.provider,
-    input.proposal.actionType,
+    effectiveActionType,
     route.connectedSystemId
   );
   const connection = toAdapterConnection(system);
   const adapter = getCrmAdapter(system.provider);
   const secret = await connectionSecret(input.organisationId, system);
+  if (batchPlan) {
+    const instruction = typeof payload.instruction === "string"
+      ? payload.instruction
+      : input.proposal.title;
+    const db = await getDb();
+    if (!db) throw new Error("Database connection is unavailable.");
+    const priorCompletions = await db.select({ metadata: auditEntries.metadata })
+      .from(auditEntries)
+      .where(and(
+        eq(auditEntries.organisationId, input.organisationId),
+        eq(auditEntries.eventType, "assistant_crm_batch_record_completed"),
+        eq(auditEntries.entityType, "action_proposal"),
+        eq(auditEntries.entityId, String(input.proposal.id))
+      ));
+    const completedKeys = new Set(priorCompletions.map(entry =>
+      typeof entry.metadata.idempotencyKey === "string"
+        ? entry.metadata.idempotencyKey
+        : ""
+    ).filter(Boolean));
+    return executeAssistantCrmBatch({
+      organisationId: input.organisationId,
+      proposalId: input.proposal.id,
+      correlationId: input.correlationId,
+      instruction,
+      plan: batchPlan,
+      connection,
+      adapter,
+      secret,
+      alreadyCompleted: async key => completedKeys.has(key),
+      markCompleted: async key => {
+        if (completedKeys.has(key)) return;
+        completedKeys.add(key);
+        await recordAudit({
+          userId: input.proposal.userId,
+          organisationId: input.organisationId,
+          eventType: "assistant_crm_batch_record_completed",
+          entityType: "action_proposal",
+          entityId: String(input.proposal.id),
+          summary: "One approved CRM batch record completed deterministic readback.",
+          metadata: {
+            correlationId: input.correlationId,
+            connectedSystemId: system.id,
+            operationKey: batchPlan.operationKey,
+            idempotencyKey: key,
+          },
+        });
+      },
+      resolveAmbiguous: async record => {
+        const result = await runGenxAgent({
+          agentKey: "supervisor",
+          modelTier: "fast",
+          billing: {
+            userId: input.proposal.userId,
+            organisationId: input.organisationId,
+            feature: "assistant_batch_ambiguity",
+            reference: `proposal:${input.proposal.id}:record:${record.externalId}`,
+          },
+          messages: [{
+            role: "user",
+            content: `The approved batch predicate is '${batchPlan.structuredPredicate}'. Determine whether this one ambiguous CRM record qualifies. Return only YES or NO.\n${JSON.stringify({ externalId: record.externalId, raw: record.raw }).slice(0, 8_000)}`,
+          }],
+        });
+        if (result.provider !== "genx")
+          throw new Error(
+            "AMBIGUOUS_BATCH_RECORD_REQUIRES_AI: Amarktai intelligence is unavailable for this record."
+          );
+        return /^yes\b/i.test(result.content.trim());
+      },
+      onProgress: async progress => {
+        await recordAudit({
+          userId: input.proposal.userId,
+          organisationId: input.organisationId,
+          eventType: "assistant_crm_batch_progress",
+          entityType: "action_proposal",
+          entityId: String(input.proposal.id),
+          summary: `Approved CRM batch progress: ${progress.completed} changed, ${progress.skipped} skipped, ${progress.failed} failed.`,
+          metadata: {
+            correlationId: input.correlationId,
+            connectedSystemId: system.id,
+            operationKey: batchPlan.operationKey,
+            ...progress,
+          },
+        });
+      },
+      pageSize: 100,
+      concurrency: 8,
+      maxRetries: 2,
+    });
+  }
   const browserTarget = () =>
     explicitExternalId(
       payload,

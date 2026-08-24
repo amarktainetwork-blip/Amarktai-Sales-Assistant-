@@ -5,7 +5,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "NODE_ENV=development tsx watch server/_core/index.ts",
-    "build": "vite build && esbuild server/_core/index.ts server/genie/healthWorker.ts server/reportSchedulerWorker.ts server/compliance/retentionWorker.ts server/migrate.ts server/verifyIntegrations.ts server/verifyVoice.ts server/verifyFeatures.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
+    "build": "vite build && esbuild server/_core/index.ts server/genie/healthWorker.ts server/reportSchedulerWorker.ts server/compliance/retentionWorker.ts server/migrate.ts server/verifyIntegrations.ts server/verifyVoice.ts server/verifyFeatures.ts server/verifyGenieCommissioning.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
     "start": "NODE_ENV=production node dist/_core/index.js",
     "check": "tsc --noEmit",
     "format": "prettier --write .",
@@ -14,7 +14,8 @@
     "migrate:production": "node dist/migrate.js",
     "verify:integrations": "node dist/verifyIntegrations.js",
     "verify:voice": "node dist/verifyVoice.js",
-    "verify:features": "node dist/verifyFeatures.js"
+    "verify:features": "node dist/verifyFeatures.js",
+    "verify:genie-commissioning": "node dist/verifyGenieCommissioning.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.693.0",

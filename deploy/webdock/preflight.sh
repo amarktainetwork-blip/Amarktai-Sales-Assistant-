@@ -118,9 +118,9 @@ else
 fi
 
 if is_placeholder "$GENIE_LOGIN_URL" || is_placeholder "$GENIE_USERNAME" || is_placeholder "$GENIE_PASSWORD"; then
-  warn "Genie login configuration is incomplete; Genie live validation will remain unavailable."
+  warn "Installation-level Genie fallback is not configured. Per-connection Genie commissioning remains available in the application."
 else
-  info "Genie login configuration is present; authorised domains and selectors still require live calibration."
+  info "Installation-level Genie fallback is configured; per-connection commissioning remains the canonical application workflow."
 fi
 
 if is_placeholder "$STT_TRANSCRIPTIONS_URL" || is_placeholder "$STT_MODEL"; then

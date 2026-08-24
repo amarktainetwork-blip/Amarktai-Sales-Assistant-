@@ -28,16 +28,19 @@ Connection authentication is not operation readiness. Broad normalized capabilit
 
 ## Commissioning flow
 
-1. Create the Genie or Other CRM Connected System with its real HTTPS login URL. Authorise only the required host/path.
+1. Create the Genie or Other CRM Connected System with its real HTTPS login URL. Authorise only the required host/path. Genie derives its normal login profile from this connection URL; install-level `GENIE_*` settings are fallback diagnostics only.
 2. Save the client username/password through **Secure sign-in**. These values use the encrypted connection-secret store and are never returned by an API.
-3. Issue a short-lived Sidecar session and connect the Sidecar on the authorised CRM tab.
-4. For a common function, choose **Teach** in the operation matrix. For anything else the CRM exposes, use **Teach another CRM function**, give it a clear name, and classify it as read-only or write.
-5. Copy the generated Training Session ID into the Sidecar together with the Connected System ID.
-6. Demonstrate only that operation. The Sidecar records semantic roles/names, stable attributes, labels, selectors and navigation results. It never reads cookies, tokens, full page dumps, or input values; sensitive fields are redacted and ordinary inputs become placeholders.
-7. Review the capture and convert it to the smallest deterministic script. Read/sync operations should use `read_rows`, `read_value`, or bounded `paginate_rows`; do not use `document.body.innerText` as structured integration.
-8. For writes, configure a `targetRead` script and exact target assertions. Require an external ID or two stable fields. Configure a separate `postconditionRead` plus explicit postcondition assertions.
-9. Save as `TEST_READY`, enable Shadow Mode for initial observation, and run a controlled replay using an authorised dummy record.
-10. Publish `LIVE_PROVEN` only when the intended target and postcondition are proven. Then refresh capability truth and run sync.
+3. Run the connection test. Amarktai discovers one visible username/email field, one visible password field and one submit control, then requires meaningful proof that the login form is gone or an authorised authenticated CRM marker/page is present. It never treats `body` as authentication proof.
+4. If discovery is ambiguous, an elevated manager uses **Calibrate sign-in** to save only the username, password, submit and authenticated-marker selectors. The expert JSON editor remains a fallback, not a normal onboarding requirement.
+5. If authentication redirects through another public hostname, approve only the exact hostname reported by the blocked test for this connection. Private-network redirects remain blocked. MFA, SSO and CAPTCHA are never bypassed; without a securely commissioned reusable session the result is `GENIE_INTERACTIVE_AUTH_REQUIRED`.
+6. Issue a short-lived Sidecar session and connect the Sidecar on the authorised CRM tab.
+7. For a common function, choose **Teach** in the operation matrix. For anything else the CRM exposes, use **Teach another CRM function**, give it a clear name, and classify it as read-only or write.
+8. Copy the generated Training Session ID into the Sidecar together with the Connected System ID.
+9. Demonstrate only that operation. The Sidecar records semantic roles/names, stable attributes, labels, selectors and navigation results. It never reads cookies, tokens, full page dumps, or input values; sensitive fields are redacted and ordinary inputs become placeholders.
+10. Review the capture and convert it to the smallest deterministic script. Read/sync operations should use `read_rows`, `read_value`, or bounded `paginate_rows`; do not use `document.body.innerText` as structured integration.
+11. For writes, configure a `targetRead` script and exact target assertions. Require an external ID or two stable fields. Configure a separate `postconditionRead` plus explicit postcondition assertions.
+12. Save as `TEST_READY`, enable Shadow Mode for initial observation, and run a controlled replay using an authorised dummy record.
+13. Publish `LIVE_PROVEN` only when the intended target and postcondition are proven. Then refresh capability truth and run sync. Today can launch the Genie dialler only when `dialler.launch` itself is `LIVE_PROVEN`; otherwise it directs the user back to dialler setup and offers a distinctly labelled external-phone path.
 
 The expert JSON endpoint remains available for reviewed/debug commissioning, but routine customer onboarding uses the guided Connected Systems and Sidecar flow.
 

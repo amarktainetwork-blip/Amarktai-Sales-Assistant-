@@ -14,6 +14,12 @@ import {
 import { getCrmAdapter } from "./crm/adapterRegistry";
 import { randomUUID } from "node:crypto";
 import { testLearnedBrowserOperation } from "./browserConnectors/browserCrmAdapter";
+import { requireLocalHttpContext } from "./httpAuth";
+import {
+  automaticCommissioningStatus,
+  authoriseCommissioningSafeTest,
+  startAutomaticCommissioning,
+} from "./crm/automaticCommissioning";
 
 async function requireManager(req: Request) {
   const { userId, membership, user } = await requireManagementHttpContext(req);
@@ -45,17 +51,138 @@ function sendError(res: Response, error: unknown) {
   });
 }
 
-function profile(value: unknown) {
+export function validateBrowserProfile(value: unknown) {
   if (value === undefined || value === null) return undefined;
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw new Error("Browser connector profile must be a JSON object.");
   const encoded = JSON.stringify(value);
   if (encoded.length > 250_000)
     throw new Error("Browser connector profile is too large.");
+  const inspect = (candidate: unknown): void => {
+    if (Array.isArray(candidate)) return candidate.forEach(inspect);
+    if (!candidate || typeof candidate !== "object") return;
+    for (const [key, nested] of Object.entries(candidate)) {
+      if (/^(?:password|username|credentials?|secret|token|cookies?|storageState|browserSession)$/i.test(key))
+        throw new Error(
+          "Browser profiles may contain selectors and operation configuration only, never credentials or session material."
+        );
+      inspect(nested);
+    }
+  };
+  inspect(value);
   return value as Record<string, unknown>;
 }
 
+function calibration(value: unknown, baseUrl: string | null) {
+  if (value === undefined || value === null) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error("Sign-in calibration must contain the four guided selectors.");
+  if (!baseUrl)
+    throw new Error("Save the Genie sign-in URL before calibrating its form.");
+  const source = value as Record<string, unknown>;
+  const selector = (key: string, label: string) => {
+    const result = typeof source[key] === "string" ? source[key].trim() : "";
+    if (!result || result.length > 500 || /[{}<>;`]/.test(result))
+      throw new Error(`Enter a safe ${label} CSS selector.`);
+    return result;
+  };
+  const usernameSelector = selector("usernameSelector", "username/email field");
+  const passwordSelector = selector("passwordSelector", "password field");
+  const submitSelector = selector("submitSelector", "submit button");
+  const readySelector = selector("readySelector", "authenticated/ready marker");
+  if (["body", "html", "*", "html body"].includes(readySelector.toLowerCase()))
+    throw new Error(
+      "The authenticated/ready marker must identify a meaningful CRM shell element, not the document body."
+    );
+  return {
+    url: baseUrl,
+    usernameSelector,
+    passwordSelector,
+    submitSelector,
+    readySelector,
+  };
+}
+
 export function registerConnectedSystemAdminRoutes(app: Express) {
+  app.post("/api/connected-system-admin/:id/commissioning", async (req, res) => {
+    try {
+      const { userId, membership } = await requireManager(req);
+      const connectedSystemId = Number(req.params.id);
+      if (!Number.isInteger(connectedSystemId) || connectedSystemId <= 0)
+        throw new Error("A valid connected system is required.");
+      return res.json(await startAutomaticCommissioning({
+        userId,
+        organisationId: membership.organisationId,
+        connectedSystemId,
+      }));
+    } catch (error) {
+      return sendError(res, error);
+    }
+  });
+
+  app.get("/api/connected-system-admin/:id/commissioning", async (req, res) => {
+    try {
+      const { membership } = await requireLocalHttpContext(req);
+      if (!canManageOrganisation(membership.role)) throw new Error("MANAGER_REQUIRED");
+      const connectedSystemId = Number(req.params.id);
+      if (!Number.isInteger(connectedSystemId) || connectedSystemId <= 0)
+        throw new Error("A valid connected system is required.");
+      const job = await automaticCommissioningStatus({
+        organisationId: membership.organisationId,
+        connectedSystemId,
+      });
+      return res.json({ job });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  });
+
+  app.post(
+    "/api/connected-system-admin/:id/commissioning/safe-test",
+    async (req, res) => {
+      try {
+        const { userId, membership } = await requireManager(req);
+        const connectedSystemId = Number(req.params.id);
+        if (!Number.isInteger(connectedSystemId) || connectedSystemId <= 0)
+          throw new Error("A valid connected system is required.");
+        const mode = req.body?.mode === "temporary" ? "temporary" : "existing";
+        const reference = typeof req.body?.reference === "string" ? req.body.reference : "";
+        const authorisedDestinations =
+          req.body?.authorisedDestinations &&
+          typeof req.body.authorisedDestinations === "object" &&
+          !Array.isArray(req.body.authorisedDestinations)
+            ? req.body.authorisedDestinations
+            : {};
+        const authorisedOperationKeys = Array.isArray(req.body?.authorisedOperationKeys)
+          ? req.body.authorisedOperationKeys.filter((key: unknown): key is string => typeof key === "string")
+          : [];
+        const selectedOpportunityExternalId =
+          typeof req.body?.selectedOpportunityExternalId === "string"
+            ? req.body.selectedOpportunityExternalId
+            : undefined;
+        const selectedTaskExternalId =
+          typeof req.body?.selectedTaskExternalId === "string"
+            ? req.body.selectedTaskExternalId
+            : undefined;
+        return res.json(await authoriseCommissioningSafeTest({
+          userId,
+          organisationId: membership.organisationId,
+          connectedSystemId,
+          record: {
+            mode,
+            reference,
+            authorisedDestinations,
+            authorisedOperationKeys,
+            selectedOpportunityExternalId,
+            selectedTaskExternalId,
+          },
+        }));
+      } catch (error) {
+        return sendError(res, error);
+      }
+    }
+  );
+
   app.put("/api/connected-system-admin/:id/browser", async (req, res) => {
     try {
       const { userId, membership } = await requireManager(req);
@@ -82,7 +209,25 @@ export function registerConnectedSystemAdminRoutes(app: Express) {
         typeof req.body?.password === "string"
           ? req.body.password.slice(0, 2000)
           : "";
-      const browserProfile = profile(req.body?.browserProfile);
+      const advancedProfile = validateBrowserProfile(req.body?.browserProfile);
+      const loginCalibration = calibration(
+        req.body?.loginCalibration,
+        system.baseUrl
+      );
+      if (advancedProfile && loginCalibration)
+        throw new Error(
+          "Save guided sign-in calibration separately from the expert browser profile."
+        );
+      const currentProfileValue =
+        system.configuration?.browserProfile &&
+        typeof system.configuration.browserProfile === "object" &&
+        !Array.isArray(system.configuration.browserProfile)
+          ? (system.configuration.browserProfile as Record<string, unknown>)
+          : {};
+      const currentProfile = validateBrowserProfile(currentProfileValue) || {};
+      const browserProfile = loginCalibration
+        ? { ...currentProfile, login: loginCalibration }
+        : advancedProfile;
       if (!username && !password && !browserProfile)
         throw new Error(
           "Supply browser credentials, a calibrated browser profile, or both."
@@ -113,14 +258,20 @@ export function registerConnectedSystemAdminRoutes(app: Express) {
             )
           );
       }
-      if (username && password)
+      if (username && password) {
+        const existing = await loadConnectionSecret({
+          organisationId: membership.organisationId,
+          connectedSystemId,
+          secretKind: "browser",
+        });
         await saveConnectionSecret({
           userId,
           organisationId: membership.organisationId,
           connectedSystemId,
           secretKind: "browser",
-          secret: { credentials: { username, password } },
+          secret: { ...existing, credentials: { username, password } },
         });
+      }
       await recordAudit({
         userId,
         eventType: "browser_connector_configured",
@@ -131,6 +282,7 @@ export function registerConnectedSystemAdminRoutes(app: Express) {
           organisationId: membership.organisationId,
           credentialsUpdated: Boolean(username),
           profileUpdated: Boolean(browserProfile),
+          guidedLoginCalibration: Boolean(loginCalibration),
         },
       });
       return res.json({ ok: true, requiresVerification: true });

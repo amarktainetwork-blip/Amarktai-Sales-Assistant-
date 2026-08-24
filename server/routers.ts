@@ -42,8 +42,9 @@ import {
   listCrmCustomers,
 } from "./db";
 import { getGenxReadiness, runGenxAgent } from "./genx";
-import { getGenieReadiness } from "./genie/config";
+import { getOrganisationGenieReadiness } from "./genie/organisationReadiness";
 import { executeApprovedCrmAction } from "./crm/executeApprovedAction";
+import { planAssistantCrmBatchInstruction } from "./crm/assistantBatchExecution";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
@@ -451,10 +452,18 @@ export const appRouter = router({
         ctx.user.id,
         ctx.activeOrganisation.organisationId
       );
+      const systems = await listConnectedSystemsForUser(
+        ctx.user.id,
+        ctx.activeOrganisation.organisationId
+      );
+      const genieReadiness = await getOrganisationGenieReadiness(
+        ctx.activeOrganisation.organisationId,
+        systems
+      );
       return {
         ...dashboard,
         connectionReadiness: {
-          crmBrowserBridge: getGenieReadiness().configured,
+          crmBrowserBridge: genieReadiness.ready,
           microsoftConnection: getOutlookReadiness().ready,
           intelligenceService: getGenxReadiness().ready,
           emailDelivery: getSmtpReadiness().ready,
@@ -796,6 +805,36 @@ export const appRouter = router({
           .join("\n");
         if (!ctx.activeOrganisation)
           throw new Error("Choose an organisation before using the assistant.");
+        const batchAction = planAssistantCrmBatchInstruction(query);
+        if (batchAction) {
+          const systems = await listConnectedSystemsForUser(
+            ctx.user.id,
+            ctx.activeOrganisation.organisationId
+          );
+          const routed = routeConnectedSystemActions([batchAction], systems);
+          const workflowRunId = await createWorkflowRun({
+            userId: ctx.user.id,
+            organisationId: ctx.activeOrganisation.organisationId,
+            workflowKey: "assistant_deterministic_batch",
+            leadLabel: batchAction.targetLabel,
+            payload: { instruction: query, plannerCalls: 1 },
+            verificationSummary:
+              "The assistant interpreted this structured multi-record instruction once. The one batch proposal must be reviewed before any deterministic CRM operations run.",
+            actions: routed,
+          });
+          const routable = Boolean(
+            (routed[0].payload.crmRoute as { routable?: boolean } | undefined)
+              ?.routable
+          );
+          return {
+            content: routable
+              ? `I prepared one governed batch proposal for ${query.trim()} Review and approve proposal workflow ${workflowRunId}; execution will page the verified CRM, filter structured records deterministically, verify every change, and return one final result.`
+              : "I understood the batch request, but no connected CRM has the verified operation required to prepare it for execution. Finish that CRM function's setup first.",
+            provider: "deterministic_planner" as const,
+            usage: {},
+            creditsCharged: 0,
+          };
+        }
         const [sources, today, contactContext, operationalContext] = await Promise.all([
           searchApprovedKnowledge(ctx.user.id, ctx.activeOrganisation.organisationId, query),
           getTodayWork({ userId: ctx.user.id, organisationId: ctx.activeOrganisation.organisationId }),
@@ -1270,6 +1309,10 @@ export const appRouter = router({
         throw new Error(
           "Choose an organisation before accessing integrations."
         );
+      const systems = await listConnectedSystemsForUser(
+        ctx.user.id,
+        ctx.activeOrganisation.organisationId
+      );
       return {
         profiles: (
           await listIntegrationProfiles(
@@ -1279,15 +1322,10 @@ export const appRouter = router({
         ).map(presentConnectionProfile),
         genx: getGenxReadiness(),
         outlook: getOutlookReadiness(),
-        genie: {
-          ...getGenieReadiness(),
-          requiredVariables: [
-            "GENIE_LOGIN_URL",
-            "GENIE_USERNAME",
-            "GENIE_PASSWORD",
-            "BROWSERLESS_WS_ENDPOINT",
-          ],
-        },
+        genie: await getOrganisationGenieReadiness(
+          ctx.activeOrganisation.organisationId,
+          systems
+        ),
       };
     }),
     createProfile: secondFactorProcedure
@@ -1455,7 +1493,12 @@ export const appRouter = router({
   }),
   calls: router({
     startFromToday: secondFactorProcedure
-      .input(z.object({ opportunityId: z.number().int().positive() }))
+      .input(
+        z.object({
+          opportunityId: z.number().int().positive(),
+          callingMode: z.enum(["genie", "external"]).default("external"),
+        })
+      )
       .mutation(({ ctx, input }) => {
         if (!ctx.activeOrganisation)
           throw new Error(
@@ -1465,6 +1508,7 @@ export const appRouter = router({
           userId: ctx.user.id,
           organisationId: ctx.activeOrganisation.organisationId,
           opportunityId: input.opportunityId,
+          callingMode: input.callingMode,
         });
       }),
     searchContacts: secondFactorProcedure

@@ -7,12 +7,29 @@ const source = readFileSync(
 );
 
 describe("browser CRM onboarding commissioning flow", () => {
-  it("keeps authentication, mapping, guided training and readiness inside onboarding", () => {
-    expect(source).toContain("Entrepreneurs Circle GenieAI");
+  it("keeps the normal CRM flow provider-neutral and hands advanced setup off explicitly", () => {
+    expect(source).toContain("Connect the CRM you already use");
+    expect(source).toContain("Connect → Discover → Test → Ready");
+    expect(source).toContain("Setting up your CRM");
+    expect(source).toContain("HubSpot");
+    expect(source).toContain("Salesforce");
+    expect(source).toContain("Pipedrive");
+    expect(source).toContain("Zoho CRM");
+    expect(source).toContain("Other CRM");
     expect(source).toContain("/browser");
-    expect(source).toContain("/business-mapping");
-    expect(source).toContain("BrowserOperationMatrix");
-    expect(source).toContain("Continue to automation rules");
+    expect(source).toContain("/commissioning");
+    expect(source).toContain("Approve and test automatically");
+    expect(source).toContain("Advanced CRM Setup");
+    expect(source).not.toContain("Teach Amarktai");
+    expect(source).not.toContain("BrowserOperationMatrix");
+    expect(source).not.toContain("LoginCalibration");
+    expect(source).not.toContain("LIVE_PROVEN");
+    expect(source).not.toContain("TEST_READY");
+    expect(source).not.toContain("sidecar");
+    expect(source).not.toContain("browserProfile");
+    expect(source).not.toContain("GENIE_USERNAME");
+    expect(source).not.toContain("GENIE_PASSWORD");
+    expect(source).not.toContain("operation ID");
     expect(source).not.toContain("Open Connections");
   });
 });

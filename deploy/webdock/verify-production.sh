@@ -29,6 +29,17 @@ $COMPOSE exec -T redis valkey-cli ping | grep -qx PONG
 [ "$PROFILE" = "pilot" ] || $COMPOSE exec -T browser curl -fsS http://127.0.0.1:9222/json/version >/dev/null
 [ "$PROFILE" = "pilot" ] || $COMPOSE exec -T stt curl -fsS http://127.0.0.1:8080/ >/dev/null
 [ "$PROFILE" = "pilot" ] || $COMPOSE exec -T tts python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/info', timeout=3).read()"
+$COMPOSE exec -T app node --input-type=module -e '
+  import { chromium } from "playwright-core";
+  const endpoint = process.env.BROWSERLESS_WS_ENDPOINT;
+  if (!endpoint) throw new Error("BROWSERLESS_WS_ENDPOINT is required.");
+  const browser = await chromium.connectOverCDP(endpoint);
+  const page = await browser.newPage();
+  await page.setContent("<h1>deployment-cdp-ready</h1>");
+  if (await page.textContent("h1") !== "deployment-cdp-ready") process.exit(1);
+  await page.close();
+  await browser.close();
+'
 
 $COMPOSE exec -T app node -e "fetch('http://127.0.0.1:3000/healthz').then(async r=>{const b=await r.text(); if(!r.ok) throw new Error(b); console.log(b)}).catch(e=>{console.error(e);process.exit(1)})"
 $COMPOSE exec -T app node -e "fetch('http://127.0.0.1:3000/readyz').then(async r=>{const b=await r.text(); if(!r.ok) throw new Error(b); console.log(b)}).catch(e=>{console.error(e);process.exit(1)})"
@@ -49,16 +60,12 @@ grep -Eqi '^x-content-type-options:[[:space:]]*nosniff' "$HEADERS" || { echo "Pu
 grep -Eqi '^x-frame-options:[[:space:]]*DENY' "$HEADERS" || { echo "Public frame-deny header is missing." >&2; exit 1; }
 grep -Eqi '^permissions-policy:.*microphone=\(self\)' "$HEADERS" || { echo "Public microphone policy does not permit same-origin Live Call Companion access." >&2; exit 1; }
 
-VERIFY_PUBLIC_URL="$PUBLIC_URL" FEATURE_VERIFY_LIVE_VOICE=true $COMPOSE exec -T \
-  -e VERIFY_PUBLIC_URL="$PUBLIC_URL" \
-  -e FEATURE_VERIFY_LIVE_VOICE=true \
-  app node dist/verifyFeatures.js
-
 printf 'RELEASE_SHA=%s\n' "$(git rev-parse HEAD 2>/dev/null || printf unknown)"
 printf 'PROFILE=%s\n' "$PROFILE"
 printf 'PUBLIC_URL=%s\n' "$PUBLIC_URL"
-printf 'DATABASE=PASS\nVALKEY=PASS\nAPP_HEALTH=PASS\nAPP_READINESS=PASS\nINTEGRATIONS=PASS\nPUBLIC_TLS=PASS\nSECURITY_HEADERS=PASS\n'
-[ "$PROFILE" = "pilot" ] || printf 'BROWSER_RUNTIME=PASS\n'
+printf 'DATABASE=PASS\nVALKEY=PASS\nAPP_HEALTH=PASS\nAPP_READINESS=PASS\nWORKER=PASS\nREPORTER=PASS\nSMTP=PASS\nGENX=PASS\nINTEGRATIONS=PASS\nHTTPS=PASS\nPUBLIC_FRONTEND=PASS\nSECURITY_HEADERS=PASS\nBROWSER_RUNTIME=PASS\n'
 [ "$PROFILE" = "pilot" ] || printf 'STT_RUNTIME=PASS\nTTS_RUNTIME=PASS\nVOICE_ACCEPTANCE=PASS\n'
 printf 'PRODUCTION_VERIFIER=PASS\n'
-printf 'FEATURE_ACCEPTANCE=PASS\n'
+printf 'PLATFORM_READY=PASS\n'
+printf 'CLIENT_ACCEPTANCE=PENDING\n'
+printf 'Run deploy/webdock/verify-client-acceptance.sh after client-specific CRM and business commissioning.\n'

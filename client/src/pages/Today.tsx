@@ -58,10 +58,14 @@ export default function Today() {
     onError: error => toast.error(error.message),
   });
   const startCall = trpc.calls.startFromToday.useMutation({
-    onMutate: () => setFeedback({ kind: "loading", title: "Preparing pre-call context", detail: "Amarktai is retrieving the selected customer and CRM context once for the call session." }),
+    onMutate: input => setFeedback({ kind: "loading", title: input.callingMode === "external" ? "Opening external call companion" : "Launching the verified Genie dialler", detail: "Amarktai is retrieving the exact normalized customer context and preserving the call audit trail." }),
     onSuccess: result =>
       navigate(`/calls?sessionId=${result.callSessionId}`),
-    onError: error => setFeedback({ kind: "error", title: "The call could not start", detail: `No call session or CRM action was created. ${error.message}`, actionLabel: "Retry call", onAction: () => current && startCall.mutate({ opportunityId: current.id }) }),
+    onError: error => {
+      const setupRequired = error.message.includes("GENIE_DIALLER_SETUP_REQUIRED");
+      const unavailable = error.message.includes("GENIE_DIALLER_UNAVAILABLE");
+      setFeedback({ kind: "error", title: setupRequired ? "Genie calling still needs to be tested" : unavailable ? "This customer is not connected to Genie calling" : "The call could not start", detail: setupRequired ? "The dialler.launch operation is not LIVE_PROVEN. Finish dialler setup before using Genie calling; no CRM dialler action was attempted." : unavailable ? "No Genie dialler action was attempted. You can continue through the clearly labelled external-phone path." : `No call session or CRM action was created. ${error.message}`, actionLabel: setupRequired ? "Finish dialler setup" : unavailable ? "Use external phone" : "Retry call", onAction: () => setupRequired ? navigate("/connections") : current && startCall.mutate({ opportunityId: current.id, callingMode: unavailable ? "external" : "genie" }) });
+    },
   });
   const priority = today.data?.queues.priority ?? [];
   const [selected, setSelected] = useState(0);
@@ -264,11 +268,11 @@ export default function Today() {
                             variant="outline"
                             onClick={event => {
                               event.stopPropagation();
-                              startCall.mutate({ opportunityId: record.id });
+                              startCall.mutate({ opportunityId: record.id, callingMode: "genie" });
                             }}
                             className="border-white/15 bg-white/5 text-white hover:bg-white/10"
                           >
-                            Start call <ArrowRight className="ml-1 size-3" />
+                            Call with Genie <ArrowRight className="ml-1 size-3" />
                           </Button>
                         </td>
                       </tr>
@@ -297,7 +301,10 @@ export default function Today() {
             }
             onPrepare={() => navigate("/workflows")}
             onStart={() =>
-              current && startCall.mutate({ opportunityId: current.id })
+              current && startCall.mutate({ opportunityId: current.id, callingMode: "genie" })
+            }
+            onStartExternal={() =>
+              current && startCall.mutate({ opportunityId: current.id, callingMode: "external" })
             }
             starting={startCall.isPending}
           />
@@ -332,6 +339,7 @@ function SalesSession({
   onNext,
   onPrepare,
   onStart,
+  onStartExternal,
   starting,
 }: {
   record:
@@ -348,6 +356,7 @@ function SalesSession({
   onNext: () => void;
   onPrepare: () => void;
   onStart: () => void;
+  onStartExternal: () => void;
   starting: boolean;
 }) {
   return (
@@ -388,7 +397,15 @@ function SalesSession({
               className="bg-[#1B64F2] hover:bg-[#2B76FF]"
             >
               <Play className="mr-2 size-4" />
-              {starting ? "Opening call…" : "Start call"}
+              {starting ? "Opening call…" : "Call with Genie"}
+            </Button>
+            <Button
+              onClick={onStartExternal}
+              disabled={starting}
+              variant="outline"
+              className="border-white/15 bg-white/5 text-white hover:bg-white/10"
+            >
+              Use external phone
             </Button>
             <Button
               onClick={onPrepare}

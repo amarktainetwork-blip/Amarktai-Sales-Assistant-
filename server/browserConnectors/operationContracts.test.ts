@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  BROWSER_OPERATION_CATALOGUE,
   assertBrowserOperationRuntimeStatus,
   assertBrowserOperationScope,
   deriveBrowserCapabilityReadiness,
@@ -11,6 +12,15 @@ import {
   verifyBrowserPostconditions,
   verifyBrowserTarget,
 } from "./operationContracts";
+
+describe("Genie commissioning catalogue", () => {
+  it("preserves every required operation including the governed dialler", () => {
+    const keys = new Set(BROWSER_OPERATION_CATALOGUE.map(operation => operation.key));
+    for (const key of [
+      "auth.login", "home.open", "prospect.next", "contact.search", "contact.open", "contact.read", "contact.sync", "contact.create", "contact.update", "company.read", "company.sync", "company.create", "history.read", "note.read", "note.create", "interaction.latest", "communication.context", "task.list", "task.read", "task.sync", "task.create", "task.complete", "task.create_callback", "opportunity.read", "opportunity.sync", "opportunity.create", "opportunity.update", "pipeline.list", "stage.read", "stage.update", "owner.sync", "owner.assign", "activity.sync", "activity.create", "dialler.launch", "email.send", "sms.send", "whatsapp.send", "sequence.apply", "appointment.book", "quote.create", "workflow.execute",
+    ]) expect(keys.has(key), `${key} must remain in the catalogue`).toBe(true);
+  });
+});
 
 describe("browser CRM record guardian", () => {
   it("blocks an ambiguous target", () => {

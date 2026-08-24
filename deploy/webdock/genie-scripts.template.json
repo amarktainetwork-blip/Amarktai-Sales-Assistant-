@@ -95,6 +95,69 @@
         { "action": "expect_visible", "selector": "body" },
         { "action": "screenshot", "selector": "body", "key": "health-check" }
       ]
+    },
+    "read_test_contact": {
+      "steps": [
+        { "action": "read_rows", "selector": "REPLACE_CURRENT_CONTACT_ROW_SELECTOR", "key": "targets", "fields": { "externalId": { "selector": "REPLACE_CONTACT_ID_SELECTOR" }, "name": { "selector": "REPLACE_CONTACT_NAME_SELECTOR" }, "email": { "selector": "REPLACE_CONTACT_EMAIL_SELECTOR" } } }
+      ]
+    },
+    "read_tasks": {
+      "steps": [
+        { "action": "read_rows", "selector": "REPLACE_TASK_ROW_SELECTOR", "key": "records", "fields": { "externalId": { "selector": "REPLACE_TASK_ID_SELECTOR" }, "title": { "selector": "REPLACE_TASK_TITLE_READ_SELECTOR" }, "status": { "selector": "REPLACE_TASK_STATUS_SELECTOR" } } }
+      ]
+    },
+    "read_opportunities": {
+      "steps": [
+        { "action": "read_rows", "selector": "REPLACE_OPPORTUNITY_ROW_SELECTOR", "key": "targets", "fields": { "externalId": { "selector": "REPLACE_OPPORTUNITY_ID_SELECTOR" }, "name": { "selector": "REPLACE_OPPORTUNITY_NAME_SELECTOR" }, "stage": { "selector": "REPLACE_OPPORTUNITY_STAGE_READ_SELECTOR" } } }
+      ]
+    },
+    "verify_note": {
+      "steps": [
+        { "action": "read_text", "selector": "REPLACE_LATEST_NOTE_SELECTOR", "key": "noteBody" }
+      ]
+    },
+    "verify_task": {
+      "steps": [
+        { "action": "read_text", "selector": "REPLACE_LATEST_TASK_TITLE_SELECTOR", "key": "taskTitle" }
+      ]
+    },
+    "verify_opportunity": {
+      "steps": [
+        { "action": "read_text", "selector": "REPLACE_OPPORTUNITY_STAGE_READ_SELECTOR", "key": "stage" }
+      ]
+    }
+  },
+  "operationDefinitions": {
+    "contact.search": {
+      "definition": { "mode": "read", "executeScript": "search_candidate" },
+      "prerequisites": { "knownGeniePack": true }
+    },
+    "contact.read": {
+      "definition": { "mode": "read", "executeScript": "read_test_contact", "resultKey": "targets" },
+      "prerequisites": { "knownGeniePack": true }
+    },
+    "task.list": {
+      "definition": { "mode": "read", "executeScript": "read_tasks", "resultKey": "records" },
+      "prerequisites": { "knownGeniePack": true }
+    },
+    "opportunity.read": {
+      "definition": { "mode": "read", "executeScript": "read_opportunities", "resultKey": "targets" },
+      "prerequisites": { "knownGeniePack": true }
+    },
+    "note.create": {
+      "definition": { "mode": "write", "targetReadScript": "read_test_contact", "executeScript": "add_note", "postconditionReadScript": "verify_note" },
+      "targetAssertions": { "mode": "must_match" },
+      "postconditionAssertions": [{ "actualKey": "noteBody", "expectedInput": "content", "comparator": "contains" }]
+    },
+    "task.create_callback": {
+      "definition": { "mode": "write", "targetReadScript": "read_test_contact", "executeScript": "create_next_task", "postconditionReadScript": "verify_task" },
+      "targetAssertions": { "mode": "must_match" },
+      "postconditionAssertions": [{ "actualKey": "taskTitle", "expectedInput": "taskTitle", "comparator": "contains" }]
+    },
+    "opportunity.update": {
+      "definition": { "mode": "write", "targetReadScript": "read_opportunities", "executeScript": "update_current_opportunity", "postconditionReadScript": "verify_opportunity" },
+      "targetAssertions": { "mode": "must_match" },
+      "postconditionAssertions": [{ "actualKey": "stage", "expectedInput": "stage", "comparator": "equals" }]
     }
   }
 }

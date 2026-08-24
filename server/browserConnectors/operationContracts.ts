@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+  assertCompleteBrowserDefinition,
   validateSavedBrowserScript,
   type BrowserScriptStep,
   type SavedBrowserScript,
@@ -531,6 +532,7 @@ export function assertBrowserOperationRuntimeStatus(
 export function validateLearnedOperationDefinition(
   value: unknown
 ): LearnedBrowserOperationDefinition {
+  assertCompleteBrowserDefinition(value);
   const source = object(value);
   const mode =
     source.mode === "read" || source.mode === "write" ? source.mode : undefined;

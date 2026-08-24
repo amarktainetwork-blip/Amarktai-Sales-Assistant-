@@ -96,7 +96,15 @@ AMARKTAI_DEPLOY_PROFILE=full \
 sh deploy/webdock/verify-production.sh
 ```
 
-A client handover requires the core verifier to pass plus browser acceptance under a real account: login + SMTP code, company setup, confirmed knowledge, a real GenX response, the selected CRM's verification/sync, one authorised read and one safe reviewed write. Optional Outlook, STT, SMS and WhatsApp are only called live when their own authorised commissioning test succeeds.
+`verify-production.sh` proves the platform/runtime and may finish with `PLATFORM_READY=PASS` and `CLIENT_ACCEPTANCE=PENDING`. After client-specific Genie and business commissioning, run the unchanged strict 34-feature matrix separately:
+
+```bash
+VERIFY_PUBLIC_URL="https://YOUR_DOMAIN" \
+AMARKTAI_DEPLOY_PROFILE=full \
+sh deploy/webdock/verify-client-acceptance.sh
+```
+
+A client handover requires `CLIENT_ACCEPTANCE_READY=PASS` plus browser acceptance under the real authorised account. A platform-ready deployment is not a claim that client acceptance is complete.
 
 ## Backup and recovery
 

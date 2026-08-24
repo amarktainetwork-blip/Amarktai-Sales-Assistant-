@@ -43,7 +43,7 @@ mkdir -p deploy/webdock/config deploy/webdock/files/connector-evidence deploy/we
 if [ ! -f deploy/webdock/config/genie-scripts.json ]; then
   cp deploy/webdock/genie-scripts.template.json deploy/webdock/config/genie-scripts.json
   chmod 600 deploy/webdock/config/genie-scripts.json
-  echo "Created deploy/webdock/config/genie-scripts.json. Calibrate every REPLACE_* selector before enabling Genie writes." >&2
+  echo "Created deploy/webdock/config/genie-scripts.json. Template operations are non-executable until automatic commissioning discovers and proves deterministic replacements." >&2
 fi
 
 COMPOSE="docker compose -f $COMPOSE_FILE --env-file .env"
