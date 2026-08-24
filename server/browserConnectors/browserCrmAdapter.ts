@@ -634,6 +634,7 @@ export type BrowserDiscoveryControl = {
   label: string;
   selector: string;
   href?: string;
+  pageUrl?: string;
 };
 
 /**
@@ -664,9 +665,9 @@ export async function inspectBrowserCrmNavigation(input: {
         });
         await authorizeNavigation(input.connection, page.url());
       }
-      const raw = await page
+      const readControls = () => page
         .locator(
-          "nav a, aside a, [role='navigation'] a, a[href], button, [role='button'], [role='tab'], label, h1, h2, h3"
+          "nav a, aside a, [role='navigation'] a, a[href], button, input, textarea, select, [data-testid], [data-field], [role='button'], [role='tab'], label, h1, h2, h3"
         )
         .evaluateAll(elements =>
           elements.slice(0, 300).map(element => {
@@ -674,6 +675,7 @@ export async function inspectBrowserCrmNavigation(input: {
             const tag = html.tagName.toLowerCase();
             const id = html.id?.trim();
             const testId = html.getAttribute("data-testid")?.trim();
+            const dataField = html.getAttribute("data-field")?.trim();
             const aria = html.getAttribute("aria-label")?.trim();
             const name = html.getAttribute("name")?.trim();
             const role = html.getAttribute("role")?.trim() || tag;
@@ -684,6 +686,8 @@ export async function inspectBrowserCrmNavigation(input: {
                 : "";
             const selector = testId
               ? safeAttribute("data-testid", testId)
+              : dataField
+                ? safeAttribute("data-field", dataField)
               : id && /^[a-zA-Z][a-zA-Z0-9_.:-]{0,119}$/.test(id)
                 ? `#${CSS.escape(id)}`
                 : aria
@@ -694,7 +698,10 @@ export async function inspectBrowserCrmNavigation(input: {
             return {
               tag,
               role,
-              label: (aria || html.innerText || html.textContent || "")
+              label: (aria || testId || dataField ||
+                (/^(?:a|button|label|h1|h2|h3)$/.test(tag)
+                  ? html.innerText || html.textContent || ""
+                  : ""))
                 .replace(/\s+/g, " ")
                 .trim()
                 .slice(0, 160),
@@ -703,26 +710,48 @@ export async function inspectBrowserCrmNavigation(input: {
             };
           })
         );
+      const raw = await readControls();
       const controls: BrowserDiscoveryControl[] = [];
-      for (const item of raw) {
-        let href: string | undefined;
-        if (item.href) {
-          try {
-            const authorised = await assertAuthorisedConnectionUrl({
-              organisationId: input.connection.organisationId,
-              connectedSystemId: input.connection.id,
-              rawUrl: item.href,
-            });
-            href = `${authorised.origin}${authorised.pathname}`;
-          } catch {
-            continue;
+      const appendControls = async (
+        discovered: typeof raw,
+        sourcePageUrl: string
+      ) => {
+        for (const item of discovered) {
+          let href: string | undefined;
+          if (item.href) {
+            try {
+              const authorised = await assertAuthorisedConnectionUrl({
+                organisationId: input.connection.organisationId,
+                connectedSystemId: input.connection.id,
+                rawUrl: item.href,
+              });
+              href = `${authorised.origin}${authorised.pathname}`;
+            } catch {
+              continue;
+            }
           }
+          if (!item.label && !href) continue;
+          controls.push({ ...item, href, pageUrl: sourcePageUrl });
         }
-        if (!item.label && !href) continue;
-        controls.push({ ...item, href });
+      };
+      const initialPageUrl = new URL(page.url()).origin + new URL(page.url()).pathname;
+      await appendControls(raw, initialPageUrl);
+      const destinations = Array.from(new Set(
+        controls.map(control => control.href).filter((href): href is string => Boolean(href))
+      )).filter(href =>
+        href !== initialPageUrl &&
+        !/(?:logout|log-out|signout|sign-out|delete|remove|unsubscribe|execute|run-workflow)/i.test(new URL(href).pathname)
+      ).slice(0, 12);
+      for (const destination of destinations) {
+        if (controls.length >= 250) break;
+        await authorizeNavigation(input.connection, destination);
+        await page.goto(destination, { waitUntil: "domcontentloaded", timeout: 20_000 });
+        await authorizeNavigation(input.connection, page.url());
+        const sourcePageUrl = new URL(page.url()).origin + new URL(page.url()).pathname;
+        await appendControls(await readControls(), sourcePageUrl);
       }
       return {
-        pageUrl: new URL(page.url()).origin + new URL(page.url()).pathname,
+        pageUrl: initialPageUrl,
         controls: controls.slice(0, 250),
         readOnly: true as const,
       };

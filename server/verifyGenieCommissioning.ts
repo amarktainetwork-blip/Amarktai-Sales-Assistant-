@@ -7,6 +7,7 @@ import {
   verifyBrowserTarget,
 } from "./browserConnectors/operationContracts";
 import { browserOperationStatusAfterResult } from "./browserConnectors/learnedOperations";
+import { inferBrowserOperationCandidates } from "./crm/automaticCommissioning";
 
 const ORIGIN = "https://genie-rehearsal.example";
 const AUTH_ORIGIN = "https://auth-rehearsal.example";
@@ -41,7 +42,7 @@ function fixture(pathname: string) {
   if (pathname === "/session")
     return layout('<main data-testid="dashboard"><nav>Genie CRM</nav><h1>Authenticated session</h1></main>');
   if (pathname === "/home")
-    return layout('<main data-testid="dashboard"><nav>Genie CRM</nav><h1>Sales home</h1><a href="/contacts">Contacts</a><a href="/tasks">Tasks</a></main>');
+    return layout('<main data-testid="dashboard"><nav>Genie CRM</nav><h1>Sales home</h1><a href="/contacts">Contacts</a><a href="/tasks">Tasks</a><a href="/note">Notes</a><a href="/opportunity">Deals and pipeline</a><p data-testid="placeholder-executed">no</p></main>');
   if (pathname === "/contacts")
     return layout('<main data-testid="dashboard"><nav>Genie CRM</nav><div data-testid="contact-row"><span data-field="id">contact-001</span><span data-field="name">Dummy Customer</span><span data-field="email">dummy.customer@example.test</span></div></main>');
   if (pathname === "/tasks")
@@ -151,6 +152,36 @@ async function main() {
   const context = await browser.newContext();
   try {
     const { page, proof } = await authenticatedPage(context);
+    let placeholderRejected = false;
+    try {
+      await runScript(page, "clean-install-placeholder", [
+        { action: "click", selector: "REPLACE_NOTES_PANEL_SELECTOR" },
+      ]);
+    } catch (error) {
+      placeholderRejected = /INCOMPLETE_BROWSER_OPERATION/.test(
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+    if (!placeholderRejected)
+      throw new Error("clean-install placeholder script was not rejected before execution");
+    if (await page.locator('[data-testid="placeholder-executed"]').textContent() !== "no")
+      throw new Error("placeholder script changed the fixture");
+    const discoveredControls = await page.locator("a").evaluateAll(links =>
+      links.map((link, index) => ({
+        tag: "a",
+        role: "link",
+        label: (link.textContent || "").trim(),
+        selector: `a:nth-of-type(${index + 1})`,
+        href: (link as HTMLAnchorElement).href,
+      }))
+    );
+    const automaticallyProposed = inferBrowserOperationCandidates({
+      pageUrl: page.url(),
+      controls: discoveredControls,
+      readOnly: true,
+    }).map(candidate => candidate.operationKey);
+    if (!automaticallyProposed.includes("note.create"))
+      throw new Error("bounded Genie discovery did not propose note.create");
     const contactRead = await runScript(page, "contact-read", [
       { action: "goto", value: `${ORIGIN}/contacts` },
       { action: "read_rows", selector: '[data-testid="contact-row"]', key: "contacts", fields: { externalId: { selector: '[data-field="id"]' }, name: { selector: '[data-field="name"]' }, email: { selector: '[data-field="email"]' } } },
@@ -216,7 +247,7 @@ async function main() {
       ambiguousControls: await expectCode(await browser.newContext(), "ambiguous", "GENIE_LOGIN_CALIBRATION_REQUIRED"),
       interactiveMfa: await expectCode(await browser.newContext(), "mfa", "GENIE_INTERACTIVE_AUTH_REQUIRED"),
     };
-    console.log(JSON.stringify({ event: "genie_commissioning_rehearsal", status: "LIVE_PROVEN", globalGenieCredentialsRequired: false, authentication: proof, approvedSessionReuse: sessionProof, contactRead: contacts[0], taskRead: tasks[0], note: { lifecycle: ["LEARNED", "TEST_READY", noteStatus], guardian: guardian.code, postcondition: postcondition.ok, status: noteStatus }, opportunityUpdate: "proven", dialler: { readback: dialler.data.diallerState, status: diallerStatus }, failures }, null, 2));
+    console.log(JSON.stringify({ event: "genie_commissioning_rehearsal", status: "LIVE_PROVEN", globalGenieCredentialsRequired: false, cleanInstall: { placeholderRejectedBeforeExecution: placeholderRejected, automaticCandidates: automaticallyProposed, manualSelectorsRequired: false }, authentication: proof, approvedSessionReuse: sessionProof, contactRead: contacts[0], taskRead: tasks[0], note: { lifecycle: ["NOT_LEARNED", "TEST_READY", noteStatus], automaticDiscovery: automaticallyProposed.includes("note.create"), guardian: guardian.code, postcondition: postcondition.ok, status: noteStatus }, opportunityUpdate: "proven", dialler: { readback: dialler.data.diallerState, status: diallerStatus }, failures }, null, 2));
     await page.close();
   } finally {
     await context.close().catch(() => undefined);

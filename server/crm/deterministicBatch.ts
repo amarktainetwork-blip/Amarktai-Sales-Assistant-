@@ -34,6 +34,7 @@ export async function runDeterministicCrmBatch<RecordType, Plan>(input: {
   interpretInstruction: (instruction: string) => Promise<Plan>;
   fetchPage: (plan: Plan, cursor: string | undefined, pageSize: number) => Promise<BatchPage<RecordType>>;
   recordId: (record: RecordType) => string;
+  qualify?: (record: RecordType, plan: Plan) => Promise<boolean> | boolean;
   execute: (record: RecordType, plan: Plan, idempotencyKey: string) => Promise<unknown>;
   verify: (record: RecordType, plan: Plan) => Promise<boolean>;
   alreadyCompleted?: (idempotencyKey: string) => Promise<boolean>;
@@ -43,6 +44,8 @@ export async function runDeterministicCrmBatch<RecordType, Plan>(input: {
   pageSize?: number;
   concurrency?: number;
   maxRetries?: number;
+  shouldRetry?: (error: unknown, attempt: number) => boolean;
+  retryDelayMs?: (attempt: number, error: unknown) => number;
 }) {
   const plan = await input.interpretInstruction(input.instruction);
   const pageSize = Math.min(500, Math.max(1, input.pageSize ?? 100));
@@ -80,6 +83,19 @@ export async function runDeterministicCrmBatch<RecordType, Plan>(input: {
         chunk.map(async record => {
           const recordId = input.recordId(record);
           const key = idempotencyKey(recordId);
+          if (input.qualify) {
+            try {
+              if (!(await input.qualify(record, plan)))
+                return { recordId, status: "skipped" as const, attempts: 0 };
+            } catch (error) {
+              return {
+                recordId,
+                status: "failed" as const,
+                attempts: 0,
+                detail: (error instanceof Error ? error.message : String(error)).slice(0, 500),
+              };
+            }
+          }
           if (await input.alreadyCompleted?.(key))
             return { recordId, status: "skipped" as const, attempts: 0 };
           let lastError = "";
@@ -92,7 +108,16 @@ export async function runDeterministicCrmBatch<RecordType, Plan>(input: {
               return { recordId, status: "completed" as const, attempts: attempt };
             } catch (error) {
               lastError = error instanceof Error ? error.message : String(error);
-              if (attempt > maxRetries) break;
+              if (
+                attempt > maxRetries ||
+                (input.shouldRetry && !input.shouldRetry(error, attempt))
+              ) break;
+              const retryDelay = Math.min(
+                10_000,
+                Math.max(0, input.retryDelayMs?.(attempt, error) || 0)
+              );
+              if (retryDelay)
+                await new Promise(resolve => setTimeout(resolve, retryDelay));
             }
           }
           return {

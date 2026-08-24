@@ -67,6 +67,8 @@ type AutomaticCommissioning = {
   status: string;
   humanStatus: string;
   safeTestRequired: boolean;
+  temporaryRecordSupported: boolean;
+  temporaryRecordGuidance: string;
   advancedFallback: boolean;
   progress: Record<string, unknown>;
   optionalFailures: Record<string, string>;
@@ -477,7 +479,10 @@ export default function Onboarding() {
   }
 
   async function approveSafeTestRecord() {
-    if (!browserSystem || !safeTestCustomer.trim()) return;
+    if (
+      !browserSystem ||
+      (safeTestMode === "existing" && !safeTestCustomer.trim())
+    ) return;
     try {
       setCommissioningPending(true);
       const result = await jsonRequest(
@@ -922,19 +927,30 @@ export default function Onboarding() {
                     <div className="mt-3 grid gap-2 sm:grid-cols-2">
                       <label className="flex items-center gap-2 text-xs text-white">
                         <input type="radio" checked={safeTestMode === "existing"} onChange={() => setSafeTestMode("existing")} />
-                        Use an existing test customer
+                        Enter an existing CRM test record
                       </label>
-                      <label className="flex items-center gap-2 text-xs text-white">
-                        <input type="radio" checked={safeTestMode === "temporary"} onChange={() => setSafeTestMode("temporary")} />
-                        Use or create a temporary setup record
-                      </label>
+                      {commissioning.temporaryRecordSupported && (
+                        <label className="flex items-center gap-2 text-xs text-white">
+                          <input type="radio" checked={safeTestMode === "temporary"} onChange={() => setSafeTestMode("temporary")} />
+                          Create an Amarktai Setup Test contact
+                        </label>
+                      )}
                     </div>
-                    <Input
-                      value={safeTestCustomer}
-                      onChange={event => setSafeTestCustomer(event.target.value)}
-                      placeholder="Test customer name or CRM reference"
-                      className="mt-3 border-white/15 bg-[#071326] text-white"
-                    />
+                    {safeTestMode === "existing" ? (
+                      <Input
+                        value={safeTestCustomer}
+                        onChange={event => setSafeTestCustomer(event.target.value)}
+                        placeholder="Exact CRM contact ID, email, phone, or unique name"
+                        className="mt-3 border-white/15 bg-[#071326] text-white"
+                      />
+                    ) : (
+                      <p className="mt-3 text-xs leading-5 text-[#D7C9A4]">
+                        Amarktai will create an explicitly labelled temporary
+                        contact and retain its exact ID. It remains for a manager
+                        to remove unless this connector has an already verified,
+                        explicitly safe delete operation.
+                      </p>
+                    )}
                     <div className="mt-3 grid gap-3 sm:grid-cols-2">
                       <Input
                         value={safeTestEmail}
@@ -957,7 +973,7 @@ export default function Onboarding() {
                     {canManage && (
                       <Button
                         variant="outline"
-                        disabled={!safeTestCustomer.trim() || commissioningPending}
+                        disabled={(safeTestMode === "existing" && !safeTestCustomer.trim()) || commissioningPending}
                         onClick={() => void approveSafeTestRecord()}
                         className="mt-3 border-white/15 bg-white/5 text-white"
                       >

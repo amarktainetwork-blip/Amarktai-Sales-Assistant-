@@ -53,6 +53,18 @@ export function connectedSystemSupportsAction(
   );
 }
 
+function routedActionType(action: {
+  actionType: string;
+  payload: Record<string, unknown>;
+}) {
+  if (action.actionType !== "deterministic_crm_batch")
+    return action.actionType;
+  const plan = action.payload.batchPlan;
+  if (!plan || typeof plan !== "object" || Array.isArray(plan)) return "";
+  const nested = (plan as Record<string, unknown>).actionType;
+  return typeof nested === "string" ? nested : "";
+}
+
 function connectionCanRoute(status: string) {
   return status === "ready" || status === "limited_permissions";
 }
@@ -62,6 +74,7 @@ export function routeConnectedSystemActions<
 >(actions: T[], systems: ConnectedSystemRoute[]) {
   const eligibleSystems = systems.filter(system => connectionCanRoute(system.status));
   return actions.map(action => {
+    const effectiveActionType = routedActionType(action);
     if (action.actionType === "create_calendar_event") {
       const outlook = getOutlookReadiness();
       const crmRoute = outlook.ready
@@ -81,10 +94,10 @@ export function routeConnectedSystemActions<
       return { ...action, payload: { ...action.payload, crmRoute } };
     }
 
-    const customAction = action.actionType === "custom_crm_action";
+    const customAction = effectiveActionType === "custom_crm_action";
     const alternatives = customAction
       ? []
-      : ACTION_CONNECTED_CAPABILITIES[action.actionType] || [["activities.write"]];
+      : ACTION_CONNECTED_CAPABILITIES[effectiveActionType] || [["activities.write"]];
     const preferred =
       typeof action.payload.preferredProvider === "string"
         ? action.payload.preferredProvider
@@ -94,7 +107,7 @@ export function routeConnectedSystemActions<
         ? action.payload.preferredConnectedSystemId
         : undefined;
     const eligible = eligibleSystems.filter(system =>
-      connectedSystemSupportsAction(system, action.actionType)
+      connectedSystemSupportsAction(system, effectiveActionType)
     );
     const chosen = preferredConnectedSystemId
       ? eligible.find(system => system.id === preferredConnectedSystemId)
@@ -116,7 +129,7 @@ export function routeConnectedSystemActions<
         }
       : {
           routable: false as const,
-          reason: `No backend-verified organisation CRM connection can perform '${action.actionType}' (${requiredCapability}).`,
+          reason: `No backend-verified organisation CRM connection can perform '${effectiveActionType || action.actionType}' (${requiredCapability}).`,
           requiredCapability,
         };
     return { ...action, payload: { ...action.payload, crmRoute } };

@@ -33,6 +33,14 @@ import {
 import { getDb, recordAudit } from "../db";
 import { getGenxReadiness, runGenxAgent } from "../genx";
 import { getCrmAdapter } from "./adapterRegistry";
+import type {
+  AdapterConnection,
+  ConnectionSecretPayload,
+  CrmAdapter,
+  NormalizedContact,
+  NormalizedOpportunity,
+  NormalizedTask,
+} from "./types";
 
 export const COMMISSIONING_STATES = [
   "AUTHENTICATE",
@@ -54,6 +62,22 @@ export type SafeTestRecord = {
     Record<"email" | "sms" | "whatsapp" | "dialler", string>
   >;
   authorisedOperationKeys?: string[];
+  selectedOpportunityExternalId?: string;
+  selectedTaskExternalId?: string;
+};
+
+export type SafeTestContext = SafeTestRecord & {
+  contactExternalId: string;
+  contactLabel: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  companyExternalId?: string;
+  opportunityExternalId?: string;
+  opportunityLabel?: string;
+  taskExternalId?: string;
+  taskLabel?: string;
+  temporaryRecordCreated: boolean;
+  temporaryRecordCleanup: "manager_remove" | "not_applicable";
 };
 
 type DiscoverySnapshot = {
@@ -131,12 +155,13 @@ export function humanCommissioningStatus(state: CommissioningState) {
 export function buildSecretFreeDiscoveryPrompt(snapshot: DiscoverySnapshot) {
   const serialized = JSON.stringify({
     pageUrl: snapshot.pageUrl,
-    controls: snapshot.controls.map(({ tag, role, label, selector, href }) => ({
+    controls: snapshot.controls.map(({ tag, role, label, selector, href, pageUrl }) => ({
       tag,
       role,
       label: safeText(label, 160),
       selector: safeText(selector, 300),
       href: safeText(href, 1_000) || undefined,
+      pageUrl: safeText(pageUrl, 1_000) || undefined,
     })),
   });
   if (/"(?:password|credentials?|authorization|cookies?|storageState|browserSession|secret)"\s*:/i.test(serialized))
@@ -170,7 +195,7 @@ export function inferBrowserOperationCandidates(snapshot: DiscoverySnapshot) {
 
 export function controlledWritePayload(
   operationKey: string,
-  record: SafeTestRecord
+  record: SafeTestContext
 ) {
   const destinationKind = COMMUNICATION_OPERATIONS[operationKey];
   const destination = destinationKind
@@ -181,16 +206,36 @@ export function controlledWritePayload(
   const extended = ["appointment.book", "quote.create", "workflow.execute", "sequence.apply"];
   if (extended.includes(operationKey) && !record.authorisedOperationKeys?.includes(operationKey))
     throw new Error("EXPLICIT_OPERATION_AUTHORISATION_REQUIRED");
-  const reference = record.reference.trim();
-  if (!reference) throw new Error("AUTHORISED_TEST_RECORD_REQUIRED");
+  const requiresOpportunity = new Set([
+    "opportunity.update",
+    "stage.update",
+  ]).has(operationKey);
+  const requiresTask = operationKey === "task.complete";
+  const requiresContact = !requiresOpportunity && !requiresTask;
+  if (requiresContact && !record.contactExternalId)
+    throw new Error("SAFE_TEST_CONTACT_REQUIRED");
+  if (requiresOpportunity && !record.opportunityExternalId)
+    throw new Error("SAFE_TEST_OPPORTUNITY_SELECTION_REQUIRED");
+  if (requiresTask && !record.taskExternalId)
+    throw new Error("SAFE_TEST_TASK_SELECTION_REQUIRED");
+  const exactExternalId = requiresOpportunity
+    ? record.opportunityExternalId
+    : requiresTask
+      ? record.taskExternalId
+      : record.contactExternalId;
   return {
-    externalId: reference,
-    contactExternalId: reference,
-    opportunityExternalId: reference,
-    taskExternalId: reference,
-    leadLabel: reference,
-    contactName: reference,
-    query: reference,
+    externalId: exactExternalId,
+    contactExternalId: requiresContact || operationKey === "task.create_callback"
+      ? record.contactExternalId
+      : undefined,
+    companyExternalId: record.companyExternalId,
+    opportunityExternalId: requiresOpportunity || operationKey === "task.create_callback"
+      ? record.opportunityExternalId
+      : undefined,
+    taskExternalId: requiresTask ? record.taskExternalId : undefined,
+    leadLabel: record.contactLabel,
+    contactName: record.contactLabel,
+    query: record.contactExternalId,
     to: destination,
     email: destinationKind === "email" ? destination : undefined,
     phone: destinationKind && destinationKind !== "email" ? destination : undefined,
@@ -200,6 +245,292 @@ export function controlledWritePayload(
     stage: "Amarktai setup verification",
     callbackAt: new Date(Date.now() + 86_400_000).toISOString(),
     controlledCommissioning: true,
+  };
+}
+
+function normalizedContactLabel(contact: NormalizedContact) {
+  return `${contact.firstName || ""} ${contact.lastName || ""}`.trim() ||
+    contact.email || contact.phone || contact.externalId;
+}
+
+function exactContactMatches(contact: NormalizedContact, reference: string) {
+  const expected = reference.trim().toLowerCase();
+  return [
+    contact.externalId,
+    contact.email,
+    contact.phone,
+    normalizedContactLabel(contact),
+  ].some(value => value?.trim().toLowerCase() === expected);
+}
+
+async function collectPages<T>(
+  fetchPage: (cursor?: string) => Promise<{ records: T[]; cursor?: string }>,
+  maximumPages = 20
+) {
+  const records: T[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < maximumPages; page += 1) {
+    const result = await fetchPage(cursor);
+    records.push(...result.records);
+    if (!result.cursor) return records;
+    cursor = result.cursor;
+  }
+  throw new Error("SAFE_TEST_CONTEXT_PAGINATION_LIMIT");
+}
+
+function evidenceExternalId(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    if (/^(?:externalId|id|contactId)$/i.test(key) &&
+        (typeof child === "string" || typeof child === "number")) {
+      const candidate = String(child).trim();
+      if (candidate) return candidate;
+    }
+    const nested = evidenceExternalId(child);
+    if (nested) return nested;
+  }
+  return undefined;
+}
+
+function browserEvidenceRows(value: unknown) {
+  if (!value || typeof value !== "object") return [] as Record<string, unknown>[];
+  const providerResult = (value as Record<string, unknown>).providerResult;
+  if (!providerResult || typeof providerResult !== "object") return [];
+  const data = (providerResult as Record<string, unknown>).data;
+  if (!data || typeof data !== "object") return [];
+  for (const key of ["targets", "records", "tasks", "opportunities"]) {
+    const serialized = (data as Record<string, unknown>)[key];
+    if (typeof serialized !== "string") continue;
+    try {
+      const parsed = JSON.parse(serialized) as unknown;
+      if (Array.isArray(parsed))
+        return parsed.filter(
+          (item): item is Record<string, unknown> =>
+            Boolean(item) && typeof item === "object" && !Array.isArray(item)
+        );
+    } catch {
+      continue;
+    }
+  }
+  return [];
+}
+
+function oneRelatedRecord<T extends { externalId: string }>(input: {
+  kind: "opportunity" | "task";
+  records: T[];
+  selectedExternalId?: string;
+  label: (record: T) => string;
+}) {
+  if (input.selectedExternalId) {
+    const selected = input.records.find(
+      record => record.externalId === input.selectedExternalId
+    );
+    if (!selected)
+      throw new Error(
+        `SAFE_TEST_${input.kind.toUpperCase()}_SELECTION_INVALID: the selected ${input.kind} is not related to this test customer.`
+      );
+    return selected;
+  }
+  if (input.records.length <= 1) return input.records[0];
+  const choices = input.records.slice(0, 10)
+    .map(record => `${input.label(record)} (${record.externalId})`)
+    .join(", ");
+  throw new Error(
+    `SAFE_TEST_${input.kind.toUpperCase()}_SELECTION_REQUIRED: choose one exact related ${input.kind}: ${choices}`
+  );
+}
+
+export function connectorSupportsTemporaryTestRecord(input: {
+  connection: AdapterConnection;
+  adapter: CrmAdapter;
+  contactCreateLiveProven?: boolean;
+}) {
+  if (!input.adapter.createContact) return false;
+  if (!input.connection.verifiedCapabilities.includes("contacts.write"))
+    return false;
+  const browser = ["browser", "sidecar"].includes(
+    input.connection.connectionMethod
+  );
+  return !browser || input.contactCreateLiveProven === true;
+}
+
+export async function resolveSafeTestContext(input: {
+  record: SafeTestRecord;
+  operationKeys: string[];
+  connection: AdapterConnection;
+  adapter: CrmAdapter;
+  secret: ConnectionSecretPayload;
+  contactCreateLiveProven?: boolean;
+  correlationId: string;
+}): Promise<SafeTestContext> {
+  const reference = input.record.reference.trim();
+  let contact: NormalizedContact | undefined;
+  let temporaryRecordCreated = false;
+  if (input.record.mode === "temporary") {
+    if (!connectorSupportsTemporaryTestRecord(input))
+      throw new Error(
+        "TEMPORARY_TEST_RECORD_UNAVAILABLE: use an existing CRM test customer for this connector."
+      );
+    const label = `Amarktai Setup Test ${input.correlationId.slice(-8)}`;
+    const evidence = await input.adapter.createContact!({
+      connection: input.connection,
+      secret: input.secret,
+      fields: {
+        firstName: "Amarktai Setup",
+        lastName: "Test",
+        name: label,
+        commissioningLabel: label,
+      },
+      correlationId: input.correlationId,
+    });
+    const createdId = evidenceExternalId(evidence.providerResult);
+    if (createdId)
+      contact = await input.adapter.getContact({
+        connection: input.connection,
+        secret: input.secret,
+        externalId: createdId,
+      }) || undefined;
+    if (!contact) {
+      const matches = await input.adapter.searchContacts({
+        connection: input.connection,
+        secret: input.secret,
+        query: label,
+      });
+      const exact = matches.filter(candidate =>
+        normalizedContactLabel(candidate).toLowerCase() === label.toLowerCase()
+      );
+      if (exact.length !== 1)
+        throw new Error(
+          "TEMPORARY_TEST_RECORD_ID_UNVERIFIED: the connector created a record but did not return one exact readable contact ID."
+        );
+      contact = exact[0];
+    }
+    temporaryRecordCreated = true;
+  } else {
+    if (!reference) throw new Error("AUTHORISED_TEST_RECORD_REQUIRED");
+    const matches = await input.adapter.searchContacts({
+      connection: input.connection,
+      secret: input.secret,
+      query: reference,
+    });
+    const exact = matches.filter(candidate =>
+      exactContactMatches(candidate, reference)
+    );
+    if (exact.length > 1)
+      throw new Error(
+        `SAFE_TEST_CONTACT_SELECTION_REQUIRED: ${exact.length} exact-looking contacts matched; enter the exact external contact ID.`
+      );
+    contact = exact[0];
+    if (!contact) {
+      const direct = await input.adapter.getContact({
+        connection: input.connection,
+        secret: input.secret,
+        externalId: reference,
+      });
+      if (direct?.externalId === reference) contact = direct;
+    }
+    if (!contact)
+      throw new Error(
+        "SAFE_TEST_CONTACT_NOT_FOUND: enter an exact CRM contact ID, email, phone, or unique contact name."
+      );
+  }
+
+  const needsOpportunity = input.operationKeys.some(key =>
+    ["opportunity.update", "stage.update"].includes(key)
+  );
+  const needsTask = input.operationKeys.includes("task.complete");
+  let opportunity: NormalizedOpportunity | undefined;
+  let task: NormalizedTask | undefined;
+  if (needsOpportunity) {
+    const browser = ["browser", "sidecar"].includes(input.connection.connectionMethod);
+    const available = browser && input.adapter.executeCustomAction
+      ? browserEvidenceRows(await input.adapter.executeCustomAction({
+          connection: input.connection,
+          secret: input.secret,
+          actionName: "opportunity.read",
+          payload: { contactExternalId: contact.externalId },
+          correlationId: `${input.correlationId}:opportunity-read`,
+        })).map(item => ({
+          externalId: String(item.externalId || item.id || ""),
+          contactExternalId: typeof item.contactExternalId === "string" ? item.contactExternalId : undefined,
+          companyExternalId: typeof item.companyExternalId === "string" ? item.companyExternalId : undefined,
+          name: String(item.name || item.label || "Opportunity"),
+          raw: item,
+        } satisfies NormalizedOpportunity)).filter(item => item.externalId)
+      : await collectPages(cursor =>
+          input.adapter.syncOpportunities({
+            connection: input.connection,
+            secret: input.secret,
+            cursor,
+          })
+        );
+    const related = available.filter(item =>
+      item.contactExternalId === contact!.externalId ||
+      Boolean(contact!.companyExternalId && item.companyExternalId === contact!.companyExternalId)
+    );
+    opportunity = oneRelatedRecord({
+      kind: "opportunity",
+      records: related,
+      selectedExternalId: input.record.selectedOpportunityExternalId,
+      label: item => item.name,
+    });
+    if (!opportunity)
+      throw new Error(
+        "SAFE_TEST_OPPORTUNITY_REQUIRED: this controlled opportunity test needs one related safe/test opportunity."
+      );
+  }
+  if (needsTask) {
+    const browser = ["browser", "sidecar"].includes(input.connection.connectionMethod);
+    const available = browser && input.adapter.executeCustomAction
+      ? browserEvidenceRows(await input.adapter.executeCustomAction({
+          connection: input.connection,
+          secret: input.secret,
+          actionName: "task.list",
+          payload: { contactExternalId: contact.externalId },
+          correlationId: `${input.correlationId}:task-read`,
+        })).map(item => ({
+          externalId: String(item.externalId || item.id || ""),
+          contactExternalId: typeof item.contactExternalId === "string" ? item.contactExternalId : undefined,
+          opportunityExternalId: typeof item.opportunityExternalId === "string" ? item.opportunityExternalId : undefined,
+          title: String(item.title || item.name || "Task"),
+          status: String(item.status || "open"),
+          raw: item,
+        } satisfies NormalizedTask)).filter(item => item.externalId)
+      : await collectPages(cursor =>
+          input.adapter.syncTasks({
+            connection: input.connection,
+            secret: input.secret,
+            cursor,
+          })
+        );
+    const related = available.filter(item => item.contactExternalId === contact!.externalId);
+    task = oneRelatedRecord({
+      kind: "task",
+      records: related,
+      selectedExternalId: input.record.selectedTaskExternalId,
+      label: item => item.title,
+    });
+    if (!task)
+      throw new Error(
+        "SAFE_TEST_TASK_REQUIRED: this controlled task test needs one related safe/test task."
+      );
+  }
+  return {
+    ...input.record,
+    reference: contact.externalId,
+    contactExternalId: contact.externalId,
+    contactLabel: normalizedContactLabel(contact),
+    contactEmail: contact.email,
+    contactPhone: contact.phone,
+    companyExternalId: contact.companyExternalId,
+    opportunityExternalId: opportunity?.externalId,
+    opportunityLabel: opportunity?.name,
+    taskExternalId: task?.externalId,
+    taskLabel: task?.title,
+    temporaryRecordCreated,
+    temporaryRecordCleanup: temporaryRecordCreated
+      ? "manager_remove"
+      : "not_applicable",
   };
 }
 
@@ -356,48 +687,63 @@ export async function attemptBoundedAutomaticRepair(input: {
   return { proposed: true, version: input.previousVersion + 1, status: "NOT_LEARNED" as const };
 }
 
-async function installKnownGeniePack(job: CrmCommissioningJob, system: typeof connectedSystems.$inferSelect) {
+export async function installKnownGeniePack(job: CrmCommissioningJob, system: typeof connectedSystems.$inferSelect) {
   const profile = await resolveBrowserProfile(toAdapterConnection(system), "genie");
-  if (!profile) return [];
+  if (!profile) return { installed: [] as string[], needsDiscovery: [] as string[] };
   const installed: string[] = [];
+  const needsDiscovery: string[] = [];
   for (const [operationKey, packed] of Object.entries(profile.operationDefinitions || {})) {
-    if (await latestBrowserOperation({ organisationId: job.organisationId, connectedSystemId: job.connectedSystemId, operationKey })) continue;
-    const source = packed.definition as Record<string, unknown>;
-    const script = (key: string) => {
-      const name = typeof source[key] === "string" ? source[key] : "";
-      const selected = name ? profile.scripts[name] : undefined;
-      if (!selected) throw new Error(`Known Genie operation '${operationKey}' references missing script '${name}'.`);
-      return selected;
-    };
-    const definition = validateLearnedOperationDefinition(
-      typeof source.executeScript === "string"
-        ? {
-            mode: source.mode,
-            execute: script("executeScript"),
-            targetRead: typeof source.targetReadScript === "string" ? script("targetReadScript") : undefined,
-            postconditionRead: typeof source.postconditionReadScript === "string" ? script("postconditionReadScript") : undefined,
-            resultKey: source.resultKey,
-          }
-        : packed.definition
-    );
-    await saveLearnedBrowserOperation({
-      userId: job.requestedByUserId!,
-      organisationId: job.organisationId,
-      connectedSystemId: job.connectedSystemId,
-      operationKey,
-      definition,
-      prerequisites: { ...(packed.prerequisites || {}), knownGeniePack: true },
-      targetAssertions: packed.targetAssertions || {},
-      postconditionAssertions: (packed.postconditionAssertions || []) as BrowserPostcondition[],
-    });
-    installed.push(operationKey);
+    try {
+      const source = packed.definition as Record<string, unknown>;
+      const script = (key: string) => {
+        const name = typeof source[key] === "string" ? source[key] : "";
+        const selected = name ? profile.scripts[name] : undefined;
+        if (!selected) throw new Error(`Known Genie operation '${operationKey}' references missing script '${name}'.`);
+        return selected;
+      };
+      const definition = validateLearnedOperationDefinition(
+        typeof source.executeScript === "string"
+          ? {
+              mode: source.mode,
+              execute: script("executeScript"),
+              targetRead: typeof source.targetReadScript === "string" ? script("targetReadScript") : undefined,
+              postconditionRead: typeof source.postconditionReadScript === "string" ? script("postconditionReadScript") : undefined,
+              resultKey: source.resultKey,
+            }
+          : packed.definition
+      );
+      const existing = await latestBrowserOperation({
+        organisationId: job.organisationId,
+        connectedSystemId: job.connectedSystemId,
+        operationKey,
+      });
+      if (existing && existing.status !== "NOT_LEARNED") continue;
+      await saveLearnedBrowserOperation({
+        userId: job.requestedByUserId!,
+        organisationId: job.organisationId,
+        connectedSystemId: job.connectedSystemId,
+        operationKey,
+        definition,
+        prerequisites: { ...(packed.prerequisites || {}), knownGeniePack: true },
+        targetAssertions: packed.targetAssertions || {},
+        postconditionAssertions: (packed.postconditionAssertions || []) as BrowserPostcondition[],
+      });
+      installed.push(operationKey);
+    } catch {
+      needsDiscovery.push(operationKey);
+    }
   }
   for (const [adapterOperation, scriptName] of Object.entries(profile.operationMap || {})) {
     const operationKey = ADAPTER_OPERATION_KEYS[adapterOperation];
     const metadata = BROWSER_OPERATION_CATALOGUE.find(item => item.key === operationKey);
     const script = profile.scripts[scriptName];
     if (!operationKey || metadata?.mode !== "read" || !script) continue;
-    if (JSON.stringify(script).includes("REPLACE_")) continue;
+    try {
+      validateLearnedOperationDefinition({ mode: "read", execute: script });
+    } catch {
+      needsDiscovery.push(operationKey);
+      continue;
+    }
     if (await latestBrowserOperation({ organisationId: job.organisationId, connectedSystemId: job.connectedSystemId, operationKey })) continue;
     await saveLearnedBrowserOperation({
       userId: job.requestedByUserId!,
@@ -409,7 +755,10 @@ async function installKnownGeniePack(job: CrmCommissioningJob, system: typeof co
     });
     installed.push(operationKey);
   }
-  return installed;
+  return {
+    installed: Array.from(new Set(installed)),
+    needsDiscovery: Array.from(new Set(needsDiscovery)),
+  };
 }
 
 function parseJsonObject(value: string) {
@@ -426,10 +775,18 @@ function parseJsonObject(value: string) {
 async function discoverSemanticOperationDefinitions(input: {
   job: CrmCommissioningJob;
   snapshot: DiscoverySnapshot;
+  targetOperationKeys?: string[];
+  allowReplacement?: boolean;
 }) {
   if (!input.job.requestedByUserId || !getGenxReadiness().configured)
     return { calls: 0, installed: [] as string[] };
-  const prompt = buildSecretFreeDiscoveryPrompt(input.snapshot);
+  const semanticTargets = (input.targetOperationKeys || [])
+    .filter(key => BROWSER_OPERATION_CATALOGUE.some(item => item.key === key))
+    .slice(0, 80);
+  const basePrompt = buildSecretFreeDiscoveryPrompt(input.snapshot);
+  const prompt = semanticTargets.length
+    ? `${basePrompt}\nKnown Genie catalogue targets for this bounded repair: ${semanticTargets.join(", ")}. Return only these operation keys and never return a template placeholder.`
+    : basePrompt;
   const response = await runGenxAgent({
     agentKey: "knowledge_curator",
     modelTier: "reasoning",
@@ -451,6 +808,8 @@ async function discoverSemanticOperationDefinitions(input: {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
     const candidate = raw as Record<string, unknown>;
     const operationKey = safeText(candidate.operationKey, 120);
+    if (semanticTargets.length && !semanticTargets.includes(operationKey))
+      continue;
     const known = BROWSER_OPERATION_CATALOGUE.some(item => item.key === operationKey);
     if (!known && !/^custom\.(?:read|write)\.[a-z0-9_.:-]{2,100}$/.test(operationKey)) continue;
     const existing = await latestBrowserOperation({
@@ -458,7 +817,11 @@ async function discoverSemanticOperationDefinitions(input: {
       connectedSystemId: input.job.connectedSystemId,
       operationKey,
     });
-    if (existing && existing.status !== "NOT_LEARNED") continue;
+    if (
+      existing &&
+      existing.status !== "NOT_LEARNED" &&
+      !input.allowReplacement
+    ) continue;
     try {
       const definition = validateLearnedOperationDefinition(candidate.definition);
       const postconditionAssertions = Array.isArray(candidate.postconditionAssertions)
@@ -476,6 +839,7 @@ async function discoverSemanticOperationDefinitions(input: {
             ? candidate.prerequisites as Record<string, unknown>
             : {}),
           automaticSemanticDiscovery: true,
+          boundedReplacementOfVersion: existing?.version,
         },
         targetAssertions:
           candidate.targetAssertions && typeof candidate.targetAssertions === "object" && !Array.isArray(candidate.targetAssertions)
@@ -494,7 +858,7 @@ async function discoverSemanticOperationDefinitions(input: {
 async function testOperations(input: {
   job: CrmCommissioningJob;
   mode: BrowserOperationMode;
-  safeTestRecord?: SafeTestRecord;
+  safeTestRecord?: SafeTestContext;
 }) {
   const system = await systemForJob(input.job);
   const db = await getDb();
@@ -512,26 +876,63 @@ async function testOperations(input: {
   });
   const failures = { ...(input.job.optionalFailures || {}) };
   const proven: string[] = [];
+  const failedOperationKeys: string[] = [];
+  const runOne = async (operationKey: string) => {
+    const payload = input.mode === "write"
+      ? controlledWritePayload(operationKey, input.safeTestRecord!)
+      : {};
+    await testLearnedBrowserOperation({
+      connection: toAdapterConnection(system),
+      provider: system.provider as "genie" | "custom_browser",
+      operationKey,
+      payload,
+      correlationId: `auto-${input.job.id}-${operationKey}-${randomUUID()}`,
+      publishByUserId: input.job.requestedByUserId || undefined,
+    });
+  };
   for (const operation of selected.slice(0, 80)) {
     try {
-      const payload = input.mode === "write"
-        ? controlledWritePayload(operation.operationKey, input.safeTestRecord!)
-        : {};
-      await testLearnedBrowserOperation({
-        connection: toAdapterConnection(system),
-        provider: system.provider as "genie" | "custom_browser",
-        operationKey: operation.operationKey,
-        payload,
-        correlationId: `auto-${input.job.id}-${operation.operationKey}-${randomUUID()}`,
-        publishByUserId: input.job.requestedByUserId || undefined,
-      });
+      await runOne(operation.operationKey);
       proven.push(operation.operationKey);
       delete failures[operation.operationKey];
     } catch (error) {
+      failedOperationKeys.push(operation.operationKey);
       failures[operation.operationKey] = safeText(
         error instanceof Error ? error.message : String(error),
         500
       );
+    }
+  }
+  // Selector drift in a genuinely installed Genie definition receives one
+  // bounded, control-only repair pass. Each replacement is still TEST_READY
+  // and must pass the same read/guardian/write/readback proof below.
+  if (system.provider === "genie" && failedOperationKeys.length) {
+    try {
+      const snapshot = await inspectBrowserCrmNavigation({
+        connection: toAdapterConnection(system),
+        provider: "genie",
+      });
+      const repair = await discoverSemanticOperationDefinitions({
+        job: input.job,
+        snapshot,
+        targetOperationKeys: failedOperationKeys,
+        allowReplacement: true,
+      });
+      for (const operationKey of repair.installed) {
+        try {
+          await runOne(operationKey);
+          if (!proven.includes(operationKey)) proven.push(operationKey);
+          delete failures[operationKey];
+        } catch (error) {
+          failures[operationKey] = safeText(
+            error instanceof Error ? error.message : String(error),
+            500
+          );
+        }
+      }
+    } catch {
+      // Only the failed operation remains Needs setup; unrelated operations
+      // keep their independently proven lifecycle state.
     }
   }
   return { proven, failures, attempted: selected.length };
@@ -612,8 +1013,9 @@ export async function authoriseCommissioningSafeTest(input: {
     connectedSystemId: input.connectedSystemId,
   });
   if (!job) throw new Error("Start automatic commissioning before choosing a test customer.");
-  if (!input.record.reference.trim()) throw new Error("Choose a valid authorised test customer.");
-  const safeRecord: SafeTestRecord = {
+  if (input.record.mode === "existing" && !input.record.reference.trim())
+    throw new Error("Choose a valid authorised test customer.");
+  const requestedRecord: SafeTestRecord = {
     mode: input.record.mode,
     reference: input.record.reference.trim().slice(0, 500),
     authorisedDestinations: Object.fromEntries(
@@ -624,7 +1026,43 @@ export async function authoriseCommissioningSafeTest(input: {
     authorisedOperationKeys: (input.record.authorisedOperationKeys || [])
       .filter(key => BROWSER_OPERATION_CATALOGUE.some(item => item.key === key))
       .slice(0, 30),
+    selectedOpportunityExternalId: safeText(
+      input.record.selectedOpportunityExternalId,
+      500
+    ) || undefined,
+    selectedTaskExternalId: safeText(
+      input.record.selectedTaskExternalId,
+      500
+    ) || undefined,
   };
+  const system = await systemForJob(job);
+  const connection = toAdapterConnection(system);
+  const adapter = getCrmAdapter(system.provider);
+  const secret = await loadConnectionSecret({
+    organisationId: input.organisationId,
+    connectedSystemId: input.connectedSystemId,
+    secretKind: system.connectionMethod === "oauth" ? "oauth" : "browser",
+  }) || {};
+  const matrix = system.connectionMethod === "oauth"
+    ? null
+    : await browserOperationReadinessForSystem({
+        organisationId: input.organisationId,
+        connectedSystemId: input.connectedSystemId,
+      });
+  const operationKeys = matrix?.operations
+    .filter(operation => operation.mode === "write" && operation.status === "TEST_READY")
+    .map(operation => operation.key) || [];
+  const safeRecord = await resolveSafeTestContext({
+    record: requestedRecord,
+    operationKeys,
+    connection,
+    adapter,
+    secret,
+    contactCreateLiveProven: matrix?.operations.some(operation =>
+      operation.key === "contact.create" && operation.status === "LIVE_PROVEN"
+    ),
+    correlationId: `commissioning-${job.id}-${randomUUID()}`,
+  });
   await updateJob(job.id, {
     safeTestRecord: safeRecord,
     state: "TEST_CONTROLLED_WRITES",
@@ -642,6 +1080,11 @@ export async function authoriseCommissioningSafeTest(input: {
     metadata: {
       connectedSystemId: input.connectedSystemId,
       mode: safeRecord.mode,
+      contactExternalId: safeRecord.contactExternalId,
+      opportunityExternalId: safeRecord.opportunityExternalId,
+      taskExternalId: safeRecord.taskExternalId,
+      temporaryRecordCreated: safeRecord.temporaryRecordCreated,
+      temporaryRecordCleanup: safeRecord.temporaryRecordCleanup,
       authorisedChannels: Object.keys(safeRecord.authorisedDestinations || {}),
       authorisedOperationKeys: safeRecord.authorisedOperationKeys,
     },
@@ -678,6 +1121,12 @@ export function presentCommissioningJob(job: CrmCommissioningJob) {
     progress: publicProgress,
     optionalFailures: job.optionalFailures,
     safeTestRequired: job.state === "AWAIT_SAFE_TEST_RECORD",
+    temporaryRecordSupported:
+      (publicProgress as Record<string, unknown>).temporaryRecordSupported === true,
+    temporaryRecordGuidance:
+      (publicProgress as Record<string, unknown>).temporaryRecordSupported === true
+        ? "Create an explicitly labelled temporary setup contact"
+        : "Enter an existing CRM test record",
     advancedFallback: needsSetup,
     completedAt: job.completedAt,
   };
@@ -756,13 +1205,27 @@ export async function advanceAutomaticCommissioning(jobId: number) {
       const inferred = inferBrowserOperationCandidates(snapshot);
       for (const candidate of inferred)
         if (await insertCandidate({ job, ...candidate })) discovered.push(candidate.operationKey);
-      if (system.provider === "genie")
-        discovered.push(...await installKnownGeniePack(job, system));
-      if (system.provider === "custom_browser") {
-        const semantic = await discoverSemanticOperationDefinitions({ job, snapshot })
+      let genieDiscoveryTargets: string[] = [];
+      if (system.provider === "genie") {
+        const knownPack = await installKnownGeniePack(job, system);
+        discovered.push(...knownPack.installed);
+        genieDiscoveryTargets = knownPack.needsDiscovery;
+        progress.placeholderOperationsRejected = knownPack.needsDiscovery;
+      }
+      if (system.provider === "custom_browser" || genieDiscoveryTargets.length) {
+        const semantic = await discoverSemanticOperationDefinitions({
+          job,
+          snapshot,
+          targetOperationKeys: genieDiscoveryTargets.length
+            ? genieDiscoveryTargets
+            : undefined,
+          allowReplacement: system.provider === "genie",
+        })
           .catch(() => ({ calls: getGenxReadiness().configured ? 1 : 0, installed: [] as string[] }));
         discovered.push(...semantic.installed);
         progress.semanticDiscoveryCalls = semantic.calls;
+        if (genieDiscoveryTargets.length)
+          progress.genieAutomaticallyDiscovered = semantic.installed;
       }
       discovered = Array.from(new Set(discovered));
       progress.discoveredCapabilityCount = discovered.length;
@@ -774,11 +1237,18 @@ export async function advanceAutomaticCommissioning(jobId: number) {
       failures = result.failures;
       progress.safeReads = { status: "Ready", proven: result.proven, attempted: result.attempted };
       const matrix = await browserOperationReadinessForSystem({ organisationId: job.organisationId, connectedSystemId: job.connectedSystemId });
+      progress.temporaryRecordSupported = connectorSupportsTemporaryTestRecord({
+        connection: toAdapterConnection(system),
+        adapter: getCrmAdapter(system.provider),
+        contactCreateLiveProven: matrix.operations.some(operation =>
+          operation.key === "contact.create" && operation.status === "LIVE_PROVEN"
+        ),
+      });
       const hasWrites = matrix.operations.some(operation => operation.mode === "write" && operation.status === "TEST_READY");
       next = nextCommissioningState({ state: job.state, hasWrites });
     } else if (job.state === "TEST_CONTROLLED_WRITES") {
       if (!job.safeTestRecord) throw new Error("AUTHORISED_TEST_RECORD_REQUIRED");
-      const result = await testOperations({ job, mode: "write", safeTestRecord: job.safeTestRecord as SafeTestRecord });
+      const result = await testOperations({ job, mode: "write", safeTestRecord: job.safeTestRecord as SafeTestContext });
       failures = result.failures;
       progress.controlledWrites = { status: "Ready", proven: result.proven, attempted: result.attempted };
       next = "VERIFY_READBACK";

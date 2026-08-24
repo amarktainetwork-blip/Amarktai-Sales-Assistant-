@@ -156,11 +156,26 @@ export function registerConnectedSystemAdminRoutes(app: Express) {
         const authorisedOperationKeys = Array.isArray(req.body?.authorisedOperationKeys)
           ? req.body.authorisedOperationKeys.filter((key: unknown): key is string => typeof key === "string")
           : [];
+        const selectedOpportunityExternalId =
+          typeof req.body?.selectedOpportunityExternalId === "string"
+            ? req.body.selectedOpportunityExternalId
+            : undefined;
+        const selectedTaskExternalId =
+          typeof req.body?.selectedTaskExternalId === "string"
+            ? req.body.selectedTaskExternalId
+            : undefined;
         return res.json(await authoriseCommissioningSafeTest({
           userId,
           organisationId: membership.organisationId,
           connectedSystemId,
-          record: { mode, reference, authorisedDestinations, authorisedOperationKeys },
+          record: {
+            mode,
+            reference,
+            authorisedDestinations,
+            authorisedOperationKeys,
+            selectedOpportunityExternalId,
+            selectedTaskExternalId,
+          },
         }));
       } catch (error) {
         return sendError(res, error);

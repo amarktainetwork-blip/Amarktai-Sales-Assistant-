@@ -3,12 +3,30 @@ import { describe, expect, it, vi } from "vitest";
 import {
   automaticRepairStatusAfterProof,
   buildSecretFreeDiscoveryPrompt,
+  connectorSupportsTemporaryTestRecord,
   controlledWritePayload,
   coreBrowserCommissioningReady,
   inferBrowserOperationCandidates,
   nextCommissioningState,
+  resolveSafeTestContext,
 } from "./automaticCommissioning";
 import { runDeterministicCrmBatch } from "./deterministicBatch";
+import {
+  assertCompleteBrowserDefinition,
+  findIncompleteBrowserDefinition,
+} from "../browserConnectors/scriptEngine";
+import type { CrmAdapter } from "./types";
+
+const resolvedSafeContext = {
+  mode: "existing" as const,
+  reference: "contact-1",
+  contactExternalId: "contact-1",
+  contactLabel: "Test Customer",
+  opportunityExternalId: "opportunity-7",
+  taskExternalId: "task-9",
+  temporaryRecordCreated: false,
+  temporaryRecordCleanup: "not_applicable" as const,
+};
 
 const snapshot = {
   pageUrl: "https://crm.example.test/app",
@@ -52,25 +70,173 @@ describe("automatic CRM commissioning product contract", () => {
     ).toBe("AWAIT_SAFE_TEST_RECORD");
     expect(() =>
       controlledWritePayload("note.create", {
-        mode: "existing",
-        reference: "",
+        ...resolvedSafeContext,
+        contactExternalId: "",
       })
-    ).toThrow("AUTHORISED_TEST_RECORD_REQUIRED");
+    ).toThrow("SAFE_TEST_CONTACT_REQUIRED");
     expect(() =>
       controlledWritePayload("whatsapp.send", {
-        mode: "existing",
-        reference: "test-contact-1",
+        ...resolvedSafeContext,
       })
     ).toThrow("AUTHORISED_TEST_DESTINATION_REQUIRED");
     expect(
       controlledWritePayload("note.create", {
-        mode: "existing",
-        reference: "test-contact-1",
+        ...resolvedSafeContext,
       })
     ).toMatchObject({
-      contactExternalId: "test-contact-1",
+      contactExternalId: "contact-1",
+      opportunityExternalId: undefined,
+      taskExternalId: undefined,
       controlledCommissioning: true,
     });
+    expect(
+      controlledWritePayload("opportunity.update", resolvedSafeContext)
+    ).toMatchObject({
+      externalId: "opportunity-7",
+      opportunityExternalId: "opportunity-7",
+      contactExternalId: undefined,
+      taskExternalId: undefined,
+    });
+    expect(
+      controlledWritePayload("task.complete", resolvedSafeContext)
+    ).toMatchObject({
+      externalId: "task-9",
+      taskExternalId: "task-9",
+      contactExternalId: undefined,
+      opportunityExternalId: undefined,
+    });
+  });
+
+  it("recursively rejects every known placeholder before save or execution", () => {
+    const definition = {
+      mode: "write",
+      execute: { steps: [{ action: "click", selector: "REPLACE_SAVE" }] },
+      targetRead: { steps: [{ action: "goto", value: "https://replace-with-url" }] },
+      postconditionRead: { steps: [{ action: "read_text", selector: "" }] },
+    };
+    expect(findIncompleteBrowserDefinition(definition).map(item => item.reason))
+      .toEqual(expect.arrayContaining(["placeholder", "missing_selector"]));
+    expect(() => assertCompleteBrowserDefinition(definition))
+      .toThrow("INCOMPLETE_BROWSER_OPERATION");
+  });
+
+  it("resolves exact contact/opportunity/task IDs and refuses ambiguous related objects", async () => {
+    const contact = {
+      externalId: "contact-1",
+      companyExternalId: "company-2",
+      firstName: "Safe",
+      lastName: "Customer",
+      email: "safe@example.test",
+      raw: {},
+    };
+    const opportunities = [
+      { externalId: "opp-1", contactExternalId: "contact-1", name: "Safe deal", raw: {} },
+    ];
+    const tasks = [
+      { externalId: "task-1", contactExternalId: "contact-1", title: "Safe task", status: "open", raw: {} },
+    ];
+    const adapter = {
+      searchContacts: vi.fn(async () => [contact]),
+      getContact: vi.fn(async () => contact),
+      syncOpportunities: vi.fn(async () => ({ records: opportunities })),
+      syncTasks: vi.fn(async () => ({ records: tasks })),
+    } as unknown as CrmAdapter;
+    const context = await resolveSafeTestContext({
+      record: { mode: "existing", reference: "safe@example.test" },
+      operationKeys: ["opportunity.update", "task.complete"],
+      connection: {
+        id: 1,
+        organisationId: 7,
+        provider: "genie",
+        displayName: "Genie",
+        baseUrl: "https://genie.example.test",
+        connectionMethod: "browser",
+        allowedReadCapabilities: [],
+        allowedWriteCapabilities: [],
+        verifiedCapabilities: ["contacts.read", "opportunities.read", "tasks.read"],
+        scopes: [],
+        configuration: {},
+      },
+      adapter,
+      secret: {},
+      correlationId: "safe-context-1",
+    });
+    expect(context).toMatchObject({
+      contactExternalId: "contact-1",
+      companyExternalId: "company-2",
+      opportunityExternalId: "opp-1",
+      taskExternalId: "task-1",
+    });
+    expect(
+      controlledWritePayload("opportunity.update", context)
+    ).not.toHaveProperty("taskExternalId", "contact-1");
+
+    adapter.syncOpportunities = vi.fn(async () => ({
+      records: [...opportunities, { externalId: "opp-2", contactExternalId: "contact-1", name: "Second deal", raw: {} }],
+    }));
+    await expect(resolveSafeTestContext({
+      record: { mode: "existing", reference: "contact-1" },
+      operationKeys: ["opportunity.update"],
+      connection: {
+        id: 1, organisationId: 7, provider: "genie", displayName: "Genie",
+        baseUrl: "https://genie.example.test", connectionMethod: "browser",
+        allowedReadCapabilities: [], allowedWriteCapabilities: [],
+        verifiedCapabilities: ["contacts.read", "opportunities.read"], scopes: [], configuration: {},
+      },
+      adapter,
+      secret: {},
+      correlationId: "safe-context-2",
+    })).rejects.toThrow("SAFE_TEST_OPPORTUNITY_SELECTION_REQUIRED");
+  });
+
+  it("creates a temporary contact only when the connector's exact create function is verified", async () => {
+    const browserConnection = {
+      id: 3, organisationId: 7, provider: "genie" as const, displayName: "Genie",
+      baseUrl: "https://genie.example.test", connectionMethod: "browser" as const,
+      allowedReadCapabilities: ["contacts.read"], allowedWriteCapabilities: ["contacts.write"],
+      verifiedCapabilities: ["contacts.read", "contacts.write"], scopes: [], configuration: {},
+    };
+    const created = {
+      externalId: "temporary-contact-77",
+      firstName: "Amarktai Setup",
+      lastName: "Test",
+      raw: {},
+    };
+    const adapter = {
+      createContact: vi.fn(async () => ({
+        operation: "create_contact",
+        completedAt: new Date().toISOString(),
+        correlationId: "temporary",
+        providerResult: { externalId: created.externalId },
+      })),
+      getContact: vi.fn(async () => created),
+      searchContacts: vi.fn(async () => [created]),
+    } as unknown as CrmAdapter;
+    expect(connectorSupportsTemporaryTestRecord({
+      connection: browserConnection,
+      adapter,
+      contactCreateLiveProven: false,
+    })).toBe(false);
+    expect(connectorSupportsTemporaryTestRecord({
+      connection: browserConnection,
+      adapter,
+      contactCreateLiveProven: true,
+    })).toBe(true);
+    const context = await resolveSafeTestContext({
+      record: { mode: "temporary", reference: "" },
+      operationKeys: ["note.create"],
+      connection: browserConnection,
+      adapter,
+      secret: {},
+      contactCreateLiveProven: true,
+      correlationId: "temporary-context-77",
+    });
+    expect(context).toMatchObject({
+      contactExternalId: "temporary-contact-77",
+      temporaryRecordCreated: true,
+      temporaryRecordCleanup: "manager_remove",
+    });
+    expect(adapter.createContact).toHaveBeenCalledOnce();
   });
 
   it("does not restore a repaired write without controlled proof and readback", () => {

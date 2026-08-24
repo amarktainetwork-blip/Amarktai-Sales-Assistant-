@@ -44,6 +44,7 @@ import {
 import { getGenxReadiness, runGenxAgent } from "./genx";
 import { getOrganisationGenieReadiness } from "./genie/organisationReadiness";
 import { executeApprovedCrmAction } from "./crm/executeApprovedAction";
+import { planAssistantCrmBatchInstruction } from "./crm/assistantBatchExecution";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
@@ -804,6 +805,36 @@ export const appRouter = router({
           .join("\n");
         if (!ctx.activeOrganisation)
           throw new Error("Choose an organisation before using the assistant.");
+        const batchAction = planAssistantCrmBatchInstruction(query);
+        if (batchAction) {
+          const systems = await listConnectedSystemsForUser(
+            ctx.user.id,
+            ctx.activeOrganisation.organisationId
+          );
+          const routed = routeConnectedSystemActions([batchAction], systems);
+          const workflowRunId = await createWorkflowRun({
+            userId: ctx.user.id,
+            organisationId: ctx.activeOrganisation.organisationId,
+            workflowKey: "assistant_deterministic_batch",
+            leadLabel: batchAction.targetLabel,
+            payload: { instruction: query, plannerCalls: 1 },
+            verificationSummary:
+              "The assistant interpreted this structured multi-record instruction once. The one batch proposal must be reviewed before any deterministic CRM operations run.",
+            actions: routed,
+          });
+          const routable = Boolean(
+            (routed[0].payload.crmRoute as { routable?: boolean } | undefined)
+              ?.routable
+          );
+          return {
+            content: routable
+              ? `I prepared one governed batch proposal for ${query.trim()} Review and approve proposal workflow ${workflowRunId}; execution will page the verified CRM, filter structured records deterministically, verify every change, and return one final result.`
+              : "I understood the batch request, but no connected CRM has the verified operation required to prepare it for execution. Finish that CRM function's setup first.",
+            provider: "deterministic_planner" as const,
+            usage: {},
+            creditsCharged: 0,
+          };
+        }
         const [sources, today, contactContext, operationalContext] = await Promise.all([
           searchApprovedKnowledge(ctx.user.id, ctx.activeOrganisation.organisationId, query),
           getTodayWork({ userId: ctx.user.id, organisationId: ctx.activeOrganisation.organisationId }),
