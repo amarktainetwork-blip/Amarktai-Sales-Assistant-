@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { jwtVerify, SignJWT } from "jose";
 import { COOKIE_NAME } from "@shared/const";
 import {
@@ -28,10 +28,37 @@ import { canManageOrganisation } from "../organisationAccess";
 import { getSmtpReadiness, sendEmail } from "../smtp";
 import { requireManagementHttpContext } from "../managementElevation";
 import { classifyInboundMessage } from "../communications/inboundReview";
+import { requireLocalHttpContext } from "../httpAuth";
 
 const INVITE_TTL_SECONDS = 48 * 60 * 60;
 type ManagedRole = "manager" | "salesperson" | "auditor";
 type Authenticated = { id: number };
+
+type IdentityMapping = {
+  id: number;
+  connectedSystemId: number;
+  externalUserId: string;
+  displayName: string;
+  email: string | null;
+  userId: number | null;
+};
+
+export function selfIdentityOptions(input: {
+  userId: number;
+  email?: string | null;
+  mappings: IdentityMapping[];
+}) {
+  const current = input.mappings.filter(mapping => mapping.userId === input.userId);
+  const normalizedEmail = input.email?.trim().toLowerCase();
+  const candidates = normalizedEmail
+    ? input.mappings.filter(
+        mapping =>
+          mapping.userId === null &&
+          mapping.email?.trim().toLowerCase() === normalizedEmail
+      )
+    : [];
+  return { mapped: current.length > 0, current, candidates };
+}
 
 function inviteKey() {
   const secret = process.env.SECRET_KEY || process.env.JWT_SECRET;
@@ -131,6 +158,116 @@ function sendError(res: Response, error: unknown) {
 }
 
 export function registerTeamAdminRoutes(app: Express) {
+  app.get("/api/team/crm-identity", async (req, res) => {
+    try {
+      const { userId, membership } = await requireLocalHttpContext(req);
+      const db = await getDb();
+      if (!db) throw new Error("Database connection is unavailable.");
+      const user = await getUserById(userId);
+      const mappings = await db
+        .select({
+          id: externalUserMappings.id,
+          connectedSystemId: externalUserMappings.connectedSystemId,
+          externalUserId: externalUserMappings.externalUserId,
+          displayName: externalUserMappings.displayName,
+          email: externalUserMappings.email,
+          userId: externalUserMappings.userId,
+        })
+        .from(externalUserMappings)
+        .where(
+          and(
+            eq(externalUserMappings.organisationId, membership.organisationId),
+            eq(externalUserMappings.isActive, true)
+          )
+        );
+      return res.json(selfIdentityOptions({ userId, email: user?.email, mappings }));
+    } catch (error) {
+      return sendError(res, error);
+    }
+  });
+
+  app.put("/api/team/crm-identity", async (req, res) => {
+    try {
+      const { userId, membership } = await requireLocalHttpContext(req);
+      const mappingId = Number(req.body?.mappingId);
+      if (!Number.isInteger(mappingId) || mappingId <= 0)
+        throw new Error("Choose a valid CRM identity.");
+      const db = await getDb();
+      if (!db) throw new Error("Database connection is unavailable.");
+      const user = await getUserById(userId);
+      const mapping = (
+        await db
+          .select({
+            id: externalUserMappings.id,
+            connectedSystemId: externalUserMappings.connectedSystemId,
+            externalUserId: externalUserMappings.externalUserId,
+            displayName: externalUserMappings.displayName,
+            email: externalUserMappings.email,
+            userId: externalUserMappings.userId,
+          })
+          .from(externalUserMappings)
+          .where(
+            and(
+              eq(externalUserMappings.id, mappingId),
+              eq(externalUserMappings.organisationId, membership.organisationId),
+              eq(externalUserMappings.isActive, true)
+            )
+          )
+          .limit(1)
+      )[0];
+      if (!mapping) throw new Error("That CRM identity is not available in this workspace.");
+      if (mapping.userId !== null && mapping.userId !== userId)
+        throw new Error("That CRM identity is already linked to another team member.");
+      const userEmail = user?.email?.trim().toLowerCase();
+      if (
+        mapping.userId === null &&
+        (!userEmail || mapping.email?.trim().toLowerCase() !== userEmail)
+      )
+        throw new Error("CRM identity confirmation requires an exact email match.");
+      if (mapping.userId === null)
+        await db
+          .update(externalUserMappings)
+          .set({ userId })
+          .where(
+            and(
+              eq(externalUserMappings.id, mapping.id),
+              eq(externalUserMappings.organisationId, membership.organisationId),
+              isNull(externalUserMappings.userId)
+            )
+          );
+      const confirmed = (
+        await db
+          .select({ id: externalUserMappings.id })
+          .from(externalUserMappings)
+          .where(
+            and(
+              eq(externalUserMappings.id, mapping.id),
+              eq(externalUserMappings.organisationId, membership.organisationId),
+              eq(externalUserMappings.userId, userId)
+            )
+          )
+          .limit(1)
+      )[0];
+      if (!confirmed)
+        throw new Error("That CRM identity was claimed by another team member. Refresh and choose again.");
+      await recordAudit({
+        userId,
+        organisationId: membership.organisationId,
+        eventType: "crm_salesperson_identity_confirmed",
+        entityType: "external_user_mapping",
+        entityId: String(mapping.id),
+        summary: `${mapping.displayName} confirmed their CRM salesperson identity.`,
+        metadata: {
+          connectedSystemId: mapping.connectedSystemId,
+          externalUserId: mapping.externalUserId,
+        },
+      });
+      return res.json({ ok: true, mapping: { ...mapping, userId } });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  });
+
   app.get("/api/team-admin/members", async (req, res) => {
     try {
       const { membership } = await requireManager(req);

@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   browserOperationIsAvailable,
   CORE_GENIE_TASKS,
+  humanBrowserCapabilityStatus,
+  humanizeCrmFailure,
   onboardingSellingReadiness,
 } from "../client/src/lib/onboardingReadiness";
 
@@ -27,7 +29,7 @@ describe("new-user Genie commissioning journey contract", () => {
     expect(onboarding).toContain("confirm.mutate");
     expect(onboarding).toContain("browserCredentials.username");
     expect(onboarding).toContain("browserCredentials.password");
-    expect(onboarding).toContain("Connect / test login and discover");
+    expect(onboarding).toContain("Check CRM setup");
     expect(administration).toContain('secretKind: "browser"');
     expect(administration).toContain("saveConnectionSecret");
     expect(adapter).toContain("connection.baseUrl");
@@ -46,7 +48,7 @@ describe("new-user Genie commissioning journey contract", () => {
     const readiness = onboardingSellingReadiness({
       profileSaved: true,
       knowledgeConfirmed: true,
-      readyNativeCrmCount: 0,
+      nativeSystems: [],
       browserSystem: { provider: "genie", status: "limited_permissions" },
       browserOperations: operations,
     });
@@ -68,7 +70,7 @@ describe("new-user Genie commissioning journey contract", () => {
       onboardingSellingReadiness({
         profileSaved: true,
         knowledgeConfirmed: true,
-        readyNativeCrmCount: 0,
+        nativeSystems: [],
         browserSystem: { provider: "genie", status: "limited_permissions" },
         browserOperations: partialCore,
       }).canStartSelling
@@ -77,9 +79,89 @@ describe("new-user Genie commissioning journey contract", () => {
       onboardingSellingReadiness({
         profileSaved: true,
         knowledgeConfirmed: true,
-        readyNativeCrmCount: 1,
+        nativeSystems: [
+          {
+            provider: "hubspot",
+            status: "limited_permissions",
+            verifiedCapabilities: [
+              "contacts.read",
+              "tasks.read",
+              "tasks.write",
+              "notes.write",
+              "opportunities.read",
+            ],
+          },
+        ],
       }).canStartSelling
     ).toBe(true);
+  });
+
+  it("presents browser truth and technical failures in everyday language", () => {
+    expect(
+      humanBrowserCapabilityStatus(
+        [{ key: "quote.create", status: "NOT_LEARNED" }],
+        ["quote.create"]
+      )
+    ).toBe("Needs setup");
+    expect(
+      humanBrowserCapabilityStatus(
+        [{ key: "quote.create", status: "LIVE_PROVEN" }],
+        ["quote.create"]
+      )
+    ).toBe("Ready");
+    expect(
+      humanizeCrmFailure("GENIE_LOGIN_CALIBRATION_REQUIRED: selector missing")
+    ).toBe(
+      "We reached your CRM but couldn't confidently identify its sign-in form."
+    );
+    expect(
+      humanizeCrmFailure(
+        "OPERATION_NOT_LIVE_PROVEN: 'whatsapp.send' is TEST_READY"
+      )
+    ).toBe("WhatsApp still needs to be tested.");
+  });
+
+  it("keeps technical commissioning out of the normal onboarding screen", () => {
+    const onboarding = read("../client/src/pages/Onboarding.tsx");
+    expect(onboarding).toContain("Connect the CRM you already use");
+    expect(onboarding).toContain("Connect → Discover → Test → Ready");
+    expect(onboarding).toContain("Advanced CRM Setup");
+    for (const technicalTerm of [
+      "Teach Amarktai",
+      "LIVE_PROVEN",
+      "TEST_READY",
+      "GENIE_LOGIN_CALIBRATION_REQUIRED",
+      "OPERATION_NOT_LIVE_PROVEN",
+      "browserProfile",
+      "sidecar",
+    ])
+      expect(onboarding).not.toContain(technicalTerm);
+  });
+
+  it("keeps the standard CRM choice provider-neutral and capability selection automatic", () => {
+    const onboarding = read("../client/src/pages/Onboarding.tsx");
+    for (const provider of [
+      '"genie"',
+      '"hubspot"',
+      '"salesforce"',
+      '"pipedrive"',
+      '"zoho"',
+      '"custom_browser"',
+    ])
+      expect(onboarding).toContain(provider);
+    expect(onboarding).toContain(
+      "You do not need to choose technical permissions manually."
+    );
+    expect(onboarding).not.toContain("capabilityOptions");
+    expect(onboarding).not.toContain("toggleCapability");
+  });
+
+  it("routes invited salespeople through identity confirmation without company onboarding", () => {
+    const layout = read("../client/src/components/DashboardLayout.tsx");
+    expect(layout).toContain("/api/team/crm-identity");
+    expect(layout).toContain("Confirm who you are in the CRM.");
+    expect(layout).toContain("you will not repeat company onboarding");
+    expect(layout).toContain("Your manager is finishing company setup.");
   });
 
   it("documents installation Genie values as fallback rather than a commissioning requirement", () => {

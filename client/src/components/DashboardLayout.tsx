@@ -8,12 +8,21 @@ import { startLogin } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
 import { trpc } from "@/lib/trpc";
 import { Activity, BarChart3, Bot, Building2, Cable, CalendarDays, CheckCircle2, ContactRound, Gauge, Headphones, LayoutDashboard, LibraryBig, LockKeyhole, LogOut, MailCheck, Settings2, Users, Workflow, Zap } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 
 type NavItem = { icon: typeof LayoutDashboard; label: string; path: string };
+type CrmIdentity = {
+  mapped: boolean;
+  candidates: Array<{
+    id: number;
+    displayName: string;
+    email: string | null;
+    connectedSystemId: number;
+  }>;
+};
 const primaryMenu: NavItem[] = [
   { icon: CalendarDays, label: "Today", path: "/today" },
   { icon: Zap, label: "Sell", path: "/sell" },
@@ -42,6 +51,8 @@ const teamSecondaryMenu: NavItem[] = [
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [location, navigate] = useLocation();
+  const [crmIdentity, setCrmIdentity] = useState<CrmIdentity | null>(null);
+  const [identityPending, setIdentityPending] = useState(false);
   const { loading, user, logout } = useAuth();
   const security = trpc.security.status.useQuery(undefined, { enabled: Boolean(user) });
   const organisation = trpc.organisation.current.useQuery(undefined, { enabled: Boolean(user && security.data?.verified) });
@@ -59,16 +70,62 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const onboarding = settings?.onboarding && typeof settings.onboarding === "object" ? settings.onboarding as { complete?: unknown } : null;
   const onboardingComplete = onboarding?.complete === true;
   const canManage = organisation.data?.role === "owner" || organisation.data?.role === "manager" || user?.role === "admin";
+  const requiresSalespersonIdentity =
+    organisation.data?.role === "salesperson" && !canManage && onboardingComplete;
+  useEffect(() => {
+    if (!requiresSalespersonIdentity) return;
+    fetch("/api/team/crm-identity", { credentials: "include" })
+      .then(async response => {
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || "CRM identity could not be loaded.");
+        setCrmIdentity(body as CrmIdentity);
+      })
+      .catch(error => {
+        console.error("[salesperson-onboarding] identity lookup failed", error);
+        setCrmIdentity({ mapped: false, candidates: [] });
+        toast.error("Your CRM identity could not be checked.");
+      });
+  }, [requiresSalespersonIdentity]);
+  async function confirmCrmIdentity(mappingId: number) {
+    try {
+      setIdentityPending(true);
+      const response = await fetch("/api/team/crm-identity", {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mappingId }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "CRM identity could not be confirmed.");
+      setCrmIdentity({ mapped: true, candidates: [] });
+      toast.success("CRM identity confirmed. Your sales workspace is ready.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "CRM identity could not be confirmed.");
+    } finally {
+      setIdentityPending(false);
+    }
+  }
   const secondaryMenu = workspaceMode === "team" && canManage ? teamSecondaryMenu : individualSecondaryMenu;
   if (loading || security.isLoading) return <DashboardLayoutSkeleton />;
   if (!user) return <SignedOut />;
   if (!security.data?.verified) return <SecondFactorGate hasEmail={Boolean(security.data?.hasEmail)} smtpReady={Boolean(security.data?.smtpReady)} />;
+  if (organisation.isLoading) return <DashboardLayoutSkeleton />;
   if (organisation.isError && organisations.data && organisations.data.length > 1) return <OrganisationSelectionGate organisations={organisations.data} pending={switchOrganisation.isPending} onSelect={organisationId => switchOrganisation.mutate({ organisationId })} />;
+  if ((!workspaceMode || !onboardingComplete) && !canManage) return <WorkspaceSetupPending />;
   if ((!workspaceMode || !onboardingComplete) && location !== "/company-setup") return <SetupGate onContinue={() => navigate("/company-setup")} />;
+  if (requiresSalespersonIdentity && !crmIdentity) return <DashboardLayoutSkeleton />;
+  if (requiresSalespersonIdentity && crmIdentity && !crmIdentity.mapped)
+    return <SalespersonIdentityGate candidates={crmIdentity.candidates} pending={identityPending} onConfirm={confirmCrmIdentity} />;
   return <SidebarProvider><Sidebar className="border-r border-white/10 bg-[#08172F] text-[#EAF1FC]"><SidebarHeader className="h-[108px] justify-center border-b border-white/10 px-5"><BrandMark/><p className="mt-3 text-[9px] font-black uppercase tracking-[.16em] text-[#809CC6]">Sales operating layer</p></SidebarHeader><SidebarContent className="px-3 py-6"><OrganisationSwitcher currentName={organisation.data?.organisationName} organisations={organisations.data ?? []} pending={switchOrganisation.isPending} onSelect={organisationId => switchOrganisation.mutate({ organisationId })}/><p className="px-3 pb-3 pt-6 text-[10px] font-black uppercase tracking-[.16em] text-[#7896C1]">Sell</p><SidebarMenu>{primaryMenu.map(item => <AppNavItem key={item.path} {...item}/>)}</SidebarMenu><p className="px-3 pb-3 pt-7 text-[10px] font-black uppercase tracking-[.16em] text-[#7896C1]">Workspace</p><SidebarMenu>{secondaryMenu.map(item => <AppNavItem key={item.path} {...item}/>)}</SidebarMenu></SidebarContent><SidebarFooter className="border-t border-white/10 p-3"><DropdownMenu><DropdownMenuTrigger asChild><button className="flex w-full items-center gap-3 rounded-xl p-2 text-left transition hover:bg-white/[.06]"><Avatar className="size-9 border border-white/15 bg-[#153B7A]"><AvatarFallback className="bg-[#153B7A] text-xs font-bold text-[#BBD2FF]">{user.name?.slice(0, 1).toUpperCase() ?? "A"}</AvatarFallback></Avatar><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-[#EDF4FF]">{user.name || "Amarktai user"}</p><p className="truncate text-xs text-[#8EA8D0]">{user.email || "Authenticated workspace"}</p></div></button></DropdownMenuTrigger><DropdownMenuContent align="end" className="w-52"><DropdownMenuItem onClick={logout} className="cursor-pointer text-destructive focus:text-destructive"><LogOut className="mr-2 size-4"/>Sign out</DropdownMenuItem></DropdownMenuContent></DropdownMenu></SidebarFooter></Sidebar><SidebarInset className="bg-[#071326]"><AppTopbar/><main className="min-h-[calc(100vh-70px)] p-4 sm:p-6 lg:p-8">{children}</main></SidebarInset></SidebarProvider>;
 }
 
-function SetupGate({ onContinue }: { onContinue: () => void }) { return <div className="grid min-h-screen place-items-center bg-[#071326] p-5 text-[#F5F7FB]"><div className="w-full max-w-xl rounded-[2rem] border border-white/10 bg-[#0C1E3E] p-8 shadow-[0_28px_70px_rgba(0,0,0,.4)] sm:p-10"><BrandMark/><div className="mt-12 grid size-12 place-items-center rounded-2xl bg-[#153B7A] text-[#A9C7FF]"><Settings2 size={23}/></div><p className="mt-7 text-xs font-black uppercase tracking-[.16em] text-[#8CB7FF]">Complete setup</p><h1 className="mt-3 font-display text-4xl font-bold tracking-[-.065em]">Set up, connect, learn, test—then sell.</h1><p className="mt-4 text-sm leading-6 text-[#A9BFDF]">Choose an individual or company experience, confirm business knowledge, connect the CRM, and pass the friendly readiness check. Your progress is saved.</p><Button onClick={onContinue} className="mt-8 h-12 w-full rounded-xl bg-[#1B64F2] font-bold hover:bg-[#2B76FF]">Continue guided setup</Button></div></div>; }
+function SetupGate({ onContinue }: { onContinue: () => void }) { return <div className="grid min-h-screen place-items-center bg-[#071326] p-5 text-[#F5F7FB]"><div className="w-full max-w-xl rounded-[2rem] border border-white/10 bg-[#0C1E3E] p-8 shadow-[0_28px_70px_rgba(0,0,0,.4)] sm:p-10"><BrandMark/><div className="mt-12 grid size-12 place-items-center rounded-2xl bg-[#153B7A] text-[#A9C7FF]"><Settings2 size={23}/></div><p className="mt-7 text-xs font-black uppercase tracking-[.16em] text-[#8CB7FF]">Complete setup</p><h1 className="mt-3 font-display text-4xl font-bold tracking-[-.065em]">Connect, discover, test—then sell.</h1><p className="mt-4 text-sm leading-6 text-[#A9BFDF]">Choose an individual or company experience, confirm business knowledge, connect the CRM, and pass the friendly readiness check. Your progress is saved.</p><Button onClick={onContinue} className="mt-8 h-12 w-full rounded-xl bg-[#1B64F2] font-bold hover:bg-[#2B76FF]">Continue guided setup</Button></div></div>; }
+
+function WorkspaceSetupPending() { return <div className="grid min-h-screen place-items-center bg-[#071326] p-5 text-[#F5F7FB]"><div className="w-full max-w-xl rounded-[2rem] border border-white/10 bg-[#0C1E3E] p-8 shadow-[0_28px_70px_rgba(0,0,0,.4)] sm:p-10"><BrandMark/><div className="mt-12 grid size-12 place-items-center rounded-2xl bg-[#153B7A] text-[#A9C7FF]"><Building2 size={23}/></div><p className="mt-7 text-xs font-black uppercase tracking-[.16em] text-[#8CB7FF]">Team workspace</p><h1 className="mt-3 font-display text-4xl font-bold tracking-[-.065em]">Your manager is finishing company setup.</h1><p className="mt-4 text-sm leading-6 text-[#A9BFDF]">You will inherit the approved knowledge, CRM connection, available functions and policies. You will not need to scan the website, reconnect the CRM or repeat company-wide tests.</p></div></div>; }
+
+function SalespersonIdentityGate({ candidates, pending, onConfirm }: { candidates: CrmIdentity["candidates"]; pending: boolean; onConfirm: (mappingId: number) => void }) {
+  return <div className="grid min-h-screen place-items-center bg-[#071326] p-5 text-[#F5F7FB]"><div className="w-full max-w-xl rounded-[2rem] border border-white/10 bg-[#0C1E3E] p-8 shadow-[0_28px_70px_rgba(0,0,0,.4)] sm:p-10"><BrandMark/><div className="mt-12 grid size-12 place-items-center rounded-2xl bg-[#153B7A] text-[#A9C7FF]"><ContactRound size={23}/></div><p className="mt-7 text-xs font-black uppercase tracking-[.16em] text-[#8CB7FF]">Your sales identity</p><h1 className="mt-3 font-display text-4xl font-bold tracking-[-.065em]">Confirm who you are in the CRM.</h1><p className="mt-4 text-sm leading-6 text-[#A9BFDF]">Your company knowledge, CRM connection and policies are already set up. Confirm your matching salesperson identity; you will not repeat company onboarding.</p>{candidates.length ? <div className="mt-7 grid gap-3">{candidates.map(candidate => <button key={candidate.id} disabled={pending} onClick={() => onConfirm(candidate.id)} className="rounded-xl border border-white/10 bg-white/[.04] p-4 text-left transition hover:border-[#4E8BFF] hover:bg-[#153B7A]"><p className="font-bold text-white">We found {candidate.displayName} in your CRM. Is this you?</p><p className="mt-1 text-xs text-[#9DB3D5]">{candidate.email || "Matched CRM salesperson"}</p><span className="mt-3 inline-block text-sm font-bold text-[#8CB7FF]">Yes, that's me</span></button>)}</div> : <p className="mt-7 rounded-xl border border-amber-300/20 bg-amber-400/[.07] p-4 text-sm leading-6 text-amber-100">No exact CRM identity match is available yet. Ask your workspace manager to link your CRM salesperson record; you do not need to reconnect the CRM or repeat company setup.</p>}</div></div>;
+}
 
 function SignedOut() { return <div className="grid min-h-screen place-items-center bg-[#071326] p-5 text-[#F5F7FB]"><div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-[#0C1E3E] p-8 shadow-[0_28px_70px_rgba(0,0,0,.4)]"><BrandMark/><div className="mb-5 mt-11 grid size-12 place-items-center rounded-2xl bg-[#153B7A] text-[#A9C7FF]"><Bot size={23}/></div><p className="mb-2 text-xs font-black uppercase tracking-[.16em] text-[#8CB7FF]">Protected operations</p><h1 className="font-display text-4xl font-bold tracking-[-.065em]">A clear view of the sales day.</h1><p className="mt-4 leading-6 text-[#A9BFDF]">Sign in to open the operations dashboard, prepare governed work, review decisions and connect the team’s CRM.</p><Button onClick={() => startLogin()} className="mt-8 h-12 w-full rounded-xl bg-[#1B64F2] font-bold text-white hover:bg-[#2B76FF]">Open secure access</Button></div></div>; }
 

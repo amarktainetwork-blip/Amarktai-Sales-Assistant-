@@ -1,12 +1,16 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import ManagementElevation from "@/components/ManagementElevation";
 import WorkflowFeedback, { type WorkflowFeedbackState } from "@/components/WorkflowFeedback";
-import { BrowserOperationMatrix, LoginCalibration } from "./ConnectionsV2";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { onboardingSellingReadiness } from "@/lib/onboardingReadiness";
+import {
+  CRM_CAPABILITY_PRESENTATION,
+  humanBrowserCapabilityStatus,
+  humanizeCrmFailure,
+  onboardingSellingReadiness,
+} from "@/lib/onboardingReadiness";
 import {
   BadgeCheck,
   Building2,
@@ -69,30 +73,11 @@ async function jsonRequest(url: string, init?: RequestInit) {
   return body;
 }
 
-const capabilityOptions: Array<{ value: CrmCapability; label: string }> = [
-  { value: "contacts.read", label: "Read contacts" },
-  { value: "contacts.write", label: "Update contacts" },
-  { value: "companies.read", label: "Read companies" },
-  { value: "companies.write", label: "Update companies" },
-  { value: "opportunities.read", label: "Read opportunities" },
-  { value: "opportunities.write", label: "Update opportunities" },
-  { value: "tasks.read", label: "Read tasks" },
-  { value: "tasks.write", label: "Manage tasks" },
-  { value: "activities.read", label: "Read activities" },
-  { value: "activities.write", label: "Log activities" },
-  { value: "notes.read", label: "Read notes" },
-  { value: "notes.write", label: "Write notes" },
-  { value: "owners.read", label: "Read owners" },
-  { value: "pipelines.read", label: "Read pipelines" },
-  { value: "email.send", label: "Send email" },
-  { value: "sms.send", label: "Send SMS" },
-  { value: "whatsapp.send", label: "Send WhatsApp" },
-  { value: "sequences.apply", label: "Apply sequences" },
-];
 const defaultCapabilities: CrmCapability[] = [
   "contacts.read",
   "contacts.write",
   "companies.read",
+  "companies.write",
   "opportunities.read",
   "opportunities.write",
   "tasks.read",
@@ -103,9 +88,13 @@ const defaultCapabilities: CrmCapability[] = [
   "notes.write",
   "owners.read",
   "pipelines.read",
+  "email.send",
+  "sms.send",
+  "whatsapp.send",
+  "sequences.apply",
 ];
 const providerLabels: Record<Provider, string> = {
-  genie: "Entrepreneurs Circle GenieAI",
+  genie: "Genie",
   hubspot: "HubSpot",
   salesforce: "Salesforce",
   pipedrive: "Pipedrive",
@@ -116,7 +105,7 @@ const steps = [
   "Business",
   "Learn business",
   "Knowledge review",
-  "Connect CRM & discover communications",
+  "Connect CRM",
   "Safe automation rules",
   "Test & start selling",
 ];
@@ -167,6 +156,9 @@ export default function Onboarding() {
   const utils = trpc.useUtils();
   const organisation = trpc.organisation.current.useQuery();
   const organisationId = organisation.data?.organisationId;
+  const canManage =
+    organisation.data?.role === "owner" ||
+    organisation.data?.role === "manager";
   const setup = trpc.companySetup.get.useQuery();
   const systems = trpc.connectedSystems.list.useQuery(
     { organisationId: organisationId ?? 0 },
@@ -209,16 +201,6 @@ export default function Onboarding() {
   const [browserConnectionId, setBrowserConnectionId] = useState<number | null>(
     null
   );
-  const [sidecarToken, setSidecarToken] = useState("");
-  const [businessMapping, setBusinessMapping] = useState({
-    owners: "",
-    pipelinesAndStages: "",
-    leadStatuses: "",
-    taskMeanings: "",
-    customFields: "",
-    permittedCommunicationChannels: "email",
-    automationMode: "review",
-  });
   const [playbook, setPlaybook] = useState({
     title: "",
     trigger: "",
@@ -337,10 +319,33 @@ export default function Onboarding() {
         setBrowserCredentials(current => ({ ...current, password: "" }));
         setBrowserConnectionId(id);
         await systems.refetch();
-        toast.success(
-          "Encrypted Genie sign-in saved. Continue discovery, mapping and Teach Amarktai here."
-        );
-        setFeedback({ kind: "success", title: "Genie sign-in saved securely", detail: "Continue with discovery and the friendly readiness test. Credentials are encrypted and never sent to the AI." });
+        setFeedback({ kind: "loading", title: "Setting up your CRM", detail: "Secure sign-in was saved. Amarktai is now checking the connection and every function it can safely verify." });
+        try {
+          const result = await jsonRequest(
+            `/api/connected-system-admin/${id}/verify`,
+            { method: "POST", body: "{}" }
+          );
+          await systems.refetch();
+          const connected =
+            result.status === "ready" ||
+            result.status === "limited_permissions";
+          const detail = connected
+            ? "CRM sign-in was verified. Ready functions are available now; optional functions that still need setup remain safely unavailable."
+            : humanizeCrmFailure(String(result.summary || ""));
+          setFeedback(connected
+            ? { kind: "success", title: "CRM connection verified", detail }
+            : { kind: "error", title: "Fix connection", detail });
+          toast[connected ? "success" : "warning"](detail);
+        } catch (error) {
+          console.error("[crm-onboarding] automatic setup failed", error);
+          setFeedback({
+            kind: "error",
+            title: "CRM setup needs attention",
+            detail: humanizeCrmFailure(
+              error instanceof Error ? error.message : String(error)
+            ),
+          });
+        }
         return;
       }
       await systems.refetch();
@@ -365,26 +370,28 @@ export default function Onboarding() {
     onError: error => toast.error(error.message),
   });
   const verifyBrowser = trpc.connectedSystems.verify.useMutation({
-    onMutate: () => setFeedback({ kind: "loading", title: "Testing the CRM connection", detail: "Amarktai is checking sign-in and the currently proven CRM functions." }),
+    onMutate: () => setFeedback({ kind: "loading", title: "Setting up your CRM", detail: "Amarktai is checking sign-in, customer context, tasks, notes, opportunities and any additional functions it can safely verify." }),
     onSuccess: result => {
       systems.refetch();
-      toast[result.status === "ready" ? "success" : "warning"](result.summary);
-      setFeedback(result.status === "ready" ? { kind: "success", title: "CRM connection is ready", detail: result.summary } : { kind: "error", title: "CRM needs attention", detail: `${result.summary} Reconnect or re-teach only the affected task, then retry.`, actionLabel: "Retry test", onAction: () => browserConnectionId && verifyBrowser.mutate({ organisationId: organisationId ?? 0, connectedSystemId: browserConnectionId }) });
+      const connected = result.status === "ready" || result.status === "limited_permissions";
+      const detail = connected
+        ? "CRM sign-in was verified. Ready functions are available now; optional functions that still need setup remain safely unavailable."
+        : humanizeCrmFailure(result.summary);
+      toast[connected ? "success" : "warning"](detail);
+      setFeedback(connected ? { kind: "success", title: "CRM connection verified", detail } : { kind: "error", title: "Fix connection", detail, actionLabel: "Check again", onAction: () => browserConnectionId && verifyBrowser.mutate({ organisationId: organisationId ?? 0, connectedSystemId: browserConnectionId }) });
     },
-    onError: error => setFeedback({ kind: "error", title: "CRM test could not finish", detail: `Selling remains protected from unproven actions. ${error.message}`, actionLabel: "Retry test", onAction: () => browserConnectionId && verifyBrowser.mutate({ organisationId: organisationId ?? 0, connectedSystemId: browserConnectionId }) }),
-  });
-  const issueSidecar = trpc.sidecar.issueSession.useMutation({
-    onSuccess: result => {
-      setSidecarToken(result.token);
-      toast.success("Sidecar session issued for guided training.");
+    onError: error => {
+      console.error("[crm-onboarding] verification failed", error);
+      setFeedback({ kind: "error", title: "CRM setup could not finish", detail: humanizeCrmFailure(error.message), actionLabel: "Check again", onAction: () => browserConnectionId && verifyBrowser.mutate({ organisationId: organisationId ?? 0, connectedSystemId: browserConnectionId }) });
     },
-    onError: error => toast.error(error.message),
   });
+  const [safeTestMode, setSafeTestMode] = useState<"existing" | "temporary">(
+    "existing"
+  );
+  const [safeTestCustomer, setSafeTestCustomer] = useState("");
   const profileSaved = Boolean(setup.data?.profile);
   const knowledgeConfirmed =
     setup.data?.profile?.discoveryStatus === "confirmed";
-  const readySystems =
-    systems.data?.filter(system => system.status === "ready") ?? [];
   const browserSystem = systems.data?.find(
     system => system.id === browserConnectionId
   );
@@ -395,7 +402,7 @@ export default function Onboarding() {
   const sellingReadiness = onboardingSellingReadiness({
     profileSaved,
     knowledgeConfirmed,
-    readyNativeCrmCount: readySystems.length,
+    nativeSystems: systems.data?.filter(system => system.connectionMethod === "oauth"),
     browserSystem,
     browserOperations: browserReadiness.data?.operations,
   });
@@ -407,14 +414,6 @@ export default function Onboarding() {
       displayName: providerLabels[provider],
       baseUrl: "",
       connectionMethod: isBrowser(provider) ? "browser" : "oauth",
-    }));
-  }
-  function toggleCapability(capability: CrmCapability) {
-    setCrm(current => ({
-      ...current,
-      capabilities: current.capabilities.includes(capability)
-        ? current.capabilities.filter(item => item !== capability)
-        : [...current.capabilities, capability],
     }));
   }
   function registerConnection() {
@@ -436,39 +435,30 @@ export default function Onboarding() {
     });
   }
 
-  async function saveBusinessMapping() {
-    if (!browserConnectionId) return;
-    const lines = (value: string) =>
-      value
-        .split("\n")
-        .map(item => item.trim())
-        .filter(Boolean);
-    try {
-      await jsonRequest(
-        `/api/connected-system-admin/${browserConnectionId}/business-mapping`,
-        {
-          method: "PUT",
-          body: JSON.stringify({
-            owners: lines(businessMapping.owners),
-            pipelinesAndStages: lines(businessMapping.pipelinesAndStages),
-            leadStatuses: lines(businessMapping.leadStatuses),
-            taskMeanings: lines(businessMapping.taskMeanings),
-            customFields: lines(businessMapping.customFields),
-            permittedCommunicationChannels: lines(
-              businessMapping.permittedCommunicationChannels
-            ),
-            automationMode: businessMapping.automationMode,
-          }),
-        }
-      );
-      await systems.refetch();
-      toast.success("CRM mappings and governed automation choices saved.");
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Could not save CRM mappings."
-      );
-    }
-  }
+  if (organisation.data && !canManage)
+    return (
+      <DashboardLayout>
+        <div className="mx-auto max-w-3xl text-[#EEF5FF]">
+          <Card>
+            <p className="text-[10px] font-black uppercase tracking-[.16em] text-[#83AEFF]">
+              Your team workspace
+            </p>
+            <h1 className="mt-3 font-display text-4xl font-bold tracking-[-.06em] text-white">
+              Your company setup is already here.
+            </h1>
+            <p className="mt-4 text-sm leading-6 text-[#B7CAE7]">
+              You inherit the approved business knowledge, CRM connection,
+              available functions, mappings and workspace policies. You do not
+              need to scan the website, reconnect the CRM or repeat company-wide
+              tests.
+            </p>
+            <Button onClick={() => navigate("/today")} className="mt-6 bg-emerald-600 hover:bg-emerald-500">
+              Start selling
+            </Button>
+          </Card>
+        </div>
+      </DashboardLayout>
+    );
 
   return (
     <DashboardLayout>
@@ -486,6 +476,7 @@ export default function Onboarding() {
             available.
           </p>
         </Card>
+        {canManage && <ManagementElevation />}
         <WorkflowFeedback state={feedback} />
         {!workspaceMode && (
           <Card>
@@ -536,7 +527,6 @@ export default function Onboarding() {
           ))}
         </nav>
 
-        <ManagementElevation />
         {!workspaceMode ? null : <>
         {step === 1 && (
           <Card>
@@ -694,32 +684,38 @@ export default function Onboarding() {
             <StepHeading
               icon={Network}
               number="04"
-              title="Connect and verify your sales systems"
-              text="Choose a native OAuth CRM or complete the full authorised Genie connection, training, mapping and readiness flow here."
+              title="Connect the CRM you already use"
+              text="Choose your CRM and sign in. Amarktai automatically uses the correct secure connection, discovery and testing flow."
             />
-            <div className="mt-6 grid gap-4 sm:grid-cols-2">
-              <select
-                value={crm.provider}
-                onChange={event =>
-                  selectProvider(event.target.value as Provider)
-                }
-                className="h-11 rounded-xl border border-white/15 bg-[#08172F] px-3 text-white"
-              >
-                <option value="hubspot">HubSpot</option>
-                <option value="salesforce">Salesforce</option>
-                <option value="pipedrive">Pipedrive</option>
-                <option value="zoho">Zoho CRM</option>
-                <option value="genie">Entrepreneurs Circle GenieAI</option>
-                <option value="custom_browser">Other CRM (browser)</option>
-              </select>
-              <Input
-                value={crm.displayName}
-                onChange={event =>
-                  setCrm({ ...crm, displayName: event.target.value })
-                }
-                placeholder="Connection display name"
-                className="border-white/15 bg-[#08172F] text-white"
-              />
+            <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {(
+                [
+                  "genie",
+                  "hubspot",
+                  "salesforce",
+                  "pipedrive",
+                  "zoho",
+                  "custom_browser",
+                ] as Provider[]
+              ).map(provider => (
+                <button
+                  type="button"
+                  key={provider}
+                  onClick={() => selectProvider(provider)}
+                  className={`rounded-2xl border p-4 text-left transition ${crm.provider === provider ? "border-[#4E8BFF] bg-[#153B7A]" : "border-white/10 bg-[#08172F] hover:border-white/25"}`}
+                >
+                  <p className="font-display text-xl font-bold text-white">
+                    {providerLabels[provider]}
+                  </p>
+                  <p className="mt-1 text-xs text-[#A9BFDF]">
+                    {isBrowser(provider)
+                      ? "Secure browser connection"
+                      : "Secure provider sign-in"}
+                  </p>
+                </button>
+              ))}
+            </div>
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
               {isBrowser(crm.provider) && (
                 <>
                   <Input
@@ -729,6 +725,7 @@ export default function Onboarding() {
                     }
                     placeholder="https://crm.company.example/login"
                     className="border-white/15 bg-[#08172F] text-white sm:col-span-2"
+                    aria-label="CRM login page"
                   />
                   <Input
                     value={browserCredentials.username}
@@ -738,7 +735,7 @@ export default function Onboarding() {
                         username: event.target.value,
                       })
                     }
-                    placeholder="CRM username / email"
+                    placeholder="Username or email"
                     autoComplete="off"
                     className="border-white/15 bg-[#08172F] text-white"
                   />
@@ -751,25 +748,17 @@ export default function Onboarding() {
                         password: event.target.value,
                       })
                     }
-                    placeholder="CRM password (encrypted at rest)"
+                    placeholder="Password"
                     autoComplete="new-password"
                     className="border-white/15 bg-[#08172F] text-white"
                   />
                 </>
               )}
             </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {capabilityOptions.map(option => (
-                <button
-                  type="button"
-                  key={option.value}
-                  onClick={() => toggleCapability(option.value)}
-                  className={`rounded-full border px-3 py-1.5 text-xs ${crm.capabilities.includes(option.value) ? "border-[#4E8BFF] bg-[#153B7A] text-white" : "border-white/10 text-[#A9BFDF]"}`}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
+            <p className="mt-4 text-sm leading-6 text-[#A9BFDF]">
+              Amarktai will discover the functions permitted by this account.
+              You do not need to choose technical permissions manually.
+            </p>
             <Button
               disabled={
                 !organisationId ||
@@ -786,146 +775,108 @@ export default function Onboarding() {
               className="mt-5 bg-[#1B64F2]"
             >
               <Plus className="mr-2 size-4" />
-              Register and authenticate CRM
+              {isBrowser(crm.provider) ? "Connect" : "Sign in securely"}
             </Button>
             {browserSystem && organisationId && (
               <section className="mt-6 space-y-5 rounded-2xl border border-[#4E8BFF]/35 bg-[#071326] p-5">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#83AEFF]">
-                    Genie commissioning · one continuous flow
+                    Connect → Discover → Test → Ready
                   </p>
                   <h3 className="mt-1 font-display text-2xl font-bold text-white">
-                    Connect, discover, map, teach and prove.
+                    Setting up your CRM
                   </h3>
                   <p className="mt-2 text-xs leading-5 text-[#A9BFDF]">
-                    The login URL and hostname are authorised, credentials are
-                    encrypted, and every operation remains non-live until
-                    controlled replay verifies its result.
+                    Amarktai checks sign-in and discovers CRM functions automatically.
+                    A function is shown as Ready only after the existing safe test
+                    confirms it; optional functions can remain unavailable without
+                    blocking your core sales work.
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    onClick={() =>
-                      verifyBrowser.mutate({
-                        organisationId,
-                        connectedSystemId: browserSystem.id,
-                      })
-                    }
-                    disabled={verifyBrowser.isPending}
-                    className="bg-[#1B64F2]"
-                  >
-                    Connect / test login and discover
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => issueSidecar.mutate({ organisationId })}
-                    disabled={issueSidecar.isPending}
-                    className="border-white/15 bg-white/5 text-white"
-                  >
-                    Issue Teach Amarktai session
-                  </Button>
-                </div>
-                <LoginCalibration
-                  organisationId={organisationId}
-                  systemId={browserSystem.id}
-                  required={feedback?.detail.includes("GENIE_LOGIN_CALIBRATION_REQUIRED")}
-                  onSaved={() => verifyBrowser.mutate({
-                    organisationId,
-                    connectedSystemId: browserSystem.id,
+                <Button
+                  onClick={() =>
+                    verifyBrowser.mutate({
+                      organisationId,
+                      connectedSystemId: browserSystem.id,
+                    })
+                  }
+                  disabled={verifyBrowser.isPending}
+                  className="bg-[#1B64F2]"
+                >
+                  {verifyBrowser.isPending ? "Checking CRM…" : "Check CRM setup"}
+                </Button>
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {CRM_CAPABILITY_PRESENTATION.map(capability => {
+                    const status = humanBrowserCapabilityStatus(
+                      browserReadiness.data?.operations,
+                      capability.keys
+                    );
+                    return (
+                      <div key={capability.label} className="rounded-xl border border-white/10 bg-[#08172F] p-3">
+                        <p className="text-sm font-bold text-white">{capability.label}</p>
+                        <p className={`mt-1 text-xs font-bold ${status === "Ready" ? "text-emerald-200" : status === "Failed" ? "text-rose-200" : "text-amber-100"}`}>
+                          {status}
+                        </p>
+                      </div>
+                    );
                   })}
-                />
-                {sidecarToken && (
-                  <div className="rounded-xl border border-amber-300/20 bg-amber-400/[.06] p-3">
-                    <p className="text-xs font-bold text-amber-100">
-                      Copy once into the Sidecar; it expires and is
-                      organisation-scoped.
+                </div>
+                {!sellingReadiness.coreGenieReady && (
+                  <div className="rounded-xl border border-amber-300/20 bg-amber-400/[.06] p-4">
+                    <h4 className="font-bold text-amber-100">Complete your CRM setup</h4>
+                    <p className="mt-2 text-xs leading-5 text-[#D7C9A4]">
+                      To make sure Amarktai can update your CRM safely, choose a
+                      test customer. No message or CRM change is made from this
+                      screen; a manager must still confirm each controlled test.
                     </p>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      <label className="flex items-center gap-2 text-xs text-white">
+                        <input type="radio" checked={safeTestMode === "existing"} onChange={() => setSafeTestMode("existing")} />
+                        Use an existing test customer
+                      </label>
+                      <label className="flex items-center gap-2 text-xs text-white">
+                        <input type="radio" checked={safeTestMode === "temporary"} onChange={() => setSafeTestMode("temporary")} />
+                        Use or create a temporary setup record
+                      </label>
+                    </div>
                     <Input
-                      readOnly
-                      value={sidecarToken}
-                      className="mt-2 border-white/15 bg-[#08172F] font-mono text-xs text-white"
+                      value={safeTestCustomer}
+                      onChange={event => setSafeTestCustomer(event.target.value)}
+                      placeholder="Test customer name or CRM reference"
+                      className="mt-3 border-white/15 bg-[#071326] text-white"
                     />
+                    {canManage && (
+                      <Button
+                        variant="outline"
+                        disabled={!safeTestCustomer.trim()}
+                        onClick={() => {
+                          sessionStorage.setItem(
+                            `amarktai-safe-test-${browserSystem.id}`,
+                            JSON.stringify({ mode: safeTestMode, reference: safeTestCustomer.trim() })
+                          );
+                          navigate("/connections");
+                        }}
+                        className="mt-3 border-white/15 bg-white/5 text-white"
+                      >
+                        Continue safe setup
+                      </Button>
+                    )}
                   </div>
                 )}
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[.12em] text-[#83AEFF]">
-                    Map CRM business meaning
-                  </p>
-                  <p className="mt-1 text-xs text-[#91A9CF]">
-                    One item per line. These labels remain organisation-specific
-                    and do not become global Genie assumptions.
-                  </p>
-                  <div className="mt-3 grid gap-3 md:grid-cols-2">
-                    {(
-                      [
-                        ["owners", "CRM owners → Amarktai users"],
-                        ["pipelinesAndStages", "Pipelines and stages"],
-                        ["leadStatuses", "Lead statuses"],
-                        ["taskMeanings", "Task / Manual Action meanings"],
-                        ["customFields", "Key custom fields"],
-                        [
-                          "permittedCommunicationChannels",
-                          "Permitted channels (email, sms, whatsapp)",
-                        ],
-                      ] as const
-                    ).map(([key, label]) => (
-                      <label
-                        key={key}
-                        className="grid gap-1 text-xs font-bold text-[#AFC3E2]"
-                      >
-                        {label}
-                        <Textarea
-                          value={businessMapping[key]}
-                          onChange={event =>
-                            setBusinessMapping({
-                              ...businessMapping,
-                              [key]: event.target.value,
-                            })
-                          }
-                          rows={2}
-                          className="border-white/15 bg-[#08172F] text-white"
-                        />
-                      </label>
-                    ))}
-                    <label className="grid gap-1 text-xs font-bold text-[#AFC3E2]">
-                      Automation policy
-                      <select
-                        value={businessMapping.automationMode}
-                        onChange={event =>
-                          setBusinessMapping({
-                            ...businessMapping,
-                            automationMode: event.target.value,
-                          })
-                        }
-                        className="h-10 rounded-xl border border-white/15 bg-[#08172F] px-3 text-white"
-                      >
-                        <option value="advise">Advise only</option>
-                        <option value="review">Review required</option>
-                        <option value="auto_preapproved">
-                          Auto preapproved safe actions
-                        </option>
-                      </select>
-                    </label>
-                  </div>
-                  <Button
-                    onClick={() => void saveBusinessMapping()}
-                    className="mt-3 bg-[#1B64F2]"
-                  >
-                    Save CRM mapping
-                  </Button>
-                </div>
-                <BrowserOperationMatrix
-                  organisationId={organisationId}
-                  experience="guided"
-                  system={{
-                    id: browserSystem.id,
-                    provider: browserSystem.provider,
-                    configuration: browserSystem.configuration as Record<
-                      string,
-                      unknown
-                    >,
-                  }}
-                />
+                {canManage && (
+                  <details className="rounded-xl border border-white/10 bg-[#08172F] p-4">
+                    <summary className="cursor-pointer text-sm font-bold text-[#A9C7FF]">
+                      Advanced CRM Setup
+                    </summary>
+                    <p className="mt-2 text-xs leading-5 text-[#91A9CF]">
+                      Manager-only calibration, diagnostics and controlled setup
+                      tools remain available on the Connections page.
+                    </p>
+                    <Button variant="outline" onClick={() => navigate("/connections")} className="mt-3 border-white/15 bg-white/5 text-white">
+                      Open Advanced CRM Setup
+                    </Button>
+                  </details>
+                )}
                 <div className="flex justify-end">
                   <Button
                     onClick={() => setStep(5)}
@@ -935,6 +886,26 @@ export default function Onboarding() {
                   </Button>
                 </div>
               </section>
+            )}
+            {systems.data?.some(system => system.connectionMethod === "oauth") && (
+              <div className="mt-6 space-y-2 rounded-xl border border-white/10 bg-[#08172F] p-4">
+                <p className="text-sm font-bold text-white">Connected CRM</p>
+                {systems.data
+                  .filter(system => system.connectionMethod === "oauth")
+                  .map(system => {
+                    const checked = ["ready", "limited_permissions"].includes(
+                      system.status
+                    );
+                    return (
+                      <div key={system.id} className="flex items-center justify-between gap-3 rounded-lg bg-black/15 px-3 py-2">
+                        <span className="text-sm text-[#DCE7F8]">{system.displayName}</span>
+                        <span className={`text-xs font-bold ${checked ? "text-emerald-200" : "text-amber-100"}`}>
+                          {checked ? "Connected and checked" : "Needs setup"}
+                        </span>
+                      </div>
+                    );
+                  })}
+              </div>
             )}
             <div className="mt-6 rounded-xl border border-white/10 bg-[#08172F] p-4">
               <div className="flex items-center justify-between gap-3">
@@ -1022,7 +993,7 @@ export default function Onboarding() {
                 ["Profile", profileSaved],
                 ["Knowledge", knowledgeConfirmed],
                 ["Verified CRM", sellingReadiness.crmVerified],
-                ["Core Genie tasks", sellingReadiness.coreGenieReady],
+                ["Core selling functions", sellingReadiness.coreGenieReady],
               ].map(([label, ready]) => (
                 <div
                   key={String(label)}
@@ -1038,9 +1009,9 @@ export default function Onboarding() {
               ))}
             </div>
             <p className="mt-5 text-sm leading-6 text-[#A9BFDF]">
-              If a Genie task needs attention, return to Connections and show only
-              that task again. Authorised write tests must use the client's dummy
-              record and must confirm the changed state before selling begins.
+              You can start selling when the core sales loop is verified. Optional
+              functions such as calling, messaging, quotes and appointments remain
+              individually unavailable until their own safe test succeeds.
             </p>
             <Button
               disabled={!sellingReadiness.canStartSelling || onboardingProgress.isPending}

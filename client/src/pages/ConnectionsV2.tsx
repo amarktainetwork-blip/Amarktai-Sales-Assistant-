@@ -4,6 +4,7 @@ import WorkflowFeedback, { type WorkflowFeedbackState } from "@/components/Workf
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
+import { humanizeCrmFailure } from "@/lib/onboardingReadiness";
 import {
   Cable,
   CheckCircle2,
@@ -159,7 +160,7 @@ export default function ConnectionsV2() {
         window.location.assign(result.authorizationUrl);
       } else
         toast.success(
-          "CRM details saved. Add secure sign-in, then Teach Amarktai and prove each operation."
+          "CRM details saved. Add the secure sign-in, then check CRM setup."
         );
       setFeedback({ kind: "success", title: "CRM connection saved", detail: method === "oauth" ? "Continue through the provider's secure sign-in screen." : "Add the encrypted sign-in, then run discovery and the authorised readiness test." });
     },
@@ -174,12 +175,17 @@ export default function ConnectionsV2() {
           : null
       );
       await systems.refetch();
-      result.status === "ready"
-        ? toast.success("All requested CRM capability sets are verified.")
-        : toast.warning(result.summary);
-      setFeedback(result.status === "ready" ? { kind: "success", title: "CRM readiness test passed", detail: result.summary } : { kind: "error", title: "Some CRM tasks need attention", detail: `${result.summary} Reconnect or show only the affected task again, then retry.` });
+      const connected = result.status === "ready" || result.status === "limited_permissions";
+      const detail = connected
+        ? "CRM sign-in is verified. Ready functions can be used; optional functions that need setup remain unavailable."
+        : humanizeCrmFailure(result.summary);
+      connected ? toast.success(detail) : toast.warning(detail);
+      setFeedback(connected ? { kind: "success", title: "CRM setup checked", detail } : { kind: "error", title: "Fix connection", detail });
     },
-    onError: error => setFeedback({ kind: "error", title: "CRM readiness test failed", detail: `Unproven actions remain disabled. ${error.message}` }),
+    onError: error => {
+      console.error("[crm-connections] readiness check failed", error);
+      setFeedback({ kind: "error", title: "CRM setup check failed", detail: humanizeCrmFailure(error.message) });
+    },
   });
   const sync = trpc.connectedSystems.sync.useMutation({
     onMutate: () => setFeedback({ kind: "loading", title: "Synchronising CRM records", detail: "Customer, company, task, opportunity, and activity data are being refreshed." }),
@@ -289,14 +295,10 @@ export default function ConnectionsV2() {
           <section className="rounded-[1.5rem] border border-[#3D69AD]/45 bg-[#0E2142] p-6">
             <div className="mb-5 flex flex-wrap gap-2">
               {[
-                "1 CRM details",
-                "2 Secure sign-in",
-                "3 Connect",
-                "4 Discover",
-                "5 Map",
-                "6 Teach Amarktai",
-                "7 Test",
-                "8 Readiness",
+                "1 Connect",
+                "2 Discover",
+                "3 Test",
+                "4 Ready",
               ].map(step => (
                 <span
                   key={step}
@@ -387,35 +389,35 @@ export default function ConnectionsV2() {
                       {system.displayName}
                     </h2>
                     <p className="mt-1 text-xs text-[#91A9CF]">
-                      {system.provider.replaceAll("_", " ")} ·{" "}
-                      {system.connectionMethod.replaceAll("_", " ")}
-                      {system.baseUrl ? ` · ${system.baseUrl}` : ""}
+                      Connected CRM{system.baseUrl ? ` · ${system.baseUrl}` : ""}
                     </p>
                   </div>
                 </div>
                 <span
                   className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase ${statusClass(system.status)}`}
                 >
-                  {system.status.replaceAll("_", " ")}
+                  {connectionStatusLabel(system.status)}
                 </span>
               </div>
               <div className="mt-5 grid grid-cols-3 gap-3 border-y border-white/10 py-4">
                 <Metric
-                  label="Full capabilities"
+                  label="Ready functions"
                   value={system.verifiedCapabilities.length || "None"}
                 />
                 <Metric
-                  label="Read requested"
-                  value={system.allowedReadCapabilities.length}
+                  label="Connection"
+                  value={connectionStatusLabel(system.status)}
                 />
                 <Metric
-                  label="Write requested"
-                  value={system.allowedWriteCapabilities.length}
+                  label="Additional setup"
+                  value={system.status === "limited_permissions" ? "Optional" : "None"}
                 />
               </div>
               {system.lastHealthSummary && (
                 <p className="mt-4 rounded-xl bg-black/15 p-3 text-xs leading-5 text-[#B5C8E7]">
-                  {system.lastHealthSummary}
+                  {system.status === "ready" || system.status === "limited_permissions"
+                    ? "CRM sign-in and the listed ready functions were verified. Optional functions remain unavailable until separately tested."
+                    : humanizeCrmFailure(system.lastHealthSummary)}
                 </p>
               )}
               <div className="mt-5 flex flex-wrap gap-2">
@@ -452,7 +454,7 @@ export default function ConnectionsV2() {
                   className="border-white/15 bg-white/5 text-white hover:bg-white/10"
                 >
                   <ShieldCheck className="mr-2 size-4" />
-                  Refresh capability truth
+                  Check CRM setup
                 </Button>
                 {(system.status === "ready" ||
                   system.status === "limited_permissions") && (
@@ -473,23 +475,21 @@ export default function ConnectionsV2() {
                   </Button>
                 )}
               </div>
-              {isBrowser(system.provider) && canManage && (
-                <LoginCalibration
-                  organisationId={organisationId}
-                  systemId={system.id}
-                  required={calibrationRequiredFor === system.id}
-                  onSaved={() => {
-                    setCalibrationRequiredFor(null);
-                    verify.mutate({
-                      organisationId: organisationId ?? 0,
-                      connectedSystemId: system.id,
-                    });
-                  }}
-                />
-              )}
               {isBrowser(system.provider) && (canManage ? (
                 <details className="mt-5 rounded-xl border border-white/10 bg-[#08172F] p-4">
-                  <summary className="cursor-pointer text-sm font-bold text-[#A9C7FF]">Advanced CRM commissioning</summary>
+                  <summary className="cursor-pointer text-sm font-bold text-[#A9C7FF]">Advanced CRM Setup</summary>
+                  <LoginCalibration
+                    organisationId={organisationId}
+                    systemId={system.id}
+                    required={calibrationRequiredFor === system.id}
+                    onSaved={() => {
+                      setCalibrationRequiredFor(null);
+                      verify.mutate({
+                        organisationId: organisationId ?? 0,
+                        connectedSystemId: system.id,
+                      });
+                    }}
+                  />
                   <div className="mt-5 rounded-xl border border-[#3D69AD]/30 bg-[#071326] p-4">
                     <div className="flex items-center gap-2 text-[#A9C7FF]">
                       <KeyRound size={16} />
@@ -570,7 +570,7 @@ export default function ConnectionsV2() {
                 </details>
               ) : (
                 <p className="mt-5 rounded-xl border border-white/10 bg-[#08172F] p-4 text-sm leading-6 text-[#A9BFDF]">
-                  A workspace manager handles secure Genie commissioning. You can use each CRM task once its authorised readiness test passes.
+                  A workspace manager handles advanced setup. You can use each CRM function after its authorised readiness test passes.
                 </p>
               ))}
             </article>
@@ -661,6 +661,14 @@ export default function ConnectionsV2() {
       </div>
     </DashboardLayout>
   );
+}
+function connectionStatusLabel(status: string) {
+  if (status === "ready") return "Ready";
+  if (status === "limited_permissions") return "Ready · optional setup remains";
+  if (status === "connecting" || status === "testing") return "Checking";
+  if (/attention|expired/.test(status)) return "Needs setup";
+  if (/error|disconnected/.test(status)) return "Failed";
+  return "Unavailable";
 }
 
 export function LoginCalibration({
@@ -862,8 +870,25 @@ export function BrowserOperationMatrix({
     )
       return;
     try {
+      let suggestedInputs = "{}";
+      if (experience === "management") {
+        const savedTarget = sessionStorage.getItem(
+          `amarktai-safe-test-${system.id}`
+        );
+        if (savedTarget) {
+          try {
+            suggestedInputs = JSON.stringify(
+              { safeTestCustomer: JSON.parse(savedTarget) },
+              null,
+              2
+            );
+          } catch {
+            sessionStorage.removeItem(`amarktai-safe-test-${system.id}`);
+          }
+        }
+      }
       const raw = experience === "guided" ? "{}" :
-        window.prompt("Optional test inputs as JSON. Do not paste secrets.", "{}") || "{}";
+        window.prompt("Optional test inputs as JSON. Do not paste secrets.", suggestedInputs) || "{}";
       const inputs = JSON.parse(raw);
       await jsonRequest(
         `/api/connected-system-admin/${system.id}/operations/${encodeURIComponent(operationKey)}/test`,
