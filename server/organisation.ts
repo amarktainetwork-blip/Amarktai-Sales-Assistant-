@@ -22,6 +22,7 @@ export type OrganisationMembership = {
   timezone: string;
   locale: string;
   currency: string;
+  settings: Record<string, unknown>;
 };
 
 const membershipSelection = {
@@ -32,6 +33,7 @@ const membershipSelection = {
   timezone: organisations.timezone,
   locale: organisations.locale,
   currency: organisations.currency,
+  settings: organisations.settings,
 };
 
 function defaultSlug(userId: number) {
@@ -81,7 +83,37 @@ export async function ensureDefaultOrganisation(userId: number): Promise<Organis
   }
   if (!organisationId) throw new Error("Unable to provision the organisation workspace.");
   await db.insert(organisationMembers).values({ organisationId, userId, role: "owner", isActive: true }).onDuplicateKeyUpdate({ set: { isActive: true, role: "owner" } });
-  return { organisationId, userId, role: "owner", organisationName: "My sales workspace", timezone: "UTC", locale: "en", currency: "USD" };
+  return { organisationId, userId, role: "owner", organisationName: "My sales workspace", timezone: "UTC", locale: "en", currency: "USD", settings: {} };
+}
+
+export async function updateOnboardingState(input: {
+  userId: number;
+  membership: OrganisationMembership;
+  workspaceMode?: "individual" | "team";
+  step?: number;
+  complete?: boolean;
+}) {
+  if (!canManageOrganisation(input.membership.role)) throw new Error("Your organisation role does not permit setup changes.");
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const row = (await db.select({ settings: organisations.settings }).from(organisations).where(eq(organisations.id, input.membership.organisationId)).limit(1))[0];
+  const current = row?.settings ?? {};
+  const onboarding = current.onboarding && typeof current.onboarding === "object" && !Array.isArray(current.onboarding)
+    ? current.onboarding as Record<string, unknown>
+    : {};
+  const settings = {
+    ...current,
+    workspaceMode: input.workspaceMode ?? current.workspaceMode,
+    onboarding: {
+      ...onboarding,
+      step: input.step ?? onboarding.step ?? 1,
+      complete: input.complete ?? onboarding.complete ?? false,
+      updatedAt: new Date().toISOString(),
+      ...(input.complete ? { completedAt: new Date().toISOString() } : {}),
+    },
+  };
+  await db.update(organisations).set({ settings }).where(eq(organisations.id, input.membership.organisationId));
+  return { workspaceMode: settings.workspaceMode, onboarding: settings.onboarding };
 }
 
 export async function requireOrganisationMembership(userId: number, organisationId: number, allowedRoles?: OrganisationRole[]): Promise<OrganisationMembership> {

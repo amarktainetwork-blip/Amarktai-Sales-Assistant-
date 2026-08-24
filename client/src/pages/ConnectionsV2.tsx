@@ -1,4 +1,6 @@
 import DashboardLayout from "@/components/DashboardLayout";
+import ManagementElevation from "@/components/ManagementElevation";
+import WorkflowFeedback, { type WorkflowFeedbackState } from "@/components/WorkflowFeedback";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
@@ -113,12 +115,14 @@ export default function ConnectionsV2() {
   );
   const outlook = trpc.outlook.readiness.useQuery(undefined, { retry: false });
   const [adding, setAdding] = useState(false);
-  const [provider, setProvider] = useState<Provider>("hubspot");
-  const [displayName, setDisplayName] = useState("HubSpot");
+  const [provider, setProvider] = useState<Provider>("genie");
+  const [displayName, setDisplayName] = useState("Genie");
   const [baseUrl, setBaseUrl] = useState("");
   const [drafts, setDrafts] = useState<Record<number, BrowserDraft>>({});
   const [savingBrowser, setSavingBrowser] = useState<number | null>(null);
   const [sidecarToken, setSidecarToken] = useState("");
+  const [feedback, setFeedback] = useState<WorkflowFeedbackState | null>(null);
+  const canManage = organisation.data?.role === "owner" || organisation.data?.role === "manager";
   const method = useMemo(() => defaultMethod(provider), [provider]);
 
   const addDomain = trpc.connectedSystems.addDomain.useMutation();
@@ -126,6 +130,7 @@ export default function ConnectionsV2() {
     onError: error => toast.error(error.message),
   });
   const create = trpc.connectedSystems.create.useMutation({
+    onMutate: () => setFeedback({ kind: "loading", title: "Saving CRM connection", detail: "Amarktai is creating the organisation-scoped connection and authorised destination." }),
     onSuccess: async id => {
       if (organisationId && isBrowser(provider) && baseUrl.trim())
         await addDomain.mutateAsync({
@@ -149,26 +154,31 @@ export default function ConnectionsV2() {
         toast.success(
           "CRM details saved. Add secure sign-in, then Teach Amarktai and prove each operation."
         );
+      setFeedback({ kind: "success", title: "CRM connection saved", detail: method === "oauth" ? "Continue through the provider's secure sign-in screen." : "Add the encrypted sign-in, then run discovery and the authorised readiness test." });
     },
-    onError: error => toast.error(error.message),
+    onError: error => setFeedback({ kind: "error", title: "CRM connection was not saved", detail: `No CRM capability was enabled. ${error.message}`, actionLabel: "Retry connection", onAction: addSystem }),
   });
   const verify = trpc.connectedSystems.verify.useMutation({
+    onMutate: () => setFeedback({ kind: "loading", title: "Testing CRM readiness", detail: "Amarktai is testing authentication and only the functions this CRM has proven." }),
     onSuccess: async result => {
       await systems.refetch();
       result.status === "ready"
         ? toast.success("All requested CRM capability sets are verified.")
         : toast.warning(result.summary);
+      setFeedback(result.status === "ready" ? { kind: "success", title: "CRM readiness test passed", detail: result.summary } : { kind: "error", title: "Some CRM tasks need attention", detail: `${result.summary} Reconnect or show only the affected task again, then retry.` });
     },
-    onError: error => toast.error(error.message),
+    onError: error => setFeedback({ kind: "error", title: "CRM readiness test failed", detail: `Unproven actions remain disabled. ${error.message}` }),
   });
   const sync = trpc.connectedSystems.sync.useMutation({
+    onMutate: () => setFeedback({ kind: "loading", title: "Synchronising CRM records", detail: "Customer, company, task, opportunity, and activity data are being refreshed." }),
     onSuccess: async result => {
       await systems.refetch();
       toast.success(
         `Sync complete: ${Object.values(result).reduce((total, value) => total + value, 0)} records processed.`
       );
+      setFeedback({ kind: "success", title: "CRM synchronisation finished", detail: `${Object.values(result).reduce((total, value) => total + value, 0)} records were processed.` });
     },
-    onError: error => toast.error(error.message),
+    onError: error => setFeedback({ kind: "error", title: "CRM synchronisation failed", detail: `Existing synchronized records remain available; no failure was shown as an empty CRM. ${error.message}` }),
   });
   const issueSidecar = trpc.sidecar.issueSession.useMutation({
     onSuccess: result => {
@@ -227,12 +237,9 @@ export default function ConnectionsV2() {
       toast.success(
         "Encrypted CRM sign-in saved. Credentials are never returned to the browser or GenX."
       );
+      setFeedback({ kind: "success", title: "Encrypted sign-in saved", detail: "The password was not returned to the browser or sent to Amarktai intelligence." });
     } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Browser connector could not be saved."
-      );
+      setFeedback({ kind: "error", title: "CRM sign-in was not saved", detail: `The connection remains unavailable. ${error instanceof Error ? error.message : "Browser connector could not be saved."}`, actionLabel: "Retry save", onAction: () => void saveBrowser(systemId) });
     } finally {
       setSavingBrowser(null);
     }
@@ -250,21 +257,22 @@ export default function ConnectionsV2() {
               Connect the CRM your team already works in.
             </h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-[#A9BFDF]">
-              Amarktai uses the functions the connected CRM already provides.
-              Email, SMS, WhatsApp, tasks, notes, dialler actions and CRM-specific
-              workflows are capabilities of that CRM—not separate Amarktai
-              messaging integrations. Browser functions become usable only after
-              deterministic testing publishes them LIVE_PROVEN.
+              Connect once, let Amarktai discover the CRM's contacts, tasks,
+              pipeline and communication tools, then use only the tasks that pass
+              an authorised readiness test. Sales email, SMS and WhatsApp stay
+              inside the connected CRM.
             </p>
           </div>
-          <Button
+          {canManage && <Button
             onClick={() => setAdding(value => !value)}
             className="bg-[#1B64F2] hover:bg-[#2B76FF]"
           >
             <Plus className="mr-2 size-4" />
             {adding ? "Close" : "Add CRM"}
-          </Button>
+          </Button>}
         </header>
+        <ManagementElevation />
+        <WorkflowFeedback state={systems.isError ? { kind: "error", title: "CRM connections could not load", detail: `${systems.error.message} No API failure has been treated as an empty connection list.`, actionLabel: "Retry connections", onAction: () => systems.refetch() } : feedback} />
         {adding && (
           <section className="rounded-[1.5rem] border border-[#3D69AD]/45 bg-[#0E2142] p-6">
             <div className="mb-5 flex flex-wrap gap-2">
@@ -453,9 +461,10 @@ export default function ConnectionsV2() {
                   </Button>
                 )}
               </div>
-              {isBrowser(system.provider) && (
-                <>
-                  <div className="mt-5 rounded-xl border border-[#3D69AD]/30 bg-[#08172F] p-4">
+              {isBrowser(system.provider) && (canManage ? (
+                <details className="mt-5 rounded-xl border border-white/10 bg-[#08172F] p-4">
+                  <summary className="cursor-pointer text-sm font-bold text-[#A9C7FF]">Advanced CRM commissioning</summary>
+                  <div className="mt-5 rounded-xl border border-[#3D69AD]/30 bg-[#071326] p-4">
                     <div className="flex items-center gap-2 text-[#A9C7FF]">
                       <KeyRound size={16} />
                       <p className="text-xs font-black uppercase tracking-[.12em]">
@@ -532,8 +541,12 @@ export default function ConnectionsV2() {
                       >,
                     }}
                   />
-                </>
-              )}
+                </details>
+              ) : (
+                <p className="mt-5 rounded-xl border border-white/10 bg-[#08172F] p-4 text-sm leading-6 text-[#A9BFDF]">
+                  A workspace manager handles secure Genie commissioning. You can use each CRM task once its authorised readiness test passes.
+                </p>
+              ))}
             </article>
           ))}
           {!systems.data?.length && (
@@ -551,7 +564,7 @@ export default function ConnectionsV2() {
           <Info
             icon={<CircleAlert />}
             title="Functions fail closed independently"
-            copy="A drifted operation is disabled without taking unrelated proven CRM functions offline. Broad capabilities become full only when their required operations are LIVE_PROVEN."
+            copy="If the CRM screen changes, only the affected task pauses. Reconnect or show that task again; other ready tasks keep working."
           />
           <Info
             title="System email and optional Microsoft 365"
@@ -559,7 +572,8 @@ export default function ConnectionsV2() {
             badge={outlook.data?.ready ? "Configured" : "Optional"}
           />
         </section>
-        <section className="rounded-[1.5rem] border border-white/10 bg-[#0E2142] p-6">
+        {canManage && <details className="rounded-[1.5rem] border border-white/10 bg-[#0E2142] p-6">
+          <summary className="cursor-pointer font-bold text-[#A9C7FF]">Advanced browser sidecar commissioning</summary>
           <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#7FAAF8]">
             BROWSER SIDECAR
           </p>
@@ -617,7 +631,7 @@ export default function ConnectionsV2() {
               </div>
             </div>
           )}
-        </section>
+        </details>}
       </div>
     </DashboardLayout>
   );
@@ -638,9 +652,11 @@ function customOperationKey(name: string, mode: "read" | "write") {
 export function BrowserOperationMatrix({
   organisationId,
   system,
+  experience = "management",
 }: {
   organisationId?: number;
   system: BrowserSystem;
+  experience?: "guided" | "management";
 }) {
   const matrix = trpc.connectedSystems.browserOperationMatrix.useQuery(
     { organisationId: organisationId ?? 0, connectedSystemId: system.id },
@@ -702,11 +718,8 @@ export function BrowserOperationMatrix({
     )
       return;
     try {
-      const raw =
-        window.prompt(
-          "Optional test inputs as JSON. Do not paste secrets.",
-          "{}"
-        ) || "{}";
+      const raw = experience === "guided" ? "{}" :
+        window.prompt("Optional test inputs as JSON. Do not paste secrets.", "{}") || "{}";
       const inputs = JSON.parse(raw);
       await jsonRequest(
         `/api/connected-system-admin/${system.id}/operations/${encodeURIComponent(operationKey)}/test`,
@@ -736,15 +749,16 @@ export function BrowserOperationMatrix({
           <div className="flex items-center gap-2 text-[#A9C7FF]">
             <GraduationCap size={16} />
             <p className="text-xs font-black uppercase tracking-[.12em]">
-              Teach Amarktai · Acceptance matrix
+              {experience === "guided" ? "CRM task readiness" : "Teach Amarktai · Acceptance matrix"}
             </p>
           </div>
           <p className="mt-2 text-xs text-[#91A9CF]">
-            System ID {system.id}. Learned is not live; only controlled replay
-            plus readback can publish LIVE_PROVEN.
+            {experience === "guided"
+              ? "Show Amarktai each CRM task once, then run a safe authorised test. A task is only ready after the CRM confirms the expected result."
+              : `System ID ${system.id}. Learned is not live; only controlled replay plus readback can publish LIVE_PROVEN.`}
           </p>
         </div>
-        <label className="flex items-center gap-2 text-xs font-bold text-[#C8D8F2]">
+        {experience === "management" && <label className="flex items-center gap-2 text-xs font-bold text-[#C8D8F2]">
           <input
             type="checkbox"
             checked={shadowMode}
@@ -758,10 +772,10 @@ export function BrowserOperationMatrix({
             }
           />
           Shadow mode
-        </label>
+        </label>}
       </div>
 
-      <div className="mt-4 rounded-xl border border-[#3D69AD]/30 bg-[#0B1B36] p-4">
+      {experience === "management" && <div className="mt-4 rounded-xl border border-[#3D69AD]/30 bg-[#0B1B36] p-4">
         <p className="text-[10px] font-black uppercase tracking-[.12em] text-[#8CB7FF]">
           Teach another CRM function
         </p>
@@ -797,7 +811,7 @@ export function BrowserOperationMatrix({
             Teach this function
           </Button>
         </div>
-      </div>
+      </div>}
 
       <div className="mt-4 max-h-[430px] space-y-2 overflow-y-auto pr-1">
         {matrix.data?.operations.map(operation => (
@@ -806,6 +820,7 @@ export function BrowserOperationMatrix({
             organisationId={organisationId}
             connectedSystemId={system.id}
             operation={operation}
+            guided={experience === "guided"}
             onTeach={() =>
               organisationId &&
               startTraining.mutate({
@@ -821,7 +836,7 @@ export function BrowserOperationMatrix({
           <p className="text-xs text-[#91A9CF]">Loading operation truth…</p>
         )}
       </div>
-      {matrix.data && (
+      {matrix.data && experience === "management" && (
         <div className="mt-4 flex flex-wrap gap-2">
           {matrix.data.capabilities.map(capability => (
             <span
@@ -864,6 +879,7 @@ function BrowserOperationRow({
   organisationId,
   connectedSystemId,
   operation,
+  guided,
   onTeach,
   onTest,
   onChanged,
@@ -871,6 +887,7 @@ function BrowserOperationRow({
   organisationId?: number;
   connectedSystemId: number;
   operation: MatrixOperation;
+  guided: boolean;
   onTeach: () => void;
   onTest: () => void;
   onChanged: () => Promise<unknown> | void;
@@ -975,13 +992,23 @@ function BrowserOperationRow({
         <div>
           <p className="text-sm font-bold text-white">{operation.label}</p>
           <p className="mt-1 text-[10px] uppercase tracking-wide text-[#7896C1]">
-            {operation.area} · {operation.key} · {operation.mode}
+            {guided ? operation.area : `${operation.area} · ${operation.key} · ${operation.mode}`}
           </p>
         </div>
         <span
           className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-black ${statusClass(operation.status)}`}
         >
-          {operation.status.replaceAll("_", " ")}
+          {guided
+            ? operation.status === "LIVE_PROVEN"
+              ? "Ready"
+              : operation.status === "TEST_READY"
+                ? "Ready to test"
+                : operation.status === "LEARNED"
+                  ? "Shown"
+                  : operation.status === "DEGRADED" || operation.status === "BLOCKED"
+                    ? "Needs attention"
+                    : "Not shown yet"
+            : operation.status.replaceAll("_", " ")}
         </span>
       </div>
       {operation.lastError && (
@@ -994,7 +1021,7 @@ function BrowserOperationRow({
           onClick={onTeach}
           className="h-8 border-white/15 bg-white/5 text-xs text-white hover:bg-white/10"
         >
-          {operation.status === "NOT_LEARNED" ? "Teach" : "Relearn / fix"}
+          {operation.status === "NOT_LEARNED" ? (guided ? "Show Amarktai" : "Teach") : (guided ? "Show again / fix" : "Relearn / fix")}
         </Button>
         {operation.status === "TEST_READY" && (
           <Button
@@ -1002,11 +1029,16 @@ function BrowserOperationRow({
             onClick={onTest}
             className="h-8 bg-[#1B64F2] text-xs hover:bg-[#2B76FF]"
           >
-            Controlled test
+            {guided ? "Run safe test" : "Controlled test"}
           </Button>
         )}
       </div>
-      {operation.status === "LEARNED" && review.data && (
+      {guided && operation.status === "LEARNED" && (
+        <p className="mt-3 rounded-lg bg-amber-400/[.06] p-3 text-xs leading-5 text-amber-100">
+          The demonstration is captured. A workspace manager must review the safe target and confirmation rules before testing.
+        </p>
+      )}
+      {!guided && operation.status === "LEARNED" && review.data && (
         <div className="mt-4 rounded-xl border border-amber-300/20 bg-amber-400/[.04] p-4">
           <p className="text-xs font-black uppercase tracking-[.12em] text-amber-100">
             Manager review · sanitized capture

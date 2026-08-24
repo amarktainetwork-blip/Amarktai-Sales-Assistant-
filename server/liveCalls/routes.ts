@@ -21,88 +21,13 @@ import { resolveLiveCallCloseoutIdentity } from "./context";
 import { persistConfirmedCommitment } from "../memory";
 import { prepareCustomCommunication, resolveApprovedCommunicationTemplate } from "../approvedTemplates";
 import { prepareClaimedCloseoutWorkflow, runCanonicalCallCloseout, saveCallCloseoutSummary } from "./closeoutIdempotency";
+import { ALLOWED_STT_MIME, decodeAudio, probeSttHealth, transcribeAudio } from "../voice/stt";
 
-const MAX_AUDIO_BYTES = 800_000;
-const ALLOWED_MIME = new Set([
-  "audio/webm",
-  "audio/ogg",
-  "audio/mp4",
-  "audio/wav",
-  "audio/x-wav",
-  "audio/mpeg",
-]);
 type Authenticated = { id: number; membership: OrganisationMembership };
 
 async function requireAuthorisedUser(req: Request): Promise<Authenticated> {
   const identity = await requireLocalHttpContext(req);
   return { id: identity.userId, membership: identity.membership };
-}
-
-function transcriptionReadiness() {
-  return {
-    ready: Boolean(
-      process.env.STT_TRANSCRIPTIONS_URL?.trim() &&
-        process.env.STT_MODEL?.trim()
-    ),
-    provider:
-      process.env.STT_PROVIDER_LABEL?.trim() ||
-      "Configured speech-to-text service",
-  };
-}
-
-function decodedAudio(input: unknown) {
-  if (typeof input !== "string" || input.length < 8)
-    throw new Error("Audio data is missing.");
-  const bytes = Buffer.from(input, "base64");
-  if (!bytes.length) throw new Error("Audio data is empty.");
-  if (bytes.length > MAX_AUDIO_BYTES)
-    throw new Error("Audio chunk is too large; use shorter chunks.");
-  return bytes;
-}
-
-async function transcribe(bytes: Buffer, mimeType: string, language?: string) {
-  const url = process.env.STT_TRANSCRIPTIONS_URL?.trim();
-  const model = process.env.STT_MODEL?.trim();
-  if (!url || !model) throw new Error("Speech-to-text is not configured.");
-  const form = new FormData();
-  const extension = mimeType.includes("ogg")
-    ? "ogg"
-    : mimeType.includes("mp4")
-      ? "m4a"
-      : mimeType.includes("wav")
-        ? "wav"
-        : mimeType.includes("mpeg")
-          ? "mp3"
-          : "webm";
-  form.append(
-    "file",
-    new Blob([new Uint8Array(bytes)], { type: mimeType }),
-    `call-chunk.${extension}`
-  );
-  form.append("model", model);
-  form.append("response_format", "json");
-  if (language && /^[a-z]{2,8}(?:-[A-Za-z0-9]{2,8})?$/.test(language))
-    form.append("language", language);
-  const headers: Record<string, string> = {};
-  if (process.env.STT_API_KEY?.trim())
-    headers.Authorization = `Bearer ${process.env.STT_API_KEY.trim()}`;
-  const response = await fetch(url, {
-    method: "POST",
-    headers,
-    body: form,
-    signal: AbortSignal.timeout(45_000),
-  });
-  const raw = await response.text();
-  if (!response.ok)
-    throw new Error(
-      `Speech-to-text failed with ${response.status}${raw ? `: ${raw.slice(0, 240)}` : ""}`
-    );
-  if (!raw.trim()) return "";
-  try {
-    return ((JSON.parse(raw) as { text?: string }).text || "").trim();
-  } catch {
-    return raw.trim();
-  }
 }
 
 function sendLiveCallError(res: Response, error: unknown) {
@@ -136,7 +61,7 @@ export function registerLiveCallRoutes(app: Express) {
   app.get("/api/live-calls/readiness", async (req, res) => {
     try {
       await requireAuthorisedUser(req);
-      return res.json(transcriptionReadiness());
+      return res.json(await probeSttHealth());
     } catch (error) {
       return sendLiveCallError(res, error);
     }
@@ -158,14 +83,14 @@ export function registerLiveCallRoutes(app: Express) {
       const mimeType = String(req.body?.mimeType || "")
         .split(";")[0]
         .toLowerCase();
-      if (!ALLOWED_MIME.has(mimeType))
+      if (!ALLOWED_STT_MIME.has(mimeType))
         return res.status(400).json({ error: "Unsupported audio type." });
       const durationMs = Math.max(
         0,
         Math.min(15_000, Number(req.body?.durationMs || 0))
       );
-      const bytes = decodedAudio(req.body?.audioBase64);
-      const text = await transcribe(
+      const bytes = decodeAudio(req.body?.audioBase64);
+      const text = await transcribeAudio(
         bytes,
         mimeType,
         typeof req.body?.language === "string" ? req.body.language : undefined

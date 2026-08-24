@@ -1,4 +1,5 @@
 import DashboardLayout from "@/components/DashboardLayout";
+import WorkflowFeedback, { type WorkflowFeedbackState } from "@/components/WorkflowFeedback";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -41,21 +42,26 @@ export default function Today() {
   );
   const utils = trpc.useUtils();
   const [memoryCommand, setMemoryCommand] = useState("");
+  const [feedback, setFeedback] = useState<WorkflowFeedbackState | null>(null);
   const saveMemoryCommand = trpc.memory.command.useMutation({
+    onMutate: () => setFeedback({ kind: "loading", title: "Saving your reminder", detail: "The reminder is being added to today's workspace." }),
     onSuccess: result => {
       setMemoryCommand("");
       utils.sales.today.invalidate();
       toast.success(result.kind === "reminder" ? "Reminder saved." : "Memory saved with provenance.");
+      setFeedback({ kind: "success", title: "Reminder saved", detail: "It will appear in the appropriate personal work queue." });
     },
-    onError: error => toast.error(error.message),
+    onError: error => setFeedback({ kind: "error", title: "The reminder was not saved", detail: `Today's queue was not changed. ${error.message}`, actionLabel: "Retry save", onAction: () => saveMemoryCommand.mutate({ command: memoryCommand }) }),
   });
   const updateReminder = trpc.memory.updateReminder.useMutation({
     onSuccess: () => utils.sales.today.invalidate(),
     onError: error => toast.error(error.message),
   });
   const startCall = trpc.calls.startFromToday.useMutation({
+    onMutate: () => setFeedback({ kind: "loading", title: "Preparing pre-call context", detail: "Amarktai is retrieving the selected customer and CRM context once for the call session." }),
     onSuccess: result =>
-      navigate(`/live-calls?sessionId=${result.callSessionId}`),
+      navigate(`/calls?sessionId=${result.callSessionId}`),
+    onError: error => setFeedback({ kind: "error", title: "The call could not start", detail: `No call session or CRM action was created. ${error.message}`, actionLabel: "Retry call", onAction: () => current && startCall.mutate({ opportunityId: current.id }) }),
   });
   const priority = today.data?.queues.priority ?? [];
   const [selected, setSelected] = useState(0);
@@ -91,6 +97,8 @@ export default function Today() {
         <Loading />
       </DashboardLayout>
     );
+  if (today.isError)
+    return <DashboardLayout><div className="mx-auto max-w-3xl"><WorkflowFeedback state={{ kind: "error", title: "Today's sales work could not load", detail: `No CRM failure has been treated as an empty queue. ${today.error.message}`, actionLabel: "Retry Today", onAction: () => today.refetch() }} /></div></DashboardLayout>;
   return (
     <DashboardLayout>
       <div className="mx-auto max-w-[1700px]">
@@ -126,6 +134,7 @@ export default function Today() {
             </Button>
           </div>
         </header>
+        <div className="mt-6"><WorkflowFeedback state={feedback} /></div>
         {today.data?.requiresOwnerMapping && (
           <div className="mt-6 rounded-2xl border border-amber-300/20 bg-amber-400/[.07] p-4 text-sm leading-6 text-amber-100">
             <strong>

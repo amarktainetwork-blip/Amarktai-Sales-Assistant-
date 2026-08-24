@@ -13,6 +13,7 @@ import {
   createLiveCallSession,
   getAssistantDashboard,
   getCompanySetup,
+  getAssistantOperationalContext,
   getOperationsDashboard,
   getOperationalAnalytics,
   getWorkspaceExportData,
@@ -37,6 +38,8 @@ import {
   appendLiveTranscript,
   completeLiveCallSession,
   recordAudit,
+  saveWebsiteDiscoveryReview,
+  listCrmCustomers,
 } from "./db";
 import { getGenxReadiness, runGenxAgent } from "./genx";
 import { getGenieReadiness } from "./genie/config";
@@ -81,6 +84,7 @@ import {
   listOrganisationMemberships,
   requireOrganisationMembership,
   type OrganisationMembership,
+  updateOnboardingState,
 } from "./organisation";
 import {
   addAuthorisedDomain,
@@ -118,6 +122,7 @@ import {
   searchLiveCallContacts,
   startLiveCallForContact,
   startLiveCallFromToday,
+  getWorkingContextForContact,
 } from "./liveCalls/context";
 import {
   createAssistantMemory,
@@ -772,6 +777,7 @@ export const appRouter = router({
       .input(
         z.object({
           agentKey: z.string().min(1).max(80),
+          contactId: z.number().int().positive().optional(),
           messages: z
             .array(
               z.object({
@@ -790,14 +796,14 @@ export const appRouter = router({
           .join("\n");
         if (!ctx.activeOrganisation)
           throw new Error("Choose an organisation before using the assistant.");
-        const sources =
-          input.agentKey === "knowledge_guide"
-            ? await searchApprovedKnowledge(
-                ctx.user.id,
-                ctx.activeOrganisation.organisationId,
-                query
-              )
-            : [];
+        const [sources, today, contactContext, operationalContext] = await Promise.all([
+          searchApprovedKnowledge(ctx.user.id, ctx.activeOrganisation.organisationId, query),
+          getTodayWork({ userId: ctx.user.id, organisationId: ctx.activeOrganisation.organisationId }),
+          input.contactId
+            ? getWorkingContextForContact({ organisationId: ctx.activeOrganisation.organisationId, contactId: input.contactId })
+            : Promise.resolve(undefined),
+          getAssistantOperationalContext(ctx.user.id, ctx.activeOrganisation.organisationId),
+        ]);
         const approvedKnowledge = sources.length
           ? sources
               .map(
@@ -806,7 +812,21 @@ export const appRouter = router({
               )
               .join("\n\n---\n\n")
           : undefined;
-        return runGenxAgent({ ...input, approvedKnowledge });
+        const workingContext = JSON.stringify({
+          selectedCustomer: contactContext ?? null,
+          today: {
+            generatedAt: today.generatedAt,
+            metrics: today.metrics,
+            priority: today.queues.priority.slice(0, 5).map(item => ({ id: item.id, name: item.name, pipeline: item.pipeline, stage: item.stage, reasons: item.reasons, nextStepAt: item.nextStepAt })),
+            callbacks: today.queues.callbacks.slice(0, 5).map(item => ({ title: item.title, leadLabel: item.leadLabel, dueAt: item.dueAt })),
+            reminders: today.queues.reminders.slice(0, 5).map(item => ({ title: item.title, dueAt: item.dueAt })),
+          },
+          recentCalls: operationalContext.recentCalls,
+          approvedPlaybooks: operationalContext.approvedPlaybooks,
+          allowedActions: operationalContext.allowedActions,
+          connections: operationalContext.connections,
+        });
+        return runGenxAgent({ ...input, approvedKnowledge, workingContext });
       }),
   }),
   organisation: router({
@@ -820,6 +840,12 @@ export const appRouter = router({
         );
       return ctx.activeOrganisation;
     }),
+    updateOnboarding: secondFactorProcedure
+      .input(z.object({ workspaceMode: z.enum(["individual", "team"]).optional(), step: z.number().int().min(1).max(8).optional(), complete: z.boolean().optional() }))
+      .mutation(({ ctx, input }) => {
+        if (!ctx.activeOrganisation) throw new Error("Choose an organisation before updating setup.");
+        return updateOnboardingState({ userId: ctx.user.id, membership: ctx.activeOrganisation, ...input });
+      }),
     switch: protectedProcedure
       .input(z.object({ organisationId: z.number().int().positive() }))
       .mutation(async ({ ctx, input }) => {
@@ -1169,6 +1195,10 @@ export const appRouter = router({
           organisationId: input.organisationId,
         });
       }),
+    customers: secondFactorProcedure.query(({ ctx }) => {
+      if (!ctx.activeOrganisation) throw new Error("Choose an organisation before loading customers.");
+      return listCrmCustomers(ctx.activeOrganisation.organisationId);
+    }),
   }),
   memory: router({
     command: secondFactorProcedure
@@ -1328,6 +1358,9 @@ export const appRouter = router({
           companySize: z.string().trim().max(80).optional().nullable(),
           primaryMarket: z.string().trim().max(220).optional().nullable(),
           salesMotion: z.string().trim().max(180).optional().nullable(),
+          productsServices: z.string().trim().max(8_000).optional().nullable(),
+          typicalCustomer: z.string().trim().max(8_000).optional().nullable(),
+          primarySalesObjective: z.string().trim().max(500).optional().nullable(),
           brandVoice: z.string().trim().max(8_000).optional().nullable(),
         })
       )
@@ -1353,12 +1386,25 @@ export const appRouter = router({
         throw new Error(
           "Save a public company website before starting discovery."
         );
-      return discoverPublicWebsite(setup.profile.websiteUrl);
+      const discovery = await discoverPublicWebsite(setup.profile.websiteUrl);
+      const discoveryId = await saveWebsiteDiscoveryReview({
+        userId: ctx.user.id,
+        organisationId: ctx.activeOrganisation.organisationId,
+        companyProfileId: setup.profile.id,
+        sourceUrl: discovery.sourceUrl,
+        pageTitle: discovery.pageTitle,
+        extractedText: discovery.extractedText,
+        proposedFacts: { ...discovery.proposedFacts, pages: discovery.pages },
+        proposedKnowledge: discovery.proposedKnowledge,
+      });
+      return { ...discovery, discoveryId };
     }),
     confirmDiscovery: secondFactorProcedure
       .input(
         z.object({
+          discoveryId: z.number().int().positive(),
           knowledgeIndexes: z.array(z.number().int().min(0).max(24)).max(12),
+          corrections: z.array(z.object({ index: z.number().int().min(0).max(24), title: z.string().trim().min(1).max(220), content: z.string().trim().min(1).max(40_000) })).max(12).optional(),
         })
       )
       .mutation(async ({ ctx, input }) => {
@@ -1374,17 +1420,13 @@ export const appRouter = router({
           throw new Error(
             "Save a public company website before confirming discovery."
           );
-        const result = await discoverPublicWebsite(setup.profile.websiteUrl);
-        const confirmedKnowledge = result.proposedKnowledge.filter((_, index) =>
-          input.knowledgeIndexes.includes(index)
-        );
         return confirmWebsiteDiscovery({
           userId: ctx.user.id,
           organisationId: ctx.activeOrganisation.organisationId,
           companyProfileId: setup.profile.id,
-          sourceUrl: result.sourceUrl,
-          pageTitle: result.pageTitle,
-          confirmedKnowledge,
+          discoveryId: input.discoveryId,
+          knowledgeIndexes: input.knowledgeIndexes,
+          corrections: input.corrections,
         });
       }),
     savePlaybook: secondFactorProcedure

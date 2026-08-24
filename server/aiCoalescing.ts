@@ -13,12 +13,14 @@ export function tenantAiRequestKey(input: {
   crmContextVersion: string;
   messages: unknown;
   approvedKnowledge?: string;
+  workingContext?: string;
 }) {
   const inputHash = createHash("sha256")
     .update(
       JSON.stringify({
         messages: input.messages,
         approvedKnowledge: input.approvedKnowledge || "",
+        workingContext: input.workingContext || "",
       })
     )
     .digest("hex");

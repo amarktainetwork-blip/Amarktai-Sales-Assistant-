@@ -72,7 +72,7 @@ jobs:
           docker compose -f deploy/webdock/docker-compose.yml --env-file .env config >/dev/null
           docker compose -f deploy/webdock/docker-compose.pilot.yml --env-file .env config >/dev/null
       - name: Build Webdock production images
-        run: docker compose -f deploy/webdock/docker-compose.yml --env-file .env build app browser
+        run: docker compose -f deploy/webdock/docker-compose.yml --env-file .env build app browser stt tts
       - name: Verify production image runtime entrypoints
         run: |
           docker compose -f deploy/webdock/docker-compose.yml --env-file .env run --no-deps --rm --entrypoint sh app -eu -c '
@@ -82,6 +82,8 @@ jobs:
             test -f dist/compliance/retentionWorker.js
             test -f dist/migrate.js
             test -f dist/verifyIntegrations.js
+            test -f dist/verifyVoice.js
+            test -f dist/verifyFeatures.js
             test -f drizzle/meta/_journal.json
             test -f dist/public/index.html
           '
@@ -133,6 +135,32 @@ jobs:
           $COMPOSE logs --no-color browser
           docker inspect "$cid" --format '{{json .State}}'
           exit 1
+      - name: Prove internal voice services and actual audio path
+        shell: bash
+        run: |
+          set -euo pipefail
+          COMPOSE="docker compose -f deploy/webdock/docker-compose.yml --env-file .env"
+          $COMPOSE up -d stt tts
+          for service in stt tts; do
+            cid="$($COMPOSE ps -q "$service")"
+            for attempt in $(seq 1 90); do
+              status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}starting{{end}}' "$cid")"
+              [ "$status" = healthy ] && break
+              [ "$status" = unhealthy ] && { $COMPOSE logs --no-color "$service"; exit 1; }
+              sleep 2
+            done
+            test "$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$cid")" = healthy
+            test -z "$(docker port "$cid")"
+            test "$(docker inspect --format '{{.HostConfig.ReadonlyRootfs}}' "$cid")" = true
+            docker inspect --format '{{json .HostConfig.CapDrop}}' "$cid" | grep -q '"ALL"'
+          done
+          $COMPOSE run --no-deps --rm \
+            -e STT_TRANSCRIPTIONS_URL=http://stt:8080/inference \
+            -e STT_HEALTH_URL=http://stt:8080/ \
+            -e STT_MODEL=ggml-base-q5_1 \
+            -e TTS_BASE_URL=http://tts:5000 \
+            app node dist/verifyVoice.js 2>&1 | tee /tmp/voice-verification.log
+          grep -q '"status": "LIVE_PROVEN"' /tmp/voice-verification.log
       - name: Prove production app and worker runtime
         shell: bash
         run: |

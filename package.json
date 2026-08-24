@@ -5,14 +5,16 @@
   "license": "MIT",
   "scripts": {
     "dev": "NODE_ENV=development tsx watch server/_core/index.ts",
-    "build": "vite build && esbuild server/_core/index.ts server/genie/healthWorker.ts server/reportSchedulerWorker.ts server/compliance/retentionWorker.ts server/migrate.ts server/verifyIntegrations.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
+    "build": "vite build && esbuild server/_core/index.ts server/genie/healthWorker.ts server/reportSchedulerWorker.ts server/compliance/retentionWorker.ts server/migrate.ts server/verifyIntegrations.ts server/verifyVoice.ts server/verifyFeatures.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
     "start": "NODE_ENV=production node dist/_core/index.js",
     "check": "tsc --noEmit",
     "format": "prettier --write .",
     "test": "vitest run",
     "db:push": "drizzle-kit generate && drizzle-kit migrate",
     "migrate:production": "node dist/migrate.js",
-    "verify:integrations": "node dist/verifyIntegrations.js"
+    "verify:integrations": "node dist/verifyIntegrations.js",
+    "verify:voice": "node dist/verifyVoice.js",
+    "verify:features": "node dist/verifyFeatures.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.693.0",
@@ -50,6 +52,7 @@
     "@trpc/server": "^11.6.0",
     "axios": "^1.19.0",
     "bcryptjs": "^3.0.3",
+    "cheerio": "1.1.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
@@ -76,7 +79,7 @@
     "recharts": "^2.15.2",
     "redis": "^4.7.1",
     "sonner": "^2.0.7",
-    "streamdown": "^1.4.0",
+    "streamdown": "^2.5.0",
     "superjson": "^1.13.3",
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",
@@ -118,7 +121,9 @@
       "tailwindcss>nanoid": "3.3.7",
       "lodash": "4.18.1",
       "lodash-es": "4.18.1",
-      "express>path-to-regexp": "0.1.13"
+      "express>path-to-regexp": "0.1.13",
+      "mdast-util-to-hast": "13.2.1",
+      "uuid": "11.1.1"
     }
   }
 }

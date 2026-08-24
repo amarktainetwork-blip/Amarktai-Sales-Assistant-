@@ -2,6 +2,9 @@ import "dotenv/config";
 import { verifyGenxConnection } from "./genx";
 import { createOutlookApplicationToken, getOutlookReadiness } from "./outlook";
 import { getSmtpReadiness, verifySmtpConnection } from "./smtp";
+import { verifyVoiceAcceptance } from "./voice/acceptance";
+import { getSttConfiguration } from "./voice/stt";
+import { getTtsConfiguration } from "./voice/tts";
 
 function configured(value: string | undefined) {
   return Boolean(value?.trim());
@@ -64,14 +67,37 @@ async function main() {
     }
   }
 
-  const sttConfigured =
-    configured(process.env.STT_TRANSCRIPTIONS_URL) &&
-    configured(process.env.STT_MODEL);
-  results.stt = {
-    status: sttConfigured
-      ? "CONFIGURED_REQUIRES_AUDIO_ACCEPTANCE"
-      : "NOT_CONFIGURED",
-  };
+  const stt = getSttConfiguration();
+  const tts = getTtsConfiguration();
+  if (!stt.configured || !tts.configured) {
+    results.stt = { status: stt.configured ? "CONFIGURED" : "NOT_CONFIGURED" };
+    results.tts = { status: tts.configured ? "CONFIGURED" : "NOT_CONFIGURED" };
+    failed = true;
+  } else {
+    try {
+      const voice = await verifyVoiceAcceptance();
+      results.stt = {
+        status: "LIVE_PROVEN",
+        provider: stt.provider,
+        model: stt.model,
+        transcript: voice.transcript,
+        recognizedWords: voice.recognizedWords,
+        rawAudioRetained: voice.rawAudioRetained,
+      };
+      results.tts = {
+        status: "LIVE_PROVEN",
+        provider: tts.provider,
+        voice: voice.voice,
+        audioBytes: voice.audioBytes,
+        contentType: voice.contentType,
+      };
+    } catch (error) {
+      const reason = error instanceof Error ? error.message.slice(0, 300) : "voice_acceptance_failed";
+      results.stt = { status: "FAILED", reason };
+      results.tts = { status: "FAILED", reason };
+      failed = true;
+    }
+  }
 
   results.crmActions = {
     status: "VERIFIED_PER_CONNECTED_SYSTEM",

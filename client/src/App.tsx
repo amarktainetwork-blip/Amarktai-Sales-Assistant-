@@ -16,6 +16,7 @@ import SalesAutomation from "./pages/SalesAutomation";
 import TeamIntelligence from "./pages/TeamIntelligence";
 import TeamManagement from "./pages/TeamManagement";
 import Today from "./pages/Today";
+import Customers from "./pages/Customers";
 import { AgentDesk, CommandCentre, KnowledgeHub, WorkflowStudio } from "./pages/Workspace";
 
 function Router() {
@@ -25,6 +26,9 @@ function Router() {
     <Route path="/auth" component={Auth} />
     <Route path="/dashboard" component={Dashboard} />
     <Route path="/today" component={Today} />
+    <Route path="/sell" component={Today} />
+    <Route path="/customers" component={Customers} />
+    <Route path="/reports" component={Dashboard} />
     <Route path="/automation" component={SalesAutomation} />
     <Route path="/team" component={TeamIntelligence} />
     <Route path="/team/manage" component={TeamManagement} />

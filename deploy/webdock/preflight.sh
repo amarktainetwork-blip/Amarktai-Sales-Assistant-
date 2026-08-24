@@ -55,6 +55,7 @@ GENIE_USERNAME="$(env_get GENIE_USERNAME)"
 GENIE_PASSWORD="$(env_get GENIE_PASSWORD)"
 STT_TRANSCRIPTIONS_URL="$(env_get STT_TRANSCRIPTIONS_URL)"
 STT_MODEL="$(env_get STT_MODEL)"
+TTS_BASE_URL="$(env_get TTS_BASE_URL)"
 SMTP_HOST="$(env_get SMTP_HOST)"
 SMTP_PORT="$(env_get SMTP_PORT)"
 SMTP_SECURE="$(env_get SMTP_SECURE)"
@@ -123,9 +124,15 @@ else
 fi
 
 if is_placeholder "$STT_TRANSCRIPTIONS_URL" || is_placeholder "$STT_MODEL"; then
-  warn "Speech-to-text is not configured; Live Call Companion transcription will remain unavailable."
+  fail "Speech-to-text must be configured. The full profile uses the internal whisper.cpp service by default."
 else
-  info "Live Call Companion STT configuration is present; run an authorised audio acceptance test."
+  info "Live Call Companion STT configuration is present; the verifier will run an actual audio fixture."
+fi
+
+if is_placeholder "$TTS_BASE_URL"; then
+  fail "Text-to-speech must be configured. The full profile uses the internal Piper service by default."
+else
+  info "Text-to-speech configuration is present; the verifier will require a playable audio artifact."
 fi
 
 if is_placeholder "$OUTLOOK_TENANT_ID" || is_placeholder "$OUTLOOK_CLIENT_ID" || is_placeholder "$OUTLOOK_CLIENT_SECRET" || is_placeholder "$OUTLOOK_SENDER_EMAIL"; then

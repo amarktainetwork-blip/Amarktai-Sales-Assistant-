@@ -15,6 +15,7 @@ import { registerSalesTargetsRoutes } from "../salesTargetsRoutes";
 import { registerAiCreditsRoutes } from "../aiCreditsRoutes";
 import { registerConnectorWebhookRoutes } from "../connectors/webhookRoutes";
 import { registerOutlookInboundRoutes } from "../communications/outlookInboundRoutes";
+import { registerVoiceRoutes } from "../voice/routes";
 import { withAiRequestIdentity } from "../aiRequestContext";
 import {
   allowSidecarOrigin,
@@ -78,6 +79,12 @@ async function startServer() {
     enforceAppOrigin
   );
   registerLiveCallRoutes(app);
+  app.use(
+    "/api/voice",
+    rateLimit({ limit: 20, windowMs: 60_000 }),
+    enforceAppOrigin
+  );
+  registerVoiceRoutes(app);
   app.use(
     "/api/team-admin",
     rateLimit({ limit: 40, windowMs: 60_000 }),
