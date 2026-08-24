@@ -13,6 +13,13 @@ describe("browser CRM onboarding commissioning flow", () => {
     expect(source).toContain("/business-mapping");
     expect(source).toContain("BrowserOperationMatrix");
     expect(source).toContain("Continue to automation rules");
+    expect(source).toContain("CRM username / email");
+    expect(source).toContain("CRM password (encrypted at rest)");
+    expect(source).toContain("Connect / test login and discover");
+    expect(source).toContain("LoginCalibration");
+    expect(source).not.toContain("GENIE_USERNAME");
+    expect(source).not.toContain("GENIE_PASSWORD");
+    expect(source).not.toContain("operation ID");
     expect(source).not.toContain("Open Connections");
   });
 });

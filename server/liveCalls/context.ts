@@ -9,8 +9,12 @@ import {
   crmTasks,
   inboundMessages,
 } from "../../drizzle/schema";
-import { createLiveCallSession, getDb } from "../db";
+import { createLiveCallSession, getDb, recordAudit } from "../db";
 import { getTodayWork } from "../today";
+import { getCrmAdapter } from "../crm/adapterRegistry";
+import { loadConnectionSecret, toAdapterConnection } from "../connectedSystems";
+import { requireRuntimeBrowserOperation } from "../browserConnectors/learnedOperations";
+import { randomUUID } from "node:crypto";
 
 export type LiveCallCrmContext = {
   source: "today" | "manual_resolved";
@@ -32,6 +36,13 @@ export type LiveCallCrmContext = {
   recentInbound?: string;
   reasons: string[];
   objective?: string;
+  diallerLaunch?: {
+    connectedSystemId: number;
+    contactExternalId: string;
+    correlationId: string;
+    completedAt: string;
+    operation: "dialler.launch";
+  };
 };
 
 async function dbOrThrow() {
@@ -194,6 +205,7 @@ export async function startLiveCallFromToday(input: {
   userId: number;
   organisationId: number;
   opportunityId: number;
+  callingMode?: "genie" | "external";
 }) {
   const today = await getTodayWork(input);
   const priority = today.queues.priority.find(
@@ -220,19 +232,110 @@ export async function startLiveCallFromToday(input: {
       .limit(1)
   )[0];
   if (!contact) throw new Error("The normalized CRM contact was not found.");
-  const context = await contextForContact({
+  const context: LiveCallCrmContext = await contextForContact({
     organisationId: input.organisationId,
     contact,
     opportunity: priority,
     source: "today",
     reasons: priority.reasons,
   });
+  if ((input.callingMode || "external") === "genie") {
+    const system = (
+      await db
+        .select()
+        .from(connectedSystems)
+        .where(
+          and(
+            eq(connectedSystems.id, context.connectedSystemId),
+            eq(connectedSystems.organisationId, input.organisationId)
+          )
+        )
+        .limit(1)
+    )[0];
+    if (
+      !system ||
+      system.provider !== "genie" ||
+      (system.connectionMethod !== "browser" &&
+        system.connectionMethod !== "sidecar")
+    )
+      throw new Error(
+        "GENIE_DIALLER_UNAVAILABLE: This customer is not attached to an authorised Genie browser connection. Use the clearly labelled external-phone option instead."
+      );
+    if (!["ready", "limited_permissions"].includes(system.status))
+      throw new Error(
+        "GENIE_DIALLER_SETUP_REQUIRED: Genie calling still needs to be tested. Finish dialler setup."
+      );
+    try {
+      await requireRuntimeBrowserOperation({
+        organisationId: input.organisationId,
+        connectedSystemId: system.id,
+        operationKey: "dialler.launch",
+      });
+    } catch {
+      throw new Error(
+        "GENIE_DIALLER_SETUP_REQUIRED: Genie calling still needs to be tested. Finish dialler setup."
+      );
+    }
+    const secret =
+      (await loadConnectionSecret({
+        organisationId: input.organisationId,
+        connectedSystemId: system.id,
+        secretKind: "browser",
+      })) || {};
+    const adapter = getCrmAdapter(system.provider);
+    if (!adapter.executeCustomAction)
+      throw new Error(
+        "GENIE_DIALLER_SETUP_REQUIRED: Genie calling still needs to be tested. Finish dialler setup."
+      );
+    const correlationId = randomUUID();
+    const evidence = await adapter.executeCustomAction({
+      connection: toAdapterConnection(system),
+      secret,
+      actionName: "dialler.launch",
+      payload: {
+        connectedSystemId: system.id,
+        contactExternalId: context.contactExternalId,
+        opportunityExternalId: context.opportunityExternalId,
+        contactName: context.contactName,
+        phone: context.phone,
+      },
+      correlationId,
+    });
+    context.diallerLaunch = {
+      connectedSystemId: system.id,
+      contactExternalId: context.contactExternalId,
+      correlationId,
+      completedAt: evidence.completedAt,
+      operation: "dialler.launch",
+    };
+  }
   const callSessionId = await createLiveCallSession({
     userId: input.userId,
     organisationId: input.organisationId,
     leadLabel: context.contactName,
     crmContext: context,
   });
+  if (context.diallerLaunch)
+    await recordAudit({
+      userId: input.userId,
+      organisationId: input.organisationId,
+      eventType: "genie_dialler_launched",
+      entityType: "call_session",
+      entityId: String(callSessionId),
+      summary: "The LIVE_PROVEN Genie dialler was launched for the exact normalized call contact.",
+      metadata: {
+        connectedSystemId: context.diallerLaunch.connectedSystemId,
+        contactExternalId: context.diallerLaunch.contactExternalId,
+        correlationId: context.diallerLaunch.correlationId,
+        executionResult: "success",
+        evidence: {
+          operation: "dialler.launch",
+          completedAt: context.diallerLaunch.completedAt,
+          targetContextStored: true,
+          adapterEvidenceStored: true,
+        },
+      },
+    });
   return { callSessionId, leadLabel: context.contactName, context };
 }
 

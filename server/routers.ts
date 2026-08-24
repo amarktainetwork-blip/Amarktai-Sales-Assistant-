@@ -42,7 +42,7 @@ import {
   listCrmCustomers,
 } from "./db";
 import { getGenxReadiness, runGenxAgent } from "./genx";
-import { getGenieReadiness } from "./genie/config";
+import { getOrganisationGenieReadiness } from "./genie/organisationReadiness";
 import { executeApprovedCrmAction } from "./crm/executeApprovedAction";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
@@ -451,10 +451,18 @@ export const appRouter = router({
         ctx.user.id,
         ctx.activeOrganisation.organisationId
       );
+      const systems = await listConnectedSystemsForUser(
+        ctx.user.id,
+        ctx.activeOrganisation.organisationId
+      );
+      const genieReadiness = await getOrganisationGenieReadiness(
+        ctx.activeOrganisation.organisationId,
+        systems
+      );
       return {
         ...dashboard,
         connectionReadiness: {
-          crmBrowserBridge: getGenieReadiness().configured,
+          crmBrowserBridge: genieReadiness.ready,
           microsoftConnection: getOutlookReadiness().ready,
           intelligenceService: getGenxReadiness().ready,
           emailDelivery: getSmtpReadiness().ready,
@@ -1270,6 +1278,10 @@ export const appRouter = router({
         throw new Error(
           "Choose an organisation before accessing integrations."
         );
+      const systems = await listConnectedSystemsForUser(
+        ctx.user.id,
+        ctx.activeOrganisation.organisationId
+      );
       return {
         profiles: (
           await listIntegrationProfiles(
@@ -1279,15 +1291,10 @@ export const appRouter = router({
         ).map(presentConnectionProfile),
         genx: getGenxReadiness(),
         outlook: getOutlookReadiness(),
-        genie: {
-          ...getGenieReadiness(),
-          requiredVariables: [
-            "GENIE_LOGIN_URL",
-            "GENIE_USERNAME",
-            "GENIE_PASSWORD",
-            "BROWSERLESS_WS_ENDPOINT",
-          ],
-        },
+        genie: await getOrganisationGenieReadiness(
+          ctx.activeOrganisation.organisationId,
+          systems
+        ),
       };
     }),
     createProfile: secondFactorProcedure
@@ -1455,7 +1462,12 @@ export const appRouter = router({
   }),
   calls: router({
     startFromToday: secondFactorProcedure
-      .input(z.object({ opportunityId: z.number().int().positive() }))
+      .input(
+        z.object({
+          opportunityId: z.number().int().positive(),
+          callingMode: z.enum(["genie", "external"]).default("external"),
+        })
+      )
       .mutation(({ ctx, input }) => {
         if (!ctx.activeOrganisation)
           throw new Error(
@@ -1465,6 +1477,7 @@ export const appRouter = router({
           userId: ctx.user.id,
           organisationId: ctx.activeOrganisation.organisationId,
           opportunityId: input.opportunityId,
+          callingMode: input.callingMode,
         });
       }),
     searchContacts: secondFactorProcedure

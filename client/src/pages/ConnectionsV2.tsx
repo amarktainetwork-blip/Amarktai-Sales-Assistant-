@@ -34,6 +34,12 @@ type BrowserDraft = {
   profile: string;
   advanced: boolean;
 };
+type LoginCalibrationDraft = {
+  usernameSelector: string;
+  passwordSelector: string;
+  submitSelector: string;
+  readySelector: string;
+};
 type BrowserSystem = {
   id: number;
   provider: string;
@@ -120,6 +126,7 @@ export default function ConnectionsV2() {
   const [baseUrl, setBaseUrl] = useState("");
   const [drafts, setDrafts] = useState<Record<number, BrowserDraft>>({});
   const [savingBrowser, setSavingBrowser] = useState<number | null>(null);
+  const [calibrationRequiredFor, setCalibrationRequiredFor] = useState<number | null>(null);
   const [sidecarToken, setSidecarToken] = useState("");
   const [feedback, setFeedback] = useState<WorkflowFeedbackState | null>(null);
   const canManage = organisation.data?.role === "owner" || organisation.data?.role === "manager";
@@ -160,7 +167,12 @@ export default function ConnectionsV2() {
   });
   const verify = trpc.connectedSystems.verify.useMutation({
     onMutate: () => setFeedback({ kind: "loading", title: "Testing CRM readiness", detail: "Amarktai is testing authentication and only the functions this CRM has proven." }),
-    onSuccess: async result => {
+    onSuccess: async (result, variables) => {
+      setCalibrationRequiredFor(
+        result.summary.includes("GENIE_LOGIN_CALIBRATION_REQUIRED")
+          ? variables.connectedSystemId
+          : null
+      );
       await systems.refetch();
       result.status === "ready"
         ? toast.success("All requested CRM capability sets are verified.")
@@ -461,6 +473,20 @@ export default function ConnectionsV2() {
                   </Button>
                 )}
               </div>
+              {isBrowser(system.provider) && canManage && (
+                <LoginCalibration
+                  organisationId={organisationId}
+                  systemId={system.id}
+                  required={calibrationRequiredFor === system.id}
+                  onSaved={() => {
+                    setCalibrationRequiredFor(null);
+                    verify.mutate({
+                      organisationId: organisationId ?? 0,
+                      connectedSystemId: system.id,
+                    });
+                  }}
+                />
+              )}
               {isBrowser(system.provider) && (canManage ? (
                 <details className="mt-5 rounded-xl border border-white/10 bg-[#08172F] p-4">
                   <summary className="cursor-pointer text-sm font-bold text-[#A9C7FF]">Advanced CRM commissioning</summary>
@@ -634,6 +660,124 @@ export default function ConnectionsV2() {
         </details>}
       </div>
     </DashboardLayout>
+  );
+}
+
+export function LoginCalibration({
+  organisationId,
+  systemId,
+  required = false,
+  onSaved,
+}: {
+  organisationId?: number;
+  systemId: number;
+  required?: boolean;
+  onSaved?: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [authHostname, setAuthHostname] = useState("");
+  const [draft, setDraft] = useState<LoginCalibrationDraft>({
+    usernameSelector: 'input[name="username"]',
+    passwordSelector: 'input[type="password"]',
+    submitSelector: 'button[type="submit"]',
+    readySelector: '[data-testid="dashboard"]',
+  });
+  const addDomain = trpc.connectedSystems.addDomain.useMutation({
+    onSuccess: () => {
+      setAuthHostname("");
+      toast.success("The exact authentication hostname is approved for this Genie connection.");
+    },
+    onError: error => toast.error(error.message),
+  });
+  async function save() {
+    try {
+      setSaving(true);
+      await jsonRequest(`/api/connected-system-admin/${systemId}/browser`, {
+        method: "PUT",
+        body: JSON.stringify({ loginCalibration: draft }),
+      });
+      toast.success("Guided sign-in selectors saved without credentials.");
+      setOpen(false);
+      onSaved?.();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Sign-in calibration was not saved.");
+    } finally {
+      setSaving(false);
+    }
+  }
+  const fields: Array<[keyof LoginCalibrationDraft, string]> = [
+    ["usernameSelector", "Username / email field"],
+    ["passwordSelector", "Password field"],
+    ["submitSelector", "Sign-in submit button"],
+    ["readySelector", "Authenticated / ready marker"],
+  ];
+  return (
+    <section className="mt-5 rounded-xl border border-[#3D69AD]/30 bg-[#071326] p-4">
+      <p className="text-sm font-bold text-white">
+        {required
+          ? "Genie was reached, but Amarktai needs help identifying the sign-in form."
+          : "Automatic Genie sign-in discovery is the normal path."}
+      </p>
+      <p className="mt-2 text-xs leading-5 text-[#91A9CF]">
+        Automatic discovery is used first. Only an elevated manager should calibrate
+        selectors when requested; credentials remain in encrypted connection secrets.
+      </p>
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() => setOpen(value => !value)}
+        className="mt-3 border-white/15 bg-white/5 text-white"
+      >
+        {open ? "Close calibration" : "Calibrate sign-in"}
+      </Button>
+      {open && (
+        <div className="mt-4 space-y-4">
+          <div className="grid gap-3 md:grid-cols-2">
+            {fields.map(([key, label]) => (
+              <label key={key} className="grid gap-1 text-xs font-bold text-[#AFC3E2]">
+                {label}
+                <Input
+                  value={draft[key]}
+                  onChange={event => setDraft(current => ({ ...current, [key]: event.target.value }))}
+                  className="border-white/15 bg-[#08172F] font-mono text-xs text-white"
+                />
+              </label>
+            ))}
+          </div>
+          <Button disabled={saving} onClick={() => void save()} className="bg-[#1B64F2]">
+            {saving ? "Saving…" : "Save selector calibration"}
+          </Button>
+          <div className="border-t border-white/10 pt-4">
+            <p className="text-xs font-bold text-[#AFC3E2]">Approve an exact authentication redirect hostname</p>
+            <p className="mt-1 text-xs leading-5 text-[#91A9CF]">
+              Enter only the hostname reported by the blocked sign-in test. Private-network destinations remain prohibited.
+            </p>
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+              <Input
+                value={authHostname}
+                onChange={event => setAuthHostname(event.target.value)}
+                placeholder="auth.example.com"
+                className="border-white/15 bg-[#08172F] text-white"
+              />
+              <Button
+                variant="outline"
+                disabled={!organisationId || !authHostname.trim() || addDomain.isPending}
+                onClick={() => organisationId && addDomain.mutate({
+                  organisationId,
+                  connectedSystemId: systemId,
+                  hostname: authHostname.trim(),
+                  allowedPaths: ["/"],
+                })}
+                className="border-white/15 bg-white/5 text-white"
+              >
+                Approve exact hostname
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 

@@ -9,6 +9,36 @@ import type { AdapterConnection, ConnectionSecretPayload, ConnectionTest, CrmPro
 const connectionMethods = ["oauth", "browser", "sidecar", "custom_adapter", "import"] as const;
 type ConnectionMethod = (typeof connectionMethods)[number];
 const privateExecutionKey = /(?:password|secret|token|cookie|authorization|credential|storageState|browserProfile|authenticated|session)/i;
+const safeVerificationEvidenceKeys = new Set([
+  "cdpReachable",
+  "authorisedDestinationReachable",
+  "perConnectionCredentialsAvailable",
+  "approvedSessionAvailable",
+  "authenticationConfirmed",
+  "authenticatedHostname",
+  "learnedOperationReadinessInspected",
+  "configuredOperations",
+]);
+
+export function sanitizeVerificationProviderResult(
+  value: Record<string, unknown>
+) {
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => safeVerificationEvidenceKeys.has(key))
+      .map(([key, nested]) => [
+        key,
+        Array.isArray(nested)
+          ? nested.filter(item => typeof item === "string").slice(0, 100)
+          : typeof nested === "string"
+            ? nested.slice(0, 500)
+            : typeof nested === "boolean" || typeof nested === "number"
+              ? nested
+              : undefined,
+      ])
+      .filter(([, nested]) => nested !== undefined)
+  );
+}
 
 export function sanitizeConnectedSystemForApi<T extends Record<string, unknown>>(system: T): T {
   const sanitize = (value: unknown): unknown => {
@@ -161,7 +191,7 @@ export async function recordConnectionVerification(input: { organisationId: numb
   const verifiedCapabilities = input.test.capabilities.filter(result => result.available).map(result => result.capability);
   const status = input.test.status === "ready" ? "ready" : input.test.status === "limited" ? "limited_permissions" : "needs_attention" as const;
   await db.transaction(async tx => {
-    await tx.insert(connectorVerificationRuns).values({ connectedSystemId: system.id, correlationId: input.correlationId, status: input.test.status, capabilities: Object.fromEntries(input.test.capabilities.map(capability => [capability.capability, capability.available])), summary: input.test.summary, evidence: { operations: input.test.evidence.map(item => ({ ...item, providerResult: item.providerResult ? { recorded: true } : undefined })) }, completedAt: new Date() });
+    await tx.insert(connectorVerificationRuns).values({ connectedSystemId: system.id, correlationId: input.correlationId, status: input.test.status, capabilities: Object.fromEntries(input.test.capabilities.map(capability => [capability.capability, capability.available])), summary: input.test.summary, evidence: { operations: input.test.evidence.map(item => ({ ...item, providerResult: item.providerResult ? sanitizeVerificationProviderResult(item.providerResult) : undefined })) }, completedAt: new Date() });
     await tx.update(connectedSystems).set({ status, verifiedCapabilities, accountExternalId: input.test.accountExternalId ?? system.accountExternalId, scopes: input.test.scopes ?? system.scopes, lastHealthCheckAt: new Date(), lastHealthSummary: input.test.summary, readyAt: input.test.status === "ready" ? new Date() : null }).where(eq(connectedSystems.id, system.id));
   });
   return { status, verifiedCapabilities };

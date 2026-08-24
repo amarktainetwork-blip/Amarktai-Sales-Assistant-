@@ -3,6 +3,7 @@ import {
   chromium,
   type Browser,
   type BrowserContext,
+  type Locator,
   type Page,
 } from "playwright-core";
 import {
@@ -87,7 +88,7 @@ type BrowserLoginProfile = {
   usernameSelector?: string;
   passwordSelector?: string;
   submitSelector?: string;
-  readySelector: string;
+  readySelector?: string;
 };
 type BrowserProfile = {
   browserEndpoint?: string;
@@ -111,9 +112,7 @@ function asProfile(value: unknown): BrowserProfile | undefined {
           script as unknown as SavedBrowserScript
         );
   const login =
-    isObject(value.login) &&
-    typeof value.login.url === "string" &&
-    typeof value.login.readySelector === "string"
+    isObject(value.login) && typeof value.login.url === "string"
       ? (value.login as unknown as BrowserLoginProfile)
       : undefined;
   return {
@@ -165,7 +164,7 @@ async function genieProfile(): Promise<BrowserProfile | undefined> {
             submitSelector:
               process.env.GENIE_LOGIN_SUBMIT_SELECTOR ||
               'button[type="submit"]',
-            readySelector: process.env.GENIE_DASHBOARD_SELECTOR || "body",
+            readySelector: process.env.GENIE_DASHBOARD_SELECTOR,
           }
         : undefined,
       scripts: Object.fromEntries(
@@ -183,16 +182,43 @@ async function genieProfile(): Promise<BrowserProfile | undefined> {
   }
 }
 
-async function profileFor(
+export async function resolveBrowserProfile(
   connection: AdapterConnection,
   provider: Extract<CrmProvider, "genie" | "custom_browser">
 ) {
   const configured = asProfile(connection.configuration.browserProfile);
-  if (configured) return configured;
   if (provider === "genie") {
     const installed = await genieProfile();
+    if (configured)
+      return {
+        ...installed,
+        ...configured,
+        browserEndpoint:
+          configured.browserEndpoint ||
+          installed?.browserEndpoint ||
+          process.env.BROWSERLESS_WS_ENDPOINT,
+        login:
+          configured.login ||
+          (connection.baseUrl ? { url: connection.baseUrl } : installed?.login),
+        scripts: { ...(installed?.scripts || {}), ...configured.scripts },
+        operationMap: {
+          ...(installed?.operationMap || DEFAULT_GENIE_OPERATION_MAP),
+          ...(configured.operationMap || {}),
+        },
+      } satisfies BrowserProfile;
+    if (connection.baseUrl)
+      return {
+        browserEndpoint:
+          installed?.browserEndpoint || process.env.BROWSERLESS_WS_ENDPOINT,
+        login: { url: connection.baseUrl },
+        scripts: installed?.scripts || {},
+        operationMap: installed?.operationMap || DEFAULT_GENIE_OPERATION_MAP,
+        resultKeys: installed?.resultKeys,
+        artifactDirectory: installed?.artifactDirectory,
+      } satisfies BrowserProfile;
     if (installed) return installed;
   }
+  if (configured) return configured;
   return connection.baseUrl
     ? { browserEndpoint: process.env.BROWSERLESS_WS_ENDPOINT, scripts: {} }
     : undefined;
@@ -210,7 +236,7 @@ async function browserSecret(
     })) || {}
   );
 }
-function credentials(secret?: ConnectionSecretPayload, provider?: string) {
+export function resolveBrowserCredentials(secret?: ConnectionSecretPayload, provider?: string) {
   const fromSecret = secret?.credentials || {};
   if (Object.keys(fromSecret).length) return fromSecret;
   if (provider === "genie")
@@ -252,37 +278,272 @@ async function authorizeNavigation(
     rawUrl,
   });
 }
+
+const AUTO_USERNAME_SELECTOR = [
+  'input[type="email"]',
+  'input[autocomplete="username" i]',
+  'input[name*="email" i]',
+  'input[name*="user" i]',
+].join(", ");
+const AUTO_PASSWORD_SELECTOR = 'input[type="password"]';
+const AUTO_SUBMIT_SELECTOR = 'button[type="submit"], input[type="submit"]';
+const MFA_SELECTOR = [
+  'input[autocomplete="one-time-code" i]',
+  'input[name*="otp" i]',
+  'input[name*="mfa" i]',
+  'input[name*="verification" i]',
+].join(", ");
+const CRM_SHELL_SELECTOR = [
+  '[data-testid*="dashboard" i]',
+  '[aria-label*="dashboard" i]',
+  '[class*="crm-shell" i]',
+  'main nav',
+].join(", ");
+
+type AuthenticationProof = {
+  method: "configured_ready_selector" | "login_form_disappeared" | "authorised_url_changed" | "approved_session";
+  loginUrl: string;
+  authenticatedUrl: string;
+};
+
+type BlockedNavigation = { url: string; detail: string };
+
+function loginError(code: string, guidance: string): never {
+  throw new Error(`${code}: ${guidance}`);
+}
+
+async function visibleLocators(locator: Locator) {
+  const visible: Locator[] = [];
+  const count = Math.min(await locator.count(), 12);
+  for (let index = 0; index < count; index += 1) {
+    const candidate = locator.nth(index);
+    if (await candidate.isVisible().catch(() => false)) visible.push(candidate);
+  }
+  return visible;
+}
+
+async function oneVisible(
+  page: Page,
+  selector: string,
+  label: string
+) {
+  let matches: Locator[];
+  try {
+    matches = await visibleLocators(page.locator(selector));
+  } catch {
+    loginError(
+      "GENIE_LOGIN_CALIBRATION_REQUIRED",
+      `The saved ${label} selector is invalid. Genie was reached, but Amarktai needs help identifying the sign-in form.`
+    );
+  }
+  if (matches.length !== 1)
+    loginError(
+      "GENIE_LOGIN_CALIBRATION_REQUIRED",
+      `Genie was reached, but Amarktai needs help identifying the sign-in form. Found ${matches.length} visible ${label} controls; exactly one is required. Use Calibrate sign-in.`
+    );
+  return matches[0];
+}
+
+async function hasVisible(page: Page, selector: string) {
+  return (await visibleLocators(page.locator(selector))).length > 0;
+}
+
+export function meaningfulReadySelector(selector?: string) {
+  const normalized = selector?.trim().toLowerCase();
+  return Boolean(normalized && !["body", "html", "*", "html body"].includes(normalized));
+}
+
+function blockedRedirectError(blocked: BlockedNavigation): never {
+  let hostname = "the redirected authentication service";
+  try {
+    hostname = new URL(blocked.url).hostname;
+  } catch {
+    // Keep the non-sensitive generic label.
+  }
+  if (/private|unsafe network|local/i.test(blocked.detail))
+    loginError(
+      "GENIE_AUTH_REDIRECT_PRIVATE_BLOCKED",
+      `Genie sign-in attempted to redirect to ${hostname}, which is a private or unsafe network destination. The redirect remains blocked.`
+    );
+  loginError(
+    "GENIE_AUTH_HOST_APPROVAL_REQUIRED",
+    `Genie sign-in redirects through ${hostname}. An elevated manager must approve this exact authentication hostname for this connected system to continue.`
+  );
+}
+
+async function pageSuggestsMfa(page: Page) {
+  if (await hasVisible(page, MFA_SELECTOR).catch(() => false)) return true;
+  const text = await page.locator("body").innerText({ timeout: 1_000 }).catch(() => "");
+  return /two[- ]factor|multi[- ]factor|verification code|authenticator|single sign[- ]on|\bsso\b|approve (?:the )?sign[- ]in/i.test(text);
+}
+
+async function pageSuggestsRejectedCredentials(page: Page) {
+  const text = await page.locator("body").innerText({ timeout: 1_000 }).catch(() => "");
+  return /invalid (?:username|email|password|credentials)|incorrect (?:username|email|password)|sign[- ]in failed|login failed|credentials (?:were )?rejected/i.test(text);
+}
+
 async function authenticate(
   page: Page,
-  connection: AdapterConnection,
   profile: BrowserProfile,
   secret: ConnectionSecretPayload,
-  provider: string
-) {
-  if (!profile.login) return;
-  const creds = credentials(secret, provider);
-  await authorizeNavigation(connection, profile.login.url);
-  await page.goto(profile.login.url, {
-    waitUntil: "domcontentloaded",
-    timeout: 45_000,
-  });
-  await authorizeNavigation(connection, page.url());
-  if (profile.login.usernameSelector) {
-    if (!creds.username)
-      throw new Error("Browser connector username is not configured.");
-    await page.locator(profile.login.usernameSelector).fill(creds.username);
+  provider: string,
+  authorize: (url: string) => Promise<void>,
+  blockedNavigation: () => BlockedNavigation | undefined,
+  timeoutMs = 45_000
+): Promise<AuthenticationProof> {
+  if (!profile.login)
+    loginError(
+      "GENIE_LOGIN_CALIBRATION_REQUIRED",
+      "No authorised Genie sign-in URL is available. Save the connected system URL and retry."
+    );
+  const login = profile.login;
+  const creds = resolveBrowserCredentials(secret, provider);
+  await authorize(login.url);
+  try {
+    await page.goto(login.url, {
+      waitUntil: "domcontentloaded",
+      timeout: 45_000,
+    });
+  } catch (error) {
+    const blocked = blockedNavigation();
+    if (blocked) blockedRedirectError(blocked);
+    throw error;
   }
-  if (profile.login.passwordSelector) {
-    if (!creds.password)
-      throw new Error("Browser connector password is not configured.");
-    await page.locator(profile.login.passwordSelector).fill(creds.password);
+  const blockedAfterNavigation = blockedNavigation();
+  if (blockedAfterNavigation) blockedRedirectError(blockedAfterNavigation);
+  await authorize(page.url());
+
+  const initialUrl = page.url();
+  const loginHostname = new URL(login.url).hostname.toLowerCase();
+  const visiblePasswords = await visibleLocators(
+    page.locator(login.passwordSelector || AUTO_PASSWORD_SELECTOR)
+  );
+  if (!visiblePasswords.length) {
+    const configuredReady =
+      meaningfulReadySelector(login.readySelector) &&
+      (await hasVisible(page, login.readySelector!).catch(() => false));
+    const knownShell = await hasVisible(page, CRM_SHELL_SELECTOR).catch(() => false);
+    if (configuredReady || knownShell)
+      return {
+        method: "approved_session",
+        loginUrl: login.url,
+        authenticatedUrl: page.url(),
+      };
+    if (await pageSuggestsMfa(page))
+      loginError(
+        "GENIE_INTERACTIVE_AUTH_REQUIRED",
+        "Genie requires interactive MFA or SSO. Amarktai will not bypass it; complete approved session commissioning before retrying."
+      );
+    loginError(
+      "GENIE_LOGIN_CALIBRATION_REQUIRED",
+      "Genie was reached, but Amarktai needs help identifying the sign-in form. Use Calibrate sign-in."
+    );
   }
-  if (profile.login.submitSelector)
-    await page.locator(profile.login.submitSelector).click();
-  await page
-    .locator(profile.login.readySelector)
-    .waitFor({ state: "visible", timeout: 45_000 });
-  await authorizeNavigation(connection, page.url());
+
+  if (!creds.username || !creds.password)
+    loginError(
+      "GENIE_CREDENTIALS_REQUIRED",
+      "Encrypted username and password are required for this connected system. Save its secure sign-in details and retry."
+    );
+
+  const username = await oneVisible(
+    page,
+    login.usernameSelector || AUTO_USERNAME_SELECTOR,
+    "username/email"
+  );
+  const password = await oneVisible(
+    page,
+    login.passwordSelector || AUTO_PASSWORD_SELECTOR,
+    "password"
+  );
+  const submit = await oneVisible(
+    page,
+    login.submitSelector || AUTO_SUBMIT_SELECTOR,
+    "submit"
+  );
+  await username.fill(creds.username);
+  await password.fill(creds.password);
+  try {
+    await submit.click();
+  } catch (error) {
+    const blocked = blockedNavigation();
+    if (blocked) blockedRedirectError(blocked);
+    throw error;
+  }
+
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const blocked = blockedNavigation();
+    if (blocked) blockedRedirectError(blocked);
+    if (await pageSuggestsMfa(page))
+      loginError(
+        "GENIE_INTERACTIVE_AUTH_REQUIRED",
+        "Genie requires interactive MFA or SSO. Amarktai will not bypass it; complete approved session commissioning before retrying."
+      );
+    const passwordStillVisible = await hasVisible(
+      page,
+      login.passwordSelector || AUTO_PASSWORD_SELECTOR
+    ).catch(() => false);
+    if (passwordStillVisible && (await pageSuggestsRejectedCredentials(page)))
+      loginError(
+        "GENIE_AUTHENTICATION_FAILED",
+        "Genie rejected the saved sign-in details. Update the encrypted username and password, then retry."
+      );
+    const currentUrl = page.url();
+    await authorize(currentUrl);
+    const onGenieHostname =
+      new URL(currentUrl).hostname.toLowerCase() === loginHostname;
+    const ready =
+      meaningfulReadySelector(login.readySelector) &&
+      (await hasVisible(page, login.readySelector!).catch(() => false));
+    if (ready && !passwordStillVisible)
+      return {
+        method: "configured_ready_selector",
+        loginUrl: login.url,
+        authenticatedUrl: currentUrl,
+      };
+    if (!passwordStillVisible && onGenieHostname)
+      return {
+        method:
+          currentUrl !== initialUrl
+            ? "authorised_url_changed"
+            : "login_form_disappeared",
+        loginUrl: login.url,
+        authenticatedUrl: currentUrl,
+      };
+    await page.waitForTimeout(250);
+  }
+  loginError(
+    "GENIE_LOGIN_NOT_CONFIRMED",
+    "Genie sign-in was submitted, but an authenticated CRM page could not be proven. The login form is still visible; check the credentials or calibrate the ready marker."
+  );
+}
+
+export async function authenticateCommissioningPage(input: {
+  page: Page;
+  loginUrl: string;
+  credentials?: Record<string, string>;
+  browserSession?: Record<string, unknown>;
+  loginCalibration?: Omit<BrowserLoginProfile, "url">;
+  authorize: (url: string) => Promise<void>;
+  blockedNavigation?: () => BlockedNavigation | undefined;
+  timeoutMs?: number;
+}) {
+  return authenticate(
+    input.page,
+    {
+      scripts: {},
+      login: { url: input.loginUrl, ...(input.loginCalibration || {}) },
+    },
+    {
+      credentials: input.credentials,
+      browserSession: input.browserSession,
+    },
+    "genie",
+    input.authorize,
+    input.blockedNavigation || (() => undefined),
+    input.timeoutMs
+  );
 }
 async function withPage<T>(
   connection: AdapterConnection,
@@ -298,6 +559,7 @@ async function withPage<T>(
       : undefined
   );
   const page = await context.newPage();
+  let blocked: BlockedNavigation | undefined;
   await page.route("**/*", async route => {
     const request = route.request();
     if (!request.isNavigationRequest() || request.frame() !== page.mainFrame())
@@ -305,12 +567,23 @@ async function withPage<T>(
     try {
       await authorizeNavigation(connection, request.url());
       return route.continue();
-    } catch {
+    } catch (error) {
+      blocked = {
+        url: request.url(),
+        detail: error instanceof Error ? error.message : String(error),
+      };
       return route.abort("blockedbyclient");
     }
   });
   try {
-    await authenticate(page, connection, profile, secret, provider);
+    await authenticate(
+      page,
+      profile,
+      secret,
+      provider,
+      url => authorizeNavigation(connection, url),
+      () => blocked
+    );
     return await run(page, context);
   } finally {
     await context.close().catch(() => undefined);
@@ -327,7 +600,7 @@ async function runOperation(input: {
   allowTestReady?: boolean;
   publishByUserId?: number;
 }) {
-  const profile = await profileFor(
+  const profile = await resolveBrowserProfile(
     input.connection,
     input.provider as Extract<CrmProvider, "genie" | "custom_browser">
   );
@@ -356,7 +629,7 @@ async function runOperation(input: {
     if (!legacy) throw error;
   }
   const payload = {
-    ...credentials(input.secret, input.provider),
+    ...resolveBrowserCredentials(input.secret, input.provider),
     ...(input.payload || {}),
   };
   const script =
@@ -736,33 +1009,31 @@ export function browserCrmAdapter(
     correlationId: string;
   }): Promise<ConnectionTest> => {
     try {
-      const profile = await profileFor(input.connection, provider);
+      const profile = await resolveBrowserProfile(input.connection, provider);
       if (!profile)
         throw new Error(
           "No calibrated browser connector profile is configured."
         );
       const secret = await browserSecret(input.connection, input.secret);
-      try {
-        await runOperation({
-          connection: input.connection,
-          secret,
-          provider,
-          operation: "healthCheck",
-          correlationId: input.correlationId,
-        });
-      } catch (error) {
-        const detail = error instanceof Error ? error.message : String(error);
-        if (!/^OPERATION_NOT_/.test(detail) || !profile.login) throw error;
-        await withPage(
-          input.connection,
-          secret,
-          provider,
-          profile,
-          async page => {
-            await authorizeNavigation(input.connection, page.url());
-          }
-        );
+      const suppliedCredentials = resolveBrowserCredentials(secret, provider);
+      if (!suppliedCredentials.username || !suppliedCredentials.password) {
+        const sessionConfigured = Boolean(secret.browserSession);
+        if (!sessionConfigured)
+          throw new Error(
+            "GENIE_CREDENTIALS_REQUIRED: Encrypted per-connection credentials are not available. Save the Genie username and password, then retry."
+          );
       }
+      let authenticatedUrl = "";
+      await withPage(
+        input.connection,
+        secret,
+        provider,
+        profile,
+        async page => {
+          authenticatedUrl = page.url();
+          await authorizeNavigation(input.connection, authenticatedUrl);
+        }
+      );
       const requested = Array.from(
         new Set([
           ...input.connection.allowedReadCapabilities,
@@ -798,10 +1069,8 @@ export function browserCrmAdapter(
         status:
           available.length === capabilities.length && capabilities.length
             ? "ready"
-            : available.length
-              ? "limited"
-              : "failed",
-        summary: `${available.length} of ${capabilities.length} requested browser CRM capabilities have calibrated operations.`,
+            : "limited",
+        summary: `Genie authentication was confirmed. ${available.length} of ${capabilities.length} requested browser CRM capabilities have complete LIVE_PROVEN operation sets.`,
         capabilities,
         evidence: [
           {
@@ -809,6 +1078,15 @@ export function browserCrmAdapter(
             correlationId: input.correlationId,
             completedAt: new Date().toISOString(),
             providerResult: {
+              cdpReachable: true,
+              authorisedDestinationReachable: true,
+              perConnectionCredentialsAvailable: Boolean(
+                secret.credentials?.username && secret.credentials?.password
+              ),
+              approvedSessionAvailable: Boolean(secret.browserSession),
+              authenticationConfirmed: true,
+              authenticatedHostname: new URL(authenticatedUrl).hostname,
+              learnedOperationReadinessInspected: true,
               configuredOperations: Object.keys(
                 profile.operationMap || profile.scripts
               ),

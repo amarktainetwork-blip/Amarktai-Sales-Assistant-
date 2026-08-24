@@ -1,7 +1,7 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import ManagementElevation from "@/components/ManagementElevation";
 import WorkflowFeedback, { type WorkflowFeedbackState } from "@/components/WorkflowFeedback";
-import { BrowserOperationMatrix } from "./ConnectionsV2";
+import { BrowserOperationMatrix, LoginCalibration } from "./ConnectionsV2";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -829,6 +829,15 @@ export default function Onboarding() {
                     Issue Teach Amarktai session
                   </Button>
                 </div>
+                <LoginCalibration
+                  organisationId={organisationId}
+                  systemId={browserSystem.id}
+                  required={feedback?.detail.includes("GENIE_LOGIN_CALIBRATION_REQUIRED")}
+                  onSaved={() => verifyBrowser.mutate({
+                    organisationId,
+                    connectedSystemId: browserSystem.id,
+                  })}
+                />
                 {sidecarToken && (
                   <div className="rounded-xl border border-amber-300/20 bg-amber-400/[.06] p-3">
                     <p className="text-xs font-bold text-amber-100">

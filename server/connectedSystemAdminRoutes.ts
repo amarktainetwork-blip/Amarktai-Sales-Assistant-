@@ -45,14 +45,56 @@ function sendError(res: Response, error: unknown) {
   });
 }
 
-function profile(value: unknown) {
+export function validateBrowserProfile(value: unknown) {
   if (value === undefined || value === null) return undefined;
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw new Error("Browser connector profile must be a JSON object.");
   const encoded = JSON.stringify(value);
   if (encoded.length > 250_000)
     throw new Error("Browser connector profile is too large.");
+  const inspect = (candidate: unknown): void => {
+    if (Array.isArray(candidate)) return candidate.forEach(inspect);
+    if (!candidate || typeof candidate !== "object") return;
+    for (const [key, nested] of Object.entries(candidate)) {
+      if (/^(?:password|username|credentials?|secret|token|cookies?|storageState|browserSession)$/i.test(key))
+        throw new Error(
+          "Browser profiles may contain selectors and operation configuration only, never credentials or session material."
+        );
+      inspect(nested);
+    }
+  };
+  inspect(value);
   return value as Record<string, unknown>;
+}
+
+function calibration(value: unknown, baseUrl: string | null) {
+  if (value === undefined || value === null) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error("Sign-in calibration must contain the four guided selectors.");
+  if (!baseUrl)
+    throw new Error("Save the Genie sign-in URL before calibrating its form.");
+  const source = value as Record<string, unknown>;
+  const selector = (key: string, label: string) => {
+    const result = typeof source[key] === "string" ? source[key].trim() : "";
+    if (!result || result.length > 500 || /[{}<>;`]/.test(result))
+      throw new Error(`Enter a safe ${label} CSS selector.`);
+    return result;
+  };
+  const usernameSelector = selector("usernameSelector", "username/email field");
+  const passwordSelector = selector("passwordSelector", "password field");
+  const submitSelector = selector("submitSelector", "submit button");
+  const readySelector = selector("readySelector", "authenticated/ready marker");
+  if (["body", "html", "*", "html body"].includes(readySelector.toLowerCase()))
+    throw new Error(
+      "The authenticated/ready marker must identify a meaningful CRM shell element, not the document body."
+    );
+  return {
+    url: baseUrl,
+    usernameSelector,
+    passwordSelector,
+    submitSelector,
+    readySelector,
+  };
 }
 
 export function registerConnectedSystemAdminRoutes(app: Express) {
@@ -82,7 +124,25 @@ export function registerConnectedSystemAdminRoutes(app: Express) {
         typeof req.body?.password === "string"
           ? req.body.password.slice(0, 2000)
           : "";
-      const browserProfile = profile(req.body?.browserProfile);
+      const advancedProfile = validateBrowserProfile(req.body?.browserProfile);
+      const loginCalibration = calibration(
+        req.body?.loginCalibration,
+        system.baseUrl
+      );
+      if (advancedProfile && loginCalibration)
+        throw new Error(
+          "Save guided sign-in calibration separately from the expert browser profile."
+        );
+      const currentProfileValue =
+        system.configuration?.browserProfile &&
+        typeof system.configuration.browserProfile === "object" &&
+        !Array.isArray(system.configuration.browserProfile)
+          ? (system.configuration.browserProfile as Record<string, unknown>)
+          : {};
+      const currentProfile = validateBrowserProfile(currentProfileValue) || {};
+      const browserProfile = loginCalibration
+        ? { ...currentProfile, login: loginCalibration }
+        : advancedProfile;
       if (!username && !password && !browserProfile)
         throw new Error(
           "Supply browser credentials, a calibrated browser profile, or both."
@@ -113,14 +173,20 @@ export function registerConnectedSystemAdminRoutes(app: Express) {
             )
           );
       }
-      if (username && password)
+      if (username && password) {
+        const existing = await loadConnectionSecret({
+          organisationId: membership.organisationId,
+          connectedSystemId,
+          secretKind: "browser",
+        });
         await saveConnectionSecret({
           userId,
           organisationId: membership.organisationId,
           connectedSystemId,
           secretKind: "browser",
-          secret: { credentials: { username, password } },
+          secret: { ...existing, credentials: { username, password } },
         });
+      }
       await recordAudit({
         userId,
         eventType: "browser_connector_configured",
@@ -131,6 +197,7 @@ export function registerConnectedSystemAdminRoutes(app: Express) {
           organisationId: membership.organisationId,
           credentialsUpdated: Boolean(username),
           profileUpdated: Boolean(browserProfile),
+          guidedLoginCalibration: Boolean(loginCalibration),
         },
       });
       return res.json({ ok: true, requiresVerification: true });

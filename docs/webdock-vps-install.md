@@ -108,7 +108,7 @@ AMARKTAI_DEPLOY_PROFILE=full \
 sh deploy/webdock/verify-production.sh
 ```
 
-Do not hand over the client installation until this reports `PRODUCTION_VERIFIER=PASS`.
+`PRODUCTION_VERIFIER=PASS` and `PLATFORM_READY=PASS` prove the deployment/runtime only. `CLIENT_ACCEPTANCE=PENDING` is expected before client CRM commissioning. After commissioning, run `deploy/webdock/verify-client-acceptance.sh`; do not hand over until it reports `CLIENT_ACCEPTANCE_READY=PASS`.
 
 ## 7. CRM onboarding acceptance
 
@@ -117,7 +117,7 @@ From the protected UI:
 1. Complete Company Setup and confirm company knowledge.
 2. Open Connections.
 3. Choose HubSpot, Salesforce, Pipedrive or Zoho for native OAuth; or Genie/Other CRM for an authorised browser connector.
-4. Complete OAuth or save encrypted browser credentials/profile.
+4. Complete OAuth or, for Genie, save the URL plus encrypted per-connection username/password. Install-level `GENIE_*` credentials and raw profile JSON are not required for the normal path.
 5. Run **Test connection**.
 6. Confirm requested capabilities become backend-verified.
 7. Run **Sync now**.
