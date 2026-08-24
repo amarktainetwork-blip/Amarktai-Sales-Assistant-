@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
+import { onboardingSellingReadiness } from "@/lib/onboardingReadiness";
 import {
   BadgeCheck,
   Building2,
@@ -391,18 +392,13 @@ export default function Onboarding() {
     { organisationId: organisationId ?? 0, connectedSystemId: browserSystem?.id ?? 0 },
     { enabled: Boolean(organisationId && browserSystem?.id), retry: false }
   );
-  const coreGenieTasks = [
-    "contact.search",
-    "contact.read",
-    "task.list",
-    "note.create",
-    "task.create_callback",
-    "opportunity.read",
-    "opportunity.update",
-  ];
-  const coreGenieReady = !browserSystem || coreGenieTasks.every(key =>
-    browserReadiness.data?.operations.some(operation => operation.key === key && operation.status === "LIVE_PROVEN")
-  );
+  const sellingReadiness = onboardingSellingReadiness({
+    profileSaved,
+    knowledgeConfirmed,
+    readyNativeCrmCount: readySystems.length,
+    browserSystem,
+    browserOperations: browserReadiness.data?.operations,
+  });
 
   function selectProvider(provider: Provider) {
     setCrm(current => ({
@@ -1025,8 +1021,8 @@ export default function Onboarding() {
               {[
                 ["Profile", profileSaved],
                 ["Knowledge", knowledgeConfirmed],
-                ["Verified CRM", readySystems.length > 0],
-                ["Core Genie tasks", coreGenieReady],
+                ["Verified CRM", sellingReadiness.crmVerified],
+                ["Core Genie tasks", sellingReadiness.coreGenieReady],
               ].map(([label, ready]) => (
                 <div
                   key={String(label)}
@@ -1047,7 +1043,7 @@ export default function Onboarding() {
               record and must confirm the changed state before selling begins.
             </p>
             <Button
-              disabled={!profileSaved || !knowledgeConfirmed || !readySystems.length || !coreGenieReady || onboardingProgress.isPending}
+              disabled={!sellingReadiness.canStartSelling || onboardingProgress.isPending}
               onClick={() => onboardingProgress.mutate({ step: 6, complete: true }, { onSuccess: () => navigate("/today") })}
               className="mt-5 bg-emerald-600 hover:bg-emerald-500"
             >

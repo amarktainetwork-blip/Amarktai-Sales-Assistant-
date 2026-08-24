@@ -99,6 +99,18 @@ type BrowserProfile = {
   artifactDirectory?: string;
 };
 
+export function browserAuthenticationRequired(
+  provider: Extract<CrmProvider, "genie" | "custom_browser">,
+  profile: Pick<BrowserProfile, "login">
+) {
+  if (provider === "genie" && !profile.login)
+    loginError(
+      "GENIE_LOGIN_CALIBRATION_REQUIRED",
+      "No authorised Genie sign-in URL is available. Save the connected system URL and retry."
+    );
+  return Boolean(profile.login);
+}
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -390,13 +402,12 @@ async function authenticate(
   authorize: (url: string) => Promise<void>,
   blockedNavigation: () => BlockedNavigation | undefined,
   timeoutMs = 45_000
-): Promise<AuthenticationProof> {
-  if (!profile.login)
-    loginError(
-      "GENIE_LOGIN_CALIBRATION_REQUIRED",
-      "No authorised Genie sign-in URL is available. Save the connected system URL and retry."
-    );
-  const login = profile.login;
+): Promise<AuthenticationProof | undefined> {
+  if (!browserAuthenticationRequired(
+    provider as Extract<CrmProvider, "genie" | "custom_browser">,
+    profile
+  )) return undefined;
+  const login = profile.login!;
   const creds = resolveBrowserCredentials(secret, provider);
   await authorize(login.url);
   try {
@@ -576,14 +587,18 @@ async function withPage<T>(
     }
   });
   try {
-    await authenticate(
-      page,
-      profile,
-      secret,
-      provider,
-      url => authorizeNavigation(connection, url),
-      () => blocked
-    );
+    if (browserAuthenticationRequired(
+      provider as Extract<CrmProvider, "genie" | "custom_browser">,
+      profile
+    ))
+      await authenticate(
+        page,
+        profile,
+        secret,
+        provider,
+        url => authorizeNavigation(connection, url),
+        () => blocked
+      );
     return await run(page, context);
   } finally {
     await context.close().catch(() => undefined);
@@ -1015,8 +1030,15 @@ export function browserCrmAdapter(
           "No calibrated browser connector profile is configured."
         );
       const secret = await browserSecret(input.connection, input.secret);
+      const authenticationRequired = browserAuthenticationRequired(
+        provider,
+        profile
+      );
       const suppliedCredentials = resolveBrowserCredentials(secret, provider);
-      if (!suppliedCredentials.username || !suppliedCredentials.password) {
+      if (
+        authenticationRequired &&
+        (!suppliedCredentials.username || !suppliedCredentials.password)
+      ) {
         const sessionConfigured = Boolean(secret.browserSession);
         if (!sessionConfigured)
           throw new Error(
@@ -1030,8 +1052,10 @@ export function browserCrmAdapter(
         provider,
         profile,
         async page => {
-          authenticatedUrl = page.url();
-          await authorizeNavigation(input.connection, authenticatedUrl);
+          if (authenticationRequired) {
+            authenticatedUrl = page.url();
+            await authorizeNavigation(input.connection, authenticatedUrl);
+          }
         }
       );
       const requested = Array.from(
@@ -1070,7 +1094,7 @@ export function browserCrmAdapter(
           available.length === capabilities.length && capabilities.length
             ? "ready"
             : "limited",
-        summary: `Genie authentication was confirmed. ${available.length} of ${capabilities.length} requested browser CRM capabilities have complete LIVE_PROVEN operation sets.`,
+        summary: `${authenticationRequired ? "Browser authentication was confirmed" : "The credentialless browser runtime was confirmed"}. ${available.length} of ${capabilities.length} requested browser CRM capabilities have complete LIVE_PROVEN operation sets.`,
         capabilities,
         evidence: [
           {
@@ -1079,13 +1103,17 @@ export function browserCrmAdapter(
             completedAt: new Date().toISOString(),
             providerResult: {
               cdpReachable: true,
-              authorisedDestinationReachable: true,
+              authorisedDestinationReachable: authenticationRequired
+                ? true
+                : undefined,
               perConnectionCredentialsAvailable: Boolean(
                 secret.credentials?.username && secret.credentials?.password
               ),
               approvedSessionAvailable: Boolean(secret.browserSession),
-              authenticationConfirmed: true,
-              authenticatedHostname: new URL(authenticatedUrl).hostname,
+              authenticationConfirmed: authenticationRequired,
+              authenticatedHostname: authenticatedUrl
+                ? new URL(authenticatedUrl).hostname
+                : undefined,
               learnedOperationReadinessInspected: true,
               configuredOperations: Object.keys(
                 profile.operationMap || profile.scripts
