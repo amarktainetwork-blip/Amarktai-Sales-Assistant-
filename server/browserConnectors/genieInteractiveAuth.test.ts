@@ -111,15 +111,14 @@ describe("Genie interactive authentication", () => {
     ).toBe("verification");
   });
 
-  it("settles browser-session snapshots before cleanup and never closes shared CDP Chromium", () => {
+  it("settles browser-session snapshots before connected-browser cleanup", () => {
     const source = readFileSync(
       new URL("./genieInteractiveAuth.ts", import.meta.url),
       "utf8"
     );
 
-    expect(source).not.toContain("browser.close()");
-    expect(source.match(/browser\.disconnect\(\)/g)?.length).toBe(2);
     expect(source.match(/return await verificationRequired\(/g)?.length).toBe(2);
     expect(source.match(/return await authenticated\(/g)?.length).toBe(4);
+    expect(source.match(/await browser\.close\(\)\.catch/g)?.length).toBe(2);
   });
 });
