@@ -195,11 +195,11 @@ async function main() {
   }
 
   const incomplete = Object.values(matrix).filter(item => !["HEALTHY", "TESTED", "LIVE_PROVEN"].includes(item.status)).length;
-  console.log(JSON.stringify({ event: "feature_acceptance", generatedAt: new Date().toISOString(), passed: incomplete === 0, incomplete, matrix }, null, 2));
-  if (incomplete) process.exitCode = 1;
+  const report = JSON.stringify({ event: "feature_acceptance", generatedAt: new Date().toISOString(), passed: incomplete === 0, incomplete, matrix }, null, 2);
+  process.stdout.write(`${report}\n`, () => process.exit(incomplete === 0 ? 0 : 1));
 }
 
 main().catch(error => {
-  console.error(JSON.stringify({ event: "feature_acceptance_failed", detail: error instanceof Error ? error.message : String(error) }));
-  process.exitCode = 1;
+  const report = JSON.stringify({ event: "feature_acceptance_failed", detail: error instanceof Error ? error.message : String(error) });
+  process.stderr.write(`${report}\n`, () => process.exit(1));
 });
