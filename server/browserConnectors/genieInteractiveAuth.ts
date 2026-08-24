@@ -382,9 +382,9 @@ export async function beginGenieInteractiveAuthentication(input: {
       sessionAvailable: Boolean(session),
     });
     if (initialState === "verification")
-      return verificationRequired(page, context);
+      return await verificationRequired(page, context);
     if (initialState === "authenticated")
-      return authenticated(page, context);
+      return await authenticated(page, context);
     if (initialState !== "login")
       throw new Error(
         "GENIE_LOGIN_FORM_NOT_READY: Genie was reached but its sign-in form did not finish rendering. Retry setup once; no calibration is required unless this continues."
@@ -410,7 +410,7 @@ export async function beginGenieInteractiveAuthentication(input: {
       if (denied) throw blockedNavigationError(denied);
       await authorise(input.connection, page.url());
       if (await pageSuggestsInteractiveAuth(page))
-        return verificationRequired(page, context);
+        return await verificationRequired(page, context);
       const passwordStillVisible = await hasVisible(page, PASSWORD_SELECTOR).catch(() => false);
       if (passwordStillVisible) {
         passwordGoneAt = 0;
@@ -421,7 +421,7 @@ export async function beginGenieInteractiveAuthentication(input: {
       } else {
         if (!passwordGoneAt) passwordGoneAt = Date.now();
         if (Date.now() - passwordGoneAt >= 1_500)
-          return authenticated(page, context);
+          return await authenticated(page, context);
       }
       await page.waitForTimeout(250);
     }
@@ -463,7 +463,7 @@ export async function completeGenieInteractiveAuthentication(input: {
     });
     if (!challengeVisible) {
       const ready = await readySelector(page);
-      if (ready) return authenticated(page, context);
+      if (ready) return await authenticated(page, context);
       throw new Error(
         "GENIE_VERIFICATION_CHALLENGE_EXPIRED: Genie no longer shows the verification challenge. Request a new code."
       );
@@ -509,7 +509,7 @@ export async function completeGenieInteractiveAuthentication(input: {
           );
         if (!challengeGoneAt) challengeGoneAt = Date.now();
         if (Date.now() - challengeGoneAt >= 1_000)
-          return authenticated(page, context);
+          return await authenticated(page, context);
       }
       await page.waitForTimeout(250);
     }

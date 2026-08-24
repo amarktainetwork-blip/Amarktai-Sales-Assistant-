@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   classifyGenieInitialRenderState,
@@ -108,5 +109,16 @@ describe("Genie interactive authentication", () => {
         urlChanged: true,
       })
     ).toBe("verification");
+  });
+
+  it("settles browser-session snapshots before connected-browser cleanup", () => {
+    const source = readFileSync(
+      new URL("./genieInteractiveAuth.ts", import.meta.url),
+      "utf8"
+    );
+
+    expect(source.match(/return await verificationRequired\(/g)?.length).toBe(2);
+    expect(source.match(/return await authenticated\(/g)?.length).toBe(4);
+    expect(source.match(/await browser\.close\(\)\.catch/g)?.length).toBe(2);
   });
 });
