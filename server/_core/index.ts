@@ -16,6 +16,10 @@ import { registerAiCreditsRoutes } from "../aiCreditsRoutes";
 import { registerConnectorWebhookRoutes } from "../connectors/webhookRoutes";
 import { registerOutlookInboundRoutes } from "../communications/outlookInboundRoutes";
 import { registerVoiceRoutes } from "../voice/routes";
+import {
+  contactRateLimit,
+  registerPublicContactRoutes,
+} from "../publicContact";
 import { withAiRequestIdentity } from "../aiRequestContext";
 import {
   allowSidecarOrigin,
@@ -68,6 +72,8 @@ async function startServer() {
   app.get("/api/health", (_req, res) =>
     res.status(200).json({ status: "ok", service: "amarktai-sales" })
   );
+  app.use("/api/public/contact", rateLimit(contactRateLimit), enforceAppOrigin);
+  registerPublicContactRoutes(app);
   app.get("/readyz", async (_req, res) => {
     const readiness = await getProductionReadiness();
     return res.status(readiness.status === "ready" ? 200 : 503).json(readiness);

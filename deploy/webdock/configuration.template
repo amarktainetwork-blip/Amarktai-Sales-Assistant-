@@ -107,5 +107,7 @@ SMTP_SECURE=false
 SMTP_USER=replace_with_smtp_username
 SMTP_PASSWORD=replace_with_smtp_password
 SMTP_FROM=Amarktai Sales Assistant <no-reply@example.com>
+# Optional public contact-form destination. Falls back to LOCAL_ADMIN_EMAIL.
+CONTACT_RECIPIENT_EMAIL=
 
 ALLOW_MANUAL_PLAN_ASSIGNMENT=false
