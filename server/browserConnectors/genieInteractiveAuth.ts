@@ -430,7 +430,7 @@ export async function beginGenieInteractiveAuthentication(input: {
     );
   } finally {
     await context.close().catch(() => undefined);
-    browser.disconnect();
+    await browser.close().catch(() => undefined);
   }
 }
 
@@ -518,6 +518,6 @@ export async function completeGenieInteractiveAuthentication(input: {
     );
   } finally {
     await context.close().catch(() => undefined);
-    browser.disconnect();
+    await browser.close().catch(() => undefined);
   }
 }
