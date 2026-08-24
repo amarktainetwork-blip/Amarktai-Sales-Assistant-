@@ -89,6 +89,9 @@ export const companyProfiles = mysqlTable(
     companySize: varchar("companySize", { length: 80 }),
     primaryMarket: varchar("primaryMarket", { length: 220 }),
     salesMotion: varchar("salesMotion", { length: 180 }),
+    productsServices: text("productsServices"),
+    typicalCustomer: text("typicalCustomer"),
+    primarySalesObjective: varchar("primarySalesObjective", { length: 500 }),
     brandVoice: text("brandVoice"),
     discoveryStatus: mysqlEnum("discoveryStatus", [
       "not_started",
@@ -132,7 +135,7 @@ export const websiteDiscoveries = mysqlTable(
       .$type<Record<string, unknown>>()
       .notNull(),
     proposedKnowledge: json("proposedKnowledge")
-      .$type<Array<{ title: string; content: string }>>()
+      .$type<Array<{ title: string; content: string; sourceUrl?: string; fetchedAt?: string; category?: string }>>()
       .notNull(),
     status: mysqlEnum("status", [
       "review_required",
@@ -555,6 +558,8 @@ export const knowledgeSources = mysqlTable(
       .default("note")
       .notNull(),
     sourceUrl: varchar("sourceUrl", { length: 1024 }),
+    sourceFetchedAt: timestamp("sourceFetchedAt"),
+    sourceMetadata: json("sourceMetadata").$type<Record<string, unknown>>(),
     content: text("content"),
     status: mysqlEnum("status", ["draft", "ready", "needs_review"])
       .default("draft")

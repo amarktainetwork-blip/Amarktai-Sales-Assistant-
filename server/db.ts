@@ -17,6 +17,8 @@ import {
   automationPlaybooks,
   workflowRuns,
   workspaceSavedItems,
+  crmContacts,
+  crmCompanies,
 } from "../drizzle/schema";
 import type { ProposedAction } from "./workflowRules";
 import { normalizeSavedItemTags, type SavedItemTargetType } from "./savedItems";
@@ -575,12 +577,15 @@ export async function getCompanySetup(userId: number, organisationId: number) {
 
 export async function upsertCompanyProfile(input: {
   userId: number; organisationId: number; companyName: string; websiteUrl?: string | null; industry?: string | null; companySize?: string | null;
-  primaryMarket?: string | null; salesMotion?: string | null; brandVoice?: string | null;
+  primaryMarket?: string | null; salesMotion?: string | null; productsServices?: string | null; typicalCustomer?: string | null;
+  primarySalesObjective?: string | null; brandVoice?: string | null;
 }) {
   const db = await requireDb();
   await db.insert(companyProfiles).values(input).onDuplicateKeyUpdate({ set: {
     companyName: input.companyName, websiteUrl: input.websiteUrl ?? null, industry: input.industry ?? null,
     companySize: input.companySize ?? null, primaryMarket: input.primaryMarket ?? null, salesMotion: input.salesMotion ?? null,
+    productsServices: input.productsServices ?? null, typicalCustomer: input.typicalCustomer ?? null,
+    primarySalesObjective: input.primarySalesObjective ?? null,
     brandVoice: input.brandVoice ?? null,
   } });
   const profile = (await db.select().from(companyProfiles).where(and(eq(companyProfiles.userId, input.userId), eq(companyProfiles.organisationId, input.organisationId))).limit(1))[0];
@@ -589,27 +594,82 @@ export async function upsertCompanyProfile(input: {
   return profile;
 }
 
+export async function listCrmCustomers(organisationId: number) {
+  const db = await requireDb();
+  const [contacts, companies] = await Promise.all([
+    db.select({ id: crmContacts.id, connectedSystemId: crmContacts.connectedSystemId, externalId: crmContacts.externalId, companyExternalId: crmContacts.companyExternalId, firstName: crmContacts.firstName, lastName: crmContacts.lastName, email: crmContacts.email, phone: crmContacts.phone, lifecycleStage: crmContacts.lifecycleStage, updatedAt: crmContacts.updatedAt }).from(crmContacts).where(eq(crmContacts.organisationId, organisationId)).orderBy(desc(crmContacts.updatedAt)).limit(250),
+    db.select({ connectedSystemId: crmCompanies.connectedSystemId, externalId: crmCompanies.externalId, name: crmCompanies.name }).from(crmCompanies).where(eq(crmCompanies.organisationId, organisationId)).limit(500),
+  ]);
+  const companyByKey = new Map(companies.map(company => [`${company.connectedSystemId}:${company.externalId}`, company.name]));
+  return contacts.map(contact => ({
+    ...contact,
+    name: [contact.firstName, contact.lastName].filter(Boolean).join(" ") || contact.email || contact.phone || `CRM contact ${contact.externalId}`,
+    companyName: contact.companyExternalId ? companyByKey.get(`${contact.connectedSystemId}:${contact.companyExternalId}`) ?? null : null,
+  }));
+}
+
+export async function saveWebsiteDiscoveryReview(input: {
+  userId: number;
+  organisationId: number;
+  companyProfileId: number;
+  sourceUrl: string;
+  pageTitle: string | null;
+  extractedText: string;
+  proposedFacts: Record<string, unknown>;
+  proposedKnowledge: Array<{ title: string; content: string; sourceUrl: string; fetchedAt: string; category: string }>;
+}) {
+  const db = await requireDb();
+  const profile = (await db.select().from(companyProfiles).where(and(eq(companyProfiles.id, input.companyProfileId), eq(companyProfiles.userId, input.userId), eq(companyProfiles.organisationId, input.organisationId))).limit(1))[0];
+  if (!profile) throw new Error("Company profile is unavailable for website discovery.");
+  const result = await db.insert(websiteDiscoveries).values({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    companyProfileId: input.companyProfileId,
+    sourceUrl: input.sourceUrl,
+    pageTitle: input.pageTitle,
+    extractedText: input.extractedText,
+    proposedFacts: input.proposedFacts,
+    proposedKnowledge: input.proposedKnowledge,
+    status: "review_required",
+  });
+  const discoveryId = Number(result[0].insertId);
+  await db.update(companyProfiles).set({ discoveryStatus: "review_required" }).where(and(eq(companyProfiles.id, input.companyProfileId), eq(companyProfiles.userId, input.userId), eq(companyProfiles.organisationId, input.organisationId)));
+  await recordAudit({ userId: input.userId, organisationId: input.organisationId, eventType: "website_discovery_review_ready", entityType: "website_discovery", entityId: String(discoveryId), summary: "Bounded website discoveries are ready for user review.", metadata: { sourceUrl: input.sourceUrl, candidateCount: input.proposedKnowledge.length, pagesCrawled: input.proposedFacts.pagesCrawled ?? null } });
+  return discoveryId;
+}
+
 export async function confirmWebsiteDiscovery(input: {
-  userId: number; organisationId: number; companyProfileId: number; sourceUrl: string; pageTitle: string | null;
-  confirmedKnowledge: Array<{ title: string; content: string }>;
+  userId: number;
+  organisationId: number;
+  companyProfileId: number;
+  discoveryId: number;
+  knowledgeIndexes: number[];
 }) {
   const db = await requireDb();
   const profile = (await db.select().from(companyProfiles).where(and(eq(companyProfiles.id, input.companyProfileId), eq(companyProfiles.userId, input.userId), eq(companyProfiles.organisationId, input.organisationId))).limit(1))[0];
   if (!profile) throw new Error("Company profile is unavailable for confirmation.");
+  const discovery = (await db.select().from(websiteDiscoveries).where(and(eq(websiteDiscoveries.id, input.discoveryId), eq(websiteDiscoveries.companyProfileId, input.companyProfileId), eq(websiteDiscoveries.userId, input.userId), eq(websiteDiscoveries.organisationId, input.organisationId), eq(websiteDiscoveries.status, "review_required"))).limit(1))[0];
+  if (!discovery) throw new Error("The website review is unavailable or has already been completed. Run discovery again.");
+  const candidates = discovery.proposedKnowledge as Array<{ title: string; content: string; sourceUrl?: string; fetchedAt?: string; category?: string }>;
+  const selectedIndexes = Array.from(new Set(input.knowledgeIndexes)).filter(index => index >= 0 && index < candidates.length);
+  const confirmedKnowledge = selectedIndexes.map(index => candidates[index]);
   await db.transaction(async tx => {
-    const result = await tx.insert(websiteDiscoveries).values({
-      userId: input.userId, organisationId: input.organisationId, companyProfileId: input.companyProfileId, sourceUrl: input.sourceUrl, pageTitle: input.pageTitle,
-      extractedText: null, proposedFacts: { confirmedKnowledgeTitles: input.confirmedKnowledge.map(item => item.title) },
-      proposedKnowledge: input.confirmedKnowledge, status: "confirmed", reviewedAt: new Date(),
-    });
-    const discoveryId = Number(result[0].insertId);
+    await tx.update(websiteDiscoveries).set({ status: "confirmed", reviewedAt: new Date(), proposedFacts: { ...discovery.proposedFacts, confirmedKnowledgeTitles: confirmedKnowledge.map(item => item.title), confirmedKnowledgeIndexes: selectedIndexes } }).where(eq(websiteDiscoveries.id, discovery.id));
     await tx.update(companyProfiles).set({ discoveryStatus: "confirmed", confirmedAt: new Date() }).where(and(eq(companyProfiles.id, input.companyProfileId), eq(companyProfiles.userId, input.userId), eq(companyProfiles.organisationId, input.organisationId)));
-    if (input.confirmedKnowledge.length) await tx.insert(knowledgeSources).values(input.confirmedKnowledge.map(item => ({ userId: input.userId, organisationId: input.organisationId, title: item.title, sourceType: "url" as const, sourceUrl: input.sourceUrl, content: item.content, status: "ready" as const })));
-    return discoveryId;
+    if (confirmedKnowledge.length) await tx.insert(knowledgeSources).values(confirmedKnowledge.map(item => ({
+      userId: input.userId,
+      organisationId: input.organisationId,
+      title: item.title,
+      sourceType: "url" as const,
+      sourceUrl: item.sourceUrl || discovery.sourceUrl,
+      sourceFetchedAt: item.fetchedAt ? new Date(item.fetchedAt) : discovery.createdAt,
+      sourceMetadata: { category: item.category || "page", discoveryId: discovery.id },
+      content: item.content,
+      status: "ready" as const,
+    })));
   });
-  const confirmed = (await db.select().from(websiteDiscoveries).where(and(eq(websiteDiscoveries.companyProfileId, input.companyProfileId), eq(websiteDiscoveries.userId, input.userId), eq(websiteDiscoveries.organisationId, input.organisationId), eq(websiteDiscoveries.status, "confirmed"))).orderBy(desc(websiteDiscoveries.createdAt)).limit(1))[0];
-  await recordAudit({ userId: input.userId, organisationId: input.organisationId, eventType: "website_discovery_confirmed", entityType: "website_discovery", entityId: String(confirmed?.id ?? ""), summary: "Confirmed website knowledge is now available to the assistant.", metadata: { sourceUrl: input.sourceUrl, confirmedKnowledgeItems: input.confirmedKnowledge.length } });
-  return { discoveryId: confirmed?.id ?? null, confirmedKnowledgeItems: input.confirmedKnowledge.length };
+  await recordAudit({ userId: input.userId, organisationId: input.organisationId, eventType: "website_discovery_confirmed", entityType: "website_discovery", entityId: String(discovery.id), summary: "Confirmed website knowledge is now available to the assistant.", metadata: { sourceUrl: discovery.sourceUrl, confirmedKnowledgeItems: confirmedKnowledge.length } });
+  return { discoveryId: discovery.id, confirmedKnowledgeItems: confirmedKnowledge.length };
 }
 
 export async function saveAutomationPlaybook(input: { userId: number; organisationId: number; title: string; trigger: string; description: string; agentKey: string; requiredCapabilities: string[]; status: "draft" | "active" | "paused" }) {

@@ -39,11 +39,24 @@ GENX_MAX_OUTPUT_TOKENS=900
 GENX_MAX_CONTEXT_CHARS=24000
 GENX_TIMEOUT_MS=15000
 
-# Live Call Companion speech-to-text (optional until calls are commissioned)
-STT_PROVIDER_LABEL=Self-hosted speech-to-text
-STT_TRANSCRIPTIONS_URL=
+# Live Call Companion speech-to-text. The full Compose profile injects the
+# internal whisper.cpp values below. Change these only for an explicitly
+# commissioned OpenAI-compatible external fallback.
+STT_PROVIDER_LABEL=Self-hosted whisper.cpp b4938
+STT_TRANSCRIPTIONS_URL=http://stt:8080/inference
+STT_HEALTH_URL=http://stt:8080/
 STT_API_KEY=
-STT_MODEL=
+STT_MODEL=ggml-base-q5_1
+STT_MAX_CONCURRENCY=1
+STT_MAX_QUEUE=8
+STT_TIMEOUT_MS=45000
+
+# Internal Piper text-to-speech. Voice assets are pinned and checksum verified
+# in deploy/tts/Dockerfile; neither voice service has a public port.
+TTS_PROVIDER_LABEL=Self-hosted Piper 1.7.0
+TTS_BASE_URL=http://tts:5000
+TTS_DEFAULT_VOICE=en_US-lessac-medium
+TTS_APPROVED_VOICES=en_US-lessac-medium
 
 # Native OAuth CRM applications register exactly:
 #   ${APP_PUBLIC_URL}/api/crm/oauth/callback

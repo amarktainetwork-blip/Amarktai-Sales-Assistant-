@@ -28,6 +28,27 @@ type GenxPayload = {
   };
 };
 
+type GenxModelRecord = {
+  id?: string;
+  type?: string;
+  object?: string;
+  modalities?: unknown;
+  capabilities?: unknown;
+  input_modalities?: unknown;
+  output_modalities?: unknown;
+  architecture?: { modality?: unknown; input_modalities?: unknown; output_modalities?: unknown };
+};
+
+export type GenxCapabilityCatalogue = {
+  fetchedAt: string;
+  models: Array<{ id: string; capabilities: string[] }>;
+  capabilities: Record<string, string[]>;
+};
+
+let capabilityCatalogueCache:
+  | { expiresAt: number; value: GenxCapabilityCatalogue }
+  | undefined;
+
 function positiveInt(value: string | undefined, fallback: number) {
   const parsed = Number.parseInt(value || "", 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -160,6 +181,90 @@ function modelsEndpoint(chatEndpoint: string) {
   return url.toString();
 }
 
+function strings(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.flatMap(strings);
+  if (value && typeof value === "object")
+    return Object.entries(value as Record<string, unknown>)
+      .filter(([, enabled]) => enabled === true || typeof enabled === "string")
+      .flatMap(([key, enabled]) => [key, ...strings(enabled)]);
+  return [];
+}
+
+function advertisedCapabilities(model: GenxModelRecord) {
+  const declared = [
+    model.type,
+    model.object,
+    ...strings(model.modalities),
+    ...strings(model.capabilities),
+    ...strings(model.input_modalities),
+    ...strings(model.output_modalities),
+    ...strings(model.architecture?.modality),
+    ...strings(model.architecture?.input_modalities),
+    ...strings(model.architecture?.output_modalities),
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(" ")
+    .toLowerCase();
+  const capabilities = new Set<string>();
+  if (/text|chat|language|completion/.test(declared)) capabilities.add("text");
+  if (/audio|speech|voice/.test(declared)) capabilities.add("audio");
+  if (/speech.to.text|transcri|asr/.test(declared)) capabilities.add("speech_to_text");
+  if (/text.to.speech|synth|tts/.test(declared)) capabilities.add("text_to_speech");
+  if (/image|vision/.test(declared)) capabilities.add("vision");
+  return Array.from(capabilities);
+}
+
+export async function discoverGenxCapabilities(options?: { force?: boolean }) {
+  const readiness = getGenxReadiness();
+  if (!readiness.configured)
+    throw new Error("GenX must be configured before capability discovery.");
+  if (!options?.force && capabilityCatalogueCache?.expiresAt && capabilityCatalogueCache.expiresAt > Date.now())
+    return capabilityCatalogueCache.value;
+  const response = await genxFetch(
+    modelsEndpoint(process.env.GENX_CHAT_COMPLETIONS_URL!),
+    {
+      headers: {
+        Authorization: `Bearer ${process.env.GENX_API_KEY!}`,
+        Accept: "application/json",
+      },
+    },
+    { timeoutMs: 12_000, retries: 1 }
+  );
+  if (!response.ok)
+    throw new Error(`GenX model catalogue discovery failed with ${response.status}.`);
+  const payload = (await response.json().catch(() => ({}))) as { data?: GenxModelRecord[] };
+  const models = (payload.data ?? [])
+    .filter((model): model is GenxModelRecord & { id: string } => Boolean(model.id?.trim()))
+    .map(model => ({ id: model.id.trim(), capabilities: advertisedCapabilities(model) }));
+  const capabilities: Record<string, string[]> = {};
+  for (const model of models)
+    for (const capability of model.capabilities)
+      (capabilities[capability] ||= []).push(model.id);
+  const value = { fetchedAt: new Date().toISOString(), models, capabilities };
+  capabilityCatalogueCache = { value, expiresAt: Date.now() + 5 * 60_000 };
+  return value;
+}
+
+export async function selectAdvertisedGenxModel(input: {
+  configuredModel?: string;
+  capability: "text" | "audio" | "speech_to_text" | "text_to_speech" | "vision";
+}) {
+  const configured = input.configuredModel?.trim();
+  if (!configured) return undefined;
+  const catalogue = await discoverGenxCapabilities();
+  const model = catalogue.models.find(item => item.id === configured);
+  if (!model) return undefined;
+  // A catalogue that only advertises IDs can still prove text via the existing
+  // completion probe. Audio/voice routing always requires explicit metadata.
+  if (input.capability === "text" && !model.capabilities.length) return configured;
+  return model.capabilities.includes(input.capability) ||
+    (input.capability === "text_to_speech" && model.capabilities.includes("audio")) ||
+    (input.capability === "speech_to_text" && model.capabilities.includes("audio"))
+    ? configured
+    : undefined;
+}
+
 async function completionRequest(
   body: Record<string, unknown>,
   options?: { timeoutMs?: number; retries?: number }
@@ -191,25 +296,8 @@ export async function verifyGenxConnection() {
     throw new Error(
       "GenX endpoint, API key, and default model must be configured before verification."
     );
-  const headers = {
-    Authorization: `Bearer ${process.env.GENX_API_KEY!}`,
-    Accept: "application/json",
-  };
-  const modelResponse = await genxFetch(
-    modelsEndpoint(process.env.GENX_CHAT_COMPLETIONS_URL!),
-    { headers },
-    { timeoutMs: 12_000, retries: 1 }
-  );
-  if (!modelResponse.ok)
-    throw new Error(
-      `GenX model catalogue verification failed with ${modelResponse.status}.`
-    );
-  const modelPayload = (await modelResponse.json().catch(() => ({}))) as {
-    data?: Array<{ id?: string }>;
-  };
-  const modelIds = (modelPayload.data ?? [])
-    .map(item => item.id)
-    .filter((id): id is string => Boolean(id));
+  const catalogue = await discoverGenxCapabilities({ force: true });
+  const modelIds = catalogue.models.map(item => item.id);
   const selected = process.env.GENX_DEFAULT_MODEL!.trim();
   if (modelIds.length && !modelIds.includes(selected))
     throw new Error(
@@ -233,6 +321,9 @@ export async function verifyGenxConnection() {
     verified: true as const,
     model: selected,
     advertisedModelCount: modelIds.length,
+    advertisedCapabilities: Object.fromEntries(
+      Object.entries(catalogue.capabilities).map(([key, models]) => [key, models.length])
+    ),
     verifiedAt: new Date().toISOString(),
   };
 }
@@ -241,6 +332,7 @@ export async function runGenxAgent(input: {
   agentKey: string;
   messages: ChatMessage[];
   approvedKnowledge?: string;
+  workingContext?: string;
   modelTier?: "fast" | "default" | "reasoning";
   billing?: GenxBillingContext;
 }) {
@@ -285,24 +377,30 @@ export async function runGenxAgent(input: {
   const approvedKnowledge = input.approvedKnowledge
     ?.trim()
     .slice(0, knowledgeBudget);
+  const workingContext = input.workingContext?.trim().slice(0, 10_000);
   const conversationBudget = Math.max(
     4_000,
-    maxContextChars - (approvedKnowledge?.length ?? 0)
+    maxContextChars - (approvedKnowledge?.length ?? 0) - (workingContext?.length ?? 0)
   );
   const messages = boundedMessages(input.messages, conversationBudget);
 
   const systemMessage = {
     role: "system" as const,
-    content: `You are ${agent.name}, a governed capability inside Amarktai Sales Assistant. ${agent.purpose} Never claim that an external CRM, email, SMS, WhatsApp, phone, or calendar action happened unless the system confirms it. Never invent customer facts, objections, commitments, prices, policies, or product details. Produce concise, practical, review-ready guidance.${approvedKnowledge ? `\n\nApproved company knowledge for this answer:\n${approvedKnowledge}\n\nTreat this material as the authority for company-specific factual claims. If the answer is absent, say so clearly.` : ""}`,
+    content: `You are ${agent.name}, a governed capability inside Amarktai Sales Assistant. ${agent.purpose} Never claim that an external CRM, email, SMS, WhatsApp, phone, or calendar action happened unless the system confirms it. Never invent customer facts, objections, commitments, prices, policies, or product details. Produce concise, practical, review-ready guidance.${approvedKnowledge ? `\n\nApproved company knowledge for this answer:\n${approvedKnowledge}\n\nTreat this material as the authority for company-specific factual claims. If the answer is absent, say so clearly.` : ""}${workingContext ? `\n\nCurrent approved working context:\n${workingContext}\n\nTreat synchronized CRM facts as operational context, not as permission to perform an external action.` : ""}`,
   };
 
-  const model =
+  const configuredModel =
     input.modelTier === "fast" && process.env.GENX_FAST_MODEL?.trim()
       ? process.env.GENX_FAST_MODEL.trim()
       : input.modelTier === "reasoning" &&
           process.env.GENX_REASONING_MODEL?.trim()
         ? process.env.GENX_REASONING_MODEL.trim()
         : process.env.GENX_DEFAULT_MODEL!;
+  const model =
+    (await selectAdvertisedGenxModel({ configuredModel, capability: "text" })) ||
+    (() => {
+      throw new Error("The configured Amarktai intelligence model is no longer advertised for text use.");
+    })();
 
   const request = async () => {
     const payload = await completionRequest({
@@ -349,6 +447,7 @@ export async function runGenxAgent(input: {
     crmContextVersion: billing.reference || "none",
     messages,
     approvedKnowledge,
+    workingContext,
   });
   return coalesceTenantAiRequest(requestKey, request);
 }

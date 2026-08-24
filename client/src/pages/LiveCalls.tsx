@@ -149,6 +149,8 @@ export default function LiveCalls() {
   const [closeoutActions, setCloseoutActions] = useState<
     CoachingResult["actions"]
   >([]);
+  const [workflowError, setWorkflowError] = useState("");
+  const [retryAction, setRetryAction] = useState<(() => void) | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const sourcesRef = useRef<MediaStream[]>([]);
   const audioContextRef = useRef<AudioContext | undefined>(undefined);
@@ -161,6 +163,13 @@ export default function LiveCalls() {
   const initialSessionId = Number(
     new URLSearchParams(window.location.search).get("sessionId") || 0
   );
+  const initialContactId = Number(
+    new URLSearchParams(window.location.search).get("contactId") || 0
+  );
+  const initialCustomers = trpc.sales.customers.useQuery(undefined, {
+    enabled: initialContactId > 0,
+    retry: false,
+  });
   const callContext = trpc.calls.context.useQuery(
     { callSessionId: sessionId || initialSessionId },
     { enabled: Boolean(sessionId || initialSessionId), retry: false }
@@ -173,6 +182,13 @@ export default function LiveCalls() {
   useEffect(() => {
     if (initialSessionId > 0 && !sessionId) setSessionId(initialSessionId);
   }, [initialSessionId, sessionId]);
+  useEffect(() => {
+    if (initialContactId <= 0 || selectedContactId) return;
+    const contact = initialCustomers.data?.find(item => item.id === initialContactId);
+    if (!contact) return;
+    setSelectedContactId(contact.id);
+    setLeadLabel(contact.name);
+  }, [initialContactId, initialCustomers.data, selectedContactId]);
   useEffect(() => {
     if (!callContext.data) return;
     setLeadLabel(callContext.data.leadLabel);
@@ -203,7 +219,8 @@ export default function LiveCalls() {
       })
       .catch(error => {
         setSttReady(false);
-        console.warn(error);
+        setWorkflowError(error instanceof Error ? error.message : "Transcription readiness could not be checked.");
+        setRetryAction(() => () => window.location.reload());
       });
     return () => {
       if (recorderRef.current && recorderRef.current.state !== "inactive")
@@ -226,7 +243,8 @@ export default function LiveCalls() {
       });
       setTip(result.content);
     } catch (error) {
-      console.warn(error);
+      setWorkflowError(error instanceof Error ? error.message : "Live coaching failed.");
+      setRetryAction(() => () => void requestCoaching(activeSessionId, text));
     } finally {
       coachingRef.current = false;
     }
@@ -318,11 +336,10 @@ export default function LiveCalls() {
         pendingRef.current = pendingRef.current
           .then(() => uploadChunk(event.data, activeSessionId))
           .catch(error => {
-            toast.error(
-              error instanceof Error
-                ? error.message
-                : "Live transcription failed."
-            );
+            const detail = error instanceof Error ? error.message : "Live transcription failed.";
+            setWorkflowError(detail);
+            setRetryAction(() => () => void uploadChunk(event.data, activeSessionId));
+            toast.error(detail);
           });
       };
       recorder.start(5000);
@@ -339,11 +356,10 @@ export default function LiveCalls() {
       sourcesRef.current = [];
       void audioContextRef.current?.close();
       audioContextRef.current = undefined;
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Could not start audio capture."
-      );
+      const detail = error instanceof Error ? error.message : "Could not start audio capture.";
+      setWorkflowError(detail);
+      setRetryAction(() => () => void begin());
+      toast.error(detail);
     }
   }
 
@@ -379,9 +395,10 @@ export default function LiveCalls() {
       setOutcome("no_answer");
       setAwaitingCloseout(true);
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Could not start call attempt."
-      );
+      const detail = error instanceof Error ? error.message : "Could not start call attempt.";
+      setWorkflowError(detail);
+      setRetryAction(() => () => void recordAttemptWithoutAudio());
+      toast.error(detail);
     }
   }
 
@@ -404,7 +421,15 @@ export default function LiveCalls() {
           callbackAt: callbackAt
             ? new Date(callbackAt).toISOString()
             : undefined,
-          opportunityState: "unchanged",
+          opportunityState:
+            outcome === "sale_won"
+              ? "won"
+              : outcome === "lost"
+                ? "lost"
+                : "unchanged",
+          contactStatus: ["qualified", "unqualified", "not_interested", "wrong_number"].includes(outcome)
+            ? outcome
+            : undefined,
           commitmentsConfirmed: true,
           contactExternalId: contactExternalId.trim() || undefined,
           taskExternalId: taskExternalId.trim() || undefined,
@@ -424,11 +449,10 @@ export default function LiveCalls() {
         `Closeout prepared. ${result.autoExecutions?.length || 0} policy-approved item(s) ran automatically; the rest remain governed.`
       );
     } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Could not complete the call closeout."
-      );
+      const detail = error instanceof Error ? error.message : "Could not complete the call closeout.";
+      setWorkflowError(detail);
+      setRetryAction(() => () => void completeCloseout());
+      toast.error(detail);
     } finally {
       setCompleting(false);
     }
@@ -450,6 +474,16 @@ export default function LiveCalls() {
           service and are not retained by this bridge.
         </p>
       </header>
+      {workflowError ? (
+        <section role="alert" className="mt-6 rounded-2xl border border-rose-300/25 bg-rose-400/10 p-5 text-rose-50">
+          <p className="font-bold">The current call step needs attention.</p>
+          <p className="mt-2 text-sm leading-6 text-rose-100/85">{workflowError}</p>
+          <div className="mt-4 flex gap-2">
+            {retryAction ? <Button onClick={retryAction} className="bg-[#1B64F2]">Retry</Button> : null}
+            <Button variant="outline" onClick={() => setWorkflowError("")} className="border-white/15 bg-white/5 text-white">Dismiss</Button>
+          </div>
+        </section>
+      ) : null}
       {callContext.data?.context && (
         <section className="mt-6 rounded-[1.5rem] border border-[#3D69AD]/40 bg-[#0E2142] p-6">
           <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#7FAAF8]">
@@ -690,6 +724,10 @@ export default function LiveCalls() {
                     <option value="voicemail">Voicemail</option>
                     <option value="wrong_number">Wrong number</option>
                     <option value="not_interested">Not interested</option>
+                    <option value="qualified">Qualified</option>
+                    <option value="unqualified">Unqualified</option>
+                    <option value="sale_won">Sale / won</option>
+                    <option value="lost">Lost</option>
                     <option value="other">Other</option>
                   </select>
                 </label>

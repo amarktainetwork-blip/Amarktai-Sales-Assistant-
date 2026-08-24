@@ -19,7 +19,7 @@ describe("public website discovery", () => {
   });
 
   it("extracts a bounded review proposal from a public HTML page", async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue(new Response("<html><head><title>Example Company</title><meta name=\"description\" content=\"Trusted customer service\"></head><body><h1>Build better outcomes</h1><script>ignored()</script></body></html>", { status: 200, headers: { "content-type": "text/html" } }));
+    globalThis.fetch = vi.fn().mockImplementation(() => Promise.resolve(new Response("<html><head><title>Example Company</title><meta name=\"description\" content=\"Trusted customer service\"></head><body><h1>Build better outcomes</h1><script>ignored()</script></body></html>", { status: 200, headers: { "content-type": "text/html" } })));
     const result = await discoverPublicWebsite("https://example.co.za");
     expect(result.pageTitle).toBe("Example Company");
     expect(result.proposedFacts).toMatchObject({ description: "Trusted customer service", headings: ["Build better outcomes"] });

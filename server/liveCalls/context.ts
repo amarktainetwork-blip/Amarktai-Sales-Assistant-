@@ -308,6 +308,16 @@ export async function startLiveCallForContact(input: {
   return { callSessionId, leadLabel: context.contactName, context };
 }
 
+export async function getWorkingContextForContact(input: {
+  organisationId: number;
+  contactId: number;
+}) {
+  const db = await dbOrThrow();
+  const contact = (await db.select().from(crmContacts).where(and(eq(crmContacts.id, input.contactId), eq(crmContacts.organisationId, input.organisationId))).limit(1))[0];
+  if (!contact) throw new Error("The selected CRM contact is outside the active organisation.");
+  return contextForContact({ organisationId: input.organisationId, contact, source: "manual_resolved" });
+}
+
 export async function getLiveCallContext(input: {
   userId: number;
   organisationId: number;

@@ -1,5 +1,6 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import ManagementElevation from "@/components/ManagementElevation";
+import WorkflowFeedback, { type WorkflowFeedbackState } from "@/components/WorkflowFeedback";
 import { BrowserOperationMatrix } from "./ConnectionsV2";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +18,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useLocation } from "wouter";
 
 type Provider =
   | "genie"
@@ -110,12 +112,12 @@ const providerLabels: Record<Provider, string> = {
   custom_browser: "Other CRM",
 };
 const steps = [
-  "Company profile",
-  "Website discovery",
+  "Business",
+  "Learn business",
   "Knowledge review",
-  "CRM connection",
-  "Playbooks",
-  "Go-live review",
+  "Connect CRM & discover communications",
+  "Safe automation rules",
+  "Test & start selling",
 ];
 
 function isBrowser(provider: Provider) {
@@ -160,6 +162,7 @@ function StepHeading({
 }
 
 export default function Onboarding() {
+  const [, navigate] = useLocation();
   const utils = trpc.useUtils();
   const organisation = trpc.organisation.current.useQuery();
   const organisationId = organisation.data?.organisationId;
@@ -170,6 +173,8 @@ export default function Onboarding() {
   );
   const outlook = trpc.outlook.readiness.useQuery(undefined, { retry: false });
   const [step, setStep] = useState(1);
+  const [feedback, setFeedback] = useState<WorkflowFeedbackState | null>(null);
+  const [workspaceMode, setWorkspaceMode] = useState<"individual" | "team" | null>(null);
   const [profile, setProfile] = useState({
     companyName: "",
     websiteUrl: "",
@@ -177,18 +182,23 @@ export default function Onboarding() {
     companySize: "",
     primaryMarket: "",
     salesMotion: "",
+    productsServices: "",
+    typicalCustomer: "",
+    primarySalesObjective: "",
     brandVoice: "",
   });
   const [preview, setPreview] = useState<{
+    discoveryId: number;
     sourceUrl: string;
-    proposedKnowledge: Array<{ title: string; content: string }>;
+    proposedKnowledge: Array<{ title: string; content: string; sourceUrl: string; fetchedAt: string; category: string }>;
+    pages: Array<{ url: string; title: string | null; category: string; fetchedAt: string; rendered: boolean; textChars: number }>;
   } | null>(null);
   const [selectedKnowledge, setSelectedKnowledge] = useState<number[]>([]);
   const [crm, setCrm] = useState<CrmForm>({
-    provider: "hubspot",
-    displayName: "HubSpot",
+    provider: "genie",
+    displayName: "Genie CRM",
     baseUrl: "",
-    connectionMethod: "oauth",
+    connectionMethod: "browser",
     capabilities: defaultCapabilities,
   });
   const [browserCredentials, setBrowserCredentials] = useState({
@@ -225,41 +235,80 @@ export default function Onboarding() {
         companySize: saved.companySize ?? "",
         primaryMarket: saved.primaryMarket ?? "",
         salesMotion: saved.salesMotion ?? "",
+        productsServices: saved.productsServices ?? "",
+        typicalCustomer: saved.typicalCustomer ?? "",
+        primarySalesObjective: saved.primarySalesObjective ?? "",
         brandVoice: saved.brandVoice ?? "",
       });
   }, [setup.data?.profile]);
 
+  useEffect(() => {
+    const savedMode = organisation.data?.settings?.workspaceMode;
+    if (savedMode === "individual" || savedMode === "team") setWorkspaceMode(savedMode);
+    const savedOnboarding = organisation.data?.settings?.onboarding;
+    if (savedOnboarding && typeof savedOnboarding === "object" && "step" in savedOnboarding) {
+      const savedStep = Number((savedOnboarding as { step?: unknown }).step);
+      if (Number.isInteger(savedStep) && savedStep >= 1 && savedStep <= 6) setStep(savedStep);
+    }
+  }, [organisation.data?.settings]);
+
+  useEffect(() => {
+    if (browserConnectionId) return;
+    const existing = systems.data?.find(system => system.connectionMethod === "browser");
+    if (existing) setBrowserConnectionId(existing.id);
+  }, [browserConnectionId, systems.data]);
+
+  const onboardingProgress = trpc.organisation.updateOnboarding.useMutation({
+    onMutate: () => setFeedback({ kind: "loading", title: "Saving setup progress", detail: "Your place in setup is being saved so you can resume later." }),
+    onSuccess: async result => {
+      if (result.workspaceMode === "individual" || result.workspaceMode === "team") setWorkspaceMode(result.workspaceMode);
+      await utils.organisation.current.invalidate();
+      setFeedback({ kind: "success", title: "Setup progress saved", detail: "You can safely leave and resume this guided setup later." });
+    },
+    onError: error => setFeedback({ kind: "error", title: "Setup progress was not saved", detail: `Your current screen is unaffected. ${error.message}`, actionLabel: "Retry", onAction: () => onboardingProgress.mutate({ workspaceMode: workspaceMode ?? undefined, step }) }),
+  });
+
   const saveProfile = trpc.companySetup.saveProfile.useMutation({
+    onMutate: () => setFeedback({ kind: "loading", title: "Saving business details", detail: "Amarktai is securing the business context for this workspace." }),
     onSuccess: () => {
       utils.companySetup.get.invalidate();
       setStep(2);
+      onboardingProgress.mutate({ step: 2 });
       toast.success("Company profile saved.");
+      setFeedback({ kind: "success", title: "Business details saved", detail: "Website discovery can now use this approved starting point." });
     },
-    onError: error => toast.error(error.message),
+    onError: error => setFeedback({ kind: "error", title: "Business details were not saved", detail: `No discovery was started. ${error.message}`, actionLabel: "Retry save", onAction: () => saveProfile.mutate(profile) }),
   });
   const discover = trpc.companySetup.discoverWebsite.useMutation({
+    onMutate: () => setFeedback({ kind: "loading", title: "Reading the public website", detail: "Amarktai is scanning a bounded set of authorised pages. This can take a moment." }),
     onSuccess: result => {
       setPreview(result);
       setSelectedKnowledge(result.proposedKnowledge.map((_, index) => index));
       setStep(3);
+      onboardingProgress.mutate({ step: 3 });
       toast.success(
-        "Website context is ready for review. Nothing has been stored."
+        "Website context is saved as a review-only draft. Approve facts before Amarktai can trust or use them."
       );
+      setFeedback({ kind: "success", title: "Website review is ready", detail: "The results are review-only. Select and approve facts before they become trusted knowledge." });
     },
-    onError: error => toast.error(error.message),
+    onError: error => setFeedback({ kind: "error", title: "The business website could not be read", detail: `No content became trusted knowledge. Check the public URL or site access and try again. ${error.message}`, actionLabel: "Retry website scan", onAction: () => discover.mutate() }),
   });
   const confirm = trpc.companySetup.confirmDiscovery.useMutation({
+    onMutate: () => setFeedback({ kind: "loading", title: "Approving selected knowledge", detail: "Only the facts you selected will become trusted context." }),
     onSuccess: () => {
       utils.companySetup.get.invalidate();
       setPreview(null);
       setStep(4);
+      onboardingProgress.mutate({ step: 4 });
       toast.success("Selected knowledge was confirmed.");
+      setFeedback({ kind: "success", title: "Knowledge approved", detail: "Sales assistance can now use the confirmed facts and their source references." });
     },
-    onError: error => toast.error(error.message),
+    onError: error => setFeedback({ kind: "error", title: "Knowledge was not approved", detail: `The review remains available and no unconfirmed facts were trusted. ${error.message}`, actionLabel: "Retry approval", onAction: () => preview && confirm.mutate({ discoveryId: preview.discoveryId, knowledgeIndexes: selectedKnowledge }) }),
   });
   const addDomain = trpc.connectedSystems.addDomain.useMutation();
   const beginOAuth = trpc.connectedSystems.beginOAuth.useMutation();
   const addConnection = trpc.connectedSystems.create.useMutation({
+    onMutate: () => setFeedback({ kind: "loading", title: `Connecting ${crm.displayName || "CRM"}`, detail: "Amarktai is creating the governed connection and validating its authorised location." }),
     onSuccess: async id => {
       if (!organisationId) return;
       if (isBrowser(crm.provider)) {
@@ -280,6 +329,7 @@ export default function Onboarding() {
         toast.success(
           "Encrypted Genie sign-in saved. Continue discovery, mapping and Teach Amarktai here."
         );
+        setFeedback({ kind: "success", title: "Genie sign-in saved securely", detail: "Continue with discovery and the friendly readiness test. Credentials are encrypted and never sent to the AI." });
         return;
       }
       await systems.refetch();
@@ -292,22 +342,25 @@ export default function Onboarding() {
       });
       window.location.assign(result.authorizationUrl);
     },
-    onError: error => toast.error(error.message),
+    onError: error => setFeedback({ kind: "error", title: "CRM connection could not be created", detail: `No sales action was enabled. Check the sign-in URL and details, then retry. ${error.message}`, actionLabel: "Retry connection", onAction: registerConnection }),
   });
   const savePlaybook = trpc.companySetup.savePlaybook.useMutation({
     onSuccess: () => {
       utils.companySetup.get.invalidate();
       setStep(6);
+      onboardingProgress.mutate({ step: 6 });
       toast.success("Review-first playbook saved.");
     },
     onError: error => toast.error(error.message),
   });
   const verifyBrowser = trpc.connectedSystems.verify.useMutation({
+    onMutate: () => setFeedback({ kind: "loading", title: "Testing the CRM connection", detail: "Amarktai is checking sign-in and the currently proven CRM functions." }),
     onSuccess: result => {
       systems.refetch();
       toast[result.status === "ready" ? "success" : "warning"](result.summary);
+      setFeedback(result.status === "ready" ? { kind: "success", title: "CRM connection is ready", detail: result.summary } : { kind: "error", title: "CRM needs attention", detail: `${result.summary} Reconnect or re-teach only the affected task, then retry.`, actionLabel: "Retry test", onAction: () => browserConnectionId && verifyBrowser.mutate({ organisationId: organisationId ?? 0, connectedSystemId: browserConnectionId }) });
     },
-    onError: error => toast.error(error.message),
+    onError: error => setFeedback({ kind: "error", title: "CRM test could not finish", detail: `Selling remains protected from unproven actions. ${error.message}`, actionLabel: "Retry test", onAction: () => browserConnectionId && verifyBrowser.mutate({ organisationId: organisationId ?? 0, connectedSystemId: browserConnectionId }) }),
   });
   const issueSidecar = trpc.sidecar.issueSession.useMutation({
     onSuccess: result => {
@@ -323,6 +376,22 @@ export default function Onboarding() {
     systems.data?.filter(system => system.status === "ready") ?? [];
   const browserSystem = systems.data?.find(
     system => system.id === browserConnectionId
+  );
+  const browserReadiness = trpc.connectedSystems.browserOperationMatrix.useQuery(
+    { organisationId: organisationId ?? 0, connectedSystemId: browserSystem?.id ?? 0 },
+    { enabled: Boolean(organisationId && browserSystem?.id), retry: false }
+  );
+  const coreGenieTasks = [
+    "contact.search",
+    "contact.read",
+    "task.list",
+    "note.create",
+    "task.create_callback",
+    "opportunity.read",
+    "opportunity.update",
+  ];
+  const coreGenieReady = !browserSystem || coreGenieTasks.every(key =>
+    browserReadiness.data?.operations.some(operation => operation.key === key && operation.status === "LIVE_PROVEN")
   );
 
   function selectProvider(provider: Provider) {
@@ -411,6 +480,41 @@ export default function Onboarding() {
             available.
           </p>
         </Card>
+        <WorkflowFeedback state={feedback} />
+        {!workspaceMode && (
+          <Card>
+            <StepHeading
+              icon={Building2}
+              number="A"
+              title="Who are you setting this up for?"
+              text="Choose the experience that fits your work. You can use the same core workspace and change this later in company setup."
+            />
+            <div className="mt-6 grid gap-4 sm:grid-cols-2">
+              <button
+                disabled={onboardingProgress.isPending}
+                onClick={() => onboardingProgress.mutate({ workspaceMode: "individual", step: 1 })}
+                className="rounded-2xl border border-white/10 bg-[#08172F] p-5 text-left transition hover:border-[#4E8BFF] hover:bg-[#102A56]"
+              >
+                <p className="font-display text-2xl font-bold text-white">Just me</p>
+                <p className="mt-2 text-sm leading-6 text-[#A9BFDF]">A focused salesperson workspace without team administration clutter.</p>
+              </button>
+              <button
+                disabled={onboardingProgress.isPending}
+                onClick={() => onboardingProgress.mutate({ workspaceMode: "team", step: 1 })}
+                className="rounded-2xl border border-white/10 bg-[#08172F] p-5 text-left transition hover:border-[#4E8BFF] hover:bg-[#102A56]"
+              >
+                <p className="font-display text-2xl font-bold text-white">My company / sales team</p>
+                <p className="mt-2 text-sm leading-6 text-[#A9BFDF]">Add members, roles, targets, mappings, assurance, QA, and team reporting.</p>
+              </button>
+            </div>
+          </Card>
+        )}
+        {workspaceMode && (
+          <div className="flex items-center justify-between rounded-xl border border-white/10 bg-[#0C1E3E] px-4 py-3 text-sm">
+            <span className="font-bold text-white">Experience: {workspaceMode === "individual" ? "Individual salesperson" : "Company / sales team"}</span>
+            <button onClick={() => setWorkspaceMode(null)} className="font-bold text-[#83AEFF]">Change</button>
+          </div>
+        )}
         <nav className="grid gap-2 rounded-[1.5rem] border border-white/10 bg-[#0C1E3E] p-3 sm:grid-cols-6">
           {steps.map((label, index) => (
             <button
@@ -427,13 +531,14 @@ export default function Onboarding() {
         </nav>
 
         <ManagementElevation />
+        {!workspaceMode ? null : <>
         {step === 1 && (
           <Card>
             <StepHeading
               icon={Building2}
               number="01"
               title="Tell us about your organisation"
-              text="This private profile supplies the approved operating context for the selected workspace."
+              text="This private profile gives Amarktai the business context it needs to prepare useful sales work."
             />
             <div className="mt-6 grid gap-4 sm:grid-cols-2">
               <Input
@@ -461,12 +566,26 @@ export default function Onboarding() {
                 className="border-white/15 bg-[#08172F] text-white"
               />
               <Input
-                value={profile.primaryMarket}
+                value={profile.primarySalesObjective}
                 onChange={event =>
-                  setProfile({ ...profile, primaryMarket: event.target.value })
+                  setProfile({ ...profile, primarySalesObjective: event.target.value })
                 }
-                placeholder="Primary market"
+                placeholder="Primary sales objective"
                 className="border-white/15 bg-[#08172F] text-white"
+              />
+            </div>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <Textarea
+                value={profile.productsServices}
+                onChange={event => setProfile({ ...profile, productsServices: event.target.value })}
+                placeholder="Products and services"
+                className="min-h-24 border-white/15 bg-[#08172F] text-white"
+              />
+              <Textarea
+                value={profile.typicalCustomer}
+                onChange={event => setProfile({ ...profile, typicalCustomer: event.target.value })}
+                placeholder="Typical customer"
+                className="min-h-24 border-white/15 bg-[#08172F] text-white"
               />
             </div>
             <Textarea
@@ -492,7 +611,7 @@ export default function Onboarding() {
               icon={Globe2}
               number="02"
               title="Preview website context"
-              text="A safe preview blocks private and non-HTML destinations. Unconfirmed content is not retained."
+              text="A bounded public-site scan blocks private destinations. Results remain review-only until you approve them."
             />
             <Button
               disabled={!profileSaved || discover.isPending}
@@ -544,7 +663,7 @@ export default function Onboarding() {
                 <Button
                   disabled={confirm.isPending}
                   onClick={() =>
-                    confirm.mutate({ knowledgeIndexes: selectedKnowledge })
+                    confirm.mutate({ discoveryId: preview.discoveryId, knowledgeIndexes: selectedKnowledge })
                   }
                   className="mt-5 bg-[#1B64F2]"
                 >
@@ -776,6 +895,7 @@ export default function Onboarding() {
                 </div>
                 <BrowserOperationMatrix
                   organisationId={organisationId}
+                  experience="guided"
                   system={{
                     id: browserSystem.id,
                     provider: browserSystem.provider,
@@ -821,7 +941,7 @@ export default function Onboarding() {
             <StepHeading
               icon={ShieldCheck}
               number="05"
-              title="Create a review-first playbook"
+              title="Choose the first safe automation rule"
               text="Playbooks prepare controlled work. They never authorise external actions."
             />
             <Input
@@ -873,14 +993,15 @@ export default function Onboarding() {
             <StepHeading
               icon={Rocket}
               number="06"
-              title="Review go-live readiness"
-              text="This review reports stored server evidence. A CRM is ready only after its authenticated backend capability test passes."
+              title="Test readiness and start selling"
+              text="This friendly checklist uses stored server evidence. A CRM task is ready only after an authorised test and readback pass."
             />
-            <div className="mt-6 grid gap-3 sm:grid-cols-3">
+            <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {[
                 ["Profile", profileSaved],
                 ["Knowledge", knowledgeConfirmed],
                 ["Verified CRM", readySystems.length > 0],
+                ["Core Genie tasks", coreGenieReady],
               ].map(([label, ready]) => (
                 <div
                   key={String(label)}
@@ -896,12 +1017,20 @@ export default function Onboarding() {
               ))}
             </div>
             <p className="mt-5 text-sm leading-6 text-[#A9BFDF]">
-              Before handover, finish authentication under Connections, run the
-              production verifier, and complete one authorised read plus one
-              safe reviewed write against the client's CRM.
+              If a Genie task needs attention, return to Connections and show only
+              that task again. Authorised write tests must use the client's dummy
+              record and must confirm the changed state before selling begins.
             </p>
+            <Button
+              disabled={!profileSaved || !knowledgeConfirmed || !readySystems.length || !coreGenieReady || onboardingProgress.isPending}
+              onClick={() => onboardingProgress.mutate({ step: 6, complete: true }, { onSuccess: () => navigate("/today") })}
+              className="mt-5 bg-emerald-600 hover:bg-emerald-500"
+            >
+              Start selling
+            </Button>
           </Card>
         )}
+        </>}
       </div>
     </DashboardLayout>
   );

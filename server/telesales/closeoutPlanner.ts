@@ -7,6 +7,10 @@ export const TELESALES_OUTCOMES = [
   "voicemail",
   "wrong_number",
   "not_interested",
+  "qualified",
+  "unqualified",
+  "sale_won",
+  "lost",
   "other",
 ] as const;
 export type TelesalesOutcome = (typeof TELESALES_OUTCOMES)[number];
