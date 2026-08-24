@@ -83,6 +83,8 @@ const friendlyOperationNames: Record<string, string> = {
 };
 
 export function humanizeCrmFailure(detail: string) {
+  if (detail.includes("GENIE_LOGIN_FORM_NOT_READY"))
+    return "Genie opened, but its sign-in form was still loading. Retry setup once; Amarktai will wait for the form before signing in.";
   if (detail.includes("GENIE_LOGIN_CALIBRATION_REQUIRED"))
     return "We reached your CRM but couldn't confidently identify its sign-in form.";
   if (detail.includes("GENIE_CREDENTIALS_REQUIRED"))

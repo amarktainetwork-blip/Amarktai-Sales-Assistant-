@@ -36,6 +36,8 @@ const READY_SELECTORS = [
   "nav",
 ] as const;
 const INTERACTIVE_AUTH_TTL_MS = 15 * 60_000;
+const LOGIN_RENDER_TIMEOUT_MS = 15_000;
+const VERIFICATION_RENDER_TIMEOUT_MS = 10_000;
 
 export type PendingGenieInteractiveAuth = {
   browserSession: Record<string, unknown>;
@@ -69,6 +71,34 @@ type VerificationRequiredResult = {
 export type GenieAuthenticationResult =
   | AuthenticatedResult
   | VerificationRequiredResult;
+
+export type GenieInitialRenderState =
+  | "login"
+  | "verification"
+  | "authenticated"
+  | "waiting";
+
+export function classifyGenieInitialRenderState(input: {
+  usernameVisible: boolean;
+  passwordVisible: boolean;
+  submitVisible: boolean;
+  interactive: boolean;
+  ready: boolean;
+  sessionAvailable: boolean;
+  urlChanged: boolean;
+}): GenieInitialRenderState {
+  if (input.interactive) return "verification";
+  if (input.usernameVisible && input.passwordVisible && input.submitVisible)
+    return "login";
+  if (
+    !input.usernameVisible &&
+    !input.passwordVisible &&
+    input.ready &&
+    (input.sessionAvailable || input.urlChanged)
+  )
+    return "authenticated";
+  return "waiting";
+}
 
 function asState(value: Awaited<ReturnType<BrowserContext["storageState"]>>) {
   return value as unknown as Record<string, unknown>;
@@ -219,6 +249,58 @@ async function gotoAuthorised(
   await authorise(connection, page.url());
 }
 
+async function waitForInitialAuthenticationState(input: {
+  connection: AdapterConnection;
+  page: Page;
+  blocked: () => { url: string; detail: string } | undefined;
+  loginUrl: string;
+  sessionAvailable: boolean;
+}) {
+  const deadline = Date.now() + LOGIN_RENDER_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    const denied = input.blocked();
+    if (denied) throw blockedNavigationError(denied);
+    await authorise(input.connection, input.page.url());
+    const [usernameVisible, passwordVisible, submitVisible, interactive, ready] =
+      await Promise.all([
+        hasVisible(input.page, USERNAME_SELECTOR).catch(() => false),
+        hasVisible(input.page, PASSWORD_SELECTOR).catch(() => false),
+        hasVisible(input.page, LOGIN_SUBMIT_SELECTOR).catch(() => false),
+        pageSuggestsInteractiveAuth(input.page).catch(() => false),
+        readySelector(input.page).then(Boolean).catch(() => false),
+      ]);
+    const state = classifyGenieInitialRenderState({
+      usernameVisible,
+      passwordVisible,
+      submitVisible,
+      interactive,
+      ready,
+      sessionAvailable: input.sessionAvailable,
+      urlChanged: input.page.url() !== input.loginUrl,
+    });
+    if (state !== "waiting") return state;
+    await input.page.waitForTimeout(250);
+  }
+  return "waiting" as const;
+}
+
+async function waitForVerificationChallenge(input: {
+  connection: AdapterConnection;
+  page: Page;
+  blocked: () => { url: string; detail: string } | undefined;
+}) {
+  const deadline = Date.now() + VERIFICATION_RENDER_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    const denied = input.blocked();
+    if (denied) throw blockedNavigationError(denied);
+    await authorise(input.connection, input.page.url());
+    if (await pageSuggestsInteractiveAuth(input.page)) return true;
+    if (await readySelector(input.page)) return false;
+    await input.page.waitForTimeout(250);
+  }
+  return false;
+}
+
 async function authenticated(
   page: Page,
   context: BrowserContext
@@ -292,13 +374,21 @@ export async function beginGenieInteractiveAuthentication(input: {
   try {
     await gotoAuthorised(input.connection, page, loginUrl, blocked);
 
-    const passwordVisible = await hasVisible(page, PASSWORD_SELECTOR).catch(() => false);
-    if (!passwordVisible) {
-      if (await pageSuggestsInteractiveAuth(page))
-        return verificationRequired(page, context);
-      const ready = await readySelector(page);
-      if (ready) return authenticated(page, context);
-    }
+    const initialState = await waitForInitialAuthenticationState({
+      connection: input.connection,
+      page,
+      blocked,
+      loginUrl,
+      sessionAvailable: Boolean(session),
+    });
+    if (initialState === "verification")
+      return verificationRequired(page, context);
+    if (initialState === "authenticated")
+      return authenticated(page, context);
+    if (initialState !== "login")
+      throw new Error(
+        "GENIE_LOGIN_FORM_NOT_READY: Genie was reached but its sign-in form did not finish rendering. Retry setup once; no calibration is required unless this continues."
+      );
 
     const credentials = input.secret.credentials || {};
     if (!credentials.username || !credentials.password)
@@ -366,7 +456,12 @@ export async function completeGenieInteractiveAuthentication(input: {
       input.pending.challengeUrl,
       blocked
     );
-    if (!(await pageSuggestsInteractiveAuth(page))) {
+    const challengeVisible = await waitForVerificationChallenge({
+      connection: input.connection,
+      page,
+      blocked,
+    });
+    if (!challengeVisible) {
       const ready = await readySelector(page);
       if (ready) return authenticated(page, context);
       throw new Error(
@@ -399,8 +494,8 @@ export async function completeGenieInteractiveAuthentication(input: {
       const denied = blocked();
       if (denied) throw blockedNavigationError(denied);
       await authorise(input.connection, page.url());
-      const challengeVisible = await hasVisible(page, GENIE_MFA_SELECTOR).catch(() => false);
-      if (challengeVisible) {
+      const challengeStillVisible = await hasVisible(page, GENIE_MFA_SELECTOR).catch(() => false);
+      if (challengeStillVisible) {
         challengeGoneAt = 0;
         if (await pageSuggestsRejectedCode(page))
           throw new Error(
