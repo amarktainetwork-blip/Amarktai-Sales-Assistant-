@@ -1,12 +1,17 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { publicPageMetadata } from "@/marketing/site";
 import NotFound from "@/pages/NotFound";
-import { Route, Switch } from "wouter";
+import { useEffect } from "react";
+import { Route, Switch, useLocation } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import ContactPage from "./marketing/ContactPage";
+import { HowItWorksPage, IndividualsPage, IntegrationsPage, ProductPage, TeamsPage } from "./marketing/SecondaryPages";
 import AdminControls from "./pages/AdminControls";
 import Auth from "./pages/Auth";
 import ConnectionsV2 from "./pages/ConnectionsV2";
+import Customers from "./pages/Customers";
 import Dashboard from "./pages/Dashboard";
 import Home from "./pages/Home";
 import LiveCalls from "./pages/LiveCalls";
@@ -16,13 +21,18 @@ import SalesAutomation from "./pages/SalesAutomation";
 import TeamIntelligence from "./pages/TeamIntelligence";
 import TeamManagement from "./pages/TeamManagement";
 import Today from "./pages/Today";
-import Customers from "./pages/Customers";
 import { AgentDesk, CommandCentre, KnowledgeHub, WorkflowStudio } from "./pages/Workspace";
 
 function Router() {
-  return <Switch>
+  return <><PageMetadata/><Switch>
     <Route path="/" component={Home} />
+    <Route path="/product" component={ProductPage} />
+    <Route path="/how-it-works" component={HowItWorksPage} />
+    <Route path="/individuals" component={IndividualsPage} />
+    <Route path="/teams" component={TeamsPage} />
+    <Route path="/integrations" component={IntegrationsPage} />
     <Route path="/pricing" component={Pricing} />
+    <Route path="/contact" component={ContactPage} />
     <Route path="/auth" component={Auth} />
     <Route path="/dashboard" component={Dashboard} />
     <Route path="/today" component={Today} />
@@ -42,7 +52,21 @@ function Router() {
     <Route path="/company-setup" component={Onboarding} />
     <Route path="/404" component={NotFound} />
     <Route component={NotFound} />
-  </Switch>;
+  </Switch></>;
+}
+
+function PageMetadata() {
+  const [location] = useLocation();
+  useEffect(() => {
+    const metadata = publicPageMetadata[location] ?? (location === "/auth"
+      ? { title: "Sign In | Amarktai Sales Assistant", description: "Sign in to the protected Amarktai Sales Assistant workspace." }
+      : { title: "Amarktai Sales Assistant | Part of Amarktai Network", description: "Open the protected Amarktai Sales Assistant workspace." });
+    document.title = metadata.title;
+    let tag = document.querySelector<HTMLMetaElement>('meta[name="description"]');
+    if (!tag) { tag = document.createElement("meta"); tag.name = "description"; document.head.appendChild(tag); }
+    tag.content = metadata.description;
+  }, [location]);
+  return null;
 }
 
 function App() {
