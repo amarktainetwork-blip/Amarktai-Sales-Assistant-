@@ -20,12 +20,22 @@ $COMPOSE exec -T db sh -eu -c 'mariadb-dump --single-transaction --quick --routi
 test -s "$SQL_DEST" || { rm -f "$SQL_DEST"; echo "Backup was empty; removed it." >&2; exit 1; }
 
 # Connector selectors/profile files and retained evidence live outside MariaDB.
-# Deliberately never archive .env, deployment secrets, caddy data or database volumes.
+# They are deliberately owned by the unprivileged application UID and may not
+# be readable by the host deployment user. Stream the archive through the
+# running app container, which has read access to both bind mounts, without
+# widening host permissions. Never archive .env, deployment secrets, Caddy data
+# or database volumes.
 mkdir -p deploy/webdock/config deploy/webdock/files/connector-evidence
-if command -v tar >/dev/null 2>&1; then
-  tar -czf "$FILES_DEST" -C deploy/webdock config files/connector-evidence
-  test -s "$FILES_DEST" || { rm -f "$FILES_DEST"; echo "Connector-file archive was empty." >&2; exit 1; }
-fi
+$COMPOSE exec -T app sh -eu -c '
+  staging="$(mktemp -d /tmp/amarktai-backup.XXXXXX)"
+  case "$staging" in /tmp/amarktai-backup.*) ;; *) echo "Unsafe backup staging path." >&2; exit 1 ;; esac
+  mkdir -p "$staging/files"
+  cp -a /app/config "$staging/config"
+  cp -a /app/data/connector-evidence "$staging/files/connector-evidence"
+  tar -czf - -C "$staging" config files/connector-evidence
+  rm -rf -- "$staging"
+' > "$FILES_DEST"
+test -s "$FILES_DEST" || { rm -f "$FILES_DEST"; echo "Connector-file archive was empty; removed it." >&2; exit 1; }
 
 sha256sum "$SQL_DEST" > "$SQL_DEST.sha256"
 if [ -f "$FILES_DEST" ]; then sha256sum "$FILES_DEST" > "$FILES_DEST.sha256"; fi
