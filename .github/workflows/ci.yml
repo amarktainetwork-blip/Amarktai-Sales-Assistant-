@@ -120,6 +120,15 @@ jobs:
             status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}starting{{end}}' "$cid")"
             if [ "$status" = "healthy" ]; then
               docker exec "$cid" curl -fsS http://127.0.0.1:9222/json/version >/dev/null
+              $COMPOSE run --no-deps --rm app node --input-type=module -e '
+                import { chromium } from "playwright-core";
+                const browser = await chromium.connectOverCDP("http://browser:9222");
+                const page = await browser.newPage();
+                await page.setContent("<h1>cross-container-cdp-ready</h1>");
+                if (await page.textContent("h1") !== "cross-container-cdp-ready") process.exit(1);
+                await page.close();
+                process.exit(0);
+              '
               test "$(docker exec "$cid" id -u)" = "10001"
               test "$(docker inspect --format '{{.HostConfig.ReadonlyRootfs}}' "$cid")" = "true"
               docker inspect --format '{{json .HostConfig.CapDrop}}' "$cid" | grep -q '"ALL"'
