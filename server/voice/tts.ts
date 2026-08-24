@@ -80,7 +80,13 @@ export async function synthesizeSpeech(input: { text: string; voice?: string; le
   }
   const bytes = Buffer.from(await response.arrayBuffer());
   if (bytes.length < 44) throw new Error("Speech generation returned an empty or invalid audio artifact.");
-  const contentType = response.headers.get("content-type")?.split(";")[0] || "audio/wav";
-  if (!contentType.startsWith("audio/")) throw new Error("Speech generation did not return playable audio.");
+  const declaredContentType = response.headers.get("content-type")?.split(";")[0] || "";
+  const isWave = bytes.subarray(0, 4).toString("ascii") === "RIFF" && bytes.subarray(8, 12).toString("ascii") === "WAVE";
+  if (!isWave && !declaredContentType.startsWith("audio/"))
+    throw new Error("Speech generation did not return playable audio.");
+  // Piper's official HTTP server returns raw WAV bytes without an audio MIME
+  // header, so Flask labels the response as text/html. Trust the binary WAV
+  // signature and normalize it for browsers instead of trusting that header.
+  const contentType = isWave ? "audio/wav" : declaredContentType;
   return { bytes, contentType, voice, textChars: text.length };
 }
