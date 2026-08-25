@@ -19,6 +19,8 @@ describe("deployment and client acceptance separation", () => {
     expect(platform).toContain("PLATFORM_READY=PASS");
     expect(platform).toContain("CLIENT_ACCEPTANCE=PENDING");
     expect(platform).not.toContain("dist/verifyFeatures.js");
+    expect(platform).toContain("await context.close()");
+    expect(platform).not.toContain("browser.close()");
     expect(clientAcceptance).toContain("dist/verifyFeatures.js");
     expect(clientAcceptance).toContain("CLIENT_ACCEPTANCE_READY=PASS");
     expect(strictVerifier).toContain("process.exit(incomplete === 0 ? 0 : 1)");
