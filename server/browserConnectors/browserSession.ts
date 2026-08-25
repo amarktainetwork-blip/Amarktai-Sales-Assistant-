@@ -31,6 +31,10 @@ const persistentBorrowedContexts = new WeakMap<
   BrowserContext,
   PersistentProfileBinding
 >();
+const persistentSessionStorageInstallVersion = new WeakMap<
+  BrowserContext,
+  string
+>();
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -122,6 +126,40 @@ export function storageStateFromBrowserSession(
   return isBrowserSessionPackage(value) ? value.storageState : value;
 }
 
+async function installSessionStorageRestoration(
+  context: BrowserContext,
+  completeSession: BrowserSessionPackage,
+  persistent = false
+) {
+  if (
+    persistent &&
+    persistentSessionStorageInstallVersion.get(context) ===
+      completeSession.capturedAt
+  )
+    return;
+
+  await context.addInitScript(
+    ({ sessionStorageByOrigin }) => {
+      const entries = sessionStorageByOrigin[location.origin];
+      if (!entries) return;
+      for (const [key, value] of Object.entries(entries)) {
+        try {
+          sessionStorage.setItem(key, value);
+        } catch {
+          // A malformed/over-quota origin fails closed in the app verifier.
+        }
+      }
+    },
+    { sessionStorageByOrigin: completeSession.sessionStorageByOrigin }
+  );
+
+  if (persistent)
+    persistentSessionStorageInstallVersion.set(
+      context,
+      completeSession.capturedAt
+    );
+}
+
 function borrowPersistentContext(
   context: BrowserContext,
   binding: PersistentProfileBinding
@@ -163,6 +201,11 @@ export async function createContextWithBrowserSession(input: {
       throw new Error(
         `GENIE_PERSISTENT_PROFILE_UNAVAILABLE: Expected exactly one persistent Chromium context, found ${contexts.length}.`
       );
+    await installSessionStorageRestoration(
+      contexts[0],
+      completeSession,
+      true
+    );
     return borrowPersistentContext(contexts[0], binding);
   }
 
@@ -170,22 +213,8 @@ export async function createContextWithBrowserSession(input: {
   const context = await input.browser.newContext(
     storageState ? { storageState: storageState as never } : undefined
   );
-  if (completeSession) {
-    await context.addInitScript(
-      ({ sessionStorageByOrigin }) => {
-        const entries = sessionStorageByOrigin[location.origin];
-        if (!entries) return;
-        for (const [key, value] of Object.entries(entries)) {
-          try {
-            sessionStorage.setItem(key, value);
-          } catch {
-            // A malformed/over-quota origin fails closed in the app verifier.
-          }
-        }
-      },
-      { sessionStorageByOrigin: completeSession.sessionStorageByOrigin }
-    );
-  }
+  if (completeSession)
+    await installSessionStorageRestoration(context, completeSession);
   return context;
 }
 
