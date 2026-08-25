@@ -1,0 +1,87 @@
+name: Persistent Browser Profile
+
+on:
+  pull_request:
+  push:
+    branches: [main, "release/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  verify-persistent-browser-profile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.15.0
+          cache: pnpm
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Prepare production compose inputs
+        run: |
+          cp deploy/webdock/configuration.template .env
+          mkdir -p deploy/webdock/config deploy/webdock/files/connector-evidence
+          cp deploy/webdock/genie-scripts.template.json deploy/webdock/config/genie-scripts.json
+          chmod 644 deploy/webdock/config/genie-scripts.json
+          docker compose -f deploy/webdock/docker-compose.yml --env-file .env config >/dev/null
+      - name: Build app and browser images
+        run: docker compose -f deploy/webdock/docker-compose.yml --env-file .env build app browser
+      - name: Prove profile state survives browser-container restart
+        shell: bash
+        run: |
+          set -euo pipefail
+          COMPOSE="docker compose -f deploy/webdock/docker-compose.yml --env-file .env"
+          $COMPOSE up -d browser
+
+          wait_for_browser() {
+            local cid
+            cid="$($COMPOSE ps -q browser)"
+            for attempt in $(seq 1 40); do
+              status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}starting{{end}}' "$cid")"
+              [ "$status" = healthy ] && return 0
+              [ "$status" = unhealthy ] && break
+              sleep 2
+            done
+            $COMPOSE logs --no-color browser
+            docker inspect "$cid" --format '{{json .State}}'
+            return 1
+          }
+
+          wait_for_browser
+          cid="$($COMPOSE ps -q browser)"
+          docker inspect --format '{{json .Mounts}}' "$cid" | grep -q '"Destination":"/home/chrome/profile"'
+          docker inspect --format '{{json .Mounts}}' "$cid" | grep -q '"Type":"volume"'
+          test "$(docker inspect --format '{{.HostConfig.ReadonlyRootfs}}' "$cid")" = "true"
+          test -z "$(docker port "$cid")"
+
+          $COMPOSE run --no-deps --rm app node --input-type=module -e '
+            import { chromium } from "playwright-core";
+            const browser = await chromium.connectOverCDP("http://browser:9222");
+            const contexts = browser.contexts();
+            if (contexts.length !== 1) throw new Error(`expected one persistent context, got ${contexts.length}`);
+            const context = contexts[0];
+            const expires = Math.floor(Date.now() / 1000) + 3600;
+            await context.addCookies([{ name: "amarktai_profile_probe", value: "survives-restart", url: "https://profile-persistence.invalid/", expires }]);
+            const before = await context.cookies("https://profile-persistence.invalid/");
+            if (!before.some(cookie => cookie.name === "amarktai_profile_probe" && cookie.value === "survives-restart")) throw new Error("profile probe was not written");
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            process.exit(0);
+          '
+
+          $COMPOSE restart browser
+          wait_for_browser
+
+          $COMPOSE run --no-deps --rm app node --input-type=module -e '
+            import { chromium } from "playwright-core";
+            const browser = await chromium.connectOverCDP("http://browser:9222");
+            const contexts = browser.contexts();
+            if (contexts.length !== 1) throw new Error(`expected one persistent context after restart, got ${contexts.length}`);
+            const cookies = await contexts[0].cookies("https://profile-persistence.invalid/");
+            if (!cookies.some(cookie => cookie.name === "amarktai_profile_probe" && cookie.value === "survives-restart")) throw new Error("persistent Chromium profile state did not survive restart");
+            console.log("PERSISTENT_BROWSER_PROFILE=PASS");
+            process.exit(0);
+          '

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 describe("Genie post-login MFA handoff", () => {
   it("does not treat a disappeared password field as authenticated without a proven CRM-ready marker", () => {
     const source = readFileSync(
-      new URL("./genieInteractiveAuth.ts", import.meta.url),
+      new URL("./genieInteractiveAuthCore.ts", import.meta.url),
       "utf8"
     );
     const begin = source

@@ -101,8 +101,10 @@ export default function GenieInteractiveAuthPrompt({
         setError("That Genie verification request expired. Request a new code below.");
       else if (/REJECTED|INVALID/.test(detail))
         setError("Genie did not accept that code. Check the newest code and try again.");
-      else if (/GENIE_SESSION_REPLAY_FAILED/.test(detail))
-        setError("Genie accepted the sign-in, but the saved session did not reopen safely in a fresh browser. Request one new code so Amarktai can capture a complete session.");
+      else if (/GENIE_PERSISTENT_PROFILE_IN_USE/.test(detail))
+        setError("This deployment's trusted Genie browser is bound to a different CRM connection. Amarktai blocked the session from being shared.");
+      else if (/GENIE_SESSION_REPLAY_FAILED|GENIE_PERSISTENT_PROFILE_UNAVAILABLE/.test(detail))
+        setError("Genie accepted the sign-in, but Amarktai could not reopen the same trusted browser profile safely. Do not request repeated codes; the browser runtime needs attention.");
       else if (/CALIBRATION_REQUIRED/.test(detail))
         setError(
           "Amarktai can still see the live Genie verification session but could not safely map the verification controls. Keep this code and retry Verify once; do not request a new code unless Amarktai says the challenge expired."
@@ -137,6 +139,8 @@ export default function GenieInteractiveAuthPrompt({
         setError(
           "Sensitive management mode expired. Reconfirm your Amarktai password above, then request a new Genie code."
         );
+      else if (/GENIE_PERSISTENT_PROFILE_IN_USE/.test(detail))
+        setError("This deployment's trusted Genie browser is already bound to another CRM connection and cannot be shared.");
       else setError("A new Genie verification code could not be requested yet.");
     } finally {
       setPending(false);
@@ -162,8 +166,8 @@ export default function GenieInteractiveAuthPrompt({
           </h2>
           <p className="mt-2 text-xs leading-5 text-[#B7CAE7]">
             {approved
-              ? "The encrypted session passed a fresh-browser replay check. Amarktai is now discovering and testing your CRM."
-              : "Genie requires this one-time code to approve the sign-in. Amarktai does not store the code. After Genie accepts it, the encrypted session must pass a fresh-browser replay check before CRM setup continues."}
+              ? "The same trusted Genie browser profile reopened successfully. Amarktai is now discovering and testing your CRM."
+              : "Genie requires this one-time code to approve the sign-in. Amarktai does not store the code. After Genie accepts it, Amarktai reopens the same isolated trusted browser profile before CRM setup continues."}
           </p>
         </div>
       </div>
