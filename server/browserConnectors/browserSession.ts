@@ -15,6 +15,8 @@ const SESSION_SETTLE_INITIAL_MS = 2_000;
 const SESSION_SETTLE_RECHECK_MS = 750;
 const SESSION_SETTLE_CHANGED_MS = 1_250;
 
+export type PersistentPageMode = "promote_after_auth" | "retain_live_page";
+
 export type BrowserSessionPackage = {
   kind: typeof SESSION_KIND;
   version: typeof SESSION_VERSION;
@@ -25,11 +27,19 @@ export type BrowserSessionPackage = {
   authenticatedUrl: string;
   persistenceMode?: "persistent_cdp";
   persistentProfileBinding?: PersistentProfileBinding;
+  persistentPageMode?: PersistentPageMode;
+};
+
+type PersistentBorrowMetadata = {
+  binding: PersistentProfileBinding;
+  pageMode?: PersistentPageMode;
+  promoted: boolean;
+  authenticatedOrigin?: string;
 };
 
 const persistentBorrowedContexts = new WeakMap<
   BrowserContext,
-  PersistentProfileBinding
+  PersistentBorrowMetadata
 >();
 const persistentSessionStorageInstallVersion = new WeakMap<
   BrowserContext,
@@ -51,11 +61,23 @@ function isPersistentProfileBinding(
   );
 }
 
+function isPersistentPageMode(value: unknown): value is PersistentPageMode {
+  return value === "promote_after_auth" || value === "retain_live_page";
+}
+
 function normaliseOrigin(rawUrl: string) {
   const url = new URL(rawUrl);
   if (!["http:", "https:"].includes(url.protocol))
     throw new Error("BROWSER_SESSION_ORIGIN_INVALID");
   return url.origin;
+}
+
+function sameAbsoluteUrl(left: string, right: string) {
+  try {
+    return new URL(left).href === new URL(right).href;
+  } catch {
+    return left === right;
+  }
 }
 
 function packageSize(value: unknown) {
@@ -77,7 +99,9 @@ export function isBrowserSessionPackage(
     (value.persistenceMode === undefined ||
       value.persistenceMode === "persistent_cdp") &&
     (value.persistentProfileBinding === undefined ||
-      isPersistentProfileBinding(value.persistentProfileBinding))
+      isPersistentProfileBinding(value.persistentProfileBinding)) &&
+    (value.persistentPageMode === undefined ||
+      isPersistentPageMode(value.persistentPageMode))
   );
 }
 
@@ -87,6 +111,11 @@ export function validateBrowserSessionPackage(value: BrowserSessionPackage) {
     !value.persistentProfileBinding
   )
     throw new Error("BROWSER_SESSION_PERSISTENT_BINDING_REQUIRED");
+  if (
+    value.persistentPageMode &&
+    value.persistenceMode !== "persistent_cdp"
+  )
+    throw new Error("BROWSER_SESSION_PERSISTENT_PAGE_MODE_INVALID");
   if (value.authorisedOrigins.length > MAX_ORIGINS)
     throw new Error("BROWSER_SESSION_ORIGIN_LIMIT_EXCEEDED");
   const allowed = new Set(
@@ -160,15 +189,59 @@ async function installSessionStorageRestoration(
     );
 }
 
+function retainedPageProxy(page: Page, authenticatedUrl: string) {
+  return new Proxy(page, {
+    get(target, property) {
+      if (property === "goto")
+        return async (rawUrl: string, options?: Parameters<Page["goto"]>[1]) => {
+          if (sameAbsoluteUrl(target.url(), rawUrl)) return null;
+          return target.goto(rawUrl, options);
+        };
+      if (property === "close") return async () => undefined;
+      const value = Reflect.get(target, property, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  }) as Page;
+}
+
 function borrowPersistentContext(
   context: BrowserContext,
-  binding: PersistentProfileBinding
+  binding: PersistentProfileBinding,
+  pageMode?: PersistentPageMode,
+  authenticatedUrl?: string
 ) {
   const ownedPages = new Set<Page>();
+  const metadata: PersistentBorrowMetadata = {
+    binding,
+    pageMode,
+    promoted: pageMode === "retain_live_page",
+    authenticatedOrigin: authenticatedUrl
+      ? normaliseOrigin(authenticatedUrl)
+      : undefined,
+  };
   const borrowed = new Proxy(context, {
     get(target, property) {
       if (property === "newPage")
         return async () => {
+          if (metadata.promoted || metadata.pageMode === "retain_live_page") {
+            const existing = target.pages().find(page => {
+              if (page.isClosed() || page.url() === "about:blank") return false;
+              if (!metadata.authenticatedOrigin) return true;
+              try {
+                return normaliseOrigin(page.url()) === metadata.authenticatedOrigin;
+              } catch {
+                return false;
+              }
+            });
+            if (!existing)
+              throw new Error(
+                "GENIE_AUTHENTICATED_PAGE_UNAVAILABLE: The exact MFA-approved Genie tab is no longer available. Amarktai will not create a replacement page or request repeated verification codes."
+              );
+            return retainedPageProxy(
+              existing,
+              authenticatedUrl || existing.url()
+            );
+          }
           const page = await target.newPage();
           ownedPages.add(page);
           page.once("close", () => ownedPages.delete(page));
@@ -176,6 +249,8 @@ function borrowPersistentContext(
         };
       if (property === "close")
         return async () => {
+          if (metadata.promoted || metadata.pageMode === "retain_live_page")
+            return;
           const pages = Array.from(ownedPages);
           ownedPages.clear();
           await Promise.all(
@@ -186,7 +261,7 @@ function borrowPersistentContext(
       return typeof value === "function" ? value.bind(target) : value;
     },
   }) as BrowserContext;
-  persistentBorrowedContexts.set(borrowed, binding);
+  persistentBorrowedContexts.set(borrowed, metadata);
   return borrowed;
 }
 
@@ -212,7 +287,12 @@ export async function createContextWithBrowserSession(input: {
       completeSession,
       true
     );
-    return borrowPersistentContext(contexts[0], binding);
+    return borrowPersistentContext(
+      contexts[0],
+      binding,
+      completeSession.persistentPageMode,
+      completeSession.authenticatedUrl
+    );
   }
 
   const storageState = storageStateFromBrowserSession(input.browserSession);
@@ -325,7 +405,9 @@ export async function captureBrowserSessionPackage(input: {
   const authenticatedOrigin = normaliseOrigin(settled.authenticatedUrl);
   if (!sessionStorageByOrigin[authenticatedOrigin])
     sessionStorageByOrigin[authenticatedOrigin] = {};
-  const persistentProfileBinding = persistentBorrowedContexts.get(input.context);
+  const persistent = persistentBorrowedContexts.get(input.context);
+  if (persistent?.pageMode === "promote_after_auth")
+    persistent.promoted = true;
   const browserPackage: BrowserSessionPackage = {
     kind: SESSION_KIND,
     version: SESSION_VERSION,
@@ -334,10 +416,11 @@ export async function captureBrowserSessionPackage(input: {
     authorisedOrigins: Object.keys(sessionStorageByOrigin),
     capturedAt: new Date().toISOString(),
     authenticatedUrl: settled.authenticatedUrl,
-    ...(persistentProfileBinding
+    ...(persistent
       ? {
           persistenceMode: "persistent_cdp" as const,
-          persistentProfileBinding,
+          persistentProfileBinding: persistent.binding,
+          persistentPageMode: "retain_live_page" as const,
         }
       : {}),
   };
