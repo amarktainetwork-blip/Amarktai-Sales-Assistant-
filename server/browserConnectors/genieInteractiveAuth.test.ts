@@ -29,6 +29,7 @@ describe("Genie interactive authentication", () => {
     const pending = {
       browserSession: {},
       challengeUrl: "https://genie.entrepreneurscircle.org/verify",
+      challengeId: "challenge-1",
       createdAt,
     };
     expect(
@@ -111,14 +112,33 @@ describe("Genie interactive authentication", () => {
     ).toBe("verification");
   });
 
-  it("settles browser-session snapshots before connected-browser cleanup", () => {
+  it("keeps the exact live Genie challenge instead of reopening MFA from storageState", () => {
+    const source = readFileSync(
+      new URL("./genieInteractiveAuth.ts", import.meta.url),
+      "utf8"
+    );
+    const complete = source.split(
+      "export async function completeGenieInteractiveAuthentication"
+    )[1];
+
+    expect(source.match(/await retainLiveChallenge\(/g)?.length).toBe(2);
+    expect(source).toContain("const liveChallenges = new Map");
+    expect(source).toContain("challengeId = randomUUID()");
+    expect(complete).toContain(
+      "const live = liveChallenges.get(input.pending.challengeId)"
+    );
+    expect(complete).not.toContain("createContext(");
+    expect(complete).not.toContain("gotoAuthorised(");
+  });
+
+  it("settles approved session snapshots before browser cleanup", () => {
     const source = readFileSync(
       new URL("./genieInteractiveAuth.ts", import.meta.url),
       "utf8"
     );
 
-    expect(source.match(/return await verificationRequired\(/g)?.length).toBe(2);
     expect(source.match(/return await authenticated\(/g)?.length).toBe(4);
-    expect(source.match(/await browser\.close\(\)\.catch/g)?.length).toBe(2);
+    expect(source).toContain("return await authenticated(live.page, live.context)");
+    expect(source).toContain("await disposeLiveChallenge(live.challengeId)");
   });
 });
