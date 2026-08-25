@@ -35,9 +35,8 @@ export async function clearGenieBrowserOriginState(input: {
       await worker.close().catch(() => undefined);
   }
 
-  await context.clearCookies({
-    domain: new RegExp(`(?:^|\\.)${hostname.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}$`, "i"),
-  });
+  await context.clearCookies({ domain: hostname });
+  await context.clearCookies({ domain: `.${hostname}` });
 
   const session = await input.browser.newBrowserCDPSession();
   try {
