@@ -152,6 +152,24 @@ describe("Genie interactive authentication", () => {
     expect(source).toContain("genie_cdp_browser_disconnected");
   });
 
+  it("marks a persisted challenge expired when its live in-memory browser challenge is gone", () => {
+    const routes = readFileSync(
+      new URL("../connectedSystemAdminRoutes.ts", import.meta.url),
+      "utf8"
+    );
+    const commissioningGet = routes
+      .split('app.get("/api/connected-system-admin/:id/commissioning"')[1]
+      .split('app.post(\n    "/api/connected-system-admin/:id/interactive-auth/verify"')[0];
+
+    expect(routes).toContain("genieInteractiveAuthHasLiveChallenge");
+    expect(commissioningGet).toContain(
+      "!genieInteractiveAuthHasLiveChallenge(secret.pendingInteractiveAuth)"
+    );
+    expect(commissioningGet).not.toContain(
+      "!genieInteractiveAuthIsFresh(secret.pendingInteractiveAuth)"
+    );
+  });
+
   it("waits for actual OTP controls and preserves a live challenge on transient verifier errors", () => {
     const source = readFileSync(
       new URL("./genieInteractiveAuth.ts", import.meta.url),

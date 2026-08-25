@@ -17,7 +17,7 @@ import { testLearnedBrowserOperation } from "./browserConnectors/browserCrmAdapt
 import {
   beginGenieInteractiveAuthentication,
   completeGenieInteractiveAuthentication,
-  genieInteractiveAuthIsFresh,
+  genieInteractiveAuthHasLiveChallenge,
   type GenieBrowserSecret,
 } from "./browserConnectors/genieInteractiveAuth";
 import { requireLocalHttpContext } from "./httpAuth";
@@ -310,7 +310,7 @@ export function registerConnectedSystemAdminRoutes(app: Express) {
       if (secret?.pendingInteractiveAuth)
         return res.json({
           job: interactiveCommissioningResponse(
-            !genieInteractiveAuthIsFresh(secret.pendingInteractiveAuth)
+            !genieInteractiveAuthHasLiveChallenge(secret.pendingInteractiveAuth)
           ),
         });
       const job = await automaticCommissioningStatus({
