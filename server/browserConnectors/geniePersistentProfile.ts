@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { Browser, BrowserContext, Page } from "playwright-core";
 import type { AdapterConnection } from "../crm/types";
@@ -98,10 +98,36 @@ export async function claimPersistentGenieProfileBinding(
   }
 }
 
+export async function releasePersistentGenieProfileBinding(
+  expected: PersistentProfileBinding
+) {
+  const path = bindingPath();
+  try {
+    const current = await readBinding(path);
+    if (!sameBinding(current, expected))
+      throw new Error(
+        "GENIE_PERSISTENT_PROFILE_RELEASE_BLOCKED: The trusted Genie browser profile belongs to a different connected system, so Amarktai refused to release it."
+      );
+    await unlink(path);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+}
+
 export async function claimPersistentGenieProfile(
   connection: AdapterConnection
 ) {
   return claimPersistentGenieProfileBinding(
+    persistentProfileBindingFor(connection)
+  );
+}
+
+export async function releasePersistentGenieProfile(
+  connection: AdapterConnection
+) {
+  return releasePersistentGenieProfileBinding(
     persistentProfileBindingFor(connection)
   );
 }
