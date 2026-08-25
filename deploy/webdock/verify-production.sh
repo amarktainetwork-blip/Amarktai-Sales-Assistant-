@@ -34,11 +34,15 @@ $COMPOSE exec -T app node --input-type=module -e '
   const endpoint = process.env.BROWSERLESS_WS_ENDPOINT;
   if (!endpoint) throw new Error("BROWSERLESS_WS_ENDPOINT is required.");
   const browser = await chromium.connectOverCDP(endpoint);
-  const page = await browser.newPage();
-  await page.setContent("<h1>deployment-cdp-ready</h1>");
-  if (await page.textContent("h1") !== "deployment-cdp-ready") process.exit(1);
-  await page.close();
-  await browser.close();
+  const context = await browser.newContext();
+  try {
+    const page = await context.newPage();
+    await page.setContent("<h1>deployment-cdp-ready</h1>");
+    if (await page.textContent("h1") !== "deployment-cdp-ready") process.exitCode = 1;
+  } finally {
+    await context.close();
+  }
+  process.exit(process.exitCode ?? 0);
 '
 
 $COMPOSE exec -T app node -e "fetch('http://127.0.0.1:3000/healthz').then(async r=>{const b=await r.text(); if(!r.ok) throw new Error(b); console.log(b)}).catch(e=>{console.error(e);process.exit(1)})"
