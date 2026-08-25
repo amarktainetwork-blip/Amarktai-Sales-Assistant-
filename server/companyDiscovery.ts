@@ -183,7 +183,7 @@ function parseHtml(html: string, url: URL, rendered: boolean): ParsedPage {
 async function renderPublicPage(url: URL, approvedHostname: string) {
   const endpoint = process.env.BROWSERLESS_WS_ENDPOINT?.trim();
   if (!endpoint) return null;
-  const browser = await chromium.connectOverCDP(endpoint, { timeout: 12_000 });
+  const browser = await getDiscoveryBrowser(endpoint);
   const context = await browser.newContext({ javaScriptEnabled: true, serviceWorkers: "block" });
   try {
     await context.route("**/*", async route => {
@@ -199,8 +199,25 @@ async function renderPublicPage(url: URL, approvedHostname: string) {
     return { html: (await page.content()).slice(0, MAX_PAGE_BYTES), url: canonicalize(finalUrl) };
   } finally {
     await context.close().catch(() => undefined);
-    await browser.close().catch(() => undefined);
   }
+}
+
+let discoveryBrowser: Awaited<ReturnType<typeof chromium.connectOverCDP>> | undefined;
+let discoveryBrowserConnecting: Promise<Awaited<ReturnType<typeof chromium.connectOverCDP>>> | undefined;
+
+async function getDiscoveryBrowser(endpoint: string) {
+  if (discoveryBrowser?.isConnected()) return discoveryBrowser;
+  if (discoveryBrowserConnecting) return discoveryBrowserConnecting;
+  discoveryBrowserConnecting = chromium.connectOverCDP(endpoint, { timeout: 12_000 }).then(browser => {
+    discoveryBrowser = browser;
+    browser.on("disconnected", () => {
+      if (discoveryBrowser === browser) discoveryBrowser = undefined;
+    });
+    return browser;
+  }).finally(() => {
+    discoveryBrowserConnecting = undefined;
+  });
+  return discoveryBrowserConnecting;
 }
 
 function parseRobots(text: string, origin: URL): RobotsPolicy {

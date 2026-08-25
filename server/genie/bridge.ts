@@ -15,13 +15,27 @@ export type GenieScriptResult = {
  */
 async function connectBrowser(): Promise<Browser> {
   const config = requireGenieConfig();
-  return chromium.connectOverCDP(config.browserEndpoint);
+  if (sharedBrowser?.isConnected()) return sharedBrowser;
+  if (sharedBrowserConnecting) return sharedBrowserConnecting;
+  sharedBrowserConnecting = chromium.connectOverCDP(config.browserEndpoint).then(browser => {
+    sharedBrowser = browser;
+    browser.on("disconnected", () => {
+      if (sharedBrowser === browser) sharedBrowser = undefined;
+    });
+    return browser;
+  }).finally(() => {
+    sharedBrowserConnecting = undefined;
+  });
+  return sharedBrowserConnecting;
 }
+
+let sharedBrowser: Browser | undefined;
+let sharedBrowserConnecting: Promise<Browser> | undefined;
 
 export async function withGeniePage<T>(run: (page: Page) => Promise<T>): Promise<T> {
   const browser = await connectBrowser();
+  const context = await browser.newContext();
   try {
-    const context = browser.contexts()[0] ?? await browser.newContext();
     const page = await context.newPage();
     try {
       return await run(page);
@@ -29,7 +43,7 @@ export async function withGeniePage<T>(run: (page: Page) => Promise<T>): Promise
       await page.close();
     }
   } finally {
-    await browser.close();
+    await context.close().catch(() => undefined);
   }
 }
 

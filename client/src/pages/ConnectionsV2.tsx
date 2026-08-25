@@ -541,7 +541,7 @@ export default function ConnectionsV2() {
                           changeDraft(system.id, { profile: e.target.value })
                         }
                         rows={5}
-                        placeholder="Expert/debug only: reviewed login, scripts, operationMap and resultKeys."
+                        placeholder="Advanced manager setup: reviewed sign-in, operations and result checks."
                         className="mt-3 w-full rounded-xl border border-white/15 bg-[#071326] p-3 font-mono text-xs text-white outline-none"
                       />
                     )}

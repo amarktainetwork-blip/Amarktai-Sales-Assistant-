@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  classifyGenieAppState,
   classifyGenieInitialRenderState,
   genieInteractiveAuthIsFresh,
   validateGenieVerificationCode,
@@ -211,7 +212,37 @@ describe("Genie interactive authentication", () => {
     );
 
     expect(source.match(/return await authenticated\(/g)?.length).toBe(4);
-    expect(source).toContain("return await authenticated(live.page, live.context)");
+    expect(source).toContain("handle: live");
+    expect(source).toContain("captureBrowserSessionPackage");
+    expect(source).toContain("await closeBrowserHandle(input.handle)");
+    expect(source).toContain("createContext(input.connection, browserSession)");
     expect(source).toContain("await disposeLiveChallenge(live.challengeId)");
+  });
+
+  it("never closes externally managed Chromium from runtime discovery, health, or verification", () => {
+    const bridge = readFileSync(new URL("../genie/bridge.ts", import.meta.url), "utf8");
+    const discovery = readFileSync(new URL("../companyDiscovery.ts", import.meta.url), "utf8");
+    const verifier = readFileSync(new URL("../verifyGenieCommissioning.ts", import.meta.url), "utf8");
+    expect(bridge).toContain("sharedBrowserConnecting");
+    expect(discovery).toContain("discoveryBrowserConnecting");
+    for (const source of [bridge, discovery, verifier])
+      expect(source).not.toContain("browser.close()");
+  });
+
+  it("does not accept Genie's loader as an authenticated application", () => {
+    expect(classifyGenieAppState({ loginVisible: false, verificationVisible: false, loaderVisible: true, authenticatedStructureVisible: true })).toBe("loading");
+    expect(classifyGenieAppState({ loginVisible: false, verificationVisible: false, loaderVisible: false, authenticatedStructureVisible: true })).toBe("authenticated");
+  });
+
+  it("fails a replay that returns to login or MFA instead of accepting #app", () => {
+    const source = readFileSync(new URL("./genieInteractiveAuth.ts", import.meta.url), "utf8");
+    expect(source).toContain("GENIE_SESSION_REPLAY_FAILED");
+    expect(source).toContain("const LOADER_SELECTOR");
+    expect(source).not.toContain('"#app"');
+  });
+
+  it("does not approve or replay the old incomplete storageState-only format", () => {
+    const source = readFileSync(new URL("./genieInteractiveAuth.ts", import.meta.url), "utf8");
+    expect(source).toContain("isBrowserSessionPackage(input.secret.browserSession)");
   });
 });

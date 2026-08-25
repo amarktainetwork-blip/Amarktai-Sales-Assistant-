@@ -8,6 +8,12 @@ import {
 } from "playwright-core";
 import { assertAuthorisedConnectionUrl } from "../connectedSystems";
 import type { AdapterConnection, ConnectionSecretPayload } from "../crm/types";
+import {
+  captureBrowserSessionPackage,
+  createContextWithBrowserSession,
+  isBrowserSessionPackage,
+  type BrowserSessionPackage,
+} from "./browserSession";
 
 const USERNAME_SELECTOR = [
   "#email",
@@ -38,11 +44,24 @@ const READY_SELECTORS = [
   '[data-testid*="dashboard" i]',
   '[aria-label*="dashboard" i]',
   '[class*="crm-shell" i]',
-  "main nav",
-  '[role="navigation"]',
-  "main",
-  "nav",
+  'a[href*="/contacts" i]',
+  'a[href*="/opportunities" i]',
+  'a[href*="/pipelines" i]',
+  '[role="navigation"] a[href]',
+  'nav a[href]',
+  'aside a[href]',
 ] as const;
+const LOADER_SELECTOR = ".hl-loader-container, .lds-ring";
+const AUTHENTICATED_STRUCTURE_SELECTOR = READY_SELECTORS.join(", ");
+const STRONG_AUTHENTICATED_SELECTOR = '[data-testid*="dashboard" i], [aria-label*="dashboard" i], [class*="crm-shell" i]';
+const MFA_CONTAINER_SELECTOR = [
+  '[data-testid*="otp" i]',
+  '[data-testid*="verification" i]',
+  '[class*="otp" i]',
+  '[class*="verification" i]',
+  '[role="dialog"][aria-label*="verification" i]',
+].join(", ");
+const AUTH_FEEDBACK_SELECTOR = '#error, [role="alert"], [aria-live="assertive"], [data-testid*="error" i], .error, [class*="error-message" i]';
 const INTERACTIVE_AUTH_TTL_MS = 15 * 60_000;
 const LOGIN_RENDER_TIMEOUT_MS = 15_000;
 const VERIFICATION_RENDER_TIMEOUT_MS = 15_000;
@@ -88,7 +107,7 @@ type LoginCalibration = {
 
 type AuthenticatedResult = {
   status: "authenticated";
-  browserSession: Record<string, unknown>;
+  browserSession: BrowserSessionPackage;
   authenticatedUrl: string;
   loginCalibration: LoginCalibration;
 };
@@ -128,10 +147,6 @@ export function classifyGenieInitialRenderState(input: {
   )
     return "authenticated";
   return "waiting";
-}
-
-function asState(value: Awaited<ReturnType<BrowserContext["storageState"]>>) {
-  return value as unknown as Record<string, unknown>;
 }
 
 function connectionKey(connection: AdapterConnection) {
@@ -230,35 +245,103 @@ async function hasVisible(page: Page, selector: string) {
   return (await visibleLocators(page.locator(selector))).length > 0;
 }
 
-async function pageText(page: Page) {
-  return page.locator("body").innerText({ timeout: 1_000 }).catch(() => "");
-}
-
 async function pageSuggestsInteractiveAuth(page: Page) {
   if (await hasVisible(page, GENIE_MFA_SELECTOR).catch(() => false)) return true;
-  return /two[- ]factor|multi[- ]factor|verification code|security code|one[- ]time code|authenticator|approve (?:the )?sign[- ]in/i.test(
-    await pageText(page)
-  );
+  return hasVisible(page, MFA_CONTAINER_SELECTOR).catch(() => false);
+}
+
+async function authFeedbackText(page: Page) {
+  const alerts = await visibleLocators(page.locator(AUTH_FEEDBACK_SELECTOR)).catch(() => []);
+  const text: string[] = [];
+  for (const alert of alerts.slice(0, 4))
+    text.push(await alert.innerText({ timeout: 500 }).catch(() => ""));
+  return text.join(" ").slice(0, 2_000);
 }
 
 async function pageSuggestsRejectedCredentials(page: Page) {
   return /invalid (?:username|email|password|credentials)|incorrect (?:username|email|password)|sign[- ]in failed|login failed|credentials (?:were )?rejected/i.test(
-    await pageText(page)
+    await authFeedbackText(page)
   );
 }
 
 async function pageSuggestsRejectedCode(page: Page) {
   return /invalid (?:verification|security|one[- ]time|otp)? ?code|incorrect (?:verification|security|one[- ]time|otp)? ?code|code (?:is )?invalid|code (?:has )?expired|verification failed/i.test(
-    await pageText(page)
+    await authFeedbackText(page)
   );
 }
 
 async function readySelector(page: Page) {
   for (const selector of READY_SELECTORS) {
     const matches = await visibleLocators(page.locator(selector)).catch(() => []);
-    if (matches.length === 1) return selector;
+    if (matches.length >= 1) return selector;
   }
   return undefined;
+}
+
+export type GenieAppState = "login" | "verification" | "loading" | "authenticated" | "waiting";
+
+export function classifyGenieAppState(input: {
+  loginVisible: boolean;
+  verificationVisible: boolean;
+  loaderVisible: boolean;
+  authenticatedStructureVisible: boolean;
+}): GenieAppState {
+  if (input.verificationVisible) return "verification";
+  if (input.loginVisible) return "login";
+  if (input.loaderVisible) return "loading";
+  if (input.authenticatedStructureVisible) return "authenticated";
+  return "waiting";
+}
+
+async function genieAppState(page: Page): Promise<GenieAppState> {
+  const [username, password, submit, verification, loader, strongStructure, structures] = await Promise.all([
+    hasVisible(page, USERNAME_SELECTOR).catch(() => false),
+    hasVisible(page, PASSWORD_SELECTOR).catch(() => false),
+    hasVisible(page, LOGIN_SUBMIT_SELECTOR).catch(() => false),
+    pageSuggestsInteractiveAuth(page).catch(() => false),
+    hasVisible(page, LOADER_SELECTOR).catch(() => false),
+    hasVisible(page, STRONG_AUTHENTICATED_SELECTOR).catch(() => false),
+    visibleLocators(page.locator(AUTHENTICATED_STRUCTURE_SELECTOR)).catch(() => []),
+  ]);
+  return classifyGenieAppState({
+    loginVisible: username && password && submit,
+    verificationVisible: verification,
+    loaderVisible: loader,
+    authenticatedStructureVisible: strongStructure || structures.length >= 2,
+  });
+}
+
+async function waitForAuthenticatedGenieApp(input: {
+  connection: AdapterConnection;
+  page: Page;
+  blocked: () => BlockedNavigation | undefined;
+  replay: boolean;
+  timeoutMs?: number;
+}) {
+  const deadline = Date.now() + (input.timeoutMs || 60_000);
+  let lastState: GenieAppState = "waiting";
+  while (Date.now() < deadline) {
+    const denied = input.blocked();
+    if (denied) throw blockedNavigationError(denied);
+    await authorise(input.connection, input.page.url());
+    lastState = await genieAppState(input.page);
+    if (lastState === "authenticated") return await readySelector(input.page);
+    if (input.replay && lastState === "login")
+      throw new Error("GENIE_SESSION_REPLAY_FAILED: The saved Genie session returned to sign-in in a fresh browser context. Request one new verification code.");
+    if (input.replay && lastState === "verification")
+      throw new Error("GENIE_SESSION_REPLAY_FAILED: The saved Genie session still requires interactive verification in a fresh browser context. Request one new code.");
+    await input.page.waitForTimeout(250);
+  }
+  throw new Error(`GENIE_SESSION_REPLAY_FAILED: Genie did not finish authenticated application bootstrap in a fresh browser context (last structural state: ${lastState}).`);
+}
+
+export async function verifyApprovedGenieSession(input: {
+  connection: AdapterConnection;
+  page: Page;
+  blocked: () => { url: string; detail: string } | undefined;
+  timeoutMs?: number;
+}) {
+  return waitForAuthenticatedGenieApp({ ...input, replay: true });
 }
 
 function loginCalibration(ready?: string): LoginCalibration {
@@ -293,9 +376,7 @@ async function createContext(
   browserSession?: Record<string, unknown>
 ): Promise<BrowserHandle> {
   const browser = await getSharedCdpBrowser();
-  const context = await browser.newContext(
-    browserSession ? { storageState: browserSession as never } : undefined
-  );
+  const context = await createContextWithBrowserSession({ browser, browserSession });
   const page = await context.newPage();
   let blocked: BlockedNavigation | undefined;
   await page.route("**/*", async route => {
@@ -416,15 +497,34 @@ async function waitForVerificationChallenge(input: {
   return false;
 }
 
-async function authenticated(
-  page: Page,
-  context: BrowserContext
-): Promise<AuthenticatedResult> {
+async function authenticated(input: {
+  connection: AdapterConnection;
+  handle: BrowserHandle;
+}): Promise<AuthenticatedResult> {
+  const ready = await waitForAuthenticatedGenieApp({
+    connection: input.connection, page: input.handle.page,
+    blocked: input.handle.blocked, replay: false,
+  });
+  const authenticatedUrl = input.handle.page.url();
+  const browserSession = await captureBrowserSessionPackage({
+    context: input.handle.context,
+    authenticatedUrl,
+    authorise: rawUrl => authorise(input.connection, rawUrl),
+  });
+  await closeBrowserHandle(input.handle);
+  const replay = await createContext(input.connection, browserSession);
+  try {
+    await gotoAuthorised(input.connection, replay.page, browserSession.authenticatedUrl, replay.blocked);
+    await waitForAuthenticatedGenieApp({
+      connection: input.connection, page: replay.page,
+      blocked: replay.blocked, replay: true,
+    });
+  } finally {
+    await closeBrowserHandle(replay);
+  }
   return {
-    status: "authenticated",
-    browserSession: asState(await context.storageState()),
-    authenticatedUrl: page.url(),
-    loginCalibration: loginCalibration(await readySelector(page)),
+    status: "authenticated", browserSession, authenticatedUrl,
+    loginCalibration: loginCalibration(ready),
   };
 }
 
@@ -436,7 +536,7 @@ async function verificationRequired(
   return {
     status: "verification_required",
     pendingInteractiveAuth: {
-      browserSession: asState(await context.storageState()),
+      browserSession: (await context.storageState({ indexedDB: true })) as unknown as Record<string, unknown>,
       challengeUrl: page.url(),
       challengeId,
       createdAt: new Date().toISOString(),
@@ -551,7 +651,9 @@ export async function beginGenieInteractiveAuthentication(input: {
   secret: GenieBrowserSecret;
 }): Promise<GenieAuthenticationResult> {
   const loginUrl = cleanLoginUrl(input.connection);
-  const session = input.secret.browserSession;
+  const session = input.secret.browserSession && isBrowserSessionPackage(input.secret.browserSession)
+    ? input.secret.browserSession
+    : undefined;
   await disposeConnectionChallenge(input.connection);
   const handle = await createContext(input.connection, session);
   let retainedForVerification = false;
@@ -576,7 +678,7 @@ export async function beginGenieInteractiveAuthentication(input: {
       return result;
     }
     if (initialState === "authenticated")
-      return await authenticated(handle.page, handle.context);
+      return await authenticated({ connection: input.connection, handle });
     if (initialState !== "login")
       throw new Error(
         "GENIE_LOGIN_FORM_NOT_READY: Genie was reached but its sign-in form did not finish rendering. Retry setup once; no calibration is required unless this continues."
@@ -627,7 +729,7 @@ export async function beginGenieInteractiveAuthentication(input: {
       } else {
         if (!passwordGoneAt) passwordGoneAt = Date.now();
         if (Date.now() - passwordGoneAt >= 1_500)
-          return await authenticated(handle.page, handle.context);
+          return await authenticated({ connection: input.connection, handle });
       }
       await handle.page.waitForTimeout(250);
     }
@@ -681,7 +783,7 @@ export async function completeGenieInteractiveAuthentication(input: {
       const ready = await readySelector(live.page);
       if (ready) {
         keepForRetry = false;
-        return await authenticated(live.page, live.context);
+        return await authenticated({ connection: input.connection, handle: live });
       }
       keepForRetry = false;
       throw new Error(
@@ -742,7 +844,7 @@ export async function completeGenieInteractiveAuthentication(input: {
         if (!challengeGoneAt) challengeGoneAt = Date.now();
         if (Date.now() - challengeGoneAt >= 1_000) {
           keepForRetry = false;
-          return await authenticated(live.page, live.context);
+          return await authenticated({ connection: input.connection, handle: live });
         }
       }
       await live.page.waitForTimeout(250);

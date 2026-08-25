@@ -3,6 +3,7 @@ import {
   boolean,
   int,
   json,
+  longtext,
   mysqlEnum,
   mysqlTable,
   text,
@@ -130,7 +131,7 @@ export const websiteDiscoveries = mysqlTable(
       .references(() => companyProfiles.id, { onDelete: "cascade" }),
     sourceUrl: varchar("sourceUrl", { length: 1024 }).notNull(),
     pageTitle: varchar("pageTitle", { length: 500 }),
-    extractedText: text("extractedText"),
+    extractedText: longtext("extractedText"),
     proposedFacts: json("proposedFacts")
       .$type<Record<string, unknown>>()
       .notNull(),
@@ -791,7 +792,7 @@ export const connectionSecrets = mysqlTable(
     keyVersion: varchar("keyVersion", { length: 64 }).notNull(),
     iv: varchar("iv", { length: 128 }).notNull(),
     authTag: varchar("authTag", { length: 128 }).notNull(),
-    ciphertext: text("ciphertext").notNull(),
+    ciphertext: longtext("ciphertext").notNull(),
     expiresAt: timestamp("expiresAt"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

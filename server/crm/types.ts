@@ -47,6 +47,7 @@ export type ConnectionSecretPayload = {
   instanceUrl?: string;
   accountsUrl?: string;
   tokenType?: string;
+  /** Encrypted at rest. Versioned browser replay package or a legacy storageState during migration. */
   browserSession?: Record<string, unknown>;
   credentials?: Record<string, string>;
 };

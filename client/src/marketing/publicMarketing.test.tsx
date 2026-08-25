@@ -96,8 +96,8 @@ describe("public marketing website", () => {
 
   it("renders a finished pricing framework without fake commercial figures", () => {
     const html = render("/pricing", PricingPage);
-    expect(html).toContain("Pricing coming soon");
-    expect(html).toContain("Launch pricing being finalised");
+    expect(html).toContain("Talk to sales");
+    expect(html).toContain("Plans for real sales operations");
     expect(html).not.toMatch(/\$\d|per month|start trial|choose plan/i);
   });
 
