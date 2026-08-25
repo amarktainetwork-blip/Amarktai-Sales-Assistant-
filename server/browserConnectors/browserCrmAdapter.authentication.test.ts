@@ -29,7 +29,10 @@ vi.mock("./runtimeFailure", () => ({
   recordLearnedRuntimeFailure: mocks.recordLearnedRuntimeFailure,
 }));
 
-import { browserCrmAdapter } from "./browserCrmAdapter";
+import {
+  browserCrmAdapter,
+  resetBrowserConnectorCdpPoolForTests,
+} from "./browserCrmAdapter";
 import type { AdapterConnection } from "../crm/types";
 
 function connection(
@@ -72,6 +75,8 @@ function fakeBrowser() {
   const browser = {
     newContext: vi.fn(async () => context),
     close: vi.fn(async () => undefined),
+    isConnected: vi.fn(() => true),
+    on: vi.fn(),
   };
   return { page, context, browser };
 }
@@ -79,6 +84,7 @@ function fakeBrowser() {
 describe("browser connector authentication policy", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetBrowserConnectorCdpPoolForTests();
     delete process.env.GENIE_LOGIN_URL;
     delete process.env.GENIE_USERNAME;
     delete process.env.GENIE_PASSWORD;
@@ -151,6 +157,27 @@ describe("browser connector authentication policy", () => {
       expect.any(Function)
     );
     expect(mocks.assertAuthorisedConnectionUrl).not.toHaveBeenCalled();
+    expect(runtime.context.close).toHaveBeenCalledTimes(1);
+    expect(runtime.browser.close).not.toHaveBeenCalled();
+  });
+
+  it("reuses the managed CDP attachment instead of opening and closing the external browser per operation", async () => {
+    const runtime = fakeBrowser();
+    mocks.connectOverCDP.mockResolvedValue(runtime.browser);
+
+    const adapter = browserCrmAdapter("custom_browser");
+    const input = {
+      connection: connection("custom_browser", { scripts: {} }),
+      secret: { credentials: {} },
+      correlationId: "managed-cdp",
+    };
+
+    await adapter.testConnection(input);
+    await adapter.testConnection({ ...input, correlationId: "managed-cdp-2" });
+
+    expect(mocks.connectOverCDP).toHaveBeenCalledTimes(1);
+    expect(runtime.browser.close).not.toHaveBeenCalled();
+    expect(runtime.context.close).toHaveBeenCalledTimes(2);
   });
 
   it("retains authorised-domain protection for no-login custom_browser operations", async () => {
@@ -180,6 +207,7 @@ describe("browser connector authentication policy", () => {
       })
     ).rejects.toThrow("outside this connected system's authorised");
     expect(runtime.page.goto).not.toHaveBeenCalled();
+    expect(runtime.browser.close).not.toHaveBeenCalled();
   });
 
   it("still requires the correct runtime operation state", async () => {
