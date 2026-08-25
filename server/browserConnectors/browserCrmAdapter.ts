@@ -360,7 +360,7 @@ const MFA_SELECTOR = [
   'input[name*="mfa" i]',
   'input[name*="verification" i]',
 ].join(", ");
-const AUTH_FEEDBACK_SELECTOR = '[role="alert"], [aria-live="assertive"], [data-testid*="error" i], .error, [class*="error-message" i]';
+const AUTH_FEEDBACK_SELECTOR = '#error, [role="alert"], [aria-live="assertive"], [data-testid*="error" i], .error, [class*="error-message" i]';
 const CRM_SHELL_SELECTOR = [
   '[data-testid*="dashboard" i]',
   '[aria-label*="dashboard" i]',

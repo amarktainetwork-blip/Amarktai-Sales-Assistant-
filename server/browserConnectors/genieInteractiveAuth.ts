@@ -61,7 +61,7 @@ const MFA_CONTAINER_SELECTOR = [
   '[class*="verification" i]',
   '[role="dialog"][aria-label*="verification" i]',
 ].join(", ");
-const AUTH_FEEDBACK_SELECTOR = '[role="alert"], [aria-live="assertive"], [data-testid*="error" i], .error, [class*="error-message" i]';
+const AUTH_FEEDBACK_SELECTOR = '#error, [role="alert"], [aria-live="assertive"], [data-testid*="error" i], .error, [class*="error-message" i]';
 const INTERACTIVE_AUTH_TTL_MS = 15 * 60_000;
 const LOGIN_RENDER_TIMEOUT_MS = 15_000;
 const VERIFICATION_RENDER_TIMEOUT_MS = 15_000;
