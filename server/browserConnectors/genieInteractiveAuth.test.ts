@@ -170,6 +170,17 @@ describe("Genie interactive authentication", () => {
     );
   });
 
+  it("recognises Genie's observed six-box numeric OTP control", () => {
+    const source = readFileSync(
+      new URL("./genieInteractiveAuth.ts", import.meta.url),
+      "utf8"
+    );
+
+    expect(source).toContain('"input.otp-input"');
+    expect(source).toContain("fields.length >= 4");
+    expect(source).toContain("compact.length === fields.length");
+  });
+
   it("waits for actual OTP controls and preserves a live challenge on transient verifier errors", () => {
     const source = readFileSync(
       new URL("./genieInteractiveAuth.ts", import.meta.url),
