@@ -35,6 +35,7 @@ function persistentBootstrapSession(
     authenticatedUrl: connection.baseUrl,
     persistenceMode: "persistent_cdp",
     persistentProfileBinding: persistentProfileBindingFor(connection),
+    persistentPageMode: "promote_after_auth",
   };
 }
 
@@ -47,7 +48,8 @@ export async function beginGenieInteractiveAuthentication(input: {
   const persistent =
     current &&
     isBrowserSessionPackage(current) &&
-    current.persistenceMode === "persistent_cdp"
+    current.persistenceMode === "persistent_cdp" &&
+    current.persistentPageMode
       ? current
       : persistentBootstrapSession(input.connection);
   return beginCore({
