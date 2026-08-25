@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   claimPersistentGenieProfile,
   getPersistentGenieContext,
+  releasePersistentGenieProfile,
 } from "./geniePersistentProfile";
 import type { AdapterConnection } from "../crm/types";
 
@@ -59,6 +60,20 @@ describe("persistent Genie browser profile ownership", () => {
     await expect(claimPersistentGenieProfile(connection(8))).rejects.toThrow(
       "GENIE_PERSISTENT_PROFILE_IN_USE"
     );
+  });
+
+  it("releases only the exact owner so a fresh Genie connection can claim the profile", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "amarktai-genie-profile-"));
+    process.env.GENIE_PERSISTENT_PROFILE_BINDING_PATH = join(directory, "owner.json");
+
+    await claimPersistentGenieProfile(connection(7));
+    await expect(releasePersistentGenieProfile(connection(8))).rejects.toThrow(
+      "GENIE_PERSISTENT_PROFILE_RELEASE_BLOCKED"
+    );
+    await expect(releasePersistentGenieProfile(connection(7))).resolves.toBe(true);
+    await expect(claimPersistentGenieProfile(connection(8))).resolves.toMatchObject({
+      connectedSystemId: 8,
+    });
   });
 
   it("uses the single default CDP context instead of creating an incognito context", async () => {
