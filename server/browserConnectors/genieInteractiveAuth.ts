@@ -1,4 +1,11 @@
-import { chromium, type BrowserContext, type Locator, type Page } from "playwright-core";
+import { randomUUID } from "node:crypto";
+import {
+  chromium,
+  type Browser,
+  type BrowserContext,
+  type Locator,
+  type Page,
+} from "playwright-core";
 import { assertAuthorisedConnectionUrl } from "../connectedSystems";
 import type { AdapterConnection, ConnectionSecretPayload } from "../crm/types";
 
@@ -9,7 +16,7 @@ const USERNAME_SELECTOR = [
   'input[name*="email" i]',
   'input[name*="user" i]',
 ].join(", ");
-const PASSWORD_SELECTOR = "#password, input[type=\"password\"]";
+const PASSWORD_SELECTOR = '#password, input[type="password"]';
 const LOGIN_SUBMIT_SELECTOR = 'button[type="submit"], input[type="submit"]';
 export const GENIE_MFA_SELECTOR = [
   'input[autocomplete="one-time-code" i]',
@@ -39,9 +46,30 @@ const INTERACTIVE_AUTH_TTL_MS = 15 * 60_000;
 const LOGIN_RENDER_TIMEOUT_MS = 15_000;
 const VERIFICATION_RENDER_TIMEOUT_MS = 10_000;
 
+type BlockedNavigation = { url: string; detail: string };
+
+type BrowserHandle = {
+  browser: Browser;
+  context: BrowserContext;
+  page: Page;
+  blocked: () => BlockedNavigation | undefined;
+};
+
+type LiveGenieChallenge = BrowserHandle & {
+  challengeId: string;
+  connectionKey: string;
+  expiresAt: number;
+  inUse: boolean;
+  timer: ReturnType<typeof setTimeout>;
+};
+
+const liveChallenges = new Map<string, LiveGenieChallenge>();
+const liveChallengeByConnection = new Map<string, string>();
+
 export type PendingGenieInteractiveAuth = {
   browserSession: Record<string, unknown>;
   challengeUrl: string;
+  challengeId?: string;
   createdAt: string;
 };
 
@@ -102,6 +130,40 @@ export function classifyGenieInitialRenderState(input: {
 
 function asState(value: Awaited<ReturnType<BrowserContext["storageState"]>>) {
   return value as unknown as Record<string, unknown>;
+}
+
+function connectionKey(connection: AdapterConnection) {
+  return `${connection.organisationId}:${connection.id}`;
+}
+
+async function closeBrowserHandle(handle: BrowserHandle) {
+  await handle.context.close().catch(() => undefined);
+  await handle.browser.close().catch(() => undefined);
+}
+
+async function disposeLiveChallenge(challengeId: string) {
+  const live = liveChallenges.get(challengeId);
+  if (!live) return;
+  liveChallenges.delete(challengeId);
+  if (liveChallengeByConnection.get(live.connectionKey) === challengeId)
+    liveChallengeByConnection.delete(live.connectionKey);
+  clearTimeout(live.timer);
+  await closeBrowserHandle(live);
+}
+
+async function disposeConnectionChallenge(connection: AdapterConnection) {
+  const key = connectionKey(connection);
+  const challengeId = liveChallengeByConnection.get(key);
+  if (challengeId) await disposeLiveChallenge(challengeId);
+}
+
+function armChallengeExpiry(live: LiveGenieChallenge) {
+  clearTimeout(live.timer);
+  const remaining = Math.max(1, live.expiresAt - Date.now());
+  live.timer = setTimeout(() => {
+    void disposeLiveChallenge(live.challengeId);
+  }, remaining);
+  live.timer.unref?.();
 }
 
 async function visibleLocators(locator: Locator) {
@@ -188,7 +250,7 @@ async function authorise(connection: AdapterConnection, rawUrl: string) {
 async function createContext(
   connection: AdapterConnection,
   browserSession?: Record<string, unknown>
-) {
+): Promise<BrowserHandle> {
   const endpoint = process.env.BROWSERLESS_WS_ENDPOINT;
   if (!endpoint)
     throw new Error(
@@ -199,7 +261,7 @@ async function createContext(
     browserSession ? { storageState: browserSession as never } : undefined
   );
   const page = await context.newPage();
-  let blocked: { url: string; detail: string } | undefined;
+  let blocked: BlockedNavigation | undefined;
   await page.route("**/*", async route => {
     const request = route.request();
     if (!request.isNavigationRequest() || request.frame() !== page.mainFrame())
@@ -218,7 +280,7 @@ async function createContext(
   return { browser, context, page, blocked: () => blocked };
 }
 
-function blockedNavigationError(blocked: { url: string; detail: string }) {
+function blockedNavigationError(blocked: BlockedNavigation) {
   let hostname = "the redirected authentication service";
   try {
     hostname = new URL(blocked.url).hostname;
@@ -234,7 +296,7 @@ async function gotoAuthorised(
   connection: AdapterConnection,
   page: Page,
   rawUrl: string,
-  blocked: () => { url: string; detail: string } | undefined
+  blocked: () => BlockedNavigation | undefined
 ) {
   await authorise(connection, rawUrl);
   try {
@@ -252,7 +314,7 @@ async function gotoAuthorised(
 async function waitForInitialAuthenticationState(input: {
   connection: AdapterConnection;
   page: Page;
-  blocked: () => { url: string; detail: string } | undefined;
+  blocked: () => BlockedNavigation | undefined;
   loginUrl: string;
   sessionAvailable: boolean;
 }) {
@@ -287,7 +349,7 @@ async function waitForInitialAuthenticationState(input: {
 async function waitForVerificationChallenge(input: {
   connection: AdapterConnection;
   page: Page;
-  blocked: () => { url: string; detail: string } | undefined;
+  blocked: () => BlockedNavigation | undefined;
 }) {
   const deadline = Date.now() + VERIFICATION_RENDER_TIMEOUT_MS;
   while (Date.now() < deadline) {
@@ -315,16 +377,45 @@ async function authenticated(
 
 async function verificationRequired(
   page: Page,
-  context: BrowserContext
+  context: BrowserContext,
+  challengeId: string
 ): Promise<VerificationRequiredResult> {
   return {
     status: "verification_required",
     pendingInteractiveAuth: {
       browserSession: asState(await context.storageState()),
       challengeUrl: page.url(),
+      challengeId,
       createdAt: new Date().toISOString(),
     },
   };
+}
+
+async function retainLiveChallenge(
+  connection: AdapterConnection,
+  handle: BrowserHandle
+): Promise<VerificationRequiredResult> {
+  await disposeConnectionChallenge(connection);
+  const challengeId = randomUUID();
+  const result = await verificationRequired(
+    handle.page,
+    handle.context,
+    challengeId
+  );
+  const key = connectionKey(connection);
+  const live: LiveGenieChallenge = {
+    ...handle,
+    challengeId,
+    connectionKey: key,
+    expiresAt: Date.now() + INTERACTIVE_AUTH_TTL_MS,
+    inUse: false,
+    timer: setTimeout(() => undefined, INTERACTIVE_AUTH_TTL_MS),
+  };
+  clearTimeout(live.timer);
+  liveChallenges.set(challengeId, live);
+  liveChallengeByConnection.set(key, challengeId);
+  armChallengeExpiry(live);
+  return result;
 }
 
 export function validateGenieVerificationCode(value: unknown) {
@@ -341,7 +432,21 @@ export function genieInteractiveAuthIsFresh(
   now = Date.now()
 ) {
   const created = new Date(pending.createdAt).getTime();
-  return Number.isFinite(created) && now - created >= 0 && now - created <= INTERACTIVE_AUTH_TTL_MS;
+  return (
+    Number.isFinite(created) &&
+    now - created >= 0 &&
+    now - created <= INTERACTIVE_AUTH_TTL_MS
+  );
+}
+
+export function genieInteractiveAuthHasLiveChallenge(
+  pending: PendingGenieInteractiveAuth,
+  now = Date.now()
+) {
+  if (!pending.challengeId || !genieInteractiveAuthIsFresh(pending, now))
+    return false;
+  const live = liveChallenges.get(pending.challengeId);
+  return Boolean(live && live.expiresAt >= now && !live.page.isClosed());
 }
 
 async function fillVerificationCode(page: Page, code: string) {
@@ -351,7 +456,11 @@ async function fillVerificationCode(page: Page, code: string) {
     return;
   }
   const compact = code.replace(/[ -]/g, "");
-  if (fields.length >= 4 && fields.length <= 12 && compact.length === fields.length) {
+  if (
+    fields.length >= 4 &&
+    fields.length <= 12 &&
+    compact.length === fields.length
+  ) {
     for (let index = 0; index < fields.length; index += 1)
       await fields[index].fill(compact[index]);
     return;
@@ -367,24 +476,31 @@ export async function beginGenieInteractiveAuthentication(input: {
 }): Promise<GenieAuthenticationResult> {
   const loginUrl = cleanLoginUrl(input.connection);
   const session = input.secret.browserSession;
-  const { browser, context, page, blocked } = await createContext(
-    input.connection,
-    session
-  );
+  await disposeConnectionChallenge(input.connection);
+  const handle = await createContext(input.connection, session);
+  let retainedForVerification = false;
   try {
-    await gotoAuthorised(input.connection, page, loginUrl, blocked);
+    await gotoAuthorised(
+      input.connection,
+      handle.page,
+      loginUrl,
+      handle.blocked
+    );
 
     const initialState = await waitForInitialAuthenticationState({
       connection: input.connection,
-      page,
-      blocked,
+      page: handle.page,
+      blocked: handle.blocked,
       loginUrl,
       sessionAvailable: Boolean(session),
     });
-    if (initialState === "verification")
-      return await verificationRequired(page, context);
+    if (initialState === "verification") {
+      const result = await retainLiveChallenge(input.connection, handle);
+      retainedForVerification = true;
+      return result;
+    }
     if (initialState === "authenticated")
-      return await authenticated(page, context);
+      return await authenticated(handle.page, handle.context);
     if (initialState !== "login")
       throw new Error(
         "GENIE_LOGIN_FORM_NOT_READY: Genie was reached but its sign-in form did not finish rendering. Retry setup once; no calibration is required unless this continues."
@@ -396,9 +512,17 @@ export async function beginGenieInteractiveAuthentication(input: {
         "GENIE_CREDENTIALS_REQUIRED: Encrypted Genie username and password are required."
       );
 
-    const username = await oneVisible(page, USERNAME_SELECTOR, "username/email");
-    const password = await oneVisible(page, PASSWORD_SELECTOR, "password");
-    const submit = await oneVisible(page, LOGIN_SUBMIT_SELECTOR, "sign-in submit");
+    const username = await oneVisible(
+      handle.page,
+      USERNAME_SELECTOR,
+      "username/email"
+    );
+    const password = await oneVisible(handle.page, PASSWORD_SELECTOR, "password");
+    const submit = await oneVisible(
+      handle.page,
+      LOGIN_SUBMIT_SELECTOR,
+      "sign-in submit"
+    );
     await username.fill(credentials.username);
     await password.fill(credentials.password);
     await submit.click();
@@ -406,31 +530,36 @@ export async function beginGenieInteractiveAuthentication(input: {
     const deadline = Date.now() + 45_000;
     let passwordGoneAt = 0;
     while (Date.now() < deadline) {
-      const denied = blocked();
+      const denied = handle.blocked();
       if (denied) throw blockedNavigationError(denied);
-      await authorise(input.connection, page.url());
-      if (await pageSuggestsInteractiveAuth(page))
-        return await verificationRequired(page, context);
-      const passwordStillVisible = await hasVisible(page, PASSWORD_SELECTOR).catch(() => false);
+      await authorise(input.connection, handle.page.url());
+      if (await pageSuggestsInteractiveAuth(handle.page)) {
+        const result = await retainLiveChallenge(input.connection, handle);
+        retainedForVerification = true;
+        return result;
+      }
+      const passwordStillVisible = await hasVisible(
+        handle.page,
+        PASSWORD_SELECTOR
+      ).catch(() => false);
       if (passwordStillVisible) {
         passwordGoneAt = 0;
-        if (await pageSuggestsRejectedCredentials(page))
+        if (await pageSuggestsRejectedCredentials(handle.page))
           throw new Error(
             "GENIE_AUTHENTICATION_FAILED: Genie rejected the saved username or password."
           );
       } else {
         if (!passwordGoneAt) passwordGoneAt = Date.now();
         if (Date.now() - passwordGoneAt >= 1_500)
-          return await authenticated(page, context);
+          return await authenticated(handle.page, handle.context);
       }
-      await page.waitForTimeout(250);
+      await handle.page.waitForTimeout(250);
     }
     throw new Error(
       "GENIE_LOGIN_NOT_CONFIRMED: Genie sign-in did not reach a verified session."
     );
   } finally {
-    await context.close().catch(() => undefined);
-    await browser.close().catch(() => undefined);
+    if (!retainedForVerification) await closeBrowserHandle(handle);
   }
 }
 
@@ -440,43 +569,58 @@ export async function completeGenieInteractiveAuthentication(input: {
   code: unknown;
 }): Promise<AuthenticatedResult> {
   const code = validateGenieVerificationCode(input.code);
-  if (!genieInteractiveAuthIsFresh(input.pending))
+  if (!genieInteractiveAuthIsFresh(input.pending) || !input.pending.challengeId)
     throw new Error(
       "GENIE_VERIFICATION_CHALLENGE_EXPIRED: The Genie verification request expired. Request a new code and try again."
     );
   await authorise(input.connection, input.pending.challengeUrl);
-  const { browser, context, page, blocked } = await createContext(
-    input.connection,
-    input.pending.browserSession
-  );
-  try {
-    await gotoAuthorised(
-      input.connection,
-      page,
-      input.pending.challengeUrl,
-      blocked
+
+  const live = liveChallenges.get(input.pending.challengeId);
+  if (
+    !live ||
+    live.connectionKey !== connectionKey(input.connection) ||
+    live.expiresAt < Date.now() ||
+    live.page.isClosed()
+  ) {
+    if (live) await disposeLiveChallenge(live.challengeId);
+    throw new Error(
+      "GENIE_VERIFICATION_CHALLENGE_EXPIRED: The live Genie verification session is no longer available. Request a new code and try again."
     );
+  }
+  if (live.inUse)
+    throw new Error(
+      "GENIE_VERIFICATION_IN_PROGRESS: Genie verification is already being checked."
+    );
+
+  live.inUse = true;
+  clearTimeout(live.timer);
+  let keepForRetry = false;
+  try {
     const challengeVisible = await waitForVerificationChallenge({
       connection: input.connection,
-      page,
-      blocked,
+      page: live.page,
+      blocked: live.blocked,
     });
     if (!challengeVisible) {
-      const ready = await readySelector(page);
-      if (ready) return await authenticated(page, context);
+      const ready = await readySelector(live.page);
+      if (ready) return await authenticated(live.page, live.context);
       throw new Error(
         "GENIE_VERIFICATION_CHALLENGE_EXPIRED: Genie no longer shows the verification challenge. Request a new code."
       );
     }
 
-    await fillVerificationCode(page, code);
-    await page.waitForTimeout(500);
+    await fillVerificationCode(live.page, code);
+    await live.page.waitForTimeout(500);
 
-    if (await pageSuggestsInteractiveAuth(page)) {
-      let submitMatches = await visibleLocators(page.locator(LOGIN_SUBMIT_SELECTOR));
+    if (await pageSuggestsInteractiveAuth(live.page)) {
+      let submitMatches = await visibleLocators(
+        live.page.locator(LOGIN_SUBMIT_SELECTOR)
+      );
       if (submitMatches.length !== 1) {
         submitMatches = await visibleLocators(
-          page.getByRole("button", { name: /verify|continue|confirm|submit|sign in/i })
+          live.page.getByRole("button", {
+            name: /verify|continue|confirm|submit|sign in/i,
+          })
         );
       }
       if (submitMatches.length === 1) await submitMatches[0].click();
@@ -491,33 +635,45 @@ export async function completeGenieInteractiveAuthentication(input: {
     const deadline = Date.now() + 30_000;
     let challengeGoneAt = 0;
     while (Date.now() < deadline) {
-      const denied = blocked();
+      const denied = live.blocked();
       if (denied) throw blockedNavigationError(denied);
-      await authorise(input.connection, page.url());
-      const challengeStillVisible = await hasVisible(page, GENIE_MFA_SELECTOR).catch(() => false);
+      await authorise(input.connection, live.page.url());
+      const challengeStillVisible = await hasVisible(
+        live.page,
+        GENIE_MFA_SELECTOR
+      ).catch(() => false);
       if (challengeStillVisible) {
         challengeGoneAt = 0;
-        if (await pageSuggestsRejectedCode(page))
+        if (await pageSuggestsRejectedCode(live.page)) {
+          keepForRetry = true;
           throw new Error(
             "GENIE_VERIFICATION_CODE_REJECTED: Genie rejected or expired that verification code."
           );
+        }
       } else {
-        const passwordVisible = await hasVisible(page, PASSWORD_SELECTOR).catch(() => false);
+        const passwordVisible = await hasVisible(
+          live.page,
+          PASSWORD_SELECTOR
+        ).catch(() => false);
         if (passwordVisible)
           throw new Error(
             "GENIE_VERIFICATION_CHALLENGE_EXPIRED: Genie returned to sign-in. Request a new code."
           );
         if (!challengeGoneAt) challengeGoneAt = Date.now();
         if (Date.now() - challengeGoneAt >= 1_000)
-          return await authenticated(page, context);
+          return await authenticated(live.page, live.context);
       }
-      await page.waitForTimeout(250);
+      await live.page.waitForTimeout(250);
     }
     throw new Error(
       "GENIE_VERIFICATION_NOT_CONFIRMED: Genie did not confirm the verification code."
     );
   } finally {
-    await context.close().catch(() => undefined);
-    await browser.close().catch(() => undefined);
+    if (keepForRetry && live.expiresAt > Date.now() && !live.page.isClosed()) {
+      live.inUse = false;
+      armChallengeExpiry(live);
+    } else {
+      await disposeLiveChallenge(live.challengeId);
+    }
   }
 }
