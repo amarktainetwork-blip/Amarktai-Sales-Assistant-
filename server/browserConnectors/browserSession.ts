@@ -7,6 +7,9 @@ const MAX_KEYS_PER_ORIGIN = 256;
 const MAX_KEY_LENGTH = 512;
 const MAX_VALUE_LENGTH = 256 * 1024;
 const MAX_PACKAGE_BYTES = 16 * 1024 * 1024;
+const SESSION_SETTLE_INITIAL_MS = 2_000;
+const SESSION_SETTLE_RECHECK_MS = 750;
+const SESSION_SETTLE_CHANGED_MS = 1_250;
 
 export type BrowserSessionPackage = {
   kind: typeof SESSION_KIND;
@@ -118,6 +121,86 @@ export async function createContextWithBrowserSession(input: {
   return context;
 }
 
+async function readSessionStorage(page: Page) {
+  return page.evaluate(() =>
+    Object.fromEntries(
+      Array.from({ length: sessionStorage.length }, (_, index) => {
+        const key = sessionStorage.key(index) || "";
+        return [key, sessionStorage.getItem(key) || ""];
+      }).filter(([key]) => Boolean(key))
+    )
+  );
+}
+
+async function settleAuthenticatedSession(input: {
+  context: BrowserContext;
+  authenticatedUrl: string;
+  authorise: (url: string) => Promise<void>;
+  pages?: Page[];
+}) {
+  const initialPages = input.pages || input.context.pages();
+  const authenticatedOrigin = normaliseOrigin(input.authenticatedUrl);
+  const primaryPage =
+    initialPages.find(
+      page =>
+        !page.isClosed() &&
+        page.url() !== "about:blank" &&
+        (() => {
+          try {
+            return normaliseOrigin(page.url()) === authenticatedOrigin;
+          } catch {
+            return false;
+          }
+        })()
+    ) ||
+    initialPages.find(page => !page.isClosed() && page.url() !== "about:blank");
+
+  let settledUrl = input.authenticatedUrl;
+  let settledStorageState = (await input.context.storageState({
+    indexedDB: true,
+  })) as unknown as Record<string, unknown>;
+
+  if (!primaryPage) {
+    await input.authorise(settledUrl);
+    return { authenticatedUrl: settledUrl, storageState: settledStorageState };
+  }
+
+  const firstFingerprint = JSON.stringify({
+    url: primaryPage.url(),
+    storageState: settledStorageState,
+    sessionStorage: await readSessionStorage(primaryPage).catch(() => ({})),
+  });
+
+  await primaryPage.waitForTimeout(SESSION_SETTLE_INITIAL_MS);
+  if (!primaryPage.isClosed() && primaryPage.url() !== "about:blank") {
+    settledUrl = primaryPage.url();
+    await input.authorise(settledUrl);
+  }
+  settledStorageState = (await input.context.storageState({
+    indexedDB: true,
+  })) as unknown as Record<string, unknown>;
+  const secondFingerprint = JSON.stringify({
+    url: settledUrl,
+    storageState: settledStorageState,
+    sessionStorage: await readSessionStorage(primaryPage).catch(() => ({})),
+  });
+
+  await primaryPage.waitForTimeout(
+    firstFingerprint === secondFingerprint
+      ? SESSION_SETTLE_RECHECK_MS
+      : SESSION_SETTLE_CHANGED_MS
+  );
+  if (!primaryPage.isClosed() && primaryPage.url() !== "about:blank") {
+    settledUrl = primaryPage.url();
+    await input.authorise(settledUrl);
+  }
+  settledStorageState = (await input.context.storageState({
+    indexedDB: true,
+  })) as unknown as Record<string, unknown>;
+
+  return { authenticatedUrl: settledUrl, storageState: settledStorageState };
+}
+
 export async function captureBrowserSessionPackage(input: {
   context: BrowserContext;
   authenticatedUrl: string;
@@ -125,6 +208,7 @@ export async function captureBrowserSessionPackage(input: {
   pages?: Page[];
 }): Promise<BrowserSessionPackage> {
   await input.authorise(input.authenticatedUrl);
+  const settled = await settleAuthenticatedSession(input);
   const sessionStorageByOrigin: Record<string, Record<string, string>> = {};
   const pages = input.pages || input.context.pages();
   for (const page of pages.slice(0, MAX_ORIGINS)) {
@@ -132,29 +216,20 @@ export async function captureBrowserSessionPackage(input: {
     await input.authorise(page.url());
     const origin = normaliseOrigin(page.url());
     if (sessionStorageByOrigin[origin]) continue;
-    const entries = await page.evaluate(() =>
-      Object.fromEntries(
-        Array.from({ length: sessionStorage.length }, (_, index) => {
-          const key = sessionStorage.key(index) || "";
-          return [key, sessionStorage.getItem(key) || ""];
-        }).filter(([key]) => Boolean(key))
-      )
-    );
+    const entries = await readSessionStorage(page);
     sessionStorageByOrigin[origin] = entries;
   }
-  const authenticatedOrigin = normaliseOrigin(input.authenticatedUrl);
+  const authenticatedOrigin = normaliseOrigin(settled.authenticatedUrl);
   if (!sessionStorageByOrigin[authenticatedOrigin])
     sessionStorageByOrigin[authenticatedOrigin] = {};
   const browserPackage: BrowserSessionPackage = {
     kind: SESSION_KIND,
     version: SESSION_VERSION,
-    storageState: (await input.context.storageState({
-      indexedDB: true,
-    })) as unknown as Record<string, unknown>,
+    storageState: settled.storageState,
     sessionStorageByOrigin,
     authorisedOrigins: Object.keys(sessionStorageByOrigin),
     capturedAt: new Date().toISOString(),
-    authenticatedUrl: input.authenticatedUrl,
+    authenticatedUrl: settled.authenticatedUrl,
   };
   return validateBrowserSessionPackage(browserPackage);
 }
