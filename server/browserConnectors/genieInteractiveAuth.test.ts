@@ -7,6 +7,9 @@ import {
   validateGenieVerificationCode,
 } from "./genieInteractiveAuth";
 
+const coreSource = () =>
+  readFileSync(new URL("./genieInteractiveAuthCore.ts", import.meta.url), "utf8");
+
 describe("Genie interactive authentication", () => {
   it("accepts normal verification codes without persisting or transforming them", () => {
     expect(validateGenieVerificationCode("123456")).toBe("123456");
@@ -114,10 +117,7 @@ describe("Genie interactive authentication", () => {
   });
 
   it("keeps the exact live Genie challenge instead of reopening MFA from storageState", () => {
-    const source = readFileSync(
-      new URL("./genieInteractiveAuth.ts", import.meta.url),
-      "utf8"
-    );
+    const source = coreSource();
     const complete = source.split(
       "export async function completeGenieInteractiveAuthentication"
     )[1];
@@ -133,10 +133,7 @@ describe("Genie interactive authentication", () => {
   });
 
   it("keeps one shared CDP connection so retained MFA contexts are not disposed on request cleanup", () => {
-    const source = readFileSync(
-      new URL("./genieInteractiveAuth.ts", import.meta.url),
-      "utf8"
-    );
+    const source = coreSource();
     const closeHandle = source
       .split("async function closeBrowserHandle")[1]
       .split("async function disposeLiveChallenge")[0];
@@ -172,10 +169,7 @@ describe("Genie interactive authentication", () => {
   });
 
   it("recognises Genie's observed six-box numeric OTP control", () => {
-    const source = readFileSync(
-      new URL("./genieInteractiveAuth.ts", import.meta.url),
-      "utf8"
-    );
+    const source = coreSource();
 
     expect(source).toContain('"input.otp-input"');
     expect(source).toContain("fields.length >= 4");
@@ -183,10 +177,7 @@ describe("Genie interactive authentication", () => {
   });
 
   it("waits for actual OTP controls and preserves a live challenge on transient verifier errors", () => {
-    const source = readFileSync(
-      new URL("./genieInteractiveAuth.ts", import.meta.url),
-      "utf8"
-    );
+    const source = coreSource();
     const waitForChallenge = source
       .split("async function waitForVerificationChallenge")[1]
       .split("async function authenticated")[0];
@@ -206,10 +197,7 @@ describe("Genie interactive authentication", () => {
   });
 
   it("settles approved session snapshots before browser cleanup", () => {
-    const source = readFileSync(
-      new URL("./genieInteractiveAuth.ts", import.meta.url),
-      "utf8"
-    );
+    const source = coreSource();
 
     expect(source.match(/return await authenticated\(/g)?.length).toBe(4);
     expect(source).toContain("handle: live");
@@ -235,14 +223,14 @@ describe("Genie interactive authentication", () => {
   });
 
   it("fails a replay that returns to login or MFA instead of accepting #app", () => {
-    const source = readFileSync(new URL("./genieInteractiveAuth.ts", import.meta.url), "utf8");
+    const source = coreSource();
     expect(source).toContain("GENIE_SESSION_REPLAY_FAILED");
     expect(source).toContain("const LOADER_SELECTOR");
     expect(source).not.toContain('"#app"');
   });
 
   it("does not approve or replay the old incomplete storageState-only format", () => {
-    const source = readFileSync(new URL("./genieInteractiveAuth.ts", import.meta.url), "utf8");
+    const source = coreSource();
     expect(source).toContain("isBrowserSessionPackage(input.secret.browserSession)");
   });
 });
