@@ -145,7 +145,7 @@ describe("Genie interactive authentication", () => {
 
     expect(source).toContain("let sharedCdpBrowser: Browser | undefined");
     expect(source).toContain("async function getSharedCdpBrowser()");
-    expect(source.match(/chromium\.connectOverCDP\(/g)?.length).toBe(1);
+    expect(source.match(/chromium\.connectOverCDP\(/g)?.length ?? 0).toBe(1);
     expect(createContext).toContain("const browser = await getSharedCdpBrowser()");
     expect(closeHandle).toContain("handle.context.close()");
     expect(closeHandle).not.toContain("browser.close()");
