@@ -44,7 +44,7 @@ const READY_SELECTORS = [
 ] as const;
 const INTERACTIVE_AUTH_TTL_MS = 15 * 60_000;
 const LOGIN_RENDER_TIMEOUT_MS = 15_000;
-const VERIFICATION_RENDER_TIMEOUT_MS = 10_000;
+const VERIFICATION_RENDER_TIMEOUT_MS = 15_000;
 
 type BlockedNavigation = { url: string; detail: string };
 
@@ -352,14 +352,31 @@ async function waitForVerificationChallenge(input: {
   blocked: () => BlockedNavigation | undefined;
 }) {
   const deadline = Date.now() + VERIFICATION_RENDER_TIMEOUT_MS;
+  let interactiveSeen = false;
   while (Date.now() < deadline) {
     const denied = input.blocked();
     if (denied) throw blockedNavigationError(denied);
     await authorise(input.connection, input.page.url());
-    if (await pageSuggestsInteractiveAuth(input.page)) return true;
+
+    if (await hasVisible(input.page, GENIE_MFA_SELECTOR).catch(() => false))
+      return true;
+
+    if (await pageSuggestsInteractiveAuth(input.page).catch(() => false)) {
+      interactiveSeen = true;
+      await input.page.waitForTimeout(250);
+      continue;
+    }
+
+    if (await hasVisible(input.page, PASSWORD_SELECTOR).catch(() => false))
+      return false;
     if (await readySelector(input.page)) return false;
     await input.page.waitForTimeout(250);
   }
+
+  if (interactiveSeen)
+    throw new Error(
+      "GENIE_VERIFICATION_CONTROLS_NOT_READY: Genie requested verification but its code controls have not finished rendering. The live challenge is still active; retry Verify without requesting another code."
+    );
   return false;
 }
 
@@ -449,8 +466,21 @@ export function genieInteractiveAuthHasLiveChallenge(
   return Boolean(live && live.expiresAt >= now && !live.page.isClosed());
 }
 
+async function waitForVerificationFields(page: Page) {
+  const deadline = Date.now() + VERIFICATION_RENDER_TIMEOUT_MS;
+  let fields: Locator[] = [];
+  while (Date.now() < deadline) {
+    fields = await visibleLocators(page.locator(GENIE_MFA_SELECTOR));
+    if (fields.length > 0) return fields;
+    await page.waitForTimeout(250);
+  }
+  throw new Error(
+    "GENIE_VERIFICATION_CONTROLS_NOT_READY: Genie requested verification but its code controls have not finished rendering. The live challenge is still active; retry Verify without requesting another code."
+  );
+}
+
 async function fillVerificationCode(page: Page, code: string) {
-  const fields = await visibleLocators(page.locator(GENIE_MFA_SELECTOR));
+  const fields = await waitForVerificationFields(page);
   if (fields.length === 1) {
     await fields[0].fill(code);
     return;
@@ -594,7 +624,7 @@ export async function completeGenieInteractiveAuthentication(input: {
 
   live.inUse = true;
   clearTimeout(live.timer);
-  let keepForRetry = false;
+  let keepForRetry = true;
   try {
     const challengeVisible = await waitForVerificationChallenge({
       connection: input.connection,
@@ -603,7 +633,11 @@ export async function completeGenieInteractiveAuthentication(input: {
     });
     if (!challengeVisible) {
       const ready = await readySelector(live.page);
-      if (ready) return await authenticated(live.page, live.context);
+      if (ready) {
+        keepForRetry = false;
+        return await authenticated(live.page, live.context);
+      }
+      keepForRetry = false;
       throw new Error(
         "GENIE_VERIFICATION_CHALLENGE_EXPIRED: Genie no longer shows the verification challenge. Request a new code."
       );
@@ -644,29 +678,31 @@ export async function completeGenieInteractiveAuthentication(input: {
       ).catch(() => false);
       if (challengeStillVisible) {
         challengeGoneAt = 0;
-        if (await pageSuggestsRejectedCode(live.page)) {
-          keepForRetry = true;
+        if (await pageSuggestsRejectedCode(live.page))
           throw new Error(
             "GENIE_VERIFICATION_CODE_REJECTED: Genie rejected or expired that verification code."
           );
-        }
       } else {
         const passwordVisible = await hasVisible(
           live.page,
           PASSWORD_SELECTOR
         ).catch(() => false);
-        if (passwordVisible)
+        if (passwordVisible) {
+          keepForRetry = false;
           throw new Error(
             "GENIE_VERIFICATION_CHALLENGE_EXPIRED: Genie returned to sign-in. Request a new code."
           );
+        }
         if (!challengeGoneAt) challengeGoneAt = Date.now();
-        if (Date.now() - challengeGoneAt >= 1_000)
+        if (Date.now() - challengeGoneAt >= 1_000) {
+          keepForRetry = false;
           return await authenticated(live.page, live.context);
+        }
       }
       await live.page.waitForTimeout(250);
     }
     throw new Error(
-      "GENIE_VERIFICATION_NOT_CONFIRMED: Genie did not confirm the verification code."
+      "GENIE_VERIFICATION_NOT_CONFIRMED: Genie did not confirm the verification code. The live challenge remains available for another Verify attempt."
     );
   } finally {
     if (keepForRetry && live.expiresAt > Date.now() && !live.page.isClosed()) {
