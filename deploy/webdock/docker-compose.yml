@@ -33,6 +33,7 @@ services:
       BROWSERLESS_WS_ENDPOINT: http://browser:9222
       GENIE_SCRIPTS_CONFIG_PATH: /app/config/genie-scripts.json
       GENIE_ARTIFACT_DIR: /app/data/connector-evidence
+      GENIE_PERSISTENT_PROFILE_BINDING_PATH: /app/data/connector-evidence/.genie-persistent-profile-owner.json
       STT_PROVIDER_LABEL: Self-hosted whisper.cpp b4938
       STT_TRANSCRIPTIONS_URL: http://stt:8080/inference
       STT_HEALTH_URL: http://stt:8080/
@@ -78,6 +79,7 @@ services:
       BROWSERLESS_WS_ENDPOINT: http://browser:9222
       GENIE_SCRIPTS_CONFIG_PATH: /app/config/genie-scripts.json
       GENIE_ARTIFACT_DIR: /app/data/connector-evidence
+      GENIE_PERSISTENT_PROFILE_BINDING_PATH: /app/data/connector-evidence/.genie-persistent-profile-owner.json
       CRM_HEALTH_INTERVAL_MS: 43200000
     command: ["node", "dist/genie/healthWorker.js"]
     volumes:
@@ -150,8 +152,10 @@ services:
   # Chromium's inner namespace sandbox is disabled because nested namespace
   # creation is blocked on the target Docker hosts. The container itself is the
   # isolation boundary: non-root image user, default Docker seccomp, no host port,
-  # no privilege escalation, no Linux capabilities, read-only rootfs, ephemeral
-  # writable home/tmp and bounded process/memory limits.
+  # no privilege escalation, no Linux capabilities and a read-only rootfs.
+  # The browser identity itself is intentionally durable: /home/chrome/profile
+  # is a named volume so CRM device/MFA trust survives container recreation,
+  # while caches/config/temp remain bounded tmpfs mounts.
   browser:
     build:
       context: ../..
@@ -166,8 +170,13 @@ services:
     shm_size: 1gb
     mem_limit: 2g
     pids_limit: 512
+    volumes:
+      - browser_profile:/home/chrome/profile
     tmpfs:
-      - /home/chrome:rw,noexec,nosuid,size=512m,uid=10001,gid=10001
+      - /home/chrome/.cache:rw,noexec,nosuid,size=128m,uid=10001,gid=10001
+      - /home/chrome/.config:rw,noexec,nosuid,size=32m,uid=10001,gid=10001
+      - /home/chrome/.local:rw,noexec,nosuid,size=32m,uid=10001,gid=10001
+      - /home/chrome/.pki:rw,noexec,nosuid,size=16m,uid=10001,gid=10001
       - /tmp:rw,noexec,nosuid,size=256m,uid=10001,gid=10001
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9222/json/version"]
@@ -215,3 +224,4 @@ volumes:
   caddy_config:
   db_data:
   redis_data:
+  browser_profile:
