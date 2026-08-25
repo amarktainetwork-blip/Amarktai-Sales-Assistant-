@@ -103,8 +103,8 @@ export default function GenieInteractiveAuthPrompt({
         setError("Genie did not accept that code. Check the newest code and try again.");
       else if (/GENIE_PERSISTENT_PROFILE_IN_USE/.test(detail))
         setError("This deployment's trusted Genie browser is bound to a different CRM connection. Amarktai blocked the session from being shared.");
-      else if (/GENIE_SESSION_REPLAY_FAILED|GENIE_PERSISTENT_PROFILE_UNAVAILABLE/.test(detail))
-        setError("Genie accepted the sign-in, but Amarktai could not reopen the same trusted browser profile safely. Do not request repeated codes; the browser runtime needs attention.");
+      else if (/GENIE_SESSION_REPLAY_FAILED|GENIE_PERSISTENT_PROFILE_UNAVAILABLE|GENIE_AUTHENTICATED_PAGE_UNAVAILABLE/.test(detail))
+        setError("Genie accepted the sign-in, but the exact approved browser tab is no longer usable. Do not request repeated codes; the browser runtime needs attention.");
       else if (/CALIBRATION_REQUIRED/.test(detail))
         setError(
           "Amarktai can still see the live Genie verification session but could not safely map the verification controls. Keep this code and retry Verify once; do not request a new code unless Amarktai says the challenge expired."
@@ -141,6 +141,8 @@ export default function GenieInteractiveAuthPrompt({
         );
       else if (/GENIE_PERSISTENT_PROFILE_IN_USE/.test(detail))
         setError("This deployment's trusted Genie browser is already bound to another CRM connection and cannot be shared.");
+      else if (/GENIE_AUTHENTICATED_PAGE_UNAVAILABLE/.test(detail))
+        setError("The approved Genie tab is no longer available. Do not request another code until the browser runtime has been checked.");
       else setError("A new Genie verification code could not be requested yet.");
     } finally {
       setPending(false);
@@ -166,8 +168,8 @@ export default function GenieInteractiveAuthPrompt({
           </h2>
           <p className="mt-2 text-xs leading-5 text-[#B7CAE7]">
             {approved
-              ? "The same trusted Genie browser profile reopened successfully. Amarktai is now discovering and testing your CRM."
-              : "Genie requires this one-time code to approve the sign-in. Amarktai does not store the code. After Genie accepts it, Amarktai reopens the same isolated trusted browser profile before CRM setup continues."}
+              ? "The exact MFA-approved Genie tab remains active. Amarktai is now discovering and testing your CRM through that same authenticated page."
+              : "Genie requires this one-time code to approve the sign-in. Amarktai does not store the code. After Genie accepts it, Amarktai keeps that exact authenticated browser tab alive for CRM discovery and later operations instead of opening a replacement tab."}
           </p>
         </div>
       </div>
