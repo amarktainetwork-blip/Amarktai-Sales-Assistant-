@@ -20,6 +20,7 @@ const PASSWORD_SELECTOR = '#password, input[type="password"]';
 const LOGIN_SUBMIT_SELECTOR = 'button[type="submit"], input[type="submit"]';
 export const GENIE_MFA_SELECTOR = [
   'input[autocomplete="one-time-code" i]',
+  "input.otp-input",
   'input[name*="otp" i]',
   'input[name*="mfa" i]',
   'input[name*="verification" i]',
