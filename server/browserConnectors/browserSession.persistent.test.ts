@@ -33,15 +33,23 @@ afterEach(() => {
 });
 
 describe("persistent browser session packages", () => {
-  it("restores approved sessionStorage before borrowing the default CDP context and closes only borrower pages", async () => {
+  it("restores approved sessionStorage before borrowing the default CDP context and closes only its own page", async () => {
     const directory = await mkdtemp(join(tmpdir(), "amarktai-profile-"));
     process.env.GENIE_PERSISTENT_PROFILE_BINDING_PATH = join(directory, "owner.json");
 
     const order: string[] = [];
     const baselinePage = { close: vi.fn(), isClosed: () => false };
-    const createdPage = { close: vi.fn().mockResolvedValue(undefined), isClosed: () => false };
+    const unrelatedPage = { close: vi.fn(), isClosed: () => false };
+    let closeHandler: (() => void) | undefined;
+    const createdPage = {
+      close: vi.fn().mockImplementation(async () => closeHandler?.()),
+      isClosed: () => false,
+      once: vi.fn().mockImplementation((event: string, handler: () => void) => {
+        if (event === "close") closeHandler = handler;
+      }),
+    };
     const context = {
-      pages: vi.fn().mockReturnValueOnce([baselinePage]).mockReturnValue([baselinePage, createdPage]),
+      pages: vi.fn().mockReturnValue([baselinePage, unrelatedPage, createdPage]),
       close: vi.fn(),
       addInitScript: vi.fn().mockImplementation(async (_script, argument) => {
         order.push("session-storage-init");
@@ -70,6 +78,7 @@ describe("persistent browser session packages", () => {
     expect(browser.newContext).not.toHaveBeenCalled();
     expect(context.close).not.toHaveBeenCalled();
     expect(baselinePage.close).not.toHaveBeenCalled();
+    expect(unrelatedPage.close).not.toHaveBeenCalled();
     expect(createdPage.close).toHaveBeenCalledTimes(1);
   });
 
@@ -79,6 +88,7 @@ describe("persistent browser session packages", () => {
     const sessionPage = {
       close: vi.fn().mockResolvedValue(undefined),
       isClosed: () => false,
+      once: vi.fn(),
       url: () => "https://genie.example.test/dashboard",
       evaluate: vi.fn().mockResolvedValue({ "mfa-approved": "yes" }),
       waitForTimeout: vi.fn().mockResolvedValue(undefined),
