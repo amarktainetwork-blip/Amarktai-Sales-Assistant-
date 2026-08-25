@@ -126,6 +126,18 @@ const steps = [
 function isBrowser(provider: Provider) {
   return provider === "genie" || provider === "custom_browser";
 }
+function completedProgress(value: unknown) {
+  const status = value && typeof value === "object" && "status" in value
+    ? String((value as { status?: unknown }).status || "")
+    : String(value || "");
+  return /^(?:ready|complete)$/i.test(status);
+}
+function setupStepLabel(input: { value?: unknown; active?: boolean; awaitingApproval?: boolean }) {
+  if (completedProgress(input.value)) return "Complete";
+  if (input.awaitingApproval) return "Awaiting approval";
+  if (input.active) return "Running";
+  return "Not started";
+}
 function Card({ children }: { children: React.ReactNode }) {
   return (
     <section className="rounded-[1.75rem] border border-white/10 bg-[#0C1E3E] p-6 sm:p-8">
@@ -871,35 +883,41 @@ export default function Onboarding() {
                 {commissioning && (
                   <div className="rounded-xl border border-white/10 bg-[#08172F] p-4">
                     <div className="flex items-center justify-between gap-3">
-                      <p className="font-bold text-white">{commissioning.humanStatus}</p>
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[.12em] text-[#83AEFF]">CRM</p>
+                        <p className="font-bold text-white">{browserSystem.displayName || "Genie"}</p>
+                        <p className="mt-1 text-xs text-[#B7CAE7]">{commissioning.humanStatus}</p>
+                      </div>
                       <span className={`text-xs font-bold ${commissioning.status === "ready" ? "text-emerald-200" : commissioning.advancedFallback ? "text-amber-100" : "text-[#9FC2FF]"}`}>
                         {commissioning.status === "ready" ? "Ready" : commissioning.advancedFallback ? "Needs setup" : "Working"}
                       </span>
                     </div>
                     <div className="mt-3 grid gap-2 text-xs text-[#B7CAE7] sm:grid-cols-2">
                       {[
-                        ["Signing in", commissioning.progress.authentication],
-                        ["Finding CRM navigation", commissioning.progress.navigation],
-                        ["Finding sales functions", commissioning.progress.capabilities],
-                        ["Testing safe reads", commissioning.progress.safeReads],
-                        ["Testing updates", commissioning.progress.controlledWrites],
-                        ["Checking results", commissioning.progress.readback],
-                      ].map(([label, value]) => (
-                        <div key={String(label)} className="flex items-center justify-between rounded-lg bg-black/15 px-3 py-2">
-                          <span>{String(label)}</span>
-                          <span className={value ? "font-bold text-emerald-200" : "text-[#7896C1]"}>{value ? "Ready" : "Checking"}</span>
-                        </div>
-                      ))}
+                        { label: "Authentication", value: commissioning.progress.authentication, active: commissioning.state === "AUTHENTICATE" },
+                        { label: "Session verification", value: commissioning.progress.sessionReplay },
+                        { label: "CRM discovery", value: commissioning.progress.capabilities, active: ["DISCOVER_NAVIGATION", "DISCOVER_CAPABILITIES"].includes(commissioning.state) },
+                        { label: "Safe reads", value: commissioning.progress.safeReads, active: commissioning.state === "TEST_SAFE_READS" },
+                        { label: "Controlled write test", value: commissioning.progress.controlledWrites, active: ["TEST_CONTROLLED_WRITES", "VERIFY_READBACK"].includes(commissioning.state), awaitingApproval: commissioning.safeTestRequired },
+                        { label: "Result readback", value: commissioning.progress.readback, active: commissioning.state === "VERIFY_READBACK" },
+                        { label: "Ready", value: commissioning.status === "ready" ? "complete" : undefined, active: commissioning.state === "PUBLISH_PROVEN_OPERATIONS" },
+                      ].map(item => {
+                        const stepLabel = setupStepLabel(item);
+                        return <div key={item.label} className="flex items-center justify-between rounded-lg bg-black/15 px-3 py-2">
+                          <span>{item.label}</span>
+                          <span className={stepLabel === "Complete" ? "font-bold text-emerald-200" : stepLabel === "Awaiting approval" ? "font-bold text-amber-100" : stepLabel === "Running" ? "font-bold text-[#9FC2FF]" : "text-[#7896C1]"}>{stepLabel}</span>
+                        </div>;
+                      })}
                     </div>
                   </div>
                 )}
-                <Button
+                {(!commissioning || ["needs_attention", "failed", "cancelled"].includes(commissioning.status)) && <Button
                   onClick={() => void startBrowserCommissioning()}
-                  disabled={commissioningPending || commissioning?.status === "running" || commissioning?.status === "queued"}
+                  disabled={commissioningPending}
                   className="bg-[#1B64F2]"
                 >
-                  {commissioningPending || commissioning?.status === "running" || commissioning?.status === "queued" ? "Setting up CRM…" : commissioning ? "Restart automatic setup" : "Start automatic setup"}
-                </Button>
+                  {commissioningPending ? "Setting up CRM…" : commissioning ? "Retry CRM setup" : "Start automatic setup"}
+                </Button>}
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   {CRM_CAPABILITY_PRESENTATION.map(capability => {
                     const status = humanBrowserCapabilityStatus(

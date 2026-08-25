@@ -42,6 +42,7 @@ export default function GenieInteractiveAuthPrompt({
   const [code, setCode] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const [approved, setApproved] = useState(false);
 
   useEffect(() => {
     if (!enabled || !genie?.id) {
@@ -70,7 +71,7 @@ export default function GenieInteractiveAuthPrompt({
     };
   }, [enabled, genie?.id]);
 
-  if (!enabled || !genie?.id || !challenge?.interactiveAuthRequired) return null;
+  if (!enabled || !genie?.id || (!approved && !challenge?.interactiveAuthRequired)) return null;
 
   async function verify() {
     if (!code.trim() || !genie?.id) return;
@@ -82,9 +83,10 @@ export default function GenieInteractiveAuthPrompt({
         { method: "POST", body: JSON.stringify({ code: code.trim() }) }
       );
       setCode("");
+      setApproved(true);
       setChallenge(null);
-      toast.success("Genie verified. Amarktai is continuing CRM setup.");
-      window.location.reload();
+      toast.success("Genie sign-in approved. CRM setup is continuing.");
+      window.setTimeout(() => setApproved(false), 6_000);
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : String(cause);
       if (/MANAGEMENT_ELEVATION_/.test(detail))
@@ -99,6 +101,8 @@ export default function GenieInteractiveAuthPrompt({
         setError("That Genie verification request expired. Request a new code below.");
       else if (/REJECTED|INVALID/.test(detail))
         setError("Genie did not accept that code. Check the newest code and try again.");
+      else if (/GENIE_SESSION_REPLAY_FAILED/.test(detail))
+        setError("Genie accepted the sign-in, but the saved session did not reopen safely in a fresh browser. Request one new code so Amarktai can capture a complete session.");
       else if (/CALIBRATION_REQUIRED/.test(detail))
         setError(
           "Amarktai can still see the live Genie verification session but could not safely map the verification controls. Keep this code and retry Verify once; do not request a new code unless Amarktai says the challenge expired."
@@ -123,8 +127,9 @@ export default function GenieInteractiveAuthPrompt({
       if (result.interactiveAuthRequired)
         toast.success("A fresh Genie verification code was requested.");
       else {
+        setApproved(true);
         toast.success("Genie is already authenticated. CRM setup is continuing.");
-        window.location.reload();
+        window.setTimeout(() => setApproved(false), 6_000);
       }
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : String(cause);
@@ -140,7 +145,7 @@ export default function GenieInteractiveAuthPrompt({
 
   return (
     <aside className="fixed bottom-5 right-5 z-[100] w-[min(430px,calc(100vw-2rem))] rounded-[1.5rem] border border-[#4E8BFF]/55 bg-[#0C1E3E] p-5 text-[#EEF5FF] shadow-[0_28px_80px_rgba(0,0,0,.65)]">
-      <div className="flex items-start gap-3">
+      <div className="flex items-start gap-3" aria-live="polite">
         <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-[#153B7A] text-[#9FC2FF]">
           <KeyRound size={20} />
         </span>
@@ -149,19 +154,21 @@ export default function GenieInteractiveAuthPrompt({
             Genie sign-in verification
           </p>
           <h2 className="mt-1 font-display text-xl font-bold text-white">
-            {challenge.verificationExpired
+            {approved
+              ? "Genie sign-in approved"
+              : challenge?.verificationExpired
               ? "Request a new Genie code"
               : "Enter the code Genie sent you"}
           </h2>
           <p className="mt-2 text-xs leading-5 text-[#B7CAE7]">
-            Genie requires this one-time code to approve the sign-in. Amarktai
-            does not store the code. After Genie accepts it, the approved browser
-            session is encrypted and CRM setup continues automatically.
+            {approved
+              ? "The encrypted session passed a fresh-browser replay check. Amarktai is now discovering and testing your CRM."
+              : "Genie requires this one-time code to approve the sign-in. Amarktai does not store the code. After Genie accepts it, the encrypted session must pass a fresh-browser replay check before CRM setup continues."}
           </p>
         </div>
       </div>
 
-      {!challenge.verificationExpired && (
+      {!approved && !challenge?.verificationExpired && (
         <div className="mt-4 flex gap-2">
           <Input
             value={code}
@@ -172,6 +179,7 @@ export default function GenieInteractiveAuthPrompt({
             placeholder="Verification code"
             inputMode="numeric"
             autoComplete="one-time-code"
+            aria-label="Genie verification code"
             className="border-white/15 bg-[#071326] font-mono text-base tracking-[.12em] text-white"
           />
           <Button
@@ -185,13 +193,13 @@ export default function GenieInteractiveAuthPrompt({
         </div>
       )}
 
-      {error && (
+      {!approved && error && (
         <p className="mt-3 rounded-lg border border-amber-300/20 bg-amber-400/[.07] p-3 text-xs leading-5 text-amber-100">
           {error}
         </p>
       )}
 
-      <div className="mt-3 flex items-center justify-between gap-3">
+      {!approved && <div className="mt-3 flex items-center justify-between gap-3">
         <p className="text-[11px] text-[#8FA9CF]">
           Use the newest code Genie sent to the account owner.
         </p>
@@ -205,7 +213,7 @@ export default function GenieInteractiveAuthPrompt({
           <RefreshCw className="mr-2 size-3.5" />
           New code
         </Button>
-      </div>
+      </div>}
     </aside>
   );
 }

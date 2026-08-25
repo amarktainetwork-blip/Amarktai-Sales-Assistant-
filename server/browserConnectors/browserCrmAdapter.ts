@@ -46,6 +46,8 @@ import {
   type BrowserTargetIdentity,
 } from "./operationContracts";
 import { recordLearnedRuntimeFailure } from "./runtimeFailure";
+import { createContextWithBrowserSession, isBrowserSessionPackage } from "./browserSession";
+import { verifyApprovedGenieSession } from "./genieInteractiveAuth";
 
 const DEFAULT_GENIE_OPERATION_MAP: Record<string, string> = {
   searchContacts: "search_candidate",
@@ -358,6 +360,7 @@ const MFA_SELECTOR = [
   'input[name*="mfa" i]',
   'input[name*="verification" i]',
 ].join(", ");
+const AUTH_FEEDBACK_SELECTOR = '[role="alert"], [aria-live="assertive"], [data-testid*="error" i], .error, [class*="error-message" i]';
 const CRM_SHELL_SELECTOR = [
   '[data-testid*="dashboard" i]',
   '[aria-label*="dashboard" i]',
@@ -437,13 +440,12 @@ function blockedRedirectError(blocked: BlockedNavigation): never {
 }
 
 async function pageSuggestsMfa(page: Page) {
-  if (await hasVisible(page, MFA_SELECTOR).catch(() => false)) return true;
-  const text = await page.locator("body").innerText({ timeout: 1_000 }).catch(() => "");
-  return /two[- ]factor|multi[- ]factor|verification code|authenticator|single sign[- ]on|\bsso\b|approve (?:the )?sign[- ]in/i.test(text);
+  return hasVisible(page, MFA_SELECTOR).catch(() => false);
 }
 
 async function pageSuggestsRejectedCredentials(page: Page) {
-  const text = await page.locator("body").innerText({ timeout: 1_000 }).catch(() => "");
+  const alerts = await visibleLocators(page.locator(AUTH_FEEDBACK_SELECTOR)).catch(() => []);
+  const text = (await Promise.all(alerts.slice(0, 4).map(alert => alert.innerText({ timeout: 500 }).catch(() => "")))).join(" ").slice(0, 2_000);
   return /invalid (?:username|email|password|credentials)|incorrect (?:username|email|password)|sign[- ]in failed|login failed|credentials (?:were )?rejected/i.test(text);
 }
 
@@ -617,11 +619,7 @@ async function withPage<T>(
   run: (page: Page, context: BrowserContext) => Promise<T>
 ) {
   const browser: Browser = await connect(profile);
-  const context = await browser.newContext(
-    secret.browserSession
-      ? { storageState: secret.browserSession as never }
-      : undefined
-  );
+  const context = await createContextWithBrowserSession({ browser, browserSession: secret.browserSession });
   const page = await context.newPage();
   let blocked: BlockedNavigation | undefined;
   await page.route("**/*", async route => {
@@ -640,7 +638,20 @@ async function withPage<T>(
     }
   });
   try {
-    if (browserAuthenticationRequired(
+    if (provider === "genie" && secret.browserSession && isBrowserSessionPackage(secret.browserSession)) {
+      const replayUrl = secret.browserSession.authenticatedUrl || profile.login?.url;
+      if (!replayUrl)
+        loginError("GENIE_LOGIN_CALIBRATION_REQUIRED", "No authorised Genie replay URL is available.");
+      await authorizeNavigation(connection, replayUrl);
+      try {
+        await page.goto(replayUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
+      } catch (error) {
+        if (blocked) blockedRedirectError(blocked);
+        throw error;
+      }
+      if (blocked) blockedRedirectError(blocked);
+      await verifyApprovedGenieSession({ connection, page, blocked: () => blocked });
+    } else if (browserAuthenticationRequired(
       provider as Extract<CrmProvider, "genie" | "custom_browser">,
       profile
     ))

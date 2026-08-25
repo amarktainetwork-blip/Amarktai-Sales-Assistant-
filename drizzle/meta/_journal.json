@@ -183,6 +183,13 @@
       "when": 1787574999612,
       "tag": "0025_lucky_ravenous",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "5",
+      "when": 1787657935440,
+      "tag": "0026_friendly_scrambler",
+      "breakpoints": true
     }
   ]
 }

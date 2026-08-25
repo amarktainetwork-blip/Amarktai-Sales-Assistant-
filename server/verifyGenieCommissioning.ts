@@ -251,11 +251,10 @@ async function main() {
     await page.close();
   } finally {
     await context.close().catch(() => undefined);
-    await browser.close().catch(() => undefined);
   }
 }
 
-main().catch(error => {
+main().then(() => process.exit(0)).catch(error => {
   console.error(JSON.stringify({ event: "genie_commissioning_rehearsal", status: "FAILED", detail: error instanceof Error ? error.message : String(error) }, null, 2));
-  process.exitCode = 1;
+  process.exit(1);
 });

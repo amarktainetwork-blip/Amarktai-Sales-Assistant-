@@ -12,6 +12,7 @@ import {
   testLearnedBrowserOperation,
   type BrowserDiscoveryControl,
 } from "../browserConnectors/browserCrmAdapter";
+import { isBrowserSessionPackage } from "../browserConnectors/browserSession";
 import {
   BROWSER_OPERATION_CATALOGUE,
   ADAPTER_OPERATION_KEYS,
@@ -967,14 +968,28 @@ export async function startAutomaticCommissioning(input: {
     )).limit(1)
   )[0];
   if (!system) throw new Error("Connected system was not found in this organisation.");
+  const approvedBrowserSecret = ["browser", "sidecar"].includes(system.connectionMethod)
+    ? await loadConnectionSecret({
+        organisationId: input.organisationId,
+        connectedSystemId: input.connectedSystemId,
+        secretKind: "browser",
+      })
+    : undefined;
+  const initialState = system.provider === "genie" && approvedBrowserSecret?.browserSession && isBrowserSessionPackage(approvedBrowserSecret.browserSession)
+    ? "DISCOVER_NAVIGATION" as const
+    : "AUTHENTICATE" as const;
   const values = {
     organisationId: input.organisationId,
     connectedSystemId: input.connectedSystemId,
     requestedByUserId: input.userId,
     connectorClass: connectorClass(system.provider),
-    state: "AUTHENTICATE" as const,
+    state: initialState,
     status: "queued" as const,
-    progress: { humanStatus: "Connecting", steps: {} },
+    progress: {
+      humanStatus: initialState === "DISCOVER_NAVIGATION" ? "Genie sign-in approved; finding CRM navigation" : "Connecting",
+      steps: initialState === "DISCOVER_NAVIGATION" ? { authentication: "complete", sessionReplay: "complete" } : {},
+      ...(initialState === "DISCOVER_NAVIGATION" ? { authentication: "complete", sessionReplay: "complete" } : {}),
+    },
     safeTestRecord: null,
     discoveredOperationKeys: [],
     optionalFailures: {},

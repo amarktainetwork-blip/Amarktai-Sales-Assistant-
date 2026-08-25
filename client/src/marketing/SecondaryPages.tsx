@@ -682,7 +682,7 @@ export function PricingPage() {
             Simple plans for individuals and <em>sales teams.</em>
           </>
         }
-        copy="Final launch pricing and plan details are being prepared. The structure below shows how Amarktai will fit different ways of selling—without invented amounts or allowances."
+        copy="Amarktai plans are scoped around your team, CRM and commissioning needs. Choose the operating model that fits, then contact us for a clear commercial proposal."
         primary="Contact Us"
         primaryHref="/contact"
         secondary="Get Started"
@@ -694,7 +694,7 @@ export function PricingPage() {
             ["Individual", "One focused sales workspace"],
             ["Team", "Shared rhythm and manager visibility"],
             ["Business", "Advanced setup and support"],
-            ["Launch pricing", "Being finalised"],
+            ["Commercial proposal", "Scoped to your setup"],
           ]}
         />
       </PageHero>
@@ -702,15 +702,15 @@ export function PricingPage() {
         <div className="marketing-container">
           <SectionHeader
             align="center"
-            eyebrow="Launch pricing being finalised"
+            eyebrow="Plans for real sales operations"
             title="Choose the shape that fits your sales operation."
-            copy="Real pricing will be published from one central configuration when commercial details are approved."
+            copy="We confirm the required users, CRM workflows and support level before providing an exact proposal—so you pay for the setup you will use."
           />
           <div className="marketing-pricing-grid">
             {futurePlans.map(plan => (
               <article className="marketing-plan" key={plan.name}>
                 <span className="marketing-plan__status">
-                  Pricing coming soon
+                  Talk to sales
                 </span>
                 <h2>{plan.name}</h2>
                 <p className="marketing-plan__audience">{plan.audience}</p>

@@ -139,6 +139,29 @@ describe("new-user Genie commissioning journey contract", () => {
       expect(onboarding).not.toContain(technicalTerm);
   });
 
+  it("shows durable customer-facing commissioning truth and no mysterious restart action", () => {
+    const onboarding = read("../client/src/pages/Onboarding.tsx");
+    for (const label of [
+      "Authentication",
+      "Session verification",
+      "CRM discovery",
+      "Safe reads",
+      "Controlled write test",
+      "Result readback",
+      "Awaiting approval",
+    ])
+      expect(onboarding).toContain(label);
+    expect(onboarding).not.toContain("Restart automatic setup");
+  });
+
+  it("keeps Genie verification single-submit, replay-aware and refresh-free", () => {
+    const prompt = read("../client/src/components/GenieInteractiveAuthPrompt.tsx");
+    expect(prompt).toContain("disabled={pending || !code.trim()}");
+    expect(prompt).toContain("GENIE_SESSION_REPLAY_FAILED");
+    expect(prompt).toContain("Genie sign-in approved");
+    expect(prompt).not.toContain("window.location.reload()");
+  });
+
   it("keeps the standard CRM choice provider-neutral and capability selection automatic", () => {
     const onboarding = read("../client/src/pages/Onboarding.tsx");
     for (const provider of [

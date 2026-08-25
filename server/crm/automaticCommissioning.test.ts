@@ -313,6 +313,13 @@ describe("automatic CRM commissioning product contract", () => {
     expect(adapter).toContain("EXECUTION_UNVERIFIED");
     expect(adapter).toContain("postconditionVerified: learned.definition.mode === \"write\"");
   });
+
+  it("continues a replay-approved Genie session at discovery instead of looping through login", () => {
+    const service = readFileSync(new URL("./automaticCommissioning.ts", import.meta.url), "utf8");
+    expect(service).toContain("isBrowserSessionPackage(approvedBrowserSecret.browserSession)");
+    expect(service).toContain('? "DISCOVER_NAVIGATION" as const');
+    expect(service).toContain('sessionReplay: "complete"');
+  });
 });
 
 describe("deterministic CRM batch execution", () => {
