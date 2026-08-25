@@ -91,11 +91,19 @@ export default function GenieInteractiveAuthPrompt({
         setError(
           "Sensitive management mode expired. Reconfirm your Amarktai password above, then submit the Genie code again."
         );
+      else if (/CONTROLS_NOT_READY|VERIFICATION_NOT_CONFIRMED/.test(detail))
+        setError(
+          "Genie is still finishing the verification screen. Keep this same code, wait a few seconds, then press Verify again. Do not request a new code."
+        );
       else if (/EXPIRED|CHALLENGE_REQUIRED/.test(detail))
         setError("That Genie verification request expired. Request a new code below.");
       else if (/REJECTED|INVALID/.test(detail))
         setError("Genie did not accept that code. Check the newest code and try again.");
-      else setError("Genie verification could not be completed. Request a new code and retry.");
+      else if (/CALIBRATION_REQUIRED/.test(detail))
+        setError(
+          "Amarktai can still see the live Genie verification session but could not safely map the verification controls. Keep this code and retry Verify once; do not request a new code unless Amarktai says the challenge expired."
+        );
+      else setError("Genie verification could not be completed. Retry Verify once before requesting another code.");
     } finally {
       setPending(false);
     }
