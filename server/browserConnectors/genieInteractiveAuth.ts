@@ -139,7 +139,7 @@ function connectionKey(connection: AdapterConnection) {
 
 function clearLiveChallengesAfterBrowserDisconnect() {
   const affectedChallenges = liveChallenges.size;
-  for (const live of liveChallenges.values()) clearTimeout(live.timer);
+  liveChallenges.forEach(live => clearTimeout(live.timer));
   liveChallenges.clear();
   liveChallengeByConnection.clear();
   console.error(
