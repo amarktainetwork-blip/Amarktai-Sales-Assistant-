@@ -728,7 +728,10 @@ export async function beginGenieInteractiveAuthentication(input: {
           );
       } else {
         if (!passwordGoneAt) passwordGoneAt = Date.now();
-        if (Date.now() - passwordGoneAt >= 1_500)
+        if (
+          Date.now() - passwordGoneAt >= 1_500 &&
+          (await readySelector(handle.page))
+        )
           return await authenticated({ connection: input.connection, handle });
       }
       await handle.page.waitForTimeout(250);
