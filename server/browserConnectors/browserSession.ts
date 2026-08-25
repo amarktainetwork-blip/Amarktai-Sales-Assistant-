@@ -1,4 +1,8 @@
 import type { Browser, BrowserContext, Page } from "playwright-core";
+import {
+  claimPersistentGenieProfileBinding,
+  type PersistentProfileBinding,
+} from "./geniePersistentProfile";
 
 const SESSION_KIND = "amarktai.browser-session";
 const SESSION_VERSION = 2;
@@ -19,10 +23,28 @@ export type BrowserSessionPackage = {
   authorisedOrigins: string[];
   capturedAt: string;
   authenticatedUrl: string;
+  persistenceMode?: "persistent_cdp";
+  persistentProfileBinding?: PersistentProfileBinding;
 };
+
+const persistentBorrowedContexts = new WeakMap<
+  BrowserContext,
+  PersistentProfileBinding
+>();
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isPersistentProfileBinding(
+  value: unknown
+): value is PersistentProfileBinding {
+  return (
+    isObject(value) &&
+    value.version === 1 &&
+    Number.isInteger(value.organisationId) &&
+    Number.isInteger(value.connectedSystemId)
+  );
 }
 
 function normaliseOrigin(rawUrl: string) {
@@ -47,11 +69,20 @@ export function isBrowserSessionPackage(
     isObject(value.sessionStorageByOrigin) &&
     Array.isArray(value.authorisedOrigins) &&
     typeof value.capturedAt === "string" &&
-    typeof value.authenticatedUrl === "string"
+    typeof value.authenticatedUrl === "string" &&
+    (value.persistenceMode === undefined ||
+      value.persistenceMode === "persistent_cdp") &&
+    (value.persistentProfileBinding === undefined ||
+      isPersistentProfileBinding(value.persistentProfileBinding))
   );
 }
 
 export function validateBrowserSessionPackage(value: BrowserSessionPackage) {
+  if (
+    value.persistenceMode === "persistent_cdp" &&
+    !value.persistentProfileBinding
+  )
+    throw new Error("BROWSER_SESSION_PERSISTENT_BINDING_REQUIRED");
   if (value.authorisedOrigins.length > MAX_ORIGINS)
     throw new Error("BROWSER_SESSION_ORIGIN_LIMIT_EXCEEDED");
   const allowed = new Set(
@@ -91,13 +122,50 @@ export function storageStateFromBrowserSession(
   return isBrowserSessionPackage(value) ? value.storageState : value;
 }
 
+function borrowPersistentContext(
+  context: BrowserContext,
+  binding: PersistentProfileBinding
+) {
+  const baselinePages = new Set(context.pages());
+  const borrowed = new Proxy(context, {
+    get(target, property) {
+      if (property === "close")
+        return async () => {
+          const createdPages = target
+            .pages()
+            .filter(page => !baselinePages.has(page));
+          await Promise.all(
+            createdPages.map(page => page.close().catch(() => undefined))
+          );
+        };
+      const value = Reflect.get(target, property, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  }) as BrowserContext;
+  persistentBorrowedContexts.set(borrowed, binding);
+  return borrowed;
+}
+
 export async function createContextWithBrowserSession(input: {
   browser: Browser;
   browserSession?: Record<string, unknown>;
 }) {
-  const completeSession = input.browserSession && isBrowserSessionPackage(input.browserSession)
-    ? validateBrowserSessionPackage(input.browserSession)
-    : undefined;
+  const completeSession =
+    input.browserSession && isBrowserSessionPackage(input.browserSession)
+      ? validateBrowserSessionPackage(input.browserSession)
+      : undefined;
+
+  if (completeSession?.persistenceMode === "persistent_cdp") {
+    const binding = completeSession.persistentProfileBinding!;
+    await claimPersistentGenieProfileBinding(binding);
+    const contexts = input.browser.contexts();
+    if (contexts.length !== 1)
+      throw new Error(
+        `GENIE_PERSISTENT_PROFILE_UNAVAILABLE: Expected exactly one persistent Chromium context, found ${contexts.length}.`
+      );
+    return borrowPersistentContext(contexts[0], binding);
+  }
+
   const storageState = storageStateFromBrowserSession(input.browserSession);
   const context = await input.browser.newContext(
     storageState ? { storageState: storageState as never } : undefined
@@ -222,6 +290,7 @@ export async function captureBrowserSessionPackage(input: {
   const authenticatedOrigin = normaliseOrigin(settled.authenticatedUrl);
   if (!sessionStorageByOrigin[authenticatedOrigin])
     sessionStorageByOrigin[authenticatedOrigin] = {};
+  const persistentProfileBinding = persistentBorrowedContexts.get(input.context);
   const browserPackage: BrowserSessionPackage = {
     kind: SESSION_KIND,
     version: SESSION_VERSION,
@@ -230,6 +299,12 @@ export async function captureBrowserSessionPackage(input: {
     authorisedOrigins: Object.keys(sessionStorageByOrigin),
     capturedAt: new Date().toISOString(),
     authenticatedUrl: settled.authenticatedUrl,
+    ...(persistentProfileBinding
+      ? {
+          persistenceMode: "persistent_cdp" as const,
+          persistentProfileBinding,
+        }
+      : {}),
   };
   return validateBrowserSessionPackage(browserPackage);
 }
