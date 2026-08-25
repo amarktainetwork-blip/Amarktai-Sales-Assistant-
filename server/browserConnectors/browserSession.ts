@@ -164,16 +164,22 @@ function borrowPersistentContext(
   context: BrowserContext,
   binding: PersistentProfileBinding
 ) {
-  const baselinePages = new Set(context.pages());
+  const ownedPages = new Set<Page>();
   const borrowed = new Proxy(context, {
     get(target, property) {
+      if (property === "newPage")
+        return async () => {
+          const page = await target.newPage();
+          ownedPages.add(page);
+          page.once("close", () => ownedPages.delete(page));
+          return page;
+        };
       if (property === "close")
         return async () => {
-          const createdPages = target
-            .pages()
-            .filter(page => !baselinePages.has(page));
+          const pages = Array.from(ownedPages);
+          ownedPages.clear();
           await Promise.all(
-            createdPages.map(page => page.close().catch(() => undefined))
+            pages.map(page => page.close().catch(() => undefined))
           );
         };
       const value = Reflect.get(target, property, target);
