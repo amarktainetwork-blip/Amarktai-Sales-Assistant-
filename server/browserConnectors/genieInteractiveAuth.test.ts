@@ -131,6 +131,29 @@ describe("Genie interactive authentication", () => {
     expect(complete).not.toContain("gotoAuthorised(");
   });
 
+  it("waits for actual OTP controls and preserves a live challenge on transient verifier errors", () => {
+    const source = readFileSync(
+      new URL("./genieInteractiveAuth.ts", import.meta.url),
+      "utf8"
+    );
+    const waitForChallenge = source
+      .split("async function waitForVerificationChallenge")[1]
+      .split("async function authenticated")[0];
+    const complete = source.split(
+      "export async function completeGenieInteractiveAuthentication"
+    )[1];
+
+    expect(waitForChallenge).toContain(
+      "hasVisible(input.page, GENIE_MFA_SELECTOR)"
+    );
+    expect(waitForChallenge).toContain("GENIE_VERIFICATION_CONTROLS_NOT_READY");
+    expect(source).toContain("async function waitForVerificationFields");
+    expect(complete).toContain("let keepForRetry = true");
+    expect(complete).toContain(
+      "The live challenge remains available for another Verify attempt."
+    );
+  });
+
   it("settles approved session snapshots before browser cleanup", () => {
     const source = readFileSync(
       new URL("./genieInteractiveAuth.ts", import.meta.url),
