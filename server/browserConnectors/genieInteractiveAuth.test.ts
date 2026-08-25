@@ -131,6 +131,27 @@ describe("Genie interactive authentication", () => {
     expect(complete).not.toContain("gotoAuthorised(");
   });
 
+  it("keeps one shared CDP connection so retained MFA contexts are not disposed on request cleanup", () => {
+    const source = readFileSync(
+      new URL("./genieInteractiveAuth.ts", import.meta.url),
+      "utf8"
+    );
+    const closeHandle = source
+      .split("async function closeBrowserHandle")[1]
+      .split("async function disposeLiveChallenge")[0];
+    const createContext = source
+      .split("async function createContext")[1]
+      .split("function blockedNavigationError")[0];
+
+    expect(source).toContain("let sharedCdpBrowser: Browser | undefined");
+    expect(source).toContain("async function getSharedCdpBrowser()");
+    expect(source.match(/connectOverCDP\(/g)?.length ?? 0).toBe(1);
+    expect(createContext).toContain("const browser = await getSharedCdpBrowser()");
+    expect(closeHandle).toContain("handle.context.close()");
+    expect(closeHandle).not.toContain("browser.close()");
+    expect(source).toContain("genie_cdp_browser_disconnected");
+  });
+
   it("waits for actual OTP controls and preserves a live challenge on transient verifier errors", () => {
     const source = readFileSync(
       new URL("./genieInteractiveAuth.ts", import.meta.url),

@@ -49,7 +49,6 @@ const VERIFICATION_RENDER_TIMEOUT_MS = 15_000;
 type BlockedNavigation = { url: string; detail: string };
 
 type BrowserHandle = {
-  browser: Browser;
   context: BrowserContext;
   page: Page;
   blocked: () => BlockedNavigation | undefined;
@@ -65,6 +64,8 @@ type LiveGenieChallenge = BrowserHandle & {
 
 const liveChallenges = new Map<string, LiveGenieChallenge>();
 const liveChallengeByConnection = new Map<string, string>();
+let sharedCdpBrowser: Browser | undefined;
+let sharedCdpBrowserConnecting: Promise<Browser> | undefined;
 
 export type PendingGenieInteractiveAuth = {
   browserSession: Record<string, unknown>;
@@ -136,9 +137,48 @@ function connectionKey(connection: AdapterConnection) {
   return `${connection.organisationId}:${connection.id}`;
 }
 
+function clearLiveChallengesAfterBrowserDisconnect() {
+  const affectedChallenges = liveChallenges.size;
+  liveChallenges.forEach(live => clearTimeout(live.timer));
+  liveChallenges.clear();
+  liveChallengeByConnection.clear();
+  console.error(
+    JSON.stringify({
+      event: "genie_cdp_browser_disconnected",
+      affectedChallenges,
+    })
+  );
+}
+
+async function getSharedCdpBrowser() {
+  if (sharedCdpBrowser?.isConnected()) return sharedCdpBrowser;
+  if (sharedCdpBrowserConnecting) return sharedCdpBrowserConnecting;
+
+  const endpoint = process.env.BROWSERLESS_WS_ENDPOINT;
+  if (!endpoint)
+    throw new Error(
+      "No Chromium/CDP endpoint is configured for the Genie connector."
+    );
+
+  sharedCdpBrowserConnecting = chromium
+    .connectOverCDP(endpoint)
+    .then(browser => {
+      sharedCdpBrowser = browser;
+      browser.on("disconnected", () => {
+        if (sharedCdpBrowser === browser) sharedCdpBrowser = undefined;
+        clearLiveChallengesAfterBrowserDisconnect();
+      });
+      return browser;
+    })
+    .finally(() => {
+      sharedCdpBrowserConnecting = undefined;
+    });
+
+  return sharedCdpBrowserConnecting;
+}
+
 async function closeBrowserHandle(handle: BrowserHandle) {
   await handle.context.close().catch(() => undefined);
-  await handle.browser.close().catch(() => undefined);
 }
 
 async function disposeLiveChallenge(challengeId: string) {
@@ -251,12 +291,7 @@ async function createContext(
   connection: AdapterConnection,
   browserSession?: Record<string, unknown>
 ): Promise<BrowserHandle> {
-  const endpoint = process.env.BROWSERLESS_WS_ENDPOINT;
-  if (!endpoint)
-    throw new Error(
-      "No Chromium/CDP endpoint is configured for the Genie connector."
-    );
-  const browser = await chromium.connectOverCDP(endpoint);
+  const browser = await getSharedCdpBrowser();
   const context = await browser.newContext(
     browserSession ? { storageState: browserSession as never } : undefined
   );
@@ -277,7 +312,7 @@ async function createContext(
       return route.abort("blockedbyclient");
     }
   });
-  return { browser, context, page, blocked: () => blocked };
+  return { context, page, blocked: () => blocked };
 }
 
 function blockedNavigationError(blocked: BlockedNavigation) {
@@ -431,6 +466,16 @@ async function retainLiveChallenge(
   clearTimeout(live.timer);
   liveChallenges.set(challengeId, live);
   liveChallengeByConnection.set(key, challengeId);
+  handle.page.once("close", () => {
+    if (liveChallenges.get(challengeId) !== live) return;
+    console.error(
+      JSON.stringify({
+        event: "genie_live_challenge_page_closed",
+        challengeId,
+        connectionKey: key,
+      })
+    );
+  });
   armChallengeExpiry(live);
   return result;
 }
