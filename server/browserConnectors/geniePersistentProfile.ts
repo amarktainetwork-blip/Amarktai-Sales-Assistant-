@@ -3,17 +3,19 @@ import { dirname } from "node:path";
 import type { Browser, BrowserContext, Page } from "playwright-core";
 import type { AdapterConnection } from "../crm/types";
 
-const PROFILE_BINDING_VERSION = 1;
+export const PROFILE_BINDING_VERSION = 1 as const;
 const DEFAULT_BINDING_PATH =
   "/app/data/connector-evidence/.genie-persistent-profile-owner.json";
 
-type PersistentProfileBinding = {
+export type PersistentProfileBinding = {
   version: typeof PROFILE_BINDING_VERSION;
   organisationId: number;
   connectedSystemId: number;
 };
 
-function bindingFor(connection: AdapterConnection): PersistentProfileBinding {
+export function persistentProfileBindingFor(
+  connection: AdapterConnection
+): PersistentProfileBinding {
   return {
     version: PROFILE_BINDING_VERSION,
     organisationId: connection.organisationId,
@@ -61,11 +63,10 @@ async function readBinding(path: string) {
  * reuse while still allowing the production pilot to use Genie's trusted
  * browser/device state correctly.
  */
-export async function claimPersistentGenieProfile(
-  connection: AdapterConnection
+export async function claimPersistentGenieProfileBinding(
+  expected: PersistentProfileBinding
 ) {
   const path = bindingPath();
-  const expected = bindingFor(connection);
   await mkdir(dirname(path), { recursive: true });
 
   try {
@@ -95,6 +96,14 @@ export async function claimPersistentGenieProfile(
       );
     return expected;
   }
+}
+
+export async function claimPersistentGenieProfile(
+  connection: AdapterConnection
+) {
+  return claimPersistentGenieProfileBinding(
+    persistentProfileBindingFor(connection)
+  );
 }
 
 export async function getPersistentGenieContext(input: {
