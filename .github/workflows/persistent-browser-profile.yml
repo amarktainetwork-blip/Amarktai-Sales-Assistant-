@@ -69,6 +69,7 @@ jobs:
             const before = await context.cookies("https://profile-persistence.invalid/");
             if (!before.some(cookie => cookie.name === "amarktai_profile_probe" && cookie.value === "survives-restart")) throw new Error("profile probe was not written");
             await new Promise(resolve => setTimeout(resolve, 1000));
+            process.exit(0);
           '
 
           $COMPOSE restart browser
@@ -82,4 +83,5 @@ jobs:
             const cookies = await contexts[0].cookies("https://profile-persistence.invalid/");
             if (!cookies.some(cookie => cookie.name === "amarktai_profile_probe" && cookie.value === "survives-restart")) throw new Error("persistent Chromium profile state did not survive restart");
             console.log("PERSISTENT_BROWSER_PROFILE=PASS");
+            process.exit(0);
           '
