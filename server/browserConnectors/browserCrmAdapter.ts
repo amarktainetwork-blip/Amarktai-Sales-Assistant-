@@ -108,6 +108,17 @@ export type BrowserProfile = {
   artifactDirectory?: string;
 };
 
+type ManagedCdpBrowser = {
+  browser?: Browser;
+  connecting?: Promise<Browser>;
+};
+
+const managedCdpBrowsers = new Map<string, ManagedCdpBrowser>();
+
+export function resetBrowserConnectorCdpPoolForTests() {
+  managedCdpBrowsers.clear();
+}
+
 export function browserAuthenticationRequired(
   provider: Extract<CrmProvider, "genie" | "custom_browser">,
   profile: Pick<BrowserProfile, "login">
@@ -300,7 +311,27 @@ async function connect(profile: BrowserProfile) {
     throw new Error(
       "No Chromium/CDP endpoint is configured for this browser connector."
     );
-  return chromium.connectOverCDP(endpoint);
+
+  const existing = managedCdpBrowsers.get(endpoint);
+  if (existing?.browser?.isConnected()) return existing.browser;
+  if (existing?.connecting) return existing.connecting;
+
+  const connecting = chromium
+    .connectOverCDP(endpoint)
+    .then(browser => {
+      managedCdpBrowsers.set(endpoint, { browser });
+      browser.on("disconnected", () => {
+        if (managedCdpBrowsers.get(endpoint)?.browser === browser)
+          managedCdpBrowsers.delete(endpoint);
+      });
+      return browser;
+    })
+    .catch(error => {
+      managedCdpBrowsers.delete(endpoint);
+      throw error;
+    });
+  managedCdpBrowsers.set(endpoint, { connecting });
+  return connecting;
 }
 async function authorizeNavigation(
   connection: AdapterConnection,
@@ -624,7 +655,6 @@ async function withPage<T>(
     return await run(page, context);
   } finally {
     await context.close().catch(() => undefined);
-    await browser.close().catch(() => undefined);
   }
 }
 
