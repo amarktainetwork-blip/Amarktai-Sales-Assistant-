@@ -39,6 +39,7 @@ describe("complete browser session packages", () => {
       isClosed: () => false,
       url: () => "https://crm.example.test/dashboard",
       evaluate: vi.fn().mockResolvedValue({ "session-auth": "approved" }),
+      waitForTimeout: vi.fn().mockResolvedValue(undefined),
     };
     const authorise = vi.fn().mockResolvedValue(undefined);
     const captured = await captureBrowserSessionPackage({
@@ -56,6 +57,47 @@ describe("complete browser session packages", () => {
     expect(authorise).toHaveBeenCalledWith(
       "https://crm.example.test/dashboard"
     );
+  });
+
+  it("captures the settled authenticated URL after a post-MFA SPA transition", async () => {
+    let currentUrl = "https://crm.example.test/verification";
+    let waitCount = 0;
+    const storageState = vi
+      .fn()
+      .mockResolvedValueOnce({ cookies: [], origins: [] })
+      .mockResolvedValue({
+        cookies: [{ name: "session", value: "approved" }],
+        origins: [],
+      });
+    const page = {
+      isClosed: () => false,
+      url: () => currentUrl,
+      evaluate: vi.fn().mockResolvedValue({ "session-auth": "approved" }),
+      waitForTimeout: vi.fn().mockImplementation(async () => {
+        waitCount += 1;
+        if (waitCount === 1)
+          currentUrl = "https://crm.example.test/dashboard";
+      }),
+    };
+    const authorise = vi.fn().mockResolvedValue(undefined);
+
+    const captured = await captureBrowserSessionPackage({
+      context: { storageState, pages: () => [page] } as never,
+      authenticatedUrl: "https://crm.example.test/verification",
+      authorise,
+    });
+
+    expect(captured.authenticatedUrl).toBe(
+      "https://crm.example.test/dashboard"
+    );
+    expect(captured.storageState).toEqual({
+      cookies: [{ name: "session", value: "approved" }],
+      origins: [],
+    });
+    expect(authorise).toHaveBeenCalledWith(
+      "https://crm.example.test/dashboard"
+    );
+    expect(page.waitForTimeout).toHaveBeenCalledTimes(2);
   });
 
   it("installs sessionStorage restoration before the first page is created", async () => {
