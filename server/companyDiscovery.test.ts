@@ -167,5 +167,27 @@ describe("professional public website discovery", () => {
       unresolvedConflicts: 1,
       reviewRequired: true,
     });
+    const conflictedCandidates = result.proposedKnowledge.filter(item =>
+      item.title.includes("AI Career Programme")
+    );
+    expect(conflictedCandidates.length).toBeGreaterThan(0);
+    expect(conflictedCandidates.every(item =>
+      item.reviewState === "conflict" &&
+      item.confidence === "conflicting" &&
+      item.trustEligible === false
+    )).toBe(true);
+  });
+
+  it("does not mistake a price list on one source page for conflicting evidence", async () => {
+    globalThis.fetch = vi.fn().mockImplementation((input: URL | string) => {
+      const url = new URL(String(input));
+      if (url.pathname === "/robots.txt") return Promise.resolve(new Response("User-agent: *"));
+      if (url.pathname === "/sitemap.xml") return Promise.resolve(new Response("<urlset></urlset>", { headers: { "content-type": "application/xml" } }));
+      return Promise.resolve(html("<h1>Data Programme</h1><p>Pay £999 upfront or £99 per month.</p>"));
+    });
+    const result = await discoverPublicWebsite("https://example.co.za/courses/data");
+    const facts = result.proposedFacts as { conflicts: unknown[] };
+    expect(facts.conflicts).toEqual([]);
+    expect(result.proposedKnowledge.find(item => item.title.includes("Data Programme"))?.trustEligible).toBe(true);
   });
 });

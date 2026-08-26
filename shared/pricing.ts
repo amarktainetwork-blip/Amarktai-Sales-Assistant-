@@ -26,7 +26,13 @@ export const PRICING_PLANS: readonly PricingPlan[] = [
     includedUsers: 1,
     crmConnections: 1,
     managementIntelligence: false,
-    features: ["One salesperson", "One CRM connection", "Today workspace", "Revenue Recovery preview", "Review-first actions"],
+    features: [
+      "One salesperson",
+      "One CRM connection",
+      "Today workspace",
+      "Revenue Recovery preview",
+      "Review-first actions",
+    ],
   },
   {
     key: "starter",
@@ -36,7 +42,14 @@ export const PRICING_PLANS: readonly PricingPlan[] = [
     includedUsers: 1,
     crmConnections: 1,
     managementIntelligence: false,
-    features: ["One salesperson", "One CRM connection", "Today workspace", "Revenue Recovery", "CRM sync and deterministic automation", "Audit and execution evidence"],
+    features: [
+      "One salesperson",
+      "One CRM connection",
+      "Today workspace",
+      "Revenue Recovery",
+      "CRM sync and deterministic automation",
+      "Audit and execution evidence",
+    ],
   },
   {
     key: "professional",
@@ -46,7 +59,15 @@ export const PRICING_PLANS: readonly PricingPlan[] = [
     includedUsers: 3,
     crmConnections: "launch-crms",
     managementIntelligence: false,
-    features: ["Up to three users", "Genie and HubSpot capability", "Advanced playbooks", "Conversation assistance", "Post-call closeout", "Pipeline intelligence", "Advanced Revenue Recovery"],
+    features: [
+      "Up to three users",
+      "Genie and HubSpot connectors available for setup",
+      "Advanced playbooks",
+      "Conversation assistance",
+      "Post-call closeout",
+      "Pipeline intelligence",
+      "Advanced Revenue Recovery",
+    ],
   },
   {
     key: "team",
@@ -56,7 +77,15 @@ export const PRICING_PLANS: readonly PricingPlan[] = [
     includedUsers: 10,
     crmConnections: "launch-crms",
     managementIntelligence: true,
-    features: ["Up to ten users", "Genie and HubSpot capability", "Team Intelligence", "Management Intelligence", "Targets and exception reporting when enabled", "Team playbooks", "Manager analytics"],
+    features: [
+      "Up to ten users",
+      "Genie and HubSpot connectors available for setup",
+      "Team Intelligence",
+      "Management Intelligence",
+      "Targets and exception reporting when enabled",
+      "Team playbooks",
+      "Manager analytics",
+    ],
   },
 ] as const;
 

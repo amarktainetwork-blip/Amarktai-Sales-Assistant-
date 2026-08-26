@@ -5,13 +5,12 @@ import { sendEmail } from "./smtp";
 
 export const contactRateLimit = { limit: 5, windowMs: 60 * 60 * 1000 } as const;
 export const contactReasons = [
-  "General enquiry",
-  "Sales Assistant demo",
+  "Request a demo",
+  "Sales",
   "Individual setup",
-  "Team/company setup",
-  "CRM integration",
+  "Team setup",
+  "CRM compatibility",
   "Support",
-  "Other",
 ] as const;
 
 const containsMarkup = (value: string) => /<\/?[a-z][^>]*>/i.test(value);

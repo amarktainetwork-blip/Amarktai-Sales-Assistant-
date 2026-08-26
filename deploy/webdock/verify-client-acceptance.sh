@@ -21,4 +21,4 @@ VERIFY_PUBLIC_URL="$PUBLIC_URL" FEATURE_VERIFY_LIVE_VOICE=true $COMPOSE exec -T 
   app node dist/verifyFeatures.js
 
 printf 'RELEASE_SHA=%s\n' "$(git rev-parse HEAD 2>/dev/null || printf unknown)"
-printf 'CLIENT_ACCEPTANCE_READY=PASS\n'
+printf 'CLIENT_ACCEPTANCE=PASS\n'

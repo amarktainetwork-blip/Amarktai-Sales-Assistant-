@@ -142,15 +142,18 @@ describe("new-user Genie commissioning journey contract", () => {
   it("shows durable customer-facing commissioning truth and no mysterious restart action", () => {
     const onboarding = read("../client/src/pages/Onboarding.tsx");
     for (const label of [
-      "Authentication",
-      "Session verification",
-      "CRM discovery",
-      "Safe reads",
-      "Controlled write test",
-      "Result readback",
+      "Signed in",
+      "Secure session checked",
+      "CRM discovered",
+      "Customer data checked",
+      "Test update approved",
+      "Update verified",
+      "Ready",
       "Awaiting approval",
     ])
       expect(onboarding).toContain(label);
+    expect(onboarding).not.toContain("Controlled write test");
+    expect(onboarding).not.toContain("Result readback");
     expect(onboarding).not.toContain("Restart automatic setup");
   });
 
@@ -173,9 +176,7 @@ describe("new-user Genie commissioning journey contract", () => {
       '"custom_browser"',
     ])
       expect(onboarding).toContain(provider);
-    expect(onboarding).toContain(
-      "You do not need to choose technical permissions manually."
-    );
+    expect(onboarding).toContain("You do not need to choose technical permissions");
     expect(onboarding).not.toContain("capabilityOptions");
     expect(onboarding).not.toContain("toggleCapability");
   });
@@ -184,7 +185,7 @@ describe("new-user Genie commissioning journey contract", () => {
     const layout = read("../client/src/components/DashboardLayout.tsx");
     expect(layout).toContain("/api/team/crm-identity");
     expect(layout).toContain("Confirm who you are in the CRM.");
-    expect(layout).toContain("you will not repeat company onboarding");
+    expect(layout).toMatch(/you will not\s+repeat\s+company onboarding/i);
     expect(layout).toContain("Your manager is finishing company setup.");
   });
 

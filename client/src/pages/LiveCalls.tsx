@@ -557,6 +557,7 @@ export default function LiveCalls() {
             Customer / contact
           </label>
           <Input
+            aria-label="Customer or CRM record"
             disabled={recording}
             value={leadLabel}
             onChange={event => {

@@ -17,6 +17,14 @@ const SESSION_SETTLE_CHANGED_MS = 1_250;
 
 export type PersistentPageMode = "promote_after_auth" | "retain_live_page";
 
+/**
+ * Build-time/runtime marker consumed by the fail-closed Genie pre-OTP gate.
+ * Changing retained-page semantics requires changing this value so an old
+ * readiness proof cannot authorise a new authentication run.
+ */
+export const GENIE_RETAINED_PAGE_RUNTIME_VERSION =
+  "persistent-cdp-retained-live-page-v1" as const;
+
 export type BrowserSessionPackage = {
   kind: typeof SESSION_KIND;
   version: typeof SESSION_VERSION;

@@ -26,6 +26,48 @@ import {
   authoriseCommissioningSafeTest,
   startAutomaticCommissioning,
 } from "./crm/automaticCommissioning";
+import { resetAndDeleteGenieConnection } from "./genie/resetConnection";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { resolve } from "node:path";
+import { existsSync } from "node:fs";
+import type { PreOtpReadiness } from "./genie/preOtpReadiness";
+
+const execFileAsync = promisify(execFile);
+
+async function runPreOtpVerifier(input: {
+  userId: number;
+  organisationId: number;
+  connectedSystemId: number;
+  phase: "full" | "check" | "consume";
+}) {
+  const builtVerifier = resolve(process.cwd(), "dist", "verifyGeniePreOtp.js");
+  const verifierArgs = existsSync(builtVerifier)
+    ? [builtVerifier]
+    : [
+        "--import",
+        "tsx",
+        resolve(process.cwd(), "server", "verifyGeniePreOtp.ts"),
+      ];
+  const { stdout } = await execFileAsync(
+    process.execPath,
+    [
+      ...verifierArgs,
+      `--user-id=${input.userId}`,
+      `--organisation-id=${input.organisationId}`,
+      `--connection-id=${input.connectedSystemId}`,
+      `--phase=${input.phase}`,
+    ],
+    { timeout: 150_000, maxBuffer: 128 * 1024, env: process.env }
+  );
+  const resultLine = stdout
+    .split(/\r?\n/)
+    .find(line => line.startsWith("PRE_OTP_RESULT="));
+  if (!resultLine) throw new Error("PRE_OTP_RESULT_MISSING");
+  return JSON.parse(
+    resultLine.slice("PRE_OTP_RESULT=".length)
+  ) as PreOtpReadiness;
+}
 
 async function requireManager(req: Request) {
   const { userId, membership, user } = await requireManagementHttpContext(req);
@@ -68,7 +110,11 @@ export function validateBrowserProfile(value: unknown) {
     if (Array.isArray(candidate)) return candidate.forEach(inspect);
     if (!candidate || typeof candidate !== "object") return;
     for (const [key, nested] of Object.entries(candidate)) {
-      if (/^(?:password|username|credentials?|secret|token|cookies?|storageState|browserSession)$/i.test(key))
+      if (
+        /^(?:password|username|credentials?|secret|token|cookies?|storageState|browserSession)$/i.test(
+          key
+        )
+      )
         throw new Error(
           "Browser profiles may contain selectors and operation configuration only, never credentials or session material."
         );
@@ -82,7 +128,9 @@ export function validateBrowserProfile(value: unknown) {
 function calibration(value: unknown, baseUrl: string | null) {
   if (value === undefined || value === null) return undefined;
   if (!value || typeof value !== "object" || Array.isArray(value))
-    throw new Error("Sign-in calibration must contain the four guided selectors.");
+    throw new Error(
+      "Sign-in calibration must contain the four guided selectors."
+    );
   if (!baseUrl)
     throw new Error("Save the Genie sign-in URL before calibrating its form.");
   const source = value as Record<string, unknown>;
@@ -122,7 +170,9 @@ function interactiveCommissioningResponse(expired = false) {
     interactiveAuthRequired: true,
     verificationExpired: expired,
     progress: {
-      authentication: expired ? "New code required" : "Verification code required",
+      authentication: expired
+        ? "New code required"
+        : "Verification code required",
     },
     optionalFailures: {},
   };
@@ -192,7 +242,10 @@ async function prepareGenieCommissioning(input: {
     input.connectedSystemId
   );
   if (system.provider !== "genie") return null;
-  if (system.connectionMethod !== "browser" && system.connectionMethod !== "sidecar")
+  if (
+    system.connectionMethod !== "browser" &&
+    system.connectionMethod !== "sidecar"
+  )
     return null;
 
   const existing = ((await loadConnectionSecret({
@@ -241,7 +294,8 @@ async function prepareGenieCommissioning(input: {
       eventType: "genie_interactive_auth_requested",
       entityType: "connected_system",
       entityId: String(input.connectedSystemId),
-      summary: "Genie requested an interactive verification code during approved sign-in.",
+      summary:
+        "Genie requested an interactive verification code during approved sign-in.",
       metadata: { codeStored: false, pendingSessionEncrypted: true },
     });
     return interactiveCommissioningResponse(false);
@@ -266,39 +320,141 @@ async function prepareGenieCommissioning(input: {
     eventType: "genie_browser_session_approved",
     entityType: "connected_system",
     entityId: String(input.connectedSystemId),
-    summary: "Genie browser authentication was confirmed and the approved session was encrypted.",
+    summary:
+      "Genie browser authentication was confirmed and the approved session was encrypted.",
     metadata: { interactiveCodeStored: false },
   });
   return null;
 }
 
 export function registerConnectedSystemAdminRoutes(app: Express) {
-  app.post("/api/connected-system-admin/:id/commissioning", async (req, res) => {
+  app.get("/api/connected-system-admin/:id/pre-otp", async (req, res) => {
     try {
       const { userId, membership } = await requireManager(req);
       const connectedSystemId = Number(req.params.id);
       if (!Number.isInteger(connectedSystemId) || connectedSystemId <= 0)
         throw new Error("A valid connected system is required.");
-      const interactive = await prepareGenieCommissioning({
-        userId,
-        organisationId: membership.organisationId,
-        connectedSystemId,
-      });
-      if (interactive) return res.json(interactive);
-      return res.json(await startAutomaticCommissioning({
-        userId,
-        organisationId: membership.organisationId,
-        connectedSystemId,
-      }));
+      return res.json(
+        await runPreOtpVerifier({
+          userId,
+          organisationId: membership.organisationId,
+          connectedSystemId,
+          phase: "check",
+        })
+      );
     } catch (error) {
       return sendError(res, error);
     }
   });
 
+  app.post("/api/connected-system-admin/:id/pre-otp", async (req, res) => {
+    try {
+      const { userId, membership } = await requireManager(req);
+      const connectedSystemId = Number(req.params.id);
+      if (!Number.isInteger(connectedSystemId) || connectedSystemId <= 0)
+        throw new Error("A valid connected system is required.");
+      const readiness = await runPreOtpVerifier({
+        userId,
+        organisationId: membership.organisationId,
+        connectedSystemId,
+        phase: "full",
+      });
+      if (!readiness.ready)
+        throw new Error(
+          `PRE_OTP_READY_REQUIRED:${readiness.failure || "Readiness proof was not retained."}`
+        );
+      return res.json(readiness);
+    } catch (error) {
+      return sendError(res, error);
+    }
+  });
+
+  app.get("/api/connected-system-admin/:id/genie-reset", async (req, res) => {
+    try {
+      const { userId, membership } = await requireManager(req);
+      const connectedSystemId = Number(req.params.id);
+      const result = await resetAndDeleteGenieConnection({
+        connectedSystemId,
+        organisationId: membership.organisationId,
+        userId,
+        confirmDelete: false,
+      });
+      return res.json(result);
+    } catch (error) {
+      return sendError(res, error);
+    }
+  });
+
+  app.post("/api/connected-system-admin/:id/genie-reset", async (req, res) => {
+    try {
+      const { userId, membership } = await requireManager(req);
+      const connectedSystemId = Number(req.params.id);
+      if (
+        req.body?.confirmation !== `RESET_GENIE_CONNECTION_${connectedSystemId}`
+      )
+        throw new Error(
+          "GENIE_RESET_CONFIRMATION_REQUIRED: Preview and explicitly confirm the exact Genie connection first."
+        );
+      const result = await resetAndDeleteGenieConnection({
+        connectedSystemId,
+        organisationId: membership.organisationId,
+        userId,
+        confirmDelete: true,
+      });
+      return res.json(result);
+    } catch (error) {
+      return sendError(res, error);
+    }
+  });
+
+  app.post(
+    "/api/connected-system-admin/:id/commissioning",
+    async (req, res) => {
+      try {
+        const { userId, membership } = await requireManager(req);
+        const connectedSystemId = Number(req.params.id);
+        if (!Number.isInteger(connectedSystemId) || connectedSystemId <= 0)
+          throw new Error("A valid connected system is required.");
+        const system = await getConnectedSystemForUser(
+          userId,
+          membership.organisationId,
+          connectedSystemId
+        );
+        if (
+          system.provider === "genie" &&
+          (system.connectionMethod === "browser" ||
+            system.connectionMethod === "sidecar")
+        )
+          await runPreOtpVerifier({
+            userId,
+            organisationId: membership.organisationId,
+            connectedSystemId,
+            phase: "consume",
+          });
+        const interactive = await prepareGenieCommissioning({
+          userId,
+          organisationId: membership.organisationId,
+          connectedSystemId,
+        });
+        if (interactive) return res.json(interactive);
+        return res.json(
+          await startAutomaticCommissioning({
+            userId,
+            organisationId: membership.organisationId,
+            connectedSystemId,
+          })
+        );
+      } catch (error) {
+        return sendError(res, error);
+      }
+    }
+  );
+
   app.get("/api/connected-system-admin/:id/commissioning", async (req, res) => {
     try {
       const { membership } = await requireLocalHttpContext(req);
-      if (!canManageOrganisation(membership.role)) throw new Error("MANAGER_REQUIRED");
+      if (!canManageOrganisation(membership.role))
+        throw new Error("MANAGER_REQUIRED");
       const connectedSystemId = Number(req.params.id);
       if (!Number.isInteger(connectedSystemId) || connectedSystemId <= 0)
         throw new Error("A valid connected system is required.");
@@ -373,14 +529,17 @@ export function registerConnectedSystemAdminRoutes(app: Express) {
           eventType: "genie_interactive_auth_completed",
           entityType: "connected_system",
           entityId: String(connectedSystemId),
-          summary: "Genie interactive verification succeeded and the approved browser session was encrypted.",
+          summary:
+            "Genie interactive verification succeeded and the approved browser session was encrypted.",
           metadata: { codeStored: false, approvedSessionEncrypted: true },
         });
-        return res.json(await startAutomaticCommissioning({
-          userId,
-          organisationId: membership.organisationId,
-          connectedSystemId,
-        }));
+        return res.json(
+          await startAutomaticCommissioning({
+            userId,
+            organisationId: membership.organisationId,
+            connectedSystemId,
+          })
+        );
       } catch (error) {
         return sendError(res, error);
       }
@@ -396,15 +555,20 @@ export function registerConnectedSystemAdminRoutes(app: Express) {
         if (!Number.isInteger(connectedSystemId) || connectedSystemId <= 0)
           throw new Error("A valid connected system is required.");
         const mode = req.body?.mode === "temporary" ? "temporary" : "existing";
-        const reference = typeof req.body?.reference === "string" ? req.body.reference : "";
+        const reference =
+          typeof req.body?.reference === "string" ? req.body.reference : "";
         const authorisedDestinations =
           req.body?.authorisedDestinations &&
           typeof req.body.authorisedDestinations === "object" &&
           !Array.isArray(req.body.authorisedDestinations)
             ? req.body.authorisedDestinations
             : {};
-        const authorisedOperationKeys = Array.isArray(req.body?.authorisedOperationKeys)
-          ? req.body.authorisedOperationKeys.filter((key: unknown): key is string => typeof key === "string")
+        const authorisedOperationKeys = Array.isArray(
+          req.body?.authorisedOperationKeys
+        )
+          ? req.body.authorisedOperationKeys.filter(
+              (key: unknown): key is string => typeof key === "string"
+            )
           : [];
         const selectedOpportunityExternalId =
           typeof req.body?.selectedOpportunityExternalId === "string"
@@ -414,19 +578,21 @@ export function registerConnectedSystemAdminRoutes(app: Express) {
           typeof req.body?.selectedTaskExternalId === "string"
             ? req.body.selectedTaskExternalId
             : undefined;
-        return res.json(await authoriseCommissioningSafeTest({
-          userId,
-          organisationId: membership.organisationId,
-          connectedSystemId,
-          record: {
-            mode,
-            reference,
-            authorisedDestinations,
-            authorisedOperationKeys,
-            selectedOpportunityExternalId,
-            selectedTaskExternalId,
-          },
-        }));
+        return res.json(
+          await authoriseCommissioningSafeTest({
+            userId,
+            organisationId: membership.organisationId,
+            connectedSystemId,
+            record: {
+              mode,
+              reference,
+              authorisedDestinations,
+              authorisedOperationKeys,
+              selectedOpportunityExternalId,
+              selectedTaskExternalId,
+            },
+          })
+        );
       } catch (error) {
         return sendError(res, error);
       }

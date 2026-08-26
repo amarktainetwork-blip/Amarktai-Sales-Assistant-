@@ -1,9 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { requireLocalHttpContext } from "../httpAuth";
-import {
-  appendLiveTranscript,
-  listActionProposals,
-} from "../db";
+import { appendLiveTranscript, listActionProposals, recordAudit } from "../db";
 import {
   prepareLiveCoachingTip,
   prepareOutcomeAwarePostCallSummary,
@@ -19,9 +16,21 @@ import { getAutomationPolicy } from "../automationPolicy";
 import { executeAutoPreapprovedActions } from "../governedActions";
 import { resolveLiveCallCloseoutIdentity } from "./context";
 import { persistConfirmedCommitment } from "../memory";
-import { prepareCustomCommunication, resolveApprovedCommunicationTemplate } from "../approvedTemplates";
-import { prepareClaimedCloseoutWorkflow, runCanonicalCallCloseout, saveCallCloseoutSummary } from "./closeoutIdempotency";
-import { ALLOWED_STT_MIME, decodeAudio, probeSttHealth, transcribeAudio } from "../voice/stt";
+import {
+  prepareCustomCommunication,
+  resolveApprovedCommunicationTemplate,
+} from "../approvedTemplates";
+import {
+  prepareClaimedCloseoutWorkflow,
+  runCanonicalCallCloseout,
+  saveCallCloseoutSummary,
+} from "./closeoutIdempotency";
+import {
+  ALLOWED_STT_MIME,
+  decodeAudio,
+  probeSttHealth,
+  transcribeAudio,
+} from "../voice/stt";
 
 type Authenticated = { id: number; membership: OrganisationMembership };
 
@@ -43,9 +52,14 @@ function sendLiveCallError(res: Response, error: unknown) {
   if (detail === "Speech-to-text is not configured.")
     return res.status(503).json({ error: detail });
   if (/AI Credit/i.test(detail)) return res.status(402).json({ error: detail });
-  if (/^(TEMPLATE_NOT_FOUND|TEMPLATE_CONTENT_REQUIRED)|destination is required|requires a subject|supported communication channel/i.test(detail))
+  if (
+    /^(TEMPLATE_NOT_FOUND|TEMPLATE_CONTENT_REQUIRED)|destination is required|requires a subject|supported communication channel/i.test(
+      detail
+    )
+  )
     return res.status(400).json({ error: detail.slice(0, 300) });
-  if (detail.startsWith("CLOSEOUT_PROCESSING")) return res.status(409).json({ error: detail });
+  if (detail.startsWith("CLOSEOUT_PROCESSING"))
+    return res.status(409).json({ error: detail });
   console.error(
     JSON.stringify({
       event: "live_call_api_error",
@@ -103,6 +117,22 @@ export function registerLiveCallRoutes(app: Express) {
           callSessionId,
           transcriptChunk: text,
         });
+      await recordAudit({
+        userId: user.id,
+        organisationId: user.membership.organisationId,
+        eventType: "live_call_audio_transcribed",
+        entityType: "call_session",
+        entityId: String(callSessionId),
+        summary:
+          "A real audio chunk passed through the live transcription path; raw audio was not retained.",
+        metadata: {
+          bytes: bytes.length,
+          durationMs,
+          mimeType,
+          textChars: text.length,
+          rawAudioRetained: false,
+        },
+      });
       console.log(
         JSON.stringify({
           event: "live_call_transcription_chunk",

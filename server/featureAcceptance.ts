@@ -10,7 +10,7 @@ export const FEATURE_ACCEPTANCE_NAMES = [
 
 export type FeatureAcceptanceName = (typeof FEATURE_ACCEPTANCE_NAMES)[number];
 export const FEATURE_ACCEPTANCE_STATUSES = [
-  "NOT_CONFIGURED", "CONFIGURED", "HEALTHY", "TESTED", "LIVE_PROVEN", "FAILED",
+  "NOT_CONFIGURED", "CONFIGURED", "HEALTHY", "TESTED", "LIVE_PROVEN", "NOT_APPLICABLE", "FAILED",
 ] as const;
 export type FeatureAcceptanceStatus = (typeof FEATURE_ACCEPTANCE_STATUSES)[number];
 export type FeatureAcceptanceResult = {
@@ -19,6 +19,31 @@ export type FeatureAcceptanceResult = {
   evidence?: Record<string, unknown>;
 };
 export type FeatureAcceptanceMatrix = Record<FeatureAcceptanceName, FeatureAcceptanceResult>;
+
+export const CRITICAL_CLIENT_FEATURES: readonly FeatureAcceptanceName[] = [
+  "AUTH", "SMTP", "GENX", "BUSINESS_DISCOVERY", "BUSINESS_KNOWLEDGE",
+  "CRM_CONNECT", "CRM_READ", "CRM_WRITE", "CRM_TASKS", "CRM_NOTES",
+  "CRM_PIPELINE", "NEXT_PROSPECT", "BROWSER_RUNTIME", "STT", "TTS",
+  "LIVE_CALL_CAPTURE", "LIVE_TRANSCRIPT", "LIVE_COACHING", "CALL_CLOSEOUT",
+  "CALL_CRM_READBACK", "ASSISTANT", "WORKFLOWS", "APPROVALS", "DATABASE",
+  "VALKEY", "HTTPS",
+] as const;
+
+export const OPTIONAL_CLIENT_FEATURES: readonly FeatureAcceptanceName[] = [
+  "CRM_EMAIL", "CRM_SMS", "CRM_WHATSAPP", "CRM_DIALLER",
+] as const;
+
+export function evaluateStrictClientAcceptance(matrix: FeatureAcceptanceMatrix) {
+  const criticalNotLive = CRITICAL_CLIENT_FEATURES.filter(feature => matrix[feature].status !== "LIVE_PROVEN");
+  const optionalInvalid = OPTIONAL_CLIENT_FEATURES.filter(feature => !["LIVE_PROVEN", "NOT_APPLICABLE"].includes(matrix[feature].status));
+  const failed = FEATURE_ACCEPTANCE_NAMES.filter(feature => matrix[feature].status === "FAILED");
+  return {
+    passed: criticalNotLive.length === 0 && optionalInvalid.length === 0 && failed.length === 0,
+    criticalNotLive,
+    optionalInvalid,
+    failed,
+  };
+}
 
 export function result(
   status: FeatureAcceptanceStatus,

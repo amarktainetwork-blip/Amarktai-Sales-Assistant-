@@ -3,7 +3,8 @@ import { lookup } from "node:dns/promises";
 import net from "node:net";
 import { chromium } from "playwright-core";
 
-const USER_AGENT = "AmarktaiSalesAssistant/3.0 (+professional-company-intelligence)";
+const USER_AGENT =
+  "AmarktaiSalesAssistant/3.0 (+professional-company-intelligence)";
 const MAX_PAGES = 100;
 const MAX_DEPTH = 4;
 const MAX_PAGE_BYTES = 1_500_000;
@@ -19,9 +20,15 @@ const MAX_RENDERED_PAGES = 24;
 const CATEGORY_RULES: Array<[string, RegExp]> = [
   ["pricing", /(?:pricing|price|fees?|cost)/i],
   ["finance", /(?:finance|financing|payment|deposit|funding)/i],
-  ["courses", /(?:courses?|programmes?|programs?|training|career-path|academy)/i],
+  [
+    "courses",
+    /(?:courses?|programmes?|programs?|training|career-path|academy)/i,
+  ],
   ["evidence", /(?:evidence|results?|outcomes?|success|proof)/i],
-  ["certifications", /(?:certification|certifications|accreditation|accredited)/i],
+  [
+    "certifications",
+    /(?:certification|certifications|accreditation|accredited)/i,
+  ],
   ["faq", /(?:faq|frequently-asked|questions)/i],
   ["services", /(?:services?|solutions?)/i],
   ["products", /(?:products?)/i],
@@ -52,6 +59,10 @@ export type DiscoveryKnowledgeCandidate = {
   sourceUrl: string;
   fetchedAt: string;
   category: string;
+  reviewState: "review_required" | "conflict";
+  confidence: "high" | "medium" | "conflicting";
+  evidenceBasis: "page_text" | "structured_data" | "page_and_structured_data";
+  trustEligible: boolean;
 };
 
 export type DiscoveryResult = {
@@ -70,7 +81,10 @@ export type DiscoveryResult = {
   }>;
 };
 
-type RobotsPolicy = { allowed(pathname: string): boolean; sitemapUrls: string[] };
+type RobotsPolicy = {
+  allowed(pathname: string): boolean;
+  sitemapUrls: string[];
+};
 type PageCandidate = { url: URL; depth: number; priority: number };
 type Section = { heading: string; body: string };
 type Offering = {
@@ -124,6 +138,7 @@ function isPrivateAddress(address: string) {
   if (version === 4) return isPrivateIpv4(address);
   if (version === 6) {
     const normalized = address.toLowerCase();
+    const mapped = normalized.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/)?.[1];
     return (
       normalized === "::" ||
       normalized === "::1" ||
@@ -132,7 +147,8 @@ function isPrivateAddress(address: string) {
       /^fe[89ab]/.test(normalized) ||
       normalized.startsWith("::ffff:127.") ||
       normalized.startsWith("::ffff:10.") ||
-      normalized.startsWith("::ffff:192.168.")
+      normalized.startsWith("::ffff:192.168.") ||
+      (mapped ? isPrivateIpv4(mapped) : false)
     );
   }
   return true;
@@ -143,10 +159,14 @@ async function assertPublicUrl(raw: string, approvedHostname?: string) {
   if (!/^https?:$/.test(url.protocol))
     throw new Error("Use a public http or https website URL.");
   if (url.username || url.password)
-    throw new Error("Website discovery URLs may not contain embedded credentials.");
+    throw new Error(
+      "Website discovery URLs may not contain embedded credentials."
+    );
   const hostname = url.hostname.toLowerCase();
   if (approvedHostname && hostname !== approvedHostname)
-    throw new Error("Website discovery remained outside the authorised hostname.");
+    throw new Error(
+      "Website discovery remained outside the authorised hostname."
+    );
   if (
     hostname === "localhost" ||
     hostname.endsWith(".local") ||
@@ -155,15 +175,22 @@ async function assertPublicUrl(raw: string, approvedHostname?: string) {
     throw new Error("Private-network and local URLs cannot be discovered.");
   if (net.isIP(hostname) && isPrivateAddress(hostname))
     throw new Error("Private-network and local URLs cannot be discovered.");
-  let records: Awaited<ReturnType<typeof lookup>>[] | Awaited<ReturnType<typeof lookup>>;
+  let records:
+    | Awaited<ReturnType<typeof lookup>>[]
+    | Awaited<ReturnType<typeof lookup>>;
   try {
     records = await lookup(hostname, { all: true, verbatim: true });
   } catch {
     throw new Error("The website hostname could not be resolved.");
   }
   const resolved = Array.isArray(records) ? records : [records];
-  if (!resolved.length || resolved.some(record => isPrivateAddress(record.address)))
-    throw new Error("The website hostname resolves to a private or unsafe network address.");
+  if (
+    !resolved.length ||
+    resolved.some(record => isPrivateAddress(record.address))
+  )
+    throw new Error(
+      "The website hostname resolves to a private or unsafe network address."
+    );
   return url;
 }
 
@@ -173,11 +200,16 @@ function canonicalize(input: URL) {
   for (const key of Array.from(url.searchParams.keys()))
     if (/^(utm_|fbclid|gclid|mc_)/i.test(key)) url.searchParams.delete(key);
   url.searchParams.sort();
-  if (url.pathname !== "/") url.pathname = url.pathname.replace(/\/+$/, "") || "/";
+  if (url.pathname !== "/")
+    url.pathname = url.pathname.replace(/\/+$/, "") || "/";
   return url;
 }
 
-async function boundedFetch(initialUrl: URL, approvedHostname: string, accept: string) {
+async function boundedFetch(
+  initialUrl: URL,
+  approvedHostname: string,
+  accept: string
+) {
   let url = await assertPublicUrl(initialUrl.toString(), approvedHostname);
   for (let redirect = 0; redirect <= 5; redirect += 1) {
     const response = await fetch(url, {
@@ -187,14 +219,21 @@ async function boundedFetch(initialUrl: URL, approvedHostname: string, accept: s
     });
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get("location");
-      if (!location) throw new Error("The website returned an incomplete redirect.");
-      if (redirect === 5) throw new Error("The website redirected too many times.");
-      url = await assertPublicUrl(new URL(location, url).toString(), approvedHostname);
+      if (!location)
+        throw new Error("The website returned an incomplete redirect.");
+      if (redirect === 5)
+        throw new Error("The website redirected too many times.");
+      url = await assertPublicUrl(
+        new URL(location, url).toString(),
+        approvedHostname
+      );
       continue;
     }
     const declaredLength = Number(response.headers.get("content-length") || 0);
     if (declaredLength > MAX_PAGE_BYTES)
-      throw new Error("A discovered website page exceeded the safe size limit.");
+      throw new Error(
+        "A discovered website page exceeded the safe size limit."
+      );
     return { response, finalUrl: canonicalize(url) };
   }
   throw new Error("The website could not be fetched safely.");
@@ -212,7 +251,9 @@ async function readTextBounded(response: Response, maxBytes: number) {
       if (!value) continue;
       total += value.byteLength;
       if (total > maxBytes)
-        throw new Error("A discovered website response exceeded the safe size limit.");
+        throw new Error(
+          "A discovered website response exceeded the safe size limit."
+        );
       chunks.push(value);
     }
   } finally {
@@ -228,7 +269,10 @@ async function readTextBounded(response: Response, maxBytes: number) {
 }
 
 function clean(value: string) {
-  return value.replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
+  return value
+    .replace(/\u00a0/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function dedupe(values: string[], maximum = 20) {
@@ -252,18 +296,22 @@ function pageCategory(url: URL) {
 
 function priceMatches(text: string) {
   return dedupe(
-    Array.from(text.matchAll(/(?:£|\$|€)\s?\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?|\b(?:GBP|USD|EUR)\s?\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?/gi)).map(
-      match => clean(match[0])
-    ),
+    Array.from(
+      text.matchAll(
+        /(?:£|\$|€)\s?\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?|\b(?:GBP|USD|EUR)\s?\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?/gi
+      )
+    ).map(match => clean(match[0])),
     12
   );
 }
 
 function durationMatches(text: string) {
   return dedupe(
-    Array.from(text.matchAll(/\b\d{1,2}(?:\s*(?:-|or|to)\s*\d{1,2})?\s*(?:days?|weeks?|months?|years?)\b/gi)).map(
-      match => clean(match[0])
-    ),
+    Array.from(
+      text.matchAll(
+        /\b\d{1,2}(?:\s*(?:-|or|to)\s*\d{1,2})?\s*(?:days?|weeks?|months?|years?)\b/gi
+      )
+    ).map(match => clean(match[0])),
     8
   );
 }
@@ -272,7 +320,11 @@ function financeMatches(text: string) {
   return dedupe(
     text
       .split(/(?<=[.!?])\s+|\n+/)
-      .filter(line => /(?:deposit|finance|financing|monthly|instalment|installment|payment plan|pay over|credit check)/i.test(line))
+      .filter(line =>
+        /(?:deposit|finance|financing|monthly|instalment|installment|payment plan|pay over|credit check)/i.test(
+          line
+        )
+      )
       .map(line => clean(line).slice(0, 320)),
     10
   );
@@ -282,7 +334,11 @@ function supportMatches(text: string) {
   return dedupe(
     text
       .split(/(?<=[.!?])\s+|\n+/)
-      .filter(line => /(?:support|mentor|tutor|recruit|career coach|job support|exam voucher|materials included|1-to-1|one-to-one)/i.test(line))
+      .filter(line =>
+        /(?:support|mentor|tutor|recruit|career coach|job support|exam voucher|materials included|1-to-1|one-to-one)/i.test(
+          line
+        )
+      )
       .map(line => clean(line).slice(0, 320)),
     10
   );
@@ -290,7 +346,9 @@ function supportMatches(text: string) {
 
 function certificationMatches(text: string) {
   const named = Array.from(
-    text.matchAll(/\b(?:CompTIA|Cisco|Microsoft|AWS|Azure|PeopleCert|APMG|EC-Council|ISC\)?²|PRINCE2|AgilePM|ITIL|Google)\b/gi)
+    text.matchAll(
+      /\b(?:CompTIA|Cisco|Microsoft|AWS|Azure|PeopleCert|APMG|EC-Council|ISC\)?²|PRINCE2|AgilePM|ITIL|Google)\b/gi
+    )
   ).map(match => clean(match[0]));
   return dedupe(named, 12);
 }
@@ -322,7 +380,11 @@ function jsonLdObjects(value: unknown): Record<string, unknown>[] {
   if (Array.isArray(value)) return value.flatMap(jsonLdObjects);
   if (typeof value !== "object") return [];
   const object = value as Record<string, unknown>;
-  return [object, ...jsonLdObjects(object["@graph"]), ...jsonLdObjects(object.itemListElement)];
+  return [
+    object,
+    ...jsonLdObjects(object["@graph"]),
+    ...jsonLdObjects(object.itemListElement),
+  ];
 }
 
 function offeringNameFromPage(input: {
@@ -346,10 +408,20 @@ function offeringsFromPage(input: {
   fetchedAt: string;
 }) {
   const results: Offering[] = [];
-  const highValue = ["courses", "products", "services", "pricing", "evidence"].includes(input.category);
+  const highValue = [
+    "courses",
+    "products",
+    "services",
+    "pricing",
+    "evidence",
+  ].includes(input.category);
   const pagePrices = priceMatches(input.text);
   const pageName = offeringNameFromPage(input);
-  if (highValue && pageName && (pagePrices.length || input.category === "courses")) {
+  if (
+    highValue &&
+    pageName &&
+    (pagePrices.length || input.category === "courses")
+  ) {
     results.push({
       name: pageName,
       prices: pagePrices,
@@ -413,11 +485,12 @@ function parseHtml(html: string, url: URL, rendered: boolean): ParsedPage {
   const sections = sectionsFromHtml(html);
   $("script, style, noscript, svg, template, iframe").remove();
   const title = clean($("title").first().text()).slice(0, 500) || null;
-  const description = clean(
-    $("meta[name='description']").attr("content") ||
-      $("meta[property='og:description']").attr("content") ||
-      ""
-  ).slice(0, 2_000) || null;
+  const description =
+    clean(
+      $("meta[name='description']").attr("content") ||
+        $("meta[property='og:description']").attr("content") ||
+        ""
+    ).slice(0, 2_000) || null;
   const headings = $("h1, h2, h3")
     .map((_, element) => clean($(element).text()))
     .get()
@@ -458,8 +531,12 @@ function parseHtml(html: string, url: URL, rendered: boolean): ParsedPage {
   return page;
 }
 
-let discoveryBrowser: Awaited<ReturnType<typeof chromium.connectOverCDP>> | undefined;
-let discoveryBrowserConnecting: Promise<Awaited<ReturnType<typeof chromium.connectOverCDP>>> | undefined;
+let discoveryBrowser:
+  | Awaited<ReturnType<typeof chromium.connectOverCDP>>
+  | undefined;
+let discoveryBrowserConnecting:
+  | Promise<Awaited<ReturnType<typeof chromium.connectOverCDP>>>
+  | undefined;
 
 async function getDiscoveryBrowser(endpoint: string) {
   if (discoveryBrowser?.isConnected()) return discoveryBrowser;
@@ -483,7 +560,10 @@ async function renderPublicPage(url: URL, approvedHostname: string) {
   const endpoint = process.env.BROWSERLESS_WS_ENDPOINT?.trim();
   if (!endpoint) return null;
   const browser = await getDiscoveryBrowser(endpoint);
-  const context = await browser.newContext({ javaScriptEnabled: true, serviceWorkers: "block" });
+  const context = await browser.newContext({
+    javaScriptEnabled: true,
+    serviceWorkers: "block",
+  });
   try {
     await context.route("**/*", async route => {
       const requestUrl = new URL(route.request().url());
@@ -497,7 +577,10 @@ async function renderPublicPage(url: URL, approvedHostname: string) {
       return route.continue();
     });
     const page = await context.newPage();
-    await page.goto(url.toString(), { waitUntil: "domcontentloaded", timeout: 20_000 });
+    await page.goto(url.toString(), {
+      waitUntil: "domcontentloaded",
+      timeout: 20_000,
+    });
     const finalUrl = await assertPublicUrl(page.url(), approvedHostname);
     await page.waitForTimeout(1_500);
     return {
@@ -540,7 +623,9 @@ function parseRobots(text: string, origin: URL): RobotsPolicy {
     }
   }
   const applicable = groups.filter(group =>
-    group.agents.some(agent => agent === "*" || USER_AGENT.toLowerCase().includes(agent))
+    group.agents.some(
+      agent => agent === "*" || USER_AGENT.toLowerCase().includes(agent)
+    )
   );
   return {
     sitemapUrls,
@@ -602,8 +687,11 @@ async function loadSitemapUrls(
         .map((_, element) => $(element).text().trim())
         .get()) {
         try {
-          const nested = canonicalize(await assertPublicUrl(location, approvedHostname));
-          if (!visitedSitemaps.has(nested.toString())) sitemapQueue.push(nested.toString());
+          const nested = canonicalize(
+            await assertPublicUrl(location, approvedHostname)
+          );
+          if (!visitedSitemaps.has(nested.toString()))
+            sitemapQueue.push(nested.toString());
         } catch {
           // Ignore unsafe nested sitemap entries.
         }
@@ -612,7 +700,9 @@ async function loadSitemapUrls(
         .map((_, element) => $(element).text().trim())
         .get()) {
         try {
-          const url = canonicalize(await assertPublicUrl(location, approvedHostname));
+          const url = canonicalize(
+            await assertPublicUrl(location, approvedHostname)
+          );
           const key = url.toString();
           if (!policy.allowed(url.pathname) || seenUrls.has(key)) continue;
           seenUrls.add(key);
@@ -656,7 +746,10 @@ function linkPriority(url: URL) {
 }
 
 function shouldRender(html: string, page: ParsedPage, renderedCount: number) {
-  if (renderedCount >= MAX_RENDERED_PAGES || !process.env.BROWSERLESS_WS_ENDPOINT?.trim())
+  if (
+    renderedCount >= MAX_RENDERED_PAGES ||
+    !process.env.BROWSERLESS_WS_ENDPOINT?.trim()
+  )
     return false;
   if (page.text.length < 900) return true;
   if (!HIGH_VALUE_CATEGORIES.has(page.category)) return false;
@@ -677,12 +770,17 @@ async function fetchPage(
   );
   if (!response.ok) return null;
   const contentType = response.headers.get("content-type")?.toLowerCase() || "";
-  if (!contentType.includes("text/html") && !contentType.includes("application/xhtml+xml"))
+  if (
+    !contentType.includes("text/html") &&
+    !contentType.includes("application/xhtml+xml")
+  )
     return null;
   const html = await readTextBounded(response, MAX_PAGE_BYTES);
   let page = parseHtml(html, finalUrl, false);
   if (shouldRender(html, page, renderedCount)) {
-    const rendered = await renderPublicPage(finalUrl, approvedHostname).catch(() => null);
+    const rendered = await renderPublicPage(finalUrl, approvedHostname).catch(
+      () => null
+    );
     if (rendered) page = parseHtml(rendered.html, rendered.url, true);
   }
   return page;
@@ -691,7 +789,10 @@ async function fetchPage(
 function normalizedOfferingName(value: string) {
   return clean(value)
     .toLowerCase()
-    .replace(/\b(?:course|programme|program|career|training|qualification|pathway)\b/g, "")
+    .replace(
+      /\b(?:course|programme|program|career|training|qualification|pathway)\b/g,
+      ""
+    )
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 }
@@ -704,15 +805,34 @@ function priceConflicts(offerings: Offering[]) {
     groups.set(key, [...(groups.get(key) || []), offering]);
   }
   return Array.from(groups.entries()).flatMap(([key, group]) => {
-    const prices = dedupe(group.flatMap(item => item.prices), 20);
-    if (prices.length <= 1) return [];
+    const bySource = Array.from(
+      new Map(group.map(item => [item.sourceUrl, item])).values()
+    );
+    const prices = dedupe(
+      bySource.flatMap(item => item.prices),
+      20
+    );
+    const distinctPriceSets = new Set(
+      bySource.map(item => [...item.prices].sort().join("\0"))
+    );
+    // A single product page may truthfully publish a price list. A conflict
+    // requires disagreeing values from at least two separate source pages.
+    if (
+      bySource.length <= 1 ||
+      prices.length <= 1 ||
+      distinctPriceSets.size <= 1
+    )
+      return [];
     return [
       {
         type: "price_conflict",
         offeringKey: key,
-        displayNames: dedupe(group.map(item => item.name), 10),
+        displayNames: dedupe(
+          group.map(item => item.name),
+          10
+        ),
         values: prices,
-        sources: group.map(item => ({
+        sources: bySource.map(item => ({
           sourceUrl: item.sourceUrl,
           fetchedAt: item.fetchedAt,
           prices: item.prices,
@@ -727,18 +847,27 @@ function bullets(values: string[]) {
   return values.map(value => `- ${value}`).join("\n");
 }
 
-function offeringKnowledge(offering: Offering): DiscoveryKnowledgeCandidate {
+function offeringKnowledge(
+  offering: Offering,
+  conflicted: boolean
+): DiscoveryKnowledgeCandidate {
   const lines = [
     `Offering: ${offering.name}`,
-    offering.prices.length ? `Price: ${offering.prices.join(" / ")}` : "Price: Not clearly stated on this page",
-    offering.durations.length ? `Duration: ${offering.durations.join(" / ")}` : "",
+    offering.prices.length
+      ? `Price: ${offering.prices.join(" / ")}`
+      : "Price: Not clearly stated on this page",
+    offering.durations.length
+      ? `Duration: ${offering.durations.join(" / ")}`
+      : "",
     offering.certifications.length
       ? `Certifications: ${offering.certifications.join(", ")}`
       : "",
     offering.financeTerms.length
       ? `Payment / finance:\n${bullets(offering.financeTerms)}`
       : "",
-    offering.support.length ? `Included support / outcomes:\n${bullets(offering.support)}` : "",
+    offering.support.length
+      ? `Included support / outcomes:\n${bullets(offering.support)}`
+      : "",
   ].filter(Boolean);
   return {
     title: `Offering · ${offering.name}`,
@@ -746,6 +875,14 @@ function offeringKnowledge(offering: Offering): DiscoveryKnowledgeCandidate {
     sourceUrl: offering.sourceUrl,
     fetchedAt: offering.fetchedAt,
     category: "offering",
+    reviewState: conflicted ? "conflict" : "review_required",
+    confidence: conflicted
+      ? "conflicting"
+      : offering.prices.length
+        ? "high"
+        : "medium",
+    evidenceBasis: "page_text",
+    trustEligible: !conflicted,
   };
 }
 
@@ -758,13 +895,23 @@ function pageKnowledge(page: ParsedPage): DiscoveryKnowledgeCandidate[] {
   if (page.category === "home" || page.category === "about") {
     const summary = [
       page.description ? `Summary: ${page.description}` : "",
-      page.headings.length ? `Key messages:\n${bullets(page.headings.slice(0, 10))}` : "",
+      page.headings.length
+        ? `Key messages:\n${bullets(page.headings.slice(0, 10))}`
+        : "",
     ].filter(Boolean);
     if (summary.length)
       results.push({
-        title: page.category === "home" ? "Company overview" : "About the company",
+        title:
+          page.category === "home" ? "Company overview" : "About the company",
         content: summary.join("\n\n"),
         category: page.category,
+        reviewState: "review_required",
+        confidence:
+          page.description && page.headings.length ? "high" : "medium",
+        evidenceBasis: page.jsonLd.length
+          ? "page_and_structured_data"
+          : "page_text",
+        trustEligible: true,
         ...source,
       });
   }
@@ -784,30 +931,65 @@ function pageKnowledge(page: ParsedPage): DiscoveryKnowledgeCandidate[] {
         title: page.category === "finance" ? "Payment & finance" : "Pricing",
         content: content.join("\n\n"),
         category: page.category,
+        reviewState: "review_required",
+        confidence: prices.length || terms.length ? "high" : "medium",
+        evidenceBasis: page.jsonLd.length
+          ? "page_and_structured_data"
+          : "page_text",
+        trustEligible: true,
         ...source,
       });
   }
 
-  if (["faq", "contact", "support", "evidence", "certifications", "testimonials", "policies"].includes(page.category)) {
+  if (
+    [
+      "faq",
+      "contact",
+      "support",
+      "evidence",
+      "certifications",
+      "testimonials",
+      "policies",
+    ].includes(page.category)
+  ) {
     const label = page.category.replaceAll("-", " ");
     const details = page.sections.length
-      ? page.sections.slice(0, 12).map(section => `${section.heading}\n${section.body}`)
+      ? page.sections
+          .slice(0, 12)
+          .map(section => `${section.heading}\n${section.body}`)
       : page.headings.slice(0, 12);
     if (details.length)
       results.push({
         title: label.charAt(0).toUpperCase() + label.slice(1),
         content: details.map(detail => `• ${detail}`).join("\n\n"),
         category: page.category,
+        reviewState: "review_required",
+        confidence: "medium",
+        evidenceBasis: page.jsonLd.length
+          ? "page_and_structured_data"
+          : "page_text",
+        trustEligible: true,
         ...source,
       });
   }
   return results;
 }
 
-function buildKnowledge(pages: ParsedPage[]) {
+function buildKnowledge(
+  pages: ParsedPage[],
+  conflicts: ReturnType<typeof priceConflicts>
+) {
   const offerings = pages.flatMap(page => page.offerings);
+  const conflictedOfferingKeys = new Set(
+    conflicts.map(conflict => conflict.offeringKey)
+  );
   const candidates: DiscoveryKnowledgeCandidate[] = [
-    ...offerings.map(offeringKnowledge),
+    ...offerings.map(offering =>
+      offeringKnowledge(
+        offering,
+        conflictedOfferingKeys.has(normalizedOfferingName(offering.name))
+      )
+    ),
     ...pages.flatMap(pageKnowledge),
   ];
   const seen = new Set<string>();
@@ -821,7 +1003,9 @@ function buildKnowledge(pages: ParsedPage[]) {
     .slice(0, MAX_KNOWLEDGE);
 }
 
-export async function discoverPublicWebsite(rawUrl: string): Promise<DiscoveryResult> {
+export async function discoverPublicWebsite(
+  rawUrl: string
+): Promise<DiscoveryResult> {
   const startedAt = new Date().toISOString();
   const initial = canonicalize(await assertPublicUrl(rawUrl.trim()));
   const approvedHostname = initial.hostname.toLowerCase();
@@ -833,7 +1017,11 @@ export async function discoverPublicWebsite(rawUrl: string): Promise<DiscoveryRe
   const sitemap = await loadSitemapUrls(initial, approvedHostname, robots);
   const queue: PageCandidate[] = [
     { url: initial, depth: 0, priority: -1 },
-    ...sitemap.urls.map(url => ({ url, depth: 1, priority: linkPriority(url) })),
+    ...sitemap.urls.map(url => ({
+      url,
+      depth: 1,
+      priority: linkPriority(url),
+    })),
   ];
   const queued = new Set(queue.map(item => item.url.toString()));
   const visited = new Set<string>();
@@ -841,7 +1029,11 @@ export async function discoverPublicWebsite(rawUrl: string): Promise<DiscoveryRe
   let totalText = 0;
   let renderedCount = 0;
 
-  while (queue.length && pages.length < MAX_PAGES && totalText < MAX_TOTAL_TEXT) {
+  while (
+    queue.length &&
+    pages.length < MAX_PAGES &&
+    totalText < MAX_TOTAL_TEXT
+  ) {
     queue.sort(
       (a, b) =>
         a.priority - b.priority ||
@@ -854,7 +1046,11 @@ export async function discoverPublicWebsite(rawUrl: string): Promise<DiscoveryRe
     batch.forEach(candidate => visited.add(candidate.url.toString()));
     const results = await Promise.all(
       batch.map(candidate =>
-        fetchPage(candidate, approvedHostname, renderedCount).catch(() => null)
+        fetchPage(
+          candidate,
+          approvedHostname,
+          renderedCount + batch.indexOf(candidate)
+        ).catch(() => null)
       )
     );
     for (let index = 0; index < results.length; index += 1) {
@@ -869,9 +1065,17 @@ export async function discoverPublicWebsite(rawUrl: string): Promise<DiscoveryRe
       if (candidate.depth >= MAX_DEPTH) continue;
       for (const link of page.links) {
         const key = link.toString();
-        if (queued.has(key) || visited.has(key) || !robots.allowed(link.pathname))
+        if (
+          queued.has(key) ||
+          visited.has(key) ||
+          !robots.allowed(link.pathname)
+        )
           continue;
-        if (/\.(?:pdf|zip|jpg|jpeg|png|gif|webp|svg|mp[34]|avi|mov|docx?|xlsx?)$/i.test(link.pathname))
+        if (
+          /\.(?:pdf|zip|jpg|jpeg|png|gif|webp|svg|mp[34]|avi|mov|docx?|xlsx?)$/i.test(
+            link.pathname
+          )
+        )
           continue;
         queued.add(key);
         queue.push({
@@ -884,15 +1088,22 @@ export async function discoverPublicWebsite(rawUrl: string): Promise<DiscoveryRe
   }
 
   if (!pages.length)
-    throw new Error("The website did not return any readable public HTML pages.");
+    throw new Error(
+      "The website did not return any readable public HTML pages."
+    );
 
   const primary =
     pages.find(page => page.url.toString() === initial.toString()) || pages[0];
   const offerings = pages.flatMap(page => page.offerings);
   const conflicts = priceConflicts(offerings);
-  const proposedKnowledge = buildKnowledge(pages);
-  const categories = dedupe(pages.map(page => page.category), 40);
-  const offeringsWithPrice = offerings.filter(item => item.prices.length > 0).length;
+  const proposedKnowledge = buildKnowledge(pages, conflicts);
+  const categories = dedupe(
+    pages.map(page => page.category),
+    40
+  );
+  const offeringsWithPrice = offerings.filter(
+    item => item.prices.length > 0
+  ).length;
   const completeness = {
     pagesCrawled: pages.length,
     sitemapPagesDiscovered: sitemap.urls.length,
@@ -905,6 +1116,32 @@ export async function discoverPublicWebsite(rawUrl: string): Promise<DiscoveryRe
       : 0,
     unresolvedConflicts: conflicts.length,
     reviewRequired: conflicts.length > 0,
+    financeInformationFound:
+      categories.includes("finance") ||
+      offerings.some(item => item.financeTerms.length > 0),
+    certificationInformationFound:
+      categories.includes("certifications") ||
+      offerings.some(item => item.certifications.length > 0),
+    supportAndOutcomeInformationFound:
+      categories.some(category =>
+        ["support", "evidence", "testimonials"].includes(category)
+      ) || offerings.some(item => item.support.length > 0),
+    importantGaps: [
+      !categories.some(category => ["home", "about"].includes(category))
+        ? "No company overview page was found."
+        : "",
+      offerings.length === 0 ? "No clearly structured offering was found." : "",
+      offerings.length > offeringsWithPrice
+        ? `${offerings.length - offeringsWithPrice} offering(s) have no clearly published price.`
+        : "",
+      !categories.includes("policies")
+        ? "No refund, cancellation or terms page was identified."
+        : "",
+      !categories.includes("contact") ? "No contact page was identified." : "",
+      conflicts.length > 0
+        ? `${conflicts.length} conflicting fact set(s) require a human decision.`
+        : "",
+    ].filter(Boolean),
   };
 
   return {

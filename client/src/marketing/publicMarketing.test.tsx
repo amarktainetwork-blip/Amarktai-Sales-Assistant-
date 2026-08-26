@@ -4,7 +4,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { Router } from "wouter";
-import ContactPage from "./ContactPage";
+import ContactPage, { contactReasons } from "./ContactPage";
 import HomePage from "./HomePage";
 import {
   HowItWorksPage,
@@ -17,6 +17,7 @@ import {
 import { accountLinks, marketingNavigation } from "./site";
 import { scrollPublicRouteToTop } from "./MarketingLayout";
 import NotFound from "@/pages/NotFound";
+import { AI_CREDIT_ECONOMICS, PRICING_PLANS } from "@shared/pricing";
 
 const pages = [
   ["/", HomePage, "Your sales day"],
@@ -49,6 +50,10 @@ function sourceFiles(root: string): string[] {
 }
 
 describe("public marketing website", () => {
+  it("does not emit unresolved optional analytics placeholders", () => {
+    const html = readFileSync(path.resolve("client/index.html"), "utf8");
+    expect(html).not.toContain("%VITE_ANALYTICS_");
+  });
   it.each(pages)(
     "renders %s as a real public page",
     (pathname, Component, expected) => {
@@ -94,11 +99,27 @@ describe("public marketing website", () => {
     expect(scrollTo).toHaveBeenCalledTimes(2);
   });
 
-  it("renders a finished pricing framework without fake commercial figures", () => {
+  it("renders the shared commercial source of truth without claiming checkout", () => {
     const html = render("/pricing", PricingPage);
-    expect(html).toContain("Talk to sales");
-    expect(html).toContain("Plans for real sales operations");
-    expect(html).not.toMatch(/\$\d|per month|start trial|choose plan/i);
+    const compactHtml = html.replaceAll("\u00a0", "").replaceAll(",", "");
+    for (const plan of PRICING_PLANS) {
+      expect(html).toContain(plan.name);
+      expect(html).toContain(`$${plan.monthlyUsdCents / 100}`);
+      expect(compactHtml).toContain(
+        `${plan.includedAiCredits} included AI credits`
+      );
+      expect(html).toContain(
+        plan.includedUsers === 1
+          ? "1 included user"
+          : `Up to ${plan.includedUsers} included users`
+      );
+    }
+    expect(html).toContain(
+      `1,000 AI credits for $${AI_CREDIT_ECONOMICS.retailPackUsdCents / 100}`
+    );
+    expect(html).toContain("Routine CRM work does not consume AI credits");
+    expect(html).toContain("Plans for real sales work");
+    expect(html).not.toMatch(/Stripe|PayFast|buy now|checkout now/i);
   });
 
   it("renders the full labelled contact form and inline status region", () => {
@@ -113,6 +134,15 @@ describe("public marketing website", () => {
       "Message",
     ])
       expect(html).toContain(label);
+    expect(contactReasons).toEqual([
+      "Request a demo",
+      "Sales",
+      "Individual setup",
+      "Team setup",
+      "CRM compatibility",
+      "Support",
+    ]);
+    for (const reason of contactReasons) expect(html).toContain(reason);
     expect(html).toContain('aria-live="polite"');
     expect(html).toContain("/api/public/contact");
   });

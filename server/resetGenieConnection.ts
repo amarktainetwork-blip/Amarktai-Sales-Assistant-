@@ -9,21 +9,26 @@ function argument(name: string) {
 
 async function main() {
   const connectedSystemId = Number(argument("connection-id"));
-  const confirmDelete = process.argv.includes("--confirm-delete");
+  const organisationId = Number(argument("organisation-id"));
+  const userId = Number(argument("user-id"));
+  const confirmDelete = argument("confirm-delete") === String(connectedSystemId);
   const result = await resetAndDeleteGenieConnection({
     connectedSystemId,
+    organisationId,
+    userId,
     confirmDelete,
   });
-  console.log(
+  const output = [
     JSON.stringify({
       event: confirmDelete ? "genie_fresh_reset_complete" : "genie_fresh_reset_preview",
       ...result,
-    })
-  );
+    }),
+  ];
   if (!confirmDelete)
-    console.log(
-      "DRY_RUN_ONLY=YES Run again with --confirm-delete only after the preview identifies the exact Genie connection you intend to remove."
+    output.push(
+      `DRY_RUN_ONLY=YES Run again with --confirm-delete=${connectedSystemId} only after the preview identifies that exact Genie connection.`
     );
+  process.stdout.write(`${output.join("\n")}\n`, () => process.exit(0));
 }
 
 main().catch(error => {
@@ -33,5 +38,5 @@ main().catch(error => {
       detail: error instanceof Error ? error.message : String(error),
     })
   );
-  process.exitCode = 1;
+  process.exit(1);
 });

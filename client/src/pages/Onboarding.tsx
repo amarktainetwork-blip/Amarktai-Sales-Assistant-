@@ -1,6 +1,8 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import ManagementElevation from "@/components/ManagementElevation";
-import WorkflowFeedback, { type WorkflowFeedbackState } from "@/components/WorkflowFeedback";
+import WorkflowFeedback, {
+  type WorkflowFeedbackState,
+} from "@/components/WorkflowFeedback";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -74,6 +76,69 @@ type AutomaticCommissioning = {
   optionalFailures: Record<string, string>;
 };
 
+type PreOtpReadiness = {
+  ready: boolean;
+  states: {
+    browserReady: boolean;
+    genieLoginReachable: boolean;
+    secureSignInReady: boolean;
+    sessionHandoffReady: boolean;
+  };
+  labels: Record<keyof PreOtpReadiness["states"], string>;
+  advancedDiagnostics: Array<{ check: string; passed: boolean }>;
+  failure?: string;
+};
+type WebsiteKnowledgeCandidate = {
+  title: string;
+  content: string;
+  sourceUrl: string;
+  fetchedAt: string;
+  category: string;
+  reviewState?: "review_required" | "conflict";
+  confidence?: string;
+  evidenceBasis?: string;
+  trustEligible?: boolean;
+};
+type WebsiteConflict = {
+  type: string;
+  displayNames: string[];
+  values: string[];
+  sources: Array<{ sourceUrl: string; fetchedAt: string; prices: string[] }>;
+};
+type WebsiteCompleteness = {
+  pagesCrawled: number;
+  offeringsFound: number;
+  offeringsWithPublishedPrice: number;
+  unresolvedConflicts: number;
+  financeInformationFound: boolean;
+  certificationInformationFound: boolean;
+  supportAndOutcomeInformationFound: boolean;
+  importantGaps: string[];
+};
+
+const KNOWLEDGE_GROUPS = [
+  "Overview",
+  "Products / Courses / Services",
+  "Prices & Finance",
+  "Certifications",
+  "Support & Outcomes",
+  "FAQs",
+  "Contact",
+  "Policies",
+] as const;
+
+function knowledgeGroup(category: string): (typeof KNOWLEDGE_GROUPS)[number] {
+  if (["home", "about"].includes(category)) return "Overview";
+  if (category === "offering") return "Products / Courses / Services";
+  if (["pricing", "finance"].includes(category)) return "Prices & Finance";
+  if (category === "certifications") return "Certifications";
+  if (["support", "evidence", "testimonials"].includes(category))
+    return "Support & Outcomes";
+  if (category === "faq") return "FAQs";
+  if (category === "contact") return "Contact";
+  return "Policies";
+}
+
 async function jsonRequest(url: string, init?: RequestInit) {
   const response = await fetch(url, {
     ...init,
@@ -127,12 +192,17 @@ function isBrowser(provider: Provider) {
   return provider === "genie" || provider === "custom_browser";
 }
 function completedProgress(value: unknown) {
-  const status = value && typeof value === "object" && "status" in value
-    ? String((value as { status?: unknown }).status || "")
-    : String(value || "");
+  const status =
+    value && typeof value === "object" && "status" in value
+      ? String((value as { status?: unknown }).status || "")
+      : String(value || "");
   return /^(?:ready|complete)$/i.test(status);
 }
-function setupStepLabel(input: { value?: unknown; active?: boolean; awaitingApproval?: boolean }) {
+function setupStepLabel(input: {
+  value?: unknown;
+  active?: boolean;
+  awaitingApproval?: boolean;
+}) {
   if (completedProgress(input.value)) return "Complete";
   if (input.awaitingApproval) return "Awaiting approval";
   if (input.active) return "Running";
@@ -190,9 +260,15 @@ export default function Onboarding() {
     { enabled: Boolean(organisationId) }
   );
   const outlook = trpc.outlook.readiness.useQuery(undefined, { retry: false });
+  const managementStatus = trpc.managementElevation.status.useQuery(undefined, {
+    retry: false,
+    refetchInterval: 15_000,
+  });
   const [step, setStep] = useState(1);
   const [feedback, setFeedback] = useState<WorkflowFeedbackState | null>(null);
-  const [workspaceMode, setWorkspaceMode] = useState<"individual" | "team" | null>(null);
+  const [workspaceMode, setWorkspaceMode] = useState<
+    "individual" | "team" | null
+  >(null);
   const [profile, setProfile] = useState({
     companyName: "",
     websiteUrl: "",
@@ -208,8 +284,17 @@ export default function Onboarding() {
   const [preview, setPreview] = useState<{
     discoveryId: number;
     sourceUrl: string;
-    proposedKnowledge: Array<{ title: string; content: string; sourceUrl: string; fetchedAt: string; category: string }>;
-    pages: Array<{ url: string; title: string | null; category: string; fetchedAt: string; rendered: boolean; textChars: number }>;
+    proposedKnowledge: WebsiteKnowledgeCandidate[];
+    conflicts: WebsiteConflict[];
+    completeness: WebsiteCompleteness;
+    pages: Array<{
+      url: string;
+      title: string | null;
+      category: string;
+      fetchedAt: string;
+      rendered: boolean;
+      textChars: number;
+    }>;
   } | null>(null);
   const [selectedKnowledge, setSelectedKnowledge] = useState<number[]>([]);
   const [crm, setCrm] = useState<CrmForm>({
@@ -226,8 +311,12 @@ export default function Onboarding() {
   const [browserConnectionId, setBrowserConnectionId] = useState<number | null>(
     null
   );
-  const [commissioning, setCommissioning] = useState<AutomaticCommissioning | null>(null);
+  const [commissioning, setCommissioning] =
+    useState<AutomaticCommissioning | null>(null);
   const [commissioningPending, setCommissioningPending] = useState(false);
+  const [preOtpReadiness, setPreOtpReadiness] =
+    useState<PreOtpReadiness | null>(null);
+  const [preOtpPending, setPreOtpPending] = useState(false);
   const [playbook, setPlaybook] = useState({
     title: "",
     trigger: "",
@@ -254,81 +343,233 @@ export default function Onboarding() {
 
   useEffect(() => {
     if (preview) return;
-    const saved = setup.data?.discoveries.find(discovery => discovery.status === "review_required");
+    const saved = setup.data?.discoveries.find(
+      discovery => discovery.status === "review_required"
+    );
     if (!saved) return;
-    const proposedKnowledge = saved.proposedKnowledge as Array<{ title: string; content: string; sourceUrl: string; fetchedAt: string; category: string }>;
-    const facts = saved.proposedFacts as { pages?: Array<{ url: string; title: string | null; category: string; fetchedAt: string; rendered: boolean; textChars: number }> };
-    setPreview({ discoveryId: saved.id, sourceUrl: saved.sourceUrl, proposedKnowledge, pages: facts.pages ?? [] });
-    setSelectedKnowledge(proposedKnowledge.map((_, index) => index));
+    const proposedKnowledge =
+      saved.proposedKnowledge as WebsiteKnowledgeCandidate[];
+    const facts = saved.proposedFacts as {
+      conflicts?: WebsiteConflict[];
+      completeness?: WebsiteCompleteness;
+      pages?: Array<{
+        url: string;
+        title: string | null;
+        category: string;
+        fetchedAt: string;
+        rendered: boolean;
+        textChars: number;
+      }>;
+    };
+    setPreview({
+      discoveryId: saved.id,
+      sourceUrl: saved.sourceUrl,
+      proposedKnowledge,
+      conflicts: facts.conflicts ?? [],
+      completeness: facts.completeness ?? {
+        pagesCrawled: facts.pages?.length ?? 0,
+        offeringsFound: proposedKnowledge.filter(
+          item => item.category === "offering"
+        ).length,
+        offeringsWithPublishedPrice: proposedKnowledge.filter(
+          item =>
+            item.category === "offering" &&
+            item.content.includes("Price:") &&
+            !item.content.includes("Not clearly stated")
+        ).length,
+        unresolvedConflicts: facts.conflicts?.length ?? 0,
+        financeInformationFound: false,
+        certificationInformationFound: false,
+        supportAndOutcomeInformationFound: false,
+        importantGaps: [],
+      },
+      pages: facts.pages ?? [],
+    });
+    setSelectedKnowledge(
+      proposedKnowledge.flatMap((item, index) =>
+        item.trustEligible === false ? [] : [index]
+      )
+    );
   }, [preview, setup.data?.discoveries]);
 
   useEffect(() => {
     const savedMode = organisation.data?.settings?.workspaceMode;
-    if (savedMode === "individual" || savedMode === "team") setWorkspaceMode(savedMode);
+    if (savedMode === "individual" || savedMode === "team")
+      setWorkspaceMode(savedMode);
     const savedOnboarding = organisation.data?.settings?.onboarding;
-    if (savedOnboarding && typeof savedOnboarding === "object" && "step" in savedOnboarding) {
+    if (
+      savedOnboarding &&
+      typeof savedOnboarding === "object" &&
+      "step" in savedOnboarding
+    ) {
       const savedStep = Number((savedOnboarding as { step?: unknown }).step);
-      if (Number.isInteger(savedStep) && savedStep >= 1 && savedStep <= 6) setStep(savedStep);
+      if (Number.isInteger(savedStep) && savedStep >= 1 && savedStep <= 6)
+        setStep(savedStep);
     }
   }, [organisation.data?.settings]);
 
   useEffect(() => {
     if (browserConnectionId) return;
-    const existing = systems.data?.find(system => system.connectionMethod === "browser");
+    const existing = systems.data?.find(
+      system => system.connectionMethod === "browser"
+    );
     if (existing) setBrowserConnectionId(existing.id);
   }, [browserConnectionId, systems.data]);
 
   const onboardingProgress = trpc.organisation.updateOnboarding.useMutation({
-    onMutate: () => setFeedback({ kind: "loading", title: "Saving setup progress", detail: "Your place in setup is being saved so you can resume later." }),
+    onMutate: () =>
+      setFeedback({
+        kind: "loading",
+        title: "Saving setup progress",
+        detail: "Your place in setup is being saved so you can resume later.",
+      }),
     onSuccess: async result => {
-      if (result.workspaceMode === "individual" || result.workspaceMode === "team") setWorkspaceMode(result.workspaceMode);
+      if (
+        result.workspaceMode === "individual" ||
+        result.workspaceMode === "team"
+      )
+        setWorkspaceMode(result.workspaceMode);
       await utils.organisation.current.invalidate();
-      setFeedback({ kind: "success", title: "Setup progress saved", detail: "You can safely leave and resume this guided setup later." });
+      setFeedback({
+        kind: "success",
+        title: "Setup progress saved",
+        detail: "You can safely leave and resume this guided setup later.",
+      });
     },
-    onError: error => setFeedback({ kind: "error", title: "Setup progress was not saved", detail: `Your current screen is unaffected. ${error.message}`, actionLabel: "Retry", onAction: () => onboardingProgress.mutate({ workspaceMode: workspaceMode ?? undefined, step }) }),
+    onError: error =>
+      setFeedback({
+        kind: "error",
+        title: "Setup progress was not saved",
+        detail: `Your current screen is unaffected. ${error.message}`,
+        actionLabel: "Retry",
+        onAction: () =>
+          onboardingProgress.mutate({
+            workspaceMode: workspaceMode ?? undefined,
+            step,
+          }),
+      }),
   });
 
   const saveProfile = trpc.companySetup.saveProfile.useMutation({
-    onMutate: () => setFeedback({ kind: "loading", title: "Saving business details", detail: "Amarktai is securing the business context for this workspace." }),
+    onMutate: () =>
+      setFeedback({
+        kind: "loading",
+        title: "Saving business details",
+        detail: "Amarktai is securing the business context for this workspace.",
+      }),
     onSuccess: () => {
       utils.companySetup.get.invalidate();
       setStep(2);
       onboardingProgress.mutate({ step: 2 });
       toast.success("Company profile saved.");
-      setFeedback({ kind: "success", title: "Business details saved", detail: "Website discovery can now use this approved starting point." });
+      setFeedback({
+        kind: "success",
+        title: "Business details saved",
+        detail: "Website discovery can now use this approved starting point.",
+      });
     },
-    onError: error => setFeedback({ kind: "error", title: "Business details were not saved", detail: `No discovery was started. ${error.message}`, actionLabel: "Retry save", onAction: () => saveProfile.mutate(profile) }),
+    onError: error =>
+      setFeedback({
+        kind: "error",
+        title: "Business details were not saved",
+        detail: `No discovery was started. ${error.message}`,
+        actionLabel: "Retry save",
+        onAction: () => saveProfile.mutate(profile),
+      }),
   });
   const discover = trpc.companySetup.discoverWebsite.useMutation({
-    onMutate: () => setFeedback({ kind: "loading", title: "Reading the public website", detail: "Amarktai is scanning a bounded set of authorised pages. This can take a moment." }),
+    onMutate: () =>
+      setFeedback({
+        kind: "loading",
+        title: "Reading the public website",
+        detail:
+          "Amarktai is scanning a bounded set of authorised pages. This can take a moment.",
+      }),
     onSuccess: result => {
-      setPreview(result);
-      setSelectedKnowledge(result.proposedKnowledge.map((_, index) => index));
+      const facts = result.proposedFacts as {
+        conflicts?: WebsiteConflict[];
+        completeness: WebsiteCompleteness;
+      };
+      setPreview({
+        ...result,
+        conflicts: facts.conflicts ?? [],
+        completeness: facts.completeness,
+      });
+      setSelectedKnowledge(
+        result.proposedKnowledge.flatMap((item, index) =>
+          item.trustEligible === false ? [] : [index]
+        )
+      );
       setStep(3);
       onboardingProgress.mutate({ step: 3 });
       toast.success(
         "Website context is saved as a review-only draft. Approve facts before Amarktai can trust or use them."
       );
-      setFeedback({ kind: "success", title: "Website review is ready", detail: "The results are review-only. Select and approve facts before they become trusted knowledge." });
+      setFeedback({
+        kind: "success",
+        title: "Website review is ready",
+        detail:
+          "The results are review-only. Select and approve facts before they become trusted knowledge.",
+      });
     },
-    onError: error => setFeedback({ kind: "error", title: "The business website could not be read", detail: `No content became trusted knowledge. Check the public URL or site access and try again. ${error.message}`, actionLabel: "Retry website scan", onAction: () => discover.mutate() }),
+    onError: error =>
+      setFeedback({
+        kind: "error",
+        title: "The business website could not be read",
+        detail: `No content became trusted knowledge. Check the public URL or site access and try again. ${error.message}`,
+        actionLabel: "Retry website scan",
+        onAction: () => discover.mutate(),
+      }),
   });
   const confirm = trpc.companySetup.confirmDiscovery.useMutation({
-    onMutate: () => setFeedback({ kind: "loading", title: "Approving selected knowledge", detail: "Only the facts you selected will become trusted context." }),
+    onMutate: () =>
+      setFeedback({
+        kind: "loading",
+        title: "Approving selected knowledge",
+        detail: "Only the facts you selected will become trusted context.",
+      }),
     onSuccess: () => {
       utils.companySetup.get.invalidate();
       setPreview(null);
       setStep(4);
       onboardingProgress.mutate({ step: 4 });
       toast.success("Selected knowledge was confirmed.");
-      setFeedback({ kind: "success", title: "Knowledge approved", detail: "Sales assistance can now use the confirmed facts and their source references." });
+      setFeedback({
+        kind: "success",
+        title: "Knowledge approved",
+        detail:
+          "Sales assistance can now use the confirmed facts and their source references.",
+      });
     },
-    onError: error => setFeedback({ kind: "error", title: "Knowledge was not approved", detail: `The review remains available and no unconfirmed facts were trusted. ${error.message}`, actionLabel: "Retry approval", onAction: () => preview && confirm.mutate({ discoveryId: preview.discoveryId, knowledgeIndexes: selectedKnowledge, corrections: selectedKnowledge.map(index => ({ index, title: preview.proposedKnowledge[index].title, content: preview.proposedKnowledge[index].content })) }) }),
+    onError: error =>
+      setFeedback({
+        kind: "error",
+        title: "Knowledge was not approved",
+        detail: `The review remains available and no unconfirmed facts were trusted. ${error.message}`,
+        actionLabel: "Retry approval",
+        onAction: () =>
+          preview &&
+          confirm.mutate({
+            discoveryId: preview.discoveryId,
+            knowledgeIndexes: selectedKnowledge,
+            corrections: selectedKnowledge.map(index => ({
+              index,
+              title: preview.proposedKnowledge[index].title,
+              content: preview.proposedKnowledge[index].content,
+            })),
+          }),
+      }),
   });
   const addDomain = trpc.connectedSystems.addDomain.useMutation();
   const beginOAuth = trpc.connectedSystems.beginOAuth.useMutation();
   const addConnection = trpc.connectedSystems.create.useMutation({
-    onMutate: () => setFeedback({ kind: "loading", title: `Connecting ${crm.displayName || "CRM"}`, detail: "Amarktai is creating the governed connection and validating its authorised location." }),
+    onMutate: () =>
+      setFeedback({
+        kind: "loading",
+        title: `Connecting ${crm.displayName || "CRM"}`,
+        detail:
+          "Amarktai is creating the governed connection and validating its authorised location.",
+      }),
     onSuccess: async id => {
       if (!organisationId) return;
       if (isBrowser(crm.provider)) {
@@ -346,24 +587,15 @@ export default function Onboarding() {
         setBrowserCredentials(current => ({ ...current, password: "" }));
         setBrowserConnectionId(id);
         await systems.refetch();
-        setFeedback({ kind: "loading", title: "Setting up your CRM", detail: "Secure sign-in was saved. Amarktai is now checking the connection and every function it can safely verify." });
-        try {
-          const result = await jsonRequest(
-            `/api/connected-system-admin/${id}/commissioning`,
-            { method: "POST", body: "{}" }
-          );
-          setCommissioning(result as AutomaticCommissioning);
-          setFeedback({ kind: "loading", title: "Setting up your CRM", detail: "Amarktai is signing in, discovering functions and testing safe reads in the background." });
-        } catch (error) {
-          console.error("[crm-onboarding] automatic setup failed", error);
-          setFeedback({
-            kind: "error",
-            title: "CRM setup needs attention",
-            detail: humanizeCrmFailure(
-              error instanceof Error ? error.message : String(error)
-            ),
-          });
-        }
+        setPreOtpReadiness(null);
+        setFeedback({
+          kind: "success",
+          title: "Secure CRM sign-in saved",
+          detail:
+            crm.provider === "genie"
+              ? "Before requesting a verification code, check secure sign-in readiness. This does not submit your credentials or generate a code."
+              : "Start automatic setup when you are ready.",
+        });
         return;
       }
       await systems.refetch();
@@ -376,7 +608,14 @@ export default function Onboarding() {
       });
       window.location.assign(result.authorizationUrl);
     },
-    onError: error => setFeedback({ kind: "error", title: "CRM connection could not be created", detail: `No sales action was enabled. Check the sign-in URL and details, then retry. ${error.message}`, actionLabel: "Retry connection", onAction: registerConnection }),
+    onError: error =>
+      setFeedback({
+        kind: "error",
+        title: "CRM connection could not be created",
+        detail: `No sales action was enabled. Check the sign-in URL and details, then retry. ${error.message}`,
+        actionLabel: "Retry connection",
+        onAction: registerConnection,
+      }),
   });
   const savePlaybook = trpc.companySetup.savePlaybook.useMutation({
     onSuccess: () => {
@@ -399,10 +638,14 @@ export default function Onboarding() {
   const browserSystem = systems.data?.find(
     system => system.id === browserConnectionId
   );
-  const browserReadiness = trpc.connectedSystems.browserOperationMatrix.useQuery(
-    { organisationId: organisationId ?? 0, connectedSystemId: browserSystem?.id ?? 0 },
-    { enabled: Boolean(organisationId && browserSystem?.id), retry: false }
-  );
+  const browserReadiness =
+    trpc.connectedSystems.browserOperationMatrix.useQuery(
+      {
+        organisationId: organisationId ?? 0,
+        connectedSystemId: browserSystem?.id ?? 0,
+      },
+      { enabled: Boolean(organisationId && browserSystem?.id), retry: false }
+    );
   useEffect(() => {
     if (!browserSystem?.id || !canManage) return;
     let cancelled = false;
@@ -421,7 +664,12 @@ export default function Onboarding() {
         );
         if (result.job?.status === "ready") {
           await Promise.all([systems.refetch(), browserReadiness.refetch()]);
-          setFeedback({ kind: "success", title: "Your CRM is ready", detail: "Core sales functions were automatically verified. Optional functions that need attention remain safely unavailable." });
+          setFeedback({
+            kind: "success",
+            title: "Your CRM is ready",
+            detail:
+              "Core sales functions were automatically verified. Optional functions that need attention remain safely unavailable.",
+          });
         }
       } catch (error) {
         if (!cancelled)
@@ -440,7 +688,9 @@ export default function Onboarding() {
   const sellingReadiness = onboardingSellingReadiness({
     profileSaved,
     knowledgeConfirmed,
-    nativeSystems: systems.data?.filter(system => system.connectionMethod === "oauth"),
+    nativeSystems: systems.data?.filter(
+      system => system.connectionMethod === "oauth"
+    ),
     browserSystem,
     browserOperations: browserReadiness.data?.operations,
   });
@@ -475,18 +725,74 @@ export default function Onboarding() {
 
   async function startBrowserCommissioning() {
     if (!browserSystem) return;
+    if (browserSystem.provider === "genie" && !preOtpReadiness?.ready) {
+      setFeedback({
+        kind: "error",
+        title: "Secure sign-in is not ready",
+        detail:
+          "Run the readiness check and wait for all four items to pass before requesting a Genie verification code.",
+      });
+      return;
+    }
     try {
       setCommissioningPending(true);
-      setFeedback({ kind: "loading", title: "Setting up your CRM", detail: "Automatic discovery and safe read testing are starting in the background." });
+      setFeedback({
+        kind: "loading",
+        title: "Setting up your CRM",
+        detail:
+          "Automatic discovery and safe read testing are starting in the background.",
+      });
       const result = await jsonRequest(
         `/api/connected-system-admin/${browserSystem.id}/commissioning`,
         { method: "POST", body: "{}" }
       );
       setCommissioning(result as AutomaticCommissioning);
     } catch (error) {
-      setFeedback({ kind: "error", title: "CRM setup could not start", detail: humanizeCrmFailure(error instanceof Error ? error.message : String(error)) });
+      if (browserSystem.provider === "genie") setPreOtpReadiness(null);
+      setFeedback({
+        kind: "error",
+        title: "CRM setup could not start",
+        detail: humanizeCrmFailure(
+          error instanceof Error ? error.message : String(error)
+        ),
+      });
     } finally {
       setCommissioningPending(false);
+    }
+  }
+
+  async function checkPreOtpReadiness() {
+    if (!browserSystem || browserSystem.provider !== "genie") return;
+    try {
+      setPreOtpPending(true);
+      setFeedback({
+        kind: "loading",
+        title: "Checking secure sign-in readiness",
+        detail:
+          "Amarktai is proving browser continuity and the Genie login structure without submitting credentials or generating a verification code.",
+      });
+      const result = (await jsonRequest(
+        `/api/connected-system-admin/${browserSystem.id}/pre-otp`,
+        { method: "POST", body: "{}" }
+      )) as PreOtpReadiness;
+      setPreOtpReadiness(result);
+      setFeedback({
+        kind: "success",
+        title: "Secure sign-in is ready",
+        detail:
+          "All non-MFA checks passed. You can now request one fresh Genie verification code.",
+      });
+    } catch (error) {
+      setPreOtpReadiness(null);
+      setFeedback({
+        kind: "error",
+        title: "Secure sign-in is not ready",
+        detail: humanizeCrmFailure(
+          error instanceof Error ? error.message : String(error)
+        ),
+      });
+    } finally {
+      setPreOtpPending(false);
     }
   }
 
@@ -494,7 +800,8 @@ export default function Onboarding() {
     if (
       !browserSystem ||
       (safeTestMode === "existing" && !safeTestCustomer.trim())
-    ) return;
+    )
+      return;
     try {
       setCommissioningPending(true);
       const result = await jsonRequest(
@@ -514,9 +821,20 @@ export default function Onboarding() {
         }
       );
       setCommissioning(result as AutomaticCommissioning);
-      setFeedback({ kind: "loading", title: "Testing updates", detail: "Amarktai is running only the controlled tests authorised for this setup record and checking every result." });
+      setFeedback({
+        kind: "loading",
+        title: "Testing updates",
+        detail:
+          "Amarktai is running only the controlled tests authorised for this setup record and checking every result.",
+      });
     } catch (error) {
-      setFeedback({ kind: "error", title: "Safe test could not start", detail: humanizeCrmFailure(error instanceof Error ? error.message : String(error)) });
+      setFeedback({
+        kind: "error",
+        title: "Safe test could not start",
+        detail: humanizeCrmFailure(
+          error instanceof Error ? error.message : String(error)
+        ),
+      });
     } finally {
       setCommissioningPending(false);
     }
@@ -539,7 +857,10 @@ export default function Onboarding() {
               need to scan the website, reconnect the CRM or repeat company-wide
               tests.
             </p>
-            <Button onClick={() => navigate("/today")} className="mt-6 bg-emerald-600 hover:bg-emerald-500">
+            <Button
+              onClick={() => navigate("/today")}
+              className="mt-6 bg-emerald-600 hover:bg-emerald-500"
+            >
               Start selling
             </Button>
           </Card>
@@ -576,27 +897,54 @@ export default function Onboarding() {
             <div className="mt-6 grid gap-4 sm:grid-cols-2">
               <button
                 disabled={onboardingProgress.isPending}
-                onClick={() => onboardingProgress.mutate({ workspaceMode: "individual", step: 1 })}
+                onClick={() =>
+                  onboardingProgress.mutate({
+                    workspaceMode: "individual",
+                    step: 1,
+                  })
+                }
                 className="rounded-2xl border border-white/10 bg-[#08172F] p-5 text-left transition hover:border-[#4E8BFF] hover:bg-[#102A56]"
               >
-                <p className="font-display text-2xl font-bold text-white">Just me</p>
-                <p className="mt-2 text-sm leading-6 text-[#A9BFDF]">A focused salesperson workspace without team administration clutter.</p>
+                <p className="font-display text-2xl font-bold text-white">
+                  Just me
+                </p>
+                <p className="mt-2 text-sm leading-6 text-[#A9BFDF]">
+                  A focused salesperson workspace without team administration
+                  clutter.
+                </p>
               </button>
               <button
                 disabled={onboardingProgress.isPending}
-                onClick={() => onboardingProgress.mutate({ workspaceMode: "team", step: 1 })}
+                onClick={() =>
+                  onboardingProgress.mutate({ workspaceMode: "team", step: 1 })
+                }
                 className="rounded-2xl border border-white/10 bg-[#08172F] p-5 text-left transition hover:border-[#4E8BFF] hover:bg-[#102A56]"
               >
-                <p className="font-display text-2xl font-bold text-white">My company / sales team</p>
-                <p className="mt-2 text-sm leading-6 text-[#A9BFDF]">Add members, roles, targets, mappings, assurance, QA, and team reporting.</p>
+                <p className="font-display text-2xl font-bold text-white">
+                  My company / sales team
+                </p>
+                <p className="mt-2 text-sm leading-6 text-[#A9BFDF]">
+                  Add members, roles, targets, mappings, assurance, QA, and team
+                  reporting.
+                </p>
               </button>
             </div>
           </Card>
         )}
         {workspaceMode && (
           <div className="flex items-center justify-between rounded-xl border border-white/10 bg-[#0C1E3E] px-4 py-3 text-sm">
-            <span className="font-bold text-white">Experience: {workspaceMode === "individual" ? "Individual salesperson" : "Company / sales team"}</span>
-            <button onClick={() => setWorkspaceMode(null)} className="font-bold text-[#83AEFF]">Change</button>
+            <span className="font-bold text-white">
+              Experience:{" "}
+              {workspaceMode === "individual"
+                ? "Individual salesperson"
+                : "Company / sales team"}
+            </span>
+            <button
+              onClick={() => setWorkspaceMode(null)}
+              className="font-bold text-[#83AEFF]"
+            >
+              Change
+            </button>
           </div>
         )}
         <nav className="grid gap-2 rounded-[1.5rem] border border-white/10 bg-[#0C1E3E] p-3 sm:grid-cols-6">
@@ -614,554 +962,1082 @@ export default function Onboarding() {
           ))}
         </nav>
 
-        {!workspaceMode ? null : <>
-        {step === 1 && (
-          <Card>
-            <StepHeading
-              icon={Building2}
-              number="01"
-              title="Tell us about your organisation"
-              text="This private profile gives Amarktai the business context it needs to prepare useful sales work."
-            />
-            <div className="mt-6 grid gap-4 sm:grid-cols-2">
-              <Input
-                value={profile.companyName}
-                onChange={event =>
-                  setProfile({ ...profile, companyName: event.target.value })
-                }
-                placeholder="Your organisation"
-                className="border-white/15 bg-[#08172F] text-white"
-              />
-              <Input
-                value={profile.websiteUrl}
-                onChange={event =>
-                  setProfile({ ...profile, websiteUrl: event.target.value })
-                }
-                placeholder="https://example.com"
-                className="border-white/15 bg-[#08172F] text-white"
-              />
-              <Input
-                value={profile.industry}
-                onChange={event =>
-                  setProfile({ ...profile, industry: event.target.value })
-                }
-                placeholder="Industry"
-                className="border-white/15 bg-[#08172F] text-white"
-              />
-              <Input
-                value={profile.primarySalesObjective}
-                onChange={event =>
-                  setProfile({ ...profile, primarySalesObjective: event.target.value })
-                }
-                placeholder="Primary sales objective"
-                className="border-white/15 bg-[#08172F] text-white"
-              />
-            </div>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              <Textarea
-                value={profile.productsServices}
-                onChange={event => setProfile({ ...profile, productsServices: event.target.value })}
-                placeholder="Products and services"
-                className="min-h-24 border-white/15 bg-[#08172F] text-white"
-              />
-              <Textarea
-                value={profile.typicalCustomer}
-                onChange={event => setProfile({ ...profile, typicalCustomer: event.target.value })}
-                placeholder="Typical customer"
-                className="min-h-24 border-white/15 bg-[#08172F] text-white"
-              />
-            </div>
-            <Textarea
-              value={profile.brandVoice}
-              onChange={event =>
-                setProfile({ ...profile, brandVoice: event.target.value })
-              }
-              placeholder="Approved voice, policies, and sales guidance…"
-              className="mt-4 min-h-28 border-white/15 bg-[#08172F] text-white"
-            />
-            <Button
-              disabled={!profile.companyName || saveProfile.isPending}
-              onClick={() => saveProfile.mutate(profile)}
-              className="mt-5 bg-[#1B64F2]"
-            >
-              Save and continue
-            </Button>
-          </Card>
-        )}
-        {step === 2 && (
-          <Card>
-            <StepHeading
-              icon={Globe2}
-              number="02"
-              title="Preview website context"
-              text="A bounded public-site scan blocks private destinations. Results remain review-only until you approve them."
-            />
-            <Button
-              disabled={!profileSaved || discover.isPending}
-              onClick={() => discover.mutate()}
-              className="mt-6 bg-[#1B64F2]"
-            >
-              Start secure preview
-            </Button>
-          </Card>
-        )}
-        {step === 3 && (
-          <Card>
-            <StepHeading
-              icon={BadgeCheck}
-              number="03"
-              title="Confirm usable knowledge"
-              text="Only selected public website facts become approved workspace knowledge."
-            />
-            {preview ? (
-              <>
-                <div className="mt-6 space-y-3">
-                  {preview.proposedKnowledge.map((item, index) => (
-                    <label
-                      key={`${item.title}-${index}`}
-                      className="flex gap-3 rounded-xl border border-white/10 bg-[#08172F] p-4"
+        {!workspaceMode ? null : (
+          <>
+            {step === 1 && (
+              <Card>
+                <StepHeading
+                  icon={Building2}
+                  number="01"
+                  title="Tell us about your organisation"
+                  text="This private profile gives Amarktai the business context it needs to prepare useful sales work."
+                />
+                <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                  <Input
+                    aria-label="Company name"
+                    value={profile.companyName}
+                    onChange={event =>
+                      setProfile({
+                        ...profile,
+                        companyName: event.target.value,
+                      })
+                    }
+                    placeholder="Your organisation"
+                    className="border-white/15 bg-[#08172F] text-white"
+                  />
+                  <Input
+                    aria-label="Company website"
+                    value={profile.websiteUrl}
+                    onChange={event =>
+                      setProfile({ ...profile, websiteUrl: event.target.value })
+                    }
+                    placeholder="https://example.com"
+                    className="border-white/15 bg-[#08172F] text-white"
+                  />
+                  <Input
+                    aria-label="Industry"
+                    value={profile.industry}
+                    onChange={event =>
+                      setProfile({ ...profile, industry: event.target.value })
+                    }
+                    placeholder="Industry"
+                    className="border-white/15 bg-[#08172F] text-white"
+                  />
+                  <Input
+                    aria-label="Primary sales objective"
+                    value={profile.primarySalesObjective}
+                    onChange={event =>
+                      setProfile({
+                        ...profile,
+                        primarySalesObjective: event.target.value,
+                      })
+                    }
+                    placeholder="Primary sales objective"
+                    className="border-white/15 bg-[#08172F] text-white"
+                  />
+                </div>
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <Textarea
+                    aria-label="Products and services"
+                    value={profile.productsServices}
+                    onChange={event =>
+                      setProfile({
+                        ...profile,
+                        productsServices: event.target.value,
+                      })
+                    }
+                    placeholder="Products and services"
+                    className="min-h-24 border-white/15 bg-[#08172F] text-white"
+                  />
+                  <Textarea
+                    aria-label="Typical customer"
+                    value={profile.typicalCustomer}
+                    onChange={event =>
+                      setProfile({
+                        ...profile,
+                        typicalCustomer: event.target.value,
+                      })
+                    }
+                    placeholder="Typical customer"
+                    className="min-h-24 border-white/15 bg-[#08172F] text-white"
+                  />
+                </div>
+                <Textarea
+                  aria-label="Approved voice, policies, and sales guidance"
+                  value={profile.brandVoice}
+                  onChange={event =>
+                    setProfile({ ...profile, brandVoice: event.target.value })
+                  }
+                  placeholder="Approved voice, policies, and sales guidance…"
+                  className="mt-4 min-h-28 border-white/15 bg-[#08172F] text-white"
+                />
+                <Button
+                  disabled={!profile.companyName || saveProfile.isPending}
+                  onClick={() => saveProfile.mutate(profile)}
+                  className="mt-5 bg-[#1B64F2]"
+                >
+                  Save and continue
+                </Button>
+              </Card>
+            )}
+            {step === 2 && (
+              <Card>
+                <StepHeading
+                  icon={Globe2}
+                  number="02"
+                  title="Preview website context"
+                  text="A bounded public-site scan blocks private destinations. Results remain review-only until you approve them."
+                />
+                <Button
+                  disabled={!profileSaved || discover.isPending}
+                  onClick={() => discover.mutate()}
+                  className="mt-6 bg-[#1B64F2]"
+                >
+                  Start secure preview
+                </Button>
+              </Card>
+            )}
+            {step === 3 && (
+              <Card>
+                <StepHeading
+                  icon={BadgeCheck}
+                  number="03"
+                  title="Confirm usable knowledge"
+                  text="Only selected public website facts become approved workspace knowledge."
+                />
+                {preview ? (
+                  <>
+                    <section className="mt-6 rounded-xl border border-white/10 bg-[#08172F] p-4">
+                      <h3 className="font-bold text-white">
+                        Discovery summary
+                      </h3>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                        {[
+                          ["Pages reviewed", preview.completeness.pagesCrawled],
+                          [
+                            "Offerings found",
+                            preview.completeness.offeringsFound,
+                          ],
+                          [
+                            "Offerings with prices",
+                            preview.completeness.offeringsWithPublishedPrice,
+                          ],
+                          [
+                            "Conflicts needing review",
+                            preview.completeness.unresolvedConflicts,
+                          ],
+                        ].map(([label, value]) => (
+                          <div
+                            key={label}
+                            className="rounded-lg bg-[#071326] p-3"
+                          >
+                            <p className="text-[10px] font-black uppercase tracking-[.1em] text-[#7896C1]">
+                              {label}
+                            </p>
+                            <p className="mt-1 text-2xl font-bold text-white">
+                              {value}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
+                        <span
+                          className={
+                            preview.completeness.financeInformationFound
+                              ? "text-emerald-200"
+                              : "text-amber-100"
+                          }
+                        >
+                          Finance information:{" "}
+                          {preview.completeness.financeInformationFound
+                            ? "Found"
+                            : "Not found"}
+                        </span>
+                        <span
+                          className={
+                            preview.completeness.certificationInformationFound
+                              ? "text-emerald-200"
+                              : "text-amber-100"
+                          }
+                        >
+                          Certification information:{" "}
+                          {preview.completeness.certificationInformationFound
+                            ? "Found"
+                            : "Not found"}
+                        </span>
+                        <span
+                          className={
+                            preview.completeness
+                              .supportAndOutcomeInformationFound
+                              ? "text-emerald-200"
+                              : "text-amber-100"
+                          }
+                        >
+                          Support & outcomes:{" "}
+                          {preview.completeness
+                            .supportAndOutcomeInformationFound
+                            ? "Found"
+                            : "Not found"}
+                        </span>
+                      </div>
+                      <div className="mt-3 rounded-lg border border-amber-300/20 bg-amber-400/[.05] p-3 text-xs leading-5 text-amber-100">
+                        <strong>Coverage gaps:</strong>{" "}
+                        {preview.completeness.importantGaps.length
+                          ? preview.completeness.importantGaps.join(" ")
+                          : "No important gaps were identified by this scan. Confirm the sources below before approval."}
+                      </div>
+                    </section>
+                    {preview.conflicts.length > 0 && (
+                      <div className="mt-6 space-y-3 rounded-xl border border-rose-300/25 bg-rose-400/[.06] p-4">
+                        <p className="font-bold text-rose-100">
+                          Conflicting website facts need a decision
+                        </p>
+                        <p className="text-sm leading-6 text-[#C6D5EA]">
+                          These values came from different pages. Compare every
+                          source, correct the related draft below, then
+                          explicitly mark it corrected before approval.
+                        </p>
+                        {preview.conflicts.map((conflict, conflictIndex) => (
+                          <div
+                            key={`${conflict.type}-${conflictIndex}`}
+                            className="rounded-lg bg-[#071326] p-3 text-xs text-[#A9BFDF]"
+                          >
+                            <p className="font-bold text-white">
+                              {conflict.displayNames.join(" / ") ||
+                                "Published price"}
+                              : {conflict.values.join(" versus ")}
+                            </p>
+                            <ul className="mt-2 space-y-1">
+                              {conflict.sources.map(source => (
+                                <li key={source.sourceUrl}>
+                                  <a
+                                    href={source.sourceUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="font-bold text-[#83AEFF]"
+                                  >
+                                    {source.sourceUrl}
+                                  </a>
+                                  {` — ${source.prices.join(", ")} · read ${new Date(source.fetchedAt).toLocaleString()}`}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="mt-6 space-y-3">
+                      {preview.proposedKnowledge
+                        .map((item, index) => ({ item, index }))
+                        .sort(
+                          (left, right) =>
+                            KNOWLEDGE_GROUPS.indexOf(
+                              knowledgeGroup(left.item.category)
+                            ) -
+                            KNOWLEDGE_GROUPS.indexOf(
+                              knowledgeGroup(right.item.category)
+                            )
+                        )
+                        .map(({ item, index }, displayIndex, sorted) => (
+                          <div key={`${item.title}-${index}-review`}>
+                            {(displayIndex === 0 ||
+                              knowledgeGroup(
+                                sorted[displayIndex - 1].item.category
+                              ) !== knowledgeGroup(item.category)) && (
+                              <h3 className="pb-2 pt-4 font-display text-xl font-bold text-white">
+                                {knowledgeGroup(item.category)}
+                              </h3>
+                            )}
+                            <div
+                              key={`${item.title}-${index}`}
+                              className="flex gap-3 rounded-xl border border-white/10 bg-[#08172F] p-4"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedKnowledge.includes(index)}
+                                disabled={item.trustEligible === false}
+                                aria-label={`Approve ${item.title}`}
+                                onChange={() =>
+                                  setSelectedKnowledge(
+                                    selectedKnowledge.includes(index)
+                                      ? selectedKnowledge.filter(
+                                          value => value !== index
+                                        )
+                                      : [...selectedKnowledge, index]
+                                  )
+                                }
+                              />
+                              <span className="min-w-0 flex-1">
+                                <div className="mb-2 flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[.1em]">
+                                  <span
+                                    className={
+                                      item.reviewState === "conflict"
+                                        ? "rounded-full bg-rose-400/15 px-2 py-1 text-rose-100"
+                                        : "rounded-full bg-amber-400/15 px-2 py-1 text-amber-100"
+                                    }
+                                  >
+                                    {item.reviewState === "conflict"
+                                      ? "Conflicting sources"
+                                      : "Review required"}
+                                  </span>
+                                  {item.confidence && (
+                                    <span className="text-[#83AEFF]">
+                                      {item.confidence} confidence
+                                    </span>
+                                  )}
+                                  {item.evidenceBasis && (
+                                    <span className="text-[#7896C1]">
+                                      {item.evidenceBasis.replaceAll("_", " ")}
+                                    </span>
+                                  )}
+                                </div>
+                                <Input
+                                  value={item.title}
+                                  onChange={event =>
+                                    setPreview(current =>
+                                      current
+                                        ? {
+                                            ...current,
+                                            proposedKnowledge:
+                                              current.proposedKnowledge.map(
+                                                (candidate, position) =>
+                                                  position === index
+                                                    ? {
+                                                        ...candidate,
+                                                        title:
+                                                          event.target.value,
+                                                      }
+                                                    : candidate
+                                              ),
+                                          }
+                                        : current
+                                    )
+                                  }
+                                  className="border-white/15 bg-[#071326] font-bold text-white"
+                                  aria-label={`Correct the title for ${item.title}`}
+                                />
+                                <Textarea
+                                  value={item.content}
+                                  onChange={event =>
+                                    setPreview(current =>
+                                      current
+                                        ? {
+                                            ...current,
+                                            proposedKnowledge:
+                                              current.proposedKnowledge.map(
+                                                (candidate, position) =>
+                                                  position === index
+                                                    ? {
+                                                        ...candidate,
+                                                        content:
+                                                          event.target.value,
+                                                      }
+                                                    : candidate
+                                              ),
+                                          }
+                                        : current
+                                    )
+                                  }
+                                  className="mt-2 min-h-24 border-white/15 bg-[#071326] text-sm text-[#DCE7F8]"
+                                  aria-label={`Correct ${item.title}`}
+                                />
+                                {item.sourceUrl ? (
+                                  <a
+                                    href={item.sourceUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="mt-2 block text-xs font-bold text-[#83AEFF]"
+                                  >
+                                    Source: {item.sourceUrl} ·{" "}
+                                    {item.fetchedAt
+                                      ? `read ${new Date(item.fetchedAt).toLocaleString()}`
+                                      : "saved discovery"}
+                                  </a>
+                                ) : null}
+                                {item.trustEligible === false && (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="mt-3 border-rose-300/25 bg-rose-400/[.06] text-rose-100"
+                                    onClick={() =>
+                                      setPreview(current =>
+                                        current
+                                          ? {
+                                              ...current,
+                                              proposedKnowledge:
+                                                current.proposedKnowledge.map(
+                                                  (candidate, position) =>
+                                                    position === index
+                                                      ? {
+                                                          ...candidate,
+                                                          trustEligible: true,
+                                                          reviewState:
+                                                            "review_required",
+                                                        }
+                                                      : candidate
+                                                ),
+                                            }
+                                          : current
+                                      )
+                                    }
+                                  >
+                                    I corrected this conflict
+                                  </Button>
+                                )}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                    <Button
+                      disabled={confirm.isPending}
+                      onClick={() =>
+                        confirm.mutate({
+                          discoveryId: preview.discoveryId,
+                          knowledgeIndexes: selectedKnowledge,
+                          corrections: selectedKnowledge.map(index => ({
+                            index,
+                            title: preview.proposedKnowledge[index].title,
+                            content: preview.proposedKnowledge[index].content,
+                          })),
+                        })
+                      }
+                      className="mt-5 bg-[#1B64F2]"
                     >
-                      <input
-                        type="checkbox"
-                        checked={selectedKnowledge.includes(index)}
-                        onChange={() =>
-                          setSelectedKnowledge(
-                            selectedKnowledge.includes(index)
-                              ? selectedKnowledge.filter(
-                                  value => value !== index
-                                )
-                              : [...selectedKnowledge, index]
-                          )
-                        }
-                      />
-                      <span>
-                        <Input
-                          value={item.title}
-                          onChange={event => setPreview(current => current ? { ...current, proposedKnowledge: current.proposedKnowledge.map((candidate, position) => position === index ? { ...candidate, title: event.target.value } : candidate) } : current)}
-                          className="border-white/15 bg-[#071326] font-bold text-white"
-                          aria-label={`Correct the title for ${item.title}`}
-                        />
-                        <Textarea value={item.content} onChange={event => setPreview(current => current ? { ...current, proposedKnowledge: current.proposedKnowledge.map((candidate, position) => position === index ? { ...candidate, content: event.target.value } : candidate) } : current)} className="mt-2 min-h-24 border-white/15 bg-[#071326] text-sm text-[#DCE7F8]" aria-label={`Correct ${item.title}`} />
-                        {item.sourceUrl ? <a href={item.sourceUrl} target="_blank" rel="noreferrer" className="mt-2 block text-xs font-bold text-[#83AEFF]">
-                          Source: {item.sourceUrl} · {item.fetchedAt ? `read ${new Date(item.fetchedAt).toLocaleString()}` : "saved discovery"}
-                        </a> : null}
-                      </span>
-                    </label>
+                      Confirm selected knowledge
+                    </Button>
+                  </>
+                ) : (
+                  <p className="mt-5 text-sm text-[#A9BFDF]">
+                    Start a fresh website preview first.
+                  </p>
+                )}
+              </Card>
+            )}
+            {step === 4 && (
+              <Card>
+                <StepHeading
+                  icon={Network}
+                  number="04"
+                  title="Connect the CRM you already use"
+                  text="Choose your CRM and sign in. Amarktai automatically uses the correct secure connection, discovery and testing flow."
+                />
+                <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {(
+                    [
+                      "genie",
+                      "hubspot",
+                      "salesforce",
+                      "pipedrive",
+                      "zoho",
+                      "custom_browser",
+                    ] as Provider[]
+                  ).map(provider => (
+                    <button
+                      type="button"
+                      key={provider}
+                      onClick={() => selectProvider(provider)}
+                      className={`rounded-2xl border p-4 text-left transition ${crm.provider === provider ? "border-[#4E8BFF] bg-[#153B7A]" : "border-white/10 bg-[#08172F] hover:border-white/25"}`}
+                    >
+                      <p className="font-display text-xl font-bold text-white">
+                        {providerLabels[provider]}
+                      </p>
+                      <p className="mt-1 text-xs text-[#A9BFDF]">
+                        {isBrowser(provider)
+                          ? "Secure browser connection"
+                          : "Secure provider sign-in"}
+                      </p>
+                    </button>
                   ))}
                 </div>
+                <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                  {isBrowser(crm.provider) && (
+                    <>
+                      <Input
+                        value={crm.baseUrl}
+                        onChange={event =>
+                          setCrm({ ...crm, baseUrl: event.target.value })
+                        }
+                        placeholder="https://crm.company.example/login"
+                        className="border-white/15 bg-[#08172F] text-white sm:col-span-2"
+                        aria-label="CRM login page"
+                      />
+                      <Input
+                        value={browserCredentials.username}
+                        onChange={event =>
+                          setBrowserCredentials({
+                            ...browserCredentials,
+                            username: event.target.value,
+                          })
+                        }
+                        placeholder="Username or email"
+                        autoComplete="off"
+                        className="border-white/15 bg-[#08172F] text-white"
+                      />
+                      <Input
+                        type="password"
+                        value={browserCredentials.password}
+                        onChange={event =>
+                          setBrowserCredentials({
+                            ...browserCredentials,
+                            password: event.target.value,
+                          })
+                        }
+                        placeholder="Password"
+                        autoComplete="new-password"
+                        className="border-white/15 bg-[#08172F] text-white"
+                      />
+                    </>
+                  )}
+                </div>
+                <p className="mt-4 text-sm leading-6 text-[#A9BFDF]">
+                  Amarktai will discover the functions permitted by this
+                  account. You do not need to choose technical permissions
+                  manually.
+                </p>
                 <Button
-                  disabled={confirm.isPending}
+                  disabled={
+                    !organisationId ||
+                    !crm.displayName.trim() ||
+                    !crm.capabilities.length ||
+                    (isBrowser(crm.provider) && !crm.baseUrl.trim()) ||
+                    (isBrowser(crm.provider) &&
+                      (!browserCredentials.username.trim() ||
+                        !browserCredentials.password)) ||
+                    addConnection.isPending ||
+                    beginOAuth.isPending
+                  }
+                  onClick={registerConnection}
+                  className="mt-5 bg-[#1B64F2]"
+                >
+                  <Plus className="mr-2 size-4" />
+                  {isBrowser(crm.provider) ? "Connect" : "Sign in securely"}
+                </Button>
+                {browserSystem && organisationId && (
+                  <section className="mt-6 space-y-5 rounded-2xl border border-[#4E8BFF]/35 bg-[#071326] p-5">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#83AEFF]">
+                        Connect → Discover → Test → Ready
+                      </p>
+                      <h3 className="mt-1 font-display text-2xl font-bold text-white">
+                        Setting up your CRM
+                      </h3>
+                      <p className="mt-2 text-xs leading-5 text-[#A9BFDF]">
+                        Amarktai checks sign-in and discovers CRM functions
+                        automatically. A function is shown as Ready only after
+                        the existing safe test confirms it; optional functions
+                        can remain unavailable without blocking your core sales
+                        work.
+                      </p>
+                    </div>
+                    {commissioning && (
+                      <div className="rounded-xl border border-white/10 bg-[#08172F] p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-[.12em] text-[#83AEFF]">
+                              CRM
+                            </p>
+                            <p className="font-bold text-white">
+                              {browserSystem.displayName || "Genie"}
+                            </p>
+                            <p className="mt-1 text-xs text-[#B7CAE7]">
+                              {commissioning.humanStatus}
+                            </p>
+                          </div>
+                          <span
+                            className={`text-xs font-bold ${commissioning.status === "ready" ? "text-emerald-200" : commissioning.advancedFallback ? "text-amber-100" : "text-[#9FC2FF]"}`}
+                          >
+                            {commissioning.status === "ready"
+                              ? "Ready"
+                              : commissioning.advancedFallback
+                                ? "Needs setup"
+                                : "Working"}
+                          </span>
+                        </div>
+                        <div className="mt-3 grid gap-2 text-xs text-[#B7CAE7] sm:grid-cols-2">
+                          {[
+                            {
+                              label: "Signed in",
+                              value: commissioning.progress.authentication,
+                              active: commissioning.state === "AUTHENTICATE",
+                            },
+                            {
+                              label: "Secure session checked",
+                              value: commissioning.progress.sessionReplay,
+                            },
+                            {
+                              label: "CRM discovered",
+                              value: commissioning.progress.capabilities,
+                              active: [
+                                "DISCOVER_NAVIGATION",
+                                "DISCOVER_CAPABILITIES",
+                              ].includes(commissioning.state),
+                            },
+                            {
+                              label: "Customer data checked",
+                              value: commissioning.progress.safeReads,
+                              active: commissioning.state === "TEST_SAFE_READS",
+                            },
+                            {
+                              label: "Test update approved",
+                              value: commissioning.progress.controlledWrites,
+                              active: [
+                                "TEST_CONTROLLED_WRITES",
+                                "VERIFY_READBACK",
+                              ].includes(commissioning.state),
+                              awaitingApproval: commissioning.safeTestRequired,
+                            },
+                            {
+                              label: "Update verified",
+                              value: commissioning.progress.readback,
+                              active: commissioning.state === "VERIFY_READBACK",
+                            },
+                            {
+                              label: "Ready",
+                              value:
+                                commissioning.status === "ready"
+                                  ? "complete"
+                                  : undefined,
+                              active:
+                                commissioning.state ===
+                                "PUBLISH_PROVEN_OPERATIONS",
+                            },
+                          ].map(item => {
+                            const stepLabel = setupStepLabel(item);
+                            return (
+                              <div
+                                key={item.label}
+                                className="flex items-center justify-between rounded-lg bg-black/15 px-3 py-2"
+                              >
+                                <span>{item.label}</span>
+                                <span
+                                  className={
+                                    stepLabel === "Complete"
+                                      ? "font-bold text-emerald-200"
+                                      : stepLabel === "Awaiting approval"
+                                        ? "font-bold text-amber-100"
+                                        : stepLabel === "Running"
+                                          ? "font-bold text-[#9FC2FF]"
+                                          : "text-[#7896C1]"
+                                  }
+                                >
+                                  {stepLabel}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    {browserSystem.provider === "genie" &&
+                      (!commissioning ||
+                        ["needs_attention", "failed", "cancelled"].includes(
+                          commissioning.status
+                        )) && (
+                        <div className="space-y-3 rounded-xl border border-[#4E8BFF]/25 bg-[#0B1B36] p-4">
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            {(
+                              [
+                                ["browserReady", "Browser ready"],
+                                [
+                                  "genieLoginReachable",
+                                  "Genie login reachable",
+                                ],
+                                ["secureSignInReady", "Secure sign-in ready"],
+                                [
+                                  "sessionHandoffReady",
+                                  "Session handoff ready",
+                                ],
+                              ] as const
+                            ).map(([key, label]) => {
+                              const passed =
+                                preOtpReadiness?.states[key] === true;
+                              return (
+                                <div
+                                  key={key}
+                                  className="flex items-center justify-between rounded-lg bg-black/15 px-3 py-2 text-xs"
+                                >
+                                  <span className="text-[#C7D6EC]">
+                                    {label}
+                                  </span>
+                                  <span
+                                    className={
+                                      passed
+                                        ? "font-bold text-emerald-200"
+                                        : "text-[#7896C1]"
+                                    }
+                                  >
+                                    {passed ? "Ready" : "Not checked"}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              variant="outline"
+                              onClick={() => void checkPreOtpReadiness()}
+                              disabled={
+                                preOtpPending ||
+                                !managementStatus.data?.elevated
+                              }
+                              className="border-white/15 bg-white/5 text-white"
+                            >
+                              {preOtpPending
+                                ? "Checking readiness…"
+                                : "Check secure sign-in readiness"}
+                            </Button>
+                            <Button
+                              onClick={() => void startBrowserCommissioning()}
+                              disabled={
+                                commissioningPending || !preOtpReadiness?.ready
+                              }
+                              className="bg-[#1B64F2]"
+                            >
+                              {commissioningPending
+                                ? "Requesting code…"
+                                : "Request Genie verification code"}
+                            </Button>
+                          </div>
+                          {!managementStatus.data?.elevated && (
+                            <p className="text-xs text-amber-100">
+                              Re-verify management mode above before checking
+                              secure sign-in readiness.
+                            </p>
+                          )}
+                          {managementStatus.data?.elevated &&
+                            preOtpReadiness && (
+                              <details className="rounded-lg border border-white/10 p-3">
+                                <summary className="cursor-pointer text-xs font-bold text-[#9FC2FF]">
+                                  Advanced diagnostics
+                                </summary>
+                                <div className="mt-2 grid gap-1 text-[11px] text-[#91A9CF]">
+                                  {preOtpReadiness.advancedDiagnostics.map(
+                                    item => (
+                                      <div
+                                        key={item.check}
+                                        className="flex justify-between gap-4"
+                                      >
+                                        <span>{item.check}</span>
+                                        <span
+                                          className={
+                                            item.passed
+                                              ? "text-emerald-200"
+                                              : "text-rose-200"
+                                          }
+                                        >
+                                          {item.passed ? "Pass" : "Blocked"}
+                                        </span>
+                                      </div>
+                                    )
+                                  )}
+                                </div>
+                              </details>
+                            )}
+                        </div>
+                      )}
+                    {browserSystem.provider !== "genie" &&
+                      (!commissioning ||
+                        ["needs_attention", "failed", "cancelled"].includes(
+                          commissioning.status
+                        )) && (
+                        <Button
+                          onClick={() => void startBrowserCommissioning()}
+                          disabled={commissioningPending}
+                          className="bg-[#1B64F2]"
+                        >
+                          {commissioningPending
+                            ? "Setting up CRM…"
+                            : commissioning
+                              ? "Retry CRM setup"
+                              : "Start automatic setup"}
+                        </Button>
+                      )}
+                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                      {CRM_CAPABILITY_PRESENTATION.map(capability => {
+                        const status = humanBrowserCapabilityStatus(
+                          browserReadiness.data?.operations,
+                          capability.keys
+                        );
+                        return (
+                          <div
+                            key={capability.label}
+                            className="rounded-xl border border-white/10 bg-[#08172F] p-3"
+                          >
+                            <p className="text-sm font-bold text-white">
+                              {capability.label}
+                            </p>
+                            <p
+                              className={`mt-1 text-xs font-bold ${status === "Ready" ? "text-emerald-200" : status === "Failed" ? "text-rose-200" : "text-amber-100"}`}
+                            >
+                              {status}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {commissioning?.safeTestRequired && (
+                      <div className="rounded-xl border border-amber-300/20 bg-amber-400/[.06] p-4">
+                        <h4 className="font-bold text-amber-100">
+                          Complete your CRM setup
+                        </h4>
+                        <p className="mt-2 text-xs leading-5 text-[#D7C9A4]">
+                          To make sure Amarktai can update your CRM safely,
+                          choose a test customer. Amarktai will then run the
+                          available controlled tests automatically and verify
+                          each result.
+                        </p>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                          <label className="flex items-center gap-2 text-xs text-white">
+                            <input
+                              type="radio"
+                              checked={safeTestMode === "existing"}
+                              onChange={() => setSafeTestMode("existing")}
+                            />
+                            Enter an existing CRM test record
+                          </label>
+                          {commissioning.temporaryRecordSupported && (
+                            <label className="flex items-center gap-2 text-xs text-white">
+                              <input
+                                type="radio"
+                                checked={safeTestMode === "temporary"}
+                                onChange={() => setSafeTestMode("temporary")}
+                              />
+                              Create an Amarktai Setup Test contact
+                            </label>
+                          )}
+                        </div>
+                        {safeTestMode === "existing" ? (
+                          <Input
+                            value={safeTestCustomer}
+                            onChange={event =>
+                              setSafeTestCustomer(event.target.value)
+                            }
+                            placeholder="Exact CRM contact ID, email, phone, or unique name"
+                            className="mt-3 border-white/15 bg-[#071326] text-white"
+                          />
+                        ) : (
+                          <p className="mt-3 text-xs leading-5 text-[#D7C9A4]">
+                            Amarktai will create an explicitly labelled
+                            temporary contact and retain its exact ID. It
+                            remains for a manager to remove unless this
+                            connector has an already verified, explicitly safe
+                            delete operation.
+                          </p>
+                        )}
+                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                          <Input
+                            value={safeTestEmail}
+                            onChange={event =>
+                              setSafeTestEmail(event.target.value)
+                            }
+                            placeholder="Authorised test email (optional)"
+                            className="border-white/15 bg-[#071326] text-white"
+                          />
+                          <Input
+                            value={safeTestPhone}
+                            onChange={event =>
+                              setSafeTestPhone(event.target.value)
+                            }
+                            placeholder="Authorised test phone (optional)"
+                            className="border-white/15 bg-[#071326] text-white"
+                          />
+                        </div>
+                        <p className="mt-2 text-xs leading-5 text-[#D7C9A4]">
+                          Messaging and calling are tested only when you provide
+                          the matching authorised destination. Otherwise those
+                          optional functions remain unavailable.
+                        </p>
+                        {canManage && (
+                          <Button
+                            variant="outline"
+                            disabled={
+                              (safeTestMode === "existing" &&
+                                !safeTestCustomer.trim()) ||
+                              commissioningPending
+                            }
+                            onClick={() => void approveSafeTestRecord()}
+                            className="mt-3 border-white/15 bg-white/5 text-white"
+                          >
+                            Approve and test automatically
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                    {canManage && commissioning?.advancedFallback && (
+                      <details className="rounded-xl border border-white/10 bg-[#08172F] p-4">
+                        <summary className="cursor-pointer text-sm font-bold text-[#A9C7FF]">
+                          Advanced CRM Setup
+                        </summary>
+                        <p className="mt-2 text-xs leading-5 text-[#91A9CF]">
+                          Automatic setup could not safely finish one or more
+                          functions. Manager-only calibration, diagnostics and
+                          individual replay remain available as fallback.
+                        </p>
+                        <Button
+                          variant="outline"
+                          onClick={() => navigate("/connections")}
+                          className="mt-3 border-white/15 bg-white/5 text-white"
+                        >
+                          Open Advanced CRM Setup
+                        </Button>
+                      </details>
+                    )}
+                    <div className="flex justify-end">
+                      <Button
+                        onClick={() => setStep(5)}
+                        disabled={!sellingReadiness.coreGenieReady}
+                        className="bg-emerald-600 hover:bg-emerald-500"
+                      >
+                        Continue to automation rules
+                      </Button>
+                    </div>
+                  </section>
+                )}
+                {systems.data?.some(
+                  system => system.connectionMethod === "oauth"
+                ) && (
+                  <div className="mt-6 space-y-2 rounded-xl border border-white/10 bg-[#08172F] p-4">
+                    <p className="text-sm font-bold text-white">
+                      Connected CRM
+                    </p>
+                    {systems.data
+                      .filter(system => system.connectionMethod === "oauth")
+                      .map(system => {
+                        const checked = [
+                          "ready",
+                          "limited_permissions",
+                        ].includes(system.status);
+                        return (
+                          <div
+                            key={system.id}
+                            className="flex items-center justify-between gap-3 rounded-lg bg-black/15 px-3 py-2"
+                          >
+                            <span className="text-sm text-[#DCE7F8]">
+                              {system.displayName}
+                            </span>
+                            <span
+                              className={`text-xs font-bold ${checked ? "text-emerald-200" : "text-amber-100"}`}
+                            >
+                              {checked
+                                ? "Connected and checked"
+                                : "Needs setup"}
+                            </span>
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
+                <div className="mt-6 rounded-xl border border-white/10 bg-[#08172F] p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="font-bold text-white">
+                        Microsoft 365 / Outlook
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-[#A9BFDF]">
+                        Optional reviewed sales email and calendar actions use
+                        the approved Microsoft Graph tenant configured for this
+                        deployment.
+                      </p>
+                    </div>
+                    <span
+                      className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${outlook.data?.ready ? "bg-emerald-400/15 text-emerald-200" : "bg-white/8 text-[#A9BFDF]"}`}
+                    >
+                      {outlook.data?.ready ? "Configured" : "Not configured"}
+                    </span>
+                  </div>
+                </div>
+              </Card>
+            )}
+            {step === 5 && (
+              <Card>
+                <StepHeading
+                  icon={ShieldCheck}
+                  number="05"
+                  title="Choose the first safe automation rule"
+                  text="Playbooks prepare controlled work. They never authorise external actions."
+                />
+                <Input
+                  value={playbook.title}
+                  onChange={event =>
+                    setPlaybook({ ...playbook, title: event.target.value })
+                  }
+                  placeholder="Playbook title"
+                  className="mt-6 border-white/15 bg-[#08172F] text-white"
+                />
+                <Input
+                  value={playbook.trigger}
+                  onChange={event =>
+                    setPlaybook({ ...playbook, trigger: event.target.value })
+                  }
+                  placeholder="Trigger"
+                  className="mt-4 border-white/15 bg-[#08172F] text-white"
+                />
+                <Textarea
+                  value={playbook.description}
+                  onChange={event =>
+                    setPlaybook({
+                      ...playbook,
+                      description: event.target.value,
+                    })
+                  }
+                  placeholder="What should the assistant prepare?"
+                  className="mt-4 min-h-28 border-white/15 bg-[#08172F] text-white"
+                />
+                <Button
+                  disabled={
+                    !playbook.title ||
+                    !playbook.trigger ||
+                    !playbook.description ||
+                    savePlaybook.isPending
+                  }
                   onClick={() =>
-                    confirm.mutate({ discoveryId: preview.discoveryId, knowledgeIndexes: selectedKnowledge, corrections: selectedKnowledge.map(index => ({ index, title: preview.proposedKnowledge[index].title, content: preview.proposedKnowledge[index].content })) })
+                    savePlaybook.mutate({
+                      ...playbook,
+                      requiredCapabilities: ["tasks"],
+                      status: "draft",
+                    })
                   }
                   className="mt-5 bg-[#1B64F2]"
                 >
-                  Confirm selected knowledge
+                  Save playbook
                 </Button>
-              </>
-            ) : (
-              <p className="mt-5 text-sm text-[#A9BFDF]">
-                Start a fresh website preview first.
-              </p>
+              </Card>
             )}
-          </Card>
-        )}
-        {step === 4 && (
-          <Card>
-            <StepHeading
-              icon={Network}
-              number="04"
-              title="Connect the CRM you already use"
-              text="Choose your CRM and sign in. Amarktai automatically uses the correct secure connection, discovery and testing flow."
-            />
-            <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {(
-                [
-                  "genie",
-                  "hubspot",
-                  "salesforce",
-                  "pipedrive",
-                  "zoho",
-                  "custom_browser",
-                ] as Provider[]
-              ).map(provider => (
-                <button
-                  type="button"
-                  key={provider}
-                  onClick={() => selectProvider(provider)}
-                  className={`rounded-2xl border p-4 text-left transition ${crm.provider === provider ? "border-[#4E8BFF] bg-[#153B7A]" : "border-white/10 bg-[#08172F] hover:border-white/25"}`}
-                >
-                  <p className="font-display text-xl font-bold text-white">
-                    {providerLabels[provider]}
-                  </p>
-                  <p className="mt-1 text-xs text-[#A9BFDF]">
-                    {isBrowser(provider)
-                      ? "Secure browser connection"
-                      : "Secure provider sign-in"}
-                  </p>
-                </button>
-              ))}
-            </div>
-            <div className="mt-5 grid gap-4 sm:grid-cols-2">
-              {isBrowser(crm.provider) && (
-                <>
-                  <Input
-                    value={crm.baseUrl}
-                    onChange={event =>
-                      setCrm({ ...crm, baseUrl: event.target.value })
-                    }
-                    placeholder="https://crm.company.example/login"
-                    className="border-white/15 bg-[#08172F] text-white sm:col-span-2"
-                    aria-label="CRM login page"
-                  />
-                  <Input
-                    value={browserCredentials.username}
-                    onChange={event =>
-                      setBrowserCredentials({
-                        ...browserCredentials,
-                        username: event.target.value,
-                      })
-                    }
-                    placeholder="Username or email"
-                    autoComplete="off"
-                    className="border-white/15 bg-[#08172F] text-white"
-                  />
-                  <Input
-                    type="password"
-                    value={browserCredentials.password}
-                    onChange={event =>
-                      setBrowserCredentials({
-                        ...browserCredentials,
-                        password: event.target.value,
-                      })
-                    }
-                    placeholder="Password"
-                    autoComplete="new-password"
-                    className="border-white/15 bg-[#08172F] text-white"
-                  />
-                </>
-              )}
-            </div>
-            <p className="mt-4 text-sm leading-6 text-[#A9BFDF]">
-              Amarktai will discover the functions permitted by this account.
-              You do not need to choose technical permissions manually.
-            </p>
-            <Button
-              disabled={
-                !organisationId ||
-                !crm.displayName.trim() ||
-                !crm.capabilities.length ||
-                (isBrowser(crm.provider) && !crm.baseUrl.trim()) ||
-                (isBrowser(crm.provider) &&
-                  (!browserCredentials.username.trim() ||
-                    !browserCredentials.password)) ||
-                addConnection.isPending ||
-                beginOAuth.isPending
-              }
-              onClick={registerConnection}
-              className="mt-5 bg-[#1B64F2]"
-            >
-              <Plus className="mr-2 size-4" />
-              {isBrowser(crm.provider) ? "Connect" : "Sign in securely"}
-            </Button>
-            {browserSystem && organisationId && (
-              <section className="mt-6 space-y-5 rounded-2xl border border-[#4E8BFF]/35 bg-[#071326] p-5">
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#83AEFF]">
-                    Connect → Discover → Test → Ready
-                  </p>
-                  <h3 className="mt-1 font-display text-2xl font-bold text-white">
-                    Setting up your CRM
-                  </h3>
-                  <p className="mt-2 text-xs leading-5 text-[#A9BFDF]">
-                    Amarktai checks sign-in and discovers CRM functions automatically.
-                    A function is shown as Ready only after the existing safe test
-                    confirms it; optional functions can remain unavailable without
-                    blocking your core sales work.
-                  </p>
-                </div>
-                {commissioning && (
-                  <div className="rounded-xl border border-white/10 bg-[#08172F] p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-[10px] font-black uppercase tracking-[.12em] text-[#83AEFF]">CRM</p>
-                        <p className="font-bold text-white">{browserSystem.displayName || "Genie"}</p>
-                        <p className="mt-1 text-xs text-[#B7CAE7]">{commissioning.humanStatus}</p>
-                      </div>
-                      <span className={`text-xs font-bold ${commissioning.status === "ready" ? "text-emerald-200" : commissioning.advancedFallback ? "text-amber-100" : "text-[#9FC2FF]"}`}>
-                        {commissioning.status === "ready" ? "Ready" : commissioning.advancedFallback ? "Needs setup" : "Working"}
-                      </span>
-                    </div>
-                    <div className="mt-3 grid gap-2 text-xs text-[#B7CAE7] sm:grid-cols-2">
-                      {[
-                        { label: "Authentication", value: commissioning.progress.authentication, active: commissioning.state === "AUTHENTICATE" },
-                        { label: "Session verification", value: commissioning.progress.sessionReplay },
-                        { label: "CRM discovery", value: commissioning.progress.capabilities, active: ["DISCOVER_NAVIGATION", "DISCOVER_CAPABILITIES"].includes(commissioning.state) },
-                        { label: "Safe reads", value: commissioning.progress.safeReads, active: commissioning.state === "TEST_SAFE_READS" },
-                        { label: "Controlled write test", value: commissioning.progress.controlledWrites, active: ["TEST_CONTROLLED_WRITES", "VERIFY_READBACK"].includes(commissioning.state), awaitingApproval: commissioning.safeTestRequired },
-                        { label: "Result readback", value: commissioning.progress.readback, active: commissioning.state === "VERIFY_READBACK" },
-                        { label: "Ready", value: commissioning.status === "ready" ? "complete" : undefined, active: commissioning.state === "PUBLISH_PROVEN_OPERATIONS" },
-                      ].map(item => {
-                        const stepLabel = setupStepLabel(item);
-                        return <div key={item.label} className="flex items-center justify-between rounded-lg bg-black/15 px-3 py-2">
-                          <span>{item.label}</span>
-                          <span className={stepLabel === "Complete" ? "font-bold text-emerald-200" : stepLabel === "Awaiting approval" ? "font-bold text-amber-100" : stepLabel === "Running" ? "font-bold text-[#9FC2FF]" : "text-[#7896C1]"}>{stepLabel}</span>
-                        </div>;
-                      })}
-                    </div>
-                  </div>
-                )}
-                {(!commissioning || ["needs_attention", "failed", "cancelled"].includes(commissioning.status)) && <Button
-                  onClick={() => void startBrowserCommissioning()}
-                  disabled={commissioningPending}
-                  className="bg-[#1B64F2]"
-                >
-                  {commissioningPending ? "Setting up CRM…" : commissioning ? "Retry CRM setup" : "Start automatic setup"}
-                </Button>}
-                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  {CRM_CAPABILITY_PRESENTATION.map(capability => {
-                    const status = humanBrowserCapabilityStatus(
-                      browserReadiness.data?.operations,
-                      capability.keys
-                    );
-                    return (
-                      <div key={capability.label} className="rounded-xl border border-white/10 bg-[#08172F] p-3">
-                        <p className="text-sm font-bold text-white">{capability.label}</p>
-                        <p className={`mt-1 text-xs font-bold ${status === "Ready" ? "text-emerald-200" : status === "Failed" ? "text-rose-200" : "text-amber-100"}`}>
-                          {status}
-                        </p>
-                      </div>
-                    );
-                  })}
-                </div>
-                {commissioning?.safeTestRequired && (
-                  <div className="rounded-xl border border-amber-300/20 bg-amber-400/[.06] p-4">
-                    <h4 className="font-bold text-amber-100">Complete your CRM setup</h4>
-                    <p className="mt-2 text-xs leading-5 text-[#D7C9A4]">
-                      To make sure Amarktai can update your CRM safely, choose a
-                      test customer. Amarktai will then run the available
-                      controlled tests automatically and verify each result.
-                    </p>
-                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                      <label className="flex items-center gap-2 text-xs text-white">
-                        <input type="radio" checked={safeTestMode === "existing"} onChange={() => setSafeTestMode("existing")} />
-                        Enter an existing CRM test record
-                      </label>
-                      {commissioning.temporaryRecordSupported && (
-                        <label className="flex items-center gap-2 text-xs text-white">
-                          <input type="radio" checked={safeTestMode === "temporary"} onChange={() => setSafeTestMode("temporary")} />
-                          Create an Amarktai Setup Test contact
-                        </label>
-                      )}
-                    </div>
-                    {safeTestMode === "existing" ? (
-                      <Input
-                        value={safeTestCustomer}
-                        onChange={event => setSafeTestCustomer(event.target.value)}
-                        placeholder="Exact CRM contact ID, email, phone, or unique name"
-                        className="mt-3 border-white/15 bg-[#071326] text-white"
-                      />
-                    ) : (
-                      <p className="mt-3 text-xs leading-5 text-[#D7C9A4]">
-                        Amarktai will create an explicitly labelled temporary
-                        contact and retain its exact ID. It remains for a manager
-                        to remove unless this connector has an already verified,
-                        explicitly safe delete operation.
-                      </p>
-                    )}
-                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                      <Input
-                        value={safeTestEmail}
-                        onChange={event => setSafeTestEmail(event.target.value)}
-                        placeholder="Authorised test email (optional)"
-                        className="border-white/15 bg-[#071326] text-white"
-                      />
-                      <Input
-                        value={safeTestPhone}
-                        onChange={event => setSafeTestPhone(event.target.value)}
-                        placeholder="Authorised test phone (optional)"
-                        className="border-white/15 bg-[#071326] text-white"
-                      />
-                    </div>
-                    <p className="mt-2 text-xs leading-5 text-[#D7C9A4]">
-                      Messaging and calling are tested only when you provide the
-                      matching authorised destination. Otherwise those optional
-                      functions remain unavailable.
-                    </p>
-                    {canManage && (
-                      <Button
-                        variant="outline"
-                        disabled={(safeTestMode === "existing" && !safeTestCustomer.trim()) || commissioningPending}
-                        onClick={() => void approveSafeTestRecord()}
-                        className="mt-3 border-white/15 bg-white/5 text-white"
+            {step === 6 && (
+              <Card>
+                <StepHeading
+                  icon={Rocket}
+                  number="06"
+                  title="Test readiness and start selling"
+                  text="This friendly checklist uses stored server evidence. A CRM task is ready only after an authorised test and readback pass."
+                />
+                <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  {[
+                    ["Profile", profileSaved],
+                    ["Knowledge", knowledgeConfirmed],
+                    ["Verified CRM", sellingReadiness.crmVerified],
+                    ["Core selling functions", sellingReadiness.coreGenieReady],
+                  ].map(([label, ready]) => (
+                    <div
+                      key={String(label)}
+                      className="rounded-xl border border-white/10 bg-[#08172F] p-4"
+                    >
+                      <p className="font-bold text-white">{label}</p>
+                      <p
+                        className={`mt-2 text-sm ${ready ? "text-emerald-200" : "text-amber-200"}`}
                       >
-                        Approve and test automatically
-                      </Button>
-                    )}
-                  </div>
-                )}
-                {canManage && commissioning?.advancedFallback && (
-                  <details className="rounded-xl border border-white/10 bg-[#08172F] p-4">
-                    <summary className="cursor-pointer text-sm font-bold text-[#A9C7FF]">
-                      Advanced CRM Setup
-                    </summary>
-                    <p className="mt-2 text-xs leading-5 text-[#91A9CF]">
-                      Automatic setup could not safely finish one or more
-                      functions. Manager-only calibration, diagnostics and
-                      individual replay remain available as fallback.
-                    </p>
-                    <Button variant="outline" onClick={() => navigate("/connections")} className="mt-3 border-white/15 bg-white/5 text-white">
-                      Open Advanced CRM Setup
-                    </Button>
-                  </details>
-                )}
-                <div className="flex justify-end">
-                  <Button
-                    onClick={() => setStep(5)}
-                    disabled={!sellingReadiness.coreGenieReady}
-                    className="bg-emerald-600 hover:bg-emerald-500"
-                  >
-                    Continue to automation rules
-                  </Button>
+                        {ready ? "Recorded" : "Still required"}
+                      </p>
+                    </div>
+                  ))}
                 </div>
-              </section>
-            )}
-            {systems.data?.some(system => system.connectionMethod === "oauth") && (
-              <div className="mt-6 space-y-2 rounded-xl border border-white/10 bg-[#08172F] p-4">
-                <p className="text-sm font-bold text-white">Connected CRM</p>
-                {systems.data
-                  .filter(system => system.connectionMethod === "oauth")
-                  .map(system => {
-                    const checked = ["ready", "limited_permissions"].includes(
-                      system.status
-                    );
-                    return (
-                      <div key={system.id} className="flex items-center justify-between gap-3 rounded-lg bg-black/15 px-3 py-2">
-                        <span className="text-sm text-[#DCE7F8]">{system.displayName}</span>
-                        <span className={`text-xs font-bold ${checked ? "text-emerald-200" : "text-amber-100"}`}>
-                          {checked ? "Connected and checked" : "Needs setup"}
-                        </span>
-                      </div>
-                    );
-                  })}
-              </div>
-            )}
-            <div className="mt-6 rounded-xl border border-white/10 bg-[#08172F] p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="font-bold text-white">
-                    Microsoft 365 / Outlook
-                  </p>
-                  <p className="mt-1 text-xs leading-5 text-[#A9BFDF]">
-                    Optional reviewed sales email and calendar actions use the
-                    approved Microsoft Graph tenant configured for this
-                    deployment.
-                  </p>
-                </div>
-                <span
-                  className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${outlook.data?.ready ? "bg-emerald-400/15 text-emerald-200" : "bg-white/8 text-[#A9BFDF]"}`}
+                <p className="mt-5 text-sm leading-6 text-[#A9BFDF]">
+                  You can start selling when the core sales loop is verified.
+                  Optional functions such as calling, messaging, quotes and
+                  appointments remain individually unavailable until their own
+                  safe test succeeds.
+                </p>
+                <Button
+                  disabled={
+                    !sellingReadiness.canStartSelling ||
+                    onboardingProgress.isPending
+                  }
+                  onClick={() =>
+                    onboardingProgress.mutate(
+                      { step: 6, complete: true },
+                      { onSuccess: () => navigate("/today") }
+                    )
+                  }
+                  className="mt-5 bg-emerald-600 hover:bg-emerald-500"
                 >
-                  {outlook.data?.ready ? "Configured" : "Not configured"}
-                </span>
-              </div>
-            </div>
-          </Card>
+                  Start selling
+                </Button>
+              </Card>
+            )}
+          </>
         )}
-        {step === 5 && (
-          <Card>
-            <StepHeading
-              icon={ShieldCheck}
-              number="05"
-              title="Choose the first safe automation rule"
-              text="Playbooks prepare controlled work. They never authorise external actions."
-            />
-            <Input
-              value={playbook.title}
-              onChange={event =>
-                setPlaybook({ ...playbook, title: event.target.value })
-              }
-              placeholder="Playbook title"
-              className="mt-6 border-white/15 bg-[#08172F] text-white"
-            />
-            <Input
-              value={playbook.trigger}
-              onChange={event =>
-                setPlaybook({ ...playbook, trigger: event.target.value })
-              }
-              placeholder="Trigger"
-              className="mt-4 border-white/15 bg-[#08172F] text-white"
-            />
-            <Textarea
-              value={playbook.description}
-              onChange={event =>
-                setPlaybook({ ...playbook, description: event.target.value })
-              }
-              placeholder="What should the assistant prepare?"
-              className="mt-4 min-h-28 border-white/15 bg-[#08172F] text-white"
-            />
-            <Button
-              disabled={
-                !playbook.title ||
-                !playbook.trigger ||
-                !playbook.description ||
-                savePlaybook.isPending
-              }
-              onClick={() =>
-                savePlaybook.mutate({
-                  ...playbook,
-                  requiredCapabilities: ["tasks"],
-                  status: "draft",
-                })
-              }
-              className="mt-5 bg-[#1B64F2]"
-            >
-              Save playbook
-            </Button>
-          </Card>
-        )}
-        {step === 6 && (
-          <Card>
-            <StepHeading
-              icon={Rocket}
-              number="06"
-              title="Test readiness and start selling"
-              text="This friendly checklist uses stored server evidence. A CRM task is ready only after an authorised test and readback pass."
-            />
-            <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {[
-                ["Profile", profileSaved],
-                ["Knowledge", knowledgeConfirmed],
-                ["Verified CRM", sellingReadiness.crmVerified],
-                ["Core selling functions", sellingReadiness.coreGenieReady],
-              ].map(([label, ready]) => (
-                <div
-                  key={String(label)}
-                  className="rounded-xl border border-white/10 bg-[#08172F] p-4"
-                >
-                  <p className="font-bold text-white">{label}</p>
-                  <p
-                    className={`mt-2 text-sm ${ready ? "text-emerald-200" : "text-amber-200"}`}
-                  >
-                    {ready ? "Recorded" : "Still required"}
-                  </p>
-                </div>
-              ))}
-            </div>
-            <p className="mt-5 text-sm leading-6 text-[#A9BFDF]">
-              You can start selling when the core sales loop is verified. Optional
-              functions such as calling, messaging, quotes and appointments remain
-              individually unavailable until their own safe test succeeds.
-            </p>
-            <Button
-              disabled={!sellingReadiness.canStartSelling || onboardingProgress.isPending}
-              onClick={() => onboardingProgress.mutate({ step: 6, complete: true }, { onSuccess: () => navigate("/today") })}
-              className="mt-5 bg-emerald-600 hover:bg-emerald-500"
-            >
-              Start selling
-            </Button>
-          </Card>
-        )}
-        </>}
       </div>
     </DashboardLayout>
   );

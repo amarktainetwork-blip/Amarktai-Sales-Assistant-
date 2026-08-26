@@ -55,6 +55,22 @@ async function readBinding(path: string) {
   return parsed as PersistentProfileBinding;
 }
 
+export async function readPersistentGenieProfileBinding() {
+  try {
+    return await readBinding(bindingPath());
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
+export function persistentGenieProfileBindingMatches(
+  actual: PersistentProfileBinding,
+  expected: PersistentProfileBinding
+) {
+  return sameBinding(actual, expected);
+}
+
 /**
  * A Chromium user-data directory is a durable browser identity, not a portable
  * session token. Until the browser runtime is sharded into one profile/process

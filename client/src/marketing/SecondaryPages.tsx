@@ -39,7 +39,13 @@ import {
   TickList,
 } from "./MarketingComponents";
 import { MarketingLayout } from "./MarketingLayout";
-import { accountLinks, futurePlans } from "./site";
+import { accountLinks } from "./site";
+import {
+  AI_CREDIT_ECONOMICS,
+  AI_CREDIT_FEATURES,
+  PRICING_PLANS,
+  ZERO_AI_CREDIT_FEATURES,
+} from "@shared/pricing";
 
 const productFeatures = [
   [
@@ -105,7 +111,7 @@ const productFeatures = [
   [
     BarChart3,
     "Reports and Audit",
-    "Understand activity, outcomes and operational evidence without losing the story behind the number.",
+    "Understand activity, outcomes and action history without losing the story behind the number.",
   ],
 ] as const;
 
@@ -248,38 +254,38 @@ const integrations = [
   [
     "GE",
     "Genie",
-    "Browser-connected CRM workflow",
+    "Available browser connector",
     "Guided sign-in, learning, testing and evidence-based readiness for authorised Genie workflows.",
   ],
   [
     "HS",
     "HubSpot",
-    "Native integration",
+    "Available connector",
     "Connect supported HubSpot customer, task and opportunity context when OAuth is configured.",
   ],
   [
     "SF",
     "Salesforce",
-    "Native integration",
+    "Available connector",
     "Use supported Salesforce records and workflows through an authorised connection.",
   ],
   [
     "PD",
     "Pipedrive",
-    "Native integration",
+    "Available connector",
     "Bring supported people, activities and deals into the daily sales workflow.",
   ],
   [
     "ZO",
     "Zoho CRM",
-    "Native integration",
+    "Available connector",
     "Connect supported contacts, tasks and deals through an authorised Zoho CRM setup.",
   ],
   [
     "+",
     "Other CRM",
-    "Authorised web CRM connection",
-    "Commission a permitted web CRM through the controlled browser connection where suitable.",
+    "Compatibility review required",
+    "Set up a permitted web CRM through the controlled browser connection where suitable.",
   ],
 ] as const;
 
@@ -441,7 +447,7 @@ export function IndividualsPage() {
             align="center"
             eyebrow="Focused on your work"
             title="Everything you need. None of the management clutter."
-            copy="Use Amarktai as the calm operating layer around the selling you already do."
+            copy="Use Amarktai as a calm Sales Assistant around the selling you already do."
           />
           <div className="marketing-grid marketing-grid--3">
             {individualBenefits.map(([icon, title, copy]) => (
@@ -646,7 +652,7 @@ export function IntegrationsPage() {
             <FeatureCard
               icon={PhoneCall}
               title="Calls"
-              copy="Open the available dialler or call workflow where commissioned."
+              copy="Open the available dialler or call flow after it passes setup."
             />
             <FeatureCard
               icon={CalendarCheck}
@@ -682,7 +688,7 @@ export function PricingPage() {
             Simple plans for individuals and <em>sales teams.</em>
           </>
         }
-        copy="Amarktai plans are scoped around your team, CRM and commissioning needs. Choose the operating model that fits, then contact us for a clear commercial proposal."
+        copy="Choose a monthly subscription for one salesperson or a team. Paid self-service checkout is not available yet; create a workspace for the trial or contact sales for assisted setup."
         primary="Contact Us"
         primaryHref="/contact"
         secondary="Get Started"
@@ -691,10 +697,10 @@ export function PricingPage() {
         <Preview
           title="Plan fit"
           items={[
-            ["Individual", "One focused sales workspace"],
-            ["Team", "Shared rhythm and manager visibility"],
-            ["Business", "Advanced setup and support"],
-            ["Commercial proposal", "Scoped to your setup"],
+            ["Trial", "$0 · 50 AI credits"],
+            ["Starter", "$29 · 500 AI credits"],
+            ["Professional", "$79 · up to 3 users"],
+            ["Team", "$199 · up to 10 users"],
           ]}
         />
       </PageHero>
@@ -702,25 +708,51 @@ export function PricingPage() {
         <div className="marketing-container">
           <SectionHeader
             align="center"
-            eyebrow="Plans for real sales operations"
-            title="Choose the shape that fits your sales operation."
-            copy="We confirm the required users, CRM workflows and support level before providing an exact proposal—so you pay for the setup you will use."
+            eyebrow="Plans for real sales work"
+            title="One source of truth for every plan."
+            copy="Every subscription includes deterministic CRM work without AI-credit charges. AI credits are used only for language, transcript and reasoning features."
           />
           <div className="marketing-pricing-grid">
-            {futurePlans.map(plan => (
+            {PRICING_PLANS.map(plan => (
               <article className="marketing-plan" key={plan.name}>
                 <span className="marketing-plan__status">
-                  Talk to sales
+                  {plan.monthlyUsdCents === 0
+                    ? "Trial"
+                    : "Monthly subscription"}
                 </span>
                 <h2>{plan.name}</h2>
-                <p className="marketing-plan__audience">{plan.audience}</p>
-                <p className="marketing-plan__summary">{plan.summary}</p>
+                <p className="marketing-plan__price">
+                  <strong>${plan.monthlyUsdCents / 100}</strong> / month
+                </p>
+                <p className="marketing-plan__audience">
+                  {plan.includedUsers === 1
+                    ? "1 included user"
+                    : `Up to ${plan.includedUsers} included users`}{" "}
+                  ·{" "}
+                  {plan.crmConnections === "launch-crms"
+                    ? "Available launch CRM connectors"
+                    : `${plan.crmConnections} CRM connection`}
+                </p>
+                <p className="marketing-plan__summary">
+                  {plan.includedAiCredits.toLocaleString()} included AI credits
+                  each month
+                  {plan.managementIntelligence
+                    ? " · management intelligence included"
+                    : ""}
+                  .
+                </p>
                 <TickList items={plan.features} />
                 <Link
-                  href="/contact"
+                  href={
+                    plan.key === "team" ? "/contact" : accountLinks.getStarted
+                  }
                   className="marketing-button marketing-button--secondary"
                 >
-                  Contact Us
+                  {plan.key === "trial"
+                    ? "Start trial"
+                    : plan.key === "team"
+                      ? "Contact sales"
+                      : "Create workspace"}
                 </Link>
               </article>
             ))}
@@ -730,37 +762,37 @@ export function PricingPage() {
       <section className="marketing-section">
         <div className="marketing-container">
           <SectionHeader
-            eyebrow="What will affect your plan?"
-            title="A plan shaped by the setup you need."
-            copy="Commercial details will reflect the real operating requirements rather than arbitrary public allowances."
+            eyebrow="How AI credits work"
+            title="Routine CRM work does not consume AI credits."
+            copy={`Add 1,000 AI credits for $${AI_CREDIT_ECONOMICS.retailPackUsdCents / 100}. Top-ups and paid subscriptions are currently arranged with sales; the site does not claim an automated checkout.`}
           />
           <div className="marketing-grid marketing-grid--4">
             <FeatureCard
               icon={Users}
-              title="Number of users"
-              copy="The number of individual and team workspaces required."
+              title="Included without AI credits"
+              copy={ZERO_AI_CREDIT_FEATURES.slice(0, 2).join(", ") + "."}
             />
             <FeatureCard
               icon={Network}
-              title="CRM requirements"
-              copy="The connected CRM and the workflows that need commissioning."
+              title="Deterministic sales work"
+              copy={ZERO_AI_CREDIT_FEATURES.slice(2, 5).join(", ") + "."}
             />
             <FeatureCard
               icon={Wrench}
-              title="Advanced automation"
-              copy="The level of controlled workflow setup required by the business."
+              title="Uses AI credits"
+              copy={AI_CREDIT_FEATURES.slice(0, 3).join(", ") + "."}
             />
             <FeatureCard
               icon={Sparkles}
-              title="AI-powered capabilities"
-              copy="How the workspace uses language, voice and assistance features."
+              title="Advanced AI assistance"
+              copy={AI_CREDIT_FEATURES.slice(3).join(", ") + "."}
             />
           </div>
         </div>
       </section>
       <CTASection
-        title="Talk to us about the right setup."
-        copy="We can discuss individual use, team rollout and CRM compatibility while launch pricing is finalised."
+        title="Start with a workspace, then connect the CRM you use."
+        copy="The trial can be created now. Contact sales for a paid subscription, team rollout or CRM compatibility review."
         primary="Contact Us"
         primaryHref="/contact"
         secondary="Get Started"

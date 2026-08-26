@@ -24,4 +24,4 @@ EXPOSE 9222
 # rewrites Chromium's loopback WebSocket URL to the stable Compose service name.
 # /home/chrome/profile is mounted as a dedicated named volume in production so
 # MFA-approved browser/device trust survives browser-container recreation.
-CMD ["sh", "-eu", "-c", "nginx -c /etc/nginx/nginx.conf; exec /usr/bin/chromium --headless=new --no-sandbox --remote-debugging-address=127.0.0.1 --remote-debugging-port=9223 --remote-allow-origins=* --user-data-dir=/home/chrome/profile --no-first-run --no-default-browser-check --disable-background-networking --disable-component-update --disable-sync --disable-gpu --disable-features=Translate,MediaRouter about:blank"]
+CMD ["sh", "-eu", "-c", "nginx -c /etc/nginx/nginx.conf; exec /usr/bin/chromium --headless=new --no-sandbox --enable-automation --remote-debugging-address=127.0.0.1 --remote-debugging-port=9223 --remote-allow-origins=* --user-data-dir=/home/chrome/profile --no-first-run --no-default-browser-check --disable-background-networking --disable-component-update --disable-sync --disable-gpu --disable-features=Translate,MediaRouter about:blank"]
