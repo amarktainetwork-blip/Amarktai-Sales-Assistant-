@@ -105,6 +105,7 @@ import { getTodayWork } from "./today";
 import {
   acquireAiControl,
   createLiveCrmViewerSession,
+  getSanitisedLiveCrmContext,
   releaseAiControl,
 } from "./liveCrmViewer";
 import {
@@ -1613,6 +1614,27 @@ export const appRouter = router({
           ctx.user.id
         );
       }),
+    askAssistant: secondFactorProcedure
+      .input(z.object({ viewerSessionId: z.string().uuid(), command: z.string().trim().min(2).max(4_000) }))
+      .mutation(async ({ ctx, input }) => {
+        if (!ctx.activeOrganisation)
+          throw new Error("Choose a company before asking about this CRM workspace.");
+        const pageContext = await getSanitisedLiveCrmContext({
+          viewerSessionId: input.viewerSessionId,
+          organisationId: ctx.activeOrganisation.organisationId,
+          userId: ctx.user.id,
+        });
+        const route = routeSalesCommand(input.command);
+        return {
+          route,
+          pageContext,
+          message: route.intent === "workflow"
+            ? "I have prepared the governed workflow for review; no CRM write has been performed."
+            : route.intent === "coaching"
+              ? "I have focused the assistant on coaching using the current approved CRM context."
+              : "I have classified your request through the governed assistant path. Review the suggested next step before any external action.",
+        };
+      }),
   }),
   knowledge: router({
     list: secondFactorProcedure.query(({ ctx }) => {
@@ -1750,7 +1772,7 @@ export const appRouter = router({
       });
       return { ...discovery, proposedKnowledge, discoveryId, reviewState, reviewUnavailable };
     }),
-    confirmDiscovery: secondFactorProcedure
+    confirmDiscovery: managementProcedure
       .input(
         z.object({
           discoveryId: z.number().int().positive(),

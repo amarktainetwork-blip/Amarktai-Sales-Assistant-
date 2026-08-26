@@ -372,6 +372,64 @@ function pageReviewChunks(pages: ReviewPage[]) {
   return chunks;
 }
 
+function normaliseEvidence(value: string) {
+  return value
+    .normalize("NFKC")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/[“”„‟]/g, '"')
+    .replace(/[‘’‚‛]/g, "'")
+    .replace(/[–—]/g, "-")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function claimIsGrounded(value: string | undefined, pageText: string) {
+  if (!value) return true;
+  const normalisedClaim = normaliseEvidence(value);
+  return normalisedClaim.length >= 2 && pageText.includes(normalisedClaim);
+}
+
+/**
+ * Removes unsupported citations and fails closed if a model response cannot be
+ * proven against the exact crawl chunk that it received. No fuzzy promotion is
+ * permitted: source and claim provenance must survive deterministic normalisation.
+ */
+export function verifyPageReviewProvenance(item: CompanyIntelligenceReviewItem, pages: ReviewPage[]) {
+  const pagesByUrl = new Map(pages.map(page => [page.url, page]));
+  const sourceUrls = Array.from(new Set(item.sourceUrls)).filter(url => pagesByUrl.has(url));
+  const citedPages = sourceUrls.map(url => pagesByUrl.get(url)!).filter(Boolean);
+  const pageTitleMatches = item.pageTitle == null
+    ? citedPages.every(page => page.title == null)
+    : citedPages.some(page => page.title != null && normaliseEvidence(page.title) === normaliseEvidence(item.pageTitle!));
+  const citedText = citedPages.map(page => normaliseEvidence(page.text)).join("\n");
+  const evidenceGrounded = citedText.includes(normaliseEvidence(item.evidenceText));
+  const offeringClaims = item.offering
+    ? [
+        item.offering.name,
+        item.offering.type,
+        ...(item.offering.currentPrices || []),
+        ...(item.offering.duration || []),
+        ...(item.offering.certifications || []),
+        ...(item.offering.financeOptions || []),
+        ...(item.offering.support || []),
+        item.offering.targetCustomer,
+        ...(item.offering.outcomes || []),
+      ]
+    : [];
+  const offeringGrounded = offeringClaims.every(claim => claimIsGrounded(claim, citedText));
+  const supported = sourceUrls.length === item.sourceUrls.length && sourceUrls.length > 0 && pageTitleMatches && evidenceGrounded && offeringGrounded;
+  const sanitised = {
+    ...item,
+    sourceUrls,
+    pageTitle: pageTitleMatches ? item.pageTitle : null,
+  };
+  return supported
+    ? sanitised
+    : { ...sanitised, trustEligible: false, reviewState: "ambiguous" as const };
+}
+
 function guardPageReviewItem(item: CompanyIntelligenceReviewItem) {
   const candidate = { title: item.title, content: `${item.summary} ${item.evidenceText}`, category: item.classification };
   const risk = deterministicRiskClassification(candidate);
@@ -420,7 +478,12 @@ export async function reviewCompanyIntelligence(input: { userId: number; organis
     if (response.provider !== "genx") throw new Error("AI review is unavailable because GenX is not configured.");
     const parsed = z.array(pageReviewItemSchema).max(PAGE_REVIEW_MAX_ITEMS).safeParse(parseReviewArray(response.content));
     if (!parsed.success) throw new Error("The AI review response did not pass the required evidence schema.");
-    items.push(...parsed.data.map(item => ({ ...item, title: compact(item.title, 220), summary: compact(item.summary, 2_000), evidenceText: compact(item.evidenceText, PAGE_REVIEW_EVIDENCE_CHARS) })));
+    items.push(...parsed.data.map(item =>
+      verifyPageReviewProvenance(
+        { ...item, title: compact(item.title, 220), summary: compact(item.summary, 2_000), evidenceText: compact(item.evidenceText, PAGE_REVIEW_EVIDENCE_CHARS) },
+        chunk
+      )
+    ));
   }
   return { agentKey: "company_intelligence_review", available: true, items: reconcilePageReview(items), reviewedAt: new Date().toISOString() };
 }

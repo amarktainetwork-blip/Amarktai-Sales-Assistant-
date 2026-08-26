@@ -8,6 +8,14 @@ import { openBrowserCrmLivePage } from "./browserConnectors/browserCrmAdapter";
 import { assertAuthorisedConnectionUrl } from "./connectedSystems";
 import { recordAudit } from "./db";
 import { requireLocalHttpContext } from "./httpAuth";
+import {
+  acquireAiBrowserControl,
+  acquireHumanBrowserControl,
+  browserControlState,
+  releaseBrowserControl,
+  subscribeBrowserControl,
+  type BrowserControlState,
+} from "./browserConnectors/browserControlArbitration";
 
 const VIEWER_TTL_MS = 5 * 60_000;
 const IDLE_LEASE_MS = 8_000;
@@ -16,7 +24,7 @@ const MAX_FRAME_BYTES = 1_600_000;
 const MAX_FRAME_RATE = 10;
 const MAX_VIEWERS_PER_SESSION = 1;
 
-type ControlState = "AI_CONTROL" | "HUMAN_CONTROL" | "READ_ONLY_OBSERVE" | "IDLE";
+type ControlState = BrowserControlState;
 type ViewerSocketMessage =
   | { type: "input"; event: ViewerInputEvent }
   | { type: "resize"; width: number; height: number; deviceScaleFactor?: number }
@@ -47,6 +55,9 @@ type LiveCrmSession = {
   streaming: boolean;
   lastFrameAt: number;
   sockets: Set<WebSocket>;
+  expiresTimer?: ReturnType<typeof setTimeout>;
+  unsubscribeControl?: () => void;
+  interactive: boolean;
 };
 
 const sessions = new Map<string, LiveCrmSession>();
@@ -106,23 +117,48 @@ function assertInput(event: ViewerInputEvent) {
   throw new Error("CRM_VIEWER_INPUT_INVALID");
 }
 
+function controlScope(session: Pick<LiveCrmSession, "organisationId" | "connectedSystemId" | "userId">) {
+  // Current Genie commissioning is an explicit shared_connection identity mode.
+  // Viewer authorization stays user-scoped; the physical retained page lock is
+  // shared at the organisation + connection boundary so no automation can race it.
+  return { organisationId: session.organisationId, connectedSystemId: session.connectedSystemId, userId: 0 };
+}
+
+function expireSession(session: LiveCrmSession) {
+  if (!sessions.has(session.id)) return;
+  session.interactive = false;
+  if (session.expiresTimer) clearTimeout(session.expiresTimer);
+  session.unsubscribeControl?.();
+  void stopStream(session);
+  session.sockets.forEach(socket => socket.close(4001, "Viewer session expired"));
+  sessions.delete(session.id);
+  scopeIndex.delete(scopeKey(session.organisationId, session.connectedSystemId, session.userId));
+  releaseBrowserControl(controlScope(session));
+  void session.release();
+  void recordAudit({
+    userId: session.userId,
+    organisationId: session.organisationId,
+    eventType: "crm_viewer_expired",
+    entityType: "connected_system",
+    entityId: String(session.connectedSystemId),
+    summary: "A live CRM viewer session expired and was closed.",
+    metadata: { viewerSessionId: session.id },
+  });
+}
+
+function armSessionExpiry(session: LiveCrmSession) {
+  if (session.expiresTimer) clearTimeout(session.expiresTimer);
+  session.expiresTimer = setTimeout(() => expireSession(session), Math.max(1, session.expiresAt - Date.now()));
+}
+
 function pruneExpiredSessions() {
-  const now = Date.now();
-  Array.from(sessions.entries()).forEach(([id, session]) => {
-    if (session.expiresAt > now) return;
-    stopStream(session).catch(() => undefined);
-    session.sockets.forEach((socket: WebSocket) => socket.close(4001, "Viewer session expired"));
-    sessions.delete(id);
-    scopeIndex.delete(scopeKey(session.organisationId, session.connectedSystemId, session.userId));
-    session.release().catch(() => undefined);
+  Array.from(sessions.values()).forEach(session => {
+    if (session.expiresAt <= Date.now()) expireSession(session);
   });
 }
 
 function setHumanLease(session: LiveCrmSession) {
-  session.control = "HUMAN_CONTROL";
-  session.leaseOwner = "human";
-  session.leaseExpiresAt = Date.now() + IDLE_LEASE_MS;
-  broadcast(session, { type: "control", control: session.control, message: "You are controlling this CRM." });
+  acquireHumanBrowserControl(controlScope(session), IDLE_LEASE_MS);
 }
 
 function releaseExpiredLease(session: LiveCrmSession) {
@@ -136,30 +172,20 @@ function releaseExpiredLease(session: LiveCrmSession) {
 
 export function acquireAiControl(sessionId: string, organisationId: number, userId: number) {
   const session = sessions.get(sessionId);
-  if (!session || session.organisationId !== organisationId || session.userId !== userId)
+  if (!session || session.organisationId !== organisationId || session.userId !== userId || !session.interactive)
     throw new Error("CRM_VIEWER_SESSION_NOT_FOUND");
-  releaseExpiredLease(session);
-  if (session.control === "HUMAN_CONTROL")
-    throw new Error("CRM_VIEWER_HUMAN_CONTROL_ACTIVE");
-  session.control = "AI_CONTROL";
-  session.leaseOwner = "ai";
-  session.leaseExpiresAt = Date.now() + IDLE_LEASE_MS;
-  broadcast(session, { type: "control", control: session.control, message: "Amarktai is updating this record." });
-  return { control: session.control, expiresAt: new Date(session.leaseExpiresAt).toISOString() };
+  return acquireAiBrowserControl(controlScope(session), IDLE_LEASE_MS);
 }
 
 export function releaseAiControl(sessionId: string, organisationId: number, userId: number) {
   const session = sessions.get(sessionId);
   if (!session || session.organisationId !== organisationId || session.userId !== userId)
     throw new Error("CRM_VIEWER_SESSION_NOT_FOUND");
-  session.control = "IDLE";
-  session.leaseOwner = undefined;
-  session.leaseExpiresAt = undefined;
-  broadcast(session, { type: "control", control: session.control });
-  return { control: session.control };
+  return releaseBrowserControl(controlScope(session));
 }
 
 async function startStream(session: LiveCrmSession) {
+  if (!session.interactive || session.expiresAt <= Date.now()) throw new Error("CRM_VIEWER_SESSION_EXPIRED");
   if (session.streaming) return;
   const cdp = await session.page.context().newCDPSession(session.page);
   session.cdp = cdp;
@@ -192,7 +218,9 @@ async function startStream(session: LiveCrmSession) {
         broadcast(session, { type: "navigation", url });
       })
       .catch(() => {
-        broadcast(session, { type: "error", code: "CRM_VIEWER_PATH_BLOCKED" });
+        session.interactive = false;
+        void stopStream(session);
+        broadcast(session, { type: "error", code: "CRM_VIEWER_PATH_BLOCKED", message: "This destination is not approved for CRM viewing." });
       });
   });
   session.page.once("close", () => {
@@ -209,6 +237,8 @@ async function stopStream(session: LiveCrmSession) {
 }
 
 async function dispatchInput(session: LiveCrmSession, event: ViewerInputEvent) {
+  if (!session.interactive || session.expiresAt <= Date.now()) throw new Error("CRM_VIEWER_SESSION_EXPIRED");
+  if (browserControlState(controlScope(session)) === "AI_CONTROL") throw new Error("CRM_VIEWER_AI_CONTROL_ACTIVE");
   setHumanLease(session);
   if (!session.cdp) throw new Error("CRM_VIEWER_STREAM_UNAVAILABLE");
   const input = assertInput(event);
@@ -243,6 +273,7 @@ export async function createLiveCrmViewerSession(input: {
   const existing = existingId ? sessions.get(existingId) : undefined;
   if (existing && existing.expiresAt > Date.now()) {
     existing.expiresAt = Date.now() + VIEWER_TTL_MS;
+    armSessionExpiry(existing);
     return viewerDescriptor(existing);
   }
   const connection = await getConnectedSystemForUser(input.userId, input.organisationId, input.connectedSystemId);
@@ -273,9 +304,15 @@ export async function createLiveCrmViewerSession(input: {
     streaming: false,
     lastFrameAt: 0,
     sockets: new Set(),
+    interactive: true,
   };
   sessions.set(id, session);
   scopeIndex.set(scopeKey(input.organisationId, input.connectedSystemId, input.userId), id);
+  session.unsubscribeControl = subscribeBrowserControl(controlScope(session), control => {
+    session.control = control;
+    broadcast(session, { type: "control", control, message: control === "READ_ONLY_OBSERVE" ? "CRM observation is read-only." : undefined });
+  });
+  armSessionExpiry(session);
   await recordAudit({
     userId: input.userId,
     organisationId: input.organisationId,
@@ -297,6 +334,22 @@ export function isLiveCrmViewerAccessAllowed(
     session.userId === input.userId &&
     safeEqual(session.token, Buffer.from(input.token, "base64url"))
   );
+}
+
+export async function getSanitisedLiveCrmContext(input: { viewerSessionId: string; organisationId: number; userId: number }) {
+  const session = sessions.get(input.viewerSessionId);
+  if (!session || !session.interactive || session.organisationId !== input.organisationId || session.userId !== input.userId)
+    throw new Error("CRM_VIEWER_SESSION_NOT_FOUND");
+  const url = new URL(session.lastUrl);
+  const title = (await session.page.title().catch(() => "")).replace(/\s+/g, " ").trim().slice(0, 220);
+  return {
+    connectedSystemId: session.connectedSystemId,
+    provider: session.provider,
+    authorisedUrlPath: `${url.origin}${url.pathname}`,
+    pageTitle: title || undefined,
+    control: browserControlState(controlScope(session)),
+    connectionIdentityMode: "shared_connection" as const,
+  };
 }
 
 function viewerDescriptor(session: LiveCrmSession) {
@@ -330,7 +383,7 @@ export function registerLiveCrmViewerSocket(server: Server) {
         if (!sessionId || !token) throw new Error("CRM_VIEWER_TOKEN_REQUIRED");
         pruneExpiredSessions();
         const session = sessions.get(sessionId);
-        if (!session || session.expiresAt <= Date.now()) throw new Error("CRM_VIEWER_SESSION_EXPIRED");
+        if (!session || !session.interactive || session.expiresAt <= Date.now()) throw new Error("CRM_VIEWER_SESSION_EXPIRED");
         if (!isLiveCrmViewerAccessAllowed(session, {
           organisationId: context.membership.organisationId,
           userId: context.userId,
@@ -379,10 +432,7 @@ export function registerLiveCrmViewerSocket(server: Server) {
               mobile: false,
             });
           } else if (message.type === "releaseHumanControl") {
-            session.control = "IDLE";
-            session.leaseOwner = undefined;
-            session.leaseExpiresAt = undefined;
-            broadcast(session, { type: "control", control: session.control });
+            releaseBrowserControl(controlScope(session));
           } else if (message.type === "ping") socketPayload(socket, { type: "pong" });
         } catch (error) {
           socketPayload(socket, { type: "error", code: error instanceof Error ? error.message : "CRM_VIEWER_MESSAGE_FAILED" });
@@ -397,6 +447,11 @@ export function registerLiveCrmViewerSocket(server: Server) {
 }
 
 export function resetLiveCrmViewerForTests() {
+  sessions.forEach(session => {
+    if (session.expiresTimer) clearTimeout(session.expiresTimer);
+    session.unsubscribeControl?.();
+    void stopStream(session);
+  });
   sessions.clear();
   scopeIndex.clear();
 }

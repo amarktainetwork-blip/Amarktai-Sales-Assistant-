@@ -103,6 +103,7 @@ function LiveWorkspace({ connectedSystemId, crmName }: { connectedSystemId: numb
   const open = trpc.crmViewer.open.useMutation();
   const acquireAi = trpc.crmViewer.acquireAssistantControl.useMutation();
   const releaseAi = trpc.crmViewer.releaseAssistantControl.useMutation();
+  const askAssistant = trpc.crmViewer.askAssistant.useMutation();
   const [session, setSession] = useState<ViewerReady | null>(null);
   const [control, setControl] = useState("IDLE");
   const [mode, setMode] = useState<"split" | "crm" | "assistant">("split");
@@ -111,11 +112,17 @@ function LiveWorkspace({ connectedSystemId, crmName }: { connectedSystemId: numb
   const [resizingAssistant, setResizingAssistant] = useState(false);
   const [image, setImage] = useState("");
   const [status, setStatus] = useState("Connecting to the authorized CRM…");
+  const [assistantPrompt, setAssistantPrompt] = useState("");
+  const [assistantResult, setAssistantResult] = useState<string | null>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<WebSocket | null>(null);
 
   const openViewer = async () => {
     try {
+      socketRef.current?.close(1000, "Replacing CRM viewer session");
+      socketRef.current = null;
+      setSession(null);
+      setImage("");
       setStatus("Connecting to the authorized CRM…");
       const next = await open.mutateAsync({ connectedSystemId });
       setSession(next);
@@ -186,14 +193,16 @@ function LiveWorkspace({ connectedSystemId, crmName }: { connectedSystemId: numb
     if (socketRef.current?.readyState !== WebSocket.OPEN) return;
     socketRef.current.send(JSON.stringify(payload));
   };
-  const forwardPointer = (event: React.PointerEvent<HTMLDivElement>, type: "mousePressed" | "mouseReleased" | "mouseMoved") => {
+  const forwardPointer = (event: React.PointerEvent<HTMLDivElement> | React.MouseEvent<HTMLDivElement>, type: "mousePressed" | "mouseReleased" | "mouseMoved") => {
     const rect = event.currentTarget.getBoundingClientRect();
     send({ type: "input", event: { kind: "mouse", type, x: event.clientX - rect.left, y: event.clientY - rect.top, button: event.button === 2 ? "right" : event.button === 1 ? "middle" : event.button === 0 ? "left" : "none", clickCount: event.detail || 1 } });
   };
   const forwardKey = (event: React.KeyboardEvent<HTMLDivElement>, type: "keyDown" | "keyUp") => {
-    if (["Tab", "Escape"].includes(event.key)) return;
+    const unsafeBrowserShortcut = (event.metaKey || event.ctrlKey) && /^[lrtnqw]$/i.test(event.key);
+    if (unsafeBrowserShortcut) return;
     event.preventDefault();
-    send({ type: "input", event: { kind: "key", type, key: event.key, code: event.code, text: event.key.length === 1 ? event.key : "" } });
+    const modifiers = (event.altKey ? 1 : 0) | (event.ctrlKey ? 2 : 0) | (event.metaKey ? 4 : 0) | (event.shiftKey ? 8 : 0);
+    send({ type: "input", event: { kind: "key", type, key: event.key, code: event.code, text: event.key.length === 1 && !event.ctrlKey && !event.metaKey ? event.key : "", modifiers } });
   };
   const requestAi = async () => {
     if (!session) return;
@@ -206,6 +215,16 @@ function LiveWorkspace({ connectedSystemId, crmName }: { connectedSystemId: numb
     if (!session) return;
     await releaseAi.mutateAsync({ viewerSessionId: session.viewerSessionId });
     setControl("READ_ONLY_OBSERVE");
+  };
+  const submitAssistant = async () => {
+    if (!session || !assistantPrompt.trim()) return;
+    try {
+      const result = await askAssistant.mutateAsync({ viewerSessionId: session.viewerSessionId, command: assistantPrompt.trim() });
+      setAssistantResult(result.message);
+      setAssistantPrompt("");
+    } catch (error) {
+      setAssistantResult(error instanceof Error ? error.message : "Amarktai could not process that request safely.");
+    }
   };
 
   return <div className={`overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ${mode === "crm" ? "" : ""}`}>
@@ -230,7 +249,8 @@ function LiveWorkspace({ connectedSystemId, crmName }: { connectedSystemId: numb
           onPointerDown={event => forwardPointer(event, "mousePressed")}
           onPointerUp={event => forwardPointer(event, "mouseReleased")}
           onPointerMove={event => forwardPointer(event, "mouseMoved")}
-          onWheel={event => { const rect = event.currentTarget.getBoundingClientRect(); send({ type: "input", event: { kind: "mouse", type: "mouseWheel", x: event.clientX - rect.left, y: event.clientY - rect.top, deltaX: event.deltaX, deltaY: event.deltaY } }); }}
+          onDoubleClick={event => forwardPointer(event, "mousePressed")}
+          onWheel={event => { event.preventDefault(); const rect = event.currentTarget.getBoundingClientRect(); send({ type: "input", event: { kind: "mouse", type: "mouseWheel", x: event.clientX - rect.left, y: event.clientY - rect.top, deltaX: event.deltaX, deltaY: event.deltaY } }); }}
           onKeyDown={event => forwardKey(event, "keyDown")}
           onKeyUp={event => forwardKey(event, "keyUp")}
           className="relative h-full min-h-[58vh] cursor-default overflow-hidden outline-none focus-visible:ring-4 focus-visible:ring-blue-400"
@@ -242,8 +262,8 @@ function LiveWorkspace({ connectedSystemId, crmName }: { connectedSystemId: numb
       {mode !== "crm" && assistantOpen ? <aside className="relative flex min-h-[420px] flex-col border-l border-slate-200 bg-slate-50">
         <button aria-label="Resize assistant panel" onPointerDown={() => setResizingAssistant(true)} className="absolute -left-2 top-0 z-10 flex h-full w-4 cursor-col-resize items-center justify-center bg-transparent"><GripVertical className="h-4 w-4 rounded bg-white text-slate-400 shadow-sm" /></button>
         <div className="border-b border-slate-200 bg-white p-5"><div className="flex items-center gap-2"><Bot className="h-5 w-5 text-blue-600" /><h2 className="font-bold text-slate-900">Amarktai Assistant</h2></div><p className="mt-2 text-sm text-slate-600">Ask about the customer or page you are working with.</p></div>
-        <div className="flex-1 p-5"><div className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-slate-700">I can help prepare a call, explain customer history, or create a review-ready update. I will not interrupt while you are using the CRM.</div></div>
-        <div className="border-t border-slate-200 bg-white p-4"><div className="flex gap-2"><input aria-label="Ask Amarktai" className="h-10 flex-1 rounded-lg border border-slate-300 px-3 text-sm" placeholder="Ask anything about this customer…" /><Button size="sm">Ask</Button></div><div className="mt-3 flex gap-2"><Button variant="outline" size="sm" onClick={() => void requestAi()} disabled={control === "HUMAN_CONTROL" || acquireAi.isPending}><ShieldCheck className="mr-1 h-4 w-4" />{control === "AI_CONTROL" ? "Assistant control" : "Let Amarktai update"}</Button>{control === "AI_CONTROL" ? <Button variant="ghost" size="sm" onClick={() => void stopAi()}>Return control</Button> : null}</div></div>
+        <div className="flex-1 space-y-3 p-5"><div className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-slate-700">I can help prepare a call, explain customer history, or prepare a review-ready update. I use the governed assistant path and will not make an uncontrolled CRM change.</div>{assistantResult ? <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700">{assistantResult}</div> : null}</div>
+        <div className="border-t border-slate-200 bg-white p-4"><div className="flex gap-2"><input aria-label="Ask Amarktai" value={assistantPrompt} onChange={event => setAssistantPrompt(event.target.value)} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); void submitAssistant(); } }} className="h-10 flex-1 rounded-lg border border-slate-300 px-3 text-sm" placeholder="Ask anything about this customer…" /><Button size="sm" onClick={() => void submitAssistant()} disabled={!assistantPrompt.trim() || askAssistant.isPending}>{askAssistant.isPending ? "Thinking…" : "Ask"}</Button></div><div className="mt-3 flex gap-2"><Button variant="outline" size="sm" onClick={() => void requestAi()} disabled={control === "HUMAN_CONTROL" || acquireAi.isPending}><ShieldCheck className="mr-1 h-4 w-4" />{control === "AI_CONTROL" ? "Assistant control" : "Let Amarktai update"}</Button>{control === "AI_CONTROL" ? <Button variant="ghost" size="sm" onClick={() => void stopAi()}>Return control</Button> : null}</div></div>
       </aside> : null}
     </div>
     <div className="sr-only" aria-live="polite">{control === "HUMAN_CONTROL" ? "You currently control the CRM." : status}</div>

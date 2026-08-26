@@ -48,6 +48,10 @@ import {
 import { recordLearnedRuntimeFailure } from "./runtimeFailure";
 import { createContextWithBrowserSession, isBrowserSessionPackage } from "./browserSession";
 import { verifyApprovedGenieSession } from "./genieInteractiveAuth";
+import {
+  acquireAiBrowserControl,
+  releaseBrowserControl,
+} from "./browserControlArbitration";
 
 const DEFAULT_GENIE_OPERATION_MAP: Record<string, string> = {
   searchContacts: "search_candidate",
@@ -869,7 +873,14 @@ async function runOperation(input: {
       artifactPrefix: `${input.provider}-${operationKey}-${suffix}`,
       authorizeNavigation: url => authorizeNavigation(input.connection, url),
     });
+  let acquiredControl = false;
   try {
+    acquireAiBrowserControl({
+      organisationId: input.connection.organisationId,
+      connectedSystemId: input.connection.id,
+      userId: 0,
+    });
+    acquiredControl = true;
     const result = await withPage(
       input.connection,
       input.secret,
@@ -998,6 +1009,13 @@ async function runOperation(input: {
         detail,
       });
     throw error;
+  } finally {
+    if (acquiredControl)
+      releaseBrowserControl({
+        organisationId: input.connection.organisationId,
+        connectedSystemId: input.connection.id,
+        userId: 0,
+      });
   }
 }
 
