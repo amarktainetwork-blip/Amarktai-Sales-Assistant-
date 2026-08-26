@@ -89,9 +89,9 @@ export async function clearGenieBrowserOriginState(input: {
   await context.clearCookies({ domain: hostname });
   await context.clearCookies({ domain: `.${hostname}` });
 
-  const session = await input.browser.newBrowserCDPSession();
+  const browserSession = await input.browser.newBrowserCDPSession();
   try {
-    const targets = (await session.send("Target.getTargets")) as {
+    const targets = (await browserSession.send("Target.getTargets")) as {
       targetInfos?: Array<{ targetId: string; type: string; url: string }>;
     };
     for (const target of targets.targetInfos || []) {
@@ -100,14 +100,34 @@ export async function clearGenieBrowserOriginState(input: {
         !sameHostname(target.url, hostname)
       )
         continue;
-      await session.send("Target.closeTarget", { targetId: target.targetId });
+      await browserSession.send("Target.closeTarget", {
+        targetId: target.targetId,
+      });
     }
-    await session.send("Storage.clearDataForOrigin", {
+  } finally {
+    await browserSession.detach().catch(() => undefined);
+  }
+
+  // Storage.clearDataForOrigin is backed by a render-frame host in Chromium.
+  // Sending it through a browser-level CDP session can fail with an internal
+  // "not connected to host" error. Use a page-target CDP session from the same
+  // persistent context so the command is scoped to the correct storage
+  // partition while still clearing only the authorised Genie origin.
+  let storagePage = context.pages().find(page => !page.isClosed());
+  let createdStoragePage = false;
+  if (!storagePage) {
+    storagePage = await context.newPage();
+    createdStoragePage = true;
+  }
+  const storageSession = await context.newCDPSession(storagePage);
+  try {
+    await storageSession.send("Storage.clearDataForOrigin", {
       origin,
       storageTypes: "all",
     });
   } finally {
-    await session.detach().catch(() => undefined);
+    await storageSession.detach().catch(() => undefined);
+    if (createdStoragePage) await storagePage.close().catch(() => undefined);
   }
 
   return { origin, hostname };
