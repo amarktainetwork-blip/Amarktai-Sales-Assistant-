@@ -1,434 +1,176 @@
-import {
-  ArrowRight,
-  BookOpenCheck,
-  BriefcaseBusiness,
-  Building2,
-  CalendarClock,
-  CheckCircle2,
-  Headphones,
-  MailCheck,
-  MessagesSquare,
-  PhoneCall,
-  Radar,
-  ShieldCheck,
-  Sparkles,
-  Target,
-  Users,
-  Workflow,
-} from "lucide-react";
+import { ArrowRight, Check, CircleCheck, Headphones, Sparkles, Workflow } from "lucide-react";
 import { Link } from "wouter";
-import {
-  BrowserWindow,
-  CTASection,
-  Eyebrow,
-  FeatureCard,
-  MiniStatus,
-  SectionHeader,
-  TickList,
-} from "./MarketingComponents";
 import { MarketingLayout } from "./MarketingLayout";
 import { accountLinks } from "./site";
 
-const flow = [
-  ["01", "Connect", "Connect the CRM your team already works in."],
-  [
-    "02",
-    "Learn",
-    "Review and approve what Amarktai may know about the business.",
-  ],
-  [
-    "03",
-    "Sell",
-    "Know who to contact, prepare calls and get help through the sales day.",
-  ],
-  [
-    "04",
-    "Follow through",
-    "Capture outcomes, follow-ups, notes and approved CRM actions.",
-  ],
+const benefits = [
+  {
+    icon: CircleCheck,
+    title: "Know what to do next",
+    copy: "Start the day with the customers, callbacks and opportunities that actually need attention.",
+  },
+  {
+    icon: Headphones,
+    title: "Walk into every call prepared",
+    copy: "Bring customer history, company knowledge and the next best talking points together before you speak.",
+  },
+  {
+    icon: Workflow,
+    title: "Spend less time doing CRM admin",
+    copy: "Ask Amarktai to prepare follow-ups, notes, tasks and approved CRM work, then verify what changed.",
+  },
 ] as const;
 
-const salesDay = [
-  ["08", "Morning", "See what needs attention today."],
-  ["09", "Next prospect", "Understand why this customer matters now."],
-  ["10", "Before the call", "Review customer history and prepare."],
-  ["11", "During the call", "Capture notes, transcription and assistance."],
-  ["12", "After the call", "Confirm the outcome, follow-up and CRM work."],
-  ["→", "Next prospect", "Continue with the context already assembled."],
-] as const;
-
-const integrations = [
-  ["GE", "Genie", "Available browser connector"],
-  ["HS", "HubSpot", "Available connector"],
-  ["SF", "Salesforce", "Available connector"],
-  ["PD", "Pipedrive", "Available connector"],
-  ["ZO", "Zoho CRM", "Available connector"],
-  ["+", "Other CRM", "Compatibility checked during setup"],
+const steps = [
+  ["1", "Learn your business", "Amarktai reads your public website, understands the context and asks you to approve what it may trust."],
+  ["2", "Connect your CRM", "Keep the sales system your business already uses. Amarktai works with it rather than replacing it."],
+  ["3", "Start selling", "Open your day, work through customers and ask the Assistant for help in plain language."],
 ] as const;
 
 export default function HomePage() {
   return (
     <MarketingLayout>
-      <section className="marketing-page-hero">
-        <div className="marketing-container marketing-page-hero__grid">
-          <div className="marketing-page-hero__copy marketing-reveal">
-            <Eyebrow>Amarktai Network · Sales Assistant</Eyebrow>
-            <h1>
-              Your sales day, <em>organised</em> by Amarktai.
-            </h1>
-            <p>
-              Amarktai Sales Assistant is an AI sales assistant that works with
-              the CRM your team already uses. Know who to contact next, prepare
-              every call, capture follow-ups and keep sales work moving in one
-              clear workspace.
+      <section className="bg-[#111113] px-5 pb-20 pt-16 text-[#F7F6F2] sm:px-8 sm:pb-28 sm:pt-24">
+        <div className="mx-auto grid max-w-[1240px] items-center gap-12 lg:grid-cols-[.92fr_1.08fr] lg:gap-16">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[.18em] text-[#6EA8FF]">
+              Amarktai Sales Assistant
             </p>
-            <div className="marketing-actions">
+            <h1 className="mt-5 max-w-3xl font-display text-5xl font-bold leading-[.98] tracking-[-.065em] text-white sm:text-6xl lg:text-7xl">
+              Your AI sales assistant that works with the CRM you already use.
+            </h1>
+            <p className="mt-6 max-w-2xl text-lg leading-8 text-[#B9BABE]">
+              Know who to contact. Prepare every conversation. Keep follow-ups moving. Let Amarktai handle the repetitive CRM work without taking control away from your salespeople.
+            </p>
+            <div className="mt-8 flex flex-wrap gap-3">
               <Link
                 href={accountLinks.getStarted}
-                className="marketing-button marketing-button--primary"
+                className="inline-flex min-h-12 items-center gap-2 rounded-full bg-[#3B82F6] px-6 text-sm font-black text-white transition hover:bg-[#5B98F8]"
               >
-                Get Started <ArrowRight size={17} />
+                Get started <ArrowRight size={17} />
               </Link>
               <Link
                 href="/how-it-works"
-                className="marketing-button marketing-button--secondary"
+                className="inline-flex min-h-12 items-center rounded-full border border-white/15 bg-white/[.04] px-6 text-sm font-bold text-white transition hover:bg-white/[.08]"
               >
-                See How It Works
+                See how it works
               </Link>
             </div>
-            <div className="mt-9 flex flex-wrap gap-x-6 gap-y-3 text-xs font-bold text-[#94acd0]">
-              <span className="flex items-center gap-2">
-                <CheckCircle2 className="size-4 text-[#6da2ff]" />
-                For individuals and teams
-              </span>
-              <span className="flex items-center gap-2">
-                <CheckCircle2 className="size-4 text-[#6da2ff]" />
-                Works with your CRM
-              </span>
-              <span className="flex items-center gap-2">
-                <CheckCircle2 className="size-4 text-[#6da2ff]" />
-                Review before external actions
-              </span>
-            </div>
-          </div>
-          <div className="marketing-page-hero__visual marketing-reveal marketing-reveal--delay">
-            <BrowserWindow>
-              <div className="marketing-preview-head">
-                <div>
-                  <small>Monday · Sales workspace</small>
-                  <strong>Good morning, Sam.</strong>
-                </div>
-                <span>4 priorities</span>
-              </div>
-              <MiniStatus
-                active
-                label="Next prospect"
-                copy="Mpho Dlamini · follow-up due today"
-              />
-              <MiniStatus
-                label="Prepare the call"
-                copy="History, objective and likely questions ready"
-              />
-              <MiniStatus
-                label="Review follow-up"
-                copy="Two messages waiting for approval"
-              />
-              <MiniStatus
-                label="Team attention"
-                copy="One overdue callback needs support"
-              />
-              <div className="marketing-preview-action">
-                <div>
-                  <small>Recommended next step</small>
-                  <strong>Open Mpho's pre-call brief</strong>
-                </div>
-                <span>
-                  <ArrowRight size={18} />
+            <div className="mt-8 flex flex-wrap gap-x-6 gap-y-3 text-sm text-[#B7B8BC]">
+              {[
+                "For individual salespeople",
+                "For teams and companies",
+                "Review before external actions",
+              ].map(item => (
+                <span key={item} className="inline-flex items-center gap-2">
+                  <Check size={15} className="text-[#6EA8FF]" />
+                  {item}
                 </span>
-              </div>
-            </BrowserWindow>
+              ))}
+            </div>
+          </div>
+          <div className="relative">
+            <div className="absolute -inset-8 rounded-[3rem] bg-[#3B82F6]/8 blur-3xl" />
+            <img
+              src="/sales-assistant-hero.svg"
+              alt="A salesperson working with Amarktai Sales Assistant and customer context"
+              className="relative w-full rounded-[2rem] border border-white/10 shadow-[0_35px_90px_rgba(0,0,0,.35)]"
+            />
           </div>
         </div>
       </section>
 
-      <section className="marketing-section marketing-section--raised">
-        <div className="marketing-container">
-          <SectionHeader
-            eyebrow="A simple start"
-            title="Connect. Learn. Sell. Follow through."
-            copy="Amarktai turns setup into a clear daily rhythm without asking salespeople to understand the technology underneath."
-          />
-          <div className="marketing-flow">
-            {flow.map(([number, title, copy]) => (
-              <article key={number}>
-                <span>{number}</span>
-                <h3>{title}</h3>
-                <p>{copy}</p>
+      <section className="bg-[#F5F3EE] px-5 py-20 text-[#171719] sm:px-8 sm:py-24">
+        <div className="mx-auto max-w-[1180px]">
+          <p className="text-xs font-black uppercase tracking-[.16em] text-[#3B6FAF]">The point is simple</p>
+          <h2 className="mt-3 max-w-3xl font-display text-4xl font-bold tracking-[-.055em] sm:text-5xl">
+            Less chasing. Less admin. More useful conversations.
+          </h2>
+          <div className="mt-10 grid gap-5 md:grid-cols-3">
+            {benefits.map(({ icon: Icon, title, copy }) => (
+              <article key={title} className="rounded-[1.5rem] border border-black/8 bg-white p-7 shadow-[0_14px_40px_rgba(24,24,27,.06)]">
+                <span className="grid size-10 place-items-center rounded-full bg-[#EEF3FA] text-[#356CB4]">
+                  <Icon size={19} />
+                </span>
+                <h3 className="mt-6 text-xl font-bold">{title}</h3>
+                <p className="mt-3 text-sm leading-6 text-[#66676B]">{copy}</p>
               </article>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="marketing-section">
-        <div className="marketing-container marketing-sales-day">
-          <div className="sticky top-28">
-            <SectionHeader
-              eyebrow="A real sales day"
-              title="One flow from first priority to next prospect."
-              copy="The strongest sales tools disappear into the work. Amarktai brings the context, conversation and follow-through together so the next move stays visible."
-            />
-            <Link
-              href="/product"
-              className="marketing-button marketing-button--secondary"
-            >
-              Explore the product <ArrowRight size={16} />
-            </Link>
-          </div>
-          <div className="marketing-sales-day__timeline">
-            {salesDay.map(([number, title, copy]) => (
-              <div key={`${number}-${title}`} className="marketing-day-item">
-                <span>{number}</span>
-                <div>
-                  <strong>{title}</strong>
-                  <p>{copy}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="marketing-section marketing-section--raised">
-        <div className="marketing-container">
-          <SectionHeader
-            align="center"
-            eyebrow="Built around the way you sell"
-            title="Focused for one. Consistent for a team."
-            copy="Use the same sales workspace in the way that fits your business today, without creating two different products."
-          />
-          <div className="marketing-grid marketing-grid--2">
-            <article className="marketing-entry-card">
-              <Eyebrow>Individual salesperson</Eyebrow>
-              <h3>
-                Stay organised without carrying the whole sales day in your
-                head.
-              </h3>
-              <TickList
-                items={[
-                  "Know who to contact",
-                  "Prepare every conversation",
-                  "Spend less time on CRM administration",
-                ]}
-              />
-              <Link href="/individuals">
-                For Individuals <ArrowRight size={16} />
-              </Link>
-            </article>
-            <article className="marketing-entry-card marketing-entry-card--bright">
-              <Eyebrow>Team or company</Eyebrow>
-              <h3>
-                Give every salesperson one clear way to prepare and follow
-                through.
-              </h3>
-              <TickList
-                items={[
-                  "Share approved company knowledge",
-                  "Keep follow-ups visible",
-                  "Help managers see where work is stuck",
-                ]}
-              />
-              <Link href="/teams">
-                For Teams <ArrowRight size={16} />
-              </Link>
-            </article>
-          </div>
-        </div>
-      </section>
-
-      <section className="marketing-section">
-        <div className="marketing-container">
-          <SectionHeader
-            eyebrow="Keep the system you already use"
-            title="Your CRM stays. The sales day gets clearer."
-            copy="Amarktai connects customer context and available sales workflows without forcing the business to replace its CRM. Setup and available capabilities depend on the connected system."
-          />
-          <div className="marketing-logo-grid">
-            {integrations.map(([initials, name, status]) => (
-              <div className="marketing-logo-card" key={name}>
-                <div>
-                  <span>{initials}</span>
-                  <span>
-                    <strong className="block">{name}</strong>
-                    <small className="mt-1 block text-[10px] font-bold text-[#7896c1]">
-                      {status}
-                    </small>
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="mt-9">
-            <Link
-              href="/integrations"
-              className="marketing-button marketing-button--secondary"
-            >
-              Explore integrations <ArrowRight size={16} />
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      <section className="marketing-section marketing-section--raised">
-        <div className="marketing-container marketing-split">
-          <div>
-            <SectionHeader
-              eyebrow="Approved business knowledge"
-              title="A sales assistant that understands what you sell."
-              copy="Give Amarktai the company website, review what it discovers, and approve the products, services, policies and information the team may use."
-            />
-            <TickList
-              items={[
-                "You decide what becomes trusted company context",
-                "Corrections stay connected to their source",
-                "Every salesperson works from the same approved information",
-              ]}
-            />
-            <Link
-              href="/product"
-              className="marketing-button marketing-button--secondary mt-8"
-            >
-              See Business Knowledge <ArrowRight size={16} />
-            </Link>
-          </div>
-          <div className="marketing-split__panel">
-            <Eyebrow>Knowledge review</Eyebrow>
-            <div className="marketing-knowledge-stack">
-              <article>
-                <small>Product · Website source</small>
-                <strong>Customer onboarding and sales workflow software</strong>
-              </article>
-              <article>
-                <small>Service · Awaiting review</small>
-                <strong>CRM connection and guided setup</strong>
-              </article>
-              <article>
-                <small>Approved team context</small>
-                <strong>Value proposition confirmed by workspace owner</strong>
-              </article>
+      <section className="bg-[#1A1A1D] px-5 py-20 text-white sm:px-8 sm:py-24">
+        <div className="mx-auto max-w-[1180px]">
+          <div className="grid gap-12 lg:grid-cols-[.75fr_1.25fr]">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[.16em] text-[#77A9F5]">How it works</p>
+              <h2 className="mt-3 font-display text-4xl font-bold tracking-[-.055em] sm:text-5xl">
+                Set up once. Then get on with selling.
+              </h2>
+              <p className="mt-5 max-w-xl text-base leading-7 text-[#B6B7BC]">
+                The technical work stays underneath. Salespeople get a clear workspace and managers get the oversight they need.
+              </p>
+            </div>
+            <div className="grid gap-3">
+              {steps.map(([number, title, copy]) => (
+                <article key={number} className="grid gap-4 rounded-[1.35rem] border border-white/10 bg-white/[.035] p-6 sm:grid-cols-[56px_1fr] sm:items-start">
+                  <span className="grid size-11 place-items-center rounded-full bg-[#3B82F6] text-sm font-black text-white">{number}</span>
+                  <div>
+                    <h3 className="text-xl font-bold">{title}</h3>
+                    <p className="mt-2 text-sm leading-6 text-[#B8B9BD]">{copy}</p>
+                  </div>
+                </article>
+              ))}
             </div>
           </div>
         </div>
       </section>
 
-      <section className="marketing-section">
-        <div className="marketing-container">
-          <SectionHeader
-            align="center"
-            eyebrow="Conversation to closeout"
-            title="Prepare the call. Stay present. Finish the work."
-            copy="Amarktai brings customer context into the conversation, helps capture what happened, and prepares the next steps for review."
-          />
-          <div className="marketing-grid marketing-grid--3">
-            <FeatureCard
-              icon={Target}
-              title="Before the call"
-              copy="Open the customer history, sales objective and useful company context before the conversation starts."
-            />
-            <FeatureCard
-              icon={Headphones}
-              title="During the call"
-              copy="Use transcription, notes and live assistance where enabled and consented to in the workspace."
-            />
-            <FeatureCard
-              icon={MailCheck}
-              title="After the call"
-              copy="Confirm the disposition, prepare follow-up and keep approved CRM administration moving."
-            />
-          </div>
-        </div>
-      </section>
-
-      <section className="marketing-section marketing-section--raised">
-        <div className="marketing-container marketing-split">
-          <div className="marketing-split__panel">
-            <Eyebrow>Manager attention</Eyebrow>
-            <div className="marketing-knowledge-stack">
-              <article>
-                <small>Team workload</small>
-                <strong>Three follow-ups need attention today</strong>
-              </article>
-              <article>
-                <small>Coaching</small>
-                <strong>Two calls are ready for quality review</strong>
-              </article>
-              <article>
-                <small>CRM health</small>
-                <strong>One owner mapping needs confirmation</strong>
-              </article>
-            </div>
-          </div>
-          <div>
-            <SectionHeader
-              eyebrow="For managers"
-              title="See where support is needed—without turning sales into surveillance."
-              copy="Keep an eye on workload, overdue work, follow-up visibility, review queues and CRM health so managers can coach and unblock the team."
-            />
-            <TickList
-              items={[
-                "Team workload and overdue work",
-                "Pipeline and follow-up attention",
-                "Quality, coaching and review queues",
-                "Clear sales reporting",
-              ]}
-            />
-            <Link
-              href="/teams"
-              className="marketing-button marketing-button--secondary mt-8"
-            >
-              Explore team workspace <ArrowRight size={16} />
+      <section className="bg-white px-5 py-20 text-[#171719] sm:px-8 sm:py-24">
+        <div className="mx-auto grid max-w-[1180px] gap-5 md:grid-cols-2">
+          <article className="rounded-[1.75rem] border border-black/8 bg-[#F6F4EF] p-8 sm:p-10">
+            <p className="text-xs font-black uppercase tracking-[.16em] text-[#5F6570]">Individual</p>
+            <h2 className="mt-3 font-display text-4xl font-bold tracking-[-.055em]">Your own focused sales workspace.</h2>
+            <p className="mt-4 text-base leading-7 text-[#66676B]">
+              See your customers, your calls, your reminders and your next actions without team-management clutter.
+            </p>
+            <Link href="/individuals" className="mt-7 inline-flex items-center gap-2 text-sm font-black text-[#2F66B0]">
+              For individuals <ArrowRight size={16} />
             </Link>
-          </div>
+          </article>
+          <article className="rounded-[1.75rem] bg-[#202024] p-8 text-white sm:p-10">
+            <p className="text-xs font-black uppercase tracking-[.16em] text-[#75A7F3]">Company</p>
+            <h2 className="mt-3 font-display text-4xl font-bold tracking-[-.055em]">One company brain. Private salesperson workspaces.</h2>
+            <p className="mt-4 text-base leading-7 text-[#B8B9BD]">
+              Share approved knowledge and CRM capability while each salesperson keeps their own conversations and working context private. Managers get the team view.
+            </p>
+            <Link href="/teams" className="mt-7 inline-flex items-center gap-2 text-sm font-black text-[#79AAF4]">
+              For companies <ArrowRight size={16} />
+            </Link>
+          </article>
         </div>
       </section>
 
-      <section className="marketing-section">
-        <div className="marketing-container">
-          <SectionHeader
-            align="center"
-            eyebrow="Control stays with the team"
-            title="AI helps. Your team stays in control."
-            copy="Approved information, reviewable actions and connected evidence make it easier to use assistance without losing responsibility for the outcome."
-          />
-          <div className="marketing-grid marketing-grid--4">
-            <FeatureCard
-              icon={BookOpenCheck}
-              title="Approved context"
-              copy="Use business information your workspace has reviewed and confirmed."
-            />
-            <FeatureCard
-              icon={ShieldCheck}
-              title="Reviewable actions"
-              copy="Check important external actions before they are executed."
-            />
-            <FeatureCard
-              icon={Workflow}
-              title="Connected evidence"
-              copy="Keep preparation, execution status and results together."
-            />
-            <FeatureCard
-              icon={Radar}
-              title="Visible outcomes"
-              copy="See what succeeded, what failed and what needs attention."
-            />
-          </div>
+      <section className="bg-[#EFEDE7] px-5 py-20 text-[#171719] sm:px-8">
+        <div className="mx-auto max-w-[1080px] text-center">
+          <span className="mx-auto grid size-12 place-items-center rounded-full bg-white text-[#356CB4] shadow-sm">
+            <Sparkles size={21} />
+          </span>
+          <h2 className="mx-auto mt-5 max-w-3xl font-display text-4xl font-bold tracking-[-.055em] sm:text-5xl">
+            Keep your CRM. Add a better way to work through the sales day.
+          </h2>
+          <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-[#68696D]">
+            Genie, HubSpot, Salesforce, Pipedrive, Zoho and compatible browser-based CRMs can be connected through the governed setup available for each system.
+          </p>
+          <Link
+            href={accountLinks.getStarted}
+            className="mt-8 inline-flex min-h-12 items-center gap-2 rounded-full bg-[#1E1E21] px-7 text-sm font-black text-white transition hover:bg-black"
+          >
+            Start with Amarktai <ArrowRight size={17} />
+          </Link>
         </div>
       </section>
-
-      <CTASection
-        title="Make the next sales move easier to see."
-        copy="Set up an individual workspace or bring the team into one consistent sales rhythm."
-      />
     </MarketingLayout>
   );
 }
