@@ -1,38 +1,71 @@
 import { discoverPublicWebsite } from "./companyDiscovery";
-import {
-  reviewCompanyIntelligence,
-  type CompanyIntelligenceReview,
-} from "./companyIntelligenceReview";
+import type { CompanyIntelligenceReview } from "./companyIntelligenceReview";
+import { reasonAboutCompanyWebsite } from "./companyWebsiteReasoner";
 
-type RetainedPageMetadata = { url: string; title?: string | null; fetchedAt?: string };
+type RetainedPageMetadata = {
+  url: string;
+  title?: string | null;
+  fetchedAt?: string;
+};
 
-type ReviewPage = { url: string; title: string | null; fetchedAt: string; text: string };
+type ReviewPage = {
+  url: string;
+  title: string | null;
+  fetchedAt: string;
+  text: string;
+};
 
-export function retainedPagesForCompanyReview(extractedText: string, pages: RetainedPageMetadata[]): ReviewPage[] {
-  const segments = Array.from(extractedText.matchAll(/^\[(https?:\/\/[^\]]+)\]\n([\s\S]*?)(?=^\[https?:\/\/|$)/gm));
+export function retainedPagesForCompanyReview(
+  extractedText: string,
+  pages: RetainedPageMetadata[]
+): ReviewPage[] {
+  const segments = Array.from(
+    extractedText.matchAll(
+      /^\[(https?:\/\/[^\]]+)\]\n([\s\S]*?)(?=^\[https?:\/\/|$)/gm
+    )
+  );
   return segments
     .map(segment => {
       const url = segment[1];
       const page = pages.find(item => item.url === url);
-      return { url, title: page?.title || null, fetchedAt: page?.fetchedAt || new Date().toISOString(), text: segment[2] || "" };
+      return {
+        url,
+        title: page?.title || null,
+        fetchedAt: page?.fetchedAt || new Date().toISOString(),
+        text: segment[2] || "",
+      };
     })
     .filter(page => page.text.trim().length > 0);
 }
 
-export function pagesForCompanyReview(discovery: Awaited<ReturnType<typeof discoverPublicWebsite>>) {
+export function pagesForCompanyReview(
+  discovery: Awaited<ReturnType<typeof discoverPublicWebsite>>
+) {
   return retainedPagesForCompanyReview(discovery.extractedText, discovery.pages);
 }
 
-export function companyReviewCandidate(item: CompanyIntelligenceReview["items"][number]) {
+export function companyReviewCandidate(
+  item: CompanyIntelligenceReview["items"][number]
+) {
   const offering = item.offering;
   const lines = [
     item.summary,
     offering ? `Offering: ${offering.name}` : "",
-    offering?.currentPrices?.length ? `Current prices: ${offering.currentPrices.join(" / ")}` : "",
-    offering?.duration?.length ? `Duration: ${offering.duration.join(" / ")}` : "",
-    offering?.certifications?.length ? `Certifications: ${offering.certifications.join(", ")}` : "",
-    offering?.financeOptions?.length ? `Finance: ${offering.financeOptions.join("; ")}` : "",
-    offering?.support?.length ? `Support: ${offering.support.join("; ")}` : "",
+    offering?.currentPrices?.length
+      ? `Current prices: ${offering.currentPrices.join(" / ")}`
+      : "",
+    offering?.duration?.length
+      ? `Duration: ${offering.duration.join(" / ")}`
+      : "",
+    offering?.certifications?.length
+      ? `Certifications: ${offering.certifications.join(", ")}`
+      : "",
+    offering?.financeOptions?.length
+      ? `Finance: ${offering.financeOptions.join("; ")}`
+      : "",
+    offering?.support?.length
+      ? `Support: ${offering.support.join("; ")}`
+      : "",
     `Evidence: ${item.evidenceText}`,
   ].filter(Boolean);
   return {
@@ -53,7 +86,10 @@ export function companyReviewCandidate(item: CompanyIntelligenceReview["items"][
   };
 }
 
-function failClosedRawDiscovery(discovery: Awaited<ReturnType<typeof discoverPublicWebsite>>, detail: string) {
+function failClosedRawDiscovery(
+  discovery: Awaited<ReturnType<typeof discoverPublicWebsite>>,
+  detail: string
+) {
   return discovery.proposedKnowledge.map(item => ({
     ...item,
     classification: "ambiguous",
@@ -65,10 +101,15 @@ function failClosedRawDiscovery(discovery: Awaited<ReturnType<typeof discoverPub
 }
 
 /**
- * Canonical website intelligence pipeline. All public discovery routes must use
- * this service: crawl -> raw page evidence -> AI review -> provenance guard ->
- * cross-page reconciliation -> human-review draft. It never promotes trust on
- * an unavailable or invalid reviewer response.
+ * Canonical website intelligence pipeline.
+ *
+ * Fresh discovery is intentionally a metered AI operation:
+ * crawl -> retain raw page evidence -> site-wide GenX context reasoning ->
+ * evidence extraction -> deterministic provenance verification -> site-wide
+ * reconciliation -> human-review draft.
+ *
+ * The AI is allowed to understand context across the site, but it cannot bypass
+ * exact source/evidence checks or silently promote comparison/competitor text.
  */
 export async function discoverAndReviewCompanyIntelligence(input: {
   userId: number;
@@ -78,7 +119,7 @@ export async function discoverAndReviewCompanyIntelligence(input: {
 }) {
   const discovery = await discoverPublicWebsite(input.websiteUrl);
   try {
-    const review = await reviewCompanyIntelligence({
+    const review = await reasonAboutCompanyWebsite({
       userId: input.userId,
       organisationId: input.organisationId,
       pages: pagesForCompanyReview(discovery),
@@ -92,30 +133,46 @@ export async function discoverAndReviewCompanyIntelligence(input: {
       aiReview: review,
     };
   } catch (error) {
-    const detail = error instanceof Error ? error.message : "AI review unavailable";
+    const detail =
+      error instanceof Error ? error.message : "AI review unavailable";
     return {
       discovery,
       proposedKnowledge: failClosedRawDiscovery(discovery, detail),
       reviewState: "unavailable" as const,
       reviewUnavailable: detail.slice(0, 320),
-      aiReview: { agentKey: "company_intelligence_review", available: false, items: [], reviewedAt: new Date().toISOString() },
+      aiReview: {
+        agentKey: "company_intelligence_review",
+        available: false,
+        items: [],
+        reviewedAt: new Date().toISOString(),
+        failure: detail.slice(0, 320),
+      },
     };
   }
 }
 
-/** Retry only from retained raw page evidence; candidate text is never a second interpretation source. */
+/**
+ * Retry only from retained raw page evidence. A retry still uses GenX and is
+ * metered, but never reinterprets a previous AI candidate as source material.
+ */
 export async function reviewStoredCompanyIntelligence(input: {
   userId: number;
   organisationId: number;
   discoveryId: number;
   pages: ReviewPage[];
 }) {
-  if (!input.pages.length) throw new Error("Retained raw page evidence is unavailable; start a fresh discovery before retrying.");
-  const review = await reviewCompanyIntelligence({
+  if (!input.pages.length)
+    throw new Error(
+      "Retained raw page evidence is unavailable; start a fresh discovery before retrying."
+    );
+  const review = await reasonAboutCompanyWebsite({
     userId: input.userId,
     organisationId: input.organisationId,
     pages: input.pages,
     reference: `website-review-retry:${input.discoveryId}:${Date.now()}`,
   });
-  return { proposedKnowledge: review.items.map(companyReviewCandidate), aiReview: review };
+  return {
+    proposedKnowledge: review.items.map(companyReviewCandidate),
+    aiReview: review,
+  };
 }

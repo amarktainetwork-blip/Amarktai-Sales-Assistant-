@@ -1,7 +1,5 @@
 export const marketingNavigation = [
   { label: "Product", href: "/product" },
-  { label: "How It Works", href: "/how-it-works" },
-  { label: "Individuals", href: "/individuals" },
   { label: "Teams", href: "/teams" },
   { label: "Integrations", href: "/integrations" },
   { label: "Pricing", href: "/pricing" },
