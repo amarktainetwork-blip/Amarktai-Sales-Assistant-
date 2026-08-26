@@ -28,11 +28,14 @@ function genieSystem(provider = "genie") {
 }
 
 describe("fresh Genie browser reset", () => {
-  it("clears only the Genie origin and never closes the shared browser", async () => {
+  it("clears only the Genie origin through a page CDP session and never closes the shared browser", async () => {
+    let genieClosed = false;
     const geniePage = {
-      isClosed: () => false,
+      isClosed: () => genieClosed,
       url: () => "https://genie.entrepreneurscircle.org/dashboard",
-      close: vi.fn().mockResolvedValue(undefined),
+      close: vi.fn().mockImplementation(async () => {
+        genieClosed = true;
+      }),
     };
     const otherPage = {
       isClosed: () => false,
@@ -40,12 +43,8 @@ describe("fresh Genie browser reset", () => {
       close: vi.fn().mockResolvedValue(undefined),
     };
     const clearCookies = vi.fn().mockResolvedValue(undefined);
-    const context = {
-      pages: () => [geniePage, otherPage],
-      clearCookies,
-    };
-    const detach = vi.fn().mockResolvedValue(undefined);
-    const send = vi.fn().mockImplementation((method: string) =>
+    const browserDetach = vi.fn().mockResolvedValue(undefined);
+    const browserSend = vi.fn().mockImplementation((method: string) =>
       method === "Target.getTargets"
         ? Promise.resolve({
             targetInfos: [
@@ -68,10 +67,25 @@ describe("fresh Genie browser reset", () => {
           })
         : Promise.resolve({ success: true })
     );
+    const storageDetach = vi.fn().mockResolvedValue(undefined);
+    const storageSend = vi.fn().mockResolvedValue({ success: true });
+    const newCDPSession = vi.fn().mockResolvedValue({
+      send: storageSend,
+      detach: storageDetach,
+    });
+    const context = {
+      pages: () => [geniePage, otherPage],
+      clearCookies,
+      newPage: vi.fn(),
+      newCDPSession,
+    };
     const closeBrowser = vi.fn();
     const browser = {
       contexts: () => [context],
-      newBrowserCDPSession: vi.fn().mockResolvedValue({ send, detach }),
+      newBrowserCDPSession: vi.fn().mockResolvedValue({
+        send: browserSend,
+        detach: browserDetach,
+      }),
       close: closeBrowser,
     };
 
@@ -86,13 +100,13 @@ describe("fresh Genie browser reset", () => {
     });
     expect(geniePage.close).toHaveBeenCalledTimes(1);
     expect(otherPage.close).not.toHaveBeenCalled();
-    expect(send).toHaveBeenCalledWith("Target.closeTarget", {
+    expect(browserSend).toHaveBeenCalledWith("Target.closeTarget", {
       targetId: "genie-worker",
     });
-    expect(send).not.toHaveBeenCalledWith("Target.closeTarget", {
+    expect(browserSend).not.toHaveBeenCalledWith("Target.closeTarget", {
       targetId: "other-worker",
     });
-    expect(send).not.toHaveBeenCalledWith("Target.closeTarget", {
+    expect(browserSend).not.toHaveBeenCalledWith("Target.closeTarget", {
       targetId: "genie-page-target",
     });
     expect(clearCookies).toHaveBeenNthCalledWith(1, {
@@ -101,12 +115,53 @@ describe("fresh Genie browser reset", () => {
     expect(clearCookies).toHaveBeenNthCalledWith(2, {
       domain: ".genie.entrepreneurscircle.org",
     });
-    expect(send).toHaveBeenCalledWith("Storage.clearDataForOrigin", {
+    expect(newCDPSession).toHaveBeenCalledWith(otherPage);
+    expect(storageSend).toHaveBeenCalledWith("Storage.clearDataForOrigin", {
       origin: "https://genie.entrepreneurscircle.org",
       storageTypes: "all",
     });
-    expect(detach).toHaveBeenCalledTimes(1);
+    expect(browserSend).not.toHaveBeenCalledWith(
+      "Storage.clearDataForOrigin",
+      expect.anything()
+    );
+    expect(browserDetach).toHaveBeenCalledTimes(1);
+    expect(storageDetach).toHaveBeenCalledTimes(1);
+    expect(context.newPage).not.toHaveBeenCalled();
     expect(closeBrowser).not.toHaveBeenCalled();
+  });
+
+  it("creates and removes an about:blank page only when no live page exists for frame-scoped storage cleanup", async () => {
+    const temporaryPage = {
+      isClosed: () => false,
+      url: () => "about:blank",
+      close: vi.fn().mockResolvedValue(undefined),
+    };
+    const newCDPSession = vi.fn().mockResolvedValue({
+      send: vi.fn().mockResolvedValue({}),
+      detach: vi.fn().mockResolvedValue(undefined),
+    });
+    const context = {
+      pages: () => [],
+      clearCookies: vi.fn().mockResolvedValue(undefined),
+      newPage: vi.fn().mockResolvedValue(temporaryPage),
+      newCDPSession,
+    };
+    const browser = {
+      contexts: () => [context],
+      newBrowserCDPSession: vi.fn().mockResolvedValue({
+        send: vi.fn().mockResolvedValue({ targetInfos: [] }),
+        detach: vi.fn().mockResolvedValue(undefined),
+      }),
+    };
+
+    await clearGenieBrowserOriginState({
+      browser: browser as never,
+      baseUrl: "https://genie.entrepreneurscircle.org/",
+    });
+
+    expect(context.newPage).toHaveBeenCalledTimes(1);
+    expect(newCDPSession).toHaveBeenCalledWith(temporaryPage);
+    expect(temporaryPage.close).toHaveBeenCalledTimes(1);
   });
 
   it("fails closed when the shared Chromium runtime does not expose one persistent context", async () => {
@@ -182,19 +237,34 @@ describe("fresh Genie browser reset", () => {
 
   it("deletes only the selected organisation connection and records knowledge preservation", async () => {
     const clearCookies = vi.fn().mockResolvedValue(undefined);
-    const send = vi
+    const browserSend = vi
       .fn()
       .mockImplementation((method: string) =>
         method === "Target.getTargets"
           ? Promise.resolve({ targetInfos: [] })
           : Promise.resolve({})
       );
+    const storageSend = vi.fn().mockResolvedValue({});
+    const otherPage = {
+      isClosed: () => false,
+      url: () => "https://example.test/",
+      close: vi.fn(),
+    };
+    const context = {
+      pages: () => [otherPage],
+      clearCookies,
+      newPage: vi.fn(),
+      newCDPSession: vi.fn().mockResolvedValue({
+        send: storageSend,
+        detach: vi.fn().mockResolvedValue(undefined),
+      }),
+    };
     const deleteConnectionAndAudit = vi.fn().mockResolvedValue(undefined);
     const releaseProfile = vi.fn().mockResolvedValue(false);
     const browser = {
-      contexts: () => [{ pages: () => [], clearCookies }],
+      contexts: () => [context],
       newBrowserCDPSession: vi.fn().mockResolvedValue({
-        send,
+        send: browserSend,
         detach: vi.fn().mockResolvedValue(undefined),
       }),
       close: vi.fn(),
@@ -222,6 +292,10 @@ describe("fresh Genie browser reset", () => {
       } as never
     );
     expect(result.deleted).toBe(true);
+    expect(storageSend).toHaveBeenCalledWith("Storage.clearDataForOrigin", {
+      origin: "https://genie.entrepreneurscircle.org",
+      storageTypes: "all",
+    });
     expect(releaseProfile).toHaveBeenCalledWith(system);
     expect(deleteConnectionAndAudit).toHaveBeenCalledWith({
       system,
@@ -231,23 +305,56 @@ describe("fresh Genie browser reset", () => {
     expect(browser.close).not.toHaveBeenCalled();
   });
 
-  it("fails closed on a different profile owner and never deletes the connection", async () => {
+  it("fails closed if frame-scoped Genie origin storage cannot be cleared", async () => {
     const deleteConnectionAndAudit = vi.fn();
-    const browser = vi.fn().mockResolvedValue({
+    const releaseProfile = vi.fn();
+    const otherPage = {
+      isClosed: () => false,
+      url: () => "https://example.test/",
+      close: vi.fn(),
+    };
+    const browser = {
       contexts: () => [
-        { pages: () => [], clearCookies: vi.fn().mockResolvedValue(undefined) },
+        {
+          pages: () => [otherPage],
+          clearCookies: vi.fn().mockResolvedValue(undefined),
+          newPage: vi.fn(),
+          newCDPSession: vi.fn().mockResolvedValue({
+            send: vi.fn().mockRejectedValue(new Error("storage clear failed")),
+            detach: vi.fn().mockResolvedValue(undefined),
+          }),
+        },
       ],
       newBrowserCDPSession: vi.fn().mockResolvedValue({
-        send: vi
-          .fn()
-          .mockImplementation((method: string) =>
-            Promise.resolve(
-              method === "Target.getTargets" ? { targetInfos: [] } : {}
-            )
-          ),
+        send: vi.fn().mockResolvedValue({ targetInfos: [] }),
         detach: vi.fn().mockResolvedValue(undefined),
       }),
-    });
+    };
+
+    await expect(
+      resetAndDeleteGenieConnection(
+        {
+          connectedSystemId: 7,
+          organisationId: 11,
+          userId: 3,
+          confirmDelete: true,
+        },
+        {
+          loadSystem: vi.fn().mockResolvedValue(genieSystem()),
+          browser: vi.fn().mockResolvedValue(browser),
+          releaseProfile,
+          restoreProfile: vi.fn(),
+          deleteConnectionAndAudit,
+        } as never
+      )
+    ).rejects.toThrow("storage clear failed");
+    expect(releaseProfile).not.toHaveBeenCalled();
+    expect(deleteConnectionAndAudit).not.toHaveBeenCalled();
+  });
+
+  it("fails closed on a different profile owner and never deletes the connection", async () => {
+    const deleteConnectionAndAudit = vi.fn();
+    const browser = vi.fn();
     await expect(
       resetAndDeleteGenieConnection(
         {
