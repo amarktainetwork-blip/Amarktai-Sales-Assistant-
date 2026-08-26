@@ -14,6 +14,7 @@ import { registerConnectedSystemAdminRoutes } from "../connectedSystemAdminRoute
 import { registerSalesAutomationRoutes } from "../salesAutomationRoutes";
 import { registerSalesTargetsRoutes } from "../salesTargetsRoutes";
 import { registerAiCreditsRoutes } from "../aiCreditsRoutes";
+import { registerCompanyIntelligenceRoutes } from "../companyIntelligenceRoutes";
 import { registerConnectorWebhookRoutes } from "../connectors/webhookRoutes";
 import { registerOutlookInboundRoutes } from "../communications/outlookInboundRoutes";
 import { registerVoiceRoutes } from "../voice/routes";
@@ -110,6 +111,13 @@ async function startServer() {
     enforceAppOrigin
   );
   registerConnectedSystemAdminRoutes(app);
+  app.use(
+    "/api/company-intelligence",
+    rateLimit({ limit: 12, windowMs: 60_000 }),
+    enforceAppOrigin,
+    withAiRequestIdentity
+  );
+  registerCompanyIntelligenceRoutes(app);
   app.use(
     "/api/sales-automation",
     rateLimit({ limit: 90, windowMs: 60_000 }),
