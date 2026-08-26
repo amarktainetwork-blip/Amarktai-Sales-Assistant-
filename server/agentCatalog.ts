@@ -52,6 +52,14 @@ export const AGENT_CATALOG: AgentDefinition[] = [
     modelRole: "GenX retrieval and explanation model",
   },
   {
+    key: "company_intelligence_review",
+    name: "Company Intelligence Review Agent",
+    purpose: "Interprets public website extraction before human approval, separates the company's own offerings from comparisons, competitors, testimonials, examples and historical content, preserves evidence, and marks uncertainty for review instead of inventing facts.",
+    category: "knowledge",
+    requiresModel: true,
+    modelRole: "GenX evidence-grounded website interpretation model",
+  },
+  {
     key: "communications",
     name: "Communications Agent",
     purpose: "Prepares template-bound email, SMS, and WhatsApp action proposals that retain approved wording and subject lines.",
