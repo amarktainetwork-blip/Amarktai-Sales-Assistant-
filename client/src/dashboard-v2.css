@@ -1,0 +1,250 @@
+/*
+ * Logged-in workspace visual reset.
+ * Scoped to pages that mount the shared sidebar wrapper so public marketing
+ * pages are unaffected. This intentionally neutralises the legacy navy stack
+ * while pages migrate toward semantic workspace tokens.
+ */
+
+body:has([data-slot="sidebar-wrapper"]) {
+  --dash-canvas: #f4f2ed;
+  --dash-surface: #fffefa;
+  --dash-surface-soft: #ece9e2;
+  --dash-sidebar: #151517;
+  --dash-sidebar-soft: #202024;
+  --dash-text: #171719;
+  --dash-muted: #686660;
+  --dash-muted-2: #8c8981;
+  --dash-border: rgba(23, 23, 25, 0.13);
+  --dash-border-strong: rgba(23, 23, 25, 0.21);
+  --dash-blue: #3b82f6;
+  --dash-blue-dark: #2466cc;
+  --dash-blue-soft: #e8f0ff;
+  --dash-success: #17633a;
+  --dash-success-soft: #e7f4ec;
+  --dash-danger: #982f3e;
+  --dash-danger-soft: #f8e9eb;
+  --dash-warning: #7a5411;
+  --dash-warning-soft: #f8eed8;
+  background: var(--dash-canvas);
+  color: var(--dash-text);
+  color-scheme: light;
+}
+
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-wrapper"] {
+  background: var(--dash-canvas) !important;
+  color: var(--dash-text);
+}
+
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="sidebar"] {
+  background: var(--dash-sidebar) !important;
+  color: #f7f6f1 !important;
+}
+
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-container"] {
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  background: var(--dash-sidebar) !important;
+}
+
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="header"],
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="footer"] {
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="content"] {
+  scrollbar-color: #444449 transparent;
+}
+
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="menu-button"] {
+  min-height: 40px;
+  border-radius: 10px !important;
+  color: #b5b3b8 !important;
+  font-weight: 720;
+}
+
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="menu-button"]:hover {
+  background: rgba(255, 255, 255, 0.065) !important;
+  color: #fff !important;
+}
+
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="menu-button"][data-active="true"] {
+  background: #f7f5ef !important;
+  color: #151517 !important;
+  box-shadow: none !important;
+}
+
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="menu-button"][data-active="true"] svg {
+  color: var(--dash-blue) !important;
+}
+
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] {
+  background:
+    linear-gradient(rgba(23, 23, 25, 0.025) 1px, transparent 1px) 0 0 / 44px 44px,
+    linear-gradient(90deg, rgba(23, 23, 25, 0.025) 1px, transparent 1px) 0 0 / 44px 44px,
+    var(--dash-canvas) !important;
+  color: var(--dash-text) !important;
+}
+
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] > header {
+  border-color: var(--dash-border) !important;
+  background: rgba(244, 242, 237, 0.92) !important;
+  color: var(--dash-text) !important;
+  backdrop-filter: blur(16px);
+}
+
+/* Legacy shell/page navy values -> neutral surfaces. */
+body:has([data-slot="sidebar-wrapper"]) [class*="bg-[#071326]"] {
+  background: var(--dash-canvas) !important;
+}
+
+body:has([data-slot="sidebar-wrapper"]) [class*="bg-[#08172F]"],
+body:has([data-slot="sidebar-wrapper"]) [class*="bg-[#0B1B37]"],
+body:has([data-slot="sidebar-wrapper"]) [class*="bg-[#0C1E3E]"],
+body:has([data-slot="sidebar-wrapper"]) [class*="bg-[#0E2142]"] {
+  background: var(--dash-surface) !important;
+  border-color: var(--dash-border) !important;
+  box-shadow: 0 10px 28px rgba(35, 31, 24, 0.055) !important;
+}
+
+body:has([data-slot="sidebar-wrapper"]) [class*="bg-[#153B7A]"] {
+  background: var(--dash-blue-soft) !important;
+  border-color: #c8d9fa !important;
+  color: var(--dash-blue-dark) !important;
+}
+
+body:has([data-slot="sidebar-wrapper"]) [class*="border-white/10"],
+body:has([data-slot="sidebar-wrapper"]) [class*="border-white/15"] {
+  border-color: var(--dash-border) !important;
+}
+
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="sidebar"] [class*="border-white/10"],
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="sidebar"] [class*="border-white/15"] {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Typography reset in the working canvas. */
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [class~="text-white"],
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [class*="text-[#EEF5FF]"],
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [class*="text-[#EDF4FF]"] {
+  color: var(--dash-text) !important;
+}
+
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [class*="text-[#A9BFDF]"],
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [class*="text-[#9EB6DB]"],
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [class*="text-[#92ABCF]"],
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [class*="text-[#8FA9CE]"],
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [class*="text-[#849FC5]"],
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [class*="text-[#D6E5FF]"] {
+  color: var(--dash-muted) !important;
+}
+
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [class*="text-[#83AEFF]"],
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [class*="text-[#9FC2FF]"] {
+  color: var(--dash-blue-dark) !important;
+}
+
+/* Buttons: one blue, otherwise neutral. */
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [class*="bg-[#1B64F2]"] {
+  background: var(--dash-text) !important;
+  color: #fff !important;
+  box-shadow: none !important;
+}
+
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [class*="bg-[#1B64F2]"]:hover {
+  background: #000 !important;
+}
+
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [class*="hover:bg-[#2B76FF]"]:hover {
+  background: #000 !important;
+}
+
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [class*="bg-white/5"] {
+  background: var(--dash-surface) !important;
+  color: var(--dash-text) !important;
+}
+
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] input,
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] textarea,
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] select {
+  border-color: var(--dash-border-strong) !important;
+  background: #fff !important;
+  color: var(--dash-text) !important;
+  caret-color: var(--dash-blue-dark);
+}
+
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] input::placeholder,
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] textarea::placeholder {
+  color: #94918a !important;
+  opacity: 1;
+}
+
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] select option {
+  background: #fff;
+  color: var(--dash-text);
+}
+
+/* Make assistant/messages unequivocally readable. */
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [class*="whitespace-pre-wrap"] {
+  color: var(--dash-text) !important;
+}
+
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [class*="bg-rose-400/10"] {
+  border-color: #e9b8c0 !important;
+  background: var(--dash-danger-soft) !important;
+  color: var(--dash-danger) !important;
+}
+
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [class*="text-rose-100"] {
+  color: var(--dash-danger) !important;
+}
+
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [class*="bg-blue-50"] {
+  border-color: #cad8ef !important;
+  background: #edf3fb !important;
+  color: #273b57 !important;
+}
+
+/* Cards/panels become quieter, flatter and easier to scan. */
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] section[class*="rounded-[1.5rem]"],
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] article[class*="rounded-xl"],
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] div[class*="rounded-xl"] {
+  border-color: var(--dash-border) !important;
+}
+
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] section[class*="shadow-[0_18px_40px"] {
+  box-shadow: 0 10px 28px rgba(35, 31, 24, 0.055) !important;
+}
+
+/* Status colour stays semantic and is not converted into another blue. */
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [class*="text-emerald"],
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [class*="text-green"] {
+  color: var(--dash-success) !important;
+}
+
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [class*="text-amber"],
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [class*="text-yellow"] {
+  color: var(--dash-warning) !important;
+}
+
+/* Focus must remain visible on the pale canvas. */
+body:has([data-slot="sidebar-wrapper"]) :focus-visible {
+  outline-color: var(--dash-blue-dark) !important;
+}
+
+@media (max-width: 767px) {
+  body:has([data-slot="sidebar-wrapper"]) [data-sidebar="sidebar"] {
+    background: var(--dash-sidebar) !important;
+  }
+
+  body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] > main {
+    padding-inline: 16px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body:has([data-slot="sidebar-wrapper"]) *,
+  body:has([data-slot="sidebar-wrapper"]) *::before,
+  body:has([data-slot="sidebar-wrapper"]) *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
