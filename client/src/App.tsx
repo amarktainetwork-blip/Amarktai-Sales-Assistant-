@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import { Route, Switch, useLocation } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import "./dashboard-v2.css";
 import ContactPage from "./marketing/ContactPage";
 import { HowItWorksPage, IndividualsPage, IntegrationsPage, ProductPage, TeamsPage } from "./marketing/SecondaryPages";
 import AdminControls from "./pages/AdminControls";
