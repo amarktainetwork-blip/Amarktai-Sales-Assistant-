@@ -671,10 +671,28 @@ export const appRouter = router({
     routeCommand: secondFactorProcedure
       .input(z.object({ command: z.string().trim().min(4).max(4_000) }))
       .mutation(({ input }) => routeSalesCommand(input.command)),
-    agents: secondFactorProcedure.query(() => ({
-      agents: AGENT_CATALOG.map(agent => ({ ...agent, runtime: agentRuntimeStatus(agent.key) })),
-      genx: getGenxReadiness(),
-    })),
+    agents: secondFactorProcedure.query(async ({ ctx }) => {
+      const genx = getGenxReadiness();
+      let systems: Awaited<ReturnType<typeof listConnectedSystemsForUser>> = [];
+      let databaseReady = true;
+      if (ctx.activeOrganisation) {
+        try {
+          systems = await listConnectedSystemsForUser(ctx.user.id, ctx.activeOrganisation.organisationId);
+        } catch {
+          databaseReady = false;
+        }
+      }
+      const verified = systems.filter(system => system.status === "ready");
+      const dependencies = {
+        databaseReady,
+        genxReady: genx.ready,
+        crmReadReady: verified.some(system => system.verifiedCapabilities.some(capability => capability.endsWith(".read"))),
+        crmRouteReady: verified.some(system => system.verifiedCapabilities.length > 0),
+        communicationsReady: verified.some(system => system.verifiedCapabilities.some(capability => ["email.send", "sms.send", "whatsapp.send"].includes(capability))),
+        voiceReady: false,
+      };
+      return { agents: AGENT_CATALOG.map(agent => ({ ...agent, runtime: agentRuntimeStatus(agent.key, dependencies) })), genx };
+    }),
     actions: secondFactorProcedure
       .input(
         z

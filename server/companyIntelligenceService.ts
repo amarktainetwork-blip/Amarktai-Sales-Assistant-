@@ -4,18 +4,23 @@ import {
   type CompanyIntelligenceReview,
 } from "./companyIntelligenceReview";
 
+type RetainedPageMetadata = { url: string; title?: string | null; fetchedAt?: string };
+
+type ReviewPage = { url: string; title: string | null; fetchedAt: string; text: string };
+
+export function retainedPagesForCompanyReview(extractedText: string, pages: RetainedPageMetadata[]): ReviewPage[] {
+  const segments = Array.from(extractedText.matchAll(/^\[(https?:\/\/[^\]]+)\]\n([\s\S]*?)(?=^\[https?:\/\/|$)/gm));
+  return segments
+    .map(segment => {
+      const url = segment[1];
+      const page = pages.find(item => item.url === url);
+      return { url, title: page?.title || null, fetchedAt: page?.fetchedAt || new Date().toISOString(), text: segment[2] || "" };
+    })
+    .filter(page => page.text.trim().length > 0);
+}
+
 export function pagesForCompanyReview(discovery: Awaited<ReturnType<typeof discoverPublicWebsite>>) {
-  const segments = Array.from(discovery.extractedText.matchAll(/^\[(https?:\/\/[^\]]+)\]\n([\s\S]*?)(?=^\[https?:\/\/|$)/gm));
-  return segments.map(segment => {
-    const url = segment[1];
-    const page = discovery.pages.find(item => item.url === url);
-    return {
-      url,
-      title: page?.title || null,
-      fetchedAt: page?.fetchedAt || new Date().toISOString(),
-      text: segment[2] || "",
-    };
-  });
+  return retainedPagesForCompanyReview(discovery.extractedText, discovery.pages);
 }
 
 export function companyReviewCandidate(item: CompanyIntelligenceReview["items"][number]) {
@@ -103,8 +108,9 @@ export async function reviewStoredCompanyIntelligence(input: {
   userId: number;
   organisationId: number;
   discoveryId: number;
-  pages: Array<{ url: string; title: string | null; fetchedAt: string; text: string }>;
+  pages: ReviewPage[];
 }) {
+  if (!input.pages.length) throw new Error("Retained raw page evidence is unavailable; start a fresh discovery before retrying.");
   const review = await reviewCompanyIntelligence({
     userId: input.userId,
     organisationId: input.organisationId,

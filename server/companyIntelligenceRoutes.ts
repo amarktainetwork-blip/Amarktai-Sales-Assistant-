@@ -1,7 +1,7 @@
 import type { Express, Response } from "express";
 import { and, desc, eq, ne } from "drizzle-orm";
 import { websiteDiscoveries } from "../drizzle/schema";
-import { discoverAndReviewCompanyIntelligence } from "./companyIntelligenceService";
+import { discoverAndReviewCompanyIntelligence, retainedPagesForCompanyReview, reviewStoredCompanyIntelligence } from "./companyIntelligenceService";
 import {
   getCompanySetup,
   getDb,
@@ -138,18 +138,21 @@ export function registerCompanyIntelligenceRoutes(app: Express) {
         throw new Error("That website review is unavailable or already completed.");
       const setup = await getCompanySetup(userId, membership.organisationId);
       if (!setup.profile) throw new Error("Company profile is unavailable.");
-      if (!setup.profile.websiteUrl) throw new Error("Company website is unavailable.");
-      const canonical = await discoverAndReviewCompanyIntelligence({
+      const retainedMetadata = Array.isArray((discovery.proposedFacts as { pages?: unknown }).pages)
+        ? ((discovery.proposedFacts as { pages: Array<{ url: string; title?: string | null; fetchedAt?: string }> }).pages)
+        : [];
+      const retainedPages = retainedPagesForCompanyReview(discovery.extractedText || "", retainedMetadata);
+      const reviewed = await reviewStoredCompanyIntelligence({
         userId,
         organisationId: membership.organisationId,
-        websiteUrl: setup.profile.websiteUrl,
-        reference: `website-review:http-retry:${discovery.id}:${Date.now()}`,
+        discoveryId: discovery.id,
+        pages: retainedPages,
       });
       await db
         .update(websiteDiscoveries)
         .set({
-          proposedKnowledge: canonical.proposedKnowledge,
-          proposedFacts: { ...discovery.proposedFacts, pages: canonical.discovery.pages, aiReview: canonical.aiReview, reviewState: canonical.reviewState, reviewUnavailable: canonical.reviewUnavailable || null },
+          proposedKnowledge: reviewed.proposedKnowledge,
+          proposedFacts: { ...discovery.proposedFacts, aiReview: reviewed.aiReview, reviewState: "completed", reviewUnavailable: null },
         })
         .where(eq(websiteDiscoveries.id, discovery.id));
       await recordAudit({
@@ -158,14 +161,14 @@ export function registerCompanyIntelligenceRoutes(app: Express) {
         eventType: "company_intelligence_review_retried",
         entityType: "website_discovery",
         entityId: String(discovery.id),
-        summary: "AI interpretation of the website review was retried without recrawling the site.",
-          metadata: { candidateCount: canonical.proposedKnowledge.length, canonicalService: true },
+        summary: "AI interpretation was retried from retained raw page evidence without recrawling the website.",
+          metadata: { candidateCount: reviewed.proposedKnowledge.length, canonicalService: true, retainedEvidenceOnly: true },
       });
       return res.json({
         discoveryId: discovery.id,
-        proposedKnowledge: canonical.proposedKnowledge,
-        aiReview: canonical.aiReview,
-        reviewState: canonical.reviewState,
+        proposedKnowledge: reviewed.proposedKnowledge,
+        aiReview: reviewed.aiReview,
+        reviewState: "completed",
       });
     } catch (error) {
       return sendError(res, error);
