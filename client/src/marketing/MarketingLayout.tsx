@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { accountLinks, marketingNavigation, publicPageMetadata } from "./site";
 import "./marketing.css";
+import "./marketing-v2.css";
 
 export function scrollPublicRouteToTop(
   location: string,
@@ -67,7 +68,7 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
               href={accountLinks.getStarted}
               className="marketing-button marketing-button--primary marketing-button--compact"
             >
-              Get Started <ArrowRight size={15} />
+              Open Workspace <ArrowRight size={15} />
             </Link>
             <button
               ref={menuButton}
@@ -101,7 +102,7 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
                 href={accountLinks.getStarted}
                 className="marketing-button marketing-button--primary"
               >
-                Get Started <ArrowRight size={16} />
+                Open Workspace <ArrowRight size={16} />
               </Link>
             </div>
           </nav>
@@ -155,7 +156,7 @@ function MarketingFooter() {
       title: "Account",
       links: [
         { label: "Sign In", href: accountLinks.signIn },
-        { label: "Get Started", href: accountLinks.getStarted },
+        { label: "Open Workspace", href: accountLinks.getStarted },
       ],
     },
   ];
@@ -165,8 +166,7 @@ function MarketingFooter() {
         <div className="marketing-footer__brand">
           <BrandMark large />
           <p>
-            One clear workspace for the sales day, from next prospect to
-            completed follow-up.
+            The operating layer beside your CRM — built to keep the sales day moving without creating another source of truth.
           </p>
         </div>
         {groups.map(group => (
