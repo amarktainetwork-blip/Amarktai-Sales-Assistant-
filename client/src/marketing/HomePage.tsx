@@ -1,174 +1,353 @@
-import { ArrowRight, Check, CircleCheck, Headphones, Sparkles, Workflow } from "lucide-react";
+import {
+  ArrowRight,
+  Check,
+  ChevronRight,
+  Command,
+  Eye,
+  LockKeyhole,
+  MessageSquareText,
+  ShieldCheck,
+  Sparkles,
+} from "lucide-react";
 import { Link } from "wouter";
 import { MarketingLayout } from "./MarketingLayout";
 import { accountLinks } from "./site";
 
-const benefits = [
-  {
-    icon: CircleCheck,
-    title: "Know what to do next",
-    copy: "Start the day with the customers, callbacks and opportunities that actually need attention.",
-  },
-  {
-    icon: Headphones,
-    title: "Walk into every call prepared",
-    copy: "Bring customer history, company knowledge and the next best talking points together before you speak.",
-  },
-  {
-    icon: Workflow,
-    title: "Spend less time doing CRM admin",
-    copy: "Ask Amarktai to prepare follow-ups, notes, tasks and approved CRM work, then verify what changed.",
-  },
+const operatingLoop = [
+  ["01", "Understand", "Approved company knowledge and the CRM context that matters."],
+  ["02", "Prioritise", "The customers, callbacks and opportunities that need attention now."],
+  ["03", "Prepare", "History, talking points and the next sensible move before the conversation."],
+  ["04", "Act", "Draft the follow-up, note, task or CRM change with review where it matters."],
+  ["05", "Verify", "Read the result back from the CRM before the work is treated as complete."],
 ] as const;
 
-const steps = [
-  ["1", "Learn your business", "Amarktai reads your public website, understands the context and asks you to approve what it may trust."],
-  ["2", "Connect your CRM", "Keep the sales system your business already uses. Amarktai works with it rather than replacing it."],
-  ["3", "Start selling", "Open your day, work through customers and ask the Assistant for help in plain language."],
+const assistantPrompts = [
+  "Who actually needs my attention this morning?",
+  "Get me ready for the next customer call.",
+  "Draft the follow-up and schedule the callback for Friday.",
+  "What changed in the pipeline since yesterday?",
 ] as const;
+
+const trustItems = [
+  ["CRM stays the source of record", "Amarktai works with the system your team already uses rather than creating a second truth."],
+  ["Private work stays private", "Salespeople keep their assistant conversations and working context to themselves."],
+  ["Managers get the right oversight", "Team attention, exceptions and performance are visible without exposing private assistant conversations."],
+  ["External work is governed", "Sensitive actions can require review, and CRM writes are read back before success is reported."],
+] as const;
+
+function WorkspaceScene() {
+  return (
+    <div className="home-v2-workspace" aria-label="Illustrative Amarktai sales workspace">
+      <div className="home-v2-workspace__topbar">
+        <div className="home-v2-window-dots" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </div>
+        <span className="home-v2-workspace__label">Amarktai · Today</span>
+        <span className="home-v2-live"><i /> CRM connected</span>
+      </div>
+
+      <div className="home-v2-workspace__body">
+        <aside className="home-v2-workspace__rail" aria-hidden="true">
+          <span className="is-active">T</span>
+          <span>C</span>
+          <span>A</span>
+          <span>R</span>
+        </aside>
+
+        <div className="home-v2-workspace__queue">
+          <div className="home-v2-panel-heading">
+            <div>
+              <small>YOUR DAY</small>
+              <strong>Attention first</strong>
+            </div>
+            <span>Live context</span>
+          </div>
+
+          <div className="home-v2-priority is-now">
+            <div className="home-v2-priority__number">01</div>
+            <div>
+              <small>NEXT</small>
+              <strong>Prepare the customer conversation</strong>
+              <p>History, open work and talking points are ready together.</p>
+            </div>
+            <ChevronRight size={17} />
+          </div>
+
+          <div className="home-v2-priority">
+            <div className="home-v2-priority__number">02</div>
+            <div>
+              <small>FOLLOW-UP</small>
+              <strong>Review the drafted response</strong>
+              <p>Nothing customer-facing is sent just because AI suggested it.</p>
+            </div>
+            <ChevronRight size={17} />
+          </div>
+
+          <div className="home-v2-priority">
+            <div className="home-v2-priority__number">03</div>
+            <div>
+              <small>CRM</small>
+              <strong>Verify the completed update</strong>
+              <p>Amarktai reads the result back before the task disappears.</p>
+            </div>
+            <ChevronRight size={17} />
+          </div>
+        </div>
+
+        <div className="home-v2-workspace__assistant">
+          <div className="home-v2-panel-heading">
+            <div>
+              <small>ASSISTANT</small>
+              <strong>Ask in plain language</strong>
+            </div>
+            <MessageSquareText size={18} />
+          </div>
+
+          <div className="home-v2-chat-line is-user">
+            Who should I speak to first?
+          </div>
+          <div className="home-v2-chat-line is-assistant">
+            <span className="home-v2-ai-mark">ai</span>
+            <p>
+              Start with the customer whose follow-up is due and whose opportunity still has an unresolved next step. I have the call context ready.
+            </p>
+          </div>
+          <button type="button" className="home-v2-assistant-action" tabIndex={-1}>
+            <span><Sparkles size={15} /> Prepare conversation</span>
+            <ArrowRight size={16} />
+          </button>
+          <div className="home-v2-assistant-foot">
+            <ShieldCheck size={14} /> Governed actions · verified CRM readback
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function HomePage() {
   return (
     <MarketingLayout>
-      <section className="bg-[#111113] px-5 pb-20 pt-16 text-[#F7F6F2] sm:px-8 sm:pb-28 sm:pt-24">
-        <div className="mx-auto grid max-w-[1240px] items-center gap-12 lg:grid-cols-[.92fr_1.08fr] lg:gap-16">
-          <div>
-            <p className="text-xs font-black uppercase tracking-[.18em] text-[#6EA8FF]">
-              Amarktai Sales Assistant
+      <section className="home-v2-hero">
+        <div className="home-v2-ambient" aria-hidden="true">
+          <span className="home-v2-ambient__line home-v2-ambient__line--one" />
+          <span className="home-v2-ambient__line home-v2-ambient__line--two" />
+          <span className="home-v2-ambient__dot home-v2-ambient__dot--one" />
+          <span className="home-v2-ambient__dot home-v2-ambient__dot--two" />
+        </div>
+        <div className="home-v2-shell home-v2-hero__grid">
+          <div className="home-v2-hero__copy">
+            <p className="home-v2-kicker">Amarktai Network / Sales Assistant</p>
+            <h1>Your sales day,<br /><em>without the drag.</em></h1>
+            <p className="home-v2-hero__lead">
+              Amarktai works beside the CRM your team already uses. It helps you decide what matters, prepare the conversation, do the follow-through and verify the result — without turning salespeople into CRM administrators.
             </p>
-            <h1 className="mt-5 max-w-3xl font-display text-5xl font-bold leading-[.98] tracking-[-.065em] text-white sm:text-6xl lg:text-7xl">
-              Your sales day, in a workspace your team actually uses.
-            </h1>
-            <p className="mt-6 max-w-2xl text-lg leading-8 text-[#B9BABE]">
-              Open your real CRM alongside Amarktai. Know who to contact, prepare every conversation, capture the outcome, and keep follow-through visible without losing the system your team already knows.
-            </p>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <Link
-                href={accountLinks.getStarted}
-                className="inline-flex min-h-12 items-center gap-2 rounded-full bg-[#3B82F6] px-6 text-sm font-black text-white transition hover:bg-[#5B98F8]"
-              >
-                Get started <ArrowRight size={17} />
+            <div className="home-v2-actions">
+              <Link href={accountLinks.getStarted} className="home-v2-button home-v2-button--dark">
+                Enter the workspace <ArrowRight size={17} />
               </Link>
-              <Link
-                href="/how-it-works"
-                className="inline-flex min-h-12 items-center rounded-full border border-white/15 bg-white/[.04] px-6 text-sm font-bold text-white transition hover:bg-white/[.08]"
-              >
-                See how it works
+              <Link href="/how-it-works" className="home-v2-text-link">
+                See the operating loop <ChevronRight size={16} />
               </Link>
             </div>
-            <div className="mt-8 flex flex-wrap gap-x-6 gap-y-3 text-sm text-[#B7B8BC]">
-              {[
-                "For individual salespeople",
-                "For teams and companies",
-                "Review before external actions",
-              ].map(item => (
-                <span key={item} className="inline-flex items-center gap-2">
-                  <Check size={15} className="text-[#6EA8FF]" />
-                  {item}
-                </span>
-              ))}
+            <div className="home-v2-proofline" aria-label="Product principles">
+              <span><Check size={13} /> Your CRM stays the source of record</span>
+              <span><Check size={13} /> Private salesperson workspaces</span>
+              <span><Check size={13} /> Governed external actions</span>
             </div>
           </div>
-          <div className="relative">
-            <div className="absolute -inset-8 rounded-[3rem] bg-[#3B82F6]/8 blur-3xl" />
-            <img
-              src="/images/sales-workspace-hero.jpg"
-              alt="A salesperson working in an Amarktai-enabled sales workspace"
-              className="relative w-full rounded-[2rem] border border-white/10 shadow-[0_35px_90px_rgba(0,0,0,.35)]"
-            />
+          <div className="home-v2-hero__scene">
+            <div className="home-v2-scene-label">THE WORKSPACE, NOT ANOTHER CRM</div>
+            <WorkspaceScene />
           </div>
         </div>
       </section>
 
-      <section className="bg-[#F5F3EE] px-5 py-20 text-[#171719] sm:px-8 sm:py-24">
-        <div className="mx-auto max-w-[1180px]">
-          <p className="text-xs font-black uppercase tracking-[.16em] text-[#3B6FAF]">The point is simple</p>
-          <h2 className="mt-3 max-w-3xl font-display text-4xl font-bold tracking-[-.055em] sm:text-5xl">
-            Less chasing. Less admin. More useful conversations.
-          </h2>
-          <div className="mt-10 grid gap-5 md:grid-cols-3">
-            {benefits.map(({ icon: Icon, title, copy }) => (
-              <article key={title} className="rounded-[1.5rem] border border-black/8 bg-white p-7 shadow-[0_14px_40px_rgba(24,24,27,.06)]">
-                <span className="grid size-10 place-items-center rounded-full bg-[#EEF3FA] text-[#356CB4]">
-                  <Icon size={19} />
-                </span>
-                <h3 className="mt-6 text-xl font-bold">{title}</h3>
-                <p className="mt-3 text-sm leading-6 text-[#66676B]">{copy}</p>
+      <section className="home-v2-statement">
+        <div className="home-v2-shell">
+          <div className="home-v2-statement__grid">
+            <p className="home-v2-index">01 / THE PROBLEM</p>
+            <div>
+              <h2>Stop managing the work <em>around</em> selling.</h2>
+              <p>
+                Sales teams already have CRMs, inboxes, calendars, notes and reports. The missing layer is a worker that understands the day across those systems and keeps the next action moving.
+              </p>
+            </div>
+          </div>
+          <div className="home-v2-loop" aria-label="Amarktai operating loop">
+            {operatingLoop.map(([number, title, copy]) => (
+              <article key={number} className="home-v2-loop__item">
+                <span>{number}</span>
+                <h3>{title}</h3>
+                <p>{copy}</p>
               </article>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="bg-[#1A1A1D] px-5 py-20 text-white sm:px-8 sm:py-24">
-        <div className="mx-auto max-w-[1180px]">
-          <div className="grid gap-12 lg:grid-cols-[.75fr_1.25fr]">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[.16em] text-[#77A9F5]">How it works</p>
-              <h2 className="mt-3 font-display text-4xl font-bold tracking-[-.055em] sm:text-5xl">
-                Set up once. Then get on with selling.
-              </h2>
-              <p className="mt-5 max-w-xl text-base leading-7 text-[#B6B7BC]">
-                The technical work stays underneath. Salespeople get a clear workspace and managers get the oversight they need.
-              </p>
+      <section className="home-v2-split">
+        <div className="home-v2-shell home-v2-split__grid">
+          <div className="home-v2-split__copy">
+            <p className="home-v2-index">02 / HOW IT FEELS</p>
+            <h2>Your CRM on one side.<br />Amarktai on the other.</h2>
+            <p>
+              Keep the actual customer record visible while the Assistant works through context, questions and next actions beside it. No bouncing between an AI chat window and the system where the work actually lives.
+            </p>
+            <div className="home-v2-inline-points">
+              <span><Eye size={17} /> See the real CRM</span>
+              <span><Command size={17} /> Ask for work naturally</span>
+              <span><ShieldCheck size={17} /> Verify before calling it done</span>
             </div>
-            <div className="grid gap-3">
-              {steps.map(([number, title, copy]) => (
-                <article key={number} className="grid gap-4 rounded-[1.35rem] border border-white/10 bg-white/[.035] p-6 sm:grid-cols-[56px_1fr] sm:items-start">
-                  <span className="grid size-11 place-items-center rounded-full bg-[#3B82F6] text-sm font-black text-white">{number}</span>
-                  <div>
-                    <h3 className="text-xl font-bold">{title}</h3>
-                    <p className="mt-2 text-sm leading-6 text-[#B8B9BD]">{copy}</p>
-                  </div>
-                </article>
-              ))}
+            <Link href="/product" className="home-v2-text-link home-v2-text-link--dark">
+              Explore the product <ArrowRight size={16} />
+            </Link>
+          </div>
+          <div className="home-v2-crm-stage" aria-hidden="true">
+            <div className="home-v2-crm-stage__crm">
+              <small>YOUR CRM</small>
+              <strong>Customer record</strong>
+              <div className="home-v2-crm-lines">
+                <i /><i /><i /><i />
+              </div>
+              <div className="home-v2-crm-table">
+                <span /><span /><span /><span /><span /><span />
+              </div>
+            </div>
+            <div className="home-v2-crm-stage__bridge">
+              <span>context</span>
+              <ArrowRight size={18} />
+              <span>readback</span>
+            </div>
+            <div className="home-v2-crm-stage__assistant">
+              <small>AMARKTAI</small>
+              <strong>Work beside the record</strong>
+              <p>“Prepare this call, then draft the follow-up.”</p>
+              <div><Sparkles size={15} /> Context ready</div>
+              <div><ShieldCheck size={15} /> Review before action</div>
             </div>
           </div>
         </div>
       </section>
 
-      <section className="bg-white px-5 py-20 text-[#171719] sm:px-8 sm:py-24">
-        <div className="mx-auto grid max-w-[1180px] gap-5 md:grid-cols-2">
-          <article className="rounded-[1.75rem] border border-black/8 bg-[#F6F4EF] p-8 sm:p-10">
-            <p className="text-xs font-black uppercase tracking-[.16em] text-[#5F6570]">Individual</p>
-            <h2 className="mt-3 font-display text-4xl font-bold tracking-[-.055em]">Your own focused sales workspace.</h2>
-            <p className="mt-4 text-base leading-7 text-[#66676B]">
-              See your customers, your calls, your reminders and your next actions without team-management clutter.
+      <section className="home-v2-roles">
+        <div className="home-v2-shell">
+          <div className="home-v2-roles__intro">
+            <p className="home-v2-index">03 / ONE SYSTEM, TWO EXPERIENCES</p>
+            <h2>Focused for the seller.<br />Useful for the manager.</h2>
+          </div>
+          <div className="home-v2-role-row">
+            <div className="home-v2-role-row__number">A</div>
+            <div>
+              <small>SALESPERSON</small>
+              <h3>“What should I do now?”</h3>
+            </div>
+            <p>
+              Today, customers, calls, follow-ups, knowledge and the Assistant — without team-management clutter or somebody else’s private work.
             </p>
-            <Link href="/individuals" className="mt-7 inline-flex items-center gap-2 text-sm font-black text-[#2F66B0]">
-              For individuals <ArrowRight size={16} />
-            </Link>
-          </article>
-          <article className="rounded-[1.75rem] bg-[#202024] p-8 text-white sm:p-10">
-            <p className="text-xs font-black uppercase tracking-[.16em] text-[#75A7F3]">Company</p>
-            <h2 className="mt-3 font-display text-4xl font-bold tracking-[-.055em]">One company brain. Private salesperson workspaces.</h2>
-            <p className="mt-4 text-base leading-7 text-[#B8B9BD]">
-              Share approved knowledge and CRM capability while each salesperson keeps their own conversations and working context private. Managers get the team view.
+            <Link href="/individuals"><ArrowRight size={20} /></Link>
+          </div>
+          <div className="home-v2-role-row">
+            <div className="home-v2-role-row__number">B</div>
+            <div>
+              <small>MANAGER</small>
+              <h3>“Where does the team need attention?”</h3>
+            </div>
+            <p>
+              Pipeline, overdue work, exceptions, calls and team performance — with company knowledge and CRM capability shared at the right level.
             </p>
-            <Link href="/teams" className="mt-7 inline-flex items-center gap-2 text-sm font-black text-[#79AAF4]">
-              For companies <ArrowRight size={16} />
-            </Link>
-          </article>
+            <Link href="/teams"><ArrowRight size={20} /></Link>
+          </div>
         </div>
       </section>
 
-      <section className="bg-[#EFEDE7] px-5 py-20 text-[#171719] sm:px-8">
-        <div className="mx-auto max-w-[1080px] text-center">
-          <span className="mx-auto grid size-12 place-items-center rounded-full bg-white text-[#356CB4] shadow-sm">
-            <Sparkles size={21} />
-          </span>
-          <h2 className="mx-auto mt-5 max-w-3xl font-display text-4xl font-bold tracking-[-.055em] sm:text-5xl">
-            Keep your CRM. Add a better way to work through the sales day.
-          </h2>
-          <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-[#68696D]">
-            Genie, HubSpot, Salesforce, Pipedrive, Zoho and compatible browser-based CRMs can be connected through the governed setup available for each system.
-          </p>
-          <Link
-            href={accountLinks.getStarted}
-            className="mt-8 inline-flex min-h-12 items-center gap-2 rounded-full bg-[#1E1E21] px-7 text-sm font-black text-white transition hover:bg-black"
-          >
-            Start with Amarktai <ArrowRight size={17} />
+      <section className="home-v2-ask">
+        <div className="home-v2-shell home-v2-ask__grid">
+          <div>
+            <p className="home-v2-index">04 / ASK LIKE A TEAMMATE</p>
+            <h2>No command language.<br />No workflow builder first.</h2>
+            <p>
+              Start with the outcome. Amarktai works out the safe path from the context and the capabilities actually available in the connected CRM.
+            </p>
+          </div>
+          <div className="home-v2-prompts">
+            {assistantPrompts.map((prompt, index) => (
+              <div className="home-v2-prompt" key={prompt}>
+                <span>0{index + 1}</span>
+                <p>{prompt}</p>
+                <ArrowRight size={17} />
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="home-v2-trust">
+        <div className="home-v2-shell">
+          <div className="home-v2-trust__heading">
+            <p className="home-v2-index">05 / BUILT TO WORK INSIDE A REAL BUSINESS</p>
+            <h2>Useful autonomy needs boundaries.</h2>
+            <p>
+              Amarktai is designed to help salespeople move faster without quietly inventing a second customer database or pretending an external action succeeded when it did not.
+            </p>
+          </div>
+          <div className="home-v2-trust__list">
+            {trustItems.map(([title, copy], index) => (
+              <article key={title}>
+                <span>0{index + 1}</span>
+                <h3>{title}</h3>
+                <p>{copy}</p>
+              </article>
+            ))}
+          </div>
+          <div className="home-v2-trust__seal">
+            <LockKeyhole size={18} />
+            <span>Company knowledge is approved. Private salesperson context stays private.</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="home-v2-integrations">
+        <div className="home-v2-shell home-v2-integrations__grid">
+          <div>
+            <p className="home-v2-index">06 / KEEP THE CRM</p>
+            <h2>Connect the system your team already lives in.</h2>
+          </div>
+          <div className="home-v2-integration-line" aria-label="Supported CRM connection targets">
+            <span>Genie</span>
+            <i />
+            <span>HubSpot</span>
+            <i />
+            <span>Salesforce</span>
+            <i />
+            <span>Pipedrive</span>
+            <i />
+            <span>Zoho</span>
+            <i />
+            <span>Browser CRM</span>
+          </div>
+          <Link href="/integrations" className="home-v2-text-link home-v2-text-link--dark">
+            See connection options <ArrowRight size={16} />
           </Link>
+        </div>
+      </section>
+
+      <section className="home-v2-final">
+        <div className="home-v2-shell home-v2-final__inner">
+          <div>
+            <p className="home-v2-kicker">Amarktai Sales Assistant</p>
+            <h2>Keep the CRM.<br />Change the way the day gets done.</h2>
+          </div>
+          <div className="home-v2-final__action">
+            <p>
+              Start with your business, connect the CRM, then give the team a workspace that keeps sales work moving.
+            </p>
+            <Link href={accountLinks.getStarted} className="home-v2-button home-v2-button--light">
+              Get started <ArrowRight size={17} />
+            </Link>
+          </div>
         </div>
       </section>
     </MarketingLayout>
