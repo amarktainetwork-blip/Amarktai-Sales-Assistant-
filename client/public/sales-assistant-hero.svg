@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" role="img" aria-labelledby="title desc">
+  <title id="title">Salesperson working with Amarktai Sales Assistant</title>
+  <desc id="desc">A professional abstract illustration of a salesperson at a desk with customer context and assistant guidance nearby.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#171719"/>
+      <stop offset="1" stop-color="#26262a"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".14"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity=".04"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="28" stdDeviation="28" flood-color="#000" flood-opacity=".35"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="900" rx="56" fill="url(#bg)"/>
+  <circle cx="965" cy="156" r="190" fill="#3b82f6" opacity=".09"/>
+  <circle cx="156" cy="720" r="230" fill="#fff" opacity=".025"/>
+
+  <g filter="url(#shadow)">
+    <rect x="96" y="98" width="1008" height="704" rx="40" fill="#111113" stroke="#ffffff" stroke-opacity=".08"/>
+    <rect x="130" y="132" width="612" height="636" rx="30" fill="#1c1c1f"/>
+    <rect x="770" y="132" width="300" height="636" rx="30" fill="#18181b" stroke="#ffffff" stroke-opacity=".07"/>
+  </g>
+
+  <g>
+    <rect x="173" y="176" width="525" height="304" rx="24" fill="#242428"/>
+    <rect x="201" y="204" width="220" height="16" rx="8" fill="#ffffff" opacity=".16"/>
+    <rect x="201" y="238" width="370" height="10" rx="5" fill="#ffffff" opacity=".07"/>
+    <rect x="201" y="270" width="465" height="170" rx="18" fill="#151517"/>
+    <path d="M244 396c42-72 84-112 124-118 51-7 75 71 126 66 45-5 67-74 124-57" fill="none" stroke="#3b82f6" stroke-width="9" stroke-linecap="round"/>
+    <circle cx="244" cy="396" r="10" fill="#3b82f6"/>
+    <circle cx="368" cy="278" r="10" fill="#3b82f6"/>
+    <circle cx="494" cy="344" r="10" fill="#3b82f6"/>
+    <circle cx="618" cy="287" r="10" fill="#3b82f6"/>
+  </g>
+
+  <g>
+    <rect x="173" y="510" width="525" height="214" rx="24" fill="#202023"/>
+    <circle cx="239" cy="579" r="34" fill="#e8d7c7"/>
+    <path d="M207 654c9-40 29-60 60-60s51 20 60 60" fill="#5d6670"/>
+    <rect x="310" y="548" width="204" height="16" rx="8" fill="#ffffff" opacity=".18"/>
+    <rect x="310" y="579" width="330" height="11" rx="5" fill="#ffffff" opacity=".08"/>
+    <rect x="310" y="606" width="284" height="11" rx="5" fill="#ffffff" opacity=".06"/>
+    <rect x="310" y="658" width="142" height="34" rx="17" fill="#3b82f6"/>
+    <rect x="466" y="658" width="130" height="34" rx="17" fill="#ffffff" opacity=".08"/>
+  </g>
+
+  <g>
+    <text x="809" y="189" fill="#f7f7f5" font-family="Arial, sans-serif" font-size="18" font-weight="700">AMARKTAI ASSISTANT</text>
+    <rect x="804" y="222" width="232" height="112" rx="20" fill="url(#glass)" stroke="#ffffff" stroke-opacity=".08"/>
+    <text x="824" y="255" fill="#aeb0b5" font-family="Arial, sans-serif" font-size="14">Next best action</text>
+    <text x="824" y="286" fill="#ffffff" font-family="Arial, sans-serif" font-size="19" font-weight="700">Call Sarah Jones</text>
+    <text x="824" y="313" fill="#b8bac0" font-family="Arial, sans-serif" font-size="13">Follow-up due today</text>
+
+    <rect x="804" y="355" width="232" height="184" rx="20" fill="#202024"/>
+    <circle cx="830" cy="389" r="6" fill="#3b82f6"/>
+    <text x="850" y="394" fill="#f5f5f3" font-family="Arial, sans-serif" font-size="14" font-weight="700">Customer history ready</text>
+    <circle cx="830" cy="431" r="6" fill="#3b82f6"/>
+    <text x="850" y="436" fill="#f5f5f3" font-family="Arial, sans-serif" font-size="14" font-weight="700">Likely questions prepared</text>
+    <circle cx="830" cy="473" r="6" fill="#3b82f6"/>
+    <text x="850" y="478" fill="#f5f5f3" font-family="Arial, sans-serif" font-size="14" font-weight="700">CRM follow-up queued</text>
+    <circle cx="830" cy="515" r="6" fill="#b7b8bd"/>
+    <text x="850" y="520" fill="#c7c8cc" font-family="Arial, sans-serif" font-size="14">Waiting for your approval</text>
+
+    <rect x="804" y="566" width="232" height="158" rx="20" fill="#202024"/>
+    <text x="824" y="600" fill="#9fa2a8" font-family="Arial, sans-serif" font-size="13">Ask Amarktai</text>
+    <rect x="824" y="619" width="192" height="58" rx="15" fill="#131315" stroke="#ffffff" stroke-opacity=".08"/>
+    <text x="840" y="651" fill="#e6e6e2" font-family="Arial, sans-serif" font-size="13">What should I do next?</text>
+    <circle cx="986" cy="699" r="17" fill="#3b82f6"/>
+    <path d="M980 699h12m-6-6 6 6-6 6" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>
