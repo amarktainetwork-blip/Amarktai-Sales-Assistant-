@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { Browser, BrowserContext, Page } from "playwright-core";
 import type { AdapterConnection } from "../crm/types";
@@ -55,6 +55,22 @@ async function readBinding(path: string) {
   return parsed as PersistentProfileBinding;
 }
 
+export async function readPersistentGenieProfileBinding() {
+  try {
+    return await readBinding(bindingPath());
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
+export function persistentGenieProfileBindingMatches(
+  actual: PersistentProfileBinding,
+  expected: PersistentProfileBinding
+) {
+  return sameBinding(actual, expected);
+}
+
 /**
  * A Chromium user-data directory is a durable browser identity, not a portable
  * session token. Until the browser runtime is sharded into one profile/process
@@ -98,10 +114,36 @@ export async function claimPersistentGenieProfileBinding(
   }
 }
 
+export async function releasePersistentGenieProfileBinding(
+  expected: PersistentProfileBinding
+) {
+  const path = bindingPath();
+  try {
+    const current = await readBinding(path);
+    if (!sameBinding(current, expected))
+      throw new Error(
+        "GENIE_PERSISTENT_PROFILE_RELEASE_BLOCKED: The trusted Genie browser profile belongs to a different connected system, so Amarktai refused to release it."
+      );
+    await unlink(path);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+}
+
 export async function claimPersistentGenieProfile(
   connection: AdapterConnection
 ) {
   return claimPersistentGenieProfileBinding(
+    persistentProfileBindingFor(connection)
+  );
+}
+
+export async function releasePersistentGenieProfile(
+  connection: AdapterConnection
+) {
+  return releasePersistentGenieProfileBinding(
     persistentProfileBindingFor(connection)
   );
 }

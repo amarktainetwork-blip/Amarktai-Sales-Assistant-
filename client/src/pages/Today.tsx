@@ -1,5 +1,7 @@
 import DashboardLayout from "@/components/DashboardLayout";
-import WorkflowFeedback, { type WorkflowFeedbackState } from "@/components/WorkflowFeedback";
+import WorkflowFeedback, {
+  type WorkflowFeedbackState,
+} from "@/components/WorkflowFeedback";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -44,27 +46,82 @@ export default function Today() {
   const [memoryCommand, setMemoryCommand] = useState("");
   const [feedback, setFeedback] = useState<WorkflowFeedbackState | null>(null);
   const saveMemoryCommand = trpc.memory.command.useMutation({
-    onMutate: () => setFeedback({ kind: "loading", title: "Saving your reminder", detail: "The reminder is being added to today's workspace." }),
+    onMutate: () =>
+      setFeedback({
+        kind: "loading",
+        title: "Saving your reminder",
+        detail: "The reminder is being added to today's workspace.",
+      }),
     onSuccess: result => {
       setMemoryCommand("");
       utils.sales.today.invalidate();
-      toast.success(result.kind === "reminder" ? "Reminder saved." : "Memory saved with provenance.");
-      setFeedback({ kind: "success", title: "Reminder saved", detail: "It will appear in the appropriate personal work queue." });
+      toast.success(
+        result.kind === "reminder"
+          ? "Reminder saved."
+          : "Memory saved with provenance."
+      );
+      setFeedback({
+        kind: "success",
+        title: "Reminder saved",
+        detail: "It will appear in the appropriate personal work queue.",
+      });
     },
-    onError: error => setFeedback({ kind: "error", title: "The reminder was not saved", detail: `Today's queue was not changed. ${error.message}`, actionLabel: "Retry save", onAction: () => saveMemoryCommand.mutate({ command: memoryCommand }) }),
+    onError: error =>
+      setFeedback({
+        kind: "error",
+        title: "The reminder was not saved",
+        detail: `Today's queue was not changed. ${error.message}`,
+        actionLabel: "Retry save",
+        onAction: () => saveMemoryCommand.mutate({ command: memoryCommand }),
+      }),
   });
   const updateReminder = trpc.memory.updateReminder.useMutation({
     onSuccess: () => utils.sales.today.invalidate(),
     onError: error => toast.error(error.message),
   });
   const startCall = trpc.calls.startFromToday.useMutation({
-    onMutate: input => setFeedback({ kind: "loading", title: input.callingMode === "external" ? "Opening external call companion" : "Launching the verified Genie dialler", detail: "Amarktai is retrieving the exact normalized customer context and preserving the call audit trail." }),
-    onSuccess: result =>
-      navigate(`/calls?sessionId=${result.callSessionId}`),
+    onMutate: input =>
+      setFeedback({
+        kind: "loading",
+        title:
+          input.callingMode === "external"
+            ? "Opening external call companion"
+            : "Launching the verified Genie dialler",
+        detail:
+          "Amarktai is retrieving the exact normalized customer context and preserving the call audit trail.",
+      }),
+    onSuccess: result => navigate(`/calls?sessionId=${result.callSessionId}`),
     onError: error => {
-      const setupRequired = error.message.includes("GENIE_DIALLER_SETUP_REQUIRED");
+      const setupRequired = error.message.includes(
+        "GENIE_DIALLER_SETUP_REQUIRED"
+      );
       const unavailable = error.message.includes("GENIE_DIALLER_UNAVAILABLE");
-      setFeedback({ kind: "error", title: setupRequired ? "Genie calling still needs to be tested" : unavailable ? "This customer is not connected to Genie calling" : "The call could not start", detail: setupRequired ? "The dialler.launch operation is not LIVE_PROVEN. Finish dialler setup before using Genie calling; no CRM dialler action was attempted." : unavailable ? "No Genie dialler action was attempted. You can continue through the clearly labelled external-phone path." : `No call session or CRM action was created. ${error.message}`, actionLabel: setupRequired ? "Finish dialler setup" : unavailable ? "Use external phone" : "Retry call", onAction: () => setupRequired ? navigate("/connections") : current && startCall.mutate({ opportunityId: current.id, callingMode: unavailable ? "external" : "genie" }) });
+      setFeedback({
+        kind: "error",
+        title: setupRequired
+          ? "Genie calling still needs to be tested"
+          : unavailable
+            ? "This customer is not connected to Genie calling"
+            : "The call could not start",
+        detail: setupRequired
+          ? "Genie calling has not passed its required setup test. Finish dialler setup before using it; no CRM call was attempted."
+          : unavailable
+            ? "No Genie dialler action was attempted. You can continue through the clearly labelled external-phone path."
+            : `No call session or CRM action was created. ${error.message}`,
+        actionLabel: setupRequired
+          ? "Finish dialler setup"
+          : unavailable
+            ? "Use external phone"
+            : "Retry call",
+        onAction: () =>
+          setupRequired
+            ? navigate("/connections")
+            : current &&
+              startCall.mutate({
+                opportunityId: current.id,
+                callingMode: unavailable ? "external" : "genie",
+              }),
+      });
     },
   });
   const priority = today.data?.queues.priority ?? [];
@@ -102,7 +159,21 @@ export default function Today() {
       </DashboardLayout>
     );
   if (today.isError)
-    return <DashboardLayout><div className="mx-auto max-w-3xl"><WorkflowFeedback state={{ kind: "error", title: "Today's sales work could not load", detail: `No CRM failure has been treated as an empty queue. ${today.error.message}`, actionLabel: "Retry Today", onAction: () => today.refetch() }} /></div></DashboardLayout>;
+    return (
+      <DashboardLayout>
+        <div className="mx-auto max-w-3xl">
+          <WorkflowFeedback
+            state={{
+              kind: "error",
+              title: "Today's sales work could not load",
+              detail: `No CRM failure has been treated as an empty queue. ${today.error.message}`,
+              actionLabel: "Retry Today",
+              onAction: () => today.refetch(),
+            }}
+          />
+        </div>
+      </DashboardLayout>
+    );
   return (
     <DashboardLayout>
       <div className="mx-auto max-w-[1700px]">
@@ -115,9 +186,9 @@ export default function Today() {
               Make the next best move obvious.
             </h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-[#A9BFDF] sm:text-base">
-              This queue is calculated from synchronized CRM tasks and
-              opportunities. It does not need an AI request to identify overdue
-              work, stale opportunities, or records without a next step.
+              Start with the customers, opportunities and follow-ups that need
+              attention now. Each priority explains why it belongs in today's
+              work.
             </p>
           </div>
           <div className="flex gap-2">
@@ -138,7 +209,9 @@ export default function Today() {
             </Button>
           </div>
         </header>
-        <div className="mt-6"><WorkflowFeedback state={feedback} /></div>
+        <div className="mt-6">
+          <WorkflowFeedback state={feedback} />
+        </div>
         {today.data?.requiresOwnerMapping && (
           <div className="mt-6 rounded-2xl border border-amber-300/20 bg-amber-400/[.07] p-4 text-sm leading-6 text-amber-100">
             <strong>
@@ -152,10 +225,23 @@ export default function Today() {
         )}
         <section className="mt-6 rounded-2xl border border-white/10 bg-[#0E2142] p-4 sm:flex sm:items-end sm:gap-3">
           <label className="block flex-1 text-xs font-bold text-[#A9BFDF]">
-            REMINDERS & MEMORY
-            <Input value={memoryCommand} onChange={event => setMemoryCommand(event.target.value)} placeholder="Remind me tomorrow at 2 to call John" className="mt-2 border-white/15 bg-[#08172F] text-white" />
+            QUICK REMINDER
+            <Input
+              value={memoryCommand}
+              onChange={event => setMemoryCommand(event.target.value)}
+              placeholder="Remind me tomorrow at 2 to call John"
+              className="mt-2 border-white/15 bg-[#08172F] text-white"
+            />
           </label>
-          <Button disabled={memoryCommand.trim().length < 8 || saveMemoryCommand.isPending} onClick={() => saveMemoryCommand.mutate({ command: memoryCommand })} className="mt-3 bg-[#1B64F2] sm:mt-0">Save command</Button>
+          <Button
+            disabled={
+              memoryCommand.trim().length < 8 || saveMemoryCommand.isPending
+            }
+            onClick={() => saveMemoryCommand.mutate({ command: memoryCommand })}
+            className="mt-3 bg-[#1B64F2] sm:mt-0"
+          >
+            Add reminder
+          </Button>
         </section>
         <section className="mt-7 grid gap-4 md:grid-cols-2 2xl:grid-cols-6">
           <Metric
@@ -199,7 +285,7 @@ export default function Today() {
           <article
             id="today-queue"
             tabIndex={-1}
-            className="rounded-[1.5rem] border border-white/10 bg-[#0E2142] p-5 outline-none sm:p-6"
+            className="min-w-0 max-w-full rounded-[1.5rem] border border-white/10 bg-[#0E2142] p-5 outline-none sm:p-6"
           >
             <div className="flex items-center justify-between gap-4">
               <div>
@@ -268,11 +354,15 @@ export default function Today() {
                             variant="outline"
                             onClick={event => {
                               event.stopPropagation();
-                              startCall.mutate({ opportunityId: record.id, callingMode: "genie" });
+                              startCall.mutate({
+                                opportunityId: record.id,
+                                callingMode: "genie",
+                              });
                             }}
                             className="border-white/15 bg-white/5 text-white hover:bg-white/10"
                           >
-                            Call with Genie <ArrowRight className="ml-1 size-3" />
+                            Call with Genie{" "}
+                            <ArrowRight className="ml-1 size-3" />
                           </Button>
                         </td>
                       </tr>
@@ -301,10 +391,18 @@ export default function Today() {
             }
             onPrepare={() => navigate("/workflows")}
             onStart={() =>
-              current && startCall.mutate({ opportunityId: current.id, callingMode: "genie" })
+              current &&
+              startCall.mutate({
+                opportunityId: current.id,
+                callingMode: "genie",
+              })
             }
             onStartExternal={() =>
-              current && startCall.mutate({ opportunityId: current.id, callingMode: "external" })
+              current &&
+              startCall.mutate({
+                opportunityId: current.id,
+                callingMode: "external",
+              })
             }
             starting={startCall.isPending}
           />
@@ -322,16 +420,81 @@ export default function Today() {
           />
         </section>
         <section className="mt-6 grid gap-6 xl:grid-cols-2">
-          <InternalWorkList title="Amarktai reminders" items={today.data?.queues.reminders ?? []} empty="No reminders are due." onComplete={id => updateReminder.mutate({ reminderId: id, status: "completed" })} />
-          <InternalWorkList title="Callbacks" items={today.data?.queues.callbacks ?? []} empty="No callbacks are due." />
+          <InternalWorkList
+            title="Amarktai reminders"
+            items={today.data?.queues.reminders ?? []}
+            empty="No reminders are due."
+            onComplete={id =>
+              updateReminder.mutate({ reminderId: id, status: "completed" })
+            }
+          />
+          <InternalWorkList
+            title="Callbacks"
+            items={today.data?.queues.callbacks ?? []}
+            empty="No callbacks are due."
+          />
         </section>
         <InboundList items={today.data?.queues.inbound ?? []} />
       </div>
     </DashboardLayout>
   );
 }
-function InternalWorkList({ title, items, empty, onComplete }: { title: string; items: Array<{ id: number; title: string; dueAt: Date | null; status?: string; state?: string }>; empty: string; onComplete?: (id: number) => void }) {
-  return <article className="rounded-[1.5rem] border border-white/10 bg-[#0E2142] p-6"><h2 className="font-display text-2xl font-bold text-white">{title}</h2><div className="mt-4 space-y-2">{items.length ? items.map(item => <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl bg-[#08172F] p-3"><div><p className="font-semibold text-white">{item.title}</p><p className="mt-1 text-xs text-[#8FA9CE]">{item.dueAt ? new Date(item.dueAt).toLocaleString() : "No due date"} · {item.status || item.state}</p></div>{onComplete && <Button size="sm" variant="outline" onClick={() => onComplete(item.id)} className="border-white/15 text-white">Complete</Button>}</div>) : <p className="rounded-xl border border-dashed border-white/15 p-5 text-sm text-[#8FA9CE]">{empty}</p>}</div></article>;
+function InternalWorkList({
+  title,
+  items,
+  empty,
+  onComplete,
+}: {
+  title: string;
+  items: Array<{
+    id: number;
+    title: string;
+    dueAt: Date | null;
+    status?: string;
+    state?: string;
+  }>;
+  empty: string;
+  onComplete?: (id: number) => void;
+}) {
+  return (
+    <article className="rounded-[1.5rem] border border-white/10 bg-[#0E2142] p-6">
+      <h2 className="font-display text-2xl font-bold text-white">{title}</h2>
+      <div className="mt-4 space-y-2">
+        {items.length ? (
+          items.map(item => (
+            <div
+              key={item.id}
+              className="flex items-center justify-between gap-3 rounded-xl bg-[#08172F] p-3"
+            >
+              <div>
+                <p className="font-semibold text-white">{item.title}</p>
+                <p className="mt-1 text-xs text-[#8FA9CE]">
+                  {item.dueAt
+                    ? new Date(item.dueAt).toLocaleString()
+                    : "No due date"}{" "}
+                  · {item.status || item.state}
+                </p>
+              </div>
+              {onComplete && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onComplete(item.id)}
+                  className="border-white/15 text-white"
+                >
+                  Complete
+                </Button>
+              )}
+            </div>
+          ))
+        ) : (
+          <p className="rounded-xl border border-dashed border-white/15 p-5 text-sm text-[#8FA9CE]">
+            {empty}
+          </p>
+        )}
+      </div>
+    </article>
+  );
 }
 
 function SalesSession({
@@ -360,7 +523,7 @@ function SalesSession({
   starting: boolean;
 }) {
   return (
-    <aside className="rounded-[1.5rem] border border-[#3D69AD]/40 bg-[#0E2142] p-6 shadow-[0_18px_40px_rgba(0,0,0,.2)]">
+    <aside className="min-w-0 max-w-full rounded-[1.5rem] border border-[#3D69AD]/40 bg-[#0E2142] p-6 shadow-[0_18px_40px_rgba(0,0,0,.2)]">
       <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#7FAAF8]">
         SALES SESSION
       </p>

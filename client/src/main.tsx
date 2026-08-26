@@ -9,6 +9,29 @@ import "./index.css";
 
 const queryClient = new QueryClient();
 
+function installOptionalAnalytics() {
+  const endpoint = import.meta.env.VITE_ANALYTICS_ENDPOINT?.trim();
+  const websiteId = import.meta.env.VITE_ANALYTICS_WEBSITE_ID?.trim();
+  if (!endpoint || !websiteId) return;
+  try {
+    const source = new URL(
+      `${endpoint.replace(/\/+$/, "")}/umami`,
+      window.location.origin
+    );
+    if (source.protocol !== "https:" && source.origin !== window.location.origin)
+      return;
+    const script = document.createElement("script");
+    script.defer = true;
+    script.src = source.toString();
+    script.dataset.websiteId = websiteId;
+    document.head.append(script);
+  } catch {
+    // Analytics is optional; an invalid public endpoint must not affect the app.
+  }
+}
+
+installOptionalAnalytics();
+
 const redirectToLoginIfUnauthorized = (error: unknown) => {
   if (!(error instanceof TRPCClientError)) return;
   if (typeof window === "undefined") return;

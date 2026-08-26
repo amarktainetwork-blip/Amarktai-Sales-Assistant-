@@ -1,6 +1,8 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import ManagementElevation from "@/components/ManagementElevation";
-import WorkflowFeedback, { type WorkflowFeedbackState } from "@/components/WorkflowFeedback";
+import WorkflowFeedback, {
+  type WorkflowFeedbackState,
+} from "@/components/WorkflowFeedback";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
@@ -15,6 +17,7 @@ import {
   Loader2,
   Plus,
   RefreshCw,
+  RotateCcw,
   Save,
   ShieldCheck,
 } from "lucide-react";
@@ -45,6 +48,18 @@ type BrowserSystem = {
   id: number;
   provider: string;
   configuration: Record<string, unknown>;
+};
+type PreOtpReadiness = {
+  ready: boolean;
+  states: Record<
+    | "browserReady"
+    | "genieLoginReachable"
+    | "secureSignInReady"
+    | "sessionHandoffReady",
+    boolean
+  >;
+  advancedDiagnostics: Array<{ check: string; passed: boolean }>;
+  failure?: string;
 };
 
 const readCapabilities = [
@@ -101,6 +116,28 @@ function statusClass(status: string) {
         : "bg-white/8 text-[#A9BFDF]";
 }
 
+function capabilityLabel(capability: string) {
+  const labels: Record<string, string> = {
+    "contacts.read": "Read customers",
+    "contacts.write": "Update customers",
+    "companies.read": "Read companies",
+    "companies.write": "Update companies",
+    "opportunities.read": "Read opportunities",
+    "opportunities.write": "Update opportunities",
+    "tasks.read": "Read tasks",
+    "tasks.write": "Create and update tasks",
+    "notes.read": "Read notes",
+    "notes.write": "Add notes",
+    "email.send": "Send CRM email",
+    "sms.send": "Send CRM SMS",
+    "whatsapp.send": "Send CRM WhatsApp",
+    "dialler.launch": "Open CRM dialler",
+  };
+  return (
+    labels[capability] || capability.replaceAll(".", " · ").replaceAll("_", " ")
+  );
+}
+
 async function jsonRequest(url: string, init?: RequestInit) {
   const response = await fetch(url, {
     ...init,
@@ -121,16 +158,32 @@ export default function ConnectionsV2() {
     { enabled: Boolean(organisationId) }
   );
   const outlook = trpc.outlook.readiness.useQuery(undefined, { retry: false });
+  const managementStatus = trpc.managementElevation.status.useQuery(undefined, {
+    retry: false,
+    refetchInterval: 15_000,
+  });
   const [adding, setAdding] = useState(false);
   const [provider, setProvider] = useState<Provider>("genie");
   const [displayName, setDisplayName] = useState("Genie");
   const [baseUrl, setBaseUrl] = useState("");
   const [drafts, setDrafts] = useState<Record<number, BrowserDraft>>({});
   const [savingBrowser, setSavingBrowser] = useState<number | null>(null);
-  const [calibrationRequiredFor, setCalibrationRequiredFor] = useState<number | null>(null);
+  const [calibrationRequiredFor, setCalibrationRequiredFor] = useState<
+    number | null
+  >(null);
   const [sidecarToken, setSidecarToken] = useState("");
   const [feedback, setFeedback] = useState<WorkflowFeedbackState | null>(null);
-  const canManage = organisation.data?.role === "owner" || organisation.data?.role === "manager";
+  const [resettingGenie, setResettingGenie] = useState<number | null>(null);
+  const [preOtpReadiness, setPreOtpReadiness] = useState<
+    Record<number, PreOtpReadiness>
+  >({});
+  const [preOtpPending, setPreOtpPending] = useState<number | null>(null);
+  const [otpRequested, setOtpRequested] = useState<Record<number, boolean>>({});
+  const [otpCodes, setOtpCodes] = useState<Record<number, string>>({});
+  const [otpPending, setOtpPending] = useState<number | null>(null);
+  const canManage =
+    organisation.data?.role === "owner" ||
+    organisation.data?.role === "manager";
   const method = useMemo(() => defaultMethod(provider), [provider]);
 
   const addDomain = trpc.connectedSystems.addDomain.useMutation();
@@ -138,7 +191,13 @@ export default function ConnectionsV2() {
     onError: error => toast.error(error.message),
   });
   const create = trpc.connectedSystems.create.useMutation({
-    onMutate: () => setFeedback({ kind: "loading", title: "Saving CRM connection", detail: "Amarktai is creating the organisation-scoped connection and authorised destination." }),
+    onMutate: () =>
+      setFeedback({
+        kind: "loading",
+        title: "Saving CRM connection",
+        detail:
+          "Amarktai is creating the organisation-scoped connection and authorised destination.",
+      }),
     onSuccess: async id => {
       if (organisationId && isBrowser(provider) && baseUrl.trim())
         await addDomain.mutateAsync({
@@ -162,12 +221,32 @@ export default function ConnectionsV2() {
         toast.success(
           "CRM details saved. Add the secure sign-in, then check CRM setup."
         );
-      setFeedback({ kind: "success", title: "CRM connection saved", detail: method === "oauth" ? "Continue through the provider's secure sign-in screen." : "Add the encrypted sign-in, then run discovery and the authorised readiness test." });
+      setFeedback({
+        kind: "success",
+        title: "CRM connection saved",
+        detail:
+          method === "oauth"
+            ? "Continue through the provider's secure sign-in screen."
+            : "Add the encrypted sign-in, then run discovery and the authorised readiness test.",
+      });
     },
-    onError: error => setFeedback({ kind: "error", title: "CRM connection was not saved", detail: `No CRM capability was enabled. ${error.message}`, actionLabel: "Retry connection", onAction: addSystem }),
+    onError: error =>
+      setFeedback({
+        kind: "error",
+        title: "CRM connection was not saved",
+        detail: `No CRM capability was enabled. ${error.message}`,
+        actionLabel: "Retry connection",
+        onAction: addSystem,
+      }),
   });
   const verify = trpc.connectedSystems.verify.useMutation({
-    onMutate: () => setFeedback({ kind: "loading", title: "Testing CRM readiness", detail: "Amarktai is testing authentication and only the functions this CRM has proven." }),
+    onMutate: () =>
+      setFeedback({
+        kind: "loading",
+        title: "Testing CRM readiness",
+        detail:
+          "Amarktai is testing authentication and only the functions this CRM has proven.",
+      }),
     onSuccess: async (result, variables) => {
       setCalibrationRequiredFor(
         result.summary.includes("GENIE_LOGIN_CALIBRATION_REQUIRED")
@@ -175,28 +254,52 @@ export default function ConnectionsV2() {
           : null
       );
       await systems.refetch();
-      const connected = result.status === "ready" || result.status === "limited_permissions";
+      const connected =
+        result.status === "ready" || result.status === "limited_permissions";
       const detail = connected
         ? "CRM sign-in is verified. Ready functions can be used; optional functions that need setup remain unavailable."
         : humanizeCrmFailure(result.summary);
       connected ? toast.success(detail) : toast.warning(detail);
-      setFeedback(connected ? { kind: "success", title: "CRM setup checked", detail } : { kind: "error", title: "Fix connection", detail });
+      setFeedback(
+        connected
+          ? { kind: "success", title: "CRM setup checked", detail }
+          : { kind: "error", title: "Fix connection", detail }
+      );
     },
     onError: error => {
       console.error("[crm-connections] readiness check failed", error);
-      setFeedback({ kind: "error", title: "CRM setup check failed", detail: humanizeCrmFailure(error.message) });
+      setFeedback({
+        kind: "error",
+        title: "CRM setup check failed",
+        detail: humanizeCrmFailure(error.message),
+      });
     },
   });
   const sync = trpc.connectedSystems.sync.useMutation({
-    onMutate: () => setFeedback({ kind: "loading", title: "Synchronising CRM records", detail: "Customer, company, task, opportunity, and activity data are being refreshed." }),
+    onMutate: () =>
+      setFeedback({
+        kind: "loading",
+        title: "Synchronising CRM records",
+        detail:
+          "Customer, company, task, opportunity, and activity data are being refreshed.",
+      }),
     onSuccess: async result => {
       await systems.refetch();
       toast.success(
         `Sync complete: ${Object.values(result).reduce((total, value) => total + value, 0)} records processed.`
       );
-      setFeedback({ kind: "success", title: "CRM synchronisation finished", detail: `${Object.values(result).reduce((total, value) => total + value, 0)} records were processed.` });
+      setFeedback({
+        kind: "success",
+        title: "CRM synchronisation finished",
+        detail: `${Object.values(result).reduce((total, value) => total + value, 0)} records were processed.`,
+      });
     },
-    onError: error => setFeedback({ kind: "error", title: "CRM synchronisation failed", detail: `Existing synchronized records remain available; no failure was shown as an empty CRM. ${error.message}` }),
+    onError: error =>
+      setFeedback({
+        kind: "error",
+        title: "CRM synchronisation failed",
+        detail: `Existing synchronized records remain available; no failure was shown as an empty CRM. ${error.message}`,
+      }),
   });
   const issueSidecar = trpc.sidecar.issueSession.useMutation({
     onSuccess: result => {
@@ -255,11 +358,169 @@ export default function ConnectionsV2() {
       toast.success(
         "Encrypted CRM sign-in saved. Credentials are never returned to the browser or GenX."
       );
-      setFeedback({ kind: "success", title: "Encrypted sign-in saved", detail: "The password was not returned to the browser or sent to Amarktai intelligence." });
+      setFeedback({
+        kind: "success",
+        title: "Encrypted sign-in saved",
+        detail:
+          "The password was not returned to the browser or sent to Amarktai intelligence.",
+      });
     } catch (error) {
-      setFeedback({ kind: "error", title: "CRM sign-in was not saved", detail: `The connection remains unavailable. ${error instanceof Error ? error.message : "Browser connector could not be saved."}`, actionLabel: "Retry save", onAction: () => void saveBrowser(systemId) });
+      setFeedback({
+        kind: "error",
+        title: "CRM sign-in was not saved",
+        detail: `The connection remains unavailable. ${error instanceof Error ? error.message : "Browser connector could not be saved."}`,
+        actionLabel: "Retry save",
+        onAction: () => void saveBrowser(systemId),
+      });
     } finally {
       setSavingBrowser(null);
+    }
+  }
+
+  async function resetGenie(systemId: number) {
+    try {
+      setResettingGenie(systemId);
+      const preview = (await jsonRequest(
+        `/api/connected-system-admin/${systemId}/genie-reset`
+      )) as {
+        preview: {
+          connectedSystemId: number;
+          displayName: string;
+          hostname: string;
+        };
+      };
+      const approved = window.confirm(
+        `Start ${preview.preview.displayName} connection ${preview.preview.connectedSystemId} again?\n\nThis removes only this Amarktai Genie connection and its saved Genie browser sign-in state. It does not delete anything from Genie and does not delete your company knowledge.`
+      );
+      if (!approved) return;
+      await jsonRequest(`/api/connected-system-admin/${systemId}/genie-reset`, {
+        method: "POST",
+        body: JSON.stringify({
+          confirmation: `RESET_GENIE_CONNECTION_${systemId}`,
+        }),
+      });
+      await systems.refetch();
+      setFeedback({
+        kind: "success",
+        title: "Genie connection cleared",
+        detail:
+          "Only this Amarktai connection and its saved Genie sign-in state were removed. Your company knowledge and external Genie records were not changed. Add Genie again when you are ready.",
+      });
+    } catch (error) {
+      setFeedback({
+        kind: "error",
+        title: "Genie connection was not cleared",
+        detail:
+          error instanceof Error
+            ? error.message
+            : "The scoped Genie reset could not be completed.",
+      });
+    } finally {
+      setResettingGenie(null);
+    }
+  }
+
+  async function checkGenieSignInReadiness(systemId: number) {
+    try {
+      setPreOtpPending(systemId);
+      const result = (await jsonRequest(
+        `/api/connected-system-admin/${systemId}/pre-otp`,
+        { method: "POST", body: "{}" }
+      )) as PreOtpReadiness;
+      setPreOtpReadiness(current => ({ ...current, [systemId]: result }));
+      setFeedback({
+        kind: "success",
+        title: "Secure sign-in is ready",
+        detail:
+          "All non-MFA checks passed. You can request one fresh Genie verification code.",
+      });
+    } catch (error) {
+      setPreOtpReadiness(current => {
+        const next = { ...current };
+        delete next[systemId];
+        return next;
+      });
+      setFeedback({
+        kind: "error",
+        title: "Secure sign-in is not ready",
+        detail:
+          error instanceof Error
+            ? error.message
+            : "The readiness proof failed.",
+      });
+    } finally {
+      setPreOtpPending(null);
+    }
+  }
+
+  async function requestGenieVerificationCode(systemId: number) {
+    try {
+      setOtpPending(systemId);
+      await jsonRequest(
+        `/api/connected-system-admin/${systemId}/commissioning`,
+        { method: "POST", body: "{}" }
+      );
+      setOtpRequested(current => ({ ...current, [systemId]: true }));
+      setPreOtpReadiness(current => {
+        const next = { ...current };
+        delete next[systemId];
+        return next;
+      });
+      setFeedback({
+        kind: "success",
+        title: "Fresh Genie verification code requested",
+        detail:
+          "Enter the newest code privately here. The code is never logged or stored.",
+      });
+    } catch (error) {
+      setPreOtpReadiness(current => {
+        const next = { ...current };
+        delete next[systemId];
+        return next;
+      });
+      setFeedback({
+        kind: "error",
+        title: "Verification code was not requested",
+        detail:
+          error instanceof Error
+            ? error.message
+            : "Genie sign-in could not start.",
+      });
+    } finally {
+      setOtpPending(null);
+    }
+  }
+
+  async function verifyGenieCode(systemId: number) {
+    try {
+      setOtpPending(systemId);
+      await jsonRequest(
+        `/api/connected-system-admin/${systemId}/interactive-auth/verify`,
+        {
+          method: "POST",
+          body: JSON.stringify({ code: otpCodes[systemId] || "" }),
+        }
+      );
+      setOtpCodes(current => ({ ...current, [systemId]: "" }));
+      setOtpRequested(current => ({ ...current, [systemId]: false }));
+      await systems.refetch();
+      setFeedback({
+        kind: "success",
+        title: "Genie sign-in verified",
+        detail:
+          "Amarktai retained the exact MFA-approved page and started controlled CRM capability checks.",
+      });
+    } catch (error) {
+      setFeedback({
+        kind: "error",
+        title: "Genie verification was not completed",
+        detail:
+          error instanceof Error
+            ? error.message
+            : "Use the newest code and try again.",
+      });
+    } finally {
+      setOtpPending(null);
     }
   }
 
@@ -276,30 +537,39 @@ export default function ConnectionsV2() {
             </h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-[#A9BFDF]">
               Connect once, let Amarktai discover the CRM's contacts, tasks,
-              pipeline and communication tools, then use only the tasks that pass
-              an authorised readiness test. Sales email, SMS and WhatsApp stay
-              inside the connected CRM.
+              pipeline and communication tools, then use only the tasks that
+              pass an authorised readiness test. Sales email, SMS and WhatsApp
+              stay inside the connected CRM.
             </p>
           </div>
-          {canManage && <Button
-            onClick={() => setAdding(value => !value)}
-            className="bg-[#1B64F2] hover:bg-[#2B76FF]"
-          >
-            <Plus className="mr-2 size-4" />
-            {adding ? "Close" : "Add CRM"}
-          </Button>}
+          {canManage && (
+            <Button
+              onClick={() => setAdding(value => !value)}
+              className="bg-[#1B64F2] hover:bg-[#2B76FF]"
+            >
+              <Plus className="mr-2 size-4" />
+              {adding ? "Close" : "Add CRM"}
+            </Button>
+          )}
         </header>
         <ManagementElevation />
-        <WorkflowFeedback state={systems.isError ? { kind: "error", title: "CRM connections could not load", detail: `${systems.error.message} No API failure has been treated as an empty connection list.`, actionLabel: "Retry connections", onAction: () => systems.refetch() } : feedback} />
+        <WorkflowFeedback
+          state={
+            systems.isError
+              ? {
+                  kind: "error",
+                  title: "CRM connections could not load",
+                  detail: `${systems.error.message} No API failure has been treated as an empty connection list.`,
+                  actionLabel: "Retry connections",
+                  onAction: () => systems.refetch(),
+                }
+              : feedback
+          }
+        />
         {adding && (
           <section className="rounded-[1.5rem] border border-[#3D69AD]/45 bg-[#0E2142] p-6">
             <div className="mb-5 flex flex-wrap gap-2">
-              {[
-                "1 Connect",
-                "2 Discover",
-                "3 Test",
-                "4 Ready",
-              ].map(step => (
+              {["1 Connect", "2 Discover", "3 Test", "4 Ready"].map(step => (
                 <span
                   key={step}
                   className="rounded-full bg-[#153B7A] px-3 py-1 text-[10px] font-black uppercase text-[#BBD2FA]"
@@ -389,7 +659,8 @@ export default function ConnectionsV2() {
                       {system.displayName}
                     </h2>
                     <p className="mt-1 text-xs text-[#91A9CF]">
-                      Connected CRM{system.baseUrl ? ` · ${system.baseUrl}` : ""}
+                      Connected CRM
+                      {system.baseUrl ? ` · ${system.baseUrl}` : ""}
                     </p>
                   </div>
                 </div>
@@ -399,7 +670,7 @@ export default function ConnectionsV2() {
                   {connectionStatusLabel(system.status)}
                 </span>
               </div>
-              <div className="mt-5 grid grid-cols-3 gap-3 border-y border-white/10 py-4">
+              <div className="mt-5 grid grid-cols-2 gap-3 border-y border-white/10 py-4 lg:grid-cols-4">
                 <Metric
                   label="Ready functions"
                   value={system.verifiedCapabilities.length || "None"}
@@ -410,12 +681,44 @@ export default function ConnectionsV2() {
                 />
                 <Metric
                   label="Additional setup"
-                  value={system.status === "limited_permissions" ? "Optional" : "None"}
+                  value={
+                    system.status === "limited_permissions"
+                      ? "Optional"
+                      : "None"
+                  }
+                />
+                <Metric
+                  label="Last successful check"
+                  value={
+                    (system.status === "ready" ||
+                      system.status === "limited_permissions") &&
+                    system.lastHealthCheckAt
+                      ? new Date(system.lastHealthCheckAt).toLocaleString()
+                      : "Not proven"
+                  }
                 />
               </div>
+              {system.verifiedCapabilities.length > 0 && (
+                <div className="mt-4">
+                  <p className="text-[10px] font-black uppercase tracking-[.12em] text-[#7896C1]">
+                    Ready functions
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {system.verifiedCapabilities.map(capability => (
+                      <span
+                        key={capability}
+                        className="rounded-full border border-emerald-300/20 bg-emerald-400/[.07] px-2.5 py-1 text-[11px] font-bold text-emerald-100"
+                      >
+                        {capabilityLabel(capability)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
               {system.lastHealthSummary && (
                 <p className="mt-4 rounded-xl bg-black/15 p-3 text-xs leading-5 text-[#B5C8E7]">
-                  {system.status === "ready" || system.status === "limited_permissions"
+                  {system.status === "ready" ||
+                  system.status === "limited_permissions"
                     ? "CRM sign-in and the listed ready functions were verified. Optional functions remain unavailable until separately tested."
                     : humanizeCrmFailure(system.lastHealthSummary)}
                 </p>
@@ -474,105 +777,258 @@ export default function ConnectionsV2() {
                     Sync now
                   </Button>
                 )}
-              </div>
-              {isBrowser(system.provider) && (canManage ? (
-                <details className="mt-5 rounded-xl border border-white/10 bg-[#08172F] p-4">
-                  <summary className="cursor-pointer text-sm font-bold text-[#A9C7FF]">Advanced CRM Setup</summary>
-                  <LoginCalibration
-                    organisationId={organisationId}
-                    systemId={system.id}
-                    required={calibrationRequiredFor === system.id}
-                    onSaved={() => {
-                      setCalibrationRequiredFor(null);
-                      verify.mutate({
-                        organisationId: organisationId ?? 0,
-                        connectedSystemId: system.id,
-                      });
-                    }}
-                  />
-                  <div className="mt-5 rounded-xl border border-[#3D69AD]/30 bg-[#071326] p-4">
-                    <div className="flex items-center gap-2 text-[#A9C7FF]">
-                      <KeyRound size={16} />
-                      <p className="text-xs font-black uppercase tracking-[.12em]">
-                        Step 2 · Secure sign-in
-                      </p>
-                    </div>
-                    <p className="mt-2 text-xs leading-5 text-[#91A9CF]">
-                      Saved per connection using encrypted server-side secrets.
-                      Passwords are never logged, returned, or included in
-                      training capture.
-                    </p>
-                    <div className="mt-4 grid gap-3 md:grid-cols-2">
-                      <Input
-                        value={draftFor(system.id).username}
-                        onChange={e =>
-                          changeDraft(system.id, { username: e.target.value })
-                        }
-                        placeholder="CRM username / email"
-                        autoComplete="off"
-                        className="border-white/15 bg-[#071326] text-white"
-                      />
-                      <Input
-                        type="password"
-                        value={draftFor(system.id).password}
-                        onChange={e =>
-                          changeDraft(system.id, { password: e.target.value })
-                        }
-                        placeholder="CRM password"
-                        autoComplete="new-password"
-                        className="border-white/15 bg-[#071326] text-white"
-                      />
-                    </div>
-                    <button
-                      onClick={() =>
-                        changeDraft(system.id, {
-                          advanced: !draftFor(system.id).advanced,
-                        })
-                      }
-                      className="mt-3 text-xs font-bold text-[#8CB7FF]"
-                    >
-                      {draftFor(system.id).advanced ? "Hide" : "Show"} advanced
-                      reviewed JSON
-                    </button>
-                    {draftFor(system.id).advanced && (
-                      <textarea
-                        value={draftFor(system.id).profile}
-                        onChange={e =>
-                          changeDraft(system.id, { profile: e.target.value })
-                        }
-                        rows={5}
-                        placeholder="Advanced manager setup: reviewed sign-in, operations and result checks."
-                        className="mt-3 w-full rounded-xl border border-white/15 bg-[#071326] p-3 font-mono text-xs text-white outline-none"
-                      />
-                    )}
+                {system.provider === "genie" &&
+                  canManage &&
+                  managementStatus.data?.elevated && (
                     <Button
-                      onClick={() => saveBrowser(system.id)}
-                      disabled={savingBrowser === system.id}
-                      className="mt-3 bg-[#1B64F2] hover:bg-[#2B76FF]"
+                      size="sm"
+                      variant="outline"
+                      disabled={resettingGenie === system.id}
+                      onClick={() => void resetGenie(system.id)}
+                      className="border-rose-300/25 bg-rose-400/[.06] text-rose-100 hover:bg-rose-400/10"
                     >
-                      <Save className="mr-2 size-4" />
-                      {savingBrowser === system.id
-                        ? "Saving…"
-                        : "Save encrypted sign-in"}
+                      <RotateCcw className="mr-2 size-4" />
+                      {resettingGenie === system.id
+                        ? "Clearing Genie connection…"
+                        : "Start Genie connection again"}
                     </Button>
-                  </div>
-                  <BrowserOperationMatrix
-                    organisationId={organisationId}
-                    system={{
-                      id: system.id,
-                      provider: system.provider,
-                      configuration: system.configuration as Record<
-                        string,
-                        unknown
-                      >,
-                    }}
-                  />
-                </details>
-              ) : (
-                <p className="mt-5 rounded-xl border border-white/10 bg-[#08172F] p-4 text-sm leading-6 text-[#A9BFDF]">
-                  A workspace manager handles advanced setup. You can use each CRM function after its authorised readiness test passes.
-                </p>
-              ))}
+                  )}
+              </div>
+              {system.provider === "genie" &&
+                canManage &&
+                managementStatus.data?.elevated && (
+                  <section className="mt-5 space-y-3 rounded-xl border border-[#4E8BFF]/25 bg-[#08172F] p-4">
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {(
+                        [
+                          ["browserReady", "Browser ready"],
+                          ["genieLoginReachable", "Genie login reachable"],
+                          ["secureSignInReady", "Secure sign-in ready"],
+                          ["sessionHandoffReady", "Session handoff ready"],
+                        ] as const
+                      ).map(([key, label]) => {
+                        const passed =
+                          preOtpReadiness[system.id]?.states[key] === true;
+                        return (
+                          <div
+                            key={key}
+                            className="flex items-center justify-between rounded-lg bg-black/15 px-3 py-2 text-xs"
+                          >
+                            <span className="text-[#C7D6EC]">{label}</span>
+                            <span
+                              className={
+                                passed
+                                  ? "font-bold text-emerald-200"
+                                  : "text-[#7896C1]"
+                              }
+                            >
+                              {passed ? "Ready" : "Not checked"}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={
+                          preOtpPending === system.id || otpRequested[system.id]
+                        }
+                        onClick={() =>
+                          void checkGenieSignInReadiness(system.id)
+                        }
+                        className="border-white/15 bg-white/5 text-white"
+                      >
+                        {preOtpPending === system.id
+                          ? "Checking readiness…"
+                          : "Check secure sign-in readiness"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        disabled={
+                          !preOtpReadiness[system.id]?.ready ||
+                          otpPending === system.id
+                        }
+                        onClick={() =>
+                          void requestGenieVerificationCode(system.id)
+                        }
+                        className="bg-[#1B64F2]"
+                      >
+                        {otpPending === system.id
+                          ? "Requesting code…"
+                          : "Request Genie verification code"}
+                      </Button>
+                    </div>
+                    {otpRequested[system.id] && (
+                      <div className="rounded-lg border border-[#4E8BFF]/25 bg-[#071326] p-3">
+                        <p className="text-xs leading-5 text-[#B7CAE7]">
+                          Enter the newest Genie code privately. Amarktai does
+                          not log or store it.
+                        </p>
+                        <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                          <Input
+                            value={otpCodes[system.id] || ""}
+                            onChange={event =>
+                              setOtpCodes(current => ({
+                                ...current,
+                                [system.id]: event.target.value
+                                  .replace(/\s+/g, "")
+                                  .slice(0, 12),
+                              }))
+                            }
+                            inputMode="numeric"
+                            autoComplete="one-time-code"
+                            aria-label="Newest Genie verification code"
+                            placeholder="Verification code"
+                            className="border-white/15 bg-[#08172F] text-white"
+                          />
+                          <Button
+                            disabled={
+                              !otpCodes[system.id]?.trim() ||
+                              otpPending === system.id
+                            }
+                            onClick={() => void verifyGenieCode(system.id)}
+                            className="bg-[#1B64F2]"
+                          >
+                            Verify newest code
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                    {preOtpReadiness[system.id] && (
+                      <details className="rounded-lg border border-white/10 p-3">
+                        <summary className="cursor-pointer text-xs font-bold text-[#9FC2FF]">
+                          Advanced diagnostics
+                        </summary>
+                        <div className="mt-2 grid gap-1 text-[11px] text-[#91A9CF]">
+                          {preOtpReadiness[system.id].advancedDiagnostics.map(
+                            item => (
+                              <div
+                                key={item.check}
+                                className="flex justify-between gap-4"
+                              >
+                                <span>{item.check}</span>
+                                <span
+                                  className={
+                                    item.passed
+                                      ? "text-emerald-200"
+                                      : "text-rose-200"
+                                  }
+                                >
+                                  {item.passed ? "Pass" : "Blocked"}
+                                </span>
+                              </div>
+                            )
+                          )}
+                        </div>
+                      </details>
+                    )}
+                  </section>
+                )}
+              {isBrowser(system.provider) &&
+                (canManage && managementStatus.data?.elevated ? (
+                  <details className="mt-5 rounded-xl border border-white/10 bg-[#08172F] p-4">
+                    <summary className="cursor-pointer text-sm font-bold text-[#A9C7FF]">
+                      Advanced diagnostics
+                    </summary>
+                    <LoginCalibration
+                      organisationId={organisationId}
+                      systemId={system.id}
+                      required={calibrationRequiredFor === system.id}
+                      onSaved={() => {
+                        setCalibrationRequiredFor(null);
+                        verify.mutate({
+                          organisationId: organisationId ?? 0,
+                          connectedSystemId: system.id,
+                        });
+                      }}
+                    />
+                    <div className="mt-5 rounded-xl border border-[#3D69AD]/30 bg-[#071326] p-4">
+                      <div className="flex items-center gap-2 text-[#A9C7FF]">
+                        <KeyRound size={16} />
+                        <p className="text-xs font-black uppercase tracking-[.12em]">
+                          Step 2 · Secure sign-in
+                        </p>
+                      </div>
+                      <p className="mt-2 text-xs leading-5 text-[#91A9CF]">
+                        Saved per connection using encrypted server-side
+                        secrets. Passwords are never logged, returned, or
+                        included in training capture.
+                      </p>
+                      <div className="mt-4 grid gap-3 md:grid-cols-2">
+                        <Input
+                          value={draftFor(system.id).username}
+                          onChange={e =>
+                            changeDraft(system.id, { username: e.target.value })
+                          }
+                          placeholder="CRM username / email"
+                          autoComplete="off"
+                          className="border-white/15 bg-[#071326] text-white"
+                        />
+                        <Input
+                          type="password"
+                          value={draftFor(system.id).password}
+                          onChange={e =>
+                            changeDraft(system.id, { password: e.target.value })
+                          }
+                          placeholder="CRM password"
+                          autoComplete="new-password"
+                          className="border-white/15 bg-[#071326] text-white"
+                        />
+                      </div>
+                      <button
+                        onClick={() =>
+                          changeDraft(system.id, {
+                            advanced: !draftFor(system.id).advanced,
+                          })
+                        }
+                        className="mt-3 text-xs font-bold text-[#8CB7FF]"
+                      >
+                        {draftFor(system.id).advanced ? "Hide" : "Show"}{" "}
+                        advanced reviewed JSON
+                      </button>
+                      {draftFor(system.id).advanced && (
+                        <textarea
+                          value={draftFor(system.id).profile}
+                          onChange={e =>
+                            changeDraft(system.id, { profile: e.target.value })
+                          }
+                          rows={5}
+                          placeholder="Advanced manager setup: reviewed sign-in, operations and result checks."
+                          className="mt-3 w-full rounded-xl border border-white/15 bg-[#071326] p-3 font-mono text-xs text-white outline-none"
+                        />
+                      )}
+                      <Button
+                        onClick={() => saveBrowser(system.id)}
+                        disabled={savingBrowser === system.id}
+                        className="mt-3 bg-[#1B64F2] hover:bg-[#2B76FF]"
+                      >
+                        <Save className="mr-2 size-4" />
+                        {savingBrowser === system.id
+                          ? "Saving…"
+                          : "Save encrypted sign-in"}
+                      </Button>
+                    </div>
+                    <BrowserOperationMatrix
+                      organisationId={organisationId}
+                      system={{
+                        id: system.id,
+                        provider: system.provider,
+                        configuration: system.configuration as Record<
+                          string,
+                          unknown
+                        >,
+                      }}
+                    />
+                  </details>
+                ) : (
+                  <p className="mt-5 rounded-xl border border-white/10 bg-[#08172F] p-4 text-sm leading-6 text-[#A9BFDF]">
+                    {canManage
+                      ? "Re-verify management mode above to open Advanced diagnostics or start this Genie connection again."
+                      : "A workspace manager handles advanced setup. You can use each CRM function after its authorised readiness test passes."}
+                  </p>
+                ))}
             </article>
           ))}
           {!systems.data?.length && (
@@ -598,76 +1054,82 @@ export default function ConnectionsV2() {
             badge={outlook.data?.ready ? "Configured" : "Optional"}
           />
         </section>
-        {canManage && <details className="rounded-[1.5rem] border border-white/10 bg-[#0E2142] p-6">
-          <summary className="cursor-pointer font-bold text-[#A9C7FF]">Advanced browser sidecar commissioning</summary>
-          <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#7FAAF8]">
-            BROWSER SIDECAR
-          </p>
-          <h2 className="mt-1 font-display text-2xl font-bold text-white">
-            Attach Amarktai beside an authorised CRM tab.
-          </h2>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-[#A9BFDF]">
-            Manager training uses this short-lived, revocable,
-            organisation-scoped session. Paste the Connected System and Training
-            Session IDs into the Sidecar when demonstrating an operation.
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Button
-              disabled={!organisationId || issueSidecar.isPending}
-              onClick={() =>
-                organisationId && issueSidecar.mutate({ organisationId })
-              }
-              className="bg-[#1B64F2] hover:bg-[#2B76FF]"
-            >
-              Issue sidecar session
-            </Button>
-            <Button
-              variant="outline"
-              disabled={!organisationId || revokeSidecar.isPending}
-              onClick={() =>
-                organisationId && revokeSidecar.mutate({ organisationId })
-              }
-              className="border-white/15 bg-white/5 text-white hover:bg-white/10"
-            >
-              Revoke sessions
-            </Button>
-          </div>
-          {sidecarToken && (
-            <div className="mt-5 rounded-xl border border-amber-300/20 bg-amber-400/[.07] p-4">
-              <p className="text-xs font-bold text-amber-100">
-                Copy this once. It expires and is not stored as plaintext.
-              </p>
-              <div className="mt-3 flex gap-2">
-                <Input
-                  readOnly
-                  value={sidecarToken}
-                  className="border-white/15 bg-[#08172F] font-mono text-xs text-white"
-                />
-                <Button
-                  variant="outline"
-                  onClick={() =>
-                    navigator.clipboard
-                      .writeText(sidecarToken)
-                      .then(() => toast.success("Sidecar session copied."))
-                  }
-                  className="border-white/15 bg-white/5 text-white hover:bg-white/10"
-                >
-                  Copy
-                </Button>
-              </div>
+        {canManage && (
+          <details className="rounded-[1.5rem] border border-white/10 bg-[#0E2142] p-6">
+            <summary className="cursor-pointer font-bold text-[#A9C7FF]">
+              Advanced browser sidecar commissioning
+            </summary>
+            <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#7FAAF8]">
+              BROWSER SIDECAR
+            </p>
+            <h2 className="mt-1 font-display text-2xl font-bold text-white">
+              Attach Amarktai beside an authorised CRM tab.
+            </h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-[#A9BFDF]">
+              Manager training uses this short-lived, revocable,
+              organisation-scoped session. Paste the Connected System and
+              Training Session IDs into the Sidecar when demonstrating an
+              operation.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button
+                disabled={!organisationId || issueSidecar.isPending}
+                onClick={() =>
+                  organisationId && issueSidecar.mutate({ organisationId })
+                }
+                className="bg-[#1B64F2] hover:bg-[#2B76FF]"
+              >
+                Issue sidecar session
+              </Button>
+              <Button
+                variant="outline"
+                disabled={!organisationId || revokeSidecar.isPending}
+                onClick={() =>
+                  organisationId && revokeSidecar.mutate({ organisationId })
+                }
+                className="border-white/15 bg-white/5 text-white hover:bg-white/10"
+              >
+                Revoke sessions
+              </Button>
             </div>
-          )}
-        </details>}
+            {sidecarToken && (
+              <div className="mt-5 rounded-xl border border-amber-300/20 bg-amber-400/[.07] p-4">
+                <p className="text-xs font-bold text-amber-100">
+                  Copy this once. It expires and is not stored as plaintext.
+                </p>
+                <div className="mt-3 flex gap-2">
+                  <Input
+                    readOnly
+                    value={sidecarToken}
+                    className="border-white/15 bg-[#08172F] font-mono text-xs text-white"
+                  />
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      navigator.clipboard
+                        .writeText(sidecarToken)
+                        .then(() => toast.success("Sidecar session copied."))
+                    }
+                    className="border-white/15 bg-white/5 text-white hover:bg-white/10"
+                  >
+                    Copy
+                  </Button>
+                </div>
+              </div>
+            )}
+          </details>
+        )}
       </div>
     </DashboardLayout>
   );
 }
 function connectionStatusLabel(status: string) {
-  if (status === "ready") return "Ready";
-  if (status === "limited_permissions") return "Ready · optional setup remains";
+  if (status === "ready") return "Connected";
+  if (status === "limited_permissions")
+    return "Connected · optional setup remains";
   if (status === "connecting" || status === "testing") return "Checking";
   if (/attention|expired/.test(status)) return "Needs setup";
-  if (/error|disconnected/.test(status)) return "Failed";
+  if (/error|disconnected/.test(status)) return "Needs attention";
   return "Unavailable";
 }
 
@@ -694,7 +1156,9 @@ export function LoginCalibration({
   const addDomain = trpc.connectedSystems.addDomain.useMutation({
     onSuccess: () => {
       setAuthHostname("");
-      toast.success("The exact authentication hostname is approved for this Genie connection.");
+      toast.success(
+        "The exact authentication hostname is approved for this Genie connection."
+      );
     },
     onError: error => toast.error(error.message),
   });
@@ -709,7 +1173,11 @@ export function LoginCalibration({
       setOpen(false);
       onSaved?.();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Sign-in calibration was not saved.");
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Sign-in calibration was not saved."
+      );
     } finally {
       setSaving(false);
     }
@@ -728,8 +1196,9 @@ export function LoginCalibration({
           : "Automatic Genie sign-in discovery is the normal path."}
       </p>
       <p className="mt-2 text-xs leading-5 text-[#91A9CF]">
-        Automatic discovery is used first. Only an elevated manager should calibrate
-        selectors when requested; credentials remain in encrypted connection secrets.
+        Automatic discovery is used first. Only an elevated manager should
+        calibrate selectors when requested; credentials remain in encrypted
+        connection secrets.
       </p>
       <Button
         type="button"
@@ -743,23 +1212,38 @@ export function LoginCalibration({
         <div className="mt-4 space-y-4">
           <div className="grid gap-3 md:grid-cols-2">
             {fields.map(([key, label]) => (
-              <label key={key} className="grid gap-1 text-xs font-bold text-[#AFC3E2]">
+              <label
+                key={key}
+                className="grid gap-1 text-xs font-bold text-[#AFC3E2]"
+              >
                 {label}
                 <Input
                   value={draft[key]}
-                  onChange={event => setDraft(current => ({ ...current, [key]: event.target.value }))}
+                  onChange={event =>
+                    setDraft(current => ({
+                      ...current,
+                      [key]: event.target.value,
+                    }))
+                  }
                   className="border-white/15 bg-[#08172F] font-mono text-xs text-white"
                 />
               </label>
             ))}
           </div>
-          <Button disabled={saving} onClick={() => void save()} className="bg-[#1B64F2]">
+          <Button
+            disabled={saving}
+            onClick={() => void save()}
+            className="bg-[#1B64F2]"
+          >
             {saving ? "Saving…" : "Save selector calibration"}
           </Button>
           <div className="border-t border-white/10 pt-4">
-            <p className="text-xs font-bold text-[#AFC3E2]">Approve an exact authentication redirect hostname</p>
+            <p className="text-xs font-bold text-[#AFC3E2]">
+              Approve an exact authentication redirect hostname
+            </p>
             <p className="mt-1 text-xs leading-5 text-[#91A9CF]">
-              Enter only the hostname reported by the blocked sign-in test. Private-network destinations remain prohibited.
+              Enter only the hostname reported by the blocked sign-in test.
+              Private-network destinations remain prohibited.
             </p>
             <div className="mt-2 flex flex-col gap-2 sm:flex-row">
               <Input
@@ -770,13 +1254,18 @@ export function LoginCalibration({
               />
               <Button
                 variant="outline"
-                disabled={!organisationId || !authHostname.trim() || addDomain.isPending}
-                onClick={() => organisationId && addDomain.mutate({
-                  organisationId,
-                  connectedSystemId: systemId,
-                  hostname: authHostname.trim(),
-                  allowedPaths: ["/"],
-                })}
+                disabled={
+                  !organisationId || !authHostname.trim() || addDomain.isPending
+                }
+                onClick={() =>
+                  organisationId &&
+                  addDomain.mutate({
+                    organisationId,
+                    connectedSystemId: systemId,
+                    hostname: authHostname.trim(),
+                    allowedPaths: ["/"],
+                  })
+                }
                 className="border-white/15 bg-white/5 text-white"
               >
                 Approve exact hostname
@@ -797,7 +1286,9 @@ function customOperationKey(name: string, mode: "read" | "write") {
     .replace(/^\.+|\.+$/g, "")
     .slice(0, 90);
   if (slug.length < 2)
-    throw new Error("Give the CRM function a clear name before starting training.");
+    throw new Error(
+      "Give the CRM function a clear name before starting training."
+    );
   return `custom.${mode}.${slug}`;
 }
 
@@ -816,9 +1307,9 @@ export function BrowserOperationMatrix({
   );
   const [shadowOverride, setShadowOverride] = useState<boolean | undefined>();
   const [customFunctionName, setCustomFunctionName] = useState("");
-  const [customFunctionMode, setCustomFunctionMode] = useState<"read" | "write">(
-    "write"
-  );
+  const [customFunctionMode, setCustomFunctionMode] = useState<
+    "read" | "write"
+  >("write");
   const startTraining = trpc.connectedSystems.startBrowserTraining.useMutation({
     onSuccess: result => {
       navigator.clipboard.writeText(String(result.id)).catch(() => undefined);
@@ -887,8 +1378,13 @@ export function BrowserOperationMatrix({
           }
         }
       }
-      const raw = experience === "guided" ? "{}" :
-        window.prompt("Optional test inputs as JSON. Do not paste secrets.", suggestedInputs) || "{}";
+      const raw =
+        experience === "guided"
+          ? "{}"
+          : window.prompt(
+              "Optional test inputs as JSON. Do not paste secrets.",
+              suggestedInputs
+            ) || "{}";
       const inputs = JSON.parse(raw);
       await jsonRequest(
         `/api/connected-system-admin/${system.id}/operations/${encodeURIComponent(operationKey)}/test`,
@@ -918,7 +1414,9 @@ export function BrowserOperationMatrix({
           <div className="flex items-center gap-2 text-[#A9C7FF]">
             <GraduationCap size={16} />
             <p className="text-xs font-black uppercase tracking-[.12em]">
-              {experience === "guided" ? "CRM task readiness" : "Teach Amarktai · Acceptance matrix"}
+              {experience === "guided"
+                ? "CRM task readiness"
+                : "Teach Amarktai · Acceptance matrix"}
             </p>
           </div>
           <p className="mt-2 text-xs text-[#91A9CF]">
@@ -927,60 +1425,64 @@ export function BrowserOperationMatrix({
               : `System ID ${system.id}. Learned is not live; only controlled replay plus readback can publish LIVE_PROVEN.`}
           </p>
         </div>
-        {experience === "management" && <label className="flex items-center gap-2 text-xs font-bold text-[#C8D8F2]">
-          <input
-            type="checkbox"
-            checked={shadowMode}
-            onChange={event =>
-              organisationId &&
-              setShadow.mutate({
-                organisationId,
-                connectedSystemId: system.id,
-                enabled: event.target.checked,
-              })
-            }
-          />
-          Shadow mode
-        </label>}
+        {experience === "management" && (
+          <label className="flex items-center gap-2 text-xs font-bold text-[#C8D8F2]">
+            <input
+              type="checkbox"
+              checked={shadowMode}
+              onChange={event =>
+                organisationId &&
+                setShadow.mutate({
+                  organisationId,
+                  connectedSystemId: system.id,
+                  enabled: event.target.checked,
+                })
+              }
+            />
+            Shadow mode
+          </label>
+        )}
       </div>
 
-      {experience === "management" && <div className="mt-4 rounded-xl border border-[#3D69AD]/30 bg-[#0B1B36] p-4">
-        <p className="text-[10px] font-black uppercase tracking-[.12em] text-[#8CB7FF]">
-          Teach another CRM function
-        </p>
-        <p className="mt-2 text-xs leading-5 text-[#91A9CF]">
-          Use this for any function the CRM already has that is not listed below:
-          send a quote, book an appointment, start a dialler action, assign an
-          owner, run a workflow, or another client-specific function. Reads can
-          inspect data. Writes must prove the exact target and success state
-          before they can become LIVE_PROVEN.
-        </p>
-        <div className="mt-3 grid gap-2 md:grid-cols-[1fr_150px_auto]">
-          <Input
-            value={customFunctionName}
-            onChange={event => setCustomFunctionName(event.target.value)}
-            placeholder="Function name, e.g. Send quote"
-            className="border-white/15 bg-[#071326] text-white"
-          />
-          <select
-            value={customFunctionMode}
-            onChange={event =>
-              setCustomFunctionMode(event.target.value as "read" | "write")
-            }
-            className="h-10 rounded-lg border border-white/15 bg-[#071326] px-3 text-xs font-bold text-white"
-          >
-            <option value="write">Changes CRM (write)</option>
-            <option value="read">Reads only</option>
-          </select>
-          <Button
-            onClick={startCustomFunctionTraining}
-            disabled={startTraining.isPending || !customFunctionName.trim()}
-            className="bg-[#1B64F2] hover:bg-[#2B76FF]"
-          >
-            Teach this function
-          </Button>
+      {experience === "management" && (
+        <div className="mt-4 rounded-xl border border-[#3D69AD]/30 bg-[#0B1B36] p-4">
+          <p className="text-[10px] font-black uppercase tracking-[.12em] text-[#8CB7FF]">
+            Teach another CRM function
+          </p>
+          <p className="mt-2 text-xs leading-5 text-[#91A9CF]">
+            Use this for any function the CRM already has that is not listed
+            below: send a quote, book an appointment, start a dialler action,
+            assign an owner, run a workflow, or another client-specific
+            function. Reads can inspect data. Writes must prove the exact target
+            and success state before they can become LIVE_PROVEN.
+          </p>
+          <div className="mt-3 grid gap-2 md:grid-cols-[1fr_150px_auto]">
+            <Input
+              value={customFunctionName}
+              onChange={event => setCustomFunctionName(event.target.value)}
+              placeholder="Function name, e.g. Send quote"
+              className="border-white/15 bg-[#071326] text-white"
+            />
+            <select
+              value={customFunctionMode}
+              onChange={event =>
+                setCustomFunctionMode(event.target.value as "read" | "write")
+              }
+              className="h-10 rounded-lg border border-white/15 bg-[#071326] px-3 text-xs font-bold text-white"
+            >
+              <option value="write">Changes CRM (write)</option>
+              <option value="read">Reads only</option>
+            </select>
+            <Button
+              onClick={startCustomFunctionTraining}
+              disabled={startTraining.isPending || !customFunctionName.trim()}
+              className="bg-[#1B64F2] hover:bg-[#2B76FF]"
+            >
+              Teach this function
+            </Button>
+          </div>
         </div>
-      </div>}
+      )}
 
       <div className="mt-4 max-h-[430px] space-y-2 overflow-y-auto pr-1">
         {matrix.data?.operations.map(operation => (
@@ -1161,7 +1663,9 @@ function BrowserOperationRow({
         <div>
           <p className="text-sm font-bold text-white">{operation.label}</p>
           <p className="mt-1 text-[10px] uppercase tracking-wide text-[#7896C1]">
-            {guided ? operation.area : `${operation.area} · ${operation.key} · ${operation.mode}`}
+            {guided
+              ? operation.area
+              : `${operation.area} · ${operation.key} · ${operation.mode}`}
           </p>
         </div>
         <span
@@ -1174,7 +1678,8 @@ function BrowserOperationRow({
                 ? "Ready to test"
                 : operation.status === "LEARNED"
                   ? "Shown"
-                  : operation.status === "DEGRADED" || operation.status === "BLOCKED"
+                  : operation.status === "DEGRADED" ||
+                      operation.status === "BLOCKED"
                     ? "Needs attention"
                     : "Not shown yet"
             : operation.status.replaceAll("_", " ")}
@@ -1190,7 +1695,13 @@ function BrowserOperationRow({
           onClick={onTeach}
           className="h-8 border-white/15 bg-white/5 text-xs text-white hover:bg-white/10"
         >
-          {operation.status === "NOT_LEARNED" ? (guided ? "Show Amarktai" : "Teach") : (guided ? "Show again / fix" : "Relearn / fix")}
+          {operation.status === "NOT_LEARNED"
+            ? guided
+              ? "Show Amarktai"
+              : "Teach"
+            : guided
+              ? "Show again / fix"
+              : "Relearn / fix"}
         </Button>
         {operation.status === "TEST_READY" && (
           <Button
@@ -1204,7 +1715,8 @@ function BrowserOperationRow({
       </div>
       {guided && operation.status === "LEARNED" && (
         <p className="mt-3 rounded-lg bg-amber-400/[.06] p-3 text-xs leading-5 text-amber-100">
-          The demonstration is captured. A workspace manager must review the safe target and confirmation rules before testing.
+          The demonstration is captured. A workspace manager must review the
+          safe target and confirmation rules before testing.
         </p>
       )}
       {!guided && operation.status === "LEARNED" && review.data && (

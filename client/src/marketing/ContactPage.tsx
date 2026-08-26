@@ -11,13 +11,12 @@ import { PageHero, SectionHeader } from "./MarketingComponents";
 import { MarketingLayout } from "./MarketingLayout";
 
 export const contactReasons = [
-  "General enquiry",
-  "Sales Assistant demo",
+  "Request a demo",
+  "Sales",
   "Individual setup",
-  "Team/company setup",
-  "CRM integration",
+  "Team setup",
+  "CRM compatibility",
   "Support",
-  "Other",
 ] as const;
 
 type ContactForm = {
@@ -130,7 +129,7 @@ export default function ContactPage() {
           <div className="marketing-contact-reasons">
             <p>Product questions and demos</p>
             <p>Individual or team setup</p>
-            <p>CRM compatibility and commissioning</p>
+            <p>CRM compatibility and setup</p>
             <p>Deployment, onboarding and support</p>
           </div>
         </div>

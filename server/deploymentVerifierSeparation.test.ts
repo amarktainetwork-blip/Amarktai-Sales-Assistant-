@@ -22,8 +22,12 @@ describe("deployment and client acceptance separation", () => {
     expect(platform).toContain("await context.close()");
     expect(platform).not.toContain("browser.close()");
     expect(clientAcceptance).toContain("dist/verifyFeatures.js");
-    expect(clientAcceptance).toContain("CLIENT_ACCEPTANCE_READY=PASS");
-    expect(strictVerifier).toContain("process.exit(incomplete === 0 ? 0 : 1)");
+    expect(clientAcceptance).toContain("CLIENT_ACCEPTANCE=PASS");
+    expect(strictVerifier).toContain("evaluateStrictClientAcceptance");
+    expect(strictVerifier).toContain("process.exit(strict.passed ? 0 : 1)");
+    expect(strictVerifier).toContain("live_call_audio_transcribed");
+    expect(strictVerifier).toContain("assistant_response_generated");
+    expect(strictVerifier).toContain("two_factor_verified");
     expect(strictVerifier).toContain('event: "feature_acceptance"');
   });
 });

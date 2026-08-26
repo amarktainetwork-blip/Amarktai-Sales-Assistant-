@@ -29,7 +29,7 @@ const validPayload = {
   company: "North Star Sales",
   phone: "",
   teamSize: "8",
-  reason: "Team/company setup",
+  reason: "Team setup",
   message:
     "We would like to discuss a guided team setup and CRM compatibility.",
   website: "",
@@ -68,7 +68,7 @@ describe("public contact form backend", () => {
     expect(mailer).toHaveBeenCalledOnce();
     expect(mailer.mock.calls[0][0]).toMatchObject({
       to: "contact@amarktai.example",
-      subject: "Amarktai website enquiry — Team/company setup",
+      subject: "Amarktai website enquiry — Team setup",
     });
     expect(mailer.mock.calls[0][0].html).toContain("North Star Sales");
   });
@@ -85,9 +85,7 @@ describe("public contact form backend", () => {
       );
       expect(res.status).toHaveBeenCalledWith(200);
       expect(mailer).toHaveBeenCalledOnce();
-      expect(mailer.mock.calls[0][0].text).toContain(
-        `Email: ${email.trim()}`
-      );
+      expect(mailer.mock.calls[0][0].text).toContain(`Email: ${email.trim()}`);
     }
   );
 

@@ -10,6 +10,10 @@ type InteractiveCommissioning = {
   verificationExpired?: boolean;
   humanStatus?: string;
 };
+type PreOtpReadiness = {
+  ready: boolean;
+  states: Record<"browserReady" | "genieLoginReachable" | "secureSignInReady" | "sessionHandoffReady", boolean>;
+};
 
 async function jsonRequest(url: string, init?: RequestInit) {
   const response = await fetch(url, {
@@ -43,6 +47,7 @@ export default function GenieInteractiveAuthPrompt({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [approved, setApproved] = useState(false);
+  const [readiness, setReadiness] = useState<PreOtpReadiness | null>(null);
 
   useEffect(() => {
     if (!enabled || !genie?.id) {
@@ -125,6 +130,7 @@ export default function GenieInteractiveAuthPrompt({
         { method: "POST", body: "{}" }
       )) as InteractiveCommissioning;
       setChallenge(result.interactiveAuthRequired ? result : null);
+      setReadiness(null);
       setCode("");
       if (result.interactiveAuthRequired)
         toast.success("A fresh Genie verification code was requested.");
@@ -144,6 +150,22 @@ export default function GenieInteractiveAuthPrompt({
       else if (/GENIE_AUTHENTICATED_PAGE_UNAVAILABLE/.test(detail))
         setError("The approved Genie tab is no longer available. Do not request another code until the browser runtime has been checked.");
       else setError("A new Genie verification code could not be requested yet.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function checkReadiness() {
+    if (!genie?.id) return;
+    try {
+      setPending(true);
+      setError("");
+      const result = await jsonRequest(`/api/connected-system-admin/${genie.id}/pre-otp`, { method: "POST", body: "{}" }) as PreOtpReadiness;
+      setReadiness(result);
+      toast.success("Secure Genie sign-in is ready for one fresh code.");
+    } catch (cause) {
+      setReadiness(null);
+      setError(cause instanceof Error ? cause.message : "Secure sign-in readiness could not be proved.");
     } finally {
       setPending(false);
     }
@@ -199,6 +221,13 @@ export default function GenieInteractiveAuthPrompt({
         </div>
       )}
 
+      {!approved && challenge?.verificationExpired && <div className="mt-4 space-y-3"><div className="grid gap-2 sm:grid-cols-2">{([
+        ["browserReady", "Browser ready"],
+        ["genieLoginReachable", "Genie login reachable"],
+        ["secureSignInReady", "Secure sign-in ready"],
+        ["sessionHandoffReady", "Session handoff ready"],
+      ] as const).map(([key, label]) => <div key={key} className="flex items-center justify-between rounded-lg bg-black/15 px-3 py-2 text-[11px]"><span>{label}</span><span className={readiness?.states[key] ? "font-bold text-emerald-200" : "text-[#7896C1]"}>{readiness?.states[key] ? "Ready" : "Not checked"}</span></div>)}</div><Button variant="outline" disabled={pending} onClick={() => void checkReadiness()} className="w-full border-white/15 bg-white/5 text-white">{pending ? "Checking readiness…" : "Check secure sign-in readiness"}</Button></div>}
+
       {!approved && error && (
         <p className="mt-3 rounded-lg border border-amber-300/20 bg-amber-400/[.07] p-3 text-xs leading-5 text-amber-100">
           {error}
@@ -212,7 +241,7 @@ export default function GenieInteractiveAuthPrompt({
         <Button
           size="sm"
           variant="outline"
-          disabled={pending}
+          disabled={pending || !readiness?.ready}
           onClick={() => void requestNewCode()}
           className="shrink-0 border-white/15 bg-white/5 text-white hover:bg-white/10"
         >

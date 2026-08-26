@@ -108,7 +108,7 @@ AMARKTAI_DEPLOY_PROFILE=full \
 sh deploy/webdock/verify-production.sh
 ```
 
-`PRODUCTION_VERIFIER=PASS` and `PLATFORM_READY=PASS` prove the deployment/runtime only. `CLIENT_ACCEPTANCE=PENDING` is expected before client CRM commissioning. After commissioning, run `deploy/webdock/verify-client-acceptance.sh`; do not hand over until it reports `CLIENT_ACCEPTANCE_READY=PASS`.
+`PRODUCTION_VERIFIER=PASS` and `PLATFORM_READY=PASS` prove the deployment/runtime only. `CLIENT_ACCEPTANCE=PENDING` is expected before client CRM commissioning. Obtain `PRE_OTP_READY=PASS` before the single controlled customer sign-in. After commissioning, run `deploy/webdock/verify-client-acceptance.sh`; do not hand over until it reports `CLIENT_ACCEPTANCE=PASS`.
 
 ## 7. CRM onboarding acceptance
 

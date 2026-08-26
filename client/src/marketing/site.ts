@@ -50,7 +50,7 @@ export const publicPageMetadata: Record<
   "/pricing": {
     title: "Pricing | Amarktai Sales Assistant",
     description:
-      "Explore the future plan structure for individual salespeople, teams and organisations. Launch pricing is being finalised.",
+      "Compare Amarktai Sales Assistant subscriptions, included users, CRM connections and AI credits.",
   },
   "/contact": {
     title: "Contact | Amarktai Sales Assistant",
@@ -62,42 +62,3 @@ export const publicPageMetadata: Record<
     description: "Return to the Amarktai Sales Assistant public website.",
   },
 };
-
-export const futurePlans = [
-  {
-    name: "Individual",
-    audience: "For one salesperson.",
-    summary:
-      "A focused workspace for organising prospects, calls and follow-up.",
-    features: [
-      "Personal Today view",
-      "Call preparation and assistance",
-      "Customer and follow-up workspace",
-      "Approved business knowledge",
-    ],
-  },
-  {
-    name: "Team",
-    audience: "For growing sales teams.",
-    summary:
-      "A shared sales rhythm with manager visibility and controlled actions.",
-    features: [
-      "Individual workspaces",
-      "Shared company knowledge",
-      "Team workload and manager views",
-      "Approvals and reporting",
-    ],
-  },
-  {
-    name: "Business",
-    audience: "For organisations needing advanced setup and support.",
-    summary:
-      "A supported rollout shaped around CRM requirements and operating processes.",
-    features: [
-      "Advanced CRM commissioning",
-      "Custom workflow setup",
-      "Organisation-wide controls",
-      "Deployment and onboarding support",
-    ],
-  },
-] as const;

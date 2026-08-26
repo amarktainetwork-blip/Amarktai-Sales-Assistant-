@@ -1,13 +1,13 @@
 .marketing-site {
-  --marketing-bg: #061225;
-  --marketing-bg-raised: #0a1a34;
-  --marketing-panel: #0d2142;
+  --marketing-bg: var(--color-bg);
+  --marketing-bg-raised: var(--color-surface);
+  --marketing-panel: var(--color-surface-raised);
   --marketing-panel-soft: #10294f;
-  --marketing-text: #f7faff;
-  --marketing-muted: #a8bddb;
-  --marketing-blue: #3f82ff;
-  --marketing-blue-bright: #72a8ff;
-  --marketing-line: rgba(157, 188, 235, 0.16);
+  --marketing-text: var(--color-text);
+  --marketing-muted: var(--color-text-muted);
+  --marketing-blue: var(--color-brand);
+  --marketing-blue-bright: var(--color-brand-bright);
+  --marketing-line: var(--color-border);
   min-height: 100vh;
   min-width: 320px;
   overflow: clip;
@@ -16,6 +16,8 @@
   font-family: var(--font-body);
   color-scheme: dark;
 }
+.marketing-plan__price { margin: 10px 0 12px; color: var(--marketing-muted); }
+.marketing-plan__price strong { color: var(--marketing-text); font-family: var(--font-display); font-size: clamp(2.2rem, 4vw, 3.25rem); letter-spacing: -.06em; }
 
 .marketing-site *,
 .marketing-site *::before,

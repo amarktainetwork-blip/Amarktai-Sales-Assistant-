@@ -17,6 +17,7 @@ import Home from "./pages/Home";
 import LiveCalls from "./pages/LiveCalls";
 import Onboarding from "./pages/Onboarding";
 import Pricing from "./pages/Pricing";
+import Reports from "./pages/Reports";
 import SalesAutomation from "./pages/SalesAutomation";
 import TeamIntelligence from "./pages/TeamIntelligence";
 import TeamManagement from "./pages/TeamManagement";
@@ -38,7 +39,7 @@ function Router() {
     <Route path="/today" component={Today} />
     <Route path="/sell" component={Today} />
     <Route path="/customers" component={Customers} />
-    <Route path="/reports" component={Dashboard} />
+    <Route path="/reports" component={Reports} />
     <Route path="/automation" component={SalesAutomation} />
     <Route path="/team" component={TeamIntelligence} />
     <Route path="/team/manage" component={TeamManagement} />

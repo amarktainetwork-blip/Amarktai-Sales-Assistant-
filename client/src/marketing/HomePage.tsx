@@ -58,12 +58,12 @@ const salesDay = [
 ] as const;
 
 const integrations = [
-  ["GE", "Genie"],
-  ["HS", "HubSpot"],
-  ["SF", "Salesforce"],
-  ["PD", "Pipedrive"],
-  ["ZO", "Zoho CRM"],
-  ["+", "Other CRM"],
+  ["GE", "Genie", "Available browser connector"],
+  ["HS", "HubSpot", "Available connector"],
+  ["SF", "Salesforce", "Available connector"],
+  ["PD", "Pipedrive", "Available connector"],
+  ["ZO", "Zoho CRM", "Available connector"],
+  ["+", "Other CRM", "Compatibility checked during setup"],
 ] as const;
 
 export default function HomePage() {
@@ -77,9 +77,10 @@ export default function HomePage() {
               Your sales day, <em>organised</em> by Amarktai.
             </h1>
             <p>
-              Connect the CRM your team already uses. Know who to contact next,
-              prepare every call, capture follow-ups and keep sales work moving
-              in one clear workspace.
+              Amarktai Sales Assistant is an AI sales assistant that works with
+              the CRM your team already uses. Know who to contact next, prepare
+              every call, capture follow-ups and keep sales work moving in one
+              clear workspace.
             </p>
             <div className="marketing-actions">
               <Link
@@ -253,11 +254,16 @@ export default function HomePage() {
             copy="Amarktai connects customer context and available sales workflows without forcing the business to replace its CRM. Setup and available capabilities depend on the connected system."
           />
           <div className="marketing-logo-grid">
-            {integrations.map(([initials, name]) => (
+            {integrations.map(([initials, name, status]) => (
               <div className="marketing-logo-card" key={name}>
                 <div>
                   <span>{initials}</span>
-                  <strong>{name}</strong>
+                  <span>
+                    <strong className="block">{name}</strong>
+                    <small className="mt-1 block text-[10px] font-bold text-[#7896c1]">
+                      {status}
+                    </small>
+                  </span>
                 </div>
               </div>
             ))}
@@ -304,7 +310,7 @@ export default function HomePage() {
               </article>
               <article>
                 <small>Service · Awaiting review</small>
-                <strong>CRM connection and guided commissioning</strong>
+                <strong>CRM connection and guided setup</strong>
               </article>
               <article>
                 <small>Approved team context</small>
@@ -373,7 +379,7 @@ export default function HomePage() {
                 "Team workload and overdue work",
                 "Pipeline and follow-up attention",
                 "Quality, coaching and review queues",
-                "Clear operational reporting",
+                "Clear sales reporting",
               ]}
             />
             <Link
