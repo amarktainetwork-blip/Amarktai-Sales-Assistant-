@@ -52,6 +52,14 @@ export const AGENT_CATALOG: AgentDefinition[] = [
     modelRole: "GenX retrieval and explanation model",
   },
   {
+    key: "company_intelligence_review",
+    name: "Company Intelligence Review Agent",
+    purpose: "Interprets public website extraction into evidence-backed human-review drafts, separates first-party offerings from comparisons, competitors, testimonials, examples, historical and ambiguous content, and keeps excluded material out of trusted company knowledge.",
+    category: "knowledge",
+    requiresModel: true,
+    modelRole: "GenX evidence-grounded website interpretation model",
+  },
+  {
     key: "communications",
     name: "Communications Agent",
     purpose: "Prepares template-bound email, SMS, and WhatsApp action proposals that retain approved wording and subject lines.",
@@ -124,6 +132,30 @@ export const AGENT_CATALOG: AgentDefinition[] = [
     modelRole: "GenX structured pipeline planning model",
   },
 ];
+
+export type AgentRuntimeStatus = "READY" | "INTERNAL" | "NEEDS_CONNECTION" | "NOT_IMPLEMENTED";
+
+export type AgentRuntimeDependencies = {
+  databaseReady: boolean;
+  genxReady: boolean;
+  crmReadReady: boolean;
+  crmRouteReady: boolean;
+  communicationsReady: boolean;
+  voiceReady: boolean;
+};
+
+/** Truthful runtime state derived from live dependencies, not catalogue presence. */
+export function agentRuntimeStatus(key: string, dependencies: AgentRuntimeDependencies): AgentRuntimeStatus {
+  if (["sales_intelligence", "objection_handler", "recommendation_agent", "pipeline_planner"].includes(key)) return "NOT_IMPLEMENTED";
+  if (["supervisor", "workflow_guardian", "qa_compliance"].includes(key)) return "READY";
+  if (key === "analytics") return dependencies.databaseReady ? "READY" : "INTERNAL";
+  if (key === "company_intelligence_review") return dependencies.genxReady ? "READY" : "NEEDS_CONNECTION";
+  if (key === "knowledge_guide") return dependencies.databaseReady && dependencies.genxReady ? "READY" : "NEEDS_CONNECTION";
+  if (key === "crm_context" || key === "crm_router") return dependencies.crmReadReady || dependencies.crmRouteReady ? "READY" : "NEEDS_CONNECTION";
+  if (key === "communications") return dependencies.communicationsReady ? "READY" : "NEEDS_CONNECTION";
+  if (key === "conversation_coach" || key === "notes_agent") return dependencies.genxReady && dependencies.voiceReady ? "READY" : "NEEDS_CONNECTION";
+  return "NOT_IMPLEMENTED";
+}
 
 export const WORKFLOW_LABELS: Record<WorkflowKey, string> = {
   first_contact: "First contact sequence",

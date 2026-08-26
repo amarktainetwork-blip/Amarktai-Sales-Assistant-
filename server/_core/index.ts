@@ -14,6 +14,7 @@ import { registerConnectedSystemAdminRoutes } from "../connectedSystemAdminRoute
 import { registerSalesAutomationRoutes } from "../salesAutomationRoutes";
 import { registerSalesTargetsRoutes } from "../salesTargetsRoutes";
 import { registerAiCreditsRoutes } from "../aiCreditsRoutes";
+import { registerCompanyIntelligenceRoutes } from "../companyIntelligenceRoutes";
 import { registerConnectorWebhookRoutes } from "../connectors/webhookRoutes";
 import { registerOutlookInboundRoutes } from "../communications/outlookInboundRoutes";
 import { registerVoiceRoutes } from "../voice/routes";
@@ -30,6 +31,7 @@ import {
 } from "../security/http";
 import { getProductionReadiness } from "../readiness";
 import { createContext } from "./context";
+import { registerLiveCrmViewerSocket } from "../liveCrmViewer";
 import { serveStatic, setupVite } from "./vite";
 
 function isPortAvailable(port: number): Promise<boolean> {
@@ -49,6 +51,7 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
   const server = createServer(app);
+  registerLiveCrmViewerSocket(server);
   app.set("trust proxy", 1);
   app.disable("x-powered-by");
   app.use(securityHeaders);
@@ -110,6 +113,13 @@ async function startServer() {
     enforceAppOrigin
   );
   registerConnectedSystemAdminRoutes(app);
+  app.use(
+    "/api/company-intelligence",
+    rateLimit({ limit: 12, windowMs: 60_000 }),
+    enforceAppOrigin,
+    withAiRequestIdentity
+  );
+  registerCompanyIntelligenceRoutes(app);
   app.use(
     "/api/sales-automation",
     rateLimit({ limit: 90, windowMs: 60_000 }),

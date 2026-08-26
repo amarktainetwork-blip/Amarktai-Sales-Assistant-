@@ -94,7 +94,7 @@ type WebsiteKnowledgeCandidate = {
   sourceUrl: string;
   fetchedAt: string;
   category: string;
-  reviewState?: "review_required" | "conflict";
+  reviewState?: "review_required" | "conflict" | "ambiguous";
   confidence?: string;
   evidenceBasis?: string;
   trustEligible?: boolean;
@@ -129,10 +129,10 @@ const KNOWLEDGE_GROUPS = [
 
 function knowledgeGroup(category: string): (typeof KNOWLEDGE_GROUPS)[number] {
   if (["home", "about"].includes(category)) return "Overview";
-  if (category === "offering") return "Products / Courses / Services";
-  if (["pricing", "finance"].includes(category)) return "Prices & Finance";
-  if (category === "certifications") return "Certifications";
-  if (["support", "evidence", "testimonials"].includes(category))
+  if (["offering", "company_offering"].includes(category)) return "Products / Courses / Services";
+  if (["pricing", "finance", "company_price", "company_finance"].includes(category)) return "Prices & Finance";
+  if (["certifications", "company_certification"].includes(category)) return "Certifications";
+  if (["support", "evidence", "testimonials", "company_support", "company_evidence"].includes(category))
     return "Support & Outcomes";
   if (category === "faq") return "FAQs";
   if (category === "contact") return "Contact";
@@ -180,12 +180,10 @@ const providerLabels: Record<Provider, string> = {
   custom_browser: "Other CRM",
 };
 const steps = [
-  "Business",
-  "Learn business",
-  "Knowledge review",
-  "Connect CRM",
-  "Safe automation rules",
-  "Test & start selling",
+  "Your business",
+  "Learn your business",
+  "Connect your CRM",
+  "Ready to sell",
 ];
 
 function isBrowser(provider: Provider) {
@@ -404,7 +402,7 @@ export default function Onboarding() {
     ) {
       const savedStep = Number((savedOnboarding as { step?: unknown }).step);
       if (Number.isInteger(savedStep) && savedStep >= 1 && savedStep <= 6)
-        setStep(savedStep);
+        setStep(savedStep >= 6 ? 4 : savedStep >= 4 ? 3 : savedStep >= 2 ? 2 : 1);
     }
   }, [organisation.data?.settings]);
 
@@ -500,8 +498,8 @@ export default function Onboarding() {
           item.trustEligible === false ? [] : [index]
         )
       );
-      setStep(3);
-      onboardingProgress.mutate({ step: 3 });
+      setStep(2);
+      onboardingProgress.mutate({ step: 2 });
       toast.success(
         "Website context is saved as a review-only draft. Approve facts before Amarktai can trust or use them."
       );
@@ -531,8 +529,8 @@ export default function Onboarding() {
     onSuccess: () => {
       utils.companySetup.get.invalidate();
       setPreview(null);
-      setStep(4);
-      onboardingProgress.mutate({ step: 4 });
+      setStep(3);
+      onboardingProgress.mutate({ step: 3 });
       toast.success("Selected knowledge was confirmed.");
       setFeedback({
         kind: "success",
@@ -620,8 +618,8 @@ export default function Onboarding() {
   const savePlaybook = trpc.companySetup.savePlaybook.useMutation({
     onSuccess: () => {
       utils.companySetup.get.invalidate();
-      setStep(6);
-      onboardingProgress.mutate({ step: 6 });
+      setStep(4);
+      onboardingProgress.mutate({ step: 4 });
       toast.success("Review-first playbook saved.");
     },
     onError: error => toast.error(error.message),
@@ -947,14 +945,14 @@ export default function Onboarding() {
             </button>
           </div>
         )}
-        <nav className="grid gap-2 rounded-[1.5rem] border border-white/10 bg-[#0C1E3E] p-3 sm:grid-cols-6">
+        <nav className="grid gap-2 rounded-[1.5rem] border border-stone-300 bg-stone-50 p-3 sm:grid-cols-4">
           {steps.map((label, index) => (
             <button
               key={label}
               onClick={() => setStep(index + 1)}
-              className={`rounded-xl px-3 py-3 text-left text-xs font-bold ${step === index + 1 ? "bg-[#153B7A] text-white" : "text-[#A9BFDF] hover:bg-white/[.05]"}`}
+              className={`rounded-xl px-3 py-3 text-left text-xs font-bold ${step === index + 1 ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-200"}`}
             >
-              <span className="mr-2 text-[#83AEFF]">
+              <span className="mr-2 text-[#2166d1]">
                 {String(index + 1).padStart(2, "0")}
               </span>
               {label}
@@ -969,8 +967,8 @@ export default function Onboarding() {
                 <StepHeading
                   icon={Building2}
                   number="01"
-                  title="Tell us about your organisation"
-                  text="This private profile gives Amarktai the business context it needs to prepare useful sales work."
+                  title="Your business"
+                  text="Tell us the essentials so Amarktai can learn your business and support your sales work."
                 />
                 <div className="mt-6 grid gap-4 sm:grid-cols-2">
                   <Input
@@ -1077,13 +1075,13 @@ export default function Onboarding() {
                 </Button>
               </Card>
             )}
-            {step === 3 && (
+            {step === 2 && (
               <Card>
                 <StepHeading
                   icon={BadgeCheck}
-                  number="03"
-                  title="Confirm usable knowledge"
-                  text="Only selected public website facts become approved workspace knowledge."
+                  number="02"
+                  title="Learn your business"
+                  text="We read your public website, understand what you sell, and ask you to confirm the important details."
                 />
                 {preview ? (
                   <>
@@ -1258,7 +1256,9 @@ export default function Onboarding() {
                                   >
                                     {item.reviewState === "conflict"
                                       ? "Conflicting sources"
-                                      : "Review required"}
+                                      : item.reviewState === "ambiguous"
+                                        ? "Not eligible for company knowledge"
+                                        : "Review required"}
                                   </span>
                                   {item.confidence && (
                                     <span className="text-[#83AEFF]">
@@ -1334,7 +1334,8 @@ export default function Onboarding() {
                                       : "saved discovery"}
                                   </a>
                                 ) : null}
-                                {item.trustEligible === false && (
+                                {item.trustEligible === false &&
+                                  item.reviewState === "conflict" && (
                                   <Button
                                     type="button"
                                     size="sm"
@@ -1362,7 +1363,7 @@ export default function Onboarding() {
                                       )
                                     }
                                   >
-                                    I corrected this conflict
+                                    I corrected this first-party conflict
                                   </Button>
                                 )}
                               </span>
@@ -1395,11 +1396,11 @@ export default function Onboarding() {
                 )}
               </Card>
             )}
-            {step === 4 && (
+            {step === 3 && (
               <Card>
                 <StepHeading
                   icon={Network}
-                  number="04"
+                  number="03"
                   title="Connect the CRM you already use"
                   text="Choose your CRM and sign in. Amarktai automatically uses the correct secure connection, discovery and testing flow."
                 />
@@ -1866,11 +1867,11 @@ export default function Onboarding() {
                     )}
                     <div className="flex justify-end">
                       <Button
-                        onClick={() => setStep(5)}
+                        onClick={() => setStep(4)}
                         disabled={!sellingReadiness.coreGenieReady}
                         className="bg-emerald-600 hover:bg-emerald-500"
                       >
-                        Continue to automation rules
+                        Continue to ready to sell
                       </Button>
                     </div>
                   </section>
@@ -1930,75 +1931,20 @@ export default function Onboarding() {
                 </div>
               </Card>
             )}
-            {step === 5 && (
-              <Card>
-                <StepHeading
-                  icon={ShieldCheck}
-                  number="05"
-                  title="Choose the first safe automation rule"
-                  text="Playbooks prepare controlled work. They never authorise external actions."
-                />
-                <Input
-                  value={playbook.title}
-                  onChange={event =>
-                    setPlaybook({ ...playbook, title: event.target.value })
-                  }
-                  placeholder="Playbook title"
-                  className="mt-6 border-white/15 bg-[#08172F] text-white"
-                />
-                <Input
-                  value={playbook.trigger}
-                  onChange={event =>
-                    setPlaybook({ ...playbook, trigger: event.target.value })
-                  }
-                  placeholder="Trigger"
-                  className="mt-4 border-white/15 bg-[#08172F] text-white"
-                />
-                <Textarea
-                  value={playbook.description}
-                  onChange={event =>
-                    setPlaybook({
-                      ...playbook,
-                      description: event.target.value,
-                    })
-                  }
-                  placeholder="What should the assistant prepare?"
-                  className="mt-4 min-h-28 border-white/15 bg-[#08172F] text-white"
-                />
-                <Button
-                  disabled={
-                    !playbook.title ||
-                    !playbook.trigger ||
-                    !playbook.description ||
-                    savePlaybook.isPending
-                  }
-                  onClick={() =>
-                    savePlaybook.mutate({
-                      ...playbook,
-                      requiredCapabilities: ["tasks"],
-                      status: "draft",
-                    })
-                  }
-                  className="mt-5 bg-[#1B64F2]"
-                >
-                  Save playbook
-                </Button>
-              </Card>
-            )}
-            {step === 6 && (
+            {step === 4 && (
               <Card>
                 <StepHeading
                   icon={Rocket}
-                  number="06"
-                  title="Test readiness and start selling"
-                  text="This friendly checklist uses stored server evidence. A CRM task is ready only after an authorised test and readback pass."
+                  number="04"
+                  title="Ready to sell"
+                  text="Your business, CRM connection, assistant and safety controls are ready. You can start selling with confidence."
                 />
                 <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   {[
-                    ["Profile", profileSaved],
-                    ["Knowledge", knowledgeConfirmed],
-                    ["Verified CRM", sellingReadiness.crmVerified],
-                    ["Core selling functions", sellingReadiness.coreGenieReady],
+                    ["Business knowledge ready", profileSaved && knowledgeConfirmed],
+                    ["CRM ready", sellingReadiness.crmVerified],
+                    ["Assistant ready", sellingReadiness.coreGenieReady],
+                    ["Safety controls ready", sellingReadiness.coreGenieReady],
                   ].map(([label, ready]) => (
                     <div
                       key={String(label)}
@@ -2026,7 +1972,7 @@ export default function Onboarding() {
                   }
                   onClick={() =>
                     onboardingProgress.mutate(
-                      { step: 6, complete: true },
+                      { step: 4, complete: true },
                       { onSuccess: () => navigate("/today") }
                     )
                   }

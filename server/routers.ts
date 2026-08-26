@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { parse as parseCookieHeader } from "cookie";
 import { TRPCError } from "@trpc/server";
-import { AGENT_CATALOG, WORKFLOW_KEYS } from "./agentCatalog";
+import { AGENT_CATALOG, agentRuntimeStatus, WORKFLOW_KEYS } from "./agentCatalog";
 import {
   createCallSession,
   confirmWebsiteDiscovery,
@@ -75,9 +75,10 @@ import {
   resetLocalPassword,
 } from "./localAuth";
 import { routeSalesCommand } from "./supervisor";
+import { prepareGovernedAssistantRequest } from "./governedAssistant";
 import { prepareLiveCoachingTip, preparePostCallSummary } from "./liveCoach";
 import { getOutlookReadiness, validateEmailPreview } from "./outlook";
-import { discoverPublicWebsite } from "./companyDiscovery";
+import { discoverAndReviewCompanyIntelligence } from "./companyIntelligenceService";
 import { routeConnectedSystemActions } from "./crmRouter";
 import {
   ensureDefaultOrganisation,
@@ -101,6 +102,12 @@ import { createCrmOAuthState } from "./crm/oauthState";
 import { crmOAuthCallbackUrl } from "./crm/oauthRoutes";
 import { syncConnectedSystem } from "./crm/sync";
 import { getTodayWork } from "./today";
+import {
+  acquireAiControl,
+  createLiveCrmViewerSession,
+  getSanitisedLiveCrmContext,
+  releaseAiControl,
+} from "./liveCrmViewer";
 import {
   issueSidecarSession,
   revokeSidecarSessions,
@@ -664,10 +671,28 @@ export const appRouter = router({
     routeCommand: secondFactorProcedure
       .input(z.object({ command: z.string().trim().min(4).max(4_000) }))
       .mutation(({ input }) => routeSalesCommand(input.command)),
-    agents: secondFactorProcedure.query(() => ({
-      agents: AGENT_CATALOG,
-      genx: getGenxReadiness(),
-    })),
+    agents: secondFactorProcedure.query(async ({ ctx }) => {
+      const genx = getGenxReadiness();
+      let systems: Awaited<ReturnType<typeof listConnectedSystemsForUser>> = [];
+      let databaseReady = true;
+      if (ctx.activeOrganisation) {
+        try {
+          systems = await listConnectedSystemsForUser(ctx.user.id, ctx.activeOrganisation.organisationId);
+        } catch {
+          databaseReady = false;
+        }
+      }
+      const verified = systems.filter(system => system.status === "ready");
+      const dependencies = {
+        databaseReady,
+        genxReady: genx.ready,
+        crmReadReady: verified.some(system => system.verifiedCapabilities.some(capability => capability.endsWith(".read"))),
+        crmRouteReady: verified.some(system => system.verifiedCapabilities.length > 0),
+        communicationsReady: verified.some(system => system.verifiedCapabilities.some(capability => ["email.send", "sms.send", "whatsapp.send"].includes(capability))),
+        voiceReady: false,
+      };
+      return { agents: AGENT_CATALOG.map(agent => ({ ...agent, runtime: agentRuntimeStatus(agent.key, dependencies) })), genx };
+    }),
     actions: secondFactorProcedure
       .input(
         z
@@ -1529,6 +1554,59 @@ export const appRouter = router({
         });
       }),
   }),
+  crmViewer: router({
+    open: secondFactorProcedure
+      .input(z.object({ connectedSystemId: z.number().int().positive() }))
+      .mutation(async ({ ctx, input }) => {
+        if (!ctx.activeOrganisation)
+          throw new Error("Choose a company before opening its CRM workspace.");
+        return createLiveCrmViewerSession({
+          userId: ctx.user.id,
+          organisationId: ctx.activeOrganisation.organisationId,
+          connectedSystemId: input.connectedSystemId,
+        });
+      }),
+    acquireAssistantControl: secondFactorProcedure
+      .input(z.object({ viewerSessionId: z.string().uuid() }))
+      .mutation(({ ctx, input }) => {
+        if (!ctx.activeOrganisation)
+          throw new Error("Choose a company before controlling its CRM workspace.");
+        return acquireAiControl(
+          input.viewerSessionId,
+          ctx.activeOrganisation.organisationId,
+          ctx.user.id
+        );
+      }),
+    releaseAssistantControl: secondFactorProcedure
+      .input(z.object({ viewerSessionId: z.string().uuid() }))
+      .mutation(({ ctx, input }) => {
+        if (!ctx.activeOrganisation)
+          throw new Error("Choose a company before controlling its CRM workspace.");
+        return releaseAiControl(
+          input.viewerSessionId,
+          ctx.activeOrganisation.organisationId,
+          ctx.user.id
+        );
+      }),
+    askAssistant: secondFactorProcedure
+      .input(z.object({ viewerSessionId: z.string().uuid(), command: z.string().trim().min(2).max(4_000) }))
+      .mutation(async ({ ctx, input }) => {
+        if (!ctx.activeOrganisation)
+          throw new Error("Choose a company before asking about this CRM workspace.");
+        const pageContext = await getSanitisedLiveCrmContext({
+          viewerSessionId: input.viewerSessionId,
+          organisationId: ctx.activeOrganisation.organisationId,
+          userId: ctx.user.id,
+        });
+        const prepared = await prepareGovernedAssistantRequest({
+          userId: ctx.user.id,
+          organisationId: ctx.activeOrganisation.organisationId,
+          command: input.command,
+          crmContext: pageContext,
+        });
+        return { ...prepared, pageContext };
+      }),
+  }),
   knowledge: router({
     list: secondFactorProcedure.query(({ ctx }) => {
       if (!ctx.activeOrganisation)
@@ -1610,7 +1688,13 @@ export const appRouter = router({
         throw new Error(
           "Save a public company website before starting discovery."
         );
-      const discovery = await discoverPublicWebsite(setup.profile.websiteUrl);
+      const canonical = await discoverAndReviewCompanyIntelligence({
+        userId: ctx.user.id,
+        organisationId: ctx.activeOrganisation.organisationId,
+        websiteUrl: setup.profile.websiteUrl,
+        reference: `website-review:${setup.profile.id}:${Date.now()}`,
+      });
+      const { discovery, proposedKnowledge, reviewState, reviewUnavailable, aiReview } = canonical;
       const discoveryId = await saveWebsiteDiscoveryReview({
         userId: ctx.user.id,
         organisationId: ctx.activeOrganisation.organisationId,
@@ -1618,12 +1702,23 @@ export const appRouter = router({
         sourceUrl: discovery.sourceUrl,
         pageTitle: discovery.pageTitle,
         extractedText: discovery.extractedText,
-        proposedFacts: { ...discovery.proposedFacts, pages: discovery.pages },
-        proposedKnowledge: discovery.proposedKnowledge,
+        proposedFacts: {
+          ...discovery.proposedFacts,
+          pages: discovery.pages,
+          companyIntelligenceReview: {
+            agentKey: "company_intelligence_review",
+            state: reviewState,
+            unavailableReason: reviewUnavailable || null,
+            review: aiReview,
+          },
+        },
+        proposedKnowledge,
+        reviewAgentKey: "company_intelligence_review",
+        reviewState,
       });
-      return { ...discovery, discoveryId };
+      return { ...discovery, proposedKnowledge, discoveryId, reviewState, reviewUnavailable };
     }),
-    confirmDiscovery: secondFactorProcedure
+    confirmDiscovery: managementProcedure
       .input(
         z.object({
           discoveryId: z.number().int().positive(),

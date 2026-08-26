@@ -156,6 +156,40 @@ function calendarAttendees(payload: Record<string, unknown>, fallback: string) {
   return supplied;
 }
 
+async function verifyApprovedCrmPostcondition(input: {
+  actionType: string;
+  adapter: CrmAdapter;
+  connection: AdapterConnection;
+  secret: ConnectionSecretPayload;
+  proposal: ActionProposal;
+  payload: Record<string, unknown>;
+  evidence: { providerResult?: Record<string, unknown> };
+}) {
+  const id = explicitExternalId(input.payload, "externalId", "contactExternalId", "opportunityExternalId", "taskExternalId");
+  const patch = fields(input.payload);
+  if (input.actionType === "update_contact") {
+    if (!id) return { verified: false, detail: "Contact update has no stable external ID for readback." };
+    const contact = await input.adapter.getContact({ connection: input.connection, secret: input.secret, externalId: id });
+    const matches = contact && Object.entries(patch).every(([key, value]) => String(contact.raw[key] ?? "") === String(value));
+    return { verified: Boolean(matches), detail: matches ? "Contact fields were read back from the CRM." : "Contact readback did not prove the requested update." };
+  }
+  if (input.actionType === "update_opportunity") {
+    if (!id) return { verified: false, detail: "Opportunity update has no stable external ID for readback." };
+    const opportunity = await input.adapter.getOpportunity({ connection: input.connection, secret: input.secret, externalId: id });
+    const matches = opportunity && Object.entries(patch).every(([key, value]) => String(opportunity.raw[key] ?? "") === String(value));
+    return { verified: Boolean(matches), detail: matches ? "Opportunity fields were read back from the CRM." : "Opportunity readback did not prove the requested update." };
+  }
+  if (input.actionType === "schedule_callback" || input.actionType === "complete_active_task") {
+    const tasks = (await input.adapter.syncTasks({ connection: input.connection, secret: input.secret })).records;
+    const dueAt = typeof input.payload.dueAt === "string" ? input.payload.dueAt : undefined;
+    const task = tasks.find(item => (id && item.externalId === id) || (!id && item.title.toLowerCase().includes(input.proposal.targetLabel.toLowerCase())));
+    const complete = input.actionType === "complete_active_task" ? Boolean(task && /complete|closed|done/i.test(task.status)) : Boolean(task && (!dueAt || task.dueAt?.toISOString() === dueAt));
+    return { verified: complete, detail: complete ? "Task postcondition was read back from the CRM." : "Task readback did not prove the requested postcondition." };
+  }
+  const browserReadback = (input.evidence.providerResult as { data?: { readbackVerified?: boolean } } | undefined)?.data?.readbackVerified === true;
+  return { verified: browserReadback, detail: browserReadback ? "The adapter supplied explicit deterministic readback evidence." : "This write has no deterministic CRM readback evidence." };
+}
+
 export async function executeApprovedCrmAction(input: {
   organisationId: number;
   proposal: ActionProposal;
@@ -691,11 +725,16 @@ export async function executeApprovedCrmAction(input: {
   const shadowMode =
     (evidence.providerResult as { data?: { shadowMode?: string } } | undefined)
       ?.data?.shadowMode === "true";
+  if (!shadowMode) {
+    const postcondition = await verifyApprovedCrmPostcondition({ actionType: input.proposal.actionType, adapter, connection, secret, proposal: input.proposal, payload, evidence });
+    if (!postcondition.verified)
+      return { success: false, detail: postcondition.detail, provider: system.provider, connectionId: system.id, correlationId: input.correlationId, completedAt: evidence.completedAt, providerResult: evidence.providerResult, screenshotPath: evidence.screenshotPath, retryable: false };
+  }
   return {
     success: true,
     detail: shadowMode
       ? "Shadow-mode simulation completed; no external CRM write was performed."
-      : "Approved CRM action completed through the verified adapter.",
+      : "Approved CRM action completed and its postcondition was read back from the verified CRM.",
     shadowMode,
     provider: system.provider,
     connectionId: system.id,

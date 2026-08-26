@@ -12,6 +12,7 @@ import AdminControls from "./pages/AdminControls";
 import Auth from "./pages/Auth";
 import ConnectionsV2 from "./pages/ConnectionsV2";
 import Customers from "./pages/Customers";
+import CrmWorkspace from "./pages/CrmWorkspace";
 import Dashboard from "./pages/Dashboard";
 import Home from "./pages/Home";
 import LiveCalls from "./pages/LiveCalls";
@@ -50,6 +51,8 @@ function Router() {
     <Route path="/calls" component={LiveCalls} />
     <Route path="/knowledge" component={KnowledgeHub} />
     <Route path="/connections" component={ConnectionsV2} />
+    <Route path="/crm/:connectedSystemId" component={CrmWorkspace} />
+    <Route path="/crm" component={CrmWorkspace} />
     <Route path="/company-setup" component={Onboarding} />
     <Route path="/404" component={NotFound} />
     <Route component={NotFound} />

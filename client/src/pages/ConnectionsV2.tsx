@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { useLocation } from "wouter";
 
 type Provider =
   | "genie"
@@ -151,6 +152,7 @@ async function jsonRequest(url: string, init?: RequestInit) {
 }
 
 export default function ConnectionsV2() {
+  const [, navigate] = useLocation();
   const organisation = trpc.organisation.current.useQuery();
   const organisationId = organisation.data?.organisationId;
   const systems = trpc.connectedSystems.list.useQuery(
@@ -759,6 +761,19 @@ export default function ConnectionsV2() {
                   <ShieldCheck className="mr-2 size-4" />
                   Check CRM setup
                 </Button>
+                {(system.status === "ready" ||
+                  system.status === "limited_permissions") &&
+                  (system.connectionMethod === "browser" ||
+                    system.connectionMethod === "sidecar") && (
+                    <Button
+                      size="sm"
+                      onClick={() => navigate(`/crm/${system.id}`)}
+                      className="bg-[#1B64F2] hover:bg-[#2B76FF]"
+                    >
+                      <Cable className="mr-2 size-4" />
+                      Open CRM
+                    </Button>
+                  )}
                 {(system.status === "ready" ||
                   system.status === "limited_permissions") && (
                   <Button
