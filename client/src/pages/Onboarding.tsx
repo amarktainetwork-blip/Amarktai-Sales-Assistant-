@@ -180,12 +180,10 @@ const providerLabels: Record<Provider, string> = {
   custom_browser: "Other CRM",
 };
 const steps = [
-  "Business",
-  "Learn business",
-  "Knowledge review",
-  "Connect CRM",
-  "Safe automation rules",
-  "Test & start selling",
+  "Your business",
+  "Learn your business",
+  "Connect your CRM",
+  "Ready to sell",
 ];
 
 function isBrowser(provider: Provider) {
@@ -404,7 +402,7 @@ export default function Onboarding() {
     ) {
       const savedStep = Number((savedOnboarding as { step?: unknown }).step);
       if (Number.isInteger(savedStep) && savedStep >= 1 && savedStep <= 6)
-        setStep(savedStep);
+        setStep(savedStep >= 6 ? 4 : savedStep >= 4 ? 3 : savedStep >= 2 ? 2 : 1);
     }
   }, [organisation.data?.settings]);
 
@@ -500,8 +498,8 @@ export default function Onboarding() {
           item.trustEligible === false ? [] : [index]
         )
       );
-      setStep(3);
-      onboardingProgress.mutate({ step: 3 });
+      setStep(2);
+      onboardingProgress.mutate({ step: 2 });
       toast.success(
         "Website context is saved as a review-only draft. Approve facts before Amarktai can trust or use them."
       );
@@ -531,8 +529,8 @@ export default function Onboarding() {
     onSuccess: () => {
       utils.companySetup.get.invalidate();
       setPreview(null);
-      setStep(4);
-      onboardingProgress.mutate({ step: 4 });
+      setStep(3);
+      onboardingProgress.mutate({ step: 3 });
       toast.success("Selected knowledge was confirmed.");
       setFeedback({
         kind: "success",
@@ -620,8 +618,8 @@ export default function Onboarding() {
   const savePlaybook = trpc.companySetup.savePlaybook.useMutation({
     onSuccess: () => {
       utils.companySetup.get.invalidate();
-      setStep(6);
-      onboardingProgress.mutate({ step: 6 });
+      setStep(4);
+      onboardingProgress.mutate({ step: 4 });
       toast.success("Review-first playbook saved.");
     },
     onError: error => toast.error(error.message),
@@ -1077,11 +1075,11 @@ export default function Onboarding() {
                 </Button>
               </Card>
             )}
-            {step === 3 && (
+            {step === 2 && (
               <Card>
                 <StepHeading
                   icon={BadgeCheck}
-                  number="03"
+                  number="02"
                   title="Confirm usable knowledge"
                   text="Only selected public website facts become approved workspace knowledge."
                 />
@@ -1398,11 +1396,11 @@ export default function Onboarding() {
                 )}
               </Card>
             )}
-            {step === 4 && (
+            {step === 3 && (
               <Card>
                 <StepHeading
                   icon={Network}
-                  number="04"
+                  number="03"
                   title="Connect the CRM you already use"
                   text="Choose your CRM and sign in. Amarktai automatically uses the correct secure connection, discovery and testing flow."
                 />
@@ -1869,11 +1867,11 @@ export default function Onboarding() {
                     )}
                     <div className="flex justify-end">
                       <Button
-                        onClick={() => setStep(5)}
+                        onClick={() => setStep(4)}
                         disabled={!sellingReadiness.coreGenieReady}
                         className="bg-emerald-600 hover:bg-emerald-500"
                       >
-                        Continue to automation rules
+                        Continue to ready to sell
                       </Button>
                     </div>
                   </section>
@@ -1933,7 +1931,7 @@ export default function Onboarding() {
                 </div>
               </Card>
             )}
-            {step === 5 && (
+            {false && (
               <Card>
                 <StepHeading
                   icon={ShieldCheck}
@@ -1988,11 +1986,11 @@ export default function Onboarding() {
                 </Button>
               </Card>
             )}
-            {step === 6 && (
+            {step === 4 && (
               <Card>
                 <StepHeading
                   icon={Rocket}
-                  number="06"
+                  number="04"
                   title="Test readiness and start selling"
                   text="This friendly checklist uses stored server evidence. A CRM task is ready only after an authorised test and readback pass."
                 />
@@ -2029,7 +2027,7 @@ export default function Onboarding() {
                   }
                   onClick={() =>
                     onboardingProgress.mutate(
-                      { step: 6, complete: true },
+                      { step: 4, complete: true },
                       { onSuccess: () => navigate("/today") }
                     )
                   }

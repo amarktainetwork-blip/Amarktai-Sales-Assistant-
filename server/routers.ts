@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { parse as parseCookieHeader } from "cookie";
 import { TRPCError } from "@trpc/server";
-import { AGENT_CATALOG, WORKFLOW_KEYS } from "./agentCatalog";
+import { AGENT_CATALOG, agentRuntimeStatus, WORKFLOW_KEYS } from "./agentCatalog";
 import {
   createCallSession,
   confirmWebsiteDiscovery,
@@ -75,10 +75,10 @@ import {
   resetLocalPassword,
 } from "./localAuth";
 import { routeSalesCommand } from "./supervisor";
+import { prepareGovernedAssistantRequest } from "./governedAssistant";
 import { prepareLiveCoachingTip, preparePostCallSummary } from "./liveCoach";
 import { getOutlookReadiness, validateEmailPreview } from "./outlook";
-import { discoverPublicWebsite } from "./companyDiscovery";
-import { reviewCompanyIntelligence } from "./companyIntelligenceReview";
+import { discoverAndReviewCompanyIntelligence } from "./companyIntelligenceService";
 import { routeConnectedSystemActions } from "./crmRouter";
 import {
   ensureDefaultOrganisation,
@@ -158,50 +158,6 @@ const publicConnectionLabels = {
   outlook: "Messaging and calendar link",
   genx: "Amarktai intelligence service",
 } as const;
-
-function pagesForCompanyReview(discovery: Awaited<ReturnType<typeof discoverPublicWebsite>>) {
-  const segments = Array.from(discovery.extractedText.matchAll(/^\[(https?:\/\/[^\]]+)\]\n([\s\S]*?)(?=^\[https?:\/\/|$)/gm));
-  return segments.map(segment => {
-    const url = segment[1];
-    const page = discovery.pages.find(item => item.url === url);
-    return {
-      url,
-      title: page?.title || null,
-      fetchedAt: page?.fetchedAt || new Date().toISOString(),
-      text: segment[2] || "",
-    };
-  });
-}
-
-function companyReviewCandidate(item: Awaited<ReturnType<typeof reviewCompanyIntelligence>>["items"][number]) {
-  const offering = item.offering;
-  const lines = [
-    item.summary,
-    offering ? `Offering: ${offering.name}` : "",
-    offering?.currentPrices?.length ? `Current prices: ${offering.currentPrices.join(" / ")}` : "",
-    offering?.duration?.length ? `Duration: ${offering.duration.join(" / ")}` : "",
-    offering?.certifications?.length ? `Certifications: ${offering.certifications.join(", ")}` : "",
-    offering?.financeOptions?.length ? `Finance: ${offering.financeOptions.join("; ")}` : "",
-    offering?.support?.length ? `Support: ${offering.support.join("; ")}` : "",
-    `Evidence: ${item.evidenceText}`,
-  ].filter(Boolean);
-  return {
-    title: offering ? `Offering · ${offering.name}` : item.title,
-    content: lines.join("\n\n"),
-    sourceUrl: item.sourceUrls[0],
-    fetchedAt: item.fetchedAt,
-    category: item.classification,
-    classification: item.classification,
-    reviewState: item.reviewState,
-    confidence: item.confidence,
-    evidenceBasis: "page_text" as const,
-    evidenceText: item.evidenceText,
-    pageTitle: item.pageTitle,
-    sourceUrls: item.sourceUrls,
-    trustEligible: item.trustEligible,
-    offering,
-  };
-}
 
 function presentConnectionProfile<
   T extends {
@@ -716,7 +672,7 @@ export const appRouter = router({
       .input(z.object({ command: z.string().trim().min(4).max(4_000) }))
       .mutation(({ input }) => routeSalesCommand(input.command)),
     agents: secondFactorProcedure.query(() => ({
-      agents: AGENT_CATALOG,
+      agents: AGENT_CATALOG.map(agent => ({ ...agent, runtime: agentRuntimeStatus(agent.key) })),
       genx: getGenxReadiness(),
     })),
     actions: secondFactorProcedure
@@ -1624,16 +1580,13 @@ export const appRouter = router({
           organisationId: ctx.activeOrganisation.organisationId,
           userId: ctx.user.id,
         });
-        const route = routeSalesCommand(input.command);
-        return {
-          route,
-          pageContext,
-          message: route.intent === "workflow"
-            ? "I have prepared the governed workflow for review; no CRM write has been performed."
-            : route.intent === "coaching"
-              ? "I have focused the assistant on coaching using the current approved CRM context."
-              : "I have classified your request through the governed assistant path. Review the suggested next step before any external action.",
-        };
+        const prepared = await prepareGovernedAssistantRequest({
+          userId: ctx.user.id,
+          organisationId: ctx.activeOrganisation.organisationId,
+          command: input.command,
+          crmContext: pageContext,
+        });
+        return { ...prepared, pageContext };
       }),
   }),
   knowledge: router({
@@ -1717,39 +1670,13 @@ export const appRouter = router({
         throw new Error(
           "Save a public company website before starting discovery."
         );
-      const discovery = await discoverPublicWebsite(setup.profile.websiteUrl);
-      let reviewUnavailable: string | undefined;
-      let proposedKnowledge: Array<{
-        title: string;
-        content: string;
-        sourceUrl: string;
-        fetchedAt: string;
-        category: string;
-        reviewState: "review_required" | "conflict" | "ambiguous";
-        confidence: string;
-        evidenceBasis: "page_text" | "structured_data" | "page_and_structured_data";
-        trustEligible: boolean;
-        [key: string]: unknown;
-      }> = discovery.proposedKnowledge.map(item => ({
-        ...item,
-        // Raw extraction is review material only and cannot be trusted when the model reviewer is unavailable.
-        trustEligible: false,
-        reviewState: "ambiguous" as const,
-        confidence: "medium" as const,
-      }));
-      let reviewState: "completed" | "unavailable" = "unavailable";
-      try {
-        const review = await reviewCompanyIntelligence({
-          userId: ctx.user.id,
-          organisationId: ctx.activeOrganisation.organisationId,
-          pages: pagesForCompanyReview(discovery),
-          reference: `website-review:${setup.profile.id}:${Date.now()}`,
-        });
-        proposedKnowledge = review.items.map(companyReviewCandidate);
-        reviewState = "completed";
-      } catch (error) {
-        reviewUnavailable = error instanceof Error ? error.message.slice(0, 320) : "AI review unavailable";
-      }
+      const canonical = await discoverAndReviewCompanyIntelligence({
+        userId: ctx.user.id,
+        organisationId: ctx.activeOrganisation.organisationId,
+        websiteUrl: setup.profile.websiteUrl,
+        reference: `website-review:${setup.profile.id}:${Date.now()}`,
+      });
+      const { discovery, proposedKnowledge, reviewState, reviewUnavailable, aiReview } = canonical;
       const discoveryId = await saveWebsiteDiscoveryReview({
         userId: ctx.user.id,
         organisationId: ctx.activeOrganisation.organisationId,
@@ -1764,6 +1691,7 @@ export const appRouter = router({
             agentKey: "company_intelligence_review",
             state: reviewState,
             unavailableReason: reviewUnavailable || null,
+            review: aiReview,
           },
         },
         proposedKnowledge,

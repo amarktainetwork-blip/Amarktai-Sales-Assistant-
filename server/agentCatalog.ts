@@ -133,6 +133,31 @@ export const AGENT_CATALOG: AgentDefinition[] = [
   },
 ];
 
+export type AgentRuntimeStatus = "READY" | "INTERNAL" | "NEEDS_CONNECTION" | "NOT_IMPLEMENTED";
+
+/** Truthful runtime status: catalogue metadata is not itself an execution claim. */
+export const AGENT_RUNTIME_READINESS: Record<string, AgentRuntimeStatus> = {
+  supervisor: "READY",
+  workflow_guardian: "READY",
+  crm_context: "NEEDS_CONNECTION",
+  conversation_coach: "NEEDS_CONNECTION",
+  knowledge_guide: "READY",
+  company_intelligence_review: "NEEDS_CONNECTION",
+  communications: "NEEDS_CONNECTION",
+  notes_agent: "NEEDS_CONNECTION",
+  qa_compliance: "READY",
+  analytics: "READY",
+  sales_intelligence: "NOT_IMPLEMENTED",
+  objection_handler: "NOT_IMPLEMENTED",
+  recommendation_agent: "NOT_IMPLEMENTED",
+  crm_router: "NEEDS_CONNECTION",
+  pipeline_planner: "NOT_IMPLEMENTED",
+};
+
+export function agentRuntimeStatus(key: string): AgentRuntimeStatus {
+  return AGENT_RUNTIME_READINESS[key] || "NOT_IMPLEMENTED";
+}
+
 export const WORKFLOW_LABELS: Record<WorkflowKey, string> = {
   first_contact: "First contact sequence",
   final_close: "Final close review",

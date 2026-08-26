@@ -220,7 +220,7 @@ function LiveWorkspace({ connectedSystemId, crmName }: { connectedSystemId: numb
     if (!session || !assistantPrompt.trim()) return;
     try {
       const result = await askAssistant.mutateAsync({ viewerSessionId: session.viewerSessionId, command: assistantPrompt.trim() });
-      setAssistantResult(result.message);
+      setAssistantResult(result.summary);
       setAssistantPrompt("");
     } catch (error) {
       setAssistantResult(error instanceof Error ? error.message : "Amarktai could not process that request safely.");
