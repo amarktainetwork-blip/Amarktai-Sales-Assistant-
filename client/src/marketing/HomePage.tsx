@@ -37,10 +37,10 @@ export default function HomePage() {
               Amarktai Sales Assistant
             </p>
             <h1 className="mt-5 max-w-3xl font-display text-5xl font-bold leading-[.98] tracking-[-.065em] text-white sm:text-6xl lg:text-7xl">
-              Your AI sales assistant that works with the CRM you already use.
+              Your sales day, in a workspace your team actually uses.
             </h1>
             <p className="mt-6 max-w-2xl text-lg leading-8 text-[#B9BABE]">
-              Know who to contact. Prepare every conversation. Keep follow-ups moving. Let Amarktai handle the repetitive CRM work without taking control away from your salespeople.
+              Open your real CRM alongside Amarktai. Know who to contact, prepare every conversation, capture the outcome, and keep follow-through visible without losing the system your team already knows.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link
@@ -72,8 +72,8 @@ export default function HomePage() {
           <div className="relative">
             <div className="absolute -inset-8 rounded-[3rem] bg-[#3B82F6]/8 blur-3xl" />
             <img
-              src="/sales-assistant-hero.svg"
-              alt="A salesperson working with Amarktai Sales Assistant and customer context"
+              src="/images/sales-workspace-hero.jpg"
+              alt="A salesperson working in an Amarktai-enabled sales workspace"
               className="relative w-full rounded-[2rem] border border-white/10 shadow-[0_35px_90px_rgba(0,0,0,.35)]"
             />
           </div>

@@ -855,8 +855,11 @@ export async function listKnowledgeSources(
     .from(knowledgeSources)
     .where(
       and(
-        eq(knowledgeSources.userId, userId),
-        eq(knowledgeSources.organisationId, organisationId)
+        eq(knowledgeSources.organisationId, organisationId),
+        or(
+          eq(knowledgeSources.userId, userId),
+          eq(knowledgeSources.visibility, "organisation")
+        )
       )
     )
     .orderBy(desc(knowledgeSources.updatedAt));
@@ -873,9 +876,12 @@ export async function searchApprovedKnowledge(
     .from(knowledgeSources)
     .where(
       and(
-        eq(knowledgeSources.userId, userId),
         eq(knowledgeSources.organisationId, organisationId),
-        eq(knowledgeSources.status, "ready")
+        eq(knowledgeSources.status, "ready"),
+        or(
+          eq(knowledgeSources.userId, userId),
+          eq(knowledgeSources.visibility, "organisation")
+        )
       )
     )
     .orderBy(desc(knowledgeSources.updatedAt))
@@ -916,7 +922,7 @@ export async function createKnowledgeSource(input: {
   const db = await requireDb();
   const result = await db
     .insert(knowledgeSources)
-    .values({ ...input, status: "ready" });
+    .values({ ...input, visibility: "private", status: "ready" });
   return Number(result[0].insertId);
 }
 
@@ -1389,7 +1395,13 @@ export async function getCompanySetup(userId: number, organisationId: number) {
       )
       .orderBy(desc(automationPlaybooks.updatedAt)),
   ]);
-  return { profile: profile[0] ?? null, discoveries, playbooks };
+  return {
+    profile: profile[0] ?? null,
+    discoveries,
+    currentDiscovery:
+      discoveries.find(discovery => discovery.status === "review_required") ?? null,
+    playbooks,
+  };
 }
 
 export async function upsertCompanyProfile(input: {
@@ -1670,6 +1682,8 @@ export async function saveWebsiteDiscoveryReview(input: {
     evidenceBasis?: string;
     trustEligible?: boolean;
   }>;
+  reviewAgentKey?: string;
+  reviewState?: "completed" | "unavailable" | "pending";
 }) {
   const db = await requireDb();
   const profile = (
@@ -1687,18 +1701,40 @@ export async function saveWebsiteDiscoveryReview(input: {
   )[0];
   if (!profile)
     throw new Error("Company profile is unavailable for website discovery.");
-  const result = await db.insert(websiteDiscoveries).values({
-    userId: input.userId,
-    organisationId: input.organisationId,
-    companyProfileId: input.companyProfileId,
-    sourceUrl: input.sourceUrl,
-    pageTitle: input.pageTitle,
-    extractedText: input.extractedText,
-    proposedFacts: input.proposedFacts,
-    proposedKnowledge: input.proposedKnowledge,
-    status: "review_required",
+  const previous = await db
+    .select({ discoveryVersion: websiteDiscoveries.discoveryVersion })
+    .from(websiteDiscoveries)
+    .where(eq(websiteDiscoveries.companyProfileId, input.companyProfileId))
+    .orderBy(desc(websiteDiscoveries.discoveryVersion))
+    .limit(1);
+  const discoveryVersion = (previous[0]?.discoveryVersion || 0) + 1;
+  const discoveryId = await db.transaction(async tx => {
+    // A fresh scan replaces only earlier pending drafts. Confirmed knowledge is retained.
+    await tx
+      .update(websiteDiscoveries)
+      .set({ status: "superseded", supersededAt: new Date() })
+      .where(
+        and(
+          eq(websiteDiscoveries.companyProfileId, input.companyProfileId),
+          eq(websiteDiscoveries.status, "review_required")
+        )
+      );
+    const result = await tx.insert(websiteDiscoveries).values({
+      userId: input.userId,
+      organisationId: input.organisationId,
+      companyProfileId: input.companyProfileId,
+      sourceUrl: input.sourceUrl,
+      pageTitle: input.pageTitle,
+      extractedText: input.extractedText,
+      proposedFacts: { ...input.proposedFacts, discoveryVersion },
+      proposedKnowledge: input.proposedKnowledge,
+      discoveryVersion,
+      reviewAgentKey: input.reviewAgentKey || null,
+      reviewState: input.reviewState || "pending",
+      status: "review_required",
+    });
+    return Number(result[0].insertId);
   });
-  const discoveryId = Number(result[0].insertId);
   await db
     .update(companyProfiles)
     .set({ discoveryStatus: "review_required" })
@@ -1719,6 +1755,8 @@ export async function saveWebsiteDiscoveryReview(input: {
     metadata: {
       sourceUrl: input.sourceUrl,
       candidateCount: input.proposedKnowledge.length,
+      discoveryVersion,
+      reviewState: input.reviewState || "pending",
       pagesCrawled: input.proposedFacts.pagesCrawled ?? null,
     },
   });
@@ -1782,12 +1820,26 @@ export async function confirmWebsiteDiscovery(input: {
   const corrections = new Map(
     (input.corrections ?? []).map(item => [item.index, item])
   );
-  const selectedIndexes = Array.from(new Set(input.knowledgeIndexes)).filter(
-    index =>
-      index >= 0 &&
-      index < candidates.length &&
-      (candidates[index].trustEligible !== false || corrections.has(index))
-  );
+  const permanentlyExcluded = new Set([
+    "comparison",
+    "competitor",
+    "testimonial",
+    "case_study",
+    "example",
+    "historical",
+    "navigation",
+    "marketing_copy",
+    "ambiguous",
+    "exclude",
+  ]);
+  const selectedIndexes = Array.from(new Set(input.knowledgeIndexes)).filter(index => {
+    if (index < 0 || index >= candidates.length) return false;
+    const candidate = candidates[index];
+    // A human may resolve a genuine first-party fact conflict, but may never turn
+    // contextual/comparative material or an unavailable AI review into company truth.
+    if (permanentlyExcluded.has(candidate.category || "") || candidate.reviewState === "ambiguous") return false;
+    return candidate.trustEligible !== false || (candidate.reviewState === "conflict" && corrections.has(index));
+  });
   const confirmedKnowledge = selectedIndexes
     .map(index => {
       const candidate = candidates[index];
@@ -1838,7 +1890,10 @@ export async function confirmWebsiteDiscovery(input: {
           sourceMetadata: {
             category: item.category || "page",
             discoveryId: discovery.id,
+            reviewAgentKey: discovery.reviewAgentKey,
+            discoveryVersion: discovery.discoveryVersion,
           },
+          visibility: "organisation" as const,
           content: item.content,
           status: "ready" as const,
         }))

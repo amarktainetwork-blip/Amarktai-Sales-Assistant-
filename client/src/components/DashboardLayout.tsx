@@ -37,6 +37,7 @@ import {
   Headphones,
   LayoutDashboard,
   LibraryBig,
+  MonitorUp,
   LockKeyhole,
   LogOut,
   MailCheck,
@@ -68,6 +69,7 @@ const primaryMenu: NavItem[] = [
   { icon: Workflow, label: "Follow-ups", path: "/workflows" },
   { icon: Zap, label: "Automation", path: "/automation" },
   { icon: LibraryBig, label: "Knowledge", path: "/knowledge" },
+  { icon: MonitorUp, label: "CRM", path: "/crm" },
   { icon: BarChart3, label: "Reports", path: "/reports" },
 ];
 const individualSecondaryMenu: NavItem[] = [
@@ -202,7 +204,11 @@ export default function DashboardLayout({
     );
   if ((!workspaceMode || !onboardingComplete) && !canManage)
     return <WorkspaceSetupPending />;
-  if ((!workspaceMode || !onboardingComplete) && location !== "/company-setup")
+  if (
+    (!workspaceMode || !onboardingComplete) &&
+    !canManage &&
+    location !== "/company-setup"
+  )
     return <SetupGate onContinue={() => navigate("/company-setup")} />;
   if (requiresSalespersonIdentity && !crmIdentity)
     return <DashboardLayoutSkeleton />;
@@ -221,7 +227,7 @@ export default function DashboardLayout({
         enabled={canManage}
       />
       <SidebarProvider>
-        <Sidebar className="border-r border-white/10 bg-[#08172F] text-[#EAF1FC]">
+        <Sidebar collapsible="icon" className="border-r border-white/10 bg-[#08172F] text-[#EAF1FC]">
           <SidebarHeader className="h-[108px] justify-center border-b border-white/10 px-5">
             <BrandMark />
             <p className="mt-3 text-[9px] font-black uppercase tracking-[.16em] text-[#809CC6]">
@@ -288,6 +294,12 @@ export default function DashboardLayout({
         <SidebarInset className="bg-[#071326]">
           <AppTopbar />
           <main className="min-h-[calc(100vh-70px)] p-4 sm:p-6 lg:p-8">
+            {canManage && (!workspaceMode || !onboardingComplete) ? (
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-950">
+                <span><strong>Setup is still in progress.</strong> You can keep working and return when you are ready.</span>
+                <Button size="sm" variant="outline" onClick={() => navigate("/company-setup")}>Continue setup</Button>
+              </div>
+            ) : null}
             {children}
           </main>
         </SidebarInset>
@@ -710,10 +722,11 @@ function AppNavItem({ icon: Icon, label, path }: NavItem) {
         isActive={active}
         onClick={() => setLocation(path)}
         tooltip={label}
-        className={`h-11 rounded-xl px-3 transition-all hover:bg-white/[.07] hover:text-white ${active ? "bg-[#153B7A] text-white hover:bg-[#153B7A]" : "text-[#A4B9D9]"}`}
+        aria-label={label}
+        className={`h-11 rounded-xl px-3 transition-all hover:bg-[#1A3E7A] hover:text-white ${active ? "bg-[#153B7A] text-white shadow-[0_0_18px_rgba(78,139,255,.24)] hover:bg-[#153B7A]" : "text-[#A4B9D9]"}`}
       >
         <Icon className="size-[18px]" />
-        <span className="font-semibold">{label}</span>
+        <span className="font-semibold group-data-[collapsible=icon]:hidden">{label}</span>
       </SidebarMenuButton>
     </SidebarMenuItem>
   );

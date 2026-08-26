@@ -47,6 +47,8 @@ export default function Dashboard() {
     onError: error => toast.error(`Export failed: ${error.message}`),
   });
   const data = query.data;
+  const isManager =
+    organisation.data?.role === "owner" || organisation.data?.role === "manager";
   if (query.isLoading)
     return (
       <DashboardLayout>
@@ -68,21 +70,40 @@ export default function Dashboard() {
         />
       </DashboardLayout>
     );
+  if (isManager)
+    return (
+      <DashboardLayout>
+        <div className="mx-auto max-w-[1600px]">
+          <header className="flex flex-col gap-4 border-b border-white/10 pb-7 sm:flex-row sm:items-end sm:justify-between">
+            <div><p className="text-[10px] font-black uppercase tracking-[.18em] text-[#83AEFF]">TEAM TODAY</p><h1 className="mt-3 font-display text-4xl font-bold tracking-[-.07em] text-white">Keep the team moving.</h1><p className="mt-3 max-w-2xl text-sm leading-6 text-[#A9BFDF]">See workload, follow-ups and the work that needs a manager’s attention—without opening anyone’s private workspace.</p></div>
+            <Button onClick={() => navigate("/team")} className="h-11 rounded-xl bg-[#1B64F2] px-4 font-bold hover:bg-[#2B76FF]">Open team view <ArrowRight className="ml-2 size-4" /></Button>
+          </header>
+          <section className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <Metric icon={Clock3} label="Overdue work" value={data.metrics.overdueCallbacks} detail="Follow-ups requiring attention" alert={data.metrics.overdueCallbacks > 0} />
+            <Metric icon={Workflow} label="Follow-ups" value={data.metrics.openCallbacks} detail="Open across the company" />
+            <Metric icon={Headphones} label="Calls" value={data.metrics.activeCalls} detail={`${data.metrics.callsReadyForReview} ready for review`} />
+            <Metric icon={ShieldCheck} label="Exceptions" value={data.metrics.blockedActions} detail="Blocked actions with an audit trail" alert={data.metrics.blockedActions > 0} />
+          </section>
+          <section className="mt-6 grid gap-6 lg:grid-cols-2">
+            <Panel><Heading icon={Target} eyebrow="PIPELINE" title="People needing attention" /><p className="mt-4 text-sm leading-6 text-[#A9BFDF]">{today.data ? `${today.data.metrics.overdue} overdue item(s), ${today.data.metrics.staleOpportunities} stale opportunity(s), and ${today.data.metrics.noNextStep} record(s) without a next step.` : "Team pipeline data will appear when CRM activity is available."}</p><Button variant="outline" onClick={() => navigate("/team")} className="mt-5 border-white/15 bg-white/5 text-white hover:bg-white/10">Review team workload</Button></Panel>
+            <Panel><Heading icon={Activity} eyebrow="EXCEPTIONS" title="Approvals and risks" /><p className="mt-4 text-sm leading-6 text-[#A9BFDF]">{data.metrics.reviewRequired} item(s) need approval. Management reporting remains aggregated; private notes, call detail and assistant history stay with each salesperson.</p><Button variant="outline" onClick={() => navigate("/workspace")} className="mt-5 border-white/15 bg-white/5 text-white hover:bg-white/10">Open approvals</Button></Panel>
+          </section>
+        </div>
+      </DashboardLayout>
+    );
   return (
     <DashboardLayout>
       <div className="mx-auto max-w-[1600px]">
         <header className="flex flex-col gap-5 border-b border-white/10 pb-7 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-[10px] font-black uppercase tracking-[.18em] text-[#83AEFF]">
-              SALES DASHBOARD
+              TODAY
             </p>
             <h1 className="mt-3 font-display text-4xl font-bold tracking-[-.07em] text-white sm:text-5xl">
-              Run the sales day with a clear view.
+              What should I do now?
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-[#A9BFDF] sm:text-base">
-              This is a live view of the data stored in the workspace. Empty
-              panels are accurate: they indicate that no matching activity has
-              yet been recorded.
+              See your next best action, today’s follow-ups and only the activity that helps you sell.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">

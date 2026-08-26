@@ -94,7 +94,7 @@ type WebsiteKnowledgeCandidate = {
   sourceUrl: string;
   fetchedAt: string;
   category: string;
-  reviewState?: "review_required" | "conflict";
+  reviewState?: "review_required" | "conflict" | "ambiguous";
   confidence?: string;
   evidenceBasis?: string;
   trustEligible?: boolean;
@@ -129,10 +129,10 @@ const KNOWLEDGE_GROUPS = [
 
 function knowledgeGroup(category: string): (typeof KNOWLEDGE_GROUPS)[number] {
   if (["home", "about"].includes(category)) return "Overview";
-  if (category === "offering") return "Products / Courses / Services";
-  if (["pricing", "finance"].includes(category)) return "Prices & Finance";
-  if (category === "certifications") return "Certifications";
-  if (["support", "evidence", "testimonials"].includes(category))
+  if (["offering", "company_offering"].includes(category)) return "Products / Courses / Services";
+  if (["pricing", "finance", "company_price", "company_finance"].includes(category)) return "Prices & Finance";
+  if (["certifications", "company_certification"].includes(category)) return "Certifications";
+  if (["support", "evidence", "testimonials", "company_support", "company_evidence"].includes(category))
     return "Support & Outcomes";
   if (category === "faq") return "FAQs";
   if (category === "contact") return "Contact";
@@ -1258,7 +1258,9 @@ export default function Onboarding() {
                                   >
                                     {item.reviewState === "conflict"
                                       ? "Conflicting sources"
-                                      : "Review required"}
+                                      : item.reviewState === "ambiguous"
+                                        ? "Not eligible for company knowledge"
+                                        : "Review required"}
                                   </span>
                                   {item.confidence && (
                                     <span className="text-[#83AEFF]">
@@ -1334,7 +1336,8 @@ export default function Onboarding() {
                                       : "saved discovery"}
                                   </a>
                                 ) : null}
-                                {item.trustEligible === false && (
+                                {item.trustEligible === false &&
+                                  item.reviewState === "conflict" && (
                                   <Button
                                     type="button"
                                     size="sm"
@@ -1362,7 +1365,7 @@ export default function Onboarding() {
                                       )
                                     }
                                   >
-                                    I corrected this conflict
+                                    I corrected this first-party conflict
                                   </Button>
                                 )}
                               </span>

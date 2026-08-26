@@ -299,3 +299,133 @@ export async function reviewCompanyDiscovery(input: {
     },
   };
 }
+
+
+/** Bounded page-level view used by the live discovery route. It remains separate
+ * from the candidate-review flow above so existing reviewed candidates retain their
+ * exact source provenance. */
+const PAGE_REVIEW_MAX_CHUNKS = 8;
+const PAGE_REVIEW_MAX_CHARS = 9_000;
+const PAGE_REVIEW_MAX_ITEMS = 40;
+const PAGE_REVIEW_EVIDENCE_CHARS = 600;
+
+const pageReviewItemSchema = z.object({
+  classification: z.enum(COMPANY_INTELLIGENCE_CLASSIFICATIONS),
+  title: z.string().trim().min(1).max(220),
+  summary: z.string().trim().min(1).max(2_000),
+  sourceUrls: z.array(z.string().url().max(1024)).min(1).max(8),
+  pageTitle: z.string().trim().max(500).nullable(),
+  fetchedAt: z.string().datetime(),
+  evidenceText: z.string().trim().min(1).max(PAGE_REVIEW_EVIDENCE_CHARS),
+  confidence: z.enum(["high", "medium", "low"]),
+  reviewState: z.enum(["review_required", "ambiguous", "conflict"]),
+  trustEligible: z.boolean(),
+  offering: z.object({
+    name: z.string().trim().min(1).max(220),
+    type: z.string().trim().max(100).optional(),
+    currentPrices: z.array(z.string().trim().max(80)).max(12).optional(),
+    duration: z.array(z.string().trim().max(120)).max(12).optional(),
+    certifications: z.array(z.string().trim().max(160)).max(20).optional(),
+    financeOptions: z.array(z.string().trim().max(500)).max(12).optional(),
+    support: z.array(z.string().trim().max(500)).max(12).optional(),
+    targetCustomer: z.string().trim().max(600).optional(),
+    outcomes: z.array(z.string().trim().max(500)).max(12).optional(),
+  }).optional(),
+});
+
+export type CompanyIntelligenceReviewItem = z.infer<typeof pageReviewItemSchema>;
+export type CompanyIntelligenceReview = {
+  agentKey: "company_intelligence_review";
+  available: boolean;
+  items: CompanyIntelligenceReviewItem[];
+  reviewedAt: string;
+  failure?: string;
+};
+type ReviewPage = { url: string; title: string | null; fetchedAt: string; text: string };
+
+function parseReviewArray(value: string) {
+  const fenced = value.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1];
+  const raw = (fenced || value).trim();
+  const start = raw.indexOf("[");
+  const end = raw.lastIndexOf("]");
+  if (start < 0 || end < start) throw new Error("The review service returned no JSON array.");
+  return JSON.parse(raw.slice(start, end + 1)) as unknown;
+}
+
+function pageReviewChunks(pages: ReviewPage[]) {
+  const chunks: ReviewPage[][] = [];
+  let current: ReviewPage[] = [];
+  let used = 0;
+  for (const page of pages) {
+    if (chunks.length >= PAGE_REVIEW_MAX_CHUNKS) break;
+    const bounded = { ...page, text: page.text.slice(0, PAGE_REVIEW_MAX_CHARS) };
+    const size = bounded.text.length + bounded.url.length + (bounded.title?.length || 0);
+    if (current.length && used + size > PAGE_REVIEW_MAX_CHARS) {
+      chunks.push(current);
+      current = [];
+      used = 0;
+    }
+    current.push(bounded);
+    used += size;
+  }
+  if (current.length && chunks.length < PAGE_REVIEW_MAX_CHUNKS) chunks.push(current);
+  return chunks;
+}
+
+function guardPageReviewItem(item: CompanyIntelligenceReviewItem) {
+  const candidate = { title: item.title, content: `${item.summary} ${item.evidenceText}`, category: item.classification };
+  const risk = deterministicRiskClassification(candidate);
+  if (risk || NEVER_AUTO_TRUST.has(item.classification))
+    return { ...item, classification: risk || item.classification, trustEligible: false, reviewState: "ambiguous" as const };
+  return item;
+}
+
+function reconcilePageReview(items: CompanyIntelligenceReviewItem[]) {
+  const guarded = items.map(guardPageReviewItem).slice(0, PAGE_REVIEW_MAX_CHUNKS * PAGE_REVIEW_MAX_ITEMS);
+  const pricesByOffering = new Map<string, Set<string>>();
+  guarded.forEach(item => {
+    if (!item.trustEligible || !item.offering?.name || !item.offering.currentPrices?.length) return;
+    const key = item.offering.name.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const current = pricesByOffering.get(key) || new Set<string>();
+    item.offering.currentPrices.forEach(value => current.add(value.toLowerCase()));
+    pricesByOffering.set(key, current);
+  });
+  return guarded.map(item => {
+    const key = item.offering?.name?.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    return key && (pricesByOffering.get(key)?.size || 0) > 1 && item.trustEligible
+      ? { ...item, trustEligible: false, reviewState: "conflict" as const }
+      : item;
+  });
+}
+
+function pageReviewPrompt(chunk: ReviewPage[]) {
+  return `Interpret these public website pages as a cautious company-intelligence reviewer. Return ONLY a JSON array. Each item must include classification, title, summary, sourceUrls, pageTitle, fetchedAt, evidenceText, confidence, reviewState, trustEligible, and optional offering details. Classifications are: ${COMPANY_INTELLIGENCE_CLASSIFICATIONS.join(", ")}.
+
+Do not infer facts. Preserve short evidence quotations. Comparisons, competitors, testimonials, examples, historical statements, navigation, and marketing claims can never become trusted offerings or current prices. If ownership, price recency, or context is uncertain, classify ambiguous and set trustEligible=false. Output remains a human-review draft only.
+
+Pages:\n${JSON.stringify(chunk.map(page => ({ url: page.url, pageTitle: page.title, fetchedAt: page.fetchedAt, text: page.text })))}`;
+}
+
+export async function reviewCompanyIntelligence(input: { userId: number; organisationId: number; pages: ReviewPage[]; reference: string }): Promise<CompanyIntelligenceReview> {
+  const chunks = pageReviewChunks(input.pages.filter(page => page.url && page.text.trim()));
+  if (!chunks.length) throw new Error("No readable website material is available for review.");
+  const items: CompanyIntelligenceReviewItem[] = [];
+  for (const chunk of chunks) {
+    const response = await runGenxAgent({
+      agentKey: "company_intelligence_review",
+      modelTier: "reasoning",
+      messages: [{ role: "user", content: pageReviewPrompt(chunk) }],
+      billing: { userId: input.userId, organisationId: input.organisationId, feature: "company_intelligence_review", reference: input.reference },
+    });
+    if (response.provider !== "genx") throw new Error("AI review is unavailable because GenX is not configured.");
+    const parsed = z.array(pageReviewItemSchema).max(PAGE_REVIEW_MAX_ITEMS).safeParse(parseReviewArray(response.content));
+    if (!parsed.success) throw new Error("The AI review response did not pass the required evidence schema.");
+    items.push(...parsed.data.map(item => ({ ...item, title: compact(item.title, 220), summary: compact(item.summary, 2_000), evidenceText: compact(item.evidenceText, PAGE_REVIEW_EVIDENCE_CHARS) })));
+  }
+  return { agentKey: "company_intelligence_review", available: true, items: reconcilePageReview(items), reviewedAt: new Date().toISOString() };
+}
+
+/** Pure deterministic guard used in regression tests before human approval. */
+export function protectCompanyIntelligenceItem(item: CompanyIntelligenceReviewItem) {
+  return guardPageReviewItem(item);
+}

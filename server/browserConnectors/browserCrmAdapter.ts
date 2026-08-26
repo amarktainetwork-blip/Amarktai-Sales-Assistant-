@@ -1587,3 +1587,98 @@ export function browserCrmAdapter(
     healthCheck: testConnection,
   };
 }
+
+/**
+ * Opens the exact backend-controlled browser page for an authenticated workspace
+ * viewer. The browser, profile and encrypted secret stay server-side. Callers
+ * receive a Playwright page only; they must never serialize storage or secrets.
+ */
+export async function openBrowserCrmLivePage(input: {
+  connection: AdapterConnection;
+  secret?: ConnectionSecretPayload;
+  provider: Extract<CrmProvider, "genie" | "custom_browser">;
+}) {
+  const profile = await resolveBrowserProfile(input.connection, input.provider);
+  if (!profile)
+    throw new Error("This CRM has no approved browser profile.");
+  const secret = await browserSecret(input.connection, input.secret);
+  if (
+    input.provider === "genie" &&
+    (!secret.browserSession || !isBrowserSessionPackage(secret.browserSession))
+  ) {
+    loginError(
+      "GENIE_APPROVED_SESSION_REQUIRED",
+      "The live CRM viewer requires an already approved Genie session. It will not start a sign-in or MFA flow."
+    );
+  }
+  const browser = await connect(profile);
+  const context = await createContextWithBrowserSession({
+    browser,
+    browserSession: secret.browserSession,
+  });
+  const page = await context.newPage();
+  let blocked: BlockedNavigation | undefined;
+  await page.route("**/*", async route => {
+    const request = route.request();
+    if (!request.isNavigationRequest() || request.frame() !== page.mainFrame())
+      return route.continue();
+    try {
+      await authorizeNavigation(input.connection, request.url());
+      return route.continue();
+    } catch (error) {
+      blocked = {
+        url: request.url(),
+        detail: error instanceof Error ? error.message : String(error),
+      };
+      return route.abort("blockedbyclient");
+    }
+  });
+  try {
+    if (
+      input.provider === "genie" &&
+      secret.browserSession &&
+      isBrowserSessionPackage(secret.browserSession)
+    ) {
+      const replayUrl = secret.browserSession.authenticatedUrl || profile.login?.url;
+      if (!replayUrl)
+        loginError(
+          "GENIE_LOGIN_CALIBRATION_REQUIRED",
+          "No authorised Genie replay URL is available."
+        );
+      await authorizeNavigation(input.connection, replayUrl);
+      await page.goto(replayUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
+      if (blocked) blockedRedirectError(blocked);
+      await verifyApprovedGenieSession({
+        connection: input.connection,
+        page,
+        blocked: () => blocked,
+      });
+    } else if (
+      browserAuthenticationRequired(input.provider, profile)
+    ) {
+      await authenticate(
+        page,
+        profile,
+        secret,
+        input.provider,
+        url => authorizeNavigation(input.connection, url),
+        () => blocked
+      );
+    } else if (input.connection.baseUrl) {
+      await authorizeNavigation(input.connection, input.connection.baseUrl);
+      await page.goto(input.connection.baseUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: 45_000,
+      });
+    }
+    await authorizeNavigation(input.connection, page.url());
+    return {
+      page,
+      /** Retained persistent contexts deliberately ignore close to protect the approved session. */
+      release: async () => context.close().catch(() => undefined),
+    };
+  } catch (error) {
+    await context.close().catch(() => undefined);
+    throw error;
+  }
+}

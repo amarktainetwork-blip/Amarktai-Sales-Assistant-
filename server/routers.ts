@@ -78,6 +78,7 @@ import { routeSalesCommand } from "./supervisor";
 import { prepareLiveCoachingTip, preparePostCallSummary } from "./liveCoach";
 import { getOutlookReadiness, validateEmailPreview } from "./outlook";
 import { discoverPublicWebsite } from "./companyDiscovery";
+import { reviewCompanyIntelligence } from "./companyIntelligenceReview";
 import { routeConnectedSystemActions } from "./crmRouter";
 import {
   ensureDefaultOrganisation,
@@ -101,6 +102,11 @@ import { createCrmOAuthState } from "./crm/oauthState";
 import { crmOAuthCallbackUrl } from "./crm/oauthRoutes";
 import { syncConnectedSystem } from "./crm/sync";
 import { getTodayWork } from "./today";
+import {
+  acquireAiControl,
+  createLiveCrmViewerSession,
+  releaseAiControl,
+} from "./liveCrmViewer";
 import {
   issueSidecarSession,
   revokeSidecarSessions,
@@ -151,6 +157,50 @@ const publicConnectionLabels = {
   outlook: "Messaging and calendar link",
   genx: "Amarktai intelligence service",
 } as const;
+
+function pagesForCompanyReview(discovery: Awaited<ReturnType<typeof discoverPublicWebsite>>) {
+  const segments = Array.from(discovery.extractedText.matchAll(/^\[(https?:\/\/[^\]]+)\]\n([\s\S]*?)(?=^\[https?:\/\/|$)/gm));
+  return segments.map(segment => {
+    const url = segment[1];
+    const page = discovery.pages.find(item => item.url === url);
+    return {
+      url,
+      title: page?.title || null,
+      fetchedAt: page?.fetchedAt || new Date().toISOString(),
+      text: segment[2] || "",
+    };
+  });
+}
+
+function companyReviewCandidate(item: Awaited<ReturnType<typeof reviewCompanyIntelligence>>["items"][number]) {
+  const offering = item.offering;
+  const lines = [
+    item.summary,
+    offering ? `Offering: ${offering.name}` : "",
+    offering?.currentPrices?.length ? `Current prices: ${offering.currentPrices.join(" / ")}` : "",
+    offering?.duration?.length ? `Duration: ${offering.duration.join(" / ")}` : "",
+    offering?.certifications?.length ? `Certifications: ${offering.certifications.join(", ")}` : "",
+    offering?.financeOptions?.length ? `Finance: ${offering.financeOptions.join("; ")}` : "",
+    offering?.support?.length ? `Support: ${offering.support.join("; ")}` : "",
+    `Evidence: ${item.evidenceText}`,
+  ].filter(Boolean);
+  return {
+    title: offering ? `Offering · ${offering.name}` : item.title,
+    content: lines.join("\n\n"),
+    sourceUrl: item.sourceUrls[0],
+    fetchedAt: item.fetchedAt,
+    category: item.classification,
+    classification: item.classification,
+    reviewState: item.reviewState,
+    confidence: item.confidence,
+    evidenceBasis: "page_text" as const,
+    evidenceText: item.evidenceText,
+    pageTitle: item.pageTitle,
+    sourceUrls: item.sourceUrls,
+    trustEligible: item.trustEligible,
+    offering,
+  };
+}
 
 function presentConnectionProfile<
   T extends {
@@ -1529,6 +1579,41 @@ export const appRouter = router({
         });
       }),
   }),
+  crmViewer: router({
+    open: secondFactorProcedure
+      .input(z.object({ connectedSystemId: z.number().int().positive() }))
+      .mutation(async ({ ctx, input }) => {
+        if (!ctx.activeOrganisation)
+          throw new Error("Choose a company before opening its CRM workspace.");
+        return createLiveCrmViewerSession({
+          userId: ctx.user.id,
+          organisationId: ctx.activeOrganisation.organisationId,
+          connectedSystemId: input.connectedSystemId,
+        });
+      }),
+    acquireAssistantControl: secondFactorProcedure
+      .input(z.object({ viewerSessionId: z.string().uuid() }))
+      .mutation(({ ctx, input }) => {
+        if (!ctx.activeOrganisation)
+          throw new Error("Choose a company before controlling its CRM workspace.");
+        return acquireAiControl(
+          input.viewerSessionId,
+          ctx.activeOrganisation.organisationId,
+          ctx.user.id
+        );
+      }),
+    releaseAssistantControl: secondFactorProcedure
+      .input(z.object({ viewerSessionId: z.string().uuid() }))
+      .mutation(({ ctx, input }) => {
+        if (!ctx.activeOrganisation)
+          throw new Error("Choose a company before controlling its CRM workspace.");
+        return releaseAiControl(
+          input.viewerSessionId,
+          ctx.activeOrganisation.organisationId,
+          ctx.user.id
+        );
+      }),
+  }),
   knowledge: router({
     list: secondFactorProcedure.query(({ ctx }) => {
       if (!ctx.activeOrganisation)
@@ -1611,6 +1696,38 @@ export const appRouter = router({
           "Save a public company website before starting discovery."
         );
       const discovery = await discoverPublicWebsite(setup.profile.websiteUrl);
+      let reviewUnavailable: string | undefined;
+      let proposedKnowledge: Array<{
+        title: string;
+        content: string;
+        sourceUrl: string;
+        fetchedAt: string;
+        category: string;
+        reviewState: "review_required" | "conflict" | "ambiguous";
+        confidence: string;
+        evidenceBasis: "page_text" | "structured_data" | "page_and_structured_data";
+        trustEligible: boolean;
+        [key: string]: unknown;
+      }> = discovery.proposedKnowledge.map(item => ({
+        ...item,
+        // Raw extraction is review material only and cannot be trusted when the model reviewer is unavailable.
+        trustEligible: false,
+        reviewState: "ambiguous" as const,
+        confidence: "medium" as const,
+      }));
+      let reviewState: "completed" | "unavailable" = "unavailable";
+      try {
+        const review = await reviewCompanyIntelligence({
+          userId: ctx.user.id,
+          organisationId: ctx.activeOrganisation.organisationId,
+          pages: pagesForCompanyReview(discovery),
+          reference: `website-review:${setup.profile.id}:${Date.now()}`,
+        });
+        proposedKnowledge = review.items.map(companyReviewCandidate);
+        reviewState = "completed";
+      } catch (error) {
+        reviewUnavailable = error instanceof Error ? error.message.slice(0, 320) : "AI review unavailable";
+      }
       const discoveryId = await saveWebsiteDiscoveryReview({
         userId: ctx.user.id,
         organisationId: ctx.activeOrganisation.organisationId,
@@ -1618,10 +1735,20 @@ export const appRouter = router({
         sourceUrl: discovery.sourceUrl,
         pageTitle: discovery.pageTitle,
         extractedText: discovery.extractedText,
-        proposedFacts: { ...discovery.proposedFacts, pages: discovery.pages },
-        proposedKnowledge: discovery.proposedKnowledge,
+        proposedFacts: {
+          ...discovery.proposedFacts,
+          pages: discovery.pages,
+          companyIntelligenceReview: {
+            agentKey: "company_intelligence_review",
+            state: reviewState,
+            unavailableReason: reviewUnavailable || null,
+          },
+        },
+        proposedKnowledge,
+        reviewAgentKey: "company_intelligence_review",
+        reviewState,
       });
-      return { ...discovery, discoveryId };
+      return { ...discovery, proposedKnowledge, discoveryId, reviewState, reviewUnavailable };
     }),
     confirmDiscovery: secondFactorProcedure
       .input(

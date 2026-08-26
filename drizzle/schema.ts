@@ -138,14 +138,22 @@ export const websiteDiscoveries = mysqlTable(
     proposedKnowledge: json("proposedKnowledge")
       .$type<Array<{ title: string; content: string; sourceUrl?: string; fetchedAt?: string; category?: string }>>()
       .notNull(),
+    /** Monotonic per-company review version. Old drafts remain auditable but cannot reappear as current. */
+    discoveryVersion: int("discoveryVersion").notNull().default(1),
+    reviewAgentKey: varchar("reviewAgentKey", { length: 120 }),
+    reviewState: mysqlEnum("reviewState", ["pending", "completed", "unavailable"])
+      .default("pending")
+      .notNull(),
     status: mysqlEnum("status", [
       "review_required",
       "confirmed",
       "rejected",
       "failed",
+      "superseded",
     ])
       .default("review_required")
       .notNull(),
+    supersededAt: timestamp("supersededAt"),
     reviewedAt: timestamp("reviewedAt"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
@@ -157,6 +165,10 @@ export const websiteDiscoveries = mysqlTable(
     index("websiteDiscoveries_org_created_idx").on(
       table.organisationId,
       table.createdAt
+    ),
+    index("websiteDiscoveries_profile_version_idx").on(
+      table.companyProfileId,
+      table.discoveryVersion
     ),
   ]
 );
@@ -561,6 +573,10 @@ export const knowledgeSources = mysqlTable(
     sourceUrl: varchar("sourceUrl", { length: 1024 }),
     sourceFetchedAt: timestamp("sourceFetchedAt"),
     sourceMetadata: json("sourceMetadata").$type<Record<string, unknown>>(),
+    /** Company-approved website knowledge may be shared across members; all other sources remain private. */
+    visibility: mysqlEnum("visibility", ["private", "organisation"])
+      .default("private")
+      .notNull(),
     content: text("content"),
     status: mysqlEnum("status", ["draft", "ready", "needs_review"])
       .default("draft")
@@ -572,6 +588,11 @@ export const knowledgeSources = mysqlTable(
     index("knowledgeSources_user_status_idx").on(table.userId, table.status),
     index("knowledgeSources_organisation_status_idx").on(
       table.organisationId,
+      table.status
+    ),
+    index("knowledgeSources_organisation_visibility_idx").on(
+      table.organisationId,
+      table.visibility,
       table.status
     ),
   ]

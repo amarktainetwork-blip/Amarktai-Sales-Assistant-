@@ -31,6 +31,7 @@ import {
 } from "../security/http";
 import { getProductionReadiness } from "../readiness";
 import { createContext } from "./context";
+import { registerLiveCrmViewerSocket } from "../liveCrmViewer";
 import { serveStatic, setupVite } from "./vite";
 
 function isPortAvailable(port: number): Promise<boolean> {
@@ -50,6 +51,7 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
   const server = createServer(app);
+  registerLiveCrmViewerSocket(server);
   app.set("trust proxy", 1);
   app.disable("x-powered-by");
   app.use(securityHeaders);

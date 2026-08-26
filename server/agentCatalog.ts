@@ -54,7 +54,7 @@ export const AGENT_CATALOG: AgentDefinition[] = [
   {
     key: "company_intelligence_review",
     name: "Company Intelligence Review Agent",
-    purpose: "Interprets public website extraction before human approval, separates the company's own offerings from comparisons, competitors, testimonials, examples and historical content, preserves evidence, and marks uncertainty for review instead of inventing facts.",
+    purpose: "Interprets public website extraction into evidence-backed human-review drafts, separates first-party offerings from comparisons, competitors, testimonials, examples, historical and ambiguous content, and keeps excluded material out of trusted company knowledge.",
     category: "knowledge",
     requiresModel: true,
     modelRole: "GenX evidence-grounded website interpretation model",
