@@ -21,7 +21,9 @@ function sendError(res: Response, error: unknown) {
     return res.status(401).json({ error: "Authentication is required." });
   if (detail === "TWO_FACTOR_REQUIRED")
     return res.status(403).json({ error: "Second-factor verification is required." });
-  return res.status(400).json({ error: detail.slice(0, 500) || "Onboarding failed." });
+  return res
+    .status(400)
+    .json({ error: detail.slice(0, 500) || "Onboarding failed." });
 }
 
 function companyOnboarding(settings: Record<string, unknown>) {
@@ -40,7 +42,9 @@ function companyOnboarding(settings: Record<string, unknown>) {
   };
 }
 
-function cleanPersona(value: unknown): MemberOnboardingState["persona"] | undefined {
+function cleanPersona(
+  value: unknown
+): MemberOnboardingState["persona"] | undefined {
   return [
     "individual",
     "company_owner",
@@ -92,15 +96,6 @@ async function identityState(input: {
   };
 }
 
-async function onboardingSnapshot(userId: number, organisationId: number) {
-  const { membership } = await (async () => {
-    // requireLocalHttpContext cannot be called without the request, so callers
-    // pass the resolved membership to snapshotWithMembership below.
-    return { membership: null as never };
-  })();
-  return { membership, userId, organisationId };
-}
-
 async function snapshotWithMembership(input: {
   userId: number;
   membership: Awaited<ReturnType<typeof requireLocalHttpContext>>["membership"];
@@ -111,7 +106,8 @@ async function snapshotWithMembership(input: {
   );
   const browserSystems = systems.filter(
     system =>
-      system.connectionMethod === "browser" || system.connectionMethod === "sidecar"
+      system.connectionMethod === "browser" ||
+      system.connectionMethod === "sidecar"
   );
   const personalCrm = await Promise.all(
     browserSystems.map(async system => ({
