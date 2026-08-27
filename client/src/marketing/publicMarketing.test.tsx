@@ -10,23 +10,23 @@ import {
   HowItWorksPage,
   IndividualsPage,
   IntegrationsPage,
-  PricingPage,
   ProductPage,
   TeamsPage,
 } from "./SecondaryPages";
+import Pricing from "@/pages/Pricing";
 import { accountLinks, marketingNavigation } from "./site";
 import { scrollPublicRouteToTop } from "./MarketingLayout";
 import NotFound from "@/pages/NotFound";
 import { AI_CREDIT_ECONOMICS, PRICING_PLANS } from "@shared/pricing";
 
 const pages = [
-  ["/", HomePage, "Your sales day"],
+  ["/", HomePage, "Sell more"],
   ["/product", ProductPage, "Everything the sales day needs"],
   ["/how-it-works", HowItWorksPage, "From setup to selling"],
   ["/individuals", IndividualsPage, "Spend more time selling"],
   ["/teams", TeamsPage, "One consistent workspace"],
   ["/integrations", IntegrationsPage, "Keep your CRM"],
-  ["/pricing", PricingPage, "Simple plans"],
+  ["/pricing", Pricing, "PRICING IN SOUTH AFRICAN RAND"],
   ["/contact", ContactPage, "Talk to Amarktai"],
 ] as const;
 
@@ -54,6 +54,7 @@ describe("public marketing website", () => {
     const html = readFileSync(path.resolve("client/index.html"), "utf8");
     expect(html).not.toContain("%VITE_ANALYTICS_");
   });
+
   it.each(pages)(
     "renders %s as a real public page",
     (pathname, Component, expected) => {
@@ -99,26 +100,22 @@ describe("public marketing website", () => {
     expect(scrollTo).toHaveBeenCalledTimes(2);
   });
 
-  it("renders the shared commercial source of truth without claiming checkout", () => {
-    const html = render("/pricing", PricingPage);
-    const compactHtml = html.replaceAll("\u00a0", "").replaceAll(",", "");
+  it("renders the ZAR commercial source of truth without claiming checkout", () => {
+    const html = render("/pricing", Pricing);
+    const compactHtml = html.replaceAll("\u00a0", "").replaceAll(",", "").replaceAll(" ", "");
     for (const plan of PRICING_PLANS) {
       expect(html).toContain(plan.name);
-      expect(html).toContain(`$${plan.monthlyUsdCents / 100}`);
-      expect(compactHtml).toContain(
-        `${plan.includedAiCredits} included AI credits`
-      );
+      expect(compactHtml).toContain(`R${plan.monthlyZarCents / 100}`);
+      expect(compactHtml).toContain(String(plan.includedAiCredits));
       expect(html).toContain(
-        plan.includedUsers === 1
-          ? "1 included user"
-          : `Up to ${plan.includedUsers} included users`
+        plan.includedUsers === 1 ? "1 user" : `Up to ${plan.includedUsers} users`
       );
     }
-    expect(html).toContain(
-      `1,000 AI credits for $${AI_CREDIT_ECONOMICS.retailPackUsdCents / 100}`
+    expect(compactHtml).toContain(
+      `1,000AIcredits·R${AI_CREDIT_ECONOMICS.retailPackZarCents / 100}`.replaceAll(",", "")
     );
-    expect(html).toContain("Routine CRM work does not consume AI credits");
-    expect(html).toContain("Plans for real sales work");
+    expect(html).toContain("No AI credits");
+    expect(html).toContain("Uses AI credits");
     expect(html).not.toMatch(/Stripe|PayFast|buy now|checkout now/i);
   });
 

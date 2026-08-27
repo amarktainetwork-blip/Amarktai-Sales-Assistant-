@@ -9,8 +9,8 @@ export function BrandMark({
   inverse = false,
   large = false,
 }: BrandMarkProps) {
-  const name = inverse ? "text-white" : "text-[#F5F4F0]";
-  const subtext = inverse ? "text-white/60" : "text-[#A7A8AD]";
+  const name = inverse ? "text-white" : "text-[#111214]";
+  const subtext = inverse ? "text-white/55" : "text-[#74777d]";
   return (
     <span
       className="inline-flex items-baseline gap-2"
@@ -19,7 +19,7 @@ export function BrandMark({
       <span
         className={`font-display font-bold tracking-[-.055em] ${large ? "text-[27px]" : "text-[21px]"} ${name}`}
       >
-        Amarkt<span className="text-[#3B82F6]">ai</span> Network
+        Amarkt<span className="text-[#2F6FED]">ai</span> Network
       </span>
       {!compact && (
         <small
