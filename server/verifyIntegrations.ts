@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { AGENT_CATALOG } from "./agentCatalog";
+import { verifyCompanyKnowledgeReasoning } from "./companyKnowledgeReasoningProbe";
 import { runGenxAgent, verifyGenxConnection } from "./genx";
 import { createOutlookApplicationToken, getOutlookReadiness } from "./outlook";
 import { getSmtpReadiness, verifySmtpConnection } from "./smtp";
@@ -33,7 +34,7 @@ async function verifyAgentExecutions() {
         ],
       });
       if (response.provider !== "genx")
-        throw new Error(`Agent used provider ${response.provider} instead of GenX.`);
+        throw new Error(`Agent used provider ${response.provider} instead of the configured production intelligence service.`);
       if (!response.content?.trim())
         throw new Error("Agent returned no content.");
       agents[agent.key] = {
@@ -103,10 +104,27 @@ async function main() {
     const agentVerification = await verifyAgentExecutions();
     results.agents = agentVerification;
     if (agentVerification.failed) failed = true;
+
+    try {
+      results.companyKnowledgeReasoning = await verifyCompanyKnowledgeReasoning();
+    } catch (error) {
+      results.companyKnowledgeReasoning = {
+        status: "FAILED",
+        reason:
+          error instanceof Error
+            ? error.message.slice(0, 320)
+            : "company_knowledge_reasoning_failed",
+      };
+      failed = true;
+    }
   } else {
     results.agents = {
       status: "BLOCKED",
-      reason: "GenX base verification failed, so agent execution probes were not attempted.",
+      reason: "Base production intelligence verification failed, so agent execution probes were not attempted.",
+    };
+    results.companyKnowledgeReasoning = {
+      status: "BLOCKED",
+      reason: "Base production intelligence verification failed, so structured company-knowledge reasoning was not attempted.",
     };
   }
 
