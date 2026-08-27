@@ -25,15 +25,12 @@ import { startLogin } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
 import { trpc } from "@/lib/trpc";
 import {
-  Activity,
-  BarChart3,
   Bot,
   Building2,
   Cable,
   CalendarDays,
   CheckCircle2,
   ContactRound,
-  Gauge,
   Headphones,
   LayoutDashboard,
   LibraryBig,
@@ -43,8 +40,6 @@ import {
   MailCheck,
   Settings2,
   Users,
-  Workflow,
-  Zap,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -61,28 +56,24 @@ type CrmIdentity = {
     connectedSystemId: number;
   }>;
 };
+
 const primaryMenu: NavItem[] = [
   { icon: CalendarDays, label: "Today", path: "/today" },
   { icon: ContactRound, label: "Customers", path: "/customers" },
-  { icon: Headphones, label: "Calls", path: "/calls" },
   { icon: Bot, label: "Assistant", path: "/agents" },
-  { icon: Workflow, label: "Follow-ups", path: "/workflows" },
-  { icon: Zap, label: "Automation", path: "/automation" },
-  { icon: LibraryBig, label: "Knowledge", path: "/knowledge" },
+  { icon: Headphones, label: "Calls", path: "/calls" },
   { icon: MonitorUp, label: "CRM", path: "/crm" },
-  { icon: BarChart3, label: "Reports", path: "/reports" },
 ];
 const individualSecondaryMenu: NavItem[] = [
-  { icon: Activity, label: "Approvals", path: "/workspace" },
+  { icon: LibraryBig, label: "Knowledge", path: "/knowledge" },
   { icon: Cable, label: "Connections", path: "/connections" },
   { icon: Settings2, label: "Settings", path: "/company-setup" },
 ];
 const teamSecondaryMenu: NavItem[] = [
   { icon: LayoutDashboard, label: "Team intelligence", path: "/team" },
   { icon: Users, label: "Team members", path: "/team/manage" },
-  { icon: Activity, label: "Approvals", path: "/workspace" },
+  { icon: LibraryBig, label: "Knowledge", path: "/knowledge" },
   { icon: Cable, label: "Connections", path: "/connections" },
-  { icon: Gauge, label: "Targets & controls", path: "/admin-controls" },
   { icon: Settings2, label: "Settings", path: "/company-setup" },
 ];
 
@@ -135,6 +126,7 @@ export default function DashboardLayout({
     organisation.data?.role === "salesperson" &&
     !canManage &&
     onboardingComplete;
+
   useEffect(() => {
     if (!requiresSalespersonIdentity) return;
     fetch("/api/team/crm-identity", { credentials: "include" })
@@ -150,6 +142,7 @@ export default function DashboardLayout({
         toast.error("Your CRM identity could not be checked.");
       });
   }, [requiresSalespersonIdentity]);
+
   async function confirmCrmIdentity(mappingId: number) {
     try {
       setIdentityPending(true);
@@ -174,10 +167,12 @@ export default function DashboardLayout({
       setIdentityPending(false);
     }
   }
+
   const secondaryMenu =
     workspaceMode === "team" && canManage
       ? teamSecondaryMenu
       : individualSecondaryMenu;
+
   if (loading || security.isLoading) return <DashboardLayoutSkeleton />;
   if (!user) return <SignedOut />;
   if (!security.data?.verified)
@@ -220,6 +215,7 @@ export default function DashboardLayout({
         onConfirm={confirmCrmIdentity}
       />
     );
+
   return (
     <>
       <GenieInteractiveAuthPrompt
@@ -227,14 +223,11 @@ export default function DashboardLayout({
         enabled={canManage}
       />
       <SidebarProvider>
-        <Sidebar collapsible="icon" className="border-r border-white/10 bg-[#08172F] text-[#EAF1FC]">
-          <SidebarHeader className="h-[108px] justify-center border-b border-white/10 px-5">
-            <BrandMark />
-            <p className="mt-3 text-[9px] font-black uppercase tracking-[.16em] text-[#809CC6]">
-              Sales Assistant
-            </p>
+        <Sidebar collapsible="icon" className="border-r border-[#52677F] bg-[#3A4D66] text-white">
+          <SidebarHeader className="h-[98px] justify-center border-b border-white/15 px-5">
+            <BrandMark inverse />
           </SidebarHeader>
-          <SidebarContent className="px-3 py-6">
+          <SidebarContent className="px-3 py-5">
             <OrganisationSwitcher
               currentName={organisation.data?.organisationName}
               organisations={organisations.data ?? []}
@@ -243,16 +236,16 @@ export default function DashboardLayout({
                 switchOrganisation.mutate({ organisationId })
               }
             />
-            <p className="px-3 pb-3 pt-6 text-[10px] font-black uppercase tracking-[.16em] text-[#7896C1]">
-              Sell
+            <p className="px-3 pb-2 pt-6 text-[9px] font-black uppercase tracking-[.15em] text-[#C4D0DD]">
+              Daily work
             </p>
             <SidebarMenu>
               {primaryMenu.map(item => (
                 <AppNavItem key={item.path} {...item} />
               ))}
             </SidebarMenu>
-            <p className="px-3 pb-3 pt-7 text-[10px] font-black uppercase tracking-[.16em] text-[#7896C1]">
-              Workspace
+            <p className="px-3 pb-2 pt-6 text-[9px] font-black uppercase tracking-[.15em] text-[#C4D0DD]">
+              Manage
             </p>
             <SidebarMenu>
               {secondaryMenu.map(item => (
@@ -260,20 +253,20 @@ export default function DashboardLayout({
               ))}
             </SidebarMenu>
           </SidebarContent>
-          <SidebarFooter className="border-t border-white/10 p-3">
+          <SidebarFooter className="border-t border-white/15 p-3">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="flex w-full items-center gap-3 rounded-xl p-2 text-left transition hover:bg-white/[.06]">
-                  <Avatar className="size-9 border border-white/15 bg-[#153B7A]">
-                    <AvatarFallback className="bg-[#153B7A] text-xs font-bold text-[#BBD2FF]">
+                <button className="flex w-full items-center gap-3 rounded-lg p-2 text-left transition hover:bg-white/10">
+                  <Avatar className="size-9 border border-white/20 bg-[#58708D]">
+                    <AvatarFallback className="bg-[#58708D] text-xs font-bold text-white">
                       {user.name?.slice(0, 1).toUpperCase() ?? "A"}
                     </AvatarFallback>
                   </Avatar>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-bold text-[#EDF4FF]">
+                    <p className="truncate text-sm font-bold text-white">
                       {user.name || "Amarktai user"}
                     </p>
-                    <p className="truncate text-xs text-[#8EA8D0]">
+                    <p className="truncate text-xs text-[#CFD8E3]">
                       {user.email || "Authenticated workspace"}
                     </p>
                   </div>
@@ -291,12 +284,12 @@ export default function DashboardLayout({
             </DropdownMenu>
           </SidebarFooter>
         </Sidebar>
-        <SidebarInset className="bg-[#071326]">
+        <SidebarInset className="bg-[#F5F7FA]">
           <AppTopbar />
-          <main className="min-h-[calc(100vh-70px)] p-4 sm:p-6 lg:p-8">
+          <main className="min-h-[calc(100vh-66px)] p-4 sm:p-6 lg:p-8">
             {canManage && (!workspaceMode || !onboardingComplete) ? (
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-950">
-                <span><strong>Setup is still in progress.</strong> You can keep working and return when you are ready.</span>
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#D5DFEB] bg-white px-4 py-3 text-sm text-[#33445B]">
+                <span><strong>Setup is still in progress.</strong> Continue the guided setup when you are ready.</span>
                 <Button size="sm" variant="outline" onClick={() => navigate("/company-setup")}>Continue setup</Button>
               </div>
             ) : null}
@@ -310,26 +303,26 @@ export default function DashboardLayout({
 
 function SetupGate({ onContinue }: { onContinue: () => void }) {
   return (
-    <div className="grid min-h-screen place-items-center bg-[#071326] p-5 text-[#F5F7FB]">
-      <div className="w-full max-w-xl rounded-[2rem] border border-white/10 bg-[#0C1E3E] p-8 shadow-[0_28px_70px_rgba(0,0,0,.4)] sm:p-10">
+    <div className="grid min-h-screen place-items-center bg-[#F5F7FA] p-5 text-[#26354A]">
+      <div className="w-full max-w-xl rounded-[1.5rem] border border-[#DCE2E9] bg-white p-8 shadow-[0_20px_55px_rgba(45,61,82,.1)] sm:p-10">
         <BrandMark />
-        <div className="mt-12 grid size-12 place-items-center rounded-2xl bg-[#153B7A] text-[#A9C7FF]">
+        <div className="mt-12 grid size-12 place-items-center rounded-2xl bg-[#EDF3FF] text-[#315BB6]">
           <Settings2 size={23} />
         </div>
-        <p className="mt-7 text-xs font-black uppercase tracking-[.16em] text-[#8CB7FF]">
+        <p className="mt-7 text-xs font-black uppercase tracking-[.16em] text-[#3F70D8]">
           Complete setup
         </p>
         <h1 className="mt-3 font-display text-4xl font-bold tracking-[-.065em]">
           Connect, discover, test—then sell.
         </h1>
-        <p className="mt-4 text-sm leading-6 text-[#A9BFDF]">
+        <p className="mt-4 text-sm leading-6 text-[#6C798B]">
           Choose an individual or company experience, confirm business
           knowledge, connect the CRM, and pass the friendly readiness check.
           Your progress is saved.
         </p>
         <Button
           onClick={onContinue}
-          className="mt-8 h-12 w-full rounded-xl bg-[#1B64F2] font-bold hover:bg-[#2B76FF]"
+          className="mt-8 h-12 w-full rounded-xl bg-[#3F70D8] font-bold hover:bg-[#315BB6]"
         >
           Continue guided setup
         </Button>
@@ -340,19 +333,19 @@ function SetupGate({ onContinue }: { onContinue: () => void }) {
 
 function WorkspaceSetupPending() {
   return (
-    <div className="grid min-h-screen place-items-center bg-[#071326] p-5 text-[#F5F7FB]">
-      <div className="w-full max-w-xl rounded-[2rem] border border-white/10 bg-[#0C1E3E] p-8 shadow-[0_28px_70px_rgba(0,0,0,.4)] sm:p-10">
+    <div className="grid min-h-screen place-items-center bg-[#F5F7FA] p-5 text-[#26354A]">
+      <div className="w-full max-w-xl rounded-[1.5rem] border border-[#DCE2E9] bg-white p-8 shadow-[0_20px_55px_rgba(45,61,82,.1)] sm:p-10">
         <BrandMark />
-        <div className="mt-12 grid size-12 place-items-center rounded-2xl bg-[#153B7A] text-[#A9C7FF]">
+        <div className="mt-12 grid size-12 place-items-center rounded-2xl bg-[#EDF3FF] text-[#315BB6]">
           <Building2 size={23} />
         </div>
-        <p className="mt-7 text-xs font-black uppercase tracking-[.16em] text-[#8CB7FF]">
+        <p className="mt-7 text-xs font-black uppercase tracking-[.16em] text-[#3F70D8]">
           Team workspace
         </p>
         <h1 className="mt-3 font-display text-4xl font-bold tracking-[-.065em]">
           Your manager is finishing company setup.
         </h1>
-        <p className="mt-4 text-sm leading-6 text-[#A9BFDF]">
+        <p className="mt-4 text-sm leading-6 text-[#6C798B]">
           You will inherit the approved knowledge, CRM connection, available
           functions and policies. You will not need to scan the website,
           reconnect the CRM or repeat company-wide tests.
@@ -372,19 +365,19 @@ function SalespersonIdentityGate({
   onConfirm: (mappingId: number) => void;
 }) {
   return (
-    <div className="grid min-h-screen place-items-center bg-[#071326] p-5 text-[#F5F7FB]">
-      <div className="w-full max-w-xl rounded-[2rem] border border-white/10 bg-[#0C1E3E] p-8 shadow-[0_28px_70px_rgba(0,0,0,.4)] sm:p-10">
+    <div className="grid min-h-screen place-items-center bg-[#F5F7FA] p-5 text-[#26354A]">
+      <div className="w-full max-w-xl rounded-[1.5rem] border border-[#DCE2E9] bg-white p-8 shadow-[0_20px_55px_rgba(45,61,82,.1)] sm:p-10">
         <BrandMark />
-        <div className="mt-12 grid size-12 place-items-center rounded-2xl bg-[#153B7A] text-[#A9C7FF]">
+        <div className="mt-12 grid size-12 place-items-center rounded-2xl bg-[#EDF3FF] text-[#315BB6]">
           <ContactRound size={23} />
         </div>
-        <p className="mt-7 text-xs font-black uppercase tracking-[.16em] text-[#8CB7FF]">
+        <p className="mt-7 text-xs font-black uppercase tracking-[.16em] text-[#3F70D8]">
           Your sales identity
         </p>
         <h1 className="mt-3 font-display text-4xl font-bold tracking-[-.065em]">
           Confirm who you are in the CRM.
         </h1>
-        <p className="mt-4 text-sm leading-6 text-[#A9BFDF]">
+        <p className="mt-4 text-sm leading-6 text-[#6C798B]">
           Your company knowledge, CRM connection and policies are already set
           up. Confirm your matching salesperson identity; you will not repeat
           company onboarding.
@@ -396,22 +389,22 @@ function SalespersonIdentityGate({
                 key={candidate.id}
                 disabled={pending}
                 onClick={() => onConfirm(candidate.id)}
-                className="rounded-xl border border-white/10 bg-white/[.04] p-4 text-left transition hover:border-[#4E8BFF] hover:bg-[#153B7A]"
+                className="rounded-xl border border-[#DCE2E9] bg-[#F8FAFC] p-4 text-left transition hover:border-[#8EACEB] hover:bg-[#EDF3FF]"
               >
-                <p className="font-bold text-white">
+                <p className="font-bold text-[#26354A]">
                   We found {candidate.displayName} in your CRM. Is this you?
                 </p>
-                <p className="mt-1 text-xs text-[#9DB3D5]">
+                <p className="mt-1 text-xs text-[#6C798B]">
                   {candidate.email || "Matched CRM salesperson"}
                 </p>
-                <span className="mt-3 inline-block text-sm font-bold text-[#8CB7FF]">
+                <span className="mt-3 inline-block text-sm font-bold text-[#3F70D8]">
                   Yes, that's me
                 </span>
               </button>
             ))}
           </div>
         ) : (
-          <p className="mt-7 rounded-xl border border-amber-300/20 bg-amber-400/[.07] p-4 text-sm leading-6 text-amber-100">
+          <p className="mt-7 rounded-xl border border-[#E8D5A8] bg-[#FBF3DF] p-4 text-sm leading-6 text-[#7B5A22]">
             No exact CRM identity match is available yet. Ask your workspace
             manager to link your CRM salesperson record; you do not need to
             reconnect the CRM or repeat company setup.
@@ -424,25 +417,25 @@ function SalespersonIdentityGate({
 
 function SignedOut() {
   return (
-    <div className="grid min-h-screen place-items-center bg-[#071326] p-5 text-[#F5F7FB]">
-      <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-[#0C1E3E] p-8 shadow-[0_28px_70px_rgba(0,0,0,.4)]">
+    <div className="grid min-h-screen place-items-center bg-[#F5F7FA] p-5 text-[#26354A]">
+      <div className="w-full max-w-md rounded-[1.5rem] border border-[#DCE2E9] bg-white p-8 shadow-[0_20px_55px_rgba(45,61,82,.1)]">
         <BrandMark />
-        <div className="mb-5 mt-11 grid size-12 place-items-center rounded-2xl bg-[#153B7A] text-[#A9C7FF]">
+        <div className="mb-5 mt-11 grid size-12 place-items-center rounded-2xl bg-[#EDF3FF] text-[#315BB6]">
           <Bot size={23} />
         </div>
-        <p className="mb-2 text-xs font-black uppercase tracking-[.16em] text-[#8CB7FF]">
+        <p className="mb-2 text-xs font-black uppercase tracking-[.16em] text-[#3F70D8]">
           Protected workspace
         </p>
         <h1 className="font-display text-4xl font-bold tracking-[-.065em]">
           A clear view of the sales day.
         </h1>
-        <p className="mt-4 leading-6 text-[#A9BFDF]">
+        <p className="mt-4 leading-6 text-[#6C798B]">
           Sign in to open your sales dashboard, prepare work, review decisions
           and connect the team’s CRM.
         </p>
         <Button
           onClick={() => startLogin()}
-          className="mt-8 h-12 w-full rounded-xl bg-[#1B64F2] font-bold text-white hover:bg-[#2B76FF]"
+          className="mt-8 h-12 w-full rounded-xl bg-[#3F70D8] font-bold text-white hover:bg-[#315BB6]"
         >
           Open secure access
         </Button>
@@ -487,36 +480,36 @@ function SecondFactorGate({
     },
   });
   return (
-    <div className="grid min-h-screen place-items-center bg-[#071326] p-5 text-[#F5F7FB]">
-      <div className="grid w-full max-w-4xl overflow-hidden rounded-[2rem] border border-white/10 bg-[#0C1E3E] shadow-[0_28px_80px_rgba(0,0,0,.42)] lg:grid-cols-[.9fr_1.1fr]">
-        <section className="bg-[#0A1830] p-8 sm:p-10">
+    <div className="grid min-h-screen place-items-center bg-[#F5F7FA] p-5 text-[#26354A]">
+      <div className="grid w-full max-w-4xl overflow-hidden rounded-[1.5rem] border border-[#DCE2E9] bg-white shadow-[0_20px_60px_rgba(45,61,82,.12)] lg:grid-cols-[.9fr_1.1fr]">
+        <section className="bg-[#EEF4FB] p-8 sm:p-10">
           <BrandMark />
-          <div className="mt-16 grid size-12 place-items-center rounded-2xl bg-[#153B7A] text-[#A9C7FF]">
+          <div className="mt-16 grid size-12 place-items-center rounded-2xl bg-[#DDE9FB] text-[#315BB6]">
             <LockKeyhole size={21} />
           </div>
-          <p className="mt-7 text-xs font-black uppercase tracking-[.15em] text-[#8CB7FF]">
+          <p className="mt-7 text-xs font-black uppercase tracking-[.15em] text-[#3F70D8]">
             Access verification
           </p>
           <h1 className="mt-3 font-display text-5xl font-bold leading-[.88] tracking-[-.075em]">
             Protect the work that matters.
           </h1>
-          <p className="mt-5 text-sm leading-6 text-[#A9BFDF]">
+          <p className="mt-5 text-sm leading-6 text-[#6C798B]">
             Verify your email before Amarktai can show customer context, team
             performance or external actions.
           </p>
-          <div className="mt-8 space-y-3 text-sm text-[#C4D5F0]">
+          <div className="mt-8 space-y-3 text-sm text-[#516178]">
             <p className="flex gap-2">
-              <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-[#8CB7FF]" />
+              <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-[#3F70D8]" />
               Codes expire after ten minutes.
             </p>
             <p className="flex gap-2">
-              <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-[#8CB7FF]" />
+              <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-[#3F70D8]" />
               Verification persists for twelve hours.
             </p>
           </div>
         </section>
         <section className="p-8 sm:p-10">
-          <div className="grid size-11 place-items-center rounded-2xl bg-[#153B7A] text-[#A9C7FF]">
+          <div className="grid size-11 place-items-center rounded-2xl bg-[#EDF3FF] text-[#315BB6]">
             <MailCheck size={20} />
           </div>
           <h2 className="mt-6 font-display text-4xl font-bold leading-[.9] tracking-[-.07em]">
@@ -525,7 +518,7 @@ function SecondFactorGate({
           {feedback ? (
             <div
               role="alert"
-              className="mt-5 rounded-xl border border-rose-300/25 bg-rose-400/10 p-4 text-sm text-rose-100"
+              className="mt-5 rounded-xl border border-[#E5B9C0] bg-[#FAECEF] p-4 text-sm text-[#923F4B]"
             >
               <p className="font-bold">
                 {feedback === "send"
@@ -545,7 +538,7 @@ function SecondFactorGate({
                     ? requestCode.mutate()
                     : verifyCode.mutate({ code })
                 }
-                className="mt-3 bg-[#1B64F2]"
+                className="mt-3 bg-[#3F70D8]"
               >
                 Retry
               </Button>
@@ -557,14 +550,14 @@ function SecondFactorGate({
             <Notice text="SMTP is not configured yet. Add the SMTP settings before sending access codes." />
           ) : !requested ? (
             <>
-              <p className="mt-4 text-sm leading-6 text-[#A9BFDF]">
+              <p className="mt-4 text-sm leading-6 text-[#6C798B]">
                 We will send a six-digit code to the authenticated email
                 address.
               </p>
               <Button
                 onClick={() => requestCode.mutate()}
                 disabled={requestCode.isPending}
-                className="mt-8 h-12 w-full rounded-xl bg-[#1B64F2] font-bold hover:bg-[#2B76FF]"
+                className="mt-8 h-12 w-full rounded-xl bg-[#3F70D8] font-bold hover:bg-[#315BB6]"
               >
                 {requestCode.isPending
                   ? "Sending code…"
@@ -573,7 +566,7 @@ function SecondFactorGate({
             </>
           ) : (
             <>
-              <p className="mt-4 text-sm leading-6 text-[#A9BFDF]">
+              <p className="mt-4 text-sm leading-6 text-[#6C798B]">
                 Enter the code sent to your email.
               </p>
               <input
@@ -584,12 +577,12 @@ function SecondFactorGate({
                   setCode(event.target.value.replace(/\D/g, ""))
                 }
                 placeholder="000000"
-                className="mt-6 h-14 w-full rounded-xl border-2 border-white/15 bg-[#08172F] text-center font-display text-3xl font-bold tracking-[.32em] text-white outline-none placeholder:text-[#56749E] focus:border-[#4E8BFF]"
+                className="mt-6 h-14 w-full rounded-xl border-2 border-[#D5DDE7] bg-white text-center font-display text-3xl font-bold tracking-[.32em] text-[#26354A] outline-none placeholder:text-[#A7B0BC] focus:border-[#6F91E2]"
               />
               <Button
                 onClick={() => verifyCode.mutate({ code })}
                 disabled={code.length !== 6 || verifyCode.isPending}
-                className="mt-4 h-12 w-full rounded-xl bg-[#1B64F2] font-bold hover:bg-[#2B76FF]"
+                className="mt-4 h-12 w-full rounded-xl bg-[#3F70D8] font-bold hover:bg-[#315BB6]"
               >
                 {verifyCode.isPending
                   ? "Verifying…"
@@ -597,7 +590,7 @@ function SecondFactorGate({
               </Button>
               <button
                 onClick={() => requestCode.mutate()}
-                className="mt-4 w-full text-sm font-bold text-[#8CB7FF]"
+                className="mt-4 w-full text-sm font-bold text-[#3F70D8]"
               >
                 Send a new code
               </button>
@@ -608,13 +601,15 @@ function SecondFactorGate({
     </div>
   );
 }
+
 function Notice({ text }: { text: string }) {
   return (
-    <p className="mt-5 rounded-xl border border-[#3866AA]/35 bg-[#102A56] p-4 text-sm leading-6 text-[#BDD2F4]">
+    <p className="mt-5 rounded-xl border border-[#D4DEEA] bg-[#F4F7FA] p-4 text-sm leading-6 text-[#56677C]">
       {text}
     </p>
   );
 }
+
 function OrganisationSwitcher({
   currentName,
   organisations,
@@ -628,18 +623,18 @@ function OrganisationSwitcher({
 }) {
   if (organisations.length < 2)
     return (
-      <div className="rounded-xl border border-white/10 bg-white/[.035] px-3 py-2">
-        <p className="truncate text-xs font-bold text-[#D4E3FB]">
+      <div className="rounded-lg border border-white/15 bg-white/10 px-3 py-2">
+        <p className="truncate text-xs font-bold text-white">
           {currentName || "Loading workspace"}
         </p>
-        <p className="mt-0.5 text-[9px] font-black uppercase tracking-[.12em] text-[#7896C1]">
+        <p className="mt-0.5 text-[9px] font-black uppercase tracking-[.12em] text-[#CFD8E3]">
           Active organisation
         </p>
       </div>
     );
   return (
-    <label className="block rounded-xl border border-[#3D69AD]/35 bg-[#102A56] px-3 py-2">
-      <span className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[.12em] text-[#8CB7FF]">
+    <label className="block rounded-lg border border-white/15 bg-white/10 px-3 py-2">
+      <span className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[.12em] text-[#D7E0EA]">
         <Building2 size={13} />
         Active organisation
       </span>
@@ -661,7 +656,7 @@ function OrganisationSwitcher({
           <option
             key={organisation.organisationId}
             value={organisation.organisationId}
-            className="bg-[#102A56]"
+            className="bg-[#3A4D66]"
           >
             {organisation.organisationName}
           </option>
@@ -670,6 +665,7 @@ function OrganisationSwitcher({
     </label>
   );
 }
+
 function OrganisationSelectionGate({
   organisations,
   pending,
@@ -680,19 +676,19 @@ function OrganisationSelectionGate({
   onSelect: (organisationId: number) => void;
 }) {
   return (
-    <div className="grid min-h-screen place-items-center bg-[#071326] p-5 text-[#F5F7FB]">
-      <div className="w-full max-w-xl rounded-[2rem] border border-white/10 bg-[#0C1E3E] p-8 shadow-[0_28px_70px_rgba(0,0,0,.4)] sm:p-10">
+    <div className="grid min-h-screen place-items-center bg-[#F5F7FA] p-5 text-[#26354A]">
+      <div className="w-full max-w-xl rounded-[1.5rem] border border-[#DCE2E9] bg-white p-8 shadow-[0_20px_55px_rgba(45,61,82,.1)] sm:p-10">
         <BrandMark />
-        <div className="mt-12 grid size-12 place-items-center rounded-2xl bg-[#153B7A] text-[#A9C7FF]">
+        <div className="mt-12 grid size-12 place-items-center rounded-2xl bg-[#EDF3FF] text-[#315BB6]">
           <Building2 size={23} />
         </div>
-        <p className="mt-7 text-xs font-black uppercase tracking-[.16em] text-[#8CB7FF]">
+        <p className="mt-7 text-xs font-black uppercase tracking-[.16em] text-[#3F70D8]">
           Choose workspace
         </p>
         <h1 className="mt-3 font-display text-4xl font-bold tracking-[-.065em]">
           Which organisation are you working in?
         </h1>
-        <p className="mt-4 text-sm leading-6 text-[#A9BFDF]">
+        <p className="mt-4 text-sm leading-6 text-[#6C798B]">
           Amarktai keeps sales data, connected systems, and reviews separated by
           organisation. Select an authorised workspace to continue.
         </p>
@@ -702,10 +698,10 @@ function OrganisationSelectionGate({
               key={organisation.organisationId}
               disabled={pending}
               onClick={() => onSelect(organisation.organisationId)}
-              className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[.04] px-4 py-4 text-left font-bold text-white transition hover:border-[#4E8BFF] hover:bg-[#153B7A]"
+              className="flex items-center justify-between rounded-xl border border-[#DCE2E9] bg-[#F8FAFC] px-4 py-4 text-left font-bold text-[#26354A] transition hover:border-[#8EACEB] hover:bg-[#EDF3FF]"
             >
               <span>{organisation.organisationName}</span>
-              <Building2 size={17} className="text-[#8CB7FF]" />
+              <Building2 size={17} className="text-[#3F70D8]" />
             </button>
           ))}
         </div>
@@ -713,6 +709,7 @@ function OrganisationSelectionGate({
     </div>
   );
 }
+
 function AppNavItem({ icon: Icon, label, path }: NavItem) {
   const [location, setLocation] = useLocation();
   const active = location === path;
@@ -723,7 +720,7 @@ function AppNavItem({ icon: Icon, label, path }: NavItem) {
         onClick={() => setLocation(path)}
         tooltip={label}
         aria-label={label}
-        className={`h-11 rounded-xl px-3 transition-all hover:bg-[#1A3E7A] hover:text-white ${active ? "bg-[#153B7A] text-white shadow-[0_0_18px_rgba(78,139,255,.24)] hover:bg-[#153B7A]" : "text-[#A4B9D9]"}`}
+        className={`h-11 rounded-lg px-3 transition-all hover:bg-[#465C77] hover:text-white ${active ? "bg-[#F7F9FB] text-[#26354A] hover:bg-[#F7F9FB]" : "text-[#E1E7EE]"}`}
       >
         <Icon className="size-[18px]" />
         <span className="font-semibold group-data-[collapsible=icon]:hidden">{label}</span>
@@ -731,24 +728,25 @@ function AppNavItem({ icon: Icon, label, path }: NavItem) {
     </SidebarMenuItem>
   );
 }
+
 function AppTopbar() {
   const isMobile = useIsMobile();
   if (!isMobile)
     return (
-      <header className="flex h-[70px] items-center justify-between border-b border-white/10 bg-[#08172F]/75 px-8 backdrop-blur">
-        <p className="text-[10px] font-black uppercase tracking-[.16em] text-[#8CA9D4]">
+      <header className="flex h-[66px] items-center justify-between border-b border-[#DCE2E9] bg-white/95 px-8 backdrop-blur">
+        <p className="text-[10px] font-black uppercase tracking-[.16em] text-[#748196]">
           Amarktai / Sales workspace
         </p>
-        <div className="flex items-center gap-2 rounded-full border border-[#3D69AD]/35 bg-[#102A56] px-3 py-1.5 text-xs font-bold text-[#B7CFFF]">
-          <span className="size-1.5 rounded-full bg-[#5C92FF]" />
+        <div className="flex items-center gap-2 rounded-full border border-[#D5DFEB] bg-[#F3F6FA] px-3 py-1.5 text-xs font-bold text-[#5A6A80]">
+          <span className="size-1.5 rounded-full bg-[#438F91]" />
           Governed automation ready
         </div>
       </header>
     );
   return (
-    <header className="flex h-14 items-center border-b border-white/10 bg-[#08172F] px-2">
-      <SidebarTrigger className="rounded-lg text-white hover:bg-white/10" />
-      <span className="ml-2 text-sm font-bold text-white">Amarktai</span>
+    <header className="flex h-14 items-center border-b border-[#DCE2E9] bg-white px-2">
+      <SidebarTrigger className="rounded-lg text-[#26354A] hover:bg-[#EEF2F5]" />
+      <span className="ml-2 text-sm font-bold text-[#26354A]">Amarktai</span>
     </header>
   );
 }

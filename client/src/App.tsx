@@ -7,9 +7,8 @@ import { Route, Switch, useLocation } from "wouter";
 import "./app-final.css";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import "./dashboard-v2.css";
-import "./dashboard-v3.css";
-import "./dashboard-handover.css";
+import "./dashboard-v6.css";
+import AboutPage from "./marketing/AboutPage";
 import ContactPage from "./marketing/ContactPage";
 import {
   HowItWorksPage,
@@ -51,6 +50,7 @@ function Router() {
         <Route path="/teams" component={TeamsPage} />
         <Route path="/integrations" component={IntegrationsPage} />
         <Route path="/pricing" component={Pricing} />
+        <Route path="/about" component={AboutPage} />
         <Route path="/contact" component={ContactPage} />
         <Route path="/auth" component={Auth} />
         <Route path="/dashboard" component={Today} />
