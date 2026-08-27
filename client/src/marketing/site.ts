@@ -1,5 +1,4 @@
 export const marketingNavigation = [
-  { label: "Product", href: "/product" },
   { label: "Pricing", href: "/pricing" },
 ] as const;
 
@@ -13,9 +12,9 @@ export const publicPageMetadata: Record<
   { title: string; description: string }
 > = {
   "/": {
-    title: "Amarktai Sales Assistant | Sell More. Admin Less.",
+    title: "Amarktai Sales Assistant | AI beside your sales team",
     description:
-      "A modern AI sales workspace that works beside your CRM to prioritise the day, prepare conversations, complete follow-up and keep the customer record accurate.",
+      "Amarktai learns the business, works beside the CRM and helps salespeople prepare, call, follow through and keep the customer record accurate.",
   },
   "/product": {
     title: "Product | Amarktai Sales Assistant",
