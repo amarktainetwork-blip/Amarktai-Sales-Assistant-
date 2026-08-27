@@ -6,10 +6,14 @@ import { retainedPagesForCompanyReview, reviewStoredCompanyIntelligence } from "
 const ready = { databaseReady: true, genxReady: true, crmReadReady: true, crmRouteReady: true, communicationsReady: true, voiceReady: true };
 
 describe("final launch acceptance safeguards", () => {
-  it("derives GenX and CRM agent readiness from dependencies and never advertises catalogue-only specialists", () => {
+  it("derives model and CRM agent readiness from live dependencies", () => {
     expect(agentRuntimeStatus("company_intelligence_review", { ...ready, genxReady: false })).toBe("NEEDS_CONNECTION");
     expect(agentRuntimeStatus("crm_context", { ...ready, crmReadReady: false, crmRouteReady: false })).toBe("NEEDS_CONNECTION");
-    expect(agentRuntimeStatus("sales_intelligence", ready)).toBe("NOT_IMPLEMENTED");
+    expect(agentRuntimeStatus("sales_intelligence", ready)).toBe("READY");
+    expect(agentRuntimeStatus("sales_intelligence", { ...ready, genxReady: false })).toBe("NEEDS_CONNECTION");
+    expect(agentRuntimeStatus("objection_handler", ready)).toBe("READY");
+    expect(agentRuntimeStatus("recommendation_agent", ready)).toBe("READY");
+    expect(agentRuntimeStatus("pipeline_planner", ready)).toBe("READY");
     expect(agentRuntimeStatus("supervisor", ready)).toBe("READY");
   });
 
