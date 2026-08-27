@@ -3,9 +3,9 @@ import { Link } from "wouter";
 import { MarketingLayout } from "./MarketingLayout";
 import { accountLinks } from "./site";
 
-const HERO_PHOTO = "https://images.pexels.com/photos/8837770/pexels-photo-8837770.jpeg?cs=srgb&dl=pexels-yankrukov-8837770.jpg&fm=jpg";
+const HERO_PHOTO = "https://images.pexels.com/photos/7679563/pexels-photo-7679563.jpeg?cs=srgb&dl=pexels-mikhail-nilov-7679563.jpg&fm=jpg";
 const CALL_PHOTO = "https://images.pexels.com/photos/14596539/pexels-photo-14596539.jpeg?cs=srgb&dl=pexels-karen-slack-3606218-14596539.jpg&fm=jpg";
-const TEAM_PHOTO = "https://images.pexels.com/photos/8068833/pexels-photo-8068833.jpeg?cs=srgb&dl=pexels-edmond-dantes-8068833.jpg&fm=jpg";
+const TEAM_PHOTO = "https://images.pexels.com/photos/8000530/pexels-photo-8000530.jpeg?cs=srgb&dl=pexels-pavel-danilyuk-8000530.jpg&fm=jpg";
 
 const salesDay = [
   ["01", "Learn the business", "Amarktai turns approved company information and website evidence into reviewed sales context."],
@@ -36,7 +36,7 @@ export default function HomePage() {
             </div>
           </div>
           <figure className="amk-photo amk-photo--hero">
-            <img src={HERO_PHOTO} alt="Sales professionals working together in a modern office" />
+            <img src={HERO_PHOTO} alt="Sales professionals collaborating with technology in a bright office" />
           </figure>
         </div>
       </section>
@@ -55,7 +55,7 @@ export default function HomePage() {
       <section className="amk-story amk-story--soft">
         <div className="amk-shell amk-story__grid">
           <figure className="amk-photo amk-photo--story">
-            <img src={TEAM_PHOTO} alt="Sales team collaborating in a modern office" loading="lazy" />
+            <img src={TEAM_PHOTO} alt="Two sales professionals collaborating at a desk" loading="lazy" />
           </figure>
           <div className="amk-story__copy">
             <p className="amk-eyebrow">LEARN THE BUSINESS ONCE</p>
