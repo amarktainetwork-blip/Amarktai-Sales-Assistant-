@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { Link, useLocation } from "wouter";
 import "./final-auth.css";
 
-const AUTH_PHOTO = "https://images.pexels.com/photos/8837770/pexels-photo-8837770.jpeg?cs=srgb&dl=pexels-yankrukov-8837770.jpg&fm=jpg";
+const AUTH_PHOTO = "https://images.pexels.com/photos/7679563/pexels-photo-7679563.jpeg?cs=srgb&dl=pexels-mikhail-nilov-7679563.jpg&fm=jpg";
 
 export default function Auth() {
   const mode = trpc.auth.mode.useQuery();
@@ -39,7 +39,7 @@ export default function Auth() {
   return (
     <main className={`amk-auth${isRegister ? " amk-auth--register" : ""}`}>
       <section className="amk-auth__visual">
-        <img src={AUTH_PHOTO} alt="Sales professionals working in a modern office" />
+        <img src={AUTH_PHOTO} alt="Sales professionals collaborating with technology in a bright office" />
         <div className="amk-auth__shade" />
         <div className="amk-auth__visual-inner">
           <div className="amk-auth__topline">
@@ -48,8 +48,8 @@ export default function Auth() {
           </div>
           <div className="amk-auth__message">
             <p className="amk-auth__eyebrow"><ShieldCheck size={15}/> AMARKTAI NETWORK · SALES ASSISTANT</p>
-            <h1>Your customer context.<br/>Your sales workspace.</h1>
-            <p>Secure access to the sales day, company knowledge, CRM context, calls and follow-through.</p>
+            <h1>Your customer context.<br/>Your sales day.</h1>
+            <p>Secure access to company knowledge, CRM context, calls and follow-through.</p>
             <div className="amk-auth__proof">
               <span><CheckCircle2 size={16}/> Personal user account</span>
               <span><CheckCircle2 size={16}/> Second-factor verification</span>
