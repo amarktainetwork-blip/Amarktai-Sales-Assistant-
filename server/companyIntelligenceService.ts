@@ -19,6 +19,15 @@ type ReviewPage = {
   text: string;
 };
 
+function clientSafeIntelligenceError(error: unknown) {
+  const detail =
+    error instanceof Error ? error.message : "Amarktai intelligence unavailable";
+  return detail
+    .replace(/genx/gi, "Amarktai intelligence")
+    .replace(/provider/gi, "service")
+    .slice(0, 320);
+}
+
 export function retainedPagesForCompanyReview(
   extractedText: string,
   pages: RetainedPageMetadata[]
@@ -94,7 +103,7 @@ export function companyReviewCandidate(
     classification: item.classification,
     reviewState: item.reviewState,
     confidence: item.confidence,
-    evidenceBasis: "genx_synthesis_with_page_provenance" as const,
+    evidenceBasis: "amarktai_synthesis_with_page_provenance" as const,
     evidenceText: item.evidenceText,
     pageTitle: item.pageTitle,
     sourceUrls: item.sourceUrls,
@@ -103,14 +112,6 @@ export function companyReviewCandidate(
   };
 }
 
-/**
- * Canonical client-facing website intelligence pipeline.
- *
- * The crawler only gathers bounded first-party evidence. Raw heuristic offerings,
- * currency matches and crawler conflict counts are never presented as company
- * knowledge. GenX must successfully synthesise provenance-verified first-party
- * facts before a human can see or approve a knowledge draft.
- */
 export async function discoverAndReviewCompanyIntelligence(input: {
   userId: number;
   organisationId: number;
@@ -128,10 +129,8 @@ export async function discoverAndReviewCompanyIntelligence(input: {
       reference: input.reference,
     });
   } catch (error) {
-    const detail =
-      error instanceof Error ? error.message : "AI synthesis unavailable";
     throw new Error(
-      `The public website was read, but GenX could not produce a verified company-knowledge document. Nothing is ready for approval and no raw scraper output was promoted. ${detail.slice(0, 320)}`
+      `The public website was read, but Amarktai intelligence could not produce a verified company-knowledge document. Nothing is ready for approval and no raw scraper output was promoted. ${clientSafeIntelligenceError(error)}`
     );
   }
 
@@ -148,7 +147,7 @@ export async function discoverAndReviewCompanyIntelligence(input: {
         pagesCollected: discovery.pages.length,
         hiddenFromApproval: true,
         note:
-          "Raw heuristic offering and currency extraction is diagnostic evidence only. Client-facing knowledge comes exclusively from provenance-verified GenX synthesis.",
+          "Raw heuristic offering and currency extraction is diagnostic evidence only. Client-facing knowledge comes exclusively from provenance-verified Amarktai intelligence.",
       },
     },
   };
@@ -162,11 +161,6 @@ export async function discoverAndReviewCompanyIntelligence(input: {
   };
 }
 
-/**
- * Retry from retained raw page evidence. Previous AI candidates are never used as
- * source material. A retry still fails closed if GenX cannot produce a verified
- * first-party knowledge document.
- */
 export async function reviewStoredCompanyIntelligence(input: {
   userId: number;
   organisationId: number;
@@ -177,12 +171,21 @@ export async function reviewStoredCompanyIntelligence(input: {
     throw new Error(
       "Retained raw page evidence is unavailable; start a fresh discovery before retrying."
     );
-  const review = await synthesiseCompanyKnowledge({
-    userId: input.userId,
-    organisationId: input.organisationId,
-    pages: input.pages,
-    reference: `website-review-retry:${input.discoveryId}:${Date.now()}`,
-  });
+
+  let review: CompanyIntelligenceReview;
+  try {
+    review = await synthesiseCompanyKnowledge({
+      userId: input.userId,
+      organisationId: input.organisationId,
+      pages: input.pages,
+      reference: `website-review-retry:${input.discoveryId}:${Date.now()}`,
+    });
+  } catch (error) {
+    throw new Error(
+      `Amarktai intelligence could not complete the website review retry. No unverified knowledge was promoted. ${clientSafeIntelligenceError(error)}`
+    );
+  }
+
   return {
     proposedKnowledge: clientReadyKnowledgeItems(review.items).map(
       companyReviewCandidate

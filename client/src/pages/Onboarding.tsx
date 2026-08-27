@@ -453,7 +453,7 @@ export default function Onboarding() {
       setFeedback({
         kind: "loading",
         title: "Saving business details",
-        detail: "Amarktai is securing the business context for this workspace.",
+        detail: "Amarktai is securing the business context for your account.",
       }),
     onSuccess: () => {
       utils.companySetup.get.invalidate();
@@ -844,14 +844,14 @@ export default function Onboarding() {
         <div className="mx-auto max-w-3xl text-[#EEF5FF]">
           <Card>
             <p className="text-[10px] font-black uppercase tracking-[.16em] text-[#83AEFF]">
-              Your team workspace
+              Your team setup
             </p>
             <h1 className="mt-3 font-display text-4xl font-bold tracking-[-.06em] text-white">
               Your company setup is already here.
             </h1>
             <p className="mt-4 text-sm leading-6 text-[#B7CAE7]">
               You inherit the approved business knowledge, CRM connection,
-              available functions, mappings and workspace policies. You do not
+              available functions, mappings and team policies. You do not
               need to scan the website, reconnect the CRM or repeat company-wide
               tests.
             </p>
@@ -890,7 +890,7 @@ export default function Onboarding() {
               icon={Building2}
               number="A"
               title="Who are you setting this up for?"
-              text="Choose the experience that fits your work. You can use the same core workspace and change this later in company setup."
+              text="Choose the experience that fits your work. You can use the same core tools and change this later in company setup."
             />
             <div className="mt-6 grid gap-4 sm:grid-cols-2">
               <button
@@ -907,7 +907,7 @@ export default function Onboarding() {
                   Just me
                 </p>
                 <p className="mt-2 text-sm leading-6 text-[#A9BFDF]">
-                  A focused salesperson workspace without team administration
+                  A focused salesperson experience without team administration
                   clutter.
                 </p>
               </button>

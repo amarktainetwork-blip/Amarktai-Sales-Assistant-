@@ -42,9 +42,9 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
       <a className="amk-skip" href="#main-content">Skip to content</a>
       <header className="amk-header">
         <div className="amk-shell amk-header__inner">
-          <Link href="/" className="amk-brand" aria-label="Amarktai Network Sales Assistant home">
+          <div className="amk-brand">
             <BrandMark large />
-          </Link>
+          </div>
           <nav className="amk-nav" aria-label="Main navigation">
             {marketingNavigation.map(item => (
               <Link
@@ -58,9 +58,9 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
             ))}
           </nav>
           <div className="amk-header__actions">
-            <Link href={accountLinks.signIn} className="amk-signin">Sign in</Link>
+            <Link href={accountLinks.signIn} className="amk-signin">Sign In</Link>
             <Link href={accountLinks.getStarted} className="amk-button amk-button--primary amk-button--small">
-              Start free <ArrowRight size={15} />
+              Start Free <ArrowRight size={15} />
             </Link>
             <button
               ref={menuButton}
@@ -81,8 +81,8 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
               {marketingNavigation.map(item => (
                 <Link key={item.href} href={item.href}>{item.label}</Link>
               ))}
-              <Link href={accountLinks.signIn}>Sign in</Link>
-              <Link href={accountLinks.getStarted} className="amk-button amk-button--primary">Start free</Link>
+              <Link href={accountLinks.signIn}>Sign In</Link>
+              <Link href={accountLinks.getStarted} className="amk-button amk-button--primary">Start Free</Link>
             </div>
           </nav>
         ) : null}
@@ -94,20 +94,20 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
         <div className="amk-shell amk-footer__top">
           <div>
             <BrandMark large inverse />
-            <p className="amk-footer__statement">Sales Assistant is part of Amarktai Network.</p>
+            <p className="amk-footer__statement">Amarktai Sales Assistant is part of the Amarktai Network.</p>
             <p className="amk-footer__copy">AI products designed to remove operational friction and help people do better work.</p>
           </div>
           <nav className="amk-footer__nav" aria-label="Footer navigation">
+            <Link href="/about">About</Link>
             <Link href="/how-it-works">How it works</Link>
             <Link href="/pricing">Pricing</Link>
-            <Link href="/about">About</Link>
             <Link href="/contact">Contact</Link>
             <Link href={accountLinks.signIn}>Sign in</Link>
           </nav>
         </div>
         <div className="amk-shell amk-footer__base">
-          <p>© {new Date().getFullYear()} Amarktai Network.</p>
-          <p>Sales Assistant · South Africa</p>
+          <p>© {new Date().getFullYear()} Amarktai Sales Assistant. Part of the Amarktai Network.</p>
+          <p>Amarktai Sales Assistant · South Africa</p>
         </div>
       </footer>
     </div>
