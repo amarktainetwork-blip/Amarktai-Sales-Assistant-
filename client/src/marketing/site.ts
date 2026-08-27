@@ -1,9 +1,6 @@
 export const marketingNavigation = [
   { label: "Product", href: "/product" },
-  { label: "Teams", href: "/teams" },
-  { label: "Integrations", href: "/integrations" },
   { label: "Pricing", href: "/pricing" },
-  { label: "Contact", href: "/contact" },
 ] as const;
 
 export const accountLinks = {
@@ -16,19 +13,19 @@ export const publicPageMetadata: Record<
   { title: string; description: string }
 > = {
   "/": {
-    title: "Amarktai Sales Assistant | AI Sales Workspace",
+    title: "Amarktai Sales Assistant | Sell More. Admin Less.",
     description:
-      "Organise the sales day, prepare every conversation and keep CRM follow-up moving with Amarktai Sales Assistant.",
+      "A modern AI sales workspace that works beside your CRM to prioritise the day, prepare conversations, complete follow-up and keep the customer record accurate.",
   },
   "/product": {
     title: "Product | Amarktai Sales Assistant",
     description:
-      "Explore the connected sales workspace for next prospects, calls, follow-up, CRM administration and team visibility.",
+      "See how Amarktai turns CRM context, calls, follow-up and AI assistance into one focused sales workspace.",
   },
   "/how-it-works": {
     title: "How It Works | Amarktai Sales Assistant",
     description:
-      "See how Amarktai connects your business knowledge and CRM to a clear daily sales workflow.",
+      "See how Amarktai connects approved business knowledge and your CRM to a clear daily sales workflow.",
   },
   "/individuals": {
     title: "For Individuals | Amarktai Sales Assistant",
@@ -41,22 +38,22 @@ export const publicPageMetadata: Record<
       "Give salespeople a consistent workspace while managers see where attention and support are needed.",
   },
   "/integrations": {
-    title: "Integrations | Amarktai Sales Assistant",
+    title: "CRM Connections | Amarktai Sales Assistant",
     description:
       "Connect Amarktai to Genie, HubSpot, Salesforce, Pipedrive, Zoho CRM or another authorised web CRM.",
   },
   "/pricing": {
-    title: "Pricing | Amarktai Sales Assistant",
+    title: "Pricing in ZAR | Amarktai Sales Assistant",
     description:
-      "Compare Amarktai Sales Assistant subscriptions, included users, CRM connections and AI credits.",
+      "Simple South African Rand pricing for individuals and sales teams, with included AI credits and optional top-ups.",
   },
   "/contact": {
     title: "Contact | Amarktai Sales Assistant",
     description:
-      "Talk to Amarktai about product questions, team setup, CRM compatibility, onboarding or support.",
+      "Talk to Amarktai about team setup, CRM compatibility, onboarding or support.",
   },
   "/404": {
     title: "Page Not Found | Amarktai Sales Assistant",
-    description: "Return to the Amarktai Sales Assistant public website.",
+    description: "Return to the Amarktai Sales Assistant website.",
   },
 };
