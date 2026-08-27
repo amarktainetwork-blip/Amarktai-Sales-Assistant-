@@ -1,803 +1,175 @@
-import {
-  Activity,
-  BadgeCheck,
-  BarChart3,
-  BookOpenCheck,
-  BriefcaseBusiness,
-  Building2,
-  CalendarCheck,
-  CheckCircle2,
-  ClipboardCheck,
-  Clock3,
-  FileCheck2,
-  Headphones,
-  ListChecks,
-  Mail,
-  Map,
-  MessageCircle,
-  MessagesSquare,
-  Network,
-  PhoneCall,
-  Radar,
-  Send,
-  ShieldCheck,
-  Sparkles,
-  Target,
-  UserCheck,
-  Users,
-  Workflow,
-  Wrench,
-} from "lucide-react";
+import { ArrowRight, Check } from "lucide-react";
 import { Link } from "wouter";
-import {
-  BrowserWindow,
-  CTASection,
-  FeatureCard,
-  MiniStatus,
-  PageHero,
-  SectionHeader,
-  TickList,
-} from "./MarketingComponents";
 import { MarketingLayout } from "./MarketingLayout";
 import { accountLinks } from "./site";
-import {
-  AI_CREDIT_ECONOMICS,
-  AI_CREDIT_FEATURES,
-  PRICING_PLANS,
-  ZERO_AI_CREDIT_FEATURES,
-} from "@shared/pricing";
 
-const productFeatures = [
-  [
-    Target,
-    "Today / Next Prospect",
-    "Start with the customer, callback or task that deserves attention now—and understand why.",
-  ],
-  [
-    BookOpenCheck,
-    "Business Knowledge",
-    "Give every conversation approved context about the company, products, services and policies.",
-  ],
-  [
-    BriefcaseBusiness,
-    "Pre-call Preparation",
-    "Bring together customer history, the current task and useful talking points before the call.",
-  ],
-  [
-    Headphones,
-    "Live Call Companion",
-    "Capture consented call context, transcription and useful prompts while the conversation is happening.",
-  ],
-  [
-    Sparkles,
-    "Amarktai Assistant",
-    "Ask about the active prospect, prepare follow-up or turn a confirmed outcome into the next action.",
-  ],
-  [
-    CalendarCheck,
-    "Follow-ups",
-    "Keep callbacks, tasks and commitments visible until the work is finished.",
-  ],
-  [
-    Workflow,
-    "CRM Administration",
-    "Prepare notes, tasks, status changes and other available CRM work in the same flow.",
-  ],
-  [
-    MessagesSquare,
-    "Email, SMS and WhatsApp",
-    "Prepare and review customer communication through capabilities available in the connected CRM.",
-  ],
-  [
-    ListChecks,
-    "Tasks and Callbacks",
-    "Create, complete and revisit the work that keeps opportunities moving.",
-  ],
-  [
-    Activity,
-    "Pipeline and Opportunities",
-    "Use connected opportunity context without inventing stages or asking sellers to research twice.",
-  ],
-  [
-    Users,
-    "Team Visibility",
-    "Help managers see workload, follow-up attention and where coaching could unblock progress.",
-  ],
-  [
-    ShieldCheck,
-    "Automation and Approvals",
-    "Keep important external actions reviewable and make failures visible in the workflow.",
-  ],
-  [
-    BarChart3,
-    "Reports and Audit",
-    "Understand activity, outcomes and action history without losing the story behind the number.",
-  ],
-] as const;
-
-const journey = [
-  [
-    "01",
-    "Create a workspace",
-    "Open a secure Amarktai Sales Assistant workspace.",
-  ],
-  ["02", "Choose your setup", "Select Just me or My company / sales team."],
-  [
-    "03",
-    "Add the business",
-    "Share the company information and authorised website.",
-  ],
-  [
-    "04",
-    "Review what Amarktai learns",
-    "Confirm the products, services and facts the workspace may use.",
-  ],
-  [
-    "05",
-    "Connect the CRM",
-    "Choose the system the salesperson already works in.",
-  ],
-  [
-    "06",
-    "Test the connection",
-    "Confirm the available customer, task and communication workflows.",
-  ],
-  [
-    "07",
-    "Start with Today",
-    "See the next priority instead of an empty technical dashboard.",
-  ],
-  [
-    "08",
-    "Prepare the prospect",
-    "Open the customer context and a concise pre-call brief.",
-  ],
-  [
-    "09",
-    "Call and follow up",
-    "Capture the outcome and prepare the appropriate next action.",
-  ],
-  [
-    "10",
-    "Keep the CRM updated",
-    "Review the administration and move to the next prospect.",
-  ],
-] as const;
-
-const individualBenefits = [
-  [
-    Map,
-    "Your day organised",
-    "See callbacks, follow-ups and the next prospect in one focused view.",
-  ],
-  [
-    Target,
-    "Next prospect",
-    "Understand who to contact next and why the conversation matters.",
-  ],
-  [
-    BriefcaseBusiness,
-    "Pre-call preparation",
-    "Arrive with customer history and relevant company information already assembled.",
-  ],
-  [
-    Headphones,
-    "Call assistance",
-    "Capture notes and use consented transcription and assistance where enabled.",
-  ],
-  [
-    Send,
-    "Follow-up",
-    "Turn the confirmed outcome into a clear next task or message.",
-  ],
-  [
-    ClipboardCheck,
-    "CRM administration",
-    "Keep notes, tasks and status work connected to the conversation.",
-  ],
-  [
-    BarChart3,
-    "Personal visibility",
-    "See your activity, outcomes and open commitments without management clutter.",
-  ],
-] as const;
-
-const teamBenefits = [
-  [
-    BookOpenCheck,
-    "Shared business knowledge",
-    "Give every salesperson the same approved product and company context.",
-  ],
-  [
-    UserCheck,
-    "Team onboarding",
-    "Guide new team members into one consistent way of preparing and following through.",
-  ],
-  [
-    Network,
-    "CRM owner mappings",
-    "Connect customer ownership to the people responsible for the work.",
-  ],
-  [
-    Workflow,
-    "One sales workflow",
-    "Use the same rhythm from Today to call closeout across the team.",
-  ],
-  [
-    Clock3,
-    "Follow-up visibility",
-    "See overdue work and commitments that need attention.",
-  ],
-  [
-    Radar,
-    "Manager overview",
-    "Focus on exceptions and where support will make a difference.",
-  ],
-  [
-    Headphones,
-    "Coaching and QA",
-    "Review appropriate call evidence and help salespeople improve.",
-  ],
-  [
-    ShieldCheck,
-    "Approvals",
-    "Keep controlled actions and important decisions visible.",
-  ],
-  [
-    BarChart3,
-    "Reporting",
-    "Understand workload, progress and outcomes without losing operating context.",
-  ],
-] as const;
-
-const integrations = [
-  [
-    "GE",
-    "Genie",
-    "Available browser connector",
-    "Guided sign-in, learning, testing and evidence-based readiness for authorised Genie workflows.",
-  ],
-  [
-    "HS",
-    "HubSpot",
-    "Available connector",
-    "Connect supported HubSpot customer, task and opportunity context when OAuth is configured.",
-  ],
-  [
-    "SF",
-    "Salesforce",
-    "Available connector",
-    "Use supported Salesforce records and workflows through an authorised connection.",
-  ],
-  [
-    "PD",
-    "Pipedrive",
-    "Available connector",
-    "Bring supported people, activities and deals into the daily sales workflow.",
-  ],
-  [
-    "ZO",
-    "Zoho CRM",
-    "Available connector",
-    "Connect supported contacts, tasks and deals through an authorised Zoho CRM setup.",
-  ],
-  [
-    "+",
-    "Other CRM",
-    "Compatibility review required",
-    "Set up a permitted web CRM through the controlled browser connection where suitable.",
-  ],
-] as const;
-
-function Preview({
+function PageHero({
+  eyebrow,
   title,
-  items,
+  accent,
+  copy,
+  image,
+  alt,
+  primary = "Start free",
+  primaryHref = accountLinks.getStarted,
 }: {
+  eyebrow: string;
   title: string;
-  items: Array<[string, string]>;
+  accent?: string;
+  copy: string;
+  image: string;
+  alt: string;
+  primary?: string;
+  primaryHref?: string;
 }) {
   return (
-    <BrowserWindow label={title}>
-      <div className="marketing-preview-head">
+    <section className="site-page-hero">
+      <div className="site-shell site-page-hero__grid">
         <div>
-          <small>Sales workspace</small>
-          <strong>{title}</strong>
+          <p className="site-eyebrow">{eyebrow}</p>
+          <h1>{title}<br/>{accent ? <span>{accent}</span> : null}</h1>
+          <p className="site-lead">{copy}</p>
+          <div className="site-actions">
+            <Link href={primaryHref} className="site-button site-button--primary">{primary} <ArrowRight size={16}/></Link>
+            <Link href="/contact" className="site-button site-button--secondary">Talk to us</Link>
+          </div>
         </div>
-        <span>Ready</span>
+        <figure className="site-page-hero__art"><img src={image} alt={alt}/></figure>
       </div>
-      {items.map(([label, copy], index) => (
-        <MiniStatus
-          key={label}
-          active={index === 0}
-          label={label}
-          copy={copy}
-        />
+    </section>
+  );
+}
+
+function Rail({ items }: { items: ReadonlyArray<readonly [string,string]> }) {
+  return (
+    <div className="site-rail">
+      {items.map(([title,copy],index) => (
+        <div className="site-rail__row" key={title}>
+          <span>{String(index+1).padStart(2,"0")}</span><h3>{title}</h3><p>{copy}</p>
+        </div>
       ))}
-    </BrowserWindow>
+    </div>
+  );
+}
+
+function FinalCTA({ title, copy }: { title: string; copy: string }) {
+  return (
+    <section className="site-final">
+      <div className="site-shell site-final__inner">
+        <div><p className="site-eyebrow">READY WHEN YOU ARE</p><h2>{title}</h2></div>
+        <div className="site-final__action"><p>{copy}</p><Link href={accountLinks.getStarted} className="site-button site-button--primary">Create your workspace <ArrowRight size={16}/></Link></div>
+      </div>
+    </section>
   );
 }
 
 export function ProductPage() {
+  const capabilities = [
+    ["Today / next best action", "A focused starting point built from due work, stale opportunities, callbacks and CRM ownership instead of an empty analytics dashboard."],
+    ["Customer context", "See the customer record, recent activity, open commitments and opportunity context without rebuilding the story by hand."],
+    ["Amarktai Assistant", "Ask natural-language sales questions, prepare work and keep approved business context close to the customer you are working on."],
+    ["Live calls", "Prepare the conversation, use consented transcription and prompts where enabled, then turn the confirmed outcome into follow-through."],
+    ["CRM actions", "Prepare notes, tasks, callbacks, opportunity updates and other proven CRM operations through controlled, auditable workflows."],
+    ["Readback and audit", "Important writes are checked against the CRM after execution. Failures stay visible instead of being called success."],
+    ["Company intelligence", "The first setup can use GenX to reason across authorised website evidence before facts are approved for sales use."],
+    ["Manager visibility", "Team work, exceptions and follow-up attention can be viewed without exposing every salesperson's private Assistant conversation."],
+  ] as const;
   return (
     <MarketingLayout>
       <PageHero
-        eyebrow="The complete sales workspace"
-        title={
-          <>
-            Everything the sales day needs. <em>In one flow.</em>
-          </>
-        }
-        copy="From the first priority to the final follow-up, Amarktai keeps customer context, conversations and CRM administration connected."
-        secondary="See How It Works"
-        secondaryHref="/how-it-works"
-      >
-        <Preview
-          title="Product overview"
-          items={[
-            ["Today", "The next priority is clear"],
-            ["Calls", "Context and closeout stay connected"],
-            ["Assistant", "Ask from approved working context"],
-            ["Follow-up", "Review and finish the work"],
-          ]}
-        />
-      </PageHero>
-      <section className="marketing-section marketing-section--raised">
-        <div className="marketing-container">
-          <SectionHeader
-            align="center"
-            eyebrow="Product overview"
-            title="Useful at every point in the sales day."
-            copy="Each capability answers a practical question: what should I do, what do I need to know, and what must happen next?"
-          />
-          <div className="marketing-grid marketing-grid--3">
-            {productFeatures.map(([icon, title, copy]) => (
-              <FeatureCard key={title} icon={icon} title={title} copy={copy} />
-            ))}
-          </div>
+        eyebrow="THE PRODUCT"
+        title="A sales operating layer"
+        accent="around the CRM you already trust."
+        copy="Amarktai connects the daily jobs that usually live in separate tabs: customer context, priorities, calls, follow-up, CRM administration, business knowledge and manager visibility."
+        image="/images/site-hero.svg"
+        alt="Salesperson working with an AI assistant beside their existing sales systems"
+      />
+      <section className="site-quote"><div className="site-shell site-quote__inner"><small>THE PRINCIPLE</small><p>The salesperson should not have to become a CRM administrator just to have a good sales day.</p></div></section>
+      <section className="site-section">
+        <div className="site-shell">
+          <div className="site-section__intro"><div><p className="site-eyebrow">ONE WORKING RHYTHM</p><h2>From “what should I do?” to a verified next step.</h2></div><div className="site-section__copy"><p>Amarktai is not a replacement CRM and it is not a collection of disconnected AI tools. The product is designed around the salesperson's sequence of work.</p><p>Every capability should either help the person understand what matters, have a better conversation, complete the follow-through or keep the system of record accurate.</p></div></div>
+          <Rail items={capabilities}/>
         </div>
       </section>
-      <CTASection
-        title="Bring the whole sales day into focus."
-        copy="Start with one salesperson or set up a shared workspace for the team."
-      />
+      <section className="site-section site-section--cloud"><div className="site-shell site-split"><div className="site-copy"><p className="site-eyebrow">THE ASSISTANT</p><h2>Natural language on top of governed CRM work.</h2><p>The Assistant can answer safe CRM questions, prepare work and move into controlled actions. It does not get to invent a successful result: important writes require execution evidence and readback.</p><ul className="site-checks"><li><Check size={16}/> Ask about customers, opportunities, tasks and recent work.</li><li><Check size={16}/> Prepare calls, notes, callbacks and follow-up.</li><li><Check size={16}/> Keep risky or external actions reviewable.</li></ul></div><figure className="site-visual"><img src="/images/site-intelligence.svg" alt="Abstract illustration of AI reasoning and connected business context"/></figure></div></section>
+      <FinalCTA title="Give the sales day one dependable workspace." copy="Start with one salesperson or build a shared company workspace with personal user accounts."/>
     </MarketingLayout>
   );
 }
 
 export function HowItWorksPage() {
+  const setup = [
+    ["Create the Amarktai account", "Every person has their own login. A company does not share one Sales Assistant account across the team."],
+    ["Choose individual or company setup", "An individual supplies their own business context. A company owner or manager establishes the shared company setup."],
+    ["Learn the business", "The authorised website can be crawled, reasoned over by GenX and converted into evidence-backed company intelligence for review."],
+    ["Approve company knowledge", "Own offerings, policies and trusted facts are approved. Conflicts and comparison content stay visible for review."],
+    ["Connect the CRM", "The company defines the CRM connection. Each salesperson still uses their own CRM identity and credentials where the system requires it."],
+    ["Prove the capabilities", "Amarktai discovers and tests what the connected CRM can really do instead of assuming every connector supports every operation."],
+    ["Start with Today", "The salesperson sees priorities, customers, calls and commitments that need attention now."],
+    ["Work and verify", "Calls, follow-up and CRM actions remain auditable, and important writes are checked before completion is claimed."],
+  ] as const;
   return (
     <MarketingLayout>
-      <PageHero
-        eyebrow="Easy from the first login"
-        title={
-          <>
-            From setup to selling, <em>step by step.</em>
-          </>
-        }
-        copy="Amarktai guides the business from a secure workspace and approved company knowledge into a clear daily sales workflow."
-        secondary="Explore Product"
-        secondaryHref="/product"
-      >
-        <Preview
-          title="Workspace readiness"
-          items={[
-            ["Business", "Company information added"],
-            ["Knowledge", "Review and approve discoveries"],
-            ["CRM", "Connect and test workflows"],
-            ["Today", "Start selling"],
-          ]}
-        />
-      </PageHero>
-      <section className="marketing-section marketing-section--raised">
-        <div className="marketing-container">
-          <SectionHeader
-            eyebrow="The full journey"
-            title="Ten clear steps. No technical training required."
-            copy="Salespeople see familiar language and useful next steps while connection and safety details stay underneath."
-          />
-          <div className="marketing-steps-large">
-            {journey.map(([number, title, copy]) => (
-              <article className="marketing-step-large" key={number}>
-                <span>{number}</span>
-                <div>
-                  <h3>{title}</h3>
-                  <p>{copy}</p>
-                </div>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-      <CTASection
-        title="Start with the business. End with a clearer sales day."
-        copy="Choose an individual or team workspace and let the guided setup lead the way."
-      />
+      <PageHero eyebrow="HOW IT WORKS" title="Set up once." accent="Then work from the sales day." copy="Amarktai separates shared company setup from each salesperson's own account, CRM identity and private working context." image="/images/site-intelligence.svg" alt="Illustration of website intelligence becoming structured company knowledge"/>
+      <section className="site-section"><div className="site-shell"><div className="site-section__intro"><div><p className="site-eyebrow">FROM ZERO TO USEFUL</p><h2>A guided setup with clear boundaries.</h2></div><div className="site-section__copy"><p>Company knowledge should be shared. Passwords, personal CRM sessions and private Assistant conversations should not be.</p><p>The setup flow is built around that distinction from the beginning.</p></div></div><Rail items={setup}/></div></section>
+      <section className="site-section site-section--cream"><div className="site-shell site-split site-split--reverse"><figure className="site-visual"><img src="/images/site-calls.svg" alt="Illustration of a salesperson using the live call assistant"/></figure><div className="site-copy"><p className="site-eyebrow">THE DAILY LOOP</p><h2>Prioritise. Prepare. Talk. Follow through. Verify.</h2><p>Once the setup is live, the product becomes much simpler. Start from Today, prepare the active customer, use the Assistant or call companion where useful, confirm the outcome and let the CRM record stay current.</p></div></div></section>
+      <FinalCTA title="Do the setup once. Make the sales day easier every day after." copy="Start with your own workspace or bring the company through the guided setup."/>
     </MarketingLayout>
   );
 }
 
 export function IndividualsPage() {
+  const benefits = [
+    ["Know what needs attention", "A single Today view keeps callbacks, overdue work and the next prospect from disappearing into the CRM."],
+    ["Arrive prepared", "Bring customer history and approved business context together before the call instead of searching for it live."],
+    ["Use the Assistant privately", "Your working conversation, reminders and personal context stay attached to your own Amarktai account."],
+    ["Finish the admin", "Turn a confirmed outcome into the note, callback, task or opportunity update that should happen next."],
+    ["Keep the record honest", "The CRM remains the system of record, with readback for important writes."],
+  ] as const;
   return (
     <MarketingLayout>
-      <PageHero
-        eyebrow="For individual salespeople"
-        title={
-          <>
-            Spend more time selling. <em>Remember less.</em>
-          </>
-        }
-        copy="A focused workspace for independent salespeople, consultants, small business owners and solo operators who need the next action to stay clear."
-        primary="Get Started"
-        secondary="See the Product"
-        secondaryHref="/product"
-      >
-        <Preview
-          title="My sales day"
-          items={[
-            ["Next prospect", "A customer is ready for follow-up"],
-            ["Before the call", "Context and objective prepared"],
-            ["After the call", "Outcome and next step confirmed"],
-            ["Personal results", "Open commitments stay visible"],
-          ]}
-        />
-      </PageHero>
-      <section className="marketing-section marketing-section--raised">
-        <div className="marketing-container">
-          <SectionHeader
-            align="center"
-            eyebrow="Focused on your work"
-            title="Everything you need. None of the management clutter."
-            copy="Use Amarktai as a calm Sales Assistant around the selling you already do."
-          />
-          <div className="marketing-grid marketing-grid--3">
-            {individualBenefits.map(([icon, title, copy]) => (
-              <FeatureCard key={title} icon={icon} title={title} copy={copy} />
-            ))}
-          </div>
-        </div>
-      </section>
-      <section className="marketing-section">
-        <div className="marketing-container marketing-split">
-          <div>
-            <SectionHeader
-              eyebrow="Keep momentum"
-              title="Move from conversation to commitment without losing the thread."
-              copy="Customer context, the call outcome and follow-up stay part of the same sales story."
-            />
-            <TickList
-              items={[
-                "One clear priority at a time",
-                "Approved business context close at hand",
-                "Visible follow-up until it is done",
-                "Personal reporting without team administration",
-              ]}
-            />
-          </div>
-          <div className="marketing-split__panel">
-            <div className="marketing-knowledge-stack">
-              <article>
-                <small>Now</small>
-                <strong>Prepare tomorrow's product consultation</strong>
-              </article>
-              <article>
-                <small>Waiting for review</small>
-                <strong>Follow-up email draft</strong>
-              </article>
-              <article>
-                <small>Friday</small>
-                <strong>Callback with confirmed context</strong>
-              </article>
-            </div>
-          </div>
-        </div>
-      </section>
-      <CTASection
-        title="Give your sales day one dependable home."
-        copy="Create an individual workspace and start with the work that matters next."
-        secondary="Contact Us"
-      />
+      <PageHero eyebrow="FOR INDIVIDUAL SALESPEOPLE" title="A calmer sales day." accent="Without another system to maintain." copy="For independent salespeople, consultants, founders and solo operators who need customer context, calls and follow-up to stay connected." image="/images/site-calls.svg" alt="Illustration of an individual salesperson working with a call assistant"/>
+      <section className="site-section"><div className="site-shell site-section__intro"><div><p className="site-eyebrow">BUILT FOR THE PERSON DOING THE SELLING</p><h2>Less remembering. Less tab-hopping. More customer time.</h2></div><div className="site-section__copy"><p>Amarktai keeps the active customer, the business context and the next commitment close together. You do not need team-management screens or a second CRM.</p><p>Start with the work that matters now and move through the conversation without losing the follow-through.</p></div></div><Rail items={benefits}/></div></section>
+      <section className="site-section site-section--cloud"><div className="site-shell site-split"><div className="site-copy"><p className="site-eyebrow">YOUR DATA, YOUR WORKSPACE</p><h2>Your Amarktai login and CRM identity belong to you.</h2><p>Even inside a company, individual work remains tied to the person doing it. That means personal CRM credentials where required, private Assistant context and a clear record of the work you performed.</p></div><figure className="site-visual"><img src="/images/site-hero.svg" alt="Illustration of a salesperson with a personal AI workspace"/></figure></div></section>
+      <FinalCTA title="Give your sales day one place to start." copy="Create an individual workspace and connect the CRM you already use."/>
     </MarketingLayout>
   );
 }
 
 export function TeamsPage() {
+  const team = [
+    ["Shared company intelligence", "Approved products, services, policies and company context are learned once and shared appropriately across the organisation."],
+    ["Personal salesperson accounts", "Every team member has their own Amarktai login and personal working context rather than one shared company session."],
+    ["Personal CRM identity", "The CRM connection belongs to the organisation, but individual identity and credentials remain attached to the person where the CRM requires it."],
+    ["Consistent sales rhythm", "Today, preparation, calls, follow-through and CRM readback give the team one operating pattern without forcing identical conversations."],
+    ["Manager attention view", "Managers can see workload, overdue follow-up, exceptions and performance context without reading every salesperson's private Assistant chat."],
+    ["Governance and audit", "Controlled actions, approvals, evidence and failures remain visible instead of disappearing into automation."],
+  ] as const;
   return (
     <MarketingLayout>
-      <PageHero
-        eyebrow="For sales teams and companies"
-        title={
-          <>
-            One consistent workspace. <em>Better team visibility.</em>
-          </>
-        }
-        copy="Give every salesperson approved company context and a clear workflow while managers see where attention, coaching and follow-through are needed."
-        primary="Set up your team"
-        secondary="How It Works"
-        secondaryHref="/how-it-works"
-      >
-        <Preview
-          title="Team attention"
-          items={[
-            ["Follow-up visibility", "Three commitments due today"],
-            ["Workload", "One salesperson needs support"],
-            ["Quality review", "Two completed calls ready"],
-            ["CRM health", "Owner mapping requires attention"],
-          ]}
-        />
-      </PageHero>
-      <section className="marketing-section marketing-section--raised">
-        <div className="marketing-container">
-          <SectionHeader
-            align="center"
-            eyebrow="One core workspace"
-            title="Consistent for the team. Useful for the manager."
-            copy="Individuals stay focused on selling while managers get the visibility needed to support the operating rhythm."
-          />
-          <div className="marketing-grid marketing-grid--3">
-            {teamBenefits.map(([icon, title, copy]) => (
-              <FeatureCard key={title} icon={icon} title={title} copy={copy} />
-            ))}
-          </div>
-        </div>
-      </section>
-      <section className="marketing-section">
-        <div className="marketing-container marketing-split">
-          <div className="marketing-split__panel">
-            <div className="marketing-knowledge-stack">
-              <article>
-                <small>Shared context</small>
-                <strong>Approved product and service knowledge</strong>
-              </article>
-              <article>
-                <small>Manager attention</small>
-                <strong>Overdue work and stalled follow-up</strong>
-              </article>
-              <article>
-                <small>Assurance</small>
-                <strong>Approvals, evidence and visible outcomes</strong>
-              </article>
-            </div>
-          </div>
-          <div>
-            <SectionHeader
-              eyebrow="Support, not surveillance"
-              title="Help managers focus on the moments that need them."
-              copy="Amarktai surfaces attention and operating evidence without pretending that raw activity is the same as good selling."
-            />
-            <TickList
-              items={[
-                "Workload and follow-up exceptions",
-                "Appropriate coaching and quality review",
-                "Pipeline and CRM attention",
-                "Clear review queues and reports",
-              ]}
-            />
-          </div>
-        </div>
-      </section>
-      <CTASection
-        title="Give the team one clear way to prepare and follow through."
-        copy="Set up the company workspace, connect the CRM and bring the sales rhythm together."
-        primary="Set up your team"
-      />
+      <PageHero eyebrow="FOR SALES TEAMS" title="One company setup." accent="Personal workspaces for every seller." copy="Give the team approved company context and a consistent sales operating rhythm without shared passwords or a shared AI conversation." image="/images/site-team.svg" alt="Illustration of a sales team connected through shared company context" primary="Set up a team"/>
+      <section className="site-quote"><div className="site-shell site-quote__inner"><small>TEAM DESIGN</small><p>Share what should be shared. Keep the salesperson's login, CRM identity and private working context personal.</p></div></section>
+      <section className="site-section"><div className="site-shell"><div className="site-section__intro"><div><p className="site-eyebrow">THE TEAM MODEL</p><h2>Consistency without turning sales into a factory line.</h2></div><div className="site-section__copy"><p>Amarktai gives the company one source of approved knowledge and operating policy while allowing each salesperson to work through their own customers and conversations.</p><p>Managers get visibility into where attention is needed; salespeople keep a workspace that is actually theirs.</p></div></div><Rail items={team}/></div></section>
+      <FinalCTA title="Set up the company once. Give every salesperson their own workspace." copy="Talk to us about team onboarding, CRM compatibility and the right plan for your sales organisation."/>
     </MarketingLayout>
   );
 }
 
 export function IntegrationsPage() {
+  const integrations = [
+    ["Genie", "Browser CRM commissioning", "The first live customer path. Guided authentication, retained browser session, discovered operations and proof-based readiness."],
+    ["HubSpot", "Native OAuth connector", "Contacts, companies, opportunities, tasks and activities through supported HubSpot scopes when OAuth is configured."],
+    ["Salesforce", "Native OAuth connector", "Supported contacts, accounts, opportunities, tasks and activities through the connected Salesforce organisation."],
+    ["Pipedrive", "Native OAuth connector", "Supported people, organisations, deals, activities and user context through an authorised Pipedrive connection."],
+    ["Zoho CRM", "Native OAuth connector", "Supported contacts, tasks, deals and current-user context through authorised Zoho CRM access."],
+    ["Authorised browser CRM", "Compatibility-led connector", "Suitable web CRMs can use the controlled browser runtime where the workflows can be learned, tested and safely verified."],
+  ] as const;
   return (
     <MarketingLayout>
-      <PageHero
-        eyebrow="Connect the system you already use"
-        title={
-          <>
-            Keep your CRM. <em>Add a clearer sales day.</em>
-          </>
-        }
-        copy="Amarktai brings authorised customer context and available sales workflows into one workspace without asking the business to replace its system."
-        primary="Get Started"
-        secondary="Contact about compatibility"
-        secondaryHref="/contact"
-      >
-        <Preview
-          title="Connection readiness"
-          items={[
-            ["Connect once", "Authorise the selected CRM"],
-            ["Test", "Confirm available workflows"],
-            ["Ready", "Use proven capabilities in the sales day"],
-            ["Stay informed", "See when a connection needs attention"],
-          ]}
-        />
-      </PageHero>
-      <section className="marketing-section marketing-section--raised">
-        <div className="marketing-container">
-          <SectionHeader
-            align="center"
-            eyebrow="CRM connections"
-            title="A familiar system underneath. A focused workspace on top."
-            copy="Every connection is configured and tested for the functions the CRM actually makes available."
-          />
-          <div className="marketing-grid marketing-grid--3">
-            {integrations.map(([initials, name, kind, copy]) => (
-              <article className="marketing-card" key={name}>
-                <span className="marketing-icon font-display text-xs font-bold">
-                  {initials}
-                </span>
-                <p className="marketing-card__detail">{kind}</p>
-                <h3>{name}</h3>
-                <p>{copy}</p>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-      <section className="marketing-section">
-        <div className="marketing-container">
-          <SectionHeader
-            eyebrow="Communication through the connected system"
-            title="Use the channels available in your verified setup."
-            copy="Email, SMS, WhatsApp, calling and calendar actions can be prepared where the selected CRM and configuration support them."
-          />
-          <div className="marketing-grid marketing-grid--4">
-            <FeatureCard
-              icon={Mail}
-              title="Email"
-              copy="Prepare and review CRM-native email where available."
-            />
-            <FeatureCard
-              icon={MessageCircle}
-              title="SMS and WhatsApp"
-              copy="Use supported messaging channels through the connected CRM."
-            />
-            <FeatureCard
-              icon={PhoneCall}
-              title="Calls"
-              copy="Open the available dialler or call flow after it passes setup."
-            />
-            <FeatureCard
-              icon={CalendarCheck}
-              title="Calendar"
-              copy="Prepare supported appointment actions where configured."
-            />
-          </div>
-          <p className="mt-7 text-sm font-bold text-[#92a9c8]">
-            Available capabilities depend on the connected CRM and verified
-            setup.
-          </p>
-        </div>
-      </section>
-      <CTASection
-        title="Not sure whether your CRM fits?"
-        copy="Tell us what your team uses and which sales workflows matter. We will discuss the appropriate setup path."
-        primary="Contact Us"
-        primaryHref="/contact"
-        secondary="Get Started"
-        secondaryHref={accountLinks.getStarted}
-      />
-    </MarketingLayout>
-  );
-}
-
-export function PricingPage() {
-  return (
-    <MarketingLayout>
-      <PageHero
-        eyebrow="Plan structure"
-        title={
-          <>
-            Simple plans for individuals and <em>sales teams.</em>
-          </>
-        }
-        copy="Choose a monthly subscription for one salesperson or a team. Paid self-service checkout is not available yet; create a workspace for the trial or contact sales for assisted setup."
-        primary="Contact Us"
-        primaryHref="/contact"
-        secondary="Get Started"
-        secondaryHref={accountLinks.getStarted}
-      >
-        <Preview
-          title="Plan fit"
-          items={[
-            ["Trial", "$0 · 50 AI credits"],
-            ["Starter", "$29 · 500 AI credits"],
-            ["Professional", "$79 · up to 3 users"],
-            ["Team", "$199 · up to 10 users"],
-          ]}
-        />
-      </PageHero>
-      <section className="marketing-section marketing-section--raised">
-        <div className="marketing-container">
-          <SectionHeader
-            align="center"
-            eyebrow="Plans for real sales work"
-            title="One source of truth for every plan."
-            copy="Every subscription includes deterministic CRM work without AI-credit charges. AI credits are used only for language, transcript and reasoning features."
-          />
-          <div className="marketing-pricing-grid">
-            {PRICING_PLANS.map(plan => (
-              <article className="marketing-plan" key={plan.name}>
-                <span className="marketing-plan__status">
-                  {plan.monthlyUsdCents === 0
-                    ? "Trial"
-                    : "Monthly subscription"}
-                </span>
-                <h2>{plan.name}</h2>
-                <p className="marketing-plan__price">
-                  <strong>${plan.monthlyUsdCents / 100}</strong> / month
-                </p>
-                <p className="marketing-plan__audience">
-                  {plan.includedUsers === 1
-                    ? "1 included user"
-                    : `Up to ${plan.includedUsers} included users`}{" "}
-                  ·{" "}
-                  {plan.crmConnections === "launch-crms"
-                    ? "Available launch CRM connectors"
-                    : `${plan.crmConnections} CRM connection`}
-                </p>
-                <p className="marketing-plan__summary">
-                  {plan.includedAiCredits.toLocaleString()} included AI credits
-                  each month
-                  {plan.managementIntelligence
-                    ? " · management intelligence included"
-                    : ""}
-                  .
-                </p>
-                <TickList items={plan.features} />
-                <Link
-                  href={
-                    plan.key === "team" ? "/contact" : accountLinks.getStarted
-                  }
-                  className="marketing-button marketing-button--secondary"
-                >
-                  {plan.key === "trial"
-                    ? "Start trial"
-                    : plan.key === "team"
-                      ? "Contact sales"
-                      : "Create workspace"}
-                </Link>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-      <section className="marketing-section">
-        <div className="marketing-container">
-          <SectionHeader
-            eyebrow="How AI credits work"
-            title="Routine CRM work does not consume AI credits."
-            copy={`Add 1,000 AI credits for $${AI_CREDIT_ECONOMICS.retailPackUsdCents / 100}. Top-ups and paid subscriptions are currently arranged with sales; the site does not claim an automated checkout.`}
-          />
-          <div className="marketing-grid marketing-grid--4">
-            <FeatureCard
-              icon={Users}
-              title="Included without AI credits"
-              copy={ZERO_AI_CREDIT_FEATURES.slice(0, 2).join(", ") + "."}
-            />
-            <FeatureCard
-              icon={Network}
-              title="Deterministic sales work"
-              copy={ZERO_AI_CREDIT_FEATURES.slice(2, 5).join(", ") + "."}
-            />
-            <FeatureCard
-              icon={Wrench}
-              title="Uses AI credits"
-              copy={AI_CREDIT_FEATURES.slice(0, 3).join(", ") + "."}
-            />
-            <FeatureCard
-              icon={Sparkles}
-              title="Advanced AI assistance"
-              copy={AI_CREDIT_FEATURES.slice(3).join(", ") + "."}
-            />
-          </div>
-        </div>
-      </section>
-      <CTASection
-        title="Start with a workspace, then connect the CRM you use."
-        copy="The trial can be created now. Contact sales for a paid subscription, team rollout or CRM compatibility review."
-        primary="Contact Us"
-        primaryHref="/contact"
-        secondary="Get Started"
-        secondaryHref={accountLinks.getStarted}
-      />
+      <PageHero eyebrow="CRM CONNECTIONS" title="Keep the CRM." accent="Add a sales operating layer around it." copy="Amarktai is designed to sit beside the system of record, discover the operations that are actually available and only call a capability ready after it has been tested." image="/images/site-intelligence.svg" alt="Illustration of connected systems and structured business data" primary="Discuss your CRM" primaryHref="/contact"/>
+      <section className="site-section"><div className="site-shell"><div className="site-section__intro"><div><p className="site-eyebrow">PROOF BEFORE CLAIMS</p><h2>A connector existing in code is not the same as a live CRM being proven.</h2></div><div className="site-section__copy"><p>Amarktai tracks readiness at the connected-system level. Authentication, reads, writes, tasks, notes, pipeline operations and communication capabilities are verified against the actual CRM instead of being assumed from a generic connector list.</p></div></div><div className="site-crm-list">{integrations.map(([name,status,copy])=><div className="site-crm" key={name}><strong>{name}</strong><span>{status}</span><p>{copy}</p></div>)}</div></div></section>
+      <section className="site-section site-section--mint"><div className="site-shell site-split"><div className="site-copy"><p className="site-eyebrow">YOUR CRM STAYS THE SOURCE OF TRUTH</p><h2>AI can prepare the work. The record still matters.</h2><p>Important CRM actions are executed through the connected adapter and then checked where a deterministic post-condition exists. A failed readback is not presented as a successful update.</p><ul className="site-checks"><li><Check size={16}/> Connection-specific capability discovery.</li><li><Check size={16}/> Controlled writes and approvals where appropriate.</li><li><Check size={16}/> Readback and retained evidence for important operations.</li></ul></div><figure className="site-visual"><img src="/images/site-hero.svg" alt="Illustration of a salesperson working beside existing business systems"/></figure></div></section>
+      <FinalCTA title="Bring the CRM you already trust." copy="Tell us which CRM your team uses and we can confirm the appropriate connection path."/>
     </MarketingLayout>
   );
 }
