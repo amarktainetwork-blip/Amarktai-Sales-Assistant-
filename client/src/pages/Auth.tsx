@@ -1,32 +1,21 @@
 import { BrandMark } from "@/components/BrandMark";
 import { startLogin } from "@/const";
 import { trpc } from "@/lib/trpc";
-import {
-  ArrowRight,
-  CheckCircle2,
-  ChevronLeft,
-  LockKeyhole,
-  ShieldCheck,
-  UserPlus,
-} from "lucide-react";
+import { ArrowRight, CheckCircle2, ChevronLeft, ShieldCheck, UserPlus } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation } from "wouter";
+import "./final-auth.css";
 
-const securityImage = "/assets/amarktai-sales-security.svg";
+const AUTH_PHOTO = "https://images.pexels.com/photos/8837770/pexels-photo-8837770.jpeg?cs=srgb&dl=pexels-yankrukov-8837770.jpg&fm=jpg";
 
 export default function Auth() {
   const mode = trpc.auth.mode.useQuery();
-  const invite =
-    typeof window !== "undefined"
-      ? new URLSearchParams(window.location.search).get("invite")
-      : null;
-  const query =
-    typeof window !== "undefined"
-      ? new URLSearchParams(window.location.search)
-      : new URLSearchParams();
+  const query = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  const invite = query.get("invite");
   const reset = query.get("reset");
   const authView = query.get("mode");
+
   const localPanel = reset ? (
     <ResetPasswordForm token={reset} />
   ) : authView === "register" ? (
@@ -36,69 +25,51 @@ export default function Auth() {
   ) : (
     <LocalLoginForm />
   );
+
+  const title = reset
+    ? "Choose a new password."
+    : authView === "register"
+      ? "Create your Sales Assistant workspace."
+      : authView === "forgot"
+        ? "Recover your account."
+        : "Welcome back.";
+  const eyebrow = authView === "register" ? "CREATE WORKSPACE" : authView === "forgot" || reset ? "ACCOUNT RECOVERY" : "SECURE SIGN IN";
+
   return (
-    <main className="relative grid min-h-screen overflow-hidden bg-[#071326] text-[#F5F7FB] lg:grid-cols-[1.03fr_.97fr]">
-      <div className="pointer-events-none absolute -left-40 top-24 size-[600px] rounded-full bg-[#1B64F2]/20 blur-[130px]" />
-      <section className="relative z-10 flex min-h-[500px] flex-col border-b border-white/10 p-6 sm:p-10 lg:min-h-screen lg:border-b-0 lg:border-r lg:border-white/10 lg:p-14">
-        <div className="flex items-center justify-between">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-1 text-sm font-bold text-[#A9BFDF] transition hover:text-white"
-          >
-            <ChevronLeft size={17} />
-            Back to site
-          </Link>
-          <BrandMark />
-        </div>
-        <div className="mt-auto max-w-xl pt-24 lg:pt-0">
-          <p className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[.15em] text-[#8CB7FF]">
-            <ShieldCheck size={14} />
-            Secure workspace access
-          </p>
-          <h1 className="mt-4 font-display text-5xl font-bold leading-[.86] tracking-[-.08em] sm:text-7xl">
-            Your sales workspace, protected.
-          </h1>
-          <p className="mt-6 max-w-lg text-base leading-7 text-[#A9BFDF]">
-            Amarktai keeps customer context, review decisions and sales activity
-            behind authenticated access and a second verification layer.
-          </p>
-          <div className="mt-8 grid gap-3 text-sm font-semibold text-[#C8D8F2]">
-            <span className="flex items-center gap-2">
-              <CheckCircle2 className="size-4 text-[#70A2FF]" />
-              Sales data remains access controlled.
-            </span>
-            <span className="flex items-center gap-2">
-              <CheckCircle2 className="size-4 text-[#70A2FF]" />
-              Every approved action keeps a clear history.
-            </span>
+    <main className="amk-auth">
+      <section className="amk-auth__visual">
+        <img src={AUTH_PHOTO} alt="Sales professional working in a modern office" />
+        <div className="amk-auth__shade" />
+        <div className="amk-auth__visual-inner">
+          <div className="amk-auth__topline">
+            <Link href="/" className="amk-auth__back"><ChevronLeft size={16}/> Back to website</Link>
+            <BrandMark inverse />
+          </div>
+          <div className="amk-auth__message">
+            <p className="amk-auth__eyebrow"><ShieldCheck size={15}/> AMARKTAI NETWORK · SALES ASSISTANT</p>
+            <h1>Your customer context.<br/>Your sales workspace.</h1>
+            <p>Secure access to the sales day, company knowledge, CRM context, calls and follow-through.</p>
+            <div className="amk-auth__proof">
+              <span><CheckCircle2 size={16}/> Personal user account</span>
+              <span><CheckCircle2 size={16}/> Second-factor verification</span>
+              <span><CheckCircle2 size={16}/> CRM credentials stay server-side</span>
+            </div>
           </div>
         </div>
-        <div className="pointer-events-none absolute bottom-8 right-[-3rem] hidden w-[37%] min-w-[230px] opacity-70 lg:block">
-          <img src={securityImage} alt="" className="w-full rounded-3xl" />
-        </div>
       </section>
-      <section className="relative z-10 grid place-items-center p-5 sm:p-10">
-        <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-[#0C1E3E]/95 p-7 shadow-[0_28px_70px_rgba(0,0,0,.38)] backdrop-blur sm:p-10">
+
+      <section className="amk-auth__form-side">
+        <div className="amk-auth__mobile-brand"><BrandMark /></div>
+        <div className="amk-auth__form-wrap">
           {invite ? (
             <InviteAcceptForm token={invite} />
           ) : (
             <>
-              <div className="grid size-12 place-items-center rounded-2xl border border-[#4D82E7]/30 bg-[#123467] text-[#9ABEFF]">
-                <LockKeyhole size={20} />
-              </div>
-              <p className="mt-7 text-xs font-black uppercase tracking-[.15em] text-[#8CB7FF]">
-                Amarktai Sales Assistant
-              </p>
-              <h2 className="mt-3 font-display text-5xl font-bold leading-[.9] tracking-[-.075em]">
-                Sign in to your Sales Assistant.
-              </h2>
+              <p className="amk-auth__panel-eyebrow">{eyebrow}</p>
+              <h2>{title}</h2>
               {mode.isLoading ? (
-                <p className="mt-5 text-sm text-[#A9BFDF]">Loading sign-in…</p>
-              ) : mode.data?.local ? (
-                localPanel
-              ) : (
-                <ManagedSignIn />
-              )}
+                <p className="amk-auth__muted">Loading secure access…</p>
+              ) : mode.data?.local ? localPanel : <ManagedSignIn />}
             </>
           )}
         </div>
@@ -112,6 +83,7 @@ function InviteAcceptForm({ token }: { token: string }) {
   const [confirm, setConfirm] = useState("");
   const [pending, setPending] = useState(false);
   const [acceptedEmail, setAcceptedEmail] = useState<string | null>(null);
+
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (password !== confirm) return toast.error("The passwords do not match.");
@@ -123,88 +95,39 @@ function InviteAcceptForm({ token }: { token: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, password }),
       });
-      const body = (await response.json().catch(() => ({}))) as {
-        ok?: boolean;
-        email?: string;
-        error?: string;
-      };
-      if (!response.ok)
-        throw new Error(body.error || "Invitation could not be accepted.");
+      const body = (await response.json().catch(() => ({}))) as { ok?: boolean; email?: string; error?: string };
+      if (!response.ok) throw new Error(body.error || "Invitation could not be accepted.");
       window.history.replaceState({}, "", "/auth");
       setAcceptedEmail(body.email ?? "");
-      toast.success("Your Amarktai account is ready. Sign in to continue.");
+      toast.success("Your Amarktai Network account is ready. Sign in to continue.");
     } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Invitation could not be accepted."
-      );
+      toast.error(error instanceof Error ? error.message : "Invitation could not be accepted.");
     } finally {
       setPending(false);
     }
   }
-  if (acceptedEmail !== null)
+
+  if (acceptedEmail !== null) {
     return (
       <>
-        <div className="grid size-12 place-items-center rounded-2xl bg-emerald-400/10 text-emerald-200">
-          <CheckCircle2 size={21} />
-        </div>
-        <p className="mt-7 text-xs font-black uppercase tracking-[.15em] text-[#8CB7FF]">
-          Invitation accepted
-        </p>
-        <h2 className="mt-3 font-display text-4xl font-bold tracking-[-.07em]">
-          Your workspace is ready.
-        </h2>
+        <p className="amk-auth__panel-eyebrow">INVITATION ACCEPTED</p>
+        <h2>Your workspace is ready.</h2>
         <LocalLoginForm initialEmail={acceptedEmail} />
       </>
     );
+  }
+
   return (
     <>
-      <div className="grid size-12 place-items-center rounded-2xl border border-[#4D82E7]/30 bg-[#123467] text-[#9ABEFF]">
-        <UserPlus size={20} />
-      </div>
-      <p className="mt-7 text-xs font-black uppercase tracking-[.15em] text-[#8CB7FF]">
-        Team invitation
-      </p>
-      <h2 className="mt-3 font-display text-4xl font-bold tracking-[-.07em]">
-        Create your password.
-      </h2>
-      <p className="mt-4 text-sm leading-6 text-[#A9BFDF]">
-        This setup link is short-lived and becomes unusable after your password
-        is created.
-      </p>
-      <form onSubmit={submit} className="mt-6 grid gap-4">
-        <label className="text-sm font-bold text-[#DCE8FA]">
-          Password
-          <input
-            type="password"
-            autoComplete="new-password"
-            required
-            minLength={12}
-            value={password}
-            onChange={event => setPassword(event.target.value)}
-            className="mt-2 h-11 w-full rounded-xl border border-white/15 bg-[#08182F] px-3 text-white outline-none focus:border-[#4E8BFF]"
-          />
-        </label>
-        <label className="text-sm font-bold text-[#DCE8FA]">
-          Confirm password
-          <input
-            type="password"
-            autoComplete="new-password"
-            required
-            minLength={12}
-            value={confirm}
-            onChange={event => setConfirm(event.target.value)}
-            className="mt-2 h-11 w-full rounded-xl border border-white/15 bg-[#08182F] px-3 text-white outline-none focus:border-[#4E8BFF]"
-          />
-        </label>
-        <button
-          type="submit"
-          disabled={pending}
-          className="mt-2 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#1B64F2] text-sm font-bold text-white hover:bg-[#2B76FF]"
-        >
-          {pending ? "Activating…" : "Activate account"}
-          <ArrowRight size={17} />
+      <div className="amk-auth__icon"><UserPlus size={20}/></div>
+      <p className="amk-auth__panel-eyebrow">TEAM INVITATION</p>
+      <h2>Create your password.</h2>
+      <p className="amk-auth__muted">This setup link is short-lived and becomes unusable after your password is created.</p>
+      <form onSubmit={submit} className="amk-auth-form">
+        <Field label="Password" value={password} onChange={setPassword} type="password" autoComplete="new-password" />
+        <Field label="Confirm password" value={confirm} onChange={setConfirm} type="password" autoComplete="new-password" />
+        <button type="submit" disabled={pending} className="amk-auth__primary">
+          {pending ? "Activating…" : "Activate account"} <ArrowRight size={17}/>
         </button>
       </form>
       <Fineprint />
@@ -215,20 +138,13 @@ function InviteAcceptForm({ token }: { token: string }) {
 function ManagedSignIn() {
   return (
     <>
-      <p className="mt-5 text-sm leading-6 text-[#A9BFDF]">
-        Continue through your organisation's secure identity flow, then open
-        your sales workspace.
-      </p>
-      <button
-        onClick={() => startLogin()}
-        className="mt-8 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#1B64F2] text-sm font-bold text-white shadow-[0_10px_25px_rgba(27,100,242,.28)] transition hover:-translate-y-0.5 hover:bg-[#2B76FF] active:scale-[.98]"
-      >
-        Open sales workspace <ArrowRight size={17} />
-      </button>
+      <p className="amk-auth__muted">Continue through your organisation's secure identity flow to open Sales Assistant.</p>
+      <button onClick={() => startLogin()} className="amk-auth__primary amk-auth__primary--spaced">Open sales workspace <ArrowRight size={17}/></button>
       <Fineprint />
     </>
   );
 }
+
 function LocalRegistrationForm() {
   const [, navigate] = useLocation();
   const [name, setName] = useState("");
@@ -236,249 +152,92 @@ function LocalRegistrationForm() {
   const [password, setPassword] = useState("");
   const register = trpc.auth.register.useMutation({
     onSuccess: () => {
-      toast.success(
-        "Workspace created. Complete email verification to open your sales workspace."
-      );
+      toast.success("Workspace created. Complete email verification to open Sales Assistant.");
       navigate("/dashboard");
     },
     onError: error => toast.error(error.message),
   });
+
   return (
-    <form
-      onSubmit={event => {
-        event.preventDefault();
-        register.mutate({ name, email, password });
-      }}
-      className="mt-6 grid gap-4"
-    >
-      <p className="text-sm leading-6 text-[#A9BFDF]">
-        Create a private sales workspace. Email verification is required before
-        operational access.
-      </p>
+    <form onSubmit={event => { event.preventDefault(); register.mutate({ name, email, password }); }} className="amk-auth-form">
+      <p className="amk-auth__muted">Create your personal Amarktai Network account. Company or team setup happens after secure access is verified.</p>
       <Field label="Name" value={name} onChange={setName} autoComplete="name" />
-      <Field
-        label="Email"
-        value={email}
-        onChange={setEmail}
-        type="email"
-        autoComplete="email"
-      />
-      <Field
-        label="Password"
-        value={password}
-        onChange={setPassword}
-        type="password"
-        autoComplete="new-password"
-      />
-      <button
-        disabled={register.isPending}
-        className="mt-2 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#1B64F2] text-sm font-bold text-white hover:bg-[#2B76FF]"
-      >
-        {register.isPending ? "Creating…" : "Create workspace"}
-        <ArrowRight size={17} />
+      <Field label="Email" value={email} onChange={setEmail} type="email" autoComplete="email" />
+      <Field label="Password" value={password} onChange={setPassword} type="password" autoComplete="new-password" />
+      <button disabled={register.isPending} className="amk-auth__primary">
+        {register.isPending ? "Creating…" : "Create workspace"} <ArrowRight size={17}/>
       </button>
-      <button
-        type="button"
-        onClick={() => navigate("/auth")}
-        className="text-sm font-bold text-[#9ABEFF] hover:text-white"
-      >
-        Already have an account? Sign in
-      </button>
+      <button type="button" onClick={() => navigate("/auth")} className="amk-auth__link">Already have an account? Sign in</button>
       <Fineprint />
     </form>
   );
 }
+
 function PasswordRecoveryForm() {
   const [, navigate] = useLocation();
   const [email, setEmail] = useState("");
   const request = trpc.auth.requestPasswordReset.useMutation({
-    onSuccess: () => {
-      toast.success(
-        "If that account is eligible, a recovery link has been sent."
-      );
-      navigate("/auth");
-    },
-    onError: () => {
-      toast.success(
-        "If that account is eligible, a recovery link has been sent."
-      );
-      navigate("/auth");
-    },
+    onSuccess: () => { toast.success("If that account is eligible, a recovery link has been sent."); navigate("/auth"); },
+    onError: () => { toast.success("If that account is eligible, a recovery link has been sent."); navigate("/auth"); },
   });
+
   return (
-    <form
-      onSubmit={event => {
-        event.preventDefault();
-        request.mutate({ email });
-      }}
-      className="mt-6 grid gap-4"
-    >
-      <p className="text-sm leading-6 text-[#A9BFDF]">
-        Enter your email. If an eligible account and SMTP delivery are
-        configured, a short-lived recovery link will be sent.
-      </p>
-      <Field
-        label="Email"
-        value={email}
-        onChange={setEmail}
-        type="email"
-        autoComplete="email"
-      />
-      <button
-        disabled={request.isPending}
-        className="mt-2 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#1B64F2] text-sm font-bold text-white hover:bg-[#2B76FF]"
-      >
-        {request.isPending ? "Requesting…" : "Send recovery link"}
-        <ArrowRight size={17} />
-      </button>
-      <button
-        type="button"
-        onClick={() => navigate("/auth")}
-        className="text-sm font-bold text-[#9ABEFF] hover:text-white"
-      >
-        Back to sign in
-      </button>
+    <form onSubmit={event => { event.preventDefault(); request.mutate({ email }); }} className="amk-auth-form">
+      <p className="amk-auth__muted">Enter your email. If the account is eligible, a short-lived recovery link will be sent.</p>
+      <Field label="Email" value={email} onChange={setEmail} type="email" autoComplete="email" />
+      <button disabled={request.isPending} className="amk-auth__primary">{request.isPending ? "Requesting…" : "Send recovery link"} <ArrowRight size={17}/></button>
+      <button type="button" onClick={() => navigate("/auth")} className="amk-auth__link">Back to sign in</button>
       <Fineprint />
     </form>
   );
 }
+
 function ResetPasswordForm({ token }: { token: string }) {
   const [, navigate] = useLocation();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const reset = trpc.auth.resetPassword.useMutation({
-    onSuccess: () => {
-      toast.success(
-        "Password reset. Complete email verification to open your sales workspace."
-      );
-      navigate("/dashboard");
-    },
+    onSuccess: () => { toast.success("Password reset. Complete access verification to open Sales Assistant."); navigate("/dashboard"); },
     onError: error => toast.error(error.message),
   });
+
   return (
-    <form
-      onSubmit={event => {
-        event.preventDefault();
-        if (password !== confirm)
-          return toast.error("The passwords do not match.");
-        reset.mutate({ token, password });
-      }}
-      className="mt-6 grid gap-4"
-    >
-      <p className="text-sm leading-6 text-[#A9BFDF]">
-        Choose a new password. This recovery link expires after 30 minutes and
-        becomes invalid once used.
-      </p>
-      <Field
-        label="New password"
-        value={password}
-        onChange={setPassword}
-        type="password"
-        autoComplete="new-password"
-      />
-      <Field
-        label="Confirm password"
-        value={confirm}
-        onChange={setConfirm}
-        type="password"
-        autoComplete="new-password"
-      />
-      <button
-        disabled={reset.isPending}
-        className="mt-2 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#1B64F2] text-sm font-bold text-white hover:bg-[#2B76FF]"
-      >
-        {reset.isPending ? "Resetting…" : "Reset password"}
-        <ArrowRight size={17} />
-      </button>
+    <form onSubmit={event => { event.preventDefault(); if (password !== confirm) return toast.error("The passwords do not match."); reset.mutate({ token, password }); }} className="amk-auth-form">
+      <p className="amk-auth__muted">Choose a new password. This recovery link expires after 30 minutes and becomes invalid once used.</p>
+      <Field label="New password" value={password} onChange={setPassword} type="password" autoComplete="new-password" />
+      <Field label="Confirm password" value={confirm} onChange={setConfirm} type="password" autoComplete="new-password" />
+      <button disabled={reset.isPending} className="amk-auth__primary">{reset.isPending ? "Resetting…" : "Reset password"} <ArrowRight size={17}/></button>
       <Fineprint />
     </form>
   );
 }
+
 function LocalLoginForm({ initialEmail = "" }: { initialEmail?: string }) {
   const [, navigate] = useLocation();
   const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState("");
   const login = trpc.auth.localLogin.useMutation({
-    onSuccess: () => {
-      toast.success(
-        "Signed in. Complete access verification to open your sales workspace."
-      );
-      navigate("/dashboard");
-    },
+    onSuccess: () => { toast.success("Signed in. Complete access verification to open Sales Assistant."); navigate("/dashboard"); },
     onError: error => toast.error(error.message),
   });
+
   return (
-    <form
-      onSubmit={event => {
-        event.preventDefault();
-        login.mutate({ email, password });
-      }}
-      className="mt-6 grid gap-4"
-    >
-      <div>
-        <label htmlFor="email" className="text-sm font-bold text-[#DCE8FA]">
-          Email
-        </label>
-        <input
-          id="email"
-          type="email"
-          autoComplete="email"
-          required
-          value={email}
-          onChange={event => setEmail(event.target.value)}
-          className="mt-2 h-11 w-full rounded-xl border border-white/15 bg-[#08182F] px-3 text-white outline-none transition placeholder:text-[#607EA8] focus:border-[#4E8BFF]"
-        />
-      </div>
-      <div>
-        <label htmlFor="password" className="text-sm font-bold text-[#DCE8FA]">
-          Password
-        </label>
-        <input
-          id="password"
-          type="password"
-          autoComplete="current-password"
-          required
-          minLength={12}
-          value={password}
-          onChange={event => setPassword(event.target.value)}
-          className="mt-2 h-11 w-full rounded-xl border border-white/15 bg-[#08182F] px-3 text-white outline-none transition placeholder:text-[#607EA8] focus:border-[#4E8BFF]"
-        />
-      </div>
-      <button
-        type="submit"
-        disabled={login.isPending}
-        className="mt-3 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#1B64F2] text-sm font-bold text-white shadow-[0_10px_25px_rgba(27,100,242,.28)] transition hover:-translate-y-0.5 hover:bg-[#2B76FF] active:scale-[.98]"
-      >
-        {login.isPending ? "Signing in…" : "Open sales workspace"}
-        <ArrowRight size={17} />
+    <form onSubmit={event => { event.preventDefault(); login.mutate({ email, password }); }} className="amk-auth-form">
+      <Field label="Email" value={email} onChange={setEmail} type="email" autoComplete="email" />
+      <Field label="Password" value={password} onChange={setPassword} type="password" autoComplete="current-password" />
+      <button type="submit" disabled={login.isPending} className="amk-auth__primary">
+        {login.isPending ? "Signing in…" : "Open sales workspace"} <ArrowRight size={17}/>
       </button>
-      <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 text-sm font-bold text-[#9ABEFF]">
-        <button
-          type="button"
-          onClick={() => navigate("/auth?mode=forgot")}
-          className="hover:text-white"
-        >
-          Forgot password?
-        </button>
-        <button
-          type="button"
-          onClick={() => navigate("/auth?mode=register")}
-          className="hover:text-white"
-        >
-          Create workspace
-        </button>
+      <div className="amk-auth__links">
+        <button type="button" onClick={() => navigate("/auth?mode=forgot")} className="amk-auth__link">Forgot password?</button>
+        <button type="button" onClick={() => navigate("/auth?mode=register")} className="amk-auth__link">Create workspace</button>
       </div>
       <Fineprint />
     </form>
   );
 }
-function Field({
-  label,
-  value,
-  onChange,
-  type = "text",
-  autoComplete,
-}: {
+
+function Field({ label, value, onChange, type = "text", autoComplete }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
@@ -486,8 +245,8 @@ function Field({
   autoComplete?: string;
 }) {
   return (
-    <label className="text-sm font-bold text-[#DCE8FA]">
-      {label}
+    <label className="amk-auth-field">
+      <span>{label}</span>
       <input
         type={type}
         autoComplete={autoComplete}
@@ -495,15 +254,11 @@ function Field({
         minLength={type === "password" ? 12 : undefined}
         value={value}
         onChange={event => onChange(event.target.value)}
-        className="mt-2 h-11 w-full rounded-xl border border-white/15 bg-[#08182F] px-3 text-white outline-none focus:border-[#4E8BFF]"
       />
     </label>
   );
 }
+
 function Fineprint() {
-  return (
-    <p className="mt-7 text-center text-xs leading-5 text-[#7693BB]">
-      Credentials and connection secrets remain on the server.
-    </p>
-  );
+  return <p className="amk-auth__fineprint">Credentials and connection secrets remain on the server.</p>;
 }

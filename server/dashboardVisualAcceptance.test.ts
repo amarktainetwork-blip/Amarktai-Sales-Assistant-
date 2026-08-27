@@ -5,7 +5,9 @@ import path from "node:path";
 describe("final dashboard information architecture", () => {
   it("uses one dashboard visual system instead of stacked patch styles", () => {
     const app = readFileSync(path.resolve("client/src/App.tsx"), "utf8");
-    expect(app).toContain('import "./dashboard-v6.css"');
+    expect(app).toContain('import "./dashboard-final.css"');
+    expect(app).not.toContain('import "./app-final.css"');
+    expect(app).not.toContain('import "./dashboard-v6.css"');
     expect(app).not.toContain('import "./dashboard-v2.css"');
     expect(app).not.toContain('import "./dashboard-v3.css"');
     expect(app).not.toContain('import "./dashboard-handover.css"');
@@ -25,16 +27,16 @@ describe("final dashboard information architecture", () => {
     expect(layout).toContain('label: "Settings"');
     expect(layout).toContain("Daily work");
     expect(layout).toContain("Manage");
-    expect(layout).toContain("<BrandMark inverse />");
   });
 
-  it("uses a soft slate/light workspace palette and readable message override", () => {
-    const css = readFileSync(path.resolve("client/src/dashboard-v6.css"), "utf8");
-    expect(css).toContain("--d-sidebar:#3a4d66");
-    expect(css).toContain("--d-canvas:#f5f7fa");
-    expect(css).toContain("--d-paper:#ffffff");
-    expect(css).toContain("--d-blue:#3f70d8");
+  it("uses a light neutral workspace palette and readable message override", () => {
+    const css = readFileSync(path.resolve("client/src/dashboard-final.css"), "utf8");
+    expect(css).toContain("--dash-canvas: #f4f6f8");
+    expect(css).toContain("--dash-paper: #ffffff");
+    expect(css).toContain("--dash-ink: #203047");
+    expect(css).toContain("--dash-blue: #2f6fed");
+    expect(css).toContain("background: #fbfcfd !important");
     expect(css).toContain('[class*="whitespace-pre-wrap"]');
-    expect(css).toContain("main>div>section.mt-7.grid");
+    expect(css).toContain("input::placeholder");
   });
 });

@@ -1,9 +1,5 @@
 export const marketingNavigation = [
-  { label: "Product", href: "/product" },
   { label: "How it works", href: "/how-it-works" },
-  { label: "For individuals", href: "/individuals" },
-  { label: "For teams", href: "/teams" },
-  { label: "CRM connections", href: "/integrations" },
   { label: "Pricing", href: "/pricing" },
   { label: "About", href: "/about" },
   { label: "Contact", href: "/contact" },
@@ -19,52 +15,48 @@ export const publicPageMetadata: Record<
   { title: string; description: string }
 > = {
   "/": {
-    title: "Amarktai Sales Assistant | AI beside your sales team",
+    title: "Amarktai Network Sales Assistant | A better sales day around your CRM",
     description:
-      "Amarktai learns the business, works beside the CRM and helps salespeople prepare, call, follow through and keep the customer record accurate.",
-  },
-  "/product": {
-    title: "Product | Amarktai Sales Assistant",
-    description:
-      "See the complete Amarktai sales workspace: priorities, customer context, live calls, follow-up, CRM actions, readback and manager visibility.",
+      "Amarktai Network Sales Assistant learns the business, works beside the CRM and helps salespeople prepare, call, follow through and keep customer records accurate.",
   },
   "/how-it-works": {
-    title: "How It Works | Amarktai Sales Assistant",
+    title: "How It Works | Amarktai Network Sales Assistant",
     description:
-      "From company learning and CRM setup to the daily sales workflow, see how Amarktai becomes useful without replacing your CRM.",
-  },
-  "/individuals": {
-    title: "For Individuals | Amarktai Sales Assistant",
-    description:
-      "A focused AI sales workspace for independent salespeople, consultants and business owners who need the next move to stay clear.",
-  },
-  "/teams": {
-    title: "For Teams | Amarktai Sales Assistant",
-    description:
-      "Shared company knowledge, personal salesperson workspaces and manager visibility without shared passwords or private-chat leakage.",
-  },
-  "/integrations": {
-    title: "CRM Connections | Amarktai Sales Assistant",
-    description:
-      "Amarktai is designed to work beside Genie, HubSpot, Salesforce, Pipedrive, Zoho CRM and suitable authorised browser CRMs.",
+      "See how Amarktai Network learns approved business context, connects each salesperson to the CRM and turns it into a focused daily sales workflow.",
   },
   "/pricing": {
-    title: "Pricing in ZAR | Amarktai Sales Assistant",
+    title: "Pricing in ZAR | Amarktai Network Sales Assistant",
     description:
-      "South African Rand pricing for individuals and teams, with included AI credits and optional AI-credit top-ups.",
+      "South African Rand pricing for individual salespeople and teams, including AI credits and optional top-ups.",
   },
   "/about": {
-    title: "About | Amarktai Sales Assistant",
+    title: "About | Amarktai Network Sales Assistant",
     description:
-      "Why Amarktai Sales Assistant exists, what it changes in the sales day, and how it fits into the wider Amarktai Network.",
+      "Why Amarktai Network built Sales Assistant and how it helps sales teams work better without replacing the CRM.",
   },
   "/contact": {
-    title: "Contact | Amarktai Sales Assistant",
+    title: "Contact | Amarktai Network Sales Assistant",
     description:
-      "Talk to Amarktai about product questions, demos, CRM compatibility, onboarding, team setup or support.",
+      "Talk to Amarktai Network about Sales Assistant, CRM compatibility, onboarding, demos or support.",
+  },
+  "/product": {
+    title: "Amarktai Network Sales Assistant",
+    description: "Explore the Amarktai Network Sales Assistant product.",
+  },
+  "/individuals": {
+    title: "Amarktai Network Sales Assistant for Individuals",
+    description: "Sales Assistant for individual salespeople and business owners.",
+  },
+  "/teams": {
+    title: "Amarktai Network Sales Assistant for Teams",
+    description: "Sales Assistant for teams with shared business knowledge and personal workspaces.",
+  },
+  "/integrations": {
+    title: "CRM Connections | Amarktai Network Sales Assistant",
+    description: "Connect Sales Assistant to the CRM your business already uses.",
   },
   "/404": {
-    title: "Page Not Found | Amarktai Sales Assistant",
-    description: "Return to the Amarktai Sales Assistant website.",
+    title: "Page Not Found | Amarktai Network",
+    description: "Return to the Amarktai Network Sales Assistant website.",
   },
 };
