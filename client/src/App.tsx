@@ -38,68 +38,84 @@ import {
   KnowledgeHub,
   WorkflowStudio,
 } from "./pages/Workspace";
-import CompanyIntelligence from "./pages/CompanyIntelligence";
-import CompanySetup from "./pages/CompanySetup";
-import Calls from "./pages/Calls";
-import PricingPage from "./marketing/PricingPage";
-import HomePage from "./marketing/HomePage";
 
-function MetadataSync() {
+function Router() {
+  return (
+    <>
+      <PageMetadata />
+      <Switch>
+        <Route path="/" component={Home} />
+        <Route path="/product" component={ProductPage} />
+        <Route path="/how-it-works" component={HowItWorksPage} />
+        <Route path="/individuals" component={IndividualsPage} />
+        <Route path="/teams" component={TeamsPage} />
+        <Route path="/integrations" component={IntegrationsPage} />
+        <Route path="/pricing" component={Pricing} />
+        <Route path="/contact" component={ContactPage} />
+        <Route path="/auth" component={Auth} />
+        <Route path="/dashboard" component={Today} />
+        <Route path="/today" component={Today} />
+        <Route path="/sell" component={Today} />
+        <Route path="/customers" component={Customers} />
+        <Route path="/reports" component={Reports} />
+        <Route path="/automation" component={SalesAutomation} />
+        <Route path="/team" component={TeamIntelligence} />
+        <Route path="/team/manage" component={TeamManagement} />
+        <Route path="/admin-controls" component={AdminControls} />
+        <Route path="/workspace" component={CommandCentre} />
+        <Route path="/workflows" component={WorkflowStudio} />
+        <Route path="/agents" component={AgentDesk} />
+        <Route path="/calls" component={LiveCalls} />
+        <Route path="/knowledge" component={KnowledgeHub} />
+        <Route path="/connections" component={ConnectionsV2} />
+        <Route path="/crm/:connectedSystemId" component={CrmWorkspace} />
+        <Route path="/crm" component={CrmWorkspace} />
+        <Route path="/company-setup" component={Onboarding} />
+        <Route path="/404" component={NotFound} />
+        <Route component={NotFound} />
+      </Switch>
+    </>
+  );
+}
+
+function PageMetadata() {
   const [location] = useLocation();
   useEffect(() => {
-    const pathname = location.split(/[?#]/, 1)[0];
-    const metadata = publicPageMetadata[pathname];
-    if (!metadata) return;
+    const metadata =
+      publicPageMetadata[location] ??
+      (location === "/auth"
+        ? {
+            title: "Sign In | Amarktai Sales Assistant",
+            description:
+              "Sign in to the protected Amarktai Sales Assistant workspace.",
+          }
+        : {
+            title: "Amarktai Sales Assistant | Part of Amarktai Network",
+            description: "Open the protected Amarktai Sales Assistant workspace.",
+          });
     document.title = metadata.title;
-    const description = document.querySelector<HTMLMetaElement>('meta[name="description"]');
-    if (description) description.content = metadata.description;
+    let tag = document.querySelector<HTMLMetaElement>('meta[name="description"]');
+    if (!tag) {
+      tag = document.createElement("meta");
+      tag.name = "description";
+      document.head.appendChild(tag);
+    }
+    tag.content = metadata.description;
   }, [location]);
   return null;
 }
 
-export default function App() {
+function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider defaultTheme="system">
+      <ThemeProvider defaultTheme="light">
         <TooltipProvider>
-          <MetadataSync />
-          <Switch>
-            <Route path="/" component={HomePage} />
-            <Route path="/product" component={ProductPage} />
-            <Route path="/how-it-works" component={HowItWorksPage} />
-            <Route path="/individuals" component={IndividualsPage} />
-            <Route path="/teams" component={TeamsPage} />
-            <Route path="/integrations" component={IntegrationsPage} />
-            <Route path="/pricing" component={PricingPage} />
-            <Route path="/contact" component={ContactPage} />
-            <Route path="/auth" component={Auth} />
-            <Route path="/onboarding" component={Onboarding} />
-            <Route path="/dashboard" component={Today} />
-            <Route path="/today" component={Today} />
-            <Route path="/customers" component={Customers} />
-            <Route path="/calls" component={Calls} />
-            <Route path="/live-calls" component={LiveCalls} />
-            <Route path="/agents" component={AgentDesk} />
-            <Route path="/assistant" component={AgentDesk} />
-            <Route path="/command-centre" component={CommandCentre} />
-            <Route path="/knowledge" component={KnowledgeHub} />
-            <Route path="/workflows" component={WorkflowStudio} />
-            <Route path="/automation" component={SalesAutomation} />
-            <Route path="/reports" component={Reports} />
-            <Route path="/team" component={TeamManagement} />
-            <Route path="/team-intelligence" component={TeamIntelligence} />
-            <Route path="/connections" component={ConnectionsV2} />
-            <Route path="/crm" component={CrmWorkspace} />
-            <Route path="/company-intelligence" component={CompanyIntelligence} />
-            <Route path="/company-setup" component={CompanySetup} />
-            <Route path="/admin" component={AdminControls} />
-            <Route path="/settings" component={Home} />
-            <Route path="/billing" component={Pricing} />
-            <Route component={NotFound} />
-          </Switch>
-          <Toaster richColors />
+          <Toaster />
+          <Router />
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );
 }
+
+export default App;
