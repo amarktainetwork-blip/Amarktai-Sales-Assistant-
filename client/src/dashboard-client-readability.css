@@ -1,0 +1,63 @@
+/* Final contrast safeguards for the light logged-in workspace.
+ * These rules intentionally load after dashboard-final.css so controls that are
+ * meant to stay dark/coloured never inherit the legacy global text rewrite. */
+
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [data-workflow-feedback] {
+  opacity: 1 !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [data-workflow-feedback="loading"] {
+  background: #eff6ff !important;
+  border-color: #bfdbfe !important;
+  color: #172554 !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [data-workflow-feedback="success"] {
+  background: #ecfdf5 !important;
+  border-color: #a7f3d0 !important;
+  color: #064e3b !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [data-workflow-feedback="error"] {
+  background: #fff1f2 !important;
+  border-color: #fecdd3 !important;
+  color: #881337 !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [data-workflow-feedback] p,
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [data-workflow-feedback] strong,
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [data-workflow-feedback] span {
+  color: inherit !important;
+}
+
+/* Guided-setup active step: dashboard-final.css deliberately converts legacy
+ * text-white to dark ink, so restore a high-contrast selected state here. */
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] nav .bg-stone-900 {
+  background: #2f6fed !important;
+  border-color: #2f6fed !important;
+  color: #ffffff !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] nav .bg-stone-900 *,
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] nav .bg-stone-900 .text-white,
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] nav .bg-stone-900 [class*="text-[#2166d1]"] {
+  color: #ffffff !important;
+}
+
+/* Any explicit primary/dark action must remain legible after the global light
+ * normalisation layer. */
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] button[class*="bg-[#1B64F2]"],
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] button[class*="bg-[#2166d1]"],
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] button[class*="bg-stone-900"] {
+  color: #ffffff !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] button[class*="bg-[#1B64F2]"] *,
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] button[class*="bg-[#2166d1]"] *,
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] button[class*="bg-stone-900"] * {
+  color: #ffffff !important;
+}
+
+/* Keep client-facing review copy comfortably readable. */
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] main p,
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] main li,
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] main label {
+  text-rendering: optimizeLegibility;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] main [class*="text-xs"] {
+  line-height: 1.5;
+}
