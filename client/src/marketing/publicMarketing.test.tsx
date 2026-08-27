@@ -38,9 +38,11 @@ function sourceFiles(root: string): string[] {
 }
 
 describe("final public website", () => {
-  it("does not emit unresolved optional analytics placeholders", () => {
+  it("keeps the document CSP-clean without external font styles", () => {
     const html = readFileSync(path.resolve("client/index.html"), "utf8");
     expect(html).not.toContain("%VITE_ANALYTICS_");
+    expect(html).not.toContain("fonts.googleapis.com");
+    expect(html).not.toContain("fonts.gstatic.com");
   });
 
   it.each(pages)("renders %s as a complete public page", (pathname, Component, expected) => {
@@ -49,6 +51,12 @@ describe("final public website", () => {
     expect(html).toContain("Main navigation");
     expect(html).toContain("Amarktai Network");
     expect(html).toContain("Sales Assistant");
+  });
+
+  it("keeps supplier branding out of customer-facing marketing source", () => {
+    const root = path.resolve(process.cwd(), "client/src/marketing");
+    const combined = sourceFiles(root).map(file => readFileSync(file, "utf8")).join("\n");
+    expect(combined).not.toMatch(/\bGenX\b/i);
   });
 
   it("uses real photography and removes the rejected illustration assets from the homepage", () => {
@@ -62,19 +70,19 @@ describe("final public website", () => {
     expect(html).not.toContain("/images/site-team.svg");
   });
 
-  it("keeps public navigation deliberately small and route-based", () => {
+  it("uses the requested public navigation order", () => {
     expect(marketingNavigation.map(item => item.href)).toEqual([
+      "/about",
       "/how-it-works",
       "/pricing",
-      "/about",
       "/contact",
     ]);
     const html = render("/", HomePage);
     for (const item of marketingNavigation) expect(html).toContain(`href="${item.href}"`);
     expect(html).toContain(`href="${accountLinks.signIn}"`);
     expect(html).toContain(`href="${accountLinks.getStarted.replace("&", "&amp;")}"`);
-    expect(html).toContain("Sales Assistant is part of Amarktai Network.");
-    expect(html).toContain(`© ${new Date().getFullYear()} Amarktai Network.`);
+    expect(html).toContain("Amarktai Sales Assistant is part of the Amarktai Network.");
+    expect(html).toContain(`© ${new Date().getFullYear()} Amarktai Sales Assistant. Part of the Amarktai Network.`);
   });
 
   it("restores scroll on public route transitions without touching dashboard routes", () => {
@@ -99,12 +107,14 @@ describe("final public website", () => {
     expect(html).not.toMatch(/Stripe|PayFast|buy now|checkout now/i);
   });
 
-  it("renders the full contact form and status region", () => {
+  it("renders the streamlined contact form and status region", () => {
     const html = render("/contact", ContactPage);
     for (const label of ["Name", "Email", "Company", "Phone", "Team size", "Reason for contacting us", "Message"]) expect(html).toContain(label);
     expect(contactReasons).toEqual(["Request a demo", "Sales", "Individual setup", "Team setup", "CRM compatibility", "Support"]);
     expect(html).toContain('aria-live="polite"');
     expect(html).toContain("/api/public/contact");
+    expect(html).not.toContain("We can help with");
+    expect(html).not.toContain("20–2,000 characters");
   });
 
   it("renders the public 404 with a valid home action", () => {
@@ -122,7 +132,7 @@ describe("final public website", () => {
     expect(combined).not.toContain("javascript:void");
   });
 
-  it("uses one public visual system and responsive boundaries", () => {
+  it("uses one public visual system and final launch safeguards", () => {
     const layout = readFileSync(path.resolve(process.cwd(), "client/src/marketing/MarketingLayout.tsx"), "utf8");
     expect(layout).toContain('import "./final-site.css"');
     expect(layout).not.toContain("public-v6.css");
@@ -133,5 +143,11 @@ describe("final public website", () => {
     expect(css).toContain("min-width: 320px");
     expect(css).toContain("overflow: clip");
     expect(css).toContain("prefers-reduced-motion: reduce");
+    const app = readFileSync(path.resolve(process.cwd(), "client/src/App.tsx"), "utf8");
+    expect(app).toContain('import "./final-release.css"');
+    const finalRelease = readFileSync(path.resolve(process.cwd(), "client/src/final-release.css"), "utf8");
+    expect(finalRelease).toContain("body:has(.z-\\[250\\])");
+    expect(finalRelease).toContain("[data-sonner-toast]");
+    expect(finalRelease).toContain("radial-gradient");
   });
 });
