@@ -1,13 +1,65 @@
 import "dotenv/config";
-import { verifyGenxConnection } from "./genx";
+import { AGENT_CATALOG } from "./agentCatalog";
+import { runGenxAgent, verifyGenxConnection } from "./genx";
 import { createOutlookApplicationToken, getOutlookReadiness } from "./outlook";
 import { getSmtpReadiness, verifySmtpConnection } from "./smtp";
 import { verifyVoiceAcceptance } from "./voice/acceptance";
 import { getSttConfiguration } from "./voice/stt";
 import { getTtsConfiguration } from "./voice/tts";
 
-function configured(value: string | undefined) {
-  return Boolean(value?.trim());
+async function verifyAgentExecutions() {
+  const agents: Record<string, unknown> = {};
+  let failed = false;
+
+  for (const agent of AGENT_CATALOG) {
+    if (!agent.requiresModel) {
+      agents[agent.key] = {
+        status: "DETERMINISTIC_INTERNAL",
+        modelRole: agent.modelRole,
+      };
+      continue;
+    }
+
+    try {
+      const response = await runGenxAgent({
+        agentKey: agent.key,
+        modelTier: "fast",
+        messages: [
+          {
+            role: "user",
+            content:
+              "This is a production commissioning probe. Give one concise, factual sentence describing what you can do in your assigned Amarktai role. Do not claim any external action occurred and do not invent customer or company facts.",
+          },
+        ],
+      });
+      if (response.provider !== "genx")
+        throw new Error(`Agent used provider ${response.provider} instead of GenX.`);
+      if (!response.content?.trim())
+        throw new Error("Agent returned no content.");
+      agents[agent.key] = {
+        status: "GENX_LIVE_PROVEN",
+        provider: response.provider,
+        responseCharacters: response.content.trim().length,
+      };
+    } catch (error) {
+      failed = true;
+      agents[agent.key] = {
+        status: "FAILED",
+        reason:
+          error instanceof Error
+            ? error.message.slice(0, 260)
+            : "agent_verification_failed",
+      };
+    }
+  }
+
+  return {
+    failed,
+    total: AGENT_CATALOG.length,
+    modelBacked: AGENT_CATALOG.filter(agent => agent.requiresModel).length,
+    deterministic: AGENT_CATALOG.filter(agent => !agent.requiresModel).length,
+    agents,
+  };
 }
 
 async function main() {
@@ -32,8 +84,10 @@ async function main() {
     }
   }
 
+  let genxVerified = false;
   try {
     results.genx = { status: "VERIFIED", ...(await verifyGenxConnection()) };
+    genxVerified = true;
   } catch (error) {
     results.genx = {
       status: "FAILED",
@@ -43,6 +97,17 @@ async function main() {
           : "verification_failed",
     };
     failed = true;
+  }
+
+  if (genxVerified) {
+    const agentVerification = await verifyAgentExecutions();
+    results.agents = agentVerification;
+    if (agentVerification.failed) failed = true;
+  } else {
+    results.agents = {
+      status: "BLOCKED",
+      reason: "GenX base verification failed, so agent execution probes were not attempted.",
+    };
   }
 
   const outlook = getOutlookReadiness();
