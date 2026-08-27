@@ -36,7 +36,7 @@ export default function HomePage() {
             </div>
           </div>
           <figure className="amk-photo amk-photo--hero">
-            <img src={HERO_PHOTO} alt="Sales professional working on a laptop in a modern office" />
+            <img src={HERO_PHOTO} alt="Sales professionals working together in a modern office" />
           </figure>
         </div>
       </section>
@@ -60,7 +60,7 @@ export default function HomePage() {
           <div className="amk-story__copy">
             <p className="amk-eyebrow">LEARN THE BUSINESS ONCE</p>
             <h2>Company knowledge that salespeople can actually use.</h2>
-            <p>During setup, Amarktai can read the authorised company website and use GenX to reason across the retained evidence. The result is reviewed company intelligence — products, services, pricing signals, policies and useful sales context — rather than a blind scrape dumped into a database.</p>
+            <p>During setup, Amarktai can read the authorised company website and reason across the retained evidence. The result is reviewed company intelligence — products, services, pricing signals, policies and useful sales context — rather than a blind scrape dumped into a database.</p>
             <p>Approved company knowledge can be shared across the team. Each salesperson still keeps their own login, private Assistant context and CRM identity.</p>
             <Link href="/how-it-works" className="amk-text-link">See the setup and CRM flow <ArrowRight size={16}/></Link>
           </div>
