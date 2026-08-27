@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, like } from "drizzle-orm";
 import {
   authorisedDomains,
   connectedSystems,
@@ -298,33 +298,6 @@ export async function assertAuthorisedConnectionUrl(input: {
   return url;
 }
 
-export async function saveConnectionSecret(input: {
-  userId: number;
-  organisationId: number;
-  connectedSystemId: number;
-  secretKind: string;
-  secret: ConnectionSecretPayload;
-}) {
-  const membership = await requireOrganisationMembership(
-    input.userId,
-    input.organisationId
-  );
-  if (!(await canManageOrganisationForUser(input.userId, membership.role)))
-    throw new Error(
-      "Only organisation owners, managers, and platform owners can manage shared connection credentials."
-    );
-  await getConnectedSystemForUser(
-    input.userId,
-    input.organisationId,
-    input.connectedSystemId
-  );
-  await persistSecret({
-    connectedSystemId: input.connectedSystemId,
-    secretKind: input.secretKind,
-    secret: input.secret,
-  });
-}
-
 function personalSecretKind(userId: number, secretKind: string) {
   const clean = secretKind.replace(/[^a-z0-9_-]+/gi, "_").slice(0, 40);
   return `${clean}:user:${userId}`.slice(0, 80);
@@ -356,6 +329,37 @@ async function persistSecret(input: {
           : null,
       },
     });
+}
+
+export async function saveConnectionSecret(input: {
+  userId: number;
+  organisationId: number;
+  connectedSystemId: number;
+  secretKind: string;
+  secret: ConnectionSecretPayload;
+}) {
+  const membership = await requireOrganisationMembership(
+    input.userId,
+    input.organisationId
+  );
+  if (!(await canManageOrganisationForUser(input.userId, membership.role)))
+    throw new Error(
+      "Only organisation owners, managers, and platform owners can manage shared connection credentials."
+    );
+  const system = await getConnectedSystemForUser(
+    input.userId,
+    input.organisationId,
+    input.connectedSystemId
+  );
+  const secretKind =
+    system.provider === "genie" && input.secretKind === "browser"
+      ? personalSecretKind(input.userId, input.secretKind)
+      : input.secretKind;
+  await persistSecret({
+    connectedSystemId: input.connectedSystemId,
+    secretKind,
+    secret: input.secret,
+  });
 }
 
 /**
@@ -390,6 +394,41 @@ export async function loadConnectionSecret(input: {
 }): Promise<ConnectionSecretPayload | undefined> {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
+  const system = (
+    await db
+      .select({ provider: connectedSystems.provider })
+      .from(connectedSystems)
+      .where(
+        and(
+          eq(connectedSystems.id, input.connectedSystemId),
+          eq(connectedSystems.organisationId, input.organisationId)
+        )
+      )
+      .limit(1)
+  )[0];
+  if (!system) return undefined;
+
+  if (system.provider === "genie" && input.secretKind === "browser") {
+    const personal = await db
+      .select({ secret: connectionSecrets })
+      .from(connectionSecrets)
+      .where(
+        and(
+          eq(connectionSecrets.connectedSystemId, input.connectedSystemId),
+          like(connectionSecrets.secretKind, "browser:user:%")
+        )
+      )
+      .limit(2);
+    if (personal.length > 1)
+      throw new Error(
+        "GENIE_PERSONAL_SECRET_AMBIGUOUS: this Genie connection has multiple personal CRM sessions; the runtime must identify the acting user explicitly."
+      );
+    const personalSecret = personal[0]?.secret;
+    return personalSecret
+      ? decryptConnectionSecret<ConnectionSecretPayload>(personalSecret)
+      : undefined;
+  }
+
   const rows = await db
     .select({ secret: connectionSecrets })
     .from(connectionSecrets)
@@ -417,11 +456,30 @@ export async function loadUserConnectionSecret(input: {
   secretKind: string;
 }): Promise<ConnectionSecretPayload | undefined> {
   await requireOrganisationMembership(input.userId, input.organisationId);
-  return loadConnectionSecret({
-    organisationId: input.organisationId,
-    connectedSystemId: input.connectedSystemId,
-    secretKind: personalSecretKind(input.userId, input.secretKind),
-  });
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const rows = await db
+    .select({ secret: connectionSecrets })
+    .from(connectionSecrets)
+    .innerJoin(
+      connectedSystems,
+      eq(connectionSecrets.connectedSystemId, connectedSystems.id)
+    )
+    .where(
+      and(
+        eq(connectedSystems.organisationId, input.organisationId),
+        eq(connectionSecrets.connectedSystemId, input.connectedSystemId),
+        eq(
+          connectionSecrets.secretKind,
+          personalSecretKind(input.userId, input.secretKind)
+        )
+      )
+    )
+    .limit(1);
+  const secret = rows[0]?.secret;
+  return secret
+    ? decryptConnectionSecret<ConnectionSecretPayload>(secret)
+    : undefined;
 }
 
 export async function hasUserConnectionSecret(input: {
