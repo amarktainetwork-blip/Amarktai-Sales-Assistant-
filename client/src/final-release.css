@@ -79,6 +79,40 @@ body:has(.z-\[250\]) { overflow: hidden !important; }
   border-color: #fecdd3 !important;
 }
 
+/* Guided company setup: never allow dark selected steps or workflow messages
+ * to inherit the light-workspace text rewrite. */
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] nav button.bg-stone-900,
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] nav button.bg-stone-900 * {
+  background-color: #2f6fed !important;
+  border-color: #2f6fed !important;
+  color: #ffffff !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] nav button.bg-stone-900 span {
+  color: #ffffff !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [data-workflow-feedback="loading"] {
+  background: #eaf2ff !important;
+  border-color: #9fc0ff !important;
+  color: #183b74 !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [data-workflow-feedback="success"] {
+  background: #ecfdf5 !important;
+  border-color: #a7f3d0 !important;
+  color: #065f46 !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [data-workflow-feedback="error"] {
+  background: #fff1f2 !important;
+  border-color: #fecdd3 !important;
+  color: #881337 !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [data-workflow-feedback] p,
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [data-workflow-feedback] span,
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [data-workflow-feedback] strong,
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [data-workflow-feedback] svg {
+  color: inherit !important;
+  opacity: 1 !important;
+}
+
 /* Make system/toast feedback legible regardless of inherited theme tokens. */
 .toaster [data-sonner-toast] {
   background: #ffffff !important;
