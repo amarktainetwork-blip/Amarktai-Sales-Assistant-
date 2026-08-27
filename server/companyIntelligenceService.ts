@@ -19,6 +19,15 @@ type ReviewPage = {
   text: string;
 };
 
+function clientSafeIntelligenceError(error: unknown) {
+  const detail =
+    error instanceof Error ? error.message : "Amarktai intelligence unavailable";
+  return detail
+    .replace(/genx/gi, "Amarktai intelligence")
+    .replace(/provider/gi, "service")
+    .slice(0, 320);
+}
+
 export function retainedPagesForCompanyReview(
   extractedText: string,
   pages: RetainedPageMetadata[]
@@ -120,13 +129,8 @@ export async function discoverAndReviewCompanyIntelligence(input: {
       reference: input.reference,
     });
   } catch (error) {
-    const detail =
-      error instanceof Error ? error.message : "Amarktai intelligence unavailable";
-    const safeDetail = detail
-      .replace(/genx/gi, "Amarktai intelligence")
-      .replace(/provider/gi, "service");
     throw new Error(
-      `The public website was read, but Amarktai intelligence could not produce a verified company-knowledge document. Nothing is ready for approval and no raw scraper output was promoted. ${safeDetail.slice(0, 320)}`
+      `The public website was read, but Amarktai intelligence could not produce a verified company-knowledge document. Nothing is ready for approval and no raw scraper output was promoted. ${clientSafeIntelligenceError(error)}`
     );
   }
 
@@ -167,12 +171,21 @@ export async function reviewStoredCompanyIntelligence(input: {
     throw new Error(
       "Retained raw page evidence is unavailable; start a fresh discovery before retrying."
     );
-  const review = await synthesiseCompanyKnowledge({
-    userId: input.userId,
-    organisationId: input.organisationId,
-    pages: input.pages,
-    reference: `website-review-retry:${input.discoveryId}:${Date.now()}`,
-  });
+
+  let review: CompanyIntelligenceReview;
+  try {
+    review = await synthesiseCompanyKnowledge({
+      userId: input.userId,
+      organisationId: input.organisationId,
+      pages: input.pages,
+      reference: `website-review-retry:${input.discoveryId}:${Date.now()}`,
+    });
+  } catch (error) {
+    throw new Error(
+      `Amarktai intelligence could not complete the website review retry. No unverified knowledge was promoted. ${clientSafeIntelligenceError(error)}`
+    );
+  }
+
   return {
     proposedKnowledge: clientReadyKnowledgeItems(review.items).map(
       companyReviewCandidate
