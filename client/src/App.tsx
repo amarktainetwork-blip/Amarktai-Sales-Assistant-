@@ -8,6 +8,7 @@ import "./app-final.css";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import "./dashboard-v2.css";
+import "./dashboard-v3.css";
 import ContactPage from "./marketing/ContactPage";
 import {
   HowItWorksPage,
@@ -92,9 +93,7 @@ function PageMetadata() {
             description: "Open the protected Amarktai Sales Assistant workspace.",
           });
     document.title = metadata.title;
-    let tag = document.querySelector<HTMLMetaElement>(
-      'meta[name="description"]'
-    );
+    let tag = document.querySelector<HTMLMetaElement>('meta[name="description"]');
     if (!tag) {
       tag = document.createElement("meta");
       tag.name = "description";
