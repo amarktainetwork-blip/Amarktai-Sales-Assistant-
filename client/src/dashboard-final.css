@@ -76,7 +76,19 @@ body:has([data-slot="sidebar-wrapper"]) [data-sidebar="content"] > label[class*=
   color: var(--dash-ink) !important;
   border-color: var(--dash-line) !important;
 }
-body:has([data-slot="sidebar-wrapper"]) [data-sidebar="content"] select { color: var(--dash-ink) !important; }
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="content"] .text-white,
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="content"] [class*="text-[#D7E0EA]"],
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="content"] [class*="text-[#CFD8E3]"] {
+  color: var(--dash-ink) !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="content"] select {
+  color: var(--dash-ink) !important;
+  background: transparent !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="content"] option {
+  color: var(--dash-ink) !important;
+  background: #fff !important;
+}
 
 /* Top bar and main canvas. */
 body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] > header {
