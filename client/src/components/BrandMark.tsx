@@ -13,9 +13,10 @@ export function BrandMark({
   const product = inverse ? "text-white/82" : "text-[#607086]";
 
   return (
-    <span
-      className="inline-flex flex-col items-start leading-none"
-      aria-label="Amarktai Network Sales Assistant"
+    <a
+      href="/"
+      className="inline-flex flex-col items-start leading-none no-underline"
+      aria-label="Amarktai Network Sales Assistant home"
     >
       <span
         className={`font-display font-extrabold tracking-[-.045em] ${large ? "text-[29px]" : "text-[22px]"} ${brand}`}
@@ -30,6 +31,6 @@ export function BrandMark({
           SALES ASSISTANT
         </span>
       )}
-    </span>
+    </a>
   );
 }
