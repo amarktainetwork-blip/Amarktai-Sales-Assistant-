@@ -7,6 +7,7 @@ import { Route, Switch, useLocation } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import "./dashboard-final.css";
+import "./dashboard-client-readability.css";
 import AboutPage from "./marketing/AboutPage";
 import ContactPage from "./marketing/ContactPage";
 import {
@@ -86,14 +87,17 @@ function PageMetadata() {
       (pathname === "/auth"
         ? {
             title: "Secure Access | Amarktai Network Sales Assistant",
-            description: "Sign in to the protected Amarktai Network Sales Assistant workspace.",
+            description:
+              "Sign in to the protected Amarktai Network Sales Assistant workspace.",
           }
         : {
             title: "Amarktai Network Sales Assistant",
             description: "Open the protected Sales Assistant workspace.",
           });
     document.title = metadata.title;
-    let tag = document.querySelector<HTMLMetaElement>('meta[name="description"]');
+    let tag = document.querySelector<HTMLMetaElement>(
+      'meta[name="description"]'
+    );
     if (!tag) {
       tag = document.createElement("meta");
       tag.name = "description";
