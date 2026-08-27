@@ -1,5 +1,12 @@
 export const marketingNavigation = [
+  { label: "Product", href: "/product" },
+  { label: "How it works", href: "/how-it-works" },
+  { label: "For individuals", href: "/individuals" },
+  { label: "For teams", href: "/teams" },
+  { label: "CRM connections", href: "/integrations" },
   { label: "Pricing", href: "/pricing" },
+  { label: "About", href: "/about" },
+  { label: "Contact", href: "/contact" },
 ] as const;
 
 export const accountLinks = {
@@ -19,37 +26,42 @@ export const publicPageMetadata: Record<
   "/product": {
     title: "Product | Amarktai Sales Assistant",
     description:
-      "See how Amarktai turns CRM context, calls, follow-up and AI assistance into one focused sales workspace.",
+      "See the complete Amarktai sales workspace: priorities, customer context, live calls, follow-up, CRM actions, readback and manager visibility.",
   },
   "/how-it-works": {
     title: "How It Works | Amarktai Sales Assistant",
     description:
-      "See how Amarktai connects approved business knowledge and your CRM to a clear daily sales workflow.",
+      "From company learning and CRM setup to the daily sales workflow, see how Amarktai becomes useful without replacing your CRM.",
   },
   "/individuals": {
     title: "For Individuals | Amarktai Sales Assistant",
     description:
-      "A focused sales workspace for independent salespeople, consultants and business owners who sell.",
+      "A focused AI sales workspace for independent salespeople, consultants and business owners who need the next move to stay clear.",
   },
   "/teams": {
     title: "For Teams | Amarktai Sales Assistant",
     description:
-      "Give salespeople a consistent workspace while managers see where attention and support are needed.",
+      "Shared company knowledge, personal salesperson workspaces and manager visibility without shared passwords or private-chat leakage.",
   },
   "/integrations": {
     title: "CRM Connections | Amarktai Sales Assistant",
     description:
-      "Connect Amarktai to Genie, HubSpot, Salesforce, Pipedrive, Zoho CRM or another authorised web CRM.",
+      "Amarktai is designed to work beside Genie, HubSpot, Salesforce, Pipedrive, Zoho CRM and suitable authorised browser CRMs.",
   },
   "/pricing": {
     title: "Pricing in ZAR | Amarktai Sales Assistant",
     description:
-      "Simple South African Rand pricing for individuals and sales teams, with included AI credits and optional top-ups.",
+      "South African Rand pricing for individuals and teams, with included AI credits and optional AI-credit top-ups.",
+  },
+  "/about": {
+    title: "About | Amarktai Sales Assistant",
+    description:
+      "Why Amarktai Sales Assistant exists, what it changes in the sales day, and how it fits into the wider Amarktai Network.",
   },
   "/contact": {
     title: "Contact | Amarktai Sales Assistant",
     description:
-      "Talk to Amarktai about team setup, CRM compatibility, onboarding or support.",
+      "Talk to Amarktai about product questions, demos, CRM compatibility, onboarding, team setup or support.",
   },
   "/404": {
     title: "Page Not Found | Amarktai Sales Assistant",
