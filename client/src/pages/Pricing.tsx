@@ -2,6 +2,7 @@ import { Check, Sparkles } from "lucide-react";
 import { Link } from "wouter";
 import { MarketingLayout } from "@/marketing/MarketingLayout";
 import { accountLinks } from "@/marketing/site";
+import "@/marketing/pricing-v3.css";
 import {
   AI_CREDIT_ECONOMICS,
   AI_CREDIT_FEATURES,
