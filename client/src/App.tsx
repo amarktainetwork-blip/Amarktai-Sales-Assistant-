@@ -4,10 +4,9 @@ import { publicPageMetadata } from "@/marketing/site";
 import NotFound from "@/pages/NotFound";
 import { useEffect } from "react";
 import { Route, Switch, useLocation } from "wouter";
-import "./app-final.css";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import "./dashboard-v6.css";
+import "./dashboard-final.css";
 import AboutPage from "./marketing/AboutPage";
 import ContactPage from "./marketing/ContactPage";
 import {
@@ -44,14 +43,14 @@ function Router() {
       <PageMetadata />
       <Switch>
         <Route path="/" component={Home} />
-        <Route path="/product" component={ProductPage} />
         <Route path="/how-it-works" component={HowItWorksPage} />
-        <Route path="/individuals" component={IndividualsPage} />
-        <Route path="/teams" component={TeamsPage} />
-        <Route path="/integrations" component={IntegrationsPage} />
         <Route path="/pricing" component={Pricing} />
         <Route path="/about" component={AboutPage} />
         <Route path="/contact" component={ContactPage} />
+        <Route path="/product" component={ProductPage} />
+        <Route path="/individuals" component={IndividualsPage} />
+        <Route path="/teams" component={TeamsPage} />
+        <Route path="/integrations" component={IntegrationsPage} />
         <Route path="/auth" component={Auth} />
         <Route path="/dashboard" component={Today} />
         <Route path="/today" component={Today} />
@@ -81,17 +80,17 @@ function Router() {
 function PageMetadata() {
   const [location] = useLocation();
   useEffect(() => {
+    const pathname = location.split(/[?#]/, 1)[0];
     const metadata =
-      publicPageMetadata[location] ??
-      (location === "/auth"
+      publicPageMetadata[pathname] ??
+      (pathname === "/auth"
         ? {
-            title: "Sign In | Amarktai Sales Assistant",
-            description:
-              "Sign in to the protected Amarktai Sales Assistant workspace.",
+            title: "Secure Access | Amarktai Network Sales Assistant",
+            description: "Sign in to the protected Amarktai Network Sales Assistant workspace.",
           }
         : {
-            title: "Amarktai Sales Assistant | Part of Amarktai Network",
-            description: "Open the protected Amarktai Sales Assistant workspace.",
+            title: "Amarktai Network Sales Assistant",
+            description: "Open the protected Sales Assistant workspace.",
           });
     document.title = metadata.title;
     let tag = document.querySelector<HTMLMetaElement>('meta[name="description"]');
