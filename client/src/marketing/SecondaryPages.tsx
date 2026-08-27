@@ -129,7 +129,15 @@ export function IndividualsPage() {
   return (
     <MarketingLayout>
       <PageHero eyebrow="FOR INDIVIDUAL SALESPEOPLE" title="A calmer sales day." accent="Without another system to maintain." copy="For independent salespeople, consultants, founders and solo operators who need customer context, calls and follow-up to stay connected." image="/images/site-calls.svg" alt="Illustration of an individual salesperson working with a call assistant"/>
-      <section className="site-section"><div className="site-shell site-section__intro"><div><p className="site-eyebrow">BUILT FOR THE PERSON DOING THE SELLING</p><h2>Less remembering. Less tab-hopping. More customer time.</h2></div><div className="site-section__copy"><p>Amarktai keeps the active customer, the business context and the next commitment close together. You do not need team-management screens or a second CRM.</p><p>Start with the work that matters now and move through the conversation without losing the follow-through.</p></div></div><Rail items={benefits}/></div></section>
+      <section className="site-section">
+        <div className="site-shell">
+          <div className="site-section__intro">
+            <div><p className="site-eyebrow">BUILT FOR THE PERSON DOING THE SELLING</p><h2>Less remembering. Less tab-hopping. More customer time.</h2></div>
+            <div className="site-section__copy"><p>Amarktai keeps the active customer, the business context and the next commitment close together. You do not need team-management screens or a second CRM.</p><p>Start with the work that matters now and move through the conversation without losing the follow-through.</p></div>
+          </div>
+          <Rail items={benefits}/>
+        </div>
+      </section>
       <section className="site-section site-section--cloud"><div className="site-shell site-split"><div className="site-copy"><p className="site-eyebrow">YOUR DATA, YOUR WORKSPACE</p><h2>Your Amarktai login and CRM identity belong to you.</h2><p>Even inside a company, individual work remains tied to the person doing it. That means personal CRM credentials where required, private Assistant context and a clear record of the work you performed.</p></div><figure className="site-visual"><img src="/images/site-hero.svg" alt="Illustration of a salesperson with a personal AI workspace"/></figure></div></section>
       <FinalCTA title="Give your sales day one place to start." copy="Create an individual workspace and connect the CRM you already use."/>
     </MarketingLayout>
