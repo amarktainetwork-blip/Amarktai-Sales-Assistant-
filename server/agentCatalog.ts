@@ -146,14 +146,17 @@ export type AgentRuntimeDependencies = {
 
 /** Truthful runtime state derived from live dependencies, not catalogue presence. */
 export function agentRuntimeStatus(key: string, dependencies: AgentRuntimeDependencies): AgentRuntimeStatus {
-  if (["sales_intelligence", "objection_handler", "recommendation_agent", "pipeline_planner"].includes(key)) return "NOT_IMPLEMENTED";
   if (["supervisor", "workflow_guardian", "qa_compliance"].includes(key)) return "READY";
   if (key === "analytics") return dependencies.databaseReady ? "READY" : "INTERNAL";
   if (key === "company_intelligence_review") return dependencies.genxReady ? "READY" : "NEEDS_CONNECTION";
   if (key === "knowledge_guide") return dependencies.databaseReady && dependencies.genxReady ? "READY" : "NEEDS_CONNECTION";
-  if (key === "crm_context" || key === "crm_router") return dependencies.crmReadReady || dependencies.crmRouteReady ? "READY" : "NEEDS_CONNECTION";
-  if (key === "communications") return dependencies.communicationsReady ? "READY" : "NEEDS_CONNECTION";
+  if (key === "crm_context") return dependencies.genxReady && dependencies.crmReadReady ? "READY" : "NEEDS_CONNECTION";
+  if (key === "crm_router") return dependencies.crmReadReady || dependencies.crmRouteReady ? "READY" : "NEEDS_CONNECTION";
+  if (key === "communications") return dependencies.genxReady && dependencies.communicationsReady ? "READY" : "NEEDS_CONNECTION";
   if (key === "conversation_coach" || key === "notes_agent") return dependencies.genxReady && dependencies.voiceReady ? "READY" : "NEEDS_CONNECTION";
+  if (key === "sales_intelligence") return dependencies.databaseReady && dependencies.genxReady && dependencies.crmReadReady ? "READY" : "NEEDS_CONNECTION";
+  if (key === "objection_handler" || key === "recommendation_agent") return dependencies.databaseReady && dependencies.genxReady ? "READY" : "NEEDS_CONNECTION";
+  if (key === "pipeline_planner") return dependencies.databaseReady && dependencies.genxReady && (dependencies.crmReadReady || dependencies.crmRouteReady) ? "READY" : "NEEDS_CONNECTION";
   return "NOT_IMPLEMENTED";
 }
 
