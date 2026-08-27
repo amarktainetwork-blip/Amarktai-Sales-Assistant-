@@ -6,6 +6,7 @@ import { accountLinks, marketingNavigation, publicPageMetadata } from "./site";
 import "./marketing.css";
 import "./marketing-v2.css";
 import "./launch-v3.css";
+import "./visual-handover.css";
 
 export function scrollPublicRouteToTop(
   location: string,
@@ -104,16 +105,16 @@ function MarketingFooter() {
       <div className="marketing-container marketing-footer__grid">
         <div className="marketing-footer__brand">
           <BrandMark large inverse />
-          <p>A focused AI sales workspace that works beside the CRM your business already trusts.</p>
+          <p>Part of Amarktai Network. A focused AI sales workspace that works beside the CRM your business already trusts.</p>
         </div>
         <nav aria-label="Product links">
-          <h2>Product</h2>
+          <h2>Sales Assistant</h2>
           <Link href="/product">Product</Link>
-          <Link href="/pricing">Pricing</Link>
+          <Link href="/pricing">Pricing in ZAR</Link>
           <Link href="/integrations">CRM connections</Link>
         </nav>
         <nav aria-label="Company links">
-          <h2>Company</h2>
+          <h2>Amarktai Network</h2>
           <Link href="/contact">Contact</Link>
           <Link href={accountLinks.signIn}>Sign in</Link>
           <Link href={accountLinks.getStarted}>Start free</Link>

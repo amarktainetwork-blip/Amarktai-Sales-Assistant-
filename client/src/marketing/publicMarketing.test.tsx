@@ -20,7 +20,7 @@ import NotFound from "@/pages/NotFound";
 import { AI_CREDIT_ECONOMICS, PRICING_PLANS } from "@shared/pricing";
 
 const pages = [
-  ["/", HomePage, "Sell more"],
+  ["/", HomePage, "With an AI operator beside them."],
   ["/product", ProductPage, "Everything the sales day needs"],
   ["/how-it-works", HowItWorksPage, "From setup to selling"],
   ["/individuals", IndividualsPage, "Spend more time selling"],
@@ -64,6 +64,15 @@ describe("public marketing website", () => {
       expect(html).toContain("Amarktai Network");
     }
   );
+
+  it("renders the image-led handover homepage and explicit Network footer", () => {
+    const html = render("/", HomePage);
+    expect(html).toContain('/images/sales-ai-hero.webp');
+    expect(html).toContain('/images/call-assistant.webp');
+    expect(html).toContain("Part of Amarktai Network");
+    expect(html).toContain("Your CRM remains the record.");
+    expect(html).toContain("Start at R499/month.");
+  });
 
   it("keeps desktop, mobile and footer destinations on valid routes", () => {
     const html = render("/", HomePage);

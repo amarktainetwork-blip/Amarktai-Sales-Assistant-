@@ -9,24 +9,25 @@ export function BrandMark({
   inverse = false,
   large = false,
 }: BrandMarkProps) {
-  const name = inverse ? "text-white" : "text-[#111214]";
-  const subtext = inverse ? "text-white/55" : "text-[#74777d]";
+  const name = inverse ? "text-white" : "text-[#1C2738]";
+  const subtext = inverse ? "text-white/88" : "text-[#475467]";
+
   return (
     <span
-      className="inline-flex items-baseline gap-2"
-      aria-label="Amarktai Network Sales Assistant"
+      className="inline-flex flex-col items-start leading-none"
+      aria-label="Amarktai Sales Assistant"
     >
       <span
-        className={`font-display font-bold tracking-[-.055em] ${large ? "text-[27px]" : "text-[21px]"} ${name}`}
+        className={`font-display font-bold tracking-[-.055em] ${large ? "text-[30px]" : "text-[23px]"} ${name}`}
       >
-        Amarkt<span className="text-[#2F6FED]">ai</span> Network
+        Amarkt<span className="text-[#2F6FED]">ai</span>
       </span>
       {!compact && (
-        <small
-          className={`hidden text-[8px] font-black uppercase tracking-[.18em] sm:inline ${subtext}`}
+        <span
+          className={`mt-1.5 text-[14px] font-extrabold tracking-[.025em] ${subtext}`}
         >
           Sales Assistant
-        </small>
+        </span>
       )}
     </span>
   );

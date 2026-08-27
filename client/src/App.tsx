@@ -9,6 +9,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import "./dashboard-v2.css";
 import "./dashboard-v3.css";
+import "./dashboard-handover.css";
 import ContactPage from "./marketing/ContactPage";
 import {
   HowItWorksPage,

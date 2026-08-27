@@ -1,0 +1,632 @@
+/* Final handover visual system: bright, editorial, image-led and intentionally low on card UI. */
+
+.marketing-site {
+  --handover-ink: #1c2738;
+  --handover-text: #344054;
+  --handover-muted: #667085;
+  --handover-line: #dfe3ea;
+  --handover-paper: #f7f8fb;
+  --handover-warm: #f1eee8;
+  --handover-white: #ffffff;
+  --handover-blue: #2f6fed;
+  --handover-blue-dark: #2458bd;
+  --handover-navy: #24344d;
+  background: var(--handover-white);
+  color: var(--handover-ink);
+}
+
+.marketing-header {
+  border-bottom: 1px solid rgba(28, 39, 56, 0.08) !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  box-shadow: none !important;
+  backdrop-filter: blur(18px);
+}
+
+.marketing-header__inner {
+  min-height: 82px !important;
+}
+
+.marketing-brand {
+  min-width: 250px;
+}
+
+.marketing-nav a,
+.marketing-sign-in {
+  color: #475467 !important;
+  font-size: 13px !important;
+  font-weight: 750 !important;
+}
+
+.marketing-nav a:hover,
+.marketing-nav a.is-active,
+.marketing-sign-in:hover {
+  color: var(--handover-blue) !important;
+}
+
+.marketing-nav a::after {
+  background: var(--handover-blue) !important;
+}
+
+.marketing-header .marketing-button--primary {
+  min-height: 42px !important;
+  border: 0 !important;
+  border-radius: 10px !important;
+  background: var(--handover-blue) !important;
+  color: #fff !important;
+  box-shadow: 0 8px 18px rgba(47, 111, 237, 0.18) !important;
+}
+
+.marketing-header .marketing-button--primary:hover {
+  background: var(--handover-blue-dark) !important;
+}
+
+.marketing-menu-button {
+  border-color: #d0d5dd !important;
+  background: #fff !important;
+  color: var(--handover-ink) !important;
+}
+
+.marketing-mobile-nav {
+  border-color: var(--handover-line) !important;
+  background: #fff !important;
+}
+
+.handover-shell {
+  width: min(1220px, calc(100% - 48px));
+  margin-inline: auto;
+}
+
+.handover-kicker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--handover-blue);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.handover-hero {
+  overflow: hidden;
+  padding: 78px 0 72px;
+  background:
+    radial-gradient(circle at 82% 10%, rgba(47, 111, 237, 0.09), transparent 28%),
+    linear-gradient(180deg, #fff 0%, #f8f9fb 100%);
+}
+
+.handover-hero__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(520px, 1.1fr);
+  align-items: center;
+  gap: clamp(48px, 6vw, 86px);
+}
+
+.handover-hero h1 {
+  max-width: 720px;
+  margin: 24px 0 28px;
+  color: var(--handover-ink);
+  font-family: var(--font-display);
+  font-size: clamp(3.5rem, 6vw, 6rem);
+  font-weight: 760;
+  letter-spacing: -0.065em;
+  line-height: 0.98;
+}
+
+.handover-hero h1 span {
+  color: var(--handover-blue);
+}
+
+.handover-lead {
+  max-width: 650px;
+  margin: 0;
+  color: var(--handover-text);
+  font-size: clamp(1.08rem, 1.65vw, 1.26rem);
+  line-height: 1.72;
+}
+
+.handover-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 22px;
+  margin-top: 34px;
+}
+
+.handover-button {
+  display: inline-flex;
+  min-height: 52px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border-radius: 10px;
+  padding: 0 22px;
+  font-size: 14px;
+  font-weight: 850;
+  transition: transform 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.handover-button:hover {
+  transform: translateY(-1px);
+}
+
+.handover-button--primary {
+  background: var(--handover-blue);
+  box-shadow: 0 12px 25px rgba(47, 111, 237, 0.2);
+  color: #fff !important;
+}
+
+.handover-button--primary:hover {
+  background: var(--handover-blue-dark);
+}
+
+.handover-button--secondary {
+  border: 1px solid #cfd6e1;
+  background: #fff;
+  color: var(--handover-ink) !important;
+}
+
+.handover-button--light {
+  background: #fff;
+  color: var(--handover-navy) !important;
+}
+
+.handover-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--handover-ink) !important;
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.handover-proof {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 22px;
+  margin-top: 31px;
+  padding-top: 20px;
+  border-top: 1px solid var(--handover-line);
+  color: var(--handover-muted);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.handover-proof span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.handover-proof svg {
+  color: var(--handover-blue);
+}
+
+.handover-hero__visual {
+  margin: 0;
+}
+
+.handover-hero__visual img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1.75 / 1;
+  object-fit: cover;
+  object-position: center;
+  border-radius: 28px;
+  box-shadow: 0 28px 60px rgba(34, 52, 77, 0.16);
+}
+
+.handover-hero__visual figcaption {
+  margin: 12px 5px 0;
+  color: #7b8493;
+  font-size: 11px;
+}
+
+.handover-statement {
+  border-block: 1px solid var(--handover-line);
+  background: #fff;
+}
+
+.handover-statement p {
+  margin: 0;
+  padding: 24px 0;
+  color: #596579;
+  font-size: clamp(0.92rem, 1.4vw, 1.04rem);
+  font-weight: 760;
+  letter-spacing: -0.01em;
+  text-align: center;
+}
+
+.handover-statement span {
+  margin-inline: 8px;
+  color: var(--handover-blue);
+}
+
+.handover-section {
+  padding: 104px 0;
+  background: #fff;
+}
+
+.handover-section--intro {
+  background: var(--handover-warm);
+}
+
+.handover-intro {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: clamp(50px, 8vw, 120px);
+  align-items: start;
+}
+
+.handover-intro h2,
+.handover-section__heading h2,
+.handover-visual-copy h2,
+.handover-flow__heading h2,
+.handover-crm h2,
+.handover-price h2,
+.handover-final h2 {
+  margin: 16px 0 0;
+  color: var(--handover-ink);
+  font-family: var(--font-display);
+  font-size: clamp(2.5rem, 4.6vw, 4.5rem);
+  font-weight: 735;
+  letter-spacing: -0.055em;
+  line-height: 1.02;
+}
+
+.handover-intro__copy p {
+  margin: 0 0 22px;
+  color: var(--handover-text);
+  font-size: 1.12rem;
+  line-height: 1.8;
+}
+
+.handover-visual-section {
+  padding: 108px 0;
+  background: #eef3fb;
+}
+
+.handover-visual-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.82fr) minmax(480px, 1.18fr);
+  gap: clamp(56px, 8vw, 110px);
+  align-items: center;
+}
+
+.handover-visual-copy > p:not(.handover-kicker) {
+  margin: 26px 0 0;
+  color: var(--handover-text);
+  font-size: 1.08rem;
+  line-height: 1.78;
+}
+
+.handover-visual-copy ul {
+  display: grid;
+  gap: 13px;
+  margin: 30px 0 0;
+  padding: 0;
+  list-style: none;
+  color: #475467;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.handover-visual-copy li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.handover-visual-copy li svg {
+  color: var(--handover-blue);
+}
+
+.handover-call-image {
+  display: block;
+  width: 100%;
+  border-radius: 26px;
+  box-shadow: 0 28px 60px rgba(36, 52, 77, 0.16);
+}
+
+.handover-section__heading {
+  max-width: 840px;
+  margin-bottom: 48px;
+}
+
+.handover-lines {
+  border-top: 1px solid var(--handover-line);
+}
+
+.handover-line {
+  display: grid;
+  grid-template-columns: 54px minmax(180px, 0.72fr) minmax(0, 1.28fr);
+  gap: 28px;
+  align-items: baseline;
+  border-bottom: 1px solid var(--handover-line);
+  padding: 28px 4px;
+}
+
+.handover-line > span {
+  color: var(--handover-blue);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.handover-line h3 {
+  margin: 0;
+  color: var(--handover-ink);
+  font-family: var(--font-display);
+  font-size: 1.32rem;
+  letter-spacing: -0.025em;
+}
+
+.handover-line p {
+  margin: 0;
+  color: var(--handover-muted);
+  line-height: 1.7;
+}
+
+.handover-flow-section {
+  padding: 108px 0;
+  background: #f8f9fb;
+}
+
+.handover-flow__heading {
+  max-width: 900px;
+}
+
+.handover-flow__heading > p:last-child {
+  max-width: 700px;
+  margin: 24px 0 0;
+  color: var(--handover-text);
+  font-size: 1.08rem;
+  line-height: 1.75;
+}
+
+.handover-flow {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+  margin-top: 58px;
+  border-top: 1px solid var(--handover-line);
+  border-bottom: 1px solid var(--handover-line);
+}
+
+.handover-flow > div {
+  min-height: 250px;
+  padding: 28px 28px 30px 0;
+}
+
+.handover-flow > div + div {
+  border-left: 1px solid var(--handover-line);
+  padding-left: 28px;
+}
+
+.handover-flow span {
+  color: var(--handover-blue);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.handover-flow h3 {
+  margin: 38px 0 12px;
+  color: var(--handover-ink);
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  letter-spacing: -0.03em;
+}
+
+.handover-flow p {
+  margin: 0;
+  color: var(--handover-muted);
+  line-height: 1.65;
+}
+
+.handover-crm {
+  padding: 92px 0;
+  background: #fff;
+}
+
+.handover-crm__grid {
+  display: grid;
+  grid-template-columns: 0.85fr 1.15fr;
+  gap: clamp(60px, 9vw, 130px);
+  align-items: center;
+}
+
+.handover-crm__grid > div:last-child > p:first-child {
+  margin: 0;
+  color: var(--handover-text);
+  font-size: 1.12rem;
+  line-height: 1.8;
+}
+
+.handover-crm__systems {
+  margin: 28px 0 0;
+  color: var(--handover-blue);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.handover-price {
+  padding: 84px 0;
+  border-block: 1px solid var(--handover-line);
+  background: #f1eee8;
+}
+
+.handover-price__inner {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 48px;
+}
+
+.handover-price__inner > div {
+  max-width: 760px;
+}
+
+.handover-price h2 {
+  font-size: clamp(2.3rem, 4vw, 3.9rem);
+}
+
+.handover-price p:not(.handover-kicker) {
+  max-width: 660px;
+  margin: 20px 0 0;
+  color: var(--handover-text);
+  line-height: 1.7;
+}
+
+.handover-final {
+  padding: 92px 0;
+  background: var(--handover-navy);
+  color: #fff;
+}
+
+.handover-final__inner {
+  display: grid;
+  grid-template-columns: 1fr 0.8fr;
+  gap: 80px;
+  align-items: end;
+}
+
+.handover-final .handover-kicker {
+  color: #9fc0ff;
+}
+
+.handover-final h2 {
+  color: #fff;
+}
+
+.handover-final__inner > div:last-child p {
+  margin: 0 0 26px;
+  color: #d7deea;
+  font-size: 1.05rem;
+  line-height: 1.72;
+}
+
+.marketing-footer {
+  border-top: 0 !important;
+  background: #1d2a3f !important;
+  color: #fff !important;
+}
+
+.marketing-footer__brand p,
+.marketing-footer nav a,
+.marketing-footer__base p {
+  color: #c9d3e2 !important;
+}
+
+.marketing-footer nav h2 {
+  color: #fff !important;
+}
+
+.marketing-footer__base {
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+@media (max-width: 980px) {
+  .handover-hero__grid,
+  .handover-intro,
+  .handover-visual-grid,
+  .handover-crm__grid,
+  .handover-final__inner {
+    grid-template-columns: 1fr;
+  }
+
+  .handover-hero__visual {
+    max-width: 760px;
+  }
+
+  .handover-flow {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .handover-flow > div:nth-child(3) {
+    border-left: 0;
+  }
+
+  .handover-flow > div:nth-child(n+3) {
+    border-top: 1px solid var(--handover-line);
+  }
+
+  .handover-price__inner {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 720px) {
+  .handover-shell {
+    width: min(100% - 32px, 1220px);
+  }
+
+  .marketing-brand {
+    min-width: 0;
+  }
+
+  .handover-hero {
+    padding: 54px 0 48px;
+  }
+
+  .handover-hero__grid {
+    grid-template-columns: 1fr;
+    gap: 42px;
+  }
+
+  .handover-hero h1 {
+    font-size: clamp(3rem, 15vw, 4.5rem);
+  }
+
+  .handover-section,
+  .handover-visual-section,
+  .handover-flow-section,
+  .handover-crm {
+    padding: 72px 0;
+  }
+
+  .handover-statement p {
+    text-align: left;
+    line-height: 1.8;
+  }
+
+  .handover-line {
+    grid-template-columns: 36px 1fr;
+    gap: 14px 18px;
+  }
+
+  .handover-line p {
+    grid-column: 2;
+  }
+
+  .handover-flow {
+    grid-template-columns: 1fr;
+  }
+
+  .handover-flow > div,
+  .handover-flow > div + div,
+  .handover-flow > div:nth-child(3) {
+    min-height: 0;
+    border-top: 1px solid var(--handover-line);
+    border-left: 0;
+    padding: 26px 0;
+  }
+
+  .handover-flow > div:first-child {
+    border-top: 0;
+  }
+
+  .handover-flow h3 {
+    margin-top: 18px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .handover-button,
+  .handover-link,
+  .marketing-site * {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
