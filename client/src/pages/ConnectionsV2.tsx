@@ -358,7 +358,7 @@ export default function ConnectionsV2() {
       changeDraft(systemId, { password: "" });
       await systems.refetch();
       toast.success(
-        "Encrypted CRM sign-in saved. Credentials are never returned to the browser or GenX."
+        "Encrypted CRM sign-in saved. Credentials are never returned to the browser or intelligence services."
       );
       setFeedback({
         kind: "success",

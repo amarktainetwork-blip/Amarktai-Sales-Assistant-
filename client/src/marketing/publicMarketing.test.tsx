@@ -74,7 +74,6 @@ describe("final public website", () => {
 
   it("uses the requested public navigation order", () => {
     expect(marketingNavigation.map(item => item.href)).toEqual([
-      "/about",
       "/how-it-works",
       "/pricing",
       "/contact",
@@ -83,6 +82,9 @@ describe("final public website", () => {
     for (const item of marketingNavigation) expect(html).toContain(`href="${item.href}"`);
     expect(html).toContain(`href="${accountLinks.signIn}"`);
     expect(html).toContain(`href="${accountLinks.getStarted.replace("&", "&amp;")}"`);
+    expect(html).toContain(">How It Works<");
+    expect(html).toContain(">Sign In<");
+    expect(html).toContain("Start Free");
     expect(html).toContain("Amarktai Sales Assistant is part of the Amarktai Network.");
     expect(html).toContain(`© ${new Date().getFullYear()} Amarktai Sales Assistant. Part of the Amarktai Network.`);
   });

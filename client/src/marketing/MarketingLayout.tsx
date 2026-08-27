@@ -58,9 +58,9 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
             ))}
           </nav>
           <div className="amk-header__actions">
-            <Link href={accountLinks.signIn} className="amk-signin">Sign in</Link>
+            <Link href={accountLinks.signIn} className="amk-signin">Sign In</Link>
             <Link href={accountLinks.getStarted} className="amk-button amk-button--primary amk-button--small">
-              Start free <ArrowRight size={15} />
+              Start Free <ArrowRight size={15} />
             </Link>
             <button
               ref={menuButton}
@@ -81,8 +81,8 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
               {marketingNavigation.map(item => (
                 <Link key={item.href} href={item.href}>{item.label}</Link>
               ))}
-              <Link href={accountLinks.signIn}>Sign in</Link>
-              <Link href={accountLinks.getStarted} className="amk-button amk-button--primary">Start free</Link>
+              <Link href={accountLinks.signIn}>Sign In</Link>
+              <Link href={accountLinks.getStarted} className="amk-button amk-button--primary">Start Free</Link>
             </div>
           </nav>
         ) : null}

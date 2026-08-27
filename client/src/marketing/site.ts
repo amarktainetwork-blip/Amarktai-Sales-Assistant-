@@ -1,6 +1,5 @@
 export const marketingNavigation = [
-  { label: "About", href: "/about" },
-  { label: "How it works", href: "/how-it-works" },
+  { label: "How It Works", href: "/how-it-works" },
   { label: "Pricing", href: "/pricing" },
   { label: "Contact", href: "/contact" },
 ] as const;

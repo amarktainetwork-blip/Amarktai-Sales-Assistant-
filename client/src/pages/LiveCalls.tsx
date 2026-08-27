@@ -469,7 +469,7 @@ export default function LiveCalls() {
         </h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-[#A9BFDF]">
           Authorised call audio is transcribed in short chunks, live signals are
-          detected locally in code, and GenX is called only when semantic
+          detected locally in code, and Amarktai reasoning is used only when semantic
           coaching is useful. Raw chunks are forwarded to your configured STT
           service and are not retained by this bridge.
         </p>
@@ -896,7 +896,7 @@ export default function LiveCalls() {
             </div>
             <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-[#D9E5F7]">
               {tip ||
-                "A short coaching response appears only when an important signal or question warrants semantic help. Routine transcription does not call GenX."}
+                "A short coaching response appears only when an important signal or question warrants semantic help. Routine transcription does not request semantic coaching."}
             </p>
           </section>
         </div>
