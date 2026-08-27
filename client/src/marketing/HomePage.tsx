@@ -1,158 +1,153 @@
-import { ArrowRight, Check, Headphones, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowRight, Check, Sparkles } from "lucide-react";
 import { Link } from "wouter";
 import { MarketingLayout } from "./MarketingLayout";
 import { accountLinks } from "./site";
 
-const capabilities = [
-  ["Learns your business", "Amarktai reads approved website and company information, then turns it into grounded sales context."],
-  ["Works beside your CRM", "Customer history, tasks, opportunities and next steps stay anchored to the CRM you already use."],
-  ["Prepares the conversation", "Ask who to call, what changed, what matters and how to approach the next conversation."],
-  ["Assists on the call", "Live transcription, context and prompts help the salesperson stay present instead of searching through systems."],
-  ["Finishes the follow-through", "Draft the note, create the callback, update the opportunity and keep the next commitment visible."],
-  ["Checks its own work", "Important CRM actions are read back before Amarktai tells the user that the work is complete."],
-] as const;
-
-const operatingFlow = [
-  ["01", "Set up the business", "The company approves its identity, offering, policies and knowledge once."],
-  ["02", "Connect the salesperson", "Each user has their own Amarktai login and their own CRM identity and credentials."],
-  ["03", "Work from one sales day", "Amarktai surfaces the customers, calls and commitments that need attention now."],
-  ["04", "Keep the CRM true", "Actions end back in the system of record with review, audit evidence and readback."],
+const loop = [
+  ["01", "Learn the business", "Amarktai reads the approved website and company information, then turns it into grounded sales context."],
+  ["02", "Understand the customer", "Customer history, ownership, tasks, opportunities and recent activity come from the CRM instead of being guessed."],
+  ["03", "Prepare the conversation", "The salesperson gets a concise brief, talking points and the reason this customer needs attention now."],
+  ["04", "Assist through the call", "Consented transcription, useful context and live prompts help the salesperson stay in the conversation."],
+  ["05", "Finish the follow-through", "Notes, callbacks, tasks, messages and opportunity updates can be prepared from the confirmed outcome."],
+  ["06", "Verify the result", "Important CRM actions are read back before Amarktai says the work is complete."],
 ] as const;
 
 export default function HomePage() {
   return (
     <MarketingLayout>
-      <section className="handover-hero">
-        <div className="handover-shell handover-hero__grid">
-          <div className="handover-hero__copy">
-            <p className="handover-kicker"><Sparkles size={15}/> AI sales workspace for real sales teams</p>
+      <section className="site-hero">
+        <div className="site-shell site-hero__grid">
+          <div>
+            <p className="site-eyebrow"><Sparkles size={15}/> AI sales assistant built around the real sales day</p>
             <h1>Your salesperson.<br/><span>With an AI operator beside them.</span></h1>
-            <p className="handover-lead">
-              Amarktai learns the business, connects to the CRM and helps each salesperson decide what matters, prepare better conversations, work through calls and complete the follow-through without losing the customer record.
+            <p className="site-lead">
+              Amarktai learns the business, works beside the CRM and helps each salesperson decide what matters, prepare better conversations, work through calls and finish the follow-through without losing the customer record.
             </p>
-            <div className="handover-actions">
-              <Link href={accountLinks.getStarted} className="handover-button handover-button--primary">Start with Amarktai <ArrowRight size={17}/></Link>
-              <Link href="/product" className="handover-link">See how it works <ArrowRight size={16}/></Link>
+            <div className="site-actions">
+              <Link href={accountLinks.getStarted} className="site-button site-button--primary">Start with Amarktai <ArrowRight size={17}/></Link>
+              <Link href="/product" className="site-button site-button--secondary">Explore the product</Link>
             </div>
-            <div className="handover-proof">
+            <div className="site-proofline">
               <span><Check size={15}/> Keep your CRM</span>
               <span><Check size={15}/> Personal user logins</span>
-              <span><Check size={15}/> Review and readback</span>
+              <span><Check size={15}/> Review and CRM readback</span>
             </div>
           </div>
-          <figure className="handover-hero__visual">
-            <img src="/images/sales-ai-hero.webp" alt="AI-assisted salesperson working with Amarktai during the sales day" />
-            <figcaption>AI assistance around the salesperson — not another CRM to maintain.</figcaption>
-          </figure>
-        </div>
-      </section>
-
-      <section className="handover-statement">
-        <div className="handover-shell">
-          <p>Learn the business <span>→</span> understand the customer <span>→</span> help with the conversation <span>→</span> execute the next step <span>→</span> verify the CRM</p>
-        </div>
-      </section>
-
-      <section className="handover-section handover-section--intro">
-        <div className="handover-shell handover-intro">
-          <div className="handover-intro__title">
-            <p className="handover-kicker">WHAT WE ACTUALLY BUILT</p>
-            <h2>A sales operating layer around the CRM.</h2>
-          </div>
-          <div className="handover-intro__copy">
-            <p>Most sales teams already have a CRM. The problem is the work around it: finding context, deciding who needs attention, preparing calls, remembering commitments and keeping records current.</p>
-            <p>Amarktai sits beside that CRM and turns those disconnected jobs into one guided sales day. The CRM remains the source of truth; the salesperson remains responsible for the customer relationship.</p>
+          <div>
+            <figure className="site-hero__visual">
+              <img src="/images/site-hero.svg" alt="Salesperson working with an abstract AI assistant" />
+            </figure>
+            <p className="site-caption">AI around the salesperson — not another CRM to maintain.</p>
           </div>
         </div>
       </section>
 
-      <section className="handover-visual-section">
-        <div className="handover-shell handover-visual-grid">
-          <div className="handover-visual-copy">
-            <p className="handover-kicker"><Headphones size={15}/> ON THE CALL</p>
-            <h2>Less screen-hunting.<br/>More listening.</h2>
-            <p>Before a call, Amarktai can pull together the account history, open work and talking points. During the conversation it can transcribe, surface relevant context and help capture the next commitment.</p>
-            <ul>
-              <li><Check size={15}/> Pre-call context and talking points</li>
-              <li><Check size={15}/> Live transcription and useful prompts</li>
-              <li><Check size={15}/> Call closeout, notes and next actions</li>
+      <section className="site-band">
+        <div className="site-shell site-band__inner">
+          <strong>One operating layer around the sales work.</strong>
+          <div className="site-band__trail">
+            <span>Company knowledge</span><span>CRM context</span><span>Calls</span><span>Follow-up</span><span>Readback</span><span>Manager visibility</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="site-section">
+        <div className="site-shell site-section__intro">
+          <div>
+            <p className="site-eyebrow">WHY IT EXISTS</p>
+            <h2>The CRM is not the problem. The work around it is.</h2>
+          </div>
+          <div className="site-section__copy">
+            <p>Salespeople lose time reconstructing context, deciding who needs attention, preparing calls, remembering commitments and then updating the CRM after the conversation.</p>
+            <p><strong>Amarktai brings those jobs into one guided sales day.</strong> It does not ask the team to abandon the CRM. It helps them use the CRM better while keeping the actual customer record where the business already trusts it.</p>
+          </div>
+        </div>
+      </section>
+
+      <section className="site-section site-section--cloud">
+        <div className="site-shell site-split">
+          <div className="site-copy">
+            <p className="site-eyebrow">FIRST, IT LEARNS THE BUSINESS</p>
+            <h2>Company context that is useful, reviewed and grounded.</h2>
+            <p>On first setup, Amarktai can read the authorised company website, use GenX to reason across the retained evidence and prepare structured company intelligence for review. Approved facts become shared company knowledge; comparison or uncertain claims stay untrusted until reviewed.</p>
+            <ul className="site-checks">
+              <li><Check size={16}/> Website evidence stays tied to its source page.</li>
+              <li><Check size={16}/> AI helps understand the site instead of treating every sentence as equal.</li>
+              <li><Check size={16}/> The company approves what salespeople are allowed to rely on.</li>
+            </ul>
+            <div className="site-actions"><Link href="/how-it-works" className="site-button site-button--soft">See the setup flow <ArrowRight size={16}/></Link></div>
+          </div>
+          <figure className="site-visual"><img src="/images/site-intelligence.svg" alt="Illustration of company website information being connected into structured knowledge"/></figure>
+        </div>
+      </section>
+
+      <section className="site-section site-section--cream">
+        <div className="site-shell site-split site-split--reverse">
+          <figure className="site-visual"><img src="/images/site-calls.svg" alt="Illustration of a salesperson using a live call assistant"/></figure>
+          <div className="site-copy">
+            <p className="site-eyebrow">BEFORE, DURING AND AFTER THE CALL</p>
+            <h2>Less screen-hunting. More listening.</h2>
+            <p>Before the conversation, Amarktai can assemble the customer context and talking points. During a consented call, the live companion can transcribe and surface useful prompts. After the call, the confirmed outcome can become the next CRM action instead of another admin session.</p>
+            <ul className="site-checks">
+              <li><Check size={16}/> Pre-call brief from real company and CRM context.</li>
+              <li><Check size={16}/> Live transcription and useful prompts where enabled.</li>
+              <li><Check size={16}/> Call closeout, notes, tasks and next commitments remain connected.</li>
             </ul>
           </div>
-          <img className="handover-call-image" src="/images/call-assistant.webp" alt="Amarktai live call assistant visual" />
         </div>
       </section>
 
-      <section className="handover-section">
-        <div className="handover-shell">
-          <div className="handover-section__heading">
-            <p className="handover-kicker">ONE PRODUCT, NOT A MAZE OF TOOLS</p>
-            <h2>Everything around the sale, in one working rhythm.</h2>
-          </div>
-          <div className="handover-lines">
-            {capabilities.map(([title, copy], index) => (
-              <div className="handover-line" key={title}>
-                <span>{String(index + 1).padStart(2, "0")}</span>
-                <h3>{title}</h3>
-                <p>{copy}</p>
+      <section className="site-section">
+        <div className="site-shell">
+          <p className="site-eyebrow">THE OPERATING LOOP</p>
+          <h2>Everything around the sale, in one rhythm.</h2>
+          <div className="site-rail">
+            {loop.map(([number,title,copy]) => (
+              <div className="site-rail__row" key={number}>
+                <span>{number}</span><h3>{title}</h3><p>{copy}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="handover-flow-section">
-        <div className="handover-shell">
-          <div className="handover-flow__heading">
-            <p className="handover-kicker">FROM FIRST LOGIN TO LIVE SALES WORK</p>
-            <h2>Company knowledge is shared.<br/>The salesperson stays personal.</h2>
-            <p>Teams should not share passwords or private assistant conversations. Amarktai separates company setup from each person’s own workspace and CRM identity.</p>
+      <section className="site-section site-section--mint">
+        <div className="site-shell site-split">
+          <div className="site-copy">
+            <p className="site-eyebrow">BUILT FOR INDIVIDUALS AND TEAMS</p>
+            <h2>Shared company knowledge. Personal sales workspaces.</h2>
+            <p>The company can approve knowledge, policies and the CRM definition once. Every salesperson still gets their own Amarktai account, private Assistant context and personal CRM identity/credentials. Managers get the team view without turning private salesperson work into a shared chat room.</p>
+            <div className="site-actions">
+              <Link href="/individuals" className="site-button site-button--secondary">For individuals</Link>
+              <Link href="/teams" className="site-button site-button--primary">For teams</Link>
+            </div>
           </div>
-          <div className="handover-flow">
-            {operatingFlow.map(([number, title, copy]) => (
-              <div key={number}>
-                <span>{number}</span>
-                <h3>{title}</h3>
-                <p>{copy}</p>
-              </div>
-            ))}
+          <figure className="site-visual"><img src="/images/site-team.svg" alt="Illustration of a connected sales team with separate personal workspaces"/></figure>
+        </div>
+      </section>
+
+      <section className="site-quote">
+        <div className="site-shell site-quote__inner">
+          <small>CRM FIRST</small>
+          <p>Contacts, tasks, opportunities and commitments stay in the connected CRM. Amarktai works around the record, and important writes are verified before the user is told they succeeded.</p>
+        </div>
+      </section>
+
+      <section className="site-section site-section--canvas">
+        <div className="site-shell site-section__intro">
+          <div><p className="site-eyebrow">CRM CONNECTIONS</p><h2>Designed to sit beside the system you already use.</h2></div>
+          <div className="site-section__copy">
+            <p>Genie is the first live customer commissioning path. The platform also contains connectors for HubSpot, Salesforce, Pipedrive and Zoho, plus controlled browser CRM support where appropriate.</p>
+            <p>We only call a CRM capability ready when the actual connected system has been tested and the operation has retained proof.</p>
+            <Link href="/integrations" className="site-button site-button--secondary">Explore CRM connections <ArrowRight size={16}/></Link>
           </div>
         </div>
       </section>
 
-      <section className="handover-crm">
-        <div className="handover-shell handover-crm__grid">
-          <div>
-            <p className="handover-kicker"><ShieldCheck size={15}/> CRM FIRST</p>
-            <h2>Your CRM remains the record.</h2>
-          </div>
-          <div>
-            <p>Amarktai can prepare and execute work, but important updates do not disappear into an AI chat. Contacts, tasks, opportunities and commitments remain in the connected CRM, with verification where it matters.</p>
-            <p className="handover-crm__systems">Genie · HubSpot · Salesforce · Pipedrive · Zoho · authorised browser CRMs</p>
-          </div>
-        </div>
-      </section>
-
-      <section className="handover-price">
-        <div className="handover-shell handover-price__inner">
-          <div>
-            <p className="handover-kicker">SOUTH AFRICAN RAND PRICING</p>
-            <h2>Start at R499/month.</h2>
-            <p>Individual and team plans include AI credits. Extra AI usage is topped up separately, while routine CRM work does not burn AI credits unnecessarily.</p>
-          </div>
-          <Link href="/pricing" className="handover-button handover-button--secondary">See pricing in ZAR <ArrowRight size={17}/></Link>
-        </div>
-      </section>
-
-      <section className="handover-final">
-        <div className="handover-shell handover-final__inner">
-          <div>
-            <p className="handover-kicker">AMARKTAI NETWORK · SALES ASSISTANT</p>
-            <h2>Give the team back the sales day.</h2>
-          </div>
-          <div>
-            <p>One company setup. Personal workspaces. The CRM you already trust. AI where it genuinely helps.</p>
-            <Link href={accountLinks.getStarted} className="handover-button handover-button--light">Get started <ArrowRight size={17}/></Link>
-          </div>
+      <section className="site-final">
+        <div className="site-shell site-final__inner">
+          <div><p className="site-eyebrow">PRICED IN SOUTH AFRICAN RAND</p><h2>Start with one seller. Grow into the team.</h2></div>
+          <div className="site-final__action"><p>Plans start at R499/month. AI-heavy work uses included credits and optional top-ups, while routine deterministic CRM work does not burn AI credits unnecessarily.</p><Link href="/pricing" className="site-button site-button--primary">See pricing in ZAR <ArrowRight size={16}/></Link></div>
         </div>
       </section>
     </MarketingLayout>
