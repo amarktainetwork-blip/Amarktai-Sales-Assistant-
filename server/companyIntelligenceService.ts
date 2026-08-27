@@ -48,6 +48,15 @@ export function pagesForCompanyReview(
   return retainedPagesForCompanyReview(discovery.extractedText, discovery.pages);
 }
 
+function clientKnowledgeCategory(
+  classification: CompanyIntelligenceReview["items"][number]["classification"]
+) {
+  if (classification === "company_contact") return "contact";
+  if (classification === "company_faq") return "faq";
+  if (classification === "company_policy") return "policies";
+  return classification;
+}
+
 export function companyReviewCandidate(
   item: CompanyIntelligenceReview["items"][number]
 ) {
@@ -73,9 +82,7 @@ export function companyReviewCandidate(
     offering?.outcomes?.length
       ? `Outcomes: ${offering.outcomes.join("; ")}`
       : "",
-    offering?.targetCustomer
-      ? `Best fit: ${offering.targetCustomer}`
-      : "",
+    offering?.targetCustomer ? `Best fit: ${offering.targetCustomer}` : "",
     `Evidence: ${item.evidenceText}`,
   ].filter(Boolean);
   return {
@@ -83,7 +90,7 @@ export function companyReviewCandidate(
     content: lines.join("\n\n"),
     sourceUrl: item.sourceUrls[0] || "",
     fetchedAt: item.fetchedAt,
-    category: item.classification,
+    category: clientKnowledgeCategory(item.classification),
     classification: item.classification,
     reviewState: item.reviewState,
     confidence: item.confidence,
