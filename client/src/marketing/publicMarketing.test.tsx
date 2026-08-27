@@ -59,11 +59,13 @@ describe("final public website", () => {
     expect(combined).not.toMatch(/\bGenX\b/i);
   });
 
-  it("uses real photography and removes the rejected illustration assets from the homepage", () => {
+  it("uses the approved replacement photography and removes rejected illustration assets", () => {
     const html = render("/", HomePage);
-    expect(html).toContain("images.pexels.com/photos/8837770");
-    expect(html).toContain("images.pexels.com/photos/8068833");
+    expect(html).toContain("images.pexels.com/photos/7679563");
+    expect(html).toContain("images.pexels.com/photos/8000530");
     expect(html).toContain("images.pexels.com/photos/14596539");
+    expect(html).not.toContain("images.pexels.com/photos/8837770");
+    expect(html).not.toContain("images.pexels.com/photos/8068833");
     expect(html).not.toContain("/images/site-hero.svg");
     expect(html).not.toContain("/images/site-intelligence.svg");
     expect(html).not.toContain("/images/site-calls.svg");
