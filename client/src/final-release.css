@@ -1,0 +1,118 @@
+/* Final client-facing launch safeguards. Loaded last. */
+
+/* Keep the public site self-contained and add subtle visual movement without
+ * relying on third-party font/style origins. */
+.amk-site {
+  background:
+    radial-gradient(circle at 8% 18%, rgba(47, 111, 237, .10), transparent 24rem),
+    radial-gradient(circle at 92% 34%, rgba(91, 188, 173, .10), transparent 23rem),
+    radial-gradient(circle at 22% 82%, rgba(240, 177, 112, .11), transparent 26rem),
+    #ffffff;
+}
+.amk-site main { position: relative; isolation: isolate; }
+.amk-site main::before,
+.amk-site main::after {
+  content: "";
+  position: fixed;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: 999px;
+  filter: blur(10px);
+}
+.amk-site main::before {
+  width: 26rem;
+  height: 26rem;
+  left: -10rem;
+  top: 22vh;
+  background: radial-gradient(circle, rgba(47,111,237,.13), rgba(47,111,237,0) 70%);
+}
+.amk-site main::after {
+  width: 30rem;
+  height: 30rem;
+  right: -12rem;
+  bottom: 8vh;
+  background: radial-gradient(circle, rgba(81,178,153,.12), rgba(81,178,153,0) 70%);
+}
+.amk-intro,
+.amk-flow,
+.amk-about,
+.amk-contact { background: rgba(255,255,255,.93) !important; }
+.amk-page-hero,
+.amk-pricing { background-color: rgba(250,252,255,.94) !important; }
+.amk-story--soft,
+.amk-page-section--soft { background-color: rgba(244,247,250,.95) !important; }
+.amk-story--warm,
+.amk-page-section--warm { background-color: rgba(249,245,239,.95) !important; }
+
+/* The full-screen first-time setup is the only scroll surface. This removes
+ * the underlying document scrollbar that previously created a double scroll. */
+body:has(.z-\[250\]) { overflow: hidden !important; }
+.z-\[250\] { scrollbar-gutter: stable; }
+.z-\[250\].bg-\[\#f4f1e9\] {
+  background:
+    radial-gradient(circle at 8% 18%, rgba(47,111,237,.11), transparent 24rem),
+    radial-gradient(circle at 94% 86%, rgba(85,184,160,.11), transparent 25rem),
+    #f6f8fb !important;
+  color: #203047 !important;
+}
+.z-\[250\] .bg-\[\#fffefa\] {
+  background: #ffffff !important;
+  border-color: #d5dfeb !important;
+  border-radius: 18px !important;
+  box-shadow: 0 22px 60px rgba(32,48,71,.10);
+}
+.z-\[250\] .border-stone-300 { border-color: #d5dfeb !important; }
+.z-\[250\] .text-stone-500 { color: #6d7d90 !important; }
+.z-\[250\] .text-stone-600 { color: #607086 !important; }
+.z-\[250\] .text-stone-700 { color: #40536b !important; }
+.z-\[250\] .text-\[\#171719\] { color: #203047 !important; }
+.z-\[250\] .text-\[\#2466cc\] { color: #2f6fed !important; }
+.z-\[250\] .bg-\[\#eef4ff\] { background: #edf3ff !important; }
+.z-\[250\] .border-\[\#2466cc\] { border-color: #2f6fed !important; }
+.z-\[250\] .bg-stone-900 { background: #2f6fed !important; }
+.z-\[250\] button.bg-stone-900 { background: #2f6fed !important; color: #fff !important; }
+.z-\[250\] button.bg-stone-900:hover { background: #2459c2 !important; }
+.z-\[250\] button:disabled { opacity: .55 !important; }
+.z-\[250\] [role="alert"] {
+  color: #8b1e2f !important;
+  background: #fff1f2 !important;
+  border-color: #fecdd3 !important;
+}
+
+/* Make system/toast feedback legible regardless of inherited theme tokens. */
+.toaster [data-sonner-toast] {
+  background: #ffffff !important;
+  color: #203047 !important;
+  border: 1px solid #d5dfeb !important;
+  box-shadow: 0 16px 40px rgba(32,48,71,.16) !important;
+}
+.toaster [data-sonner-toast] [data-title],
+.toaster [data-sonner-toast] [data-description] { color: inherit !important; }
+.toaster [data-sonner-toast][data-type="success"] {
+  background: #ecfdf5 !important;
+  color: #065f46 !important;
+  border-color: #a7f3d0 !important;
+}
+.toaster [data-sonner-toast][data-type="error"] {
+  background: #fff1f2 !important;
+  color: #881337 !important;
+  border-color: #fecdd3 !important;
+}
+.toaster [data-sonner-toast][data-type="warning"] {
+  background: #fffbeb !important;
+  color: #78350f !important;
+  border-color: #fde68a !important;
+}
+
+/* Compact registration so standard desktop screens do not need an avoidable
+ * vertical scroll. */
+.amk-auth--register .amk-auth__form-side { padding-block: 28px !important; }
+.amk-auth--register .amk-auth-form { margin-top: 22px !important; gap: 14px !important; }
+.amk-auth--register .amk-auth__form-wrap h2 { font-size: clamp(38px, 3.5vw, 50px) !important; }
+.amk-auth--register .amk-auth__muted { margin-top: 14px !important; }
+.amk-auth--register .amk-auth__fineprint { margin-top: 10px !important; }
+
+@media (max-width: 780px) {
+  .amk-site main::before,
+  .amk-site main::after { opacity: .65; }
+}
