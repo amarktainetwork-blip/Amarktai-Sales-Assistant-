@@ -1,9 +1,9 @@
 import {
   listConnectedSystemsForUser,
-  loadConnectionSecret,
   toAdapterConnection,
 } from "./connectedSystems";
 import { getCrmAdapter } from "./crm/adapterRegistry";
+import { loadRuntimeSecretForUser } from "./crm/runtimeSecret";
 import type { NormalizedContact } from "./crm/types";
 import { routeConnectedSystemActions } from "./crmRouter";
 import { createWorkflowRun } from "./db";
@@ -109,9 +109,16 @@ async function performSafeRead(input: {
     return { state: "connection_not_ready", proposalCount: 0, summary: "The connected CRM does not have the verified read capability needed for that request.", needsClarification: false, route: input.route };
 
   const adapter = getCrmAdapter(system.provider);
-  const secret = await loadConnectionSecret({ organisationId: input.organisationId, connectedSystemId: system.id, secretKind: system.connectionMethod === "browser" ? "browser" : "oauth" });
-  if (!secret)
-    return { state: "connection_not_ready", proposalCount: 0, summary: "The CRM connection does not have an available secure session for that read.", needsClarification: false, route: input.route };
+  let secret;
+  try {
+    secret = await loadRuntimeSecretForUser({
+      userId: input.userId,
+      organisationId: input.organisationId,
+      system,
+    });
+  } catch {
+    return { state: "connection_not_ready", proposalCount: 0, summary: "Your CRM login is not ready for this workspace yet. Complete your personal CRM connection first.", needsClarification: false, route: input.route };
+  }
   const connection = toAdapterConnection(system);
   const context = { connection, secret };
 
