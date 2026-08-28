@@ -36,6 +36,16 @@ describe("durable company knowledge job contract", () => {
     expect(jobs).not.toContain("confirmWebsiteDiscovery(");
   });
 
+  it("supersedes legacy unapproved drafts that predate the completeness contract", () => {
+    const migration = read("../drizzle/0028_spicy_warpath.sql");
+    expect(migration).toContain("UPDATE `websiteDiscoveries`");
+    expect(migration).toContain("`status` = 'superseded'");
+    expect(migration).toContain("`status` = 'review_required'");
+    expect(migration).toContain("'$.completeness.status'");
+    expect(migration).toContain("IS NULL");
+    expect(migration).not.toContain("DELETE FROM `websiteDiscoveries`");
+  });
+
   it("claims a queued or expired job atomically before billable work", () => {
     const jobs = read("./companyKnowledgeJobs.ts");
     const claim = jobs.slice(
