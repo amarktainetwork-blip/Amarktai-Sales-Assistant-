@@ -4,6 +4,7 @@ import {
   toAdapterConnection,
 } from "./connectedSystems";
 import { getCrmAdapter } from "./crm/adapterRegistry";
+import { isRuntimeConnectionStatus } from "./crm/runtimeCapabilities";
 import type { NormalizedContact } from "./crm/types";
 import { routeConnectedSystemActions } from "./crmRouter";
 import { createWorkflowRun } from "./db";
@@ -74,7 +75,7 @@ function callbackInstruction(command: string, leadLabel: string, dueAt?: string,
 }
 
 function canRead(system: Awaited<ReturnType<typeof listConnectedSystemsForUser>>[number], capability: string) {
-  return system.status === "ready" && system.verifiedCapabilities.includes(capability);
+  return isRuntimeConnectionStatus(system.status) && system.verifiedCapabilities.includes(capability);
 }
 
 function publicContact(contact: NormalizedContact | null) {
@@ -100,7 +101,7 @@ async function performSafeRead(input: {
   const systems = await listConnectedSystemsForUser(input.userId, input.organisationId);
   const system = input.crmContext?.connectedSystemId
     ? systems.find(item => item.id === input.crmContext?.connectedSystemId)
-    : systems.find(item => item.status === "ready" && item.verifiedCapabilities.some(capability => capability.endsWith(".read")));
+    : systems.find(item => isRuntimeConnectionStatus(item.status) && item.verifiedCapabilities.some(capability => capability.endsWith(".read")));
   if (!system)
     return { state: "connection_not_ready", proposalCount: 0, summary: "The CRM connection is not ready for that read yet.", needsClarification: false, route: input.route };
 
