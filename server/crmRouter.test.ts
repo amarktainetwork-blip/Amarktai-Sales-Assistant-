@@ -4,6 +4,18 @@ import {
   routeConnectedSystemActions,
 } from "./crmRouter";
 
+const liveCustom = {
+  operationKey: "custom.write.send.quote",
+  label: "Send Quote",
+  mode: "write" as const,
+  status: "LIVE_PROVEN",
+  version: 3,
+  lastTestAt: null,
+  lastSuccessAt: null,
+  lastFailureAt: null,
+  productionReady: true,
+};
+
 describe("canonical connected-system capability router", () => {
   it("routes only through a usable system with backend-verified capabilities", () => {
     const systems = [
@@ -60,13 +72,12 @@ describe("canonical connected-system capability router", () => {
     );
     expect(sms.payload.crmRoute).toMatchObject({
       routable: true,
-      provider: "genie",
       connectedSystemId: 2,
       requiredCapability: "sms.send",
     });
   });
 
-  it("does not require an unrelated activity capability for a CRM communication function", () => {
+  it("does not require an unrelated capability for a CRM communication function", () => {
     const systems = [
       {
         id: 3,
@@ -101,7 +112,7 @@ describe("canonical connected-system capability router", () => {
     });
   });
 
-  it("routes a CRM-specific learned action only to a browser connection", () => {
+  it("routes a custom-only limited browser connector when the exact operation is LIVE_PROVEN", () => {
     const systems = [
       {
         id: 5,
@@ -110,6 +121,7 @@ describe("canonical connected-system capability router", () => {
         status: "ready",
         connectionMethod: "oauth",
         verifiedCapabilities: ["activities.write"],
+        learnedOperations: [],
       },
       {
         id: 6,
@@ -118,6 +130,7 @@ describe("canonical connected-system capability router", () => {
         status: "limited_permissions",
         connectionMethod: "browser",
         verifiedCapabilities: [],
+        learnedOperations: [liveCustom],
       },
     ];
     const [custom] = routeConnectedSystemActions(
@@ -135,11 +148,53 @@ describe("canonical connected-system capability router", () => {
     expect(custom.payload.crmRoute).toMatchObject({
       routable: true,
       connectedSystemId: 6,
-      requiredCapability: "exact LIVE_PROVEN CRM-specific operation",
+      operationKey: "custom.write.send.quote",
+      operationState: "LIVE_PROVEN",
     });
-    expect(connectedSystemSupportsAction(systems[0], "custom_crm_action")).toBe(
-      false
-    );
+    expect(
+      connectedSystemSupportsAction(
+        systems[1],
+        "custom_crm_action",
+        "custom.write.send.quote"
+      )
+    ).toBe(true);
+    expect(
+      connectedSystemSupportsAction(
+        systems[0],
+        "custom_crm_action",
+        "custom.write.send.quote"
+      )
+    ).toBe(false);
+  });
+
+  it("does not route an unknown or TEST_READY custom operation in production", () => {
+    const system = {
+      id: 6,
+      provider: "genie",
+      displayName: "Genie",
+      status: "limited_permissions",
+      connectionMethod: "browser",
+      verifiedCapabilities: [],
+      learnedOperations: [
+        { ...liveCustom, status: "TEST_READY", productionReady: false },
+      ],
+    };
+    for (const actionName of [
+      "custom.write.send.quote",
+      "custom.write.not.learned",
+      "send.quote",
+    ]) {
+      const [custom] = routeConnectedSystemActions(
+        [
+          {
+            actionType: "custom_crm_action",
+            payload: { actionName, preferredConnectedSystemId: 6 },
+          },
+        ],
+        [system]
+      );
+      expect(custom.payload.crmRoute).toMatchObject({ routable: false });
+    }
   });
 
   it("blocks a ready-labelled browser connector when verification did not record the required standard capability", () => {
@@ -236,7 +291,7 @@ describe("canonical connected-system capability router", () => {
     });
   });
 
-  it("routes calendar creation only when the installation-level Outlook boundary is configured", () => {
+  it("routes calendar creation only when the installation-level calendar boundary is configured", () => {
     const keys = [
       "OUTLOOK_TENANT_ID",
       "OUTLOOK_CLIENT_ID",
@@ -264,7 +319,6 @@ describe("canonical connected-system capability router", () => {
       );
       expect(ready.payload.crmRoute).toMatchObject({
         routable: true,
-        provider: "outlook",
         connectionMode: "microsoft_graph",
       });
     } finally {
