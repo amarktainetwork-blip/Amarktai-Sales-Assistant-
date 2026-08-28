@@ -324,8 +324,8 @@ function analystSystemPrompt() {
   return "You are a senior business analyst and sales-enablement architect. Use only the attached canonical first-party website corpus. Understand the whole company rather than summarising pages. Return strict JSON matching the requested schema. Reference sources only by known PAGE_XXXX IDs. Separate real offerings from categories, career-path/editorial pages, testimonials, examples, comparisons and competitors. Distinguish full price, deposit, finance payment, alternative plan and other fees. Never silently resolve contradictory first-party facts.";
 }
 
-function analystPrompt() {
-  return `Build the complete proposed CompanyKnowledgePack using exactly this JSON structure:
+function companyKnowledgePackShapePrompt() {
+  return `Use exactly this JSON structure:
 {
   "company":{"name":"","legalName":"","description":"","sourcePageIds":[]},
   "contacts":[{"type":"email|phone|website|other","value":"","label":"","sourcePageIds":[]}],
@@ -336,16 +336,33 @@ function analystPrompt() {
   "conflicts":[{"subject":"","values":[],"sourcePageIds":[],"explanation":""}],
   "importantGaps":[],"sourceIndex":{"PAGE_0001":"https://..."}
 }
-Every finance/certification/support/policy/refund/contact/FAQ/sales fact uses {"title":"","details":"","sourcePageIds":[]}.
-Every material claim and offering must cite PAGE_XXXX IDs from the corpus. Include every real offering and deliberate conflict. Return JSON only.`;
+Every finance/certification/support/policy/refund/contact/FAQ/sales fact uses {"title":"","details":"","sourcePageIds":[]}.`;
+}
+
+function analystPrompt() {
+  return `Build the complete proposed CompanyKnowledgePack from the attached corpus.
+${companyKnowledgePackShapePrompt()}
+Every material claim and offering must cite PAGE_XXXX IDs from the corpus. Include every real offering and deliberate conflict. Do not rename keys, add metadata keys, or return an alternate schema. Return JSON only.`;
 }
 
 function auditorSystemPrompt() {
   return "You are an independent adversarial company-knowledge auditor. Re-read the complete attached first-party corpus and try to disprove the proposed pack. Find missed offerings, false categories/editorial/examples/testimonials, duplicates, merged plans, missing or misclassified prices, finance, contacts, policies, certification, support, contradictions, unsupported claims and important omissions. Return corrections as the strict patch shape requested; do not return a replacement pack.";
 }
 
+function companyKnowledgeAuditShapePrompt() {
+  return `Use exactly this JSON patch structure: {"addOfferings":[],"replaceOfferings":[],"removeOfferingIds":[],"addFinance":[],"addCertificationsAndAccreditation":[],"addSupportAndOutcomes":[],"addPolicies":[],"addRefundCancellationTerms":[],"addContactKnowledge":[],"addContacts":[],"addConflicts":[],"addExcludedContent":[],"importantGaps":[]}. Added/replaced offerings and facts must use the exact structures from the proposed pack and cite only known PAGE_XXXX IDs.`;
+}
+
 function auditorPrompt(draft: CompanyKnowledgePack) {
-  return `Audit this proposed pack against the attached corpus:\n${JSON.stringify(draft)}\n\nReturn JSON only with this patch structure: {"addOfferings":[],"replaceOfferings":[],"removeOfferingIds":[],"addFinance":[],"addCertificationsAndAccreditation":[],"addSupportAndOutcomes":[],"addPolicies":[],"addRefundCancellationTerms":[],"addContactKnowledge":[],"addContacts":[],"addConflicts":[],"addExcludedContent":[],"importantGaps":[]}. Added/replaced offerings and facts must use the exact structures from the proposed pack and cite only known PAGE_XXXX IDs.`;
+  return `Audit this proposed pack against the attached corpus:\n${JSON.stringify(draft)}\n\n${companyKnowledgeAuditShapePrompt()} Do not rename keys, add metadata keys, or return an alternate schema. Return JSON only.`;
+}
+
+export function companyKnowledgeRepairTargetPrompt(
+  kind: "analysis" | "audit"
+) {
+  return kind === "analysis"
+    ? companyKnowledgePackShapePrompt()
+    : companyKnowledgeAuditShapePrompt();
 }
 
 class DefaultWholeSiteModel implements WholeSiteLearningModel {
@@ -450,8 +467,8 @@ class DefaultWholeSiteModel implements WholeSiteLearningModel {
       corpus: input.corpus,
       kind: "repair",
       systemPrompt:
-        "Repair invalid structured company-learning JSON. Do not add facts. Keep only PAGE_XXXX IDs present in the attached corpus. Return JSON only.",
-      prompt: `Repair this ${input.kind} output to its required schema. Validation error: ${input.validationError}\n\nInvalid output:\n${input.invalidOutput}`,
+        "Repair invalid structured company-learning JSON into the exact target schema supplied by the user. Do not add facts. Keep only PAGE_XXXX IDs present in the attached corpus. Do not return alternate key names, metadata, commentary, or wrapper objects. Return JSON only.",
+      prompt: `Repair this ${input.kind} output. Validation error: ${input.validationError}\n\nTARGET SCHEMA — every top-level key and nested shape must match exactly:\n${companyKnowledgeRepairTargetPrompt(input.kind)}\n\nPreserve only evidence-grounded facts from the invalid output and attached corpus. Do not invent facts, rename keys, add metadata keys, or wrap the result.\n\nInvalid output:\n${input.invalidOutput}`,
       auditModel: input.kind === "audit",
     });
   }
