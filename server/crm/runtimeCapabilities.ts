@@ -85,12 +85,10 @@ export async function attachRuntimeOperationReadiness<
         connectedSystemId: system.id,
       });
       const learnedOperations = matrix.operations
-        .filter(operation =>
-          String(operation.key || operation.operationKey || "").startsWith(
-            "custom."
-          )
+        .map(operation =>
+          safeOperation(operation as unknown as Record<string, unknown>)
         )
-        .map(operation => safeOperation(operation as unknown as Record<string, unknown>));
+        .filter(operation => operation.operationKey.startsWith("custom."));
       return { ...system, learnedOperations };
     })
   );
