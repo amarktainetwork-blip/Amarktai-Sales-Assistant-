@@ -78,6 +78,8 @@ describe("durable company knowledge job contract", () => {
     expect(recovery).toContain("likelyOfferingUrls");
     expect(recovery).toContain('item.classification === "company_offering"');
     expect(recovery).toContain("item.sourceUrls.includes(result.pageUrl)");
+    expect(recovery).toContain('item.reviewState === "conflict"');
+    expect(recovery).toContain('item.trustEligible && item.reviewState === "review_required"');
     expect(retry).toContain("const resumeMapResults = resumableMapResultsForRetry(job)");
     expect(retry).toContain("mapResults: resumeMapResults");
   });
