@@ -301,7 +301,6 @@ export async function reviewCompanyDiscovery(input: {
   };
 }
 
-
 /** Bounded page-level view used by the live discovery route. It remains separate
  * from the candidate-review flow above so existing reviewed candidates retain their
  * exact source provenance. */
@@ -419,76 +418,203 @@ function claimIsGrounded(value: string | undefined, pageText: string) {
   return normalisedClaim.length >= 2 && pageText.includes(normalisedClaim);
 }
 
+function groundedArray(values: string[] | undefined, citedText: string) {
+  return (values || []).filter(value => claimIsGrounded(value, citedText));
+}
+
+function groundedScalar(value: string | undefined, citedText: string) {
+  return value && claimIsGrounded(value, citedText) ? value : undefined;
+}
+
+function priceLabelFallback(
+  semanticType: NonNullable<CompanyIntelligenceReviewItem["offering"]>["prices"][number]["semanticType"],
+  value: string
+) {
+  const label = semanticType.replaceAll("_", " ");
+  return `${label}: ${value}`;
+}
+
+function sanitisedOfferingMaterialFacts(
+  offering: NonNullable<CompanyIntelligenceReviewItem["offering"]>
+) {
+  return Array.from(new Set([
+    offering.name,
+    offering.type,
+    offering.description,
+    offering.planName,
+    ...(offering.prices || []).flatMap(price => [price.value, price.evidenceText]),
+    ...(offering.currentPrices || []),
+    ...(offering.duration || []),
+    ...(offering.includedCourses || []),
+    ...(offering.includedExams || []),
+    ...(offering.certifications || []),
+    ...(offering.awardingBodies || []),
+    ...(offering.financeOptions || []),
+    ...(offering.support || []),
+    offering.targetCustomer,
+    ...(offering.entryRequirements || []),
+    ...(offering.outcomes || []),
+    ...(offering.importantCaveats || []),
+  ].filter((value): value is string => Boolean(value)))).slice(0, 24);
+}
+
 /**
- * Removes unsupported citations and fails closed if a model response cannot be
- * proven against the exact crawl chunk that it received. No fuzzy promotion is
- * permitted: source and claim provenance must survive deterministic normalisation.
+ * Proves core provenance and removes optional model phrasing that is not literally
+ * supported by the cited first-party page. A harmless paraphrase must not discard
+ * an otherwise valid offering; unsupported optional claims are stripped instead.
+ * Source, title/timestamp, primary evidence, offering name and price evidence remain
+ * fail-closed requirements. Current prices are rebuilt only from retained full-price
+ * evidence and can never be promoted independently from a price fact.
  */
-export function verifyPageReviewProvenance(item: CompanyIntelligenceReviewItem, pages: ReviewPage[]) {
+export function verifyPageReviewProvenance(
+  item: CompanyIntelligenceReviewItem,
+  pages: ReviewPage[]
+) {
   const pagesByUrl = new Map(pages.map(page => [page.url, page]));
   const sourceUrls = Array.from(new Set(item.sourceUrls)).filter(url => pagesByUrl.has(url));
   const citedPages = sourceUrls.map(url => pagesByUrl.get(url)!).filter(Boolean);
   const pageTitleMatches = item.pageTitle == null
     ? citedPages.every(page => page.title == null)
-    : citedPages.some(page => page.title != null && normaliseEvidence(page.title) === normaliseEvidence(item.pageTitle!));
+    : citedPages.some(page =>
+        page.title != null &&
+        normaliseEvidence(page.title) === normaliseEvidence(item.pageTitle!)
+      );
+  const fetchedAtMatches = citedPages.some(page => page.fetchedAt === item.fetchedAt);
   const citedText = citedPages.map(page => normaliseEvidence(page.text)).join("\n");
-  const evidenceGrounded = citedText.includes(normaliseEvidence(item.evidenceText));
-  const offeringClaims = item.offering
-    ? [
-        item.offering.name,
-        item.offering.description,
-        item.offering.planName,
-        ...(item.offering.prices || []).flatMap(price => [
-          price.value,
-          price.label,
-          price.evidenceText,
-        ]),
-        ...(item.offering.currentPrices || []),
-        ...(item.offering.duration || []),
-        ...(item.offering.includedCourses || []),
-        ...(item.offering.includedExams || []),
-        ...(item.offering.certifications || []),
-        ...(item.offering.awardingBodies || []),
-        ...(item.offering.financeOptions || []),
-        ...(item.offering.support || []),
-        item.offering.targetCustomer,
-        ...(item.offering.entryRequirements || []),
-        ...(item.offering.outcomes || []),
-        ...(item.offering.importantCaveats || []),
-      ]
+  const evidenceGrounded = Boolean(
+    normaliseEvidence(item.evidenceText) &&
+    citedText.includes(normaliseEvidence(item.evidenceText))
+  );
+
+  let offering = item.offering;
+  let offeringNameGrounded = true;
+  if (offering) {
+    offeringNameGrounded = claimIsGrounded(offering.name, citedText);
+    const prices = (offering.prices || []).flatMap(price => {
+      const sourcePage = pagesByUrl.get(price.sourceUrl);
+      if (!sourcePage || !sourceUrls.includes(price.sourceUrl)) return [];
+      const sourceText = normaliseEvidence(sourcePage.text);
+      const valueGrounded = claimIsGrounded(price.value, sourceText);
+      const priceEvidenceGrounded = claimIsGrounded(price.evidenceText, sourceText);
+      if (!valueGrounded || !priceEvidenceGrounded) return [];
+      return [{
+        ...price,
+        label: claimIsGrounded(price.label, sourceText)
+          ? price.label
+          : priceLabelFallback(price.semanticType, price.value),
+      }];
+    });
+    const currentPrices = Array.from(new Set(
+      prices
+        .filter(price => price.semanticType === "full_current_price")
+        .map(price => price.value)
+    ));
+    offering = {
+      ...offering,
+      description: groundedScalar(offering.description, citedText),
+      planName: groundedScalar(offering.planName, citedText),
+      prices,
+      currentPrices,
+      duration: groundedArray(offering.duration, citedText),
+      includedCourses: groundedArray(offering.includedCourses, citedText),
+      includedExams: groundedArray(offering.includedExams, citedText),
+      certifications: groundedArray(offering.certifications, citedText),
+      awardingBodies: groundedArray(offering.awardingBodies, citedText),
+      financeOptions: groundedArray(offering.financeOptions, citedText),
+      support: groundedArray(offering.support, citedText),
+      targetCustomer: groundedScalar(offering.targetCustomer, citedText),
+      entryRequirements: groundedArray(offering.entryRequirements, citedText),
+      outcomes: groundedArray(offering.outcomes, citedText),
+      importantCaveats: groundedArray(offering.importantCaveats, citedText),
+    };
+  }
+
+  const safeSummary = claimIsGrounded(item.summary, citedText)
+    ? item.summary
+    : item.evidenceText;
+  const safeTitle = offering && offeringNameGrounded
+    ? offering.name
+    : claimIsGrounded(item.title, citedText)
+      ? item.title
+      : item.pageTitle || compact(item.evidenceText, 220);
+
+  const supported =
+    sourceUrls.length === item.sourceUrls.length &&
+    sourceUrls.length > 0 &&
+    pageTitleMatches &&
+    fetchedAtMatches &&
+    evidenceGrounded &&
+    offeringNameGrounded;
+
+  const evidence = supported && citedPages.length
+    ? citedPages.map(page => ({
+        sourceUrl: page.url,
+        pageTitle: page.title,
+        fetchedAt: page.fetchedAt,
+        evidenceText: item.evidenceText,
+        materialFacts: offering
+          ? sanitisedOfferingMaterialFacts(offering)
+          : [item.evidenceText],
+      })).slice(0, 24)
     : [];
-  const offeringGrounded = offeringClaims.every(claim => claimIsGrounded(claim, citedText));
-  const supported = sourceUrls.length === item.sourceUrls.length && sourceUrls.length > 0 && pageTitleMatches && evidenceGrounded && offeringGrounded;
-  const sanitised = {
+
+  const sanitised: CompanyIntelligenceReviewItem = {
     ...item,
+    title: safeTitle,
+    summary: safeSummary,
     sourceUrls,
     pageTitle: pageTitleMatches ? item.pageTitle : null,
+    ...(offering ? { offering } : {}),
+    evidence,
   };
+
   return supported
     ? sanitised
-    : { ...sanitised, trustEligible: false, reviewState: "ambiguous" as const };
+    : {
+        ...sanitised,
+        trustEligible: false,
+        reviewState: "ambiguous" as const,
+      };
 }
 
 function guardPageReviewItem(item: CompanyIntelligenceReviewItem) {
-  const candidate = { title: item.title, content: `${item.summary} ${item.evidenceText}`, category: item.classification };
+  const candidate = {
+    title: item.title,
+    content: `${item.summary} ${item.evidenceText}`,
+    category: item.classification,
+  };
   const risk = deterministicRiskClassification(candidate);
   if (risk || NEVER_AUTO_TRUST.has(item.classification))
-    return { ...item, classification: risk || item.classification, trustEligible: false, reviewState: "ambiguous" as const };
+    return {
+      ...item,
+      classification: risk || item.classification,
+      trustEligible: false,
+      reviewState: "ambiguous" as const,
+    };
   return item;
 }
 
 function reconcilePageReview(items: CompanyIntelligenceReviewItem[]) {
-  const guarded = items.map(guardPageReviewItem).slice(0, PAGE_REVIEW_MAX_CHUNKS * PAGE_REVIEW_MAX_ITEMS);
+  const guarded = items
+    .map(guardPageReviewItem)
+    .slice(0, PAGE_REVIEW_MAX_CHUNKS * PAGE_REVIEW_MAX_ITEMS);
   const pricesByOffering = new Map<string, Set<string>>();
   guarded.forEach(item => {
-    if (!item.trustEligible || !item.offering?.name || !item.offering.currentPrices?.length) return;
-    const key = item.offering.name.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    if (!item.trustEligible || !item.offering?.name || !item.offering.currentPrices?.length)
+      return;
+    const key = item.offering.name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
     const current = pricesByOffering.get(key) || new Set<string>();
     item.offering.currentPrices.forEach(value => current.add(value.toLowerCase()));
     pricesByOffering.set(key, current);
   });
   return guarded.map(item => {
-    const key = item.offering?.name?.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const key = item.offering?.name
+      ?.toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
     return key && (pricesByOffering.get(key)?.size || 0) > 1 && item.trustEligible
       ? { ...item, trustEligible: false, reviewState: "conflict" as const }
       : item;
@@ -500,31 +626,66 @@ function pageReviewPrompt(chunk: ReviewPage[]) {
 
 Do not infer facts. Preserve short evidence quotations. Comparisons, competitors, testimonials, examples, historical statements, navigation, and marketing claims can never become trusted offerings or current prices. If ownership, price recency, or context is uncertain, classify ambiguous and set trustEligible=false. Output remains a human-review draft only.
 
-Pages:\n${JSON.stringify(chunk.map(page => ({ url: page.url, pageTitle: page.title, fetchedAt: page.fetchedAt, text: page.text })))}`;
+Pages:\n${JSON.stringify(
+    chunk.map(page => ({
+      url: page.url,
+      pageTitle: page.title,
+      fetchedAt: page.fetchedAt,
+      text: page.text,
+    }))
+  )}`;
 }
 
-export async function reviewCompanyIntelligence(input: { userId: number; organisationId: number; pages: ReviewPage[]; reference: string }): Promise<CompanyIntelligenceReview> {
+export async function reviewCompanyIntelligence(input: {
+  userId: number;
+  organisationId: number;
+  pages: ReviewPage[];
+  reference: string;
+}): Promise<CompanyIntelligenceReview> {
   const chunks = pageReviewChunks(input.pages.filter(page => page.url && page.text.trim()));
-  if (!chunks.length) throw new Error("No readable website material is available for review.");
+  if (!chunks.length)
+    throw new Error("No readable website material is available for review.");
   const items: CompanyIntelligenceReviewItem[] = [];
   for (const chunk of chunks) {
     const response = await runGenxAgent({
       agentKey: "company_intelligence_review",
       modelTier: "reasoning",
       messages: [{ role: "user", content: pageReviewPrompt(chunk) }],
-      billing: { userId: input.userId, organisationId: input.organisationId, feature: "company_intelligence_review", reference: input.reference },
+      billing: {
+        userId: input.userId,
+        organisationId: input.organisationId,
+        feature: "company_intelligence_review",
+        reference: input.reference,
+      },
     });
-    if (response.provider !== "genx") throw new Error("AI review is unavailable because GenX is not configured.");
-    const parsed = z.array(pageReviewItemSchema).max(PAGE_REVIEW_MAX_ITEMS).safeParse(parseReviewArray(response.content));
-    if (!parsed.success) throw new Error("The AI review response did not pass the required evidence schema.");
-    items.push(...parsed.data.map(item =>
-      verifyPageReviewProvenance(
-        { ...item, title: compact(item.title, 220), summary: compact(item.summary, 2_000), evidenceText: compact(item.evidenceText, PAGE_REVIEW_EVIDENCE_CHARS) },
-        chunk
+    if (response.provider !== "genx")
+      throw new Error("AI review is unavailable because GenX is not configured.");
+    const parsed = z
+      .array(pageReviewItemSchema)
+      .max(PAGE_REVIEW_MAX_ITEMS)
+      .safeParse(parseReviewArray(response.content));
+    if (!parsed.success)
+      throw new Error("The AI review response did not pass the required evidence schema.");
+    items.push(
+      ...parsed.data.map(item =>
+        verifyPageReviewProvenance(
+          {
+            ...item,
+            title: compact(item.title, 220),
+            summary: compact(item.summary, 2_000),
+            evidenceText: compact(item.evidenceText, PAGE_REVIEW_EVIDENCE_CHARS),
+          },
+          chunk
+        )
       )
-    ));
+    );
   }
-  return { agentKey: "company_intelligence_review", available: true, items: reconcilePageReview(items), reviewedAt: new Date().toISOString() };
+  return {
+    agentKey: "company_intelligence_review",
+    available: true,
+    items: reconcilePageReview(items),
+    reviewedAt: new Date().toISOString(),
+  };
 }
 
 /** Pure deterministic guard used in regression tests before human approval. */
