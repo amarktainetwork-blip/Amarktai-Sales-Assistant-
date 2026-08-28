@@ -1,7 +1,7 @@
 import { load } from "cheerio";
 import { lookup } from "node:dns/promises";
 import net from "node:net";
-import { chromium } from "playwright-core";
+import { Worker } from "node:worker_threads";
 
 const USER_AGENT =
   "AmarktaiSalesAssistant/3.0 (+professional-company-intelligence)";
@@ -16,6 +16,8 @@ const MAX_SITEMAPS = 32;
 const MAX_SITEMAP_URLS = 600;
 const MAX_KNOWLEDGE = 80;
 const MAX_RENDERED_PAGES = 24;
+const MIN_DIRECT_TEXT_CHARS = 1_200;
+const RENDER_TIMEOUT_MS = 35_000;
 
 const CATEGORY_RULES: Array<[string, RegExp]> = [
   ["pricing", /(?:pricing|price|fees?|cost)/i],
@@ -38,20 +40,6 @@ const CATEGORY_RULES: Array<[string, RegExp]> = [
   ["contact", /(?:contact|locations?)/i],
   ["policies", /(?:terms|privacy|refund|cancellation|policy|policies)/i],
 ];
-
-const HIGH_VALUE_CATEGORIES = new Set([
-  "pricing",
-  "finance",
-  "courses",
-  "products",
-  "services",
-  "evidence",
-  "certifications",
-  "faq",
-  "support",
-  "testimonials",
-  "contact",
-]);
 
 export type DiscoveryKnowledgeCandidate = {
   title: string;
@@ -79,6 +67,19 @@ export type DiscoveryResult = {
     rendered: boolean;
     textChars: number;
   }>;
+};
+
+type RenderedPublicPage = { html: string; url: URL };
+export type DiscoveryRenderer = (
+  url: URL,
+  approvedHostname: string
+) => Promise<RenderedPublicPage | null>;
+export type DiscoveryOptions = {
+  renderer?: DiscoveryRenderer;
+};
+type DiscoveryDiagnostics = {
+  renderAttempts: number;
+  renderFallbacks: number;
 };
 
 type RobotsPolicy = {
@@ -531,65 +532,153 @@ function parseHtml(html: string, url: URL, rendered: boolean): ParsedPage {
   return page;
 }
 
-let discoveryBrowser:
-  | Awaited<ReturnType<typeof chromium.connectOverCDP>>
-  | undefined;
-let discoveryBrowserConnecting:
-  | Promise<Awaited<ReturnType<typeof chromium.connectOverCDP>>>
-  | undefined;
+const DISCOVERY_RENDER_WORKER = String.raw`
+const { parentPort, workerData } = require("node:worker_threads");
+const { chromium } = require("playwright-core");
 
-async function getDiscoveryBrowser(endpoint: string) {
-  if (discoveryBrowser?.isConnected()) return discoveryBrowser;
-  if (discoveryBrowserConnecting) return discoveryBrowserConnecting;
-  discoveryBrowserConnecting = chromium
-    .connectOverCDP(endpoint, { timeout: 12_000 })
-    .then(browser => {
-      discoveryBrowser = browser;
-      browser.on("disconnected", () => {
-        if (discoveryBrowser === browser) discoveryBrowser = undefined;
-      });
-      return browser;
-    })
-    .finally(() => {
-      discoveryBrowserConnecting = undefined;
-    });
-  return discoveryBrowserConnecting;
+let context;
+let page;
+let closing = false;
+
+async function safely(action) {
+  try {
+    await action();
+  } catch {
+    // A cancelled request or closed CDP session is an optional render failure.
+  }
 }
 
-async function renderPublicPage(url: URL, approvedHostname: string) {
-  const endpoint = process.env.BROWSERLESS_WS_ENDPOINT?.trim();
-  if (!endpoint) return null;
-  const browser = await getDiscoveryBrowser(endpoint);
-  const context = await browser.newContext({
-    javaScriptEnabled: true,
-    serviceWorkers: "block",
+async function handleRoute(route) {
+  try {
+    const request = route.request();
+    const requestUrl = new URL(request.url());
+    if (
+      closing ||
+      !/^https?:$/.test(requestUrl.protocol) ||
+      requestUrl.hostname.toLowerCase() !== workerData.approvedHostname ||
+      ["image", "media", "font"].includes(request.resourceType())
+    ) {
+      await safely(() => route.abort("blockedbyclient"));
+      return;
+    }
+    await safely(() => route.continue());
+  } catch {
+    await safely(() => route.abort("blockedbyclient"));
+  }
+}
+
+async function render() {
+  const browser = await chromium.connectOverCDP(workerData.endpoint, {
+    timeout: 12_000,
   });
   try {
-    await context.route("**/*", async route => {
-      const requestUrl = new URL(route.request().url());
-      if (
-        !/^https?:$/.test(requestUrl.protocol) ||
-        requestUrl.hostname.toLowerCase() !== approvedHostname
-      )
-        return route.abort("blockedbyclient");
-      if (["image", "media", "font"].includes(route.request().resourceType()))
-        return route.abort("blockedbyclient");
-      return route.continue();
+    context = await browser.newContext({
+      javaScriptEnabled: true,
+      serviceWorkers: "block",
     });
-    const page = await context.newPage();
-    await page.goto(url.toString(), {
+    page = await context.newPage();
+    await page.route("**/*", handleRoute);
+    await page.goto(workerData.url, {
       waitUntil: "domcontentloaded",
       timeout: 20_000,
     });
-    const finalUrl = await assertPublicUrl(page.url(), approvedHostname);
     await page.waitForTimeout(1_500);
     return {
-      html: (await page.content()).slice(0, MAX_PAGE_BYTES),
-      url: canonicalize(finalUrl),
+      html: (await page.content()).slice(0, workerData.maxPageBytes),
+      url: page.url(),
     };
   } finally {
-    await context.close().catch(() => undefined);
+    closing = true;
+    if (context) await safely(() => context.setOffline(true));
+    if (page) await safely(() => page.unrouteAll({ behavior: "wait" }));
+    if (page) await safely(() => page.close({ runBeforeUnload: false }));
+    if (context) await safely(() => context.close());
   }
+}
+
+render()
+  .then(result => parentPort.postMessage({ ok: true, result }))
+  .catch(() => parentPort.postMessage({ ok: false }));
+`;
+
+let discoveryRenderQueue: Promise<void> = Promise.resolve();
+
+function runRenderWorker(input: {
+  endpoint: string;
+  url: string;
+  approvedHostname: string;
+}) {
+  return new Promise<{ html: string; url: string }>((resolve, reject) => {
+    const worker = new Worker(DISCOVERY_RENDER_WORKER, {
+      eval: true,
+      workerData: { ...input, maxPageBytes: MAX_PAGE_BYTES },
+    });
+    let settled = false;
+    const finish = (
+      action: () => void
+    ) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      void worker.terminate().catch(() => undefined);
+      action();
+    };
+    const timeout = setTimeout(
+      () =>
+        finish(() =>
+          reject(new Error("Optional website rendering timed out."))
+        ),
+      RENDER_TIMEOUT_MS
+    );
+    worker.once("message", message => {
+      if (
+        message?.ok === true &&
+        typeof message.result?.html === "string" &&
+        typeof message.result?.url === "string"
+      )
+        finish(() => resolve(message.result));
+      else
+        finish(() =>
+          reject(new Error("Optional website rendering did not complete."))
+        );
+    });
+    worker.once("error", () =>
+      finish(() =>
+        reject(new Error("Optional website rendering did not complete."))
+      )
+    );
+    worker.once("exit", code => {
+      if (code !== 0)
+        finish(() =>
+          reject(new Error("Optional website rendering did not complete."))
+        );
+    });
+  });
+}
+
+async function renderPublicPage(
+  url: URL,
+  approvedHostname: string
+): Promise<RenderedPublicPage | null> {
+  const endpoint = process.env.BROWSERLESS_WS_ENDPOINT?.trim();
+  if (!endpoint) return null;
+  const run = discoveryRenderQueue.then(async () => {
+    const rendered = await runRenderWorker({
+      endpoint,
+      url: url.toString(),
+      approvedHostname,
+    });
+    const finalUrl = await assertPublicUrl(rendered.url, approvedHostname);
+    return {
+      html: rendered.html,
+      url: canonicalize(finalUrl),
+    };
+  });
+  discoveryRenderQueue = run.then(
+    () => undefined,
+    () => undefined
+  );
+  return run;
 }
 
 function parseRobots(text: string, origin: URL): RobotsPolicy {
@@ -745,23 +834,20 @@ function linkPriority(url: URL) {
   return order.indexOf(category) < 0 ? 100 : order.indexOf(category);
 }
 
-function shouldRender(html: string, page: ParsedPage, renderedCount: number) {
+function shouldRender(page: ParsedPage, renderAttempts: number) {
   if (
-    renderedCount >= MAX_RENDERED_PAGES ||
+    renderAttempts >= MAX_RENDERED_PAGES ||
     !process.env.BROWSERLESS_WS_ENDPOINT?.trim()
   )
     return false;
-  if (page.text.length < 900) return true;
-  if (!HIGH_VALUE_CATEGORIES.has(page.category)) return false;
-  return /(?:id=["']__next["']|__NEXT_DATA__|data-reactroot|data-hydration|ng-version|application\/ld\+json)/i.test(
-    html
-  );
+  return page.text.length < MIN_DIRECT_TEXT_CHARS;
 }
 
 async function fetchPage(
   candidate: PageCandidate,
   approvedHostname: string,
-  renderedCount: number
+  renderer: DiscoveryRenderer,
+  diagnostics: DiscoveryDiagnostics
 ) {
   const { response, finalUrl } = await boundedFetch(
     candidate.url,
@@ -777,11 +863,18 @@ async function fetchPage(
     return null;
   const html = await readTextBounded(response, MAX_PAGE_BYTES);
   let page = parseHtml(html, finalUrl, false);
-  if (shouldRender(html, page, renderedCount)) {
-    const rendered = await renderPublicPage(finalUrl, approvedHostname).catch(
-      () => null
-    );
-    if (rendered) page = parseHtml(rendered.html, rendered.url, true);
+  if (shouldRender(page, diagnostics.renderAttempts)) {
+    diagnostics.renderAttempts += 1;
+    try {
+      const rendered = await renderer(finalUrl, approvedHostname);
+      if (!rendered) diagnostics.renderFallbacks += 1;
+      else {
+        const renderedPage = parseHtml(rendered.html, rendered.url, true);
+        if (renderedPage.text.length > page.text.length) page = renderedPage;
+      }
+    } catch {
+      diagnostics.renderFallbacks += 1;
+    }
   }
   return page;
 }
@@ -1004,7 +1097,8 @@ function buildKnowledge(
 }
 
 export async function discoverPublicWebsite(
-  rawUrl: string
+  rawUrl: string,
+  options: DiscoveryOptions = {}
 ): Promise<DiscoveryResult> {
   const startedAt = new Date().toISOString();
   const initial = canonicalize(await assertPublicUrl(rawUrl.trim()));
@@ -1027,7 +1121,11 @@ export async function discoverPublicWebsite(
   const visited = new Set<string>();
   const pages: ParsedPage[] = [];
   let totalText = 0;
-  let renderedCount = 0;
+  const diagnostics: DiscoveryDiagnostics = {
+    renderAttempts: 0,
+    renderFallbacks: 0,
+  };
+  const renderer = options.renderer ?? renderPublicPage;
 
   while (
     queue.length &&
@@ -1049,7 +1147,8 @@ export async function discoverPublicWebsite(
         fetchPage(
           candidate,
           approvedHostname,
-          renderedCount + batch.indexOf(candidate)
+          renderer,
+          diagnostics
         ).catch(() => null)
       )
     );
@@ -1058,7 +1157,6 @@ export async function discoverPublicWebsite(
       const page = results[index];
       const candidate = batch[index];
       if (!page) continue;
-      if (page.rendered) renderedCount += 1;
       page.text = page.text.slice(0, MAX_TOTAL_TEXT - totalText);
       totalText += page.text.length;
       pages.push(page);
@@ -1164,6 +1262,8 @@ export async function discoverPublicWebsite(
       completeness,
       pagesCrawled: pages.length,
       renderedPages: pages.filter(page => page.rendered).length,
+      renderAttempts: diagnostics.renderAttempts,
+      renderFallbacks: diagnostics.renderFallbacks,
       limits: {
         maxPages: MAX_PAGES,
         maxDepth: MAX_DEPTH,

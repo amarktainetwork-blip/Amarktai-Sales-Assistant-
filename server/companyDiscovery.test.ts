@@ -190,4 +190,139 @@ describe("professional public website discovery", () => {
     expect(facts.conflicts).toEqual([]);
     expect(result.proposedKnowledge.find(item => item.title.includes("Data Programme"))?.trustEligible).toBe(true);
   });
+
+  it("keeps substantial Course2Career-shaped server-rendered HTML on the direct path despite framework markers", async () => {
+    process.env.BROWSERLESS_WS_ENDPOINT = "http://browser:9222";
+    const renderer = vi.fn().mockRejectedValue(new Error("must not render"));
+    const substantialText = Array.from(
+      { length: 80 },
+      (_, index) =>
+        `<p>Course ${index + 1} includes tutor support, career guidance, practical projects and flexible study options.</p>`
+    ).join("");
+    globalThis.fetch = vi.fn().mockImplementation((input: URL | string) => {
+      const url = new URL(String(input));
+      if (url.pathname === "/robots.txt")
+        return Promise.resolve(new Response("User-agent: *"));
+      if (url.pathname === "/sitemap.xml")
+        return Promise.resolve(
+          new Response("<urlset></urlset>", {
+            headers: { "content-type": "application/xml" },
+          })
+        );
+      return Promise.resolve(
+        html(
+          `<div id="__next"><h1>Project Management Career Programme</h1>
+           <h2>Published prices</h2><p>Full programme price £2,695. A separate study option is £1,899.</p>
+           ${substantialText}</div>
+           <script id="__NEXT_DATA__" type="application/json">{"page":"course"}</script>`,
+          "Project Management Career Programme"
+        )
+      );
+    });
+
+    const result = await discoverPublicWebsite(
+      "https://example.co.za/courses/project-management",
+      { renderer }
+    );
+    expect(renderer).not.toHaveBeenCalled();
+    expect(result.extractedText).toContain("Project Management Career Programme");
+    expect(result.extractedText).toContain("£2,695");
+    expect(result.extractedText).toContain("£1,899");
+    expect(result.pages).toEqual([
+      expect.objectContaining({ rendered: false }),
+    ]);
+    expect(result.proposedFacts).toMatchObject({
+      renderedPages: 0,
+      renderAttempts: 0,
+      renderFallbacks: 0,
+    });
+  });
+
+  it("retains valid direct HTML when optional rendering fails", async () => {
+    process.env.BROWSERLESS_WS_ENDPOINT = "http://browser:9222";
+    const renderer = vi
+      .fn()
+      .mockRejectedValue(new Error("Optional renderer unavailable"));
+    globalThis.fetch = vi.fn().mockImplementation((input: URL | string) => {
+      const url = new URL(String(input));
+      if (url.pathname === "/robots.txt")
+        return Promise.resolve(new Response("User-agent: *"));
+      if (url.pathname === "/sitemap.xml")
+        return Promise.resolve(new Response("", { status: 404 }));
+      return Promise.resolve(
+        html(
+          "<h1>Cyber Security Programme</h1><p>Direct public course evidence remains available.</p>",
+          "Cyber Security Programme"
+        )
+      );
+    });
+
+    const result = await discoverPublicWebsite(
+      "https://example.co.za/courses/cyber-security",
+      { renderer }
+    );
+    expect(renderer).toHaveBeenCalledTimes(1);
+    expect(result.extractedText).toContain("Direct public course evidence");
+    expect(result.pages[0]).toMatchObject({
+      title: "Cyber Security Programme",
+      rendered: false,
+    });
+    expect(result.proposedFacts).toMatchObject({
+      renderedPages: 0,
+      renderAttempts: 1,
+      renderFallbacks: 1,
+    });
+  });
+
+  it("contains a real isolated renderer connection failure", async () => {
+    process.env.BROWSERLESS_WS_ENDPOINT = "http://127.0.0.1:1";
+    globalThis.fetch = vi.fn().mockImplementation((input: URL | string) => {
+      const url = new URL(String(input));
+      if (url.pathname === "/robots.txt")
+        return Promise.resolve(new Response("User-agent: *"));
+      if (url.pathname === "/sitemap.xml")
+        return Promise.resolve(new Response("", { status: 404 }));
+      return Promise.resolve(
+        html("<h1>Thin public page</h1><p>Direct evidence survives.</p>")
+      );
+    });
+
+    const result = await discoverPublicWebsite("https://example.co.za");
+    expect(result.extractedText).toContain("Direct evidence survives");
+    expect(result.proposedFacts).toMatchObject({
+      renderedPages: 0,
+      renderAttempts: 1,
+      renderFallbacks: 1,
+    });
+  });
+
+  it.each([
+    "Invalid InterceptionId.",
+    "Target closed",
+    "Session closed",
+  ])("contains representative CDP failure: %s", async message => {
+    process.env.BROWSERLESS_WS_ENDPOINT = "http://browser:9222";
+    const renderer = vi.fn().mockRejectedValue(new Error(message));
+    globalThis.fetch = vi.fn().mockImplementation((input: URL | string) => {
+      const url = new URL(String(input));
+      if (url.pathname === "/robots.txt")
+        return Promise.resolve(new Response("User-agent: *"));
+      if (url.pathname === "/sitemap.xml")
+        return Promise.resolve(new Response("", { status: 404 }));
+      return Promise.resolve(
+        html("<h1>Thin public page</h1><p>Valid direct evidence.</p>")
+      );
+    });
+
+    await expect(
+      discoverPublicWebsite("https://example.co.za", { renderer })
+    ).resolves.toMatchObject({
+      pageTitle: "Example Company",
+      pages: [expect.objectContaining({ rendered: false })],
+      proposedFacts: {
+        renderAttempts: 1,
+        renderFallbacks: 1,
+      },
+    });
+  });
 });

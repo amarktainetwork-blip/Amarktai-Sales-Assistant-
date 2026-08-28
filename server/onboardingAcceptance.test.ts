@@ -139,6 +139,18 @@ describe("new-user Genie commissioning journey contract", () => {
       expect(onboarding).not.toContain(technicalTerm);
   });
 
+  it("turns interrupted website responses into a safe customer message", () => {
+    const onboarding = read("../client/src/pages/Onboarding.tsx");
+    expect(onboarding).toContain("Website scan interrupted");
+    expect(onboarding).toContain(
+      "The website scan was interrupted before it completed. No content became trusted knowledge. Please try again."
+    );
+    expect(onboarding).not.toContain(
+      "Failed to execute 'json' on 'Response'"
+    );
+    expect(onboarding).not.toContain("Unexpected end of JSON input");
+  });
+
   it("shows durable customer-facing commissioning truth and no mysterious restart action", () => {
     const onboarding = read("../client/src/pages/Onboarding.tsx");
     for (const label of [
