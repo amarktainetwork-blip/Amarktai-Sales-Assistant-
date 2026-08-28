@@ -27,4 +27,8 @@ ALTER TABLE `companyKnowledgeJobs` ADD CONSTRAINT `companyKnowledgeJobs_companyP
 ALTER TABLE `companyKnowledgeJobs` ADD CONSTRAINT `companyKnowledgeJobs_resultDiscoveryId_websiteDiscoveries_id_fk` FOREIGN KEY (`resultDiscoveryId`) REFERENCES `websiteDiscoveries`(`id`) ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX `company_knowledge_profile_created_idx` ON `companyKnowledgeJobs` (`companyProfileId`,`createdAt`);--> statement-breakpoint
 CREATE INDEX `company_knowledge_org_status_idx` ON `companyKnowledgeJobs` (`organisationId`,`status`);--> statement-breakpoint
-CREATE INDEX `company_knowledge_status_lease_idx` ON `companyKnowledgeJobs` (`status`,`leaseExpiresAt`);
+CREATE INDEX `company_knowledge_status_lease_idx` ON `companyKnowledgeJobs` (`status`,`leaseExpiresAt`);--> statement-breakpoint
+UPDATE `websiteDiscoveries`
+SET `status` = 'superseded', `supersededAt` = COALESCE(`supersededAt`, NOW())
+WHERE `status` = 'review_required'
+  AND JSON_EXTRACT(`proposedFacts`, '$.completeness.status') IS NULL;
