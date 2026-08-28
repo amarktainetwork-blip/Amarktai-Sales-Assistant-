@@ -134,6 +134,10 @@ function resumableMapResultsForRetry(job: CompanyKnowledgeJob) {
       item.classification === "company_offering"
       && Boolean(item.offering?.name)
       && item.sourceUrls.includes(result.pageUrl)
+      && (
+        item.reviewState === "conflict"
+        || (item.trustEligible && item.reviewState === "review_required")
+      )
     );
   });
 }
