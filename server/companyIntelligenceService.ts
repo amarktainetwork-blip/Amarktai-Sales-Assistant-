@@ -132,8 +132,10 @@ export function buildReviewedCompanyDiscovery(
 ) {
   const clientItems = clientReadyKnowledgeItems(review.items);
   const clientFacts = buildClientKnowledgeFacts(review.items, review);
+  const safePages = discovery.pages.map(({ text: _retainedText, ...page }) => page);
   const safeDiscovery = {
     ...discovery,
+    pages: safePages,
     proposedFacts: {
       ...discovery.proposedFacts,
       conflicts: clientFacts.conflicts,
