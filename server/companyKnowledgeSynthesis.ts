@@ -251,12 +251,14 @@ function parseJsonArray(content: string) {
   return JSON.parse(raw.slice(start, end + 1)) as unknown;
 }
 
-function pageTarget(page: ReviewPage) {
-  return `${page.url} ${page.title || ""} ${page.category || ""} ${(page.headings || []).join(" ")}`.toLowerCase();
+function pageIdentityTarget(page: ReviewPage) {
+  const pathname = new URL(page.url).pathname.toLowerCase();
+  const primaryHeading = page.headings?.[0] || "";
+  return `${pathname} ${page.title || ""} ${page.category || ""} ${primaryHeading}`.toLowerCase();
 }
 
 function pagePriority(page: ReviewPage) {
-  const target = pageTarget(page);
+  const target = pageIdentityTarget(page);
   const pathname = new URL(page.url).pathname.toLowerCase();
   let score = pathname === "/" ? 400 : 0;
   if (/job[-_/ ]?program|career[-_/ ]?program/.test(target)) score += 360;
@@ -265,7 +267,7 @@ function pagePriority(page: ReviewPage) {
   if (/certif|accredit|credential|awarding/.test(target)) score += 260;
   if (/terms|refund|cancel|complaint|policy/.test(target)) score += 250;
   if (/contact|faq|support|outcome|career support|job support/.test(target)) score += 230;
-  if (/blog|news|article|comparison|competitor|versus|\bvs\b/.test(target)) score -= 300;
+  if (/blog|news|article|comparison|competitor|versus|\bvs\b|career[-_/ ]?path/.test(target)) score -= 300;
   return score + Math.min(100, Math.floor(page.text.length / 200));
 }
 
@@ -285,36 +287,62 @@ export function selectCompanyKnowledgePages(pages: ReviewPage[]) {
 export function buildCompanyPageInventory(pages: ReviewPage[]) {
   const duplicateText = new Map<string, string>();
   return pages.map(page => {
-    const target = pageTarget(page);
-    const pathname = new URL(page.url).pathname.toLowerCase().replace(/\/$/, "") || "/";
+    const target = pageIdentityTarget(page);
+    const url = new URL(page.url);
+    const pathname = url.pathname.toLowerCase().replace(/\/$/, "") || "/";
     const roles = new Set<CompanyPageDisposition>();
     const body = normalise(page.text);
+    // A shared site shell can easily occupy the first several thousand characters.
+    // Only byte-for-byte-equivalent retained readable text is safe to suppress as a
+    // deterministic duplicate; near-duplicates must still reach the map stage.
     const fingerprint = body.length >= 160
-      ? createHash("sha256").update(body.slice(0, 8_000)).digest("hex")
+      ? createHash("sha256").update(body).digest("hex")
       : "";
     const duplicateOf = fingerprint ? duplicateText.get(fingerprint) : undefined;
     if (fingerprint && !duplicateOf) duplicateText.set(fingerprint, page.url);
 
     const comparison = /comparison|compare|competitor|versus|\bvs\b|alternative to/.test(target);
-    const editorial = /\/blog(?:\/|$)|\/news(?:\/|$)|\/articles?(?:\/|$)|editorial|career path guide/.test(target);
+    const careerPath = /(?:^|\/)[a-z0-9-]*career-path(?:\/|$)/.test(pathname)
+      || /\bcareer path\b/.test(target);
+    const editorial = /\/blog(?:\/|$)|\/news(?:\/|$)|\/articles?(?:\/|$)|editorial|career path guide/.test(target)
+      || careerPath;
     const policy = /terms|refund|cancel|complaint|privacy|policy|cookies?/.test(target);
     const contact = /contact|locations?|get in touch/.test(target);
     const faq = /faq|frequently asked|questions/.test(target);
-    const finance = /finance|financing|payment|funding|deposit|instalment|installment/.test(target);
+    const finance = /finance|financing|payment|funding|deposit|instalment|installment|elcas/.test(target);
     const pricing = /price|pricing|fees?|cost/.test(target);
-    const certification = /certif|accredit|credential|awarding bod/.test(target);
+    const certification = /certif|accredit|credential|awarding bod|approved provider/.test(target);
     const support = /support|outcome|career support|job support|recruit|guarantee|mentoring|coaching/.test(target);
     const overview = pathname === "/" || /about|our story|who we are|company overview/.test(target);
-    const category = /\/(?:courses?|programmes?|programs?|training|catalog(?:ue)?|products?|services?)$/.test(pathname)
+
+    const pathParts = pathname.split("/").filter(Boolean);
+    const coursePath = pathParts[0] === "courses";
+    const courseListingTitle = /\bcourses\b|\btraining\b|course catalogue|browse courses/.test(
+      `${page.title || ""} ${page.headings?.[0] || ""}`.toLowerCase()
+    );
+    const courseCategory = coursePath && (
+      pathParts.length === 1
+      || (pathParts.length === 2 && courseListingTitle)
+    );
+    const category = courseCategory
+      || /\/(?:programmes?|programs?|training|catalog(?:ue)?|products?|services?)$/.test(pathname)
       || /all courses|course catalogue|browse courses|our programmes/.test(target);
-    const career = !category && /job[-_/ ]?program|career[-_/ ]?program|career academy/.test(target);
+
+    const primaryIdentity = `${pathname} ${page.title || ""} ${page.headings?.[0] || ""}`.toLowerCase();
+    const career = !category && !careerPath && (
+      /\/job-programmes?\/[a-z0-9-]+/.test(pathname)
+      || /\/career-programmes?\/[a-z0-9-]+/.test(pathname)
+      || /\/[a-z0-9-]*career-programme(?:\/|$)/.test(pathname)
+      || /\bcareer programme\b|\bcareer program\b/.test(primaryIdentity)
+    );
     const individual = !category && !career && (
-      /\/(?:courses?|course|certifications?|training)\/[a-z0-9-]+/.test(pathname)
-      || /individual course|certification course|exam preparation/.test(target)
+      (coursePath && pathParts.length >= 2)
+      || /\/(?:course|certifications?|training)\/[a-z0-9-]+/.test(pathname)
+      || /\bindividual course\b|\bcertification course\b|\bexam preparation\b/.test(primaryIdentity)
     );
     const generalOffering = !category && !career && !individual && (
       /\/(?:products?|services?)\/[a-z0-9-]+/.test(pathname)
-      || /product detail|service detail|enrol now|enroll now|buy now/.test(target)
+      || /product detail|service detail|enrol now|enroll now|buy now/.test(primaryIdentity)
     );
 
     if (career) roles.add("career_programme");
@@ -356,18 +384,19 @@ export function buildCompanyPageInventory(pages: ReviewPage[]) {
     else if (policy) primaryDisposition = "policy_terms_refund_cancellation";
     else if (overview) primaryDisposition = "about_company_overview";
     else if (category) primaryDisposition = "category_index";
-    else {
-      primaryDisposition = "other_non_sales_content";
-      excludedReason = "No deterministic sales-useful page role was found.";
-    }
+    else primaryDisposition = "other_non_sales_content";
+
     if (!roles.size) roles.add(primaryDisposition);
+    // Unknown but substantive first-party pages are mapped rather than discarded;
+    // the AI map step may safely return no sales knowledge. Only deterministic
+    // duplicates, clear editorial/comparison content and navigation noise skip map.
     const relevant = ![
       "duplicate",
       "blog_reference_editorial",
       "comparison_competitor_reference",
       "navigation_noise",
-      "other_non_sales_content",
     ].includes(primaryDisposition);
+    const likelyOffering = relevant && (career || individual || generalOffering);
     return {
       url: page.url,
       title: page.title,
@@ -376,7 +405,7 @@ export function buildCompanyPageInventory(pages: ReviewPage[]) {
       primaryDisposition,
       roles: Array.from(roles),
       relevant,
-      likelyOffering: career || individual || generalOffering,
+      likelyOffering,
       excludedReason,
     } satisfies CompanyPageInventoryRecord;
   });
@@ -787,7 +816,7 @@ export function calculateCompanyKnowledgeCompleteness(input: {
     .map(item => `${normalise(item.offering!.name)}|${normalise(item.offering!.planName || "standard")}`));
   const evidenceSources = new Set(clientItems.flatMap(item => item.sourceUrls));
   const offeringEvidenceSources = new Set(offeringItems.flatMap(item => item.sourceUrls));
-  const missingOfferingPages = input.inventory.filter(page => page.likelyOffering && !offeringEvidenceSources.has(page.url));
+  const missingOfferingPages = input.inventory.filter(page => page.relevant && page.likelyOffering && !offeringEvidenceSources.has(page.url));
   const failedMaps = input.mapResults.filter(result => result.status === "failed");
   const conflicts = conflictFacts(input.items);
   const financeInformationFound = clientItems.some(item =>
@@ -835,9 +864,9 @@ export function calculateCompanyKnowledgeCompleteness(input: {
     pagesUsed: evidenceSources.size,
     pagesExcludedWithReason: pagesExcluded,
     pagesExcluded,
-    candidateSellableOfferingsDiscovered: input.inventory.filter(page => page.likelyOffering).length,
-    careerProgrammesDiscovered: input.inventory.filter(page => page.roles.includes("career_programme")).length,
-    individualCoursesDiscovered: input.inventory.filter(page => page.roles.includes("individual_course")).length,
+    candidateSellableOfferingsDiscovered: input.inventory.filter(page => page.relevant && page.likelyOffering).length,
+    careerProgrammesDiscovered: input.inventory.filter(page => page.relevant && page.roles.includes("career_programme")).length,
+    individualCoursesDiscovered: input.inventory.filter(page => page.relevant && page.roles.includes("individual_course")).length,
     finalProposedOfferings: offeringKeys.size,
     offeringsFound: offeringKeys.size,
     offeringsWithEvidencedFullPrice: withPrice.size,

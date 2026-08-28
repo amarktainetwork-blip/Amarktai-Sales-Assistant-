@@ -301,4 +301,81 @@ describe("deterministic company page inventory", () => {
     expect(inventory[2].primaryDisposition).toBe("comparison_competitor_reference");
     expect(inventory[2].excludedReason).toBeTruthy();
   });
+
+  it("uses page identity instead of shared secondary headings to classify Course2Career-style routes", () => {
+    const careerPath = page(
+      "/programming-career-path",
+      "Programming Career Path UK 2026",
+      "Programming guidance and recommended certifications for several experience levels."
+    );
+    careerPath.headings = [
+      "Programming & Software Development Career Path",
+      "Recommended Course2Career courses",
+      "Want a structured path with job placement support?",
+      "Cyber Security Career Programme",
+    ];
+
+    const individual = page(
+      "/courses/isaca/certified-information-systems-auditor-cisa",
+      "Certified Information Systems Auditor (CISA) Certification",
+      "Certified Information Systems Auditor training is available for £229.00."
+    );
+    individual.headings = [
+      "Certified Information Systems Auditor (CISA) Certification",
+      "Career Opportunities",
+      "Want a structured path with job placement support?",
+      "Cyber Security Career Programme",
+    ];
+
+    const category = page(
+      "/courses/programming",
+      "Programming Courses & Training",
+      "Showing five programming courses with links to each course detail page."
+    );
+    category.headings = ["Programming", "Programming Courses", "Course catalogue"];
+
+    const careerProgramme = page(
+      "/job-programmes/ai-career",
+      "AI and Data Career Programme UK",
+      "AI and Data Career Programme current full price £2,499.00."
+    );
+    careerProgramme.headings = ["AI and Data Career Programme", "Programme Price"];
+
+    const inventory = buildCompanyPageInventory([
+      careerPath,
+      individual,
+      category,
+      careerProgramme,
+    ]);
+
+    expect(inventory[0].primaryDisposition).toBe("blog_reference_editorial");
+    expect(inventory[0].roles).not.toContain("career_programme");
+    expect(inventory[0].likelyOffering).toBe(false);
+    expect(inventory[1].primaryDisposition).toBe("individual_course");
+    expect(inventory[1].roles).not.toContain("career_programme");
+    expect(inventory[1].likelyOffering).toBe(true);
+    expect(inventory[2].primaryDisposition).toBe("category_index");
+    expect(inventory[2].likelyOffering).toBe(false);
+    expect(inventory[3].primaryDisposition).toBe("career_programme");
+    expect(inventory[3].likelyOffering).toBe(true);
+  });
+
+  it("does not collapse distinct pages that only share a long template prefix", () => {
+    const sharedShell = "Shared navigation, trust badges, finance banner and course menu. ".repeat(180);
+    expect(sharedShell.length).toBeGreaterThan(8_000);
+    const first = page(
+      "/courses/isaca/cisa",
+      "CISA Certification",
+      `${sharedShell} Unique CISA detail, governance curriculum and £229.00 full price.`
+    );
+    const second = page(
+      "/courses/isc2/cissp",
+      "CISSP Certification",
+      `${sharedShell} Unique CISSP security-domain curriculum and £229.00 full price.`
+    );
+    const inventory = buildCompanyPageInventory([first, second]);
+    expect(inventory[0].primaryDisposition).toBe("individual_course");
+    expect(inventory[1].primaryDisposition).toBe("individual_course");
+    expect(inventory[1].excludedReason).toBeNull();
+  });
 });

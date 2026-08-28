@@ -84,6 +84,10 @@ if (invokedDirectly) {
         process.argv[4] || process.env.COMPANY_KNOWLEDGE_VERIFY_ORGANISATION_ID,
         "organisation-id"
       ),
+    }).finally(() => {
+      // Operator verifiers must terminate after emitting their final report even if
+      // shared runtime clients retain sockets for the long-lived application process.
+      process.exit(process.exitCode ?? 0);
     });
   }
 }
