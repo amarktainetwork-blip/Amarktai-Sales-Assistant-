@@ -66,6 +66,7 @@ export type DiscoveryResult = {
     fetchedAt: string;
     rendered: boolean;
     textChars: number;
+    text: string;
     description: string | null;
     headings: string[];
     links: string[];
@@ -1287,6 +1288,7 @@ export async function discoverPublicWebsite(
       fetchedAt: page.fetchedAt,
       rendered: page.rendered,
       textChars: page.text.length,
+      text: page.text,
       description: page.description,
       headings: page.headings.slice(0, 40),
       links: page.links.map(link => link.toString()).slice(0, 120),
