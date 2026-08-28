@@ -12,6 +12,7 @@ type RetainedPageMetadata = {
   url: string;
   title?: string | null;
   fetchedAt?: string;
+  text?: string;
   category?: string;
   description?: string | null;
   headings?: string[];
@@ -37,22 +38,21 @@ export function retainedPagesForCompanyReview(
       /^\[(https?:\/\/[^\]]+)\]\n([\s\S]*?)(?=^\[https?:\/\/|$)/gm
     )
   );
-  return segments
-    .map(segment => {
-      const url = segment[1];
-      const page = pages.find(item => item.url === url);
-      return {
-        url,
-        title: page?.title || null,
-        fetchedAt: page?.fetchedAt || new Date().toISOString(),
-        text: segment[2] || "",
-        category: page?.category,
-        description: page?.description,
-        headings: page?.headings,
-        links: page?.links,
-        jsonLd: page?.jsonLd,
-      };
-    })
+  const textByUrl = new Map(
+    segments.map(segment => [segment[1], segment[2] || ""] as const)
+  );
+  return pages
+    .map(page => ({
+      url: page.url,
+      title: page.title || null,
+      fetchedAt: page.fetchedAt || new Date().toISOString(),
+      text: page.text ?? textByUrl.get(page.url) ?? "",
+      category: page.category,
+      description: page.description,
+      headings: page.headings,
+      links: page.links,
+      jsonLd: page.jsonLd,
+    }))
     .filter(page => page.text.trim().length > 0);
 }
 
