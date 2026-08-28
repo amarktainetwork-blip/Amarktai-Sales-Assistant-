@@ -148,10 +148,15 @@ function safeApiError(status: number, body: string) {
 
 function modelRecords(payload: unknown) {
   const root = object(payload);
-  const records = array(root.data).length
-    ? array(root.data)
-    : array(root.models);
-  return records.map(object);
+  const records = array(payload).length
+    ? array(payload)
+    : array(root.data).length
+      ? array(root.data)
+      : array(root.models);
+  return records.map(record => {
+    const id = text(record);
+    return id ? ({ id } as JsonObject) : object(record);
+  });
 }
 
 function pricingRecords(payload: unknown) {
@@ -171,6 +176,10 @@ function pricingRecords(payload: unknown) {
     ([modelId, value]) =>
       ({ model_id: modelId, ...object(value) }) as JsonObject
   );
+}
+
+function modelId(record: JsonObject) {
+  return text(record.id || record.model_id || record.model || record.slug);
 }
 
 function modelContext(record: JsonObject) {
@@ -206,19 +215,21 @@ export function selectCompanyLearningModel(input: {
   override?: string;
 }) {
   const pricing = new Map(
-    pricingRecords(input.pricingPayload).map(item => [
-      text(item.model_id || item.model || item.id),
-      item,
-    ])
+    pricingRecords(input.pricingPayload).map(item => [modelId(item), item])
   );
   const models = modelRecords(input.modelsPayload)
-    .map(record => ({
-      id: text(record.id || record.model_id || record.slug),
-      category: modelCategory(record),
-      contextWindow: modelContext(record),
-      advertised: record,
-      pricing: pricing.get(text(record.id || record.model_id || record.slug)),
-    }))
+    .map(record => {
+      const id = modelId(record);
+      const modelPricing = pricing.get(id);
+      return {
+        id,
+        category: modelCategory(record),
+        contextWindow:
+          modelContext(record) || modelContext(modelPricing || {}),
+        advertised: record,
+        pricing: modelPricing,
+      };
+    })
     .filter(
       model =>
         model.id &&

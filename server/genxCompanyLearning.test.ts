@@ -38,6 +38,43 @@ describe("governed GenX whole-site client", () => {
     ).toBe("frontier-opus");
   });
 
+  it("accepts the live GenX top-level string-array catalogue without hardcoding a model", () => {
+    const selected = selectCompanyLearningModel({
+      modelsPayload: [
+        "gpt-5-mini",
+        "claude-opus-4-6",
+        "grok-4.3",
+        "gpt-5.6-luna",
+      ],
+      pricingPayload: {
+        data: [
+          { model: "claude-opus-4-6", input: 10 },
+          { model_id: "grok-4.3", input: 10 },
+        ],
+      },
+    });
+    expect(selected.id).toBe("claude-opus-4-6");
+    expect(selected.advertised).toEqual({ id: "claude-opus-4-6" });
+    expect(selected.pricing).toEqual({ model: "claude-opus-4-6", input: 10 });
+  });
+
+  it("accepts model detail objects that identify the model with the live model field", () => {
+    expect(
+      selectCompanyLearningModel({
+        modelsPayload: {
+          data: [
+            {
+              model: "grok-4.3",
+              category: "text",
+              context_window: 1_000_000,
+            },
+          ],
+        },
+        pricingPayload: {},
+      }).id
+    ).toBe("grok-4.3");
+  });
+
   it("uses official catalogue, pricing, credits, file and session endpoints and cleans resources", async () => {
     const calls: Array<{ url: string; method: string }> = [];
     const fetchImpl = vi.fn(
@@ -46,17 +83,9 @@ describe("governed GenX whole-site client", () => {
         const method = init?.method || "GET";
         calls.push({ url, method });
         if (url.endsWith("/models?category=text"))
-          return json({
-            data: [
-              {
-                id: "frontier-opus",
-                category: "text",
-                context_window: 1_000_000,
-              },
-            ],
-          });
+          return json(["frontier-opus"]);
         if (url.endsWith("/account/pricing?category=text"))
-          return json({ data: [{ model_id: "frontier-opus", input: 10 }] });
+          return json({ data: [{ model: "frontier-opus", input: 10 }] });
         if (url.endsWith("/account/credits")) return json({ balance: 10_000 });
         if (url.endsWith("/files") && method === "POST")
           return json({ id: "file-1" });
