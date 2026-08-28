@@ -3,6 +3,10 @@ import { createHash } from "node:crypto";
 import { requireLocalHttpContext } from "./httpAuth";
 import { listConnectedSystemsForUser } from "./connectedSystems";
 import { routeConnectedSystemActions } from "./crmRouter";
+import {
+  attachRuntimeOperationReadiness,
+  isCustomOperationKey,
+} from "./crm/runtimeCapabilities";
 import { createWorkflowRun, listActionProposals } from "./db";
 import {
   getAutomationPolicy,
@@ -65,11 +69,9 @@ function sendError(res: Response, error: unknown) {
       detail: detail.slice(0, 500),
     })
   );
-  return res
-    .status(400)
-    .json({
-      error: detail.slice(0, 500) || "Sales automation operation failed.",
-    });
+  return res.status(400).json({
+    error: detail.slice(0, 500) || "Sales automation operation failed.",
+  });
 }
 
 function cleanAction(value: unknown, index: number): PreparedSalesAction {
@@ -114,6 +116,10 @@ function cleanAction(value: unknown, index: number): PreparedSalesAction {
     if (source[key] !== undefined && payload[key] === undefined)
       payload[key] = source[key];
   }
+  if (actionType === "custom_crm_action" && !isCustomOperationKey(payload.actionName))
+    throw new Error(
+      `Action ${index + 1} must choose an exact commissioned CRM-specific function.`
+    );
   const encoded = JSON.stringify(payload);
   if (encoded.length > 80_000)
     throw new Error(`Action ${index + 1} payload is too large.`);
@@ -137,6 +143,27 @@ function cleanAction(value: unknown, index: number): PreparedSalesAction {
   };
 }
 
+async function runtimeSystems(userId: number, organisationId: number) {
+  const systems = await listConnectedSystemsForUser(userId, organisationId);
+  return attachRuntimeOperationReadiness({ organisationId, systems });
+}
+
+function assertCustomActionsRoutable(
+  actions: Array<PreparedSalesAction & { payload: Record<string, unknown> }>
+) {
+  for (const action of actions) {
+    if (action.actionType !== "custom_crm_action") continue;
+    const route = action.payload.crmRoute as
+      | { routable?: boolean; reason?: string }
+      | undefined;
+    if (!route?.routable)
+      throw new Error(
+        route?.reason ||
+          "That CRM-specific function is not commissioned for production execution."
+      );
+  }
+}
+
 export function registerSalesAutomationRoutes(app: Express) {
   app.get("/api/sales-automation/capabilities", async (req, res) => {
     try {
@@ -146,7 +173,7 @@ export function registerSalesAutomationRoutes(app: Express) {
           userId,
           organisationId: membership.organisationId,
         }),
-        listConnectedSystemsForUser(userId, membership.organisationId),
+        runtimeSystems(userId, membership.organisationId),
       ]);
       return res.json({
         policy,
@@ -156,7 +183,9 @@ export function registerSalesAutomationRoutes(app: Express) {
           provider: system.provider,
           displayName: system.displayName,
           status: system.status,
+          connectionMethod: system.connectionMethod,
           verifiedCapabilities: system.verifiedCapabilities,
+          learnedOperations: system.learnedOperations,
         })),
       });
     } catch (error) {
@@ -191,14 +220,11 @@ export function registerSalesAutomationRoutes(app: Express) {
       if (!supplied.length || supplied.length > 40)
         throw new Error("Supply between one and forty sales actions.");
       const actions: PreparedSalesAction[] = supplied.map(cleanAction);
-      const systems = await listConnectedSystemsForUser(
-        userId,
-        membership.organisationId
-      );
-      const routed = routeConnectedSystemActions(
-        actions,
-        systems
-      ) as PreparedSalesAction[];
+      const systems = await runtimeSystems(userId, membership.organisationId);
+      const routed = routeConnectedSystemActions(actions, systems) as Array<
+        PreparedSalesAction & { payload: Record<string, unknown> }
+      >;
+      assertCustomActionsRoutable(routed);
       const policy = await getAutomationPolicy({
         userId,
         organisationId: membership.organisationId,
@@ -228,7 +254,7 @@ export function registerSalesAutomationRoutes(app: Express) {
           actionCount: actions.length,
         },
         verificationSummary:
-          "Amarktai routed these actions only through backend-verified CRM capabilities or a configured Microsoft Graph calendar boundary. External actions require review unless explicitly pre-approved by organisation policy.",
+          "Amarktai routed these actions only through exact backend-verified CRM capabilities. CRM-specific learned functions must be LIVE_PROVEN. External writes require target verification, governed approval, execution evidence and deterministic readback/postcondition proof.",
         actions: routed,
       });
       const proposals = await listActionProposals(
