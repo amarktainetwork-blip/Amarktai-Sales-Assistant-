@@ -1708,6 +1708,9 @@ export async function saveWebsiteDiscoveryReview(input: {
     .orderBy(desc(websiteDiscoveries.discoveryVersion))
     .limit(1);
   const discoveryVersion = (previous[0]?.discoveryVersion || 0) + 1;
+  const completenessStatus = (
+    input.proposedFacts.completeness as { status?: string } | undefined
+  )?.status;
   const discoveryId = await db.transaction(async tx => {
     // A fresh scan replaces only earlier pending drafts. Confirmed knowledge is retained.
     await tx
@@ -1751,13 +1754,17 @@ export async function saveWebsiteDiscoveryReview(input: {
     eventType: "website_discovery_review_ready",
     entityType: "website_discovery",
     entityId: String(discoveryId),
-    summary: "Bounded website discoveries are ready for user review.",
+    summary:
+      completenessStatus === "incomplete"
+        ? "Website evidence was retained, but completeness checks require a retry before approval."
+        : "Complete-site company knowledge is ready for deliberate user review.",
     metadata: {
       sourceUrl: input.sourceUrl,
       candidateCount: input.proposedKnowledge.length,
       discoveryVersion,
       reviewState: input.reviewState || "pending",
       pagesCrawled: input.proposedFacts.pagesCrawled ?? null,
+      completenessStatus: completenessStatus ?? null,
     },
   });
   return discoveryId;
@@ -1805,6 +1812,13 @@ export async function confirmWebsiteDiscovery(input: {
   if (!discovery)
     throw new Error(
       "The website review is unavailable or has already been completed. Run discovery again."
+    );
+  const completeness = (discovery.proposedFacts as {
+    completeness?: { status?: string };
+  }).completeness;
+  if (completeness?.status === "incomplete")
+    throw new Error(
+      "This company-knowledge pack is incomplete. Retry company learning before approving any facts."
     );
   const candidates = discovery.proposedKnowledge as Array<{
     title: string;

@@ -85,6 +85,7 @@ jobs:
             test -f dist/verifyVoice.js
             test -f dist/verifyFeatures.js
             test -f dist/verifyCompanyDiscovery.js
+            test -f dist/verifyCompanyKnowledge.js
             test -f dist/verifyGenieCommissioning.js
             test -f drizzle/meta/_journal.json
             test -f dist/public/index.html

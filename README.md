@@ -115,6 +115,15 @@ docker compose -f deploy/webdock/docker-compose.yml --env-file .env run --no-dep
 
 The probe reports only fetch status, page/render counts and process stability. It does not write company knowledge, alter CRM data or interact with Genie.
 
+To run the separate full company-learning proof without persisting or approving knowledge, supply an existing billing user and organisation explicitly:
+
+```bash
+docker compose -f deploy/webdock/docker-compose.yml --env-file .env run --no-deps --rm \
+  app node dist/verifyCompanyKnowledge.js https://PUBLIC_COMPANY_WEBSITE USER_ID ORGANISATION_ID
+```
+
+This operator-only verifier performs crawl, inventory, bounded map synthesis, global reconciliation and completeness checks. It may consume configured Amarktai AI credits, but does not create trusted knowledge, touch CRM data or interact with Genie.
+
 ## Backup and recovery
 
 Create a backup before updates/schema changes:

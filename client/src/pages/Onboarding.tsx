@@ -98,6 +98,30 @@ type WebsiteKnowledgeCandidate = {
   confidence?: string;
   evidenceBasis?: string;
   trustEligible?: boolean;
+  offering?: {
+    name: string;
+    type?: string;
+    planName?: string;
+  };
+  priceFacts?: Array<{
+    value: string;
+    semanticType:
+      | "full_current_price"
+      | "deposit"
+      | "finance_payment_plan"
+      | "alternative_plan"
+      | "other_fee";
+    label: string;
+    sourceUrl: string;
+    evidenceText: string;
+  }>;
+  evidence?: Array<{
+    sourceUrl: string;
+    pageTitle: string | null;
+    fetchedAt: string;
+    evidenceText: string;
+    materialFacts: string[];
+  }>;
 };
 type WebsiteConflict = {
   type: string;
@@ -106,21 +130,40 @@ type WebsiteConflict = {
   sources: Array<{ sourceUrl: string; fetchedAt: string; prices: string[] }>;
 };
 type WebsiteCompleteness = {
+  status: "complete" | "complete_with_conflicts" | "incomplete";
+  pagesDiscovered: number;
+  pagesScanned: number;
   pagesCrawled: number;
+  pagesSuccessfullyRead: number;
+  pagesClassified: number;
+  pagesUsedAsEvidence: number;
+  pagesUsed: number;
+  pagesExcludedWithReason: number;
+  pagesExcluded: number;
+  candidateSellableOfferingsDiscovered: number;
+  careerProgrammesDiscovered: number;
+  individualCoursesDiscovered: number;
+  finalProposedOfferings: number;
   offeringsFound: number;
+  offeringsWithEvidencedFullPrice: number;
   offeringsWithPublishedPrice: number;
+  offeringsWithoutEvidencedFullPrice: number;
   unresolvedConflicts: number;
+  conflictsFound: number;
   financeInformationFound: boolean;
+  contactInformationFound: boolean;
   certificationInformationFound: boolean;
   supportAndOutcomeInformationFound: boolean;
+  policyTermsInformationFound: boolean;
   importantGaps: string[];
 };
 
 const KNOWLEDGE_GROUPS = [
-  "Overview",
-  "Products / Courses / Services",
+  "Company overview",
+  "Career programmes",
+  "Individual courses / certifications",
   "Prices & Finance",
-  "Certifications",
+  "Certifications / awarding bodies",
   "Support & Outcomes",
   "FAQs",
   "Contact",
@@ -128,15 +171,77 @@ const KNOWLEDGE_GROUPS = [
 ] as const;
 
 function knowledgeGroup(category: string): (typeof KNOWLEDGE_GROUPS)[number] {
-  if (["home", "about"].includes(category)) return "Overview";
-  if (["offering", "company_offering"].includes(category)) return "Products / Courses / Services";
+  if (["home", "about", "overview", "company_overview"].includes(category)) return "Company overview";
+  if (category === "career_programmes") return "Career programmes";
+  if (["individual_courses", "offering", "company_offering"].includes(category)) return "Individual courses / certifications";
   if (["pricing", "finance", "company_price", "company_finance"].includes(category)) return "Prices & Finance";
-  if (["certifications", "company_certification"].includes(category)) return "Certifications";
+  if (["certifications", "company_certification"].includes(category)) return "Certifications / awarding bodies";
   if (["support", "evidence", "testimonials", "company_support", "company_evidence"].includes(category))
     return "Support & Outcomes";
   if (category === "faq") return "FAQs";
   if (category === "contact") return "Contact";
   return "Policies";
+}
+
+function legacyCompleteness(input: {
+  pages: number;
+  offerings: number;
+  priced: number;
+  conflicts: number;
+}): WebsiteCompleteness {
+  return {
+    status: "incomplete",
+    pagesDiscovered: input.pages,
+    pagesScanned: input.pages,
+    pagesCrawled: input.pages,
+    pagesSuccessfullyRead: input.pages,
+    pagesClassified: input.pages,
+    pagesUsedAsEvidence: 0,
+    pagesUsed: 0,
+    pagesExcludedWithReason: 0,
+    pagesExcluded: 0,
+    candidateSellableOfferingsDiscovered: input.offerings,
+    careerProgrammesDiscovered: 0,
+    individualCoursesDiscovered: 0,
+    finalProposedOfferings: input.offerings,
+    offeringsFound: input.offerings,
+    offeringsWithEvidencedFullPrice: input.priced,
+    offeringsWithPublishedPrice: input.priced,
+    offeringsWithoutEvidencedFullPrice: Math.max(0, input.offerings - input.priced),
+    unresolvedConflicts: input.conflicts,
+    conflictsFound: input.conflicts,
+    financeInformationFound: false,
+    contactInformationFound: false,
+    certificationInformationFound: false,
+    supportAndOutcomeInformationFound: false,
+    policyTermsInformationFound: false,
+    importantGaps: ["Run company learning again to calculate the complete-site coverage contract."],
+  };
+}
+
+function priceSemanticLabel(type: NonNullable<WebsiteKnowledgeCandidate["priceFacts"]>[number]["semanticType"]) {
+  return ({
+    full_current_price: "Full / current price",
+    deposit: "Deposit",
+    finance_payment_plan: "Finance / payment plan",
+    alternative_plan: "Alternative plan",
+    other_fee: "Other fee",
+  } as const)[type];
+}
+
+function excludedPageSummary(
+  inventory: Array<{ primaryDisposition: string; excludedReason: string | null }>
+) {
+  const counts = new Map<string, number>();
+  inventory.filter(page => page.excludedReason).forEach(page =>
+    counts.set(
+      page.primaryDisposition,
+      (counts.get(page.primaryDisposition) || 0) + 1
+    )
+  );
+  return Array.from(counts.entries()).map(([role, count]) =>
+    `${role.replaceAll("_", " ")}: ${count}`
+  );
 }
 
 async function jsonRequest(url: string, init?: RequestInit) {
@@ -253,6 +358,10 @@ export default function Onboarding() {
     organisation.data?.role === "owner" ||
     organisation.data?.role === "manager";
   const setup = trpc.companySetup.get.useQuery();
+  const companyLearning = trpc.companySetup.companyLearningStatus.useQuery(
+    undefined,
+    { retry: false, refetchInterval: 3_000 }
+  );
   const systems = trpc.connectedSystems.list.useQuery(
     { organisationId: organisationId ?? 0 },
     { enabled: Boolean(organisationId) }
@@ -285,6 +394,10 @@ export default function Onboarding() {
     proposedKnowledge: WebsiteKnowledgeCandidate[];
     conflicts: WebsiteConflict[];
     completeness: WebsiteCompleteness;
+    pageInventory: Array<{
+      primaryDisposition: string;
+      excludedReason: string | null;
+    }>;
     pages: Array<{
       url: string;
       title: string | null;
@@ -350,6 +463,10 @@ export default function Onboarding() {
     const facts = saved.proposedFacts as {
       conflicts?: WebsiteConflict[];
       completeness?: WebsiteCompleteness;
+      pageInventory?: Array<{
+        primaryDisposition: string;
+        excludedReason: string | null;
+      }>;
       pages?: Array<{
         url: string;
         title: string | null;
@@ -364,31 +481,63 @@ export default function Onboarding() {
       sourceUrl: saved.sourceUrl,
       proposedKnowledge,
       conflicts: facts.conflicts ?? [],
-      completeness: facts.completeness ?? {
-        pagesCrawled: facts.pages?.length ?? 0,
-        offeringsFound: proposedKnowledge.filter(
+      completeness: facts.completeness ?? legacyCompleteness({
+        pages: facts.pages?.length ?? 0,
+        offerings: proposedKnowledge.filter(
           item => item.category === "offering"
         ).length,
-        offeringsWithPublishedPrice: proposedKnowledge.filter(
+        priced: proposedKnowledge.filter(
           item =>
             item.category === "offering" &&
             item.content.includes("Price:") &&
             !item.content.includes("Not clearly stated")
         ).length,
-        unresolvedConflicts: facts.conflicts?.length ?? 0,
-        financeInformationFound: false,
-        certificationInformationFound: false,
-        supportAndOutcomeInformationFound: false,
-        importantGaps: [],
-      },
+        conflicts: facts.conflicts?.length ?? 0,
+      }),
+      pageInventory: facts.pageInventory ?? [],
       pages: facts.pages ?? [],
     });
-    setSelectedKnowledge(
-      proposedKnowledge.flatMap((item, index) =>
-        item.trustEligible === false ? [] : [index]
-      )
-    );
+    // Fresh synthesis is deliberately unselected. A manager must choose every
+    // fact that becomes trusted; saved confirmed knowledge is unaffected.
+    setSelectedKnowledge([]);
   }, [preview, setup.data?.discoveries]);
+
+  useEffect(() => {
+    const job = companyLearning.data;
+    if (!job) return;
+    if (["queued", "running"].includes(job.status)) {
+      setFeedback({
+        kind: "loading",
+        title: job.humanStatus,
+        detail: "Company learning is running in the background. Completed crawl evidence and page maps are retained for recovery.",
+      });
+      return;
+    }
+    if (job.resultDiscoveryId) {
+      const loaded = setup.data?.discoveries.some(
+        discovery => discovery.id === job.resultDiscoveryId
+      );
+      if (!loaded) void utils.companySetup.get.invalidate();
+    }
+    if (job.status === "needs_attention") {
+      setFeedback({
+        kind: "error",
+        title: "Company knowledge is incomplete",
+        detail: job.lastError || "Coverage checks found missing evidence. Nothing can be approved until the retained job completes.",
+        actionLabel: "Resume company learning",
+        onAction: () => retryLearning.mutate({ jobId: job.id }),
+      });
+    }
+  }, [companyLearning.data, setup.data?.discoveries]);
+
+  useEffect(() => {
+    if (!preview || preview.completeness.status === "incomplete") return;
+    setFeedback({
+      kind: "success",
+      title: "Website review is ready",
+      detail: "The complete-site coverage contract passed. Nothing is selected; deliberately choose the facts you want to trust.",
+    });
+  }, [preview?.discoveryId, preview?.completeness.status]);
 
   useEffect(() => {
     const savedMode = organisation.data?.settings?.workspaceMode;
@@ -484,30 +633,15 @@ export default function Onboarding() {
           "Amarktai is scanning a bounded set of authorised pages. This can take a moment.",
       }),
     onSuccess: result => {
-      const facts = result.proposedFacts as {
-        conflicts?: WebsiteConflict[];
-        completeness: WebsiteCompleteness;
-      };
-      setPreview({
-        ...result,
-        conflicts: facts.conflicts ?? [],
-        completeness: facts.completeness,
-      });
-      setSelectedKnowledge(
-        result.proposedKnowledge.flatMap((item, index) =>
-          item.trustEligible === false ? [] : [index]
-        )
-      );
+      setPreview(null);
+      setSelectedKnowledge([]);
       setStep(2);
       onboardingProgress.mutate({ step: 2 });
-      toast.success(
-        "Website context is saved as a review-only draft. Approve facts before Amarktai can trust or use them."
-      );
+      companyLearning.refetch();
       setFeedback({
-        kind: "success",
-        title: "Website review is ready",
-        detail:
-          "The results are review-only. Select and approve facts before they become trusted knowledge.",
+        kind: "loading",
+        title: result.humanStatus,
+        detail: "Company learning is running safely in the background. You can leave this page and return without losing completed evidence.",
       });
     },
     onError: () =>
@@ -518,6 +652,24 @@ export default function Onboarding() {
           "The website scan was interrupted before it completed. No content became trusted knowledge. Please try again.",
         actionLabel: "Retry website scan",
         onAction: () => discover.mutate(),
+      }),
+  });
+  const retryLearning = trpc.companySetup.retryWebsiteLearning.useMutation({
+    onSuccess: result => {
+      setPreview(null);
+      setSelectedKnowledge([]);
+      companyLearning.refetch();
+      setFeedback({
+        kind: "loading",
+        title: result.humanStatus,
+        detail: "Amarktai is resuming retained crawl evidence and completed page maps.",
+      });
+    },
+    onError: () =>
+      setFeedback({
+        kind: "error",
+        title: "Company learning could not resume",
+        detail: "No content became trusted knowledge. Please try again.",
       }),
   });
   const confirm = trpc.companySetup.confirmDiscovery.useMutation({
@@ -1064,15 +1216,15 @@ export default function Onboarding() {
                 <StepHeading
                   icon={Globe2}
                   number="02"
-                  title="Preview website context"
-                  text="A bounded public-site scan blocks private destinations. Results remain review-only until you approve them."
+                  title="Build company knowledge"
+                  text="A bounded authorised-site scan inventories every retained page, maps complete sales evidence, reconciles conflicts, and remains review-only until you approve selected facts."
                 />
                 <Button
                   disabled={!profileSaved || discover.isPending}
                   onClick={() => discover.mutate()}
                   className="mt-6 bg-[#1B64F2]"
                 >
-                  Start secure preview
+                  Start complete company learning
                 </Button>
               </Card>
             )}
@@ -1088,22 +1240,27 @@ export default function Onboarding() {
                   <>
                     <section className="mt-6 rounded-xl border border-white/10 bg-[#08172F] p-4">
                       <h3 className="font-bold text-white">
-                        Discovery summary
+                        Complete-site coverage
                       </h3>
-                      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                      <p className={`mt-2 text-xs font-bold ${preview.completeness.status === "incomplete" ? "text-rose-100" : preview.completeness.status === "complete_with_conflicts" ? "text-amber-100" : "text-emerald-200"}`}>
+                        Status: {preview.completeness.status.replaceAll("_", " ")}
+                      </p>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                         {[
-                          ["Pages reviewed", preview.completeness.pagesCrawled],
+                          ["Pages scanned", preview.completeness.pagesScanned],
+                          ["Relevant pages used", preview.completeness.pagesUsed],
+                          ["Excluded / non-sales", preview.completeness.pagesExcluded],
                           [
-                            "Offerings found",
-                            preview.completeness.offeringsFound,
+                            "Career programmes",
+                            preview.completeness.careerProgrammesDiscovered,
                           ],
                           [
-                            "Offerings with prices",
-                            preview.completeness.offeringsWithPublishedPrice,
+                            "Individual courses",
+                            preview.completeness.individualCoursesDiscovered,
                           ],
                           [
-                            "Conflicts needing review",
-                            preview.completeness.unresolvedConflicts,
+                            "Final proposed offerings",
+                            preview.completeness.finalProposedOfferings,
                           ],
                         ].map(([label, value]) => (
                           <div
@@ -1131,6 +1288,12 @@ export default function Onboarding() {
                           {preview.completeness.financeInformationFound
                             ? "Found"
                             : "Not found"}
+                        </span>
+                        <span className={preview.completeness.contactInformationFound ? "text-emerald-200" : "text-amber-100"}>
+                          Contact: {preview.completeness.contactInformationFound ? "Found" : "Not found"}
+                        </span>
+                        <span className={preview.completeness.policyTermsInformationFound ? "text-emerald-200" : "text-amber-100"}>
+                          Policies / terms: {preview.completeness.policyTermsInformationFound ? "Found" : "Not found"}
                         </span>
                         <span
                           className={
@@ -1165,6 +1328,12 @@ export default function Onboarding() {
                           ? preview.completeness.importantGaps.join(" ")
                           : "No important gaps were identified by this scan. Confirm the sources below before approval."}
                       </div>
+                      {excludedPageSummary(preview.pageInventory).length > 0 && (
+                        <div className="mt-3 rounded-lg border border-white/10 bg-[#071326] p-3 text-xs leading-5 text-[#A9BFDF]">
+                          <strong className="text-white">Excluded / non-sales content summary:</strong>{" "}
+                          {excludedPageSummary(preview.pageInventory).join(" · ")}
+                        </div>
+                      )}
                     </section>
                     {preview.conflicts.length > 0 && (
                       <div className="mt-6 space-y-3 rounded-xl border border-rose-300/25 bg-rose-400/[.06] p-4">
@@ -1322,19 +1491,34 @@ export default function Onboarding() {
                                   className="mt-2 min-h-24 border-white/15 bg-[#071326] text-sm text-[#DCE7F8]"
                                   aria-label={`Correct ${item.title}`}
                                 />
-                                {item.sourceUrl ? (
-                                  <a
-                                    href={item.sourceUrl}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="mt-2 block text-xs font-bold text-[#83AEFF]"
-                                  >
-                                    Source: {item.sourceUrl} ·{" "}
-                                    {item.fetchedAt
-                                      ? `read ${new Date(item.fetchedAt).toLocaleString()}`
-                                      : "saved discovery"}
-                                  </a>
+                                {item.priceFacts?.length ? (
+                                  <div className="mt-3 space-y-2 rounded-lg border border-white/10 bg-[#071326] p-3">
+                                    <p className="text-[10px] font-black uppercase tracking-[.1em] text-[#7896C1]">Price meaning</p>
+                                    {item.priceFacts.map((price, priceIndex) => (
+                                      <div key={`${price.semanticType}-${price.value}-${priceIndex}`} className="text-xs text-[#DCE7F8]">
+                                        <span className="font-black text-white">{priceSemanticLabel(price.semanticType)}:</span>{" "}
+                                        {price.value} — {price.label}
+                                      </div>
+                                    ))}
+                                  </div>
                                 ) : null}
+                                <div className="mt-3 space-y-2">
+                                  {(item.evidence?.length ? item.evidence : item.sourceUrl ? [{
+                                    sourceUrl: item.sourceUrl,
+                                    pageTitle: null,
+                                    fetchedAt: item.fetchedAt,
+                                    evidenceText: "",
+                                    materialFacts: [],
+                                  }] : []).map((evidence, evidenceIndex) => (
+                                    <div key={`${evidence.sourceUrl}-${evidenceIndex}`} className="rounded-lg border border-white/10 bg-[#071326] p-2 text-xs text-[#A9BFDF]">
+                                      <a href={evidence.sourceUrl} target="_blank" rel="noreferrer" className="font-bold text-[#83AEFF]">
+                                        Source {evidenceIndex + 1}: {evidence.pageTitle || evidence.sourceUrl}
+                                      </a>
+                                      {evidence.evidenceText ? <p className="mt-1 leading-5">“{evidence.evidenceText}”</p> : null}
+                                      <p className="mt-1 text-[10px] text-[#7896C1]">Read {new Date(evidence.fetchedAt).toLocaleString()}</p>
+                                    </div>
+                                  ))}
+                                </div>
                                 {item.trustEligible === false &&
                                   item.reviewState === "conflict" && (
                                   <Button
@@ -1373,7 +1557,11 @@ export default function Onboarding() {
                         ))}
                     </div>
                     <Button
-                      disabled={confirm.isPending}
+                      disabled={
+                        confirm.isPending ||
+                        preview.completeness.status === "incomplete" ||
+                        selectedKnowledge.length === 0
+                      }
                       onClick={() =>
                         confirm.mutate({
                           discoveryId: preview.discoveryId,
@@ -1391,9 +1579,16 @@ export default function Onboarding() {
                     </Button>
                   </>
                 ) : (
-                  <p className="mt-5 text-sm text-[#A9BFDF]">
-                    Start a fresh website preview first.
-                  </p>
+                  <div className="mt-5 rounded-xl border border-white/10 bg-[#08172F] p-4 text-sm text-[#A9BFDF]">
+                    {companyLearning.data && ["queued", "running"].includes(companyLearning.data.status) ? (
+                      <>
+                        <p className="font-bold text-white">{companyLearning.data.humanStatus}</p>
+                        <p className="mt-2">This durable job continues in the background and resumes retained work after interruption.</p>
+                      </>
+                    ) : (
+                      <p>Start a fresh company-learning run first.</p>
+                    )}
+                  </div>
                 )}
               </Card>
             )}

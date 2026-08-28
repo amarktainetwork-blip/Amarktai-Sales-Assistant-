@@ -151,6 +151,42 @@ describe("new-user Genie commissioning journey contract", () => {
     expect(onboarding).not.toContain("Unexpected end of JSON input");
   });
 
+  it("requires deliberate knowledge selection and exposes complete-site coverage", () => {
+    const onboarding = read("../client/src/pages/Onboarding.tsx");
+    const database = read("./db.ts");
+    expect(onboarding).toContain("setSelectedKnowledge([])");
+    expect(onboarding).toContain('preview.completeness.status === "incomplete"');
+    expect(onboarding).toContain('selectedKnowledge.length === 0');
+    expect(onboarding).toContain('"Pages scanned"');
+    expect(onboarding).toContain('"Relevant pages used"');
+    expect(onboarding).toContain('"Excluded / non-sales"');
+    expect(onboarding).toContain("Full / current price");
+    expect(onboarding).toContain("Finance / payment plan");
+    expect(database).toContain('completeness?.status === "incomplete"');
+    expect(database).toContain("Retry company learning before approving any facts");
+  });
+
+  it("polls durable company-learning phases instead of holding one synthesis request", () => {
+    const onboarding = read("../client/src/pages/Onboarding.tsx");
+    const router = read("./routers.ts");
+    const jobs = read("./companyKnowledgeJobs.ts");
+    expect(onboarding).toContain("companyLearningStatus.useQuery");
+    expect(onboarding).toContain("refetchInterval: 3_000");
+    expect(router).toContain("startCompanyKnowledgeJob");
+    expect(router).toContain("retryCompanyKnowledgeJob");
+    for (const phase of [
+      "Scanning website",
+      "Classifying pages",
+      "Understanding offerings",
+      "Reviewing pricing and policies",
+      "Reconciling company knowledge",
+      "Checking completeness",
+      "Ready for review",
+    ]) expect(jobs).toContain(phase);
+    expect(jobs).toContain("discoverySnapshot");
+    expect(jobs).toContain("resumeMapResults");
+  });
+
   it("shows durable customer-facing commissioning truth and no mysterious restart action", () => {
     const onboarding = read("../client/src/pages/Onboarding.tsx");
     for (const label of [
