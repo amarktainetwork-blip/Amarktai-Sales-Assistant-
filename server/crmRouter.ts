@@ -48,9 +48,16 @@ export function connectedSystemSupportsAction(
   customOperationKey?: string
 ) {
   if (actionType === "custom_crm_action") {
+    if (!isBrowserConnection(system)) return false;
+    // Approved-action execution re-selects the exact already-routed browser
+    // connection from the database before the browser adapter performs its own
+    // authoritative requireRuntimeBrowserOperation() check. That selector has
+    // no operation matrix attached, so it may pass through only when no matrix
+    // was supplied. Proposal routing always supplies a matrix and therefore
+    // requires the exact LIVE_PROVEN operation below.
+    if (!system.learnedOperations && !customOperationKey) return true;
     return Boolean(
-      isBrowserConnection(system) &&
-        customOperationKey &&
+      customOperationKey &&
         isCustomOperationKey(customOperationKey) &&
         productionOperationAvailable(system.learnedOperations, customOperationKey)
     );
@@ -135,13 +142,15 @@ export function routeConnectedSystemActions<
       typeof effectivePayload.preferredConnectedSystemId === "number"
         ? effectivePayload.preferredConnectedSystemId
         : undefined;
-    const eligible = eligibleSystems.filter(system =>
-      connectedSystemSupportsAction(
-        system,
-        effectiveActionType,
-        customOperationKey
-      )
-    );
+    const eligible = customAction && !customOperationKey
+      ? []
+      : eligibleSystems.filter(system =>
+          connectedSystemSupportsAction(
+            system,
+            effectiveActionType,
+            customOperationKey
+          )
+        );
     const chosen = preferredConnectedSystemId
       ? eligible.find(system => system.id === preferredConnectedSystemId)
       : preferred
