@@ -3,21 +3,28 @@ import {
   companyKnowledgeJobs,
   type CompanyKnowledgeJob,
 } from "../drizzle/schema";
-import { discoverPublicWebsite, type DiscoveryResult } from "./companyDiscovery";
+import {
+  discoverPublicWebsite,
+  type DiscoveryResult,
+} from "./companyDiscovery";
 import {
   buildReviewedCompanyDiscovery,
   pagesForCompanyReview,
 } from "./companyIntelligenceService";
 import {
-  buildCompanyPageInventory,
+  companyKnowledgeAuditSchema,
+  companyKnowledgePackSchema,
   synthesiseCompanyKnowledge,
-  type CompanyKnowledgeMapResult,
+  type CompanyKnowledgeAudit,
+  type CompanyKnowledgePack,
+  type WholeSiteCheckpoint,
 } from "./companyKnowledgeSynthesis";
+import { type CompanyCorpus } from "./companyKnowledgeCorpus";
 import {
-  getDb,
-  recordAudit,
-  saveWebsiteDiscoveryReview,
-} from "./db";
+  GenxCompanyLearningClient,
+  type CompanyLearningResourceState,
+} from "./genxCompanyLearning";
+import { getDb, recordAudit, saveWebsiteDiscoveryReview } from "./db";
 
 const JOB_LEASE_MS = 15 * 60_000;
 const activeJobs = new Set<number>();
@@ -26,7 +33,12 @@ function safeText(value: unknown, maximum = 2_000) {
   return String(value || "")
     .replace(/genx/gi, "Amarktai intelligence")
     .replace(/provider/gi, "service")
+    .replace(
+      /claude|openai|anthropic|gemini|grok|gpt[-\w.]*/gi,
+      "Amarktai intelligence"
+    )
     .replace(/playwright|chromium/gi, "website reader")
+    .replace(/gnxk_[A-Za-z0-9_-]+/g, "[redacted]")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, maximum);
@@ -35,11 +47,11 @@ function safeText(value: unknown, maximum = 2_000) {
 function humanPhase(phase: CompanyKnowledgeJob["phase"]) {
   const labels: Record<CompanyKnowledgeJob["phase"], string> = {
     SCANNING_WEBSITE: "Scanning website",
-    CLASSIFYING_PAGES: "Classifying pages",
-    UNDERSTANDING_OFFERINGS: "Understanding offerings",
-    REVIEWING_PRICING_POLICIES: "Reviewing pricing and policies",
-    RECONCILING_KNOWLEDGE: "Reconciling company knowledge",
-    CHECKING_COMPLETENESS: "Checking completeness",
+    CLASSIFYING_PAGES: "Building company corpus",
+    UNDERSTANDING_OFFERINGS: "Understanding company",
+    REVIEWING_PRICING_POLICIES: "Checking products and pricing",
+    RECONCILING_KNOWLEDGE: "Auditing company knowledge",
+    CHECKING_COMPLETENESS: "Verifying sources",
     READY_FOR_REVIEW: "Ready for review",
   };
   return labels[phase];
@@ -114,32 +126,34 @@ async function claimCompanyKnowledgeJob(jobId: number) {
   return Number(result[0]?.affectedRows || 0) === 1;
 }
 
-function resumableMapResultsForRetry(job: CompanyKnowledgeJob) {
-  const results = (job.mapResults || []) as CompanyKnowledgeMapResult[];
-  if (!/likely sellable offering page/i.test(job.lastError || ""))
-    return results;
-  const inventory = (job.pageInventory || []) as Array<{
-    url?: string;
-    likelyOffering?: boolean;
-  }>;
-  const likelyOfferingUrls = new Set(
-    inventory
-      .filter(page => page.likelyOffering && page.url)
-      .map(page => page.url!)
-  );
-  return results.filter(result => {
-    if (result.status !== "completed" || !likelyOfferingUrls.has(result.pageUrl))
-      return true;
-    return result.items.some(item =>
-      item.classification === "company_offering"
-      && Boolean(item.offering?.name)
-      && item.sourceUrls.includes(result.pageUrl)
-      && (
-        item.reviewState === "conflict"
-        || (item.trustEligible && item.reviewState === "review_required")
-      )
+function parseCheckpoint<T>(
+  value: string | null,
+  parser: (value: unknown) => T
+) {
+  if (!value) return undefined;
+  try {
+    return parser(JSON.parse(value));
+  } catch {
+    return undefined;
+  }
+}
+
+async function cleanupAbandonedResources(job: CompanyKnowledgeJob) {
+  const raw =
+    job.temporaryResources as Partial<CompanyLearningResourceState> | null;
+  if (!raw || (!raw.fileId && !raw.sessionIds?.length)) return;
+  const resources = {
+    fileId: raw.fileId,
+    sessionIds: Array.isArray(raw.sessionIds)
+      ? raw.sessionIds.filter(value => typeof value === "string")
+      : [],
+  };
+  const failures = await new GenxCompanyLearningClient().cleanup(resources);
+  if (failures.length)
+    throw new Error(
+      "Temporary company-learning resources could not be cleaned up safely."
     );
-  });
+  await updateJob(job.id, { temporaryResources: {} });
 }
 
 export function scheduleCompanyKnowledgeJob(jobId: number) {
@@ -181,9 +195,11 @@ export async function startCompanyKnowledgeJob(input: {
       .limit(1)
   )[0];
   if (active) {
-    const leaseExpired =
-      !active.leaseExpiresAt || active.leaseExpiresAt.getTime() <= Date.now();
-    if (active.status === "queued" || leaseExpired)
+    if (
+      active.status === "queued" ||
+      !active.leaseExpiresAt ||
+      active.leaseExpiresAt.getTime() <= Date.now()
+    )
       scheduleCompanyKnowledgeJob(active.id);
     return presentCompanyKnowledgeJob(active);
   }
@@ -198,6 +214,8 @@ export async function startCompanyKnowledgeJob(input: {
       humanStatus: "Scanning website",
       knowledgePersisted: false,
       knowledgeApproved: false,
+      crmTouched: false,
+      genieTouched: false,
     },
     attempt: 0,
     startedAt: new Date(),
@@ -209,7 +227,7 @@ export async function startCompanyKnowledgeJob(input: {
     eventType: "company_knowledge_job_started",
     entityType: "company_knowledge_job",
     entityId: String(job.id),
-    summary: "Complete company website learning started in the background.",
+    summary: "Whole-site company learning started in the background.",
     metadata: { companyProfileId: input.companyProfileId },
   });
   scheduleCompanyKnowledgeJob(job.id);
@@ -265,18 +283,16 @@ export async function retryCompanyKnowledgeJob(input: {
   if (!job) throw new Error("The company-learning job is unavailable.");
   if (!["needs_attention", "failed"].includes(job.status))
     return presentCompanyKnowledgeJob(job);
-  const resumeMapResults = resumableMapResultsForRetry(job);
   await updateJob(job.id, {
     status: "queued",
     lastError: null,
     leaseExpiresAt: null,
     completedAt: null,
     attempt: job.attempt + 1,
-    mapResults: resumeMapResults,
     progress: {
       ...(job.progress || {}),
       humanStatus: job.discoverySnapshot
-        ? "Resuming retained website evidence"
+        ? "Resuming retained company evidence"
         : "Scanning website",
     },
   });
@@ -287,20 +303,76 @@ export async function retryCompanyKnowledgeJob(input: {
     lastError: null,
     completedAt: null,
     attempt: job.attempt + 1,
-    mapResults: resumeMapResults,
+  });
+}
+
+async function checkpoint(
+  job: CompanyKnowledgeJob,
+  value: WholeSiteCheckpoint
+) {
+  const common = { leaseExpiresAt: new Date(Date.now() + JOB_LEASE_MS) };
+  if (value.kind === "resources") {
+    await updateJob(job.id, { ...common, temporaryResources: value.resources });
+    return;
+  }
+  if (value.kind === "corpus") {
+    await updateJob(job.id, {
+      ...common,
+      phase: "CLASSIFYING_PAGES",
+      corpusSnapshot: JSON.stringify(value.corpus),
+      corpusHash: value.corpus.corpusHash,
+      sourceHashes: value.corpus.sourceHashes,
+      pageInventory: value.corpus.pages.map(page => ({
+        pageId: page.pageId,
+        url: page.url,
+        contentHash: page.contentHash,
+        pageHint: page.pageHint,
+      })),
+      progress: {
+        ...(job.progress || {}),
+        humanStatus: "Building company corpus",
+        corpusPages: value.corpus.pageCount,
+        corpusBytes: value.corpus.byteSize,
+      },
+    });
+    return;
+  }
+  if (value.kind === "analysis") {
+    await updateJob(job.id, {
+      ...common,
+      phase: "REVIEWING_PRICING_POLICIES",
+      analysisDraft: JSON.stringify(value.draft),
+      analysisCalls: 1,
+      progress: {
+        ...(job.progress || {}),
+        humanStatus: "Checking products and pricing",
+        analysisComplete: true,
+      },
+    });
+    return;
+  }
+  await updateJob(job.id, {
+    ...common,
+    phase: "RECONCILING_KNOWLEDGE",
+    auditDraft: JSON.stringify(value.audit),
+    progress: {
+      ...(job.progress || {}),
+      humanStatus: "Auditing company knowledge",
+      auditComplete: true,
+    },
   });
 }
 
 async function advanceCompanyKnowledgeJob(jobId: number) {
-  const claimed = await claimCompanyKnowledgeJob(jobId);
-  if (!claimed) return;
+  if (!(await claimCompanyKnowledgeJob(jobId))) return;
   let job = await loadJob(jobId);
   if (!job || job.status !== "running") return;
   try {
+    await cleanupAbandonedResources(job);
     let discovery: DiscoveryResult;
-    if (job.discoverySnapshot) {
+    if (job.discoverySnapshot)
       discovery = JSON.parse(job.discoverySnapshot) as DiscoveryResult;
-    } else {
+    else {
       await updateJob(job.id, {
         phase: "SCANNING_WEBSITE",
         progress: { ...(job.progress || {}), humanStatus: "Scanning website" },
@@ -311,65 +383,49 @@ async function advanceCompanyKnowledgeJob(jobId: number) {
         phase: "CLASSIFYING_PAGES",
         progress: {
           ...(job.progress || {}),
-          humanStatus: "Classifying pages",
+          humanStatus: "Building company corpus",
           pagesScanned: discovery.pages.length,
         },
         leaseExpiresAt: new Date(Date.now() + JOB_LEASE_MS),
       });
       job = { ...job, discoverySnapshot: JSON.stringify(discovery) };
     }
-
-    const pages = pagesForCompanyReview(discovery);
-    const inventory = buildCompanyPageInventory(pages);
-    await updateJob(job.id, {
-      phase: "CLASSIFYING_PAGES",
-      pageInventory: inventory,
-      progress: {
-        ...(job.progress || {}),
-        humanStatus: "Classifying pages",
-        pagesScanned: discovery.pages.length,
-        pagesClassified: inventory.length,
-        pagesExcluded: inventory.filter(page => page.excludedReason).length,
-      },
-      leaseExpiresAt: new Date(Date.now() + JOB_LEASE_MS),
-    });
-
-    const resumeMapResults = (job.mapResults || []) as CompanyKnowledgeMapResult[];
+    const corpus = parseCheckpoint(
+      job.corpusSnapshot,
+      value => value as CompanyCorpus
+    );
+    const draft = parseCheckpoint(job.analysisDraft, value =>
+      companyKnowledgePackSchema.parse(value)
+    );
+    const audit = parseCheckpoint(job.auditDraft, value =>
+      companyKnowledgeAuditSchema.parse(value)
+    );
     const review = await synthesiseCompanyKnowledge({
       userId: job.userId,
       organisationId: job.organisationId,
-      pages,
+      pages: pagesForCompanyReview(discovery),
       reference: `company-knowledge-job:${job.id}:attempt-${job.attempt}`,
-      resumeMapResults,
-      onCheckpoint: async mapResults => {
+      resume: { corpus, draft, audit },
+      onCheckpoint: value => checkpoint(job, value),
+      onPhase: async phase => {
+        const nextPhase =
+          phase === "corpus"
+            ? ("CLASSIFYING_PAGES" as const)
+            : phase === "analysis"
+              ? ("UNDERSTANDING_OFFERINGS" as const)
+              : phase === "audit"
+                ? ("RECONCILING_KNOWLEDGE" as const)
+                : ("CHECKING_COMPLETENESS" as const);
         await updateJob(job.id, {
-          phase: "UNDERSTANDING_OFFERINGS",
-          mapResults,
+          phase: nextPhase,
           progress: {
             ...(job.progress || {}),
-            humanStatus: "Understanding offerings",
-            pagesMapped: mapResults.filter(item => item.status === "completed").length,
-            mapFailures: mapResults.filter(item => item.status === "failed").length,
+            humanStatus: humanPhase(nextPhase),
           },
           leaseExpiresAt: new Date(Date.now() + JOB_LEASE_MS),
         });
       },
-      onPhase: async phase => {
-        const nextPhase = phase === "mapping"
-          ? "UNDERSTANDING_OFFERINGS" as const
-          : phase === "reviewing"
-            ? "REVIEWING_PRICING_POLICIES" as const
-          : phase === "reconciling"
-            ? "RECONCILING_KNOWLEDGE" as const
-            : "CHECKING_COMPLETENESS" as const;
-        await updateJob(job.id, {
-          phase: nextPhase,
-          progress: { ...(job.progress || {}), humanStatus: humanPhase(nextPhase) },
-          leaseExpiresAt: new Date(Date.now() + JOB_LEASE_MS),
-        });
-      },
     });
-
     const canonical = buildReviewedCompanyDiscovery(discovery, review);
     const discoveryId = await saveWebsiteDiscoveryReview({
       userId: job.userId,
@@ -384,8 +440,6 @@ async function advanceCompanyKnowledgeJob(jobId: number) {
         companyIntelligenceReview: {
           agentKey: "company_intelligence_review",
           state: canonical.reviewState,
-          unavailableReason: null,
-          review: canonical.aiReview,
         },
       },
       proposedKnowledge: canonical.proposedKnowledge,
@@ -397,13 +451,24 @@ async function advanceCompanyKnowledgeJob(jobId: number) {
       phase: ready ? "READY_FOR_REVIEW" : "CHECKING_COMPLETENESS",
       status: ready ? "ready" : "needs_attention",
       resultDiscoveryId: discoveryId,
-      pageInventory: review.pageInventory,
-      mapResults: review.mapResults,
+      validatedPack: JSON.stringify(review.pack),
+      analysisCalls: review.analysisCalls,
+      repairCalls: review.repairCalls,
+      temporaryResources: {},
       progress: {
-        humanStatus: ready ? "Ready for review" : "Knowledge pack needs attention",
+        humanStatus: ready
+          ? "Ready for review"
+          : "Company knowledge needs attention",
         ...review.completeness,
+        corpusPages: review.corpus.pageCount,
+        corpusBytes: review.corpus.byteSize,
+        analysisCalls: review.analysisCalls,
+        repairCalls: review.repairCalls,
+        totalAiCalls: review.totalAiCalls,
         knowledgePersisted: false,
         knowledgeApproved: false,
+        crmTouched: false,
+        genieTouched: false,
       },
       lastError: ready ? null : review.completeness.importantGaps.join(" "),
       leaseExpiresAt: null,
@@ -418,12 +483,13 @@ async function advanceCompanyKnowledgeJob(jobId: number) {
       entityType: "company_knowledge_job",
       entityId: String(job.id),
       summary: ready
-        ? "Complete company knowledge is ready for deliberate human review."
-        : "Company knowledge remains incomplete and requires a recoverable retry.",
+        ? "Whole-site company knowledge is ready for deliberate human review."
+        : "Whole-site company knowledge requires a recoverable retry.",
       metadata: {
         resultDiscoveryId: discoveryId,
         completenessStatus: review.completeness.status,
-        pagesScanned: review.completeness.pagesScanned,
+        corpusHash: review.corpus.corpusHash,
+        totalAiCalls: review.totalAiCalls,
       },
     });
   } catch (error) {
@@ -438,6 +504,8 @@ async function advanceCompanyKnowledgeJob(jobId: number) {
         humanStatus: "Company learning needs attention",
         knowledgePersisted: false,
         knowledgeApproved: false,
+        crmTouched: false,
+        genieTouched: false,
       },
     });
   }
@@ -465,12 +533,17 @@ export async function resumeCompanyKnowledgeJobs() {
 
 export function startCompanyKnowledgeWorker(intervalMs = 10_000) {
   void resumeCompanyKnowledgeJobs().catch(error =>
-    console.error("[company-knowledge] resume failed", { detail: safeText(error) })
+    console.error("[company-knowledge] resume failed", {
+      detail: safeText(error),
+    })
   );
   const timer = setInterval(
-    () => void resumeCompanyKnowledgeJobs().catch(error =>
-      console.error("[company-knowledge] poll failed", { detail: safeText(error) })
-    ),
+    () =>
+      void resumeCompanyKnowledgeJobs().catch(error =>
+        console.error("[company-knowledge] poll failed", {
+          detail: safeText(error),
+        })
+      ),
     Math.max(2_000, intervalMs)
   );
   timer.unref();

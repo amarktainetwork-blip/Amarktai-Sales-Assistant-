@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { AGENT_CATALOG } from "./agentCatalog";
-import { verifyCompanyKnowledgeReasoning } from "./companyKnowledgeReasoningProbe";
+import { GenxCompanyLearningClient } from "./genxCompanyLearning";
 import { runGenxAgent, verifyGenxConnection } from "./genx";
 import { createOutlookApplicationToken, getOutlookReadiness } from "./outlook";
 import { getSmtpReadiness, verifySmtpConnection } from "./smtp";
@@ -34,7 +34,9 @@ async function verifyAgentExecutions() {
         ],
       });
       if (response.provider !== "genx")
-        throw new Error(`Agent used provider ${response.provider} instead of the configured production intelligence service.`);
+        throw new Error(
+          `Agent used provider ${response.provider} instead of the configured production intelligence service.`
+        );
       if (!response.content?.trim())
         throw new Error("Agent returned no content.");
       agents[agent.key] = {
@@ -106,7 +108,16 @@ async function main() {
     if (agentVerification.failed) failed = true;
 
     try {
-      results.companyKnowledgeReasoning = await verifyCompanyKnowledgeReasoning();
+      const selected = await new GenxCompanyLearningClient().selectModels();
+      results.companyKnowledgeReasoning = {
+        status: "WHOLE_SITE_ACCOUNT_VERIFIED",
+        analysisModelSelected: Boolean(selected.analysis.id),
+        auditModelSelected: Boolean(selected.audit.id),
+        pricingDiscovered: Boolean(
+          selected.analysis.pricing || selected.audit.pricing
+        ),
+        creditBalanceDiscovered: Boolean(selected.accountCredits),
+      };
     } catch (error) {
       results.companyKnowledgeReasoning = {
         status: "FAILED",
@@ -120,11 +131,13 @@ async function main() {
   } else {
     results.agents = {
       status: "BLOCKED",
-      reason: "Base production intelligence verification failed, so agent execution probes were not attempted.",
+      reason:
+        "Base production intelligence verification failed, so agent execution probes were not attempted.",
     };
     results.companyKnowledgeReasoning = {
       status: "BLOCKED",
-      reason: "Base production intelligence verification failed, so structured company-knowledge reasoning was not attempted.",
+      reason:
+        "Base production intelligence verification failed, so structured company-knowledge reasoning was not attempted.",
     };
   }
 
@@ -175,7 +188,10 @@ async function main() {
         contentType: voice.contentType,
       };
     } catch (error) {
-      const reason = error instanceof Error ? error.message.slice(0, 300) : "voice_acceptance_failed";
+      const reason =
+        error instanceof Error
+          ? error.message.slice(0, 300)
+          : "voice_acceptance_failed";
       results.stt = { status: "FAILED", reason };
       results.tts = { status: "FAILED", reason };
       failed = true;

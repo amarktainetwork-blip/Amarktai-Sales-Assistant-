@@ -52,10 +52,16 @@ describe("deployment and client acceptance separation", () => {
   });
 
   it("keeps the full knowledge verifier review-only and separate from CRM and Genie", () => {
-    expect(knowledgeProbe).toContain("discoverAndReviewCompanyIntelligence");
+    expect(knowledgeProbe).toContain("discoverPublicWebsite(input.websiteUrl)");
+    expect(knowledgeProbe).toContain("synthesiseCompanyKnowledge({");
     for (const field of [
       "PAGES_SCANNED",
       "PAGES_CLASSIFIED",
+      "CORPUS_PAGES",
+      "GENX_FILE_UPLOAD",
+      "ANALYSIS_PASS",
+      "AUDIT_PASS",
+      "SOURCE_VALIDATION",
       "PAGES_USED",
       "PAGES_EXCLUDED",
       "CAREER_PROGRAMMES_FOUND",
@@ -65,7 +71,9 @@ describe("deployment and client acceptance separation", () => {
       "KNOWLEDGE_PERSISTED",
       "KNOWLEDGE_APPROVED",
       "CRM_TOUCHED",
-    ]) expect(knowledgeProbe).toContain(field);
+      "GENIE_TOUCHED",
+    ])
+      expect(knowledgeProbe).toContain(field);
     expect(knowledgeProbe).not.toContain("saveWebsiteDiscoveryReview");
     expect(knowledgeProbe).not.toContain("confirmWebsiteDiscovery");
     expect(knowledgeProbe).not.toContain("connectedSystems");

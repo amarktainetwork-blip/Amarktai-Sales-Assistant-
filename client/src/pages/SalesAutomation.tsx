@@ -17,12 +17,25 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 
+type LearnedOperation = {
+  operationKey: string;
+  label: string;
+  mode: "read" | "write";
+  status: string;
+  version: number;
+  productionReady: boolean;
+  lastTestAt: string | null;
+  lastSuccessAt: string | null;
+  lastFailureAt: string | null;
+};
 type System = {
   id: number;
   provider: string;
   displayName: string;
   status: string;
+  connectionMethod: string;
   verifiedCapabilities: string[];
+  learnedOperations: LearnedOperation[];
 };
 type Capabilities = {
   policy: {
@@ -47,7 +60,7 @@ const actions = [
   ["create_opportunity", "Create opportunity"],
   ["create_activity", "Log activity"],
   ["apply_sequence", "Apply CRM sequence"],
-  ["custom_crm_action", "Calibrated browser action"],
+  ["custom_crm_action", "CRM-specific learned function"],
 ] as const;
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -62,6 +75,10 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
+function runtimeStatusLabel(status: string) {
+  return status.replaceAll("_", " ").toLowerCase();
+}
+
 export default function SalesAutomation() {
   const [, navigate] = useLocation();
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
@@ -70,6 +87,9 @@ export default function SalesAutomation() {
   const [selectedCustomerKey, setSelectedCustomerKey] = useState("");
   const [target, setTarget] = useState("");
   const [preferredProvider, setPreferredProvider] = useState("");
+  const [preferredConnectedSystemId, setPreferredConnectedSystemId] = useState<
+    number | undefined
+  >();
   const [externalId, setExternalId] = useState("");
   const [to, setTo] = useState("");
   const [subject, setSubject] = useState("");
@@ -95,8 +115,18 @@ export default function SalesAutomation() {
   ].includes(actionType);
   const systems = useMemo(
     () =>
-      capabilities?.systems.filter(system => system.status === "ready") || [],
+      capabilities?.systems.filter(system =>
+        ["ready", "limited_permissions"].includes(system.status)
+      ) || [],
     [capabilities]
+  );
+  const selectedSystem = useMemo(
+    () => systems.find(system => system.id === preferredConnectedSystemId),
+    [preferredConnectedSystemId, systems]
+  );
+  const customOperations = selectedSystem?.learnedOperations || [];
+  const liveCustomOperations = customOperations.filter(
+    operation => operation.status === "LIVE_PROVEN" && operation.productionReady
   );
   const organisation = trpc.organisation.current.useQuery();
   const management = trpc.managementElevation.status.useQuery(undefined, {
@@ -122,9 +152,25 @@ export default function SalesAutomation() {
       setActionType("append_contact_note");
   }, [actionType, advancedAllowed]);
 
+  useEffect(() => {
+    if (actionType !== "custom_crm_action") return;
+    if (
+      customAction &&
+      liveCustomOperations.some(
+        operation => operation.operationKey === customAction
+      )
+    )
+      return;
+    setCustomAction(liveCustomOperations[0]?.operationKey || "");
+  }, [actionType, customAction, liveCustomOperations]);
+
   async function prepare() {
     if (!target.trim())
       return toast.error("Choose the CRM record/contact you are working on.");
+    if (actionType === "custom_crm_action" && !customAction)
+      return toast.error(
+        "Choose a LIVE PROVEN CRM-specific function before preparing this action."
+      );
     try {
       setSubmitting(true);
       let fields: Record<string, unknown> = {};
@@ -142,6 +188,7 @@ export default function SalesAutomation() {
       }
       const payload: Record<string, unknown> = {
         preferredProvider: preferredProvider || undefined,
+        preferredConnectedSystemId,
         externalId: externalId || undefined,
         contactExternalId: externalId || undefined,
       };
@@ -277,7 +324,11 @@ export default function SalesAutomation() {
                       const system = systems.find(
                         item => item.id === customer.connectedSystemId
                       );
+                      setPreferredConnectedSystemId(system?.id);
                       setPreferredProvider(system?.provider || "");
+                    } else {
+                      setPreferredConnectedSystemId(undefined);
+                      setPreferredProvider("");
                     }
                   }}
                   className="h-11 rounded-xl border border-white/15 bg-[#08172F] px-3 text-sm text-white"
@@ -404,22 +455,66 @@ export default function SalesAutomation() {
               </FieldBlock>
             )}
             {actionType === "custom_crm_action" && (
-              <FieldBlock label="Reviewed browser action name">
-                <Input
+              <FieldBlock label="Commissioned CRM-specific function">
+                <select
                   value={customAction}
-                  onChange={e => setCustomAction(e.target.value)}
-                  placeholder="approvedActionName"
-                  className="border-white/15 bg-[#08172F] text-white"
-                />
-                <p className="mt-2 text-xs text-[#829CC4]">
-                  Only a saved action present in the calibrated browser profile
-                  can execute. Arbitrary JavaScript is not permitted.
+                  onChange={event => setCustomAction(event.target.value)}
+                  disabled={!preferredConnectedSystemId || !liveCustomOperations.length}
+                  className="h-11 w-full rounded-xl border border-white/15 bg-[#08172F] px-3 text-sm text-white disabled:opacity-50"
+                >
+                  <option value="">
+                    {preferredConnectedSystemId
+                      ? "Choose a LIVE PROVEN function"
+                      : "Choose a CRM customer first"}
+                  </option>
+                  {liveCustomOperations.map(operation => (
+                    <option key={operation.operationKey} value={operation.operationKey}>
+                      {operation.label} · LIVE PROVEN
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-2 text-xs leading-5 text-[#829CC4]">
+                  Production work can use only the exact function that completed
+                  controlled commissioning and readback proof. Demonstrations and
+                  test-ready functions remain unavailable for production changes.
                 </p>
+                {customOperations.length ? (
+                  <div className="mt-3 space-y-2">
+                    {customOperations.map(operation => (
+                      <div
+                        key={operation.operationKey}
+                        className="flex items-center justify-between rounded-lg border border-white/10 bg-[#08172F] px-3 py-2 text-xs"
+                      >
+                        <span className="font-bold text-[#D7E6FF]">
+                          {operation.label}
+                        </span>
+                        <span
+                          className={
+                            operation.status === "LIVE_PROVEN"
+                              ? "text-emerald-300"
+                              : "text-amber-200"
+                          }
+                        >
+                          {runtimeStatusLabel(operation.status)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : selectedSystem ? (
+                  <p className="mt-3 text-xs text-amber-100">
+                    No CRM-specific functions have been commissioned on this
+                    connection yet.
+                  </p>
+                ) : null}
               </FieldBlock>
             )}
             <Button
               onClick={prepare}
-              disabled={submitting || !systems.length}
+              disabled={
+                submitting ||
+                !systems.length ||
+                (actionType === "custom_crm_action" && !customAction)
+              }
               className="mt-6 h-12 w-full bg-[#1B64F2] text-base font-bold hover:bg-[#2B76FF]"
             >
               {submitting ? (
@@ -473,16 +568,21 @@ export default function SalesAutomation() {
                     <>
                       <Field label="Preferred connected system">
                         <select
-                          value={preferredProvider}
-                          onChange={event =>
-                            setPreferredProvider(event.target.value)
-                          }
+                          value={preferredConnectedSystemId ?? ""}
+                          onChange={event => {
+                            const id = event.target.value
+                              ? Number(event.target.value)
+                              : undefined;
+                            const system = systems.find(item => item.id === id);
+                            setPreferredConnectedSystemId(id);
+                            setPreferredProvider(system?.provider || "");
+                          }}
                           className="h-11 w-full rounded-xl border border-white/15 bg-[#08172F] px-3 text-sm text-white"
                         >
                           <option value="">Automatic verified route</option>
                           {systems.map(system => (
-                            <option key={system.id} value={system.provider}>
-                              {system.displayName}
+                            <option key={system.id} value={system.id}>
+                              {system.displayName} · {runtimeStatusLabel(system.status)}
                             </option>
                           ))}
                         </select>
@@ -513,27 +613,33 @@ export default function SalesAutomation() {
             )}
             <article className="rounded-[1.5rem] border border-white/10 bg-[#0E2142] p-6">
               <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#7FAAF8]">
-                READY CONNECTIONS
+                USABLE CONNECTIONS
               </p>
               <div className="mt-4 space-y-3">
                 {systems.length ? (
-                  systems.map(system => (
-                    <div
-                      key={system.id}
-                      className="rounded-xl bg-[#08172F] p-4"
-                    >
-                      <div className="flex items-center justify-between">
-                        <p className="font-bold text-white">
-                          {system.displayName}
+                  systems.map(system => {
+                    const liveFunctions = system.learnedOperations.filter(
+                      operation => operation.productionReady
+                    ).length;
+                    return (
+                      <div
+                        key={system.id}
+                        className="rounded-xl bg-[#08172F] p-4"
+                      >
+                        <div className="flex items-center justify-between">
+                          <p className="font-bold text-white">
+                            {system.displayName}
+                          </p>
+                          <CheckCircle2 className="size-4 text-emerald-300" />
+                        </div>
+                        <p className="mt-1 text-xs text-[#829CC4]">
+                          {runtimeStatusLabel(system.status)} · {system.verifiedCapabilities.length}{" "}
+                          verified capabilities · {liveFunctions} live CRM-specific{" "}
+                          {liveFunctions === 1 ? "function" : "functions"}
                         </p>
-                        <CheckCircle2 className="size-4 text-emerald-300" />
                       </div>
-                      <p className="mt-1 text-xs text-[#829CC4]">
-                        {system.provider} · {system.verifiedCapabilities.length}{" "}
-                        verified capabilities
-                      </p>
-                    </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <div className="rounded-xl border border-amber-300/20 bg-amber-400/[.05] p-4 text-sm text-amber-100">
                     <CircleAlert className="mb-2 size-5" />

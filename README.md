@@ -122,7 +122,7 @@ docker compose -f deploy/webdock/docker-compose.yml --env-file .env run --no-dep
   app node dist/verifyCompanyKnowledge.js https://PUBLIC_COMPANY_WEBSITE USER_ID ORGANISATION_ID
 ```
 
-This operator-only verifier performs crawl, inventory, bounded map synthesis, global reconciliation and completeness checks. It may consume configured Amarktai AI credits, but does not create trusted knowledge, touch CRM data or interact with Genie.
+This operator-only verifier builds the canonical whole-site corpus, runs one primary company-analysis pass and one isolated critic pass (plus at most one schema repair), validates material facts against retained sources, prints progress and call counts, and exits. It may consume configured Amarktai AI credits, but does not persist or approve knowledge, touch CRM data, or interact with Genie.
 
 ## Backup and recovery
 

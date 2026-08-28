@@ -16,6 +16,7 @@ describe("AI agent commissioning", () => {
   it("does not hard-code the GenX specialist agents as unimplemented", () => {
     for (const key of [
       "sales_intelligence",
+      "promise_tracker",
       "objection_handler",
       "recommendation_agent",
       "pipeline_planner",
@@ -31,11 +32,37 @@ describe("AI agent commissioning", () => {
       crmRouteReady: false,
       communicationsReady: false,
     };
-    expect(agentRuntimeStatus("sales_intelligence", noCrm)).toBe("NEEDS_CONNECTION");
-    expect(agentRuntimeStatus("pipeline_planner", noCrm)).toBe("NEEDS_CONNECTION");
-    expect(agentRuntimeStatus("crm_context", noCrm)).toBe("NEEDS_CONNECTION");
-    expect(agentRuntimeStatus("crm_router", noCrm)).toBe("NEEDS_CONNECTION");
-    expect(agentRuntimeStatus("communications", noCrm)).toBe("NEEDS_CONNECTION");
+    for (const key of [
+      "sales_intelligence",
+      "promise_tracker",
+      "sales_comms_tracker",
+      "revenue_leakage",
+      "relationship_health",
+      "pipeline_hygiene",
+      "attention_engine",
+      "manager_watchtower",
+      "pipeline_planner",
+      "crm_context",
+      "crm_router",
+      "communications",
+    ]) {
+      expect(agentRuntimeStatus(key, noCrm)).toBe("NEEDS_CONNECTION");
+    }
+  });
+
+  it("allows deterministic watchtower agents to run without GenX when synchronized CRM reads are ready", () => {
+    const noGenx = { ...base, genxReady: false };
+    for (const key of [
+      "sales_comms_tracker",
+      "revenue_leakage",
+      "relationship_health",
+      "pipeline_hygiene",
+      "attention_engine",
+      "manager_watchtower",
+    ]) {
+      expect(agentRuntimeStatus(key, noGenx)).toBe("READY");
+    }
+    expect(agentRuntimeStatus("promise_tracker", noGenx)).toBe("NEEDS_CONNECTION");
   });
 
   it("allows text coaching agents to run when GenX is live without coupling them to transport status", () => {

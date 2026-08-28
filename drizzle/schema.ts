@@ -136,12 +136,24 @@ export const websiteDiscoveries = mysqlTable(
       .$type<Record<string, unknown>>()
       .notNull(),
     proposedKnowledge: json("proposedKnowledge")
-      .$type<Array<{ title: string; content: string; sourceUrl?: string; fetchedAt?: string; category?: string }>>()
+      .$type<
+        Array<{
+          title: string;
+          content: string;
+          sourceUrl?: string;
+          fetchedAt?: string;
+          category?: string;
+        }>
+      >()
       .notNull(),
     /** Monotonic per-company review version. Old drafts remain auditable but cannot reappear as current. */
     discoveryVersion: int("discoveryVersion").notNull().default(1),
     reviewAgentKey: varchar("reviewAgentKey", { length: 120 }),
-    reviewState: mysqlEnum("reviewState", ["pending", "completed", "unavailable"])
+    reviewState: mysqlEnum("reviewState", [
+      "pending",
+      "completed",
+      "unavailable",
+    ])
       .default("pending")
       .notNull(),
     status: mysqlEnum("status", [
@@ -196,7 +208,9 @@ export const companyKnowledgeJobs = mysqlTable(
       "RECONCILING_KNOWLEDGE",
       "CHECKING_COMPLETENESS",
       "READY_FOR_REVIEW",
-    ]).notNull().default("SCANNING_WEBSITE"),
+    ])
+      .notNull()
+      .default("SCANNING_WEBSITE"),
     status: mysqlEnum("status", [
       "queued",
       "running",
@@ -204,13 +218,27 @@ export const companyKnowledgeJobs = mysqlTable(
       "needs_attention",
       "failed",
       "cancelled",
-    ]).notNull().default("queued"),
+    ])
+      .notNull()
+      .default("queued"),
     progress: json("progress").$type<Record<string, unknown>>().notNull(),
     /** The successful bounded crawl is retained so synthesis retries do not recrawl. */
     discoverySnapshot: longtext("discoverySnapshot"),
-    pageInventory: json("pageInventory").$type<Array<Record<string, unknown>>>(),
-    /** Successful page maps are checkpointed and reused after interruption. */
+    pageInventory:
+      json("pageInventory").$type<Array<Record<string, unknown>>>(),
+    /** Historical PR47 page-map checkpoint. New jobs leave this null. */
     mapResults: json("mapResults").$type<Array<Record<string, unknown>>>(),
+    /** Canonical whole-site JSONL corpus and durable semantic-pass checkpoints. */
+    corpusSnapshot: longtext("corpusSnapshot"),
+    corpusHash: varchar("corpusHash", { length: 64 }),
+    sourceHashes: json("sourceHashes").$type<Array<Record<string, unknown>>>(),
+    analysisDraft: longtext("analysisDraft"),
+    auditDraft: longtext("auditDraft"),
+    validatedPack: longtext("validatedPack"),
+    temporaryResources:
+      json("temporaryResources").$type<Record<string, unknown>>(),
+    analysisCalls: int("analysisCalls").notNull().default(0),
+    repairCalls: int("repairCalls").notNull().default(0),
     resultDiscoveryId: int("resultDiscoveryId").references(
       () => websiteDiscoveries.id,
       { onDelete: "set null" }
@@ -366,8 +394,14 @@ export const workflowRuns = mysqlTable(
       table.organisationId,
       table.createdAt
     ),
-    uniqueIndex("workflowRuns_user_idempotency_uq").on(table.userId, table.idempotencyKey),
-    index("workflowRuns_claim_expiry_idx").on(table.status, table.claimExpiresAt),
+    uniqueIndex("workflowRuns_user_idempotency_uq").on(
+      table.userId,
+      table.idempotencyKey
+    ),
+    index("workflowRuns_claim_expiry_idx").on(
+      table.status,
+      table.claimExpiresAt
+    ),
   ]
 );
 
@@ -531,7 +565,15 @@ export const assistantReminders = mysqlTable(
     status: mysqlEnum("status", ["open", "snoozed", "completed", "cancelled"])
       .default("open")
       .notNull(),
-    source: mysqlEnum("source", ["manual", "assistant", "call_commitment", "crm", "inbound", "automation", "appointment"])
+    source: mysqlEnum("source", [
+      "manual",
+      "assistant",
+      "call_commitment",
+      "crm",
+      "inbound",
+      "automation",
+      "appointment",
+    ])
       .default("manual")
       .notNull(),
     sourceReference: varchar("sourceReference", { length: 220 }),
@@ -541,9 +583,21 @@ export const assistantReminders = mysqlTable(
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   },
   table => [
-    index("assistantReminders_org_user_status_due_idx").on(table.organisationId, table.userId, table.status, table.dueAt),
-    index("assistantReminders_org_contact_idx").on(table.organisationId, table.contactExternalId),
-    uniqueIndex("assistantReminders_org_source_ref_uq").on(table.organisationId, table.source, table.sourceReference),
+    index("assistantReminders_org_user_status_due_idx").on(
+      table.organisationId,
+      table.userId,
+      table.status,
+      table.dueAt
+    ),
+    index("assistantReminders_org_contact_idx").on(
+      table.organisationId,
+      table.contactExternalId
+    ),
+    uniqueIndex("assistantReminders_org_source_ref_uq").on(
+      table.organisationId,
+      table.source,
+      table.sourceReference
+    ),
   ]
 );
 
@@ -560,11 +614,26 @@ export const assistantMemories = mysqlTable(
       .references(() => users.id, { onDelete: "cascade" }),
     contactExternalId: varchar("contactExternalId", { length: 160 }),
     opportunityExternalId: varchar("opportunityExternalId", { length: 160 }),
-    memoryType: mysqlEnum("memoryType", ["user_preference", "customer_fact", "commitment", "conversation_reference"]).notNull(),
+    memoryType: mysqlEnum("memoryType", [
+      "user_preference",
+      "customer_fact",
+      "commitment",
+      "conversation_reference",
+    ]).notNull(),
     subject: varchar("subject", { length: 220 }).notNull(),
     content: text("content").notNull(),
-    provenance: mysqlEnum("provenance", ["user_asserted", "crm", "call", "message", "approved_ai_extraction"]).notNull(),
-    trust: mysqlEnum("trust", ["confirmed", "user_asserted", "inferred"]).notNull(),
+    provenance: mysqlEnum("provenance", [
+      "user_asserted",
+      "crm",
+      "call",
+      "message",
+      "approved_ai_extraction",
+    ]).notNull(),
+    trust: mysqlEnum("trust", [
+      "confirmed",
+      "user_asserted",
+      "inferred",
+    ]).notNull(),
     sourceReference: varchar("sourceReference", { length: 220 }),
     status: mysqlEnum("status", ["active", "superseded", "removed"])
       .default("active")
@@ -574,9 +643,20 @@ export const assistantMemories = mysqlTable(
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   },
   table => [
-    index("assistantMemories_org_user_type_idx").on(table.organisationId, table.userId, table.memoryType),
-    index("assistantMemories_org_contact_idx").on(table.organisationId, table.contactExternalId),
-    uniqueIndex("assistantMemories_org_provenance_ref_uq").on(table.organisationId, table.provenance, table.sourceReference),
+    index("assistantMemories_org_user_type_idx").on(
+      table.organisationId,
+      table.userId,
+      table.memoryType
+    ),
+    index("assistantMemories_org_contact_idx").on(
+      table.organisationId,
+      table.contactExternalId
+    ),
+    uniqueIndex("assistantMemories_org_provenance_ref_uq").on(
+      table.organisationId,
+      table.provenance,
+      table.sourceReference
+    ),
   ]
 );
 
@@ -1320,7 +1400,9 @@ export const crmCommissioningJobs = mysqlTable(
       "needs_attention",
       "failed",
       "cancelled",
-    ]).notNull().default("queued"),
+    ])
+      .notNull()
+      .default("queued"),
     progress: json("progress").$type<Record<string, unknown>>().notNull(),
     safeTestRecord: json("safeTestRecord").$type<Record<string, unknown>>(),
     discoveredOperationKeys: json("discoveredOperationKeys")

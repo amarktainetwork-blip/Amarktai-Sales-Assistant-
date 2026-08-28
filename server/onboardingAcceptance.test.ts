@@ -145,9 +145,7 @@ describe("new-user Genie commissioning journey contract", () => {
     expect(onboarding).toContain(
       "The website scan was interrupted before it completed. No content became trusted knowledge. Please try again."
     );
-    expect(onboarding).not.toContain(
-      "Failed to execute 'json' on 'Response'"
-    );
+    expect(onboarding).not.toContain("Failed to execute 'json' on 'Response'");
     expect(onboarding).not.toContain("Unexpected end of JSON input");
   });
 
@@ -155,15 +153,19 @@ describe("new-user Genie commissioning journey contract", () => {
     const onboarding = read("../client/src/pages/Onboarding.tsx");
     const database = read("./db.ts");
     expect(onboarding).toContain("setSelectedKnowledge([])");
-    expect(onboarding).toContain('preview.completeness.status === "incomplete"');
-    expect(onboarding).toContain('selectedKnowledge.length === 0');
+    expect(onboarding).toContain(
+      'preview.completeness.status === "incomplete"'
+    );
+    expect(onboarding).toContain("selectedKnowledge.length === 0");
     expect(onboarding).toContain('"Pages scanned"');
     expect(onboarding).toContain('"Relevant pages used"');
     expect(onboarding).toContain('"Excluded / non-sales"');
     expect(onboarding).toContain("Full / current price");
     expect(onboarding).toContain("Finance / payment plan");
     expect(database).toContain('completeness?.status === "incomplete"');
-    expect(database).toContain("Retry company learning before approving any facts");
+    expect(database).toContain(
+      "Retry company learning before approving any facts"
+    );
   });
 
   it("polls durable company-learning phases instead of holding one synthesis request", () => {
@@ -176,15 +178,17 @@ describe("new-user Genie commissioning journey contract", () => {
     expect(router).toContain("retryCompanyKnowledgeJob");
     for (const phase of [
       "Scanning website",
-      "Classifying pages",
-      "Understanding offerings",
-      "Reviewing pricing and policies",
-      "Reconciling company knowledge",
-      "Checking completeness",
+      "Building company corpus",
+      "Understanding company",
+      "Checking products and pricing",
+      "Auditing company knowledge",
+      "Verifying sources",
       "Ready for review",
-    ]) expect(jobs).toContain(phase);
+    ])
+      expect(jobs).toContain(phase);
     expect(jobs).toContain("discoverySnapshot");
-    expect(jobs).toContain("resumeMapResults");
+    expect(jobs).toContain("analysisDraft");
+    expect(jobs).toContain("auditDraft");
   });
 
   it("shows durable customer-facing commissioning truth and no mysterious restart action", () => {
@@ -206,7 +210,9 @@ describe("new-user Genie commissioning journey contract", () => {
   });
 
   it("keeps Genie verification single-submit, replay-aware and refresh-free", () => {
-    const prompt = read("../client/src/components/GenieInteractiveAuthPrompt.tsx");
+    const prompt = read(
+      "../client/src/components/GenieInteractiveAuthPrompt.tsx"
+    );
     expect(prompt).toContain("disabled={pending || !code.trim()}");
     expect(prompt).toContain("GENIE_SESSION_REPLAY_FAILED");
     expect(prompt).toContain("Genie sign-in approved");
@@ -224,7 +230,9 @@ describe("new-user Genie commissioning journey contract", () => {
       '"custom_browser"',
     ])
       expect(onboarding).toContain(provider);
-    expect(onboarding).toContain("You do not need to choose technical permissions");
+    expect(onboarding).toContain(
+      "You do not need to choose technical permissions"
+    );
     expect(onboarding).not.toContain("capabilityOptions");
     expect(onboarding).not.toContain("toggleCapability");
   });

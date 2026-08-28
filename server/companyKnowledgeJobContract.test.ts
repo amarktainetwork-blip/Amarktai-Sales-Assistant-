@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 const read = (relative: string) =>
   readFileSync(new URL(relative, import.meta.url), "utf8");
 
-describe("durable company knowledge job contract", () => {
+describe("durable whole-site company knowledge job contract", () => {
   it("scopes status and retry operations to user, organisation and company profile", () => {
     const jobs = read("./companyKnowledgeJobs.ts");
     const statusScope = jobs.slice(
@@ -13,7 +13,7 @@ describe("durable company knowledge job contract", () => {
     );
     const retryScope = jobs.slice(
       jobs.indexOf("export async function retryCompanyKnowledgeJob"),
-      jobs.indexOf("async function advanceCompanyKnowledgeJob")
+      jobs.indexOf("async function checkpoint")
     );
     for (const scope of [statusScope, retryScope]) {
       expect(scope).toContain("companyKnowledgeJobs.userId");
@@ -22,35 +22,33 @@ describe("durable company knowledge job contract", () => {
     }
   });
 
-  it("retains history and checkpoints without destructive migration or auto approval", () => {
+  it("checkpoints corpus, analyst, critic and temporary-resource state without auto approval", () => {
     const schema = read("../drizzle/schema.ts");
-    const migration = read("../drizzle/0028_spicy_warpath.sql");
     const jobs = read("./companyKnowledgeJobs.ts");
-    expect(schema).toContain('"companyKnowledgeJobs"');
-    expect(schema).toContain("discoverySnapshot");
-    expect(schema).toContain("mapResults");
-    expect(migration).toContain("CREATE TABLE `companyKnowledgeJobs`");
-    expect(migration).not.toMatch(/DROP\s+(?:TABLE|COLUMN)|TRUNCATE|DELETE\s+FROM/i);
+    for (const field of [
+      "corpusSnapshot",
+      "corpusHash",
+      "sourceHashes",
+      "analysisDraft",
+      "auditDraft",
+      "validatedPack",
+      "temporaryResources",
+      "analysisCalls",
+      "repairCalls",
+    ])
+      expect(schema).toContain(field);
     expect(jobs).toContain("knowledgePersisted: false");
     expect(jobs).toContain("knowledgeApproved: false");
+    expect(jobs).toContain("crmTouched: false");
+    expect(jobs).toContain("genieTouched: false");
     expect(jobs).not.toContain("confirmWebsiteDiscovery(");
-  });
-
-  it("supersedes legacy unapproved drafts that predate the completeness contract", () => {
-    const migration = read("../drizzle/0028_spicy_warpath.sql");
-    expect(migration).toContain("UPDATE `websiteDiscoveries`");
-    expect(migration).toContain("`status` = 'superseded'");
-    expect(migration).toContain("`status` = 'review_required'");
-    expect(migration).toContain("'$.completeness.status'");
-    expect(migration).toContain("IS NULL");
-    expect(migration).not.toContain("DELETE FROM `websiteDiscoveries`");
   });
 
   it("claims a queued or expired job atomically before billable work", () => {
     const jobs = read("./companyKnowledgeJobs.ts");
     const claim = jobs.slice(
       jobs.indexOf("async function claimCompanyKnowledgeJob"),
-      jobs.indexOf("function resumableMapResultsForRetry")
+      jobs.indexOf("function parseCheckpoint")
     );
     const advance = jobs.slice(
       jobs.indexOf("async function advanceCompanyKnowledgeJob"),
@@ -60,46 +58,32 @@ describe("durable company knowledge job contract", () => {
     expect(claim).toContain('eq(companyKnowledgeJobs.status, "running")');
     expect(claim).toContain("companyKnowledgeJobs.leaseExpiresAt");
     expect(claim).toContain("affectedRows");
-    expect(claim).toContain("=== 1");
-    expect(advance).toContain("const claimed = await claimCompanyKnowledgeJob(jobId)");
-    expect(advance).toContain("if (!claimed) return");
+    expect(advance).toContain(
+      "if (!(await claimCompanyKnowledgeJob(jobId))) return"
+    );
   });
 
-  it("does not reschedule a running job while its database lease is live", () => {
+  it("resumes successful expensive passes and cleans abandoned resources", () => {
     const jobs = read("./companyKnowledgeJobs.ts");
-    const start = jobs.slice(
-      jobs.indexOf("export async function startCompanyKnowledgeJob"),
-      jobs.indexOf("export async function getLatestCompanyKnowledgeJob")
+    expect(jobs).toMatch(/parseCheckpoint\(\s*job\.corpusSnapshot/);
+    expect(jobs).toMatch(/parseCheckpoint\(\s*job\.analysisDraft/);
+    expect(jobs).toMatch(/parseCheckpoint\(\s*job\.auditDraft/);
+    expect(jobs).toContain("cleanupAbandonedResources(job)");
+    expect(jobs).toContain(
+      "new GenxCompanyLearningClient().cleanup(resources)"
     );
-    expect(start).toContain("const leaseExpired");
-    expect(start).toContain('active.status === "queued" || leaseExpired');
   });
 
-  it("invalidates completed likely-offering maps that caused completeness gaps", () => {
-    const jobs = read("./companyKnowledgeJobs.ts");
-    const recovery = jobs.slice(
-      jobs.indexOf("function resumableMapResultsForRetry"),
-      jobs.indexOf("export function scheduleCompanyKnowledgeJob")
-    );
-    const retry = jobs.slice(
-      jobs.indexOf("export async function retryCompanyKnowledgeJob"),
-      jobs.indexOf("async function advanceCompanyKnowledgeJob")
-    );
-    expect(recovery).toContain("likelyOfferingUrls");
-    expect(recovery).toContain('item.classification === "company_offering"');
-    expect(recovery).toContain("item.sourceUrls.includes(result.pageUrl)");
-    expect(recovery).toContain('item.reviewState === "conflict"');
-    expect(recovery).toContain('item.trustEligible && item.reviewState === "review_required"');
-    expect(retry).toContain("const resumeMapResults = resumableMapResultsForRetry(job)");
-    expect(retry).toContain("mapResults: resumeMapResults");
-  });
-
-  it("keeps complete retained page bodies in the private job snapshot but strips them from review output", () => {
+  it("keeps complete retained bodies private and strips them from review output", () => {
     const discovery = read("./companyDiscovery.ts");
     const intelligence = read("./companyIntelligenceService.ts");
     expect(discovery).toContain("text: page.text");
-    expect(intelligence).toContain("page.text ?? textByUrl.get(page.url) ?? \"\"");
-    expect(intelligence).toContain("const safePages = discovery.pages.map(({ text: _retainedText, ...page }) => page)");
+    expect(intelligence).toContain(
+      'page.text ?? textByUrl.get(page.url) ?? ""'
+    );
+    expect(intelligence).toContain(
+      "discovery.pages.map(({ text: _text, ...page }) => page)"
+    );
     expect(intelligence).toContain("pages: safePages");
   });
 });
