@@ -274,6 +274,20 @@ function parseJson(value: unknown) {
   return JSON.parse(withoutFence.slice(first, last + 1)) as unknown;
 }
 
+function parseAgainstSchema<T>(raw: unknown, schema: z.ZodType<T>) {
+  const parsed = parseJson(raw);
+  const direct = schema.safeParse(parsed);
+  if (direct.success) return direct.data;
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    const entries = Object.entries(parsed as Record<string, unknown>);
+    if (entries.length === 1) {
+      const inner = schema.safeParse(entries[0][1]);
+      if (inner.success) return inner.data;
+    }
+  }
+  throw direct.error;
+}
+
 function errorText(error: unknown) {
   return error instanceof Error
     ? error.message.slice(0, 2_000)
@@ -289,7 +303,7 @@ async function parseWithBoundedRepair<T>(input: {
   repairBudget: { used: number };
 }) {
   try {
-    return input.schema.parse(parseJson(input.raw));
+    return parseAgainstSchema(input.raw, input.schema);
   } catch (firstError) {
     if (!input.model.repair || input.repairBudget.used >= 1) throw firstError;
     input.repairBudget.used += 1;
@@ -302,7 +316,7 @@ async function parseWithBoundedRepair<T>(input: {
           : JSON.stringify(input.raw).slice(0, 200_000),
       validationError: errorText(firstError),
     });
-    return input.schema.parse(parseJson(repaired));
+    return parseAgainstSchema(repaired, input.schema);
   }
 }
 
