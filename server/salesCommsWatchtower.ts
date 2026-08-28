@@ -178,7 +178,6 @@ export function buildSalesWatchtowerFromEvidence(input: EvidenceInput) {
       .map(mapping => [`${mapping.connectedSystemId}:${mapping.externalStageId}`, mapping.category])
   );
   const contactByKey = new Map(input.contacts.map(contact => [recordKey(contact.connectedSystemId, contact.externalId), contact]));
-  const mappingByOwner = new Map(input.mappings.filter(mapping => mapping.isActive).map(mapping => [recordKey(mapping.connectedSystemId, mapping.externalUserId), mapping]));
   const opportunitiesByContact = new Map<string, OpportunityRow[]>();
   const tasksByContact = new Map<string, TaskRow[]>();
   const activitiesByContact = new Map<string, ActivityRow[]>();
@@ -221,7 +220,7 @@ export function buildSalesWatchtowerFromEvidence(input: EvidenceInput) {
     const channelCounts = new Map<string, number>();
     for (const activity of activities) channelCounts.set(communicationChannel(activity), (channelCounts.get(communicationChannel(activity)) ?? 0) + 1);
     for (const message of inbound) channelCounts.set(message.channel, (channelCounts.get(message.channel) ?? 0) + 1);
-    const preferredChannel = [...channelCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+    const preferredChannel = Array.from(channelCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
     const responseMinutes = latestInboundAt && latestOutboundAt && latestOutboundAt > latestInboundAt
       ? Math.floor((latestOutboundAt.valueOf() - latestInboundAt.valueOf()) / 60_000)
       : null;
@@ -376,7 +375,7 @@ export function buildSalesWatchtowerFromEvidence(input: EvidenceInput) {
     for (const reason of Array.isArray(item.reasons) ? item.reasons.map(String) : []) if (!existing.reasons.includes(reason)) existing.reasons.push(reason);
     attentionMap.set(key, existing);
   }
-  const attention = [...attentionMap.values()]
+  const attention = Array.from(attentionMap.values())
     .map(item => ({ ...item, priority: priorityBand(item.score), recommendation: item.reasons[0] || "Review this customer record and confirm the next step." }))
     .sort((a, b) => b.score - a.score || b.valueAtRiskMinor - a.valueAtRiskMinor)
     .slice(0, 50);
@@ -428,7 +427,7 @@ export function buildSalesWatchtowerFromEvidence(input: EvidenceInput) {
     const owner = ownerBucket(item.connectedSystemId, item.ownerExternalId);
     if (owner) owner.attentionItems += 1;
   }
-  const managerPeople = [...people.values()]
+  const managerPeople = Array.from(people.values())
     .map(person => ({
       ...person,
       exceptionScore: person.overdueTasks * 12 + person.unansweredCustomers * 18 + person.staleOpportunities * 10 + person.noNextStep * 6,
@@ -505,6 +504,8 @@ SOURCES:
 ${sources.map(source => `${source.sourceId} | ${source.occurredAt.toISOString()} | ${source.text}`).join("\n")}`,
       }],
     });
+    if (response.provider !== "genx")
+      return { status: "unavailable" as const, promises: [] as PromiseSignal[] };
     return { status: "complete" as const, promises: parsePromiseSignals(response.content, sourceIds, input.now) };
   } catch {
     return { status: "unavailable" as const, promises: [] as PromiseSignal[] };
