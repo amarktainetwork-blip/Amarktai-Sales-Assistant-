@@ -2,6 +2,7 @@ import { consumeAiCredits } from "./aiCredits";
 
 const DEFAULT_REST_BASE = "https://query.genx.sh/api/v1";
 const DEFAULT_TIMEOUT_MS = 180_000;
+const DEFAULT_JOB_POLL_MS = 1_000;
 const MAX_TRANSPORT_RETRIES = 2;
 export const MAX_COMPANY_SEMANTIC_PASSES = 3;
 
@@ -33,6 +34,7 @@ export type CompanyLearningClientOptions = {
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
   retries?: number;
+  pollIntervalMs?: number;
   recordCredits?: typeof consumeAiCredits;
 };
 
@@ -108,6 +110,30 @@ function responseContent(payload: unknown): string {
     }
   }
   return "";
+}
+
+function resultUrlContent(payload: unknown): string {
+  const root = object(payload);
+  const data = object(root.data);
+  const resultUrl = text(root.result_url) || text(data.result_url);
+  if (!resultUrl) return "";
+  if (!resultUrl.startsWith("data:"))
+    throw new Error(
+      "Company-learning job returned an unsupported result location."
+    );
+  const comma = resultUrl.indexOf(",");
+  if (comma < 0)
+    throw new Error("Company-learning job returned malformed result data.");
+  const metadata = resultUrl.slice(5, comma).toLowerCase();
+  const encoded = resultUrl.slice(comma + 1);
+  try {
+    const decoded = metadata.includes(";base64")
+      ? Buffer.from(encoded, "base64").toString("utf8")
+      : decodeURIComponent(encoded);
+    return decoded.trim();
+  } catch {
+    throw new Error("Company-learning job returned unreadable result data.");
+  }
 }
 
 function responseUsage(payload: unknown): CompanyLearningUsage {
@@ -257,6 +283,7 @@ export class GenxCompanyLearningClient {
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
   private readonly retries: number;
+  private readonly pollIntervalMs: number;
   private readonly recordCredits: typeof consumeAiCredits;
 
   constructor(options: CompanyLearningClientOptions = {}) {
@@ -279,6 +306,14 @@ export class GenxCompanyLearningClient {
       Math.max(
         0,
         options.retries ?? positiveInt(process.env.GENX_COMPANY_RETRY_COUNT, 1)
+      )
+    );
+    this.pollIntervalMs = Math.min(
+      5_000,
+      Math.max(
+        100,
+        options.pollIntervalMs ||
+          positiveInt(process.env.GENX_COMPANY_JOB_POLL_MS, DEFAULT_JOB_POLL_MS)
       )
     );
     this.recordCredits = options.recordCredits || consumeAiCredits;
@@ -342,6 +377,49 @@ export class GenxCompanyLearningClient {
       },
       retry
     );
+  }
+
+  private async awaitJob(jobId: string) {
+    const deadline = Date.now() + this.timeoutMs;
+    while (true) {
+      const payload = await this.request(`/jobs/${encodeURIComponent(jobId)}`);
+      const root = object(payload);
+      const data = object(root.data);
+      const status = text(root.status || data.status).toLowerCase();
+      const completed = /^(completed|succeeded|success|done)$/.test(status);
+      const failed = /^(failed|error|cancelled|canceled|expired)$/.test(status);
+
+      if (completed) {
+        const content = responseContent(payload) || resultUrlContent(payload);
+        if (!content)
+          throw new Error(
+            "Company-learning job completed without structured content."
+          );
+        return { payload, content };
+      }
+
+      if (failed) {
+        const detail =
+          text(root.error) ||
+          text(root.message) ||
+          text(data.error) ||
+          text(data.message);
+        throw new Error(
+          `Company-learning job failed${detail ? `: ${detail.slice(0, 240)}` : "."}`
+        );
+      }
+
+      if (
+        status &&
+        !/^(queued|processing|pending|running|in_progress)$/.test(status)
+      )
+        throw new Error(`Company-learning job returned unknown status: ${status}`);
+
+      const remaining = deadline - Date.now();
+      if (remaining <= 0)
+        throw new Error("Company-learning job timed out before completion.");
+      await delay(Math.min(this.pollIntervalMs, remaining));
+    }
   }
 
   async discoverAccount() {
@@ -414,7 +492,7 @@ export class GenxCompanyLearningClient {
       reference: string;
     };
   }) {
-    const payload = await this.json(
+    const submitted = await this.json(
       `/sessions/${encodeURIComponent(input.sessionId)}/messages`,
       "POST",
       {
@@ -424,12 +502,24 @@ export class GenxCompanyLearningClient {
         idempotency_key: input.idempotencyKey,
       }
     );
-    const content = responseContent(payload);
+
+    let finalPayload = submitted;
+    let content = responseContent(submitted);
+    if (!content) {
+      const jobId = responseId(submitted, ["job_id", "jobId"]);
+      if (jobId) {
+        const completed = await this.awaitJob(jobId);
+        finalPayload = completed.payload;
+        content = completed.content;
+      }
+    }
+
     if (!content)
       throw new Error(
         "Company-learning session returned no structured content."
       );
-    const usage = responseUsage(payload);
+
+    const usage = responseUsage(finalPayload);
     const credits = Math.max(0, Math.ceil(usage.credits || 0));
     if (credits > 0)
       await this.recordCredits({
