@@ -302,7 +302,7 @@ export function buildCompanyPageInventory(pages: ReviewPage[]) {
     if (fingerprint && !duplicateOf) duplicateText.set(fingerprint, page.url);
 
     const comparison = /comparison|compare|competitor|versus|\bvs\b|alternative to/.test(target);
-    const careerPath = /(?:^|\/)\w*[a-z0-9-]*career-path(?:\/|$)/.test(pathname)
+    const careerPath = /(?:^|\/)[a-z0-9-]*career-path(?:\/|$)/.test(pathname)
       || /\bcareer path\b/.test(target);
     const editorial = /\/blog(?:\/|$)|\/news(?:\/|$)|\/articles?(?:\/|$)|editorial|career path guide/.test(target)
       || careerPath;
@@ -384,18 +384,19 @@ export function buildCompanyPageInventory(pages: ReviewPage[]) {
     else if (policy) primaryDisposition = "policy_terms_refund_cancellation";
     else if (overview) primaryDisposition = "about_company_overview";
     else if (category) primaryDisposition = "category_index";
-    else {
-      primaryDisposition = "other_non_sales_content";
-      excludedReason = "No deterministic sales-useful page role was found.";
-    }
+    else primaryDisposition = "other_non_sales_content";
+
     if (!roles.size) roles.add(primaryDisposition);
+    // Unknown but substantive first-party pages are mapped rather than discarded;
+    // the AI map step may safely return no sales knowledge. Only deterministic
+    // duplicates, clear editorial/comparison content and navigation noise skip map.
     const relevant = ![
       "duplicate",
       "blog_reference_editorial",
       "comparison_competitor_reference",
       "navigation_noise",
-      "other_non_sales_content",
     ].includes(primaryDisposition);
+    const likelyOffering = relevant && (career || individual || generalOffering);
     return {
       url: page.url,
       title: page.title,
@@ -404,7 +405,7 @@ export function buildCompanyPageInventory(pages: ReviewPage[]) {
       primaryDisposition,
       roles: Array.from(roles),
       relevant,
-      likelyOffering: career || individual || generalOffering,
+      likelyOffering,
       excludedReason,
     } satisfies CompanyPageInventoryRecord;
   });
@@ -815,7 +816,7 @@ export function calculateCompanyKnowledgeCompleteness(input: {
     .map(item => `${normalise(item.offering!.name)}|${normalise(item.offering!.planName || "standard")}`));
   const evidenceSources = new Set(clientItems.flatMap(item => item.sourceUrls));
   const offeringEvidenceSources = new Set(offeringItems.flatMap(item => item.sourceUrls));
-  const missingOfferingPages = input.inventory.filter(page => page.likelyOffering && !offeringEvidenceSources.has(page.url));
+  const missingOfferingPages = input.inventory.filter(page => page.relevant && page.likelyOffering && !offeringEvidenceSources.has(page.url));
   const failedMaps = input.mapResults.filter(result => result.status === "failed");
   const conflicts = conflictFacts(input.items);
   const financeInformationFound = clientItems.some(item =>
@@ -863,9 +864,9 @@ export function calculateCompanyKnowledgeCompleteness(input: {
     pagesUsed: evidenceSources.size,
     pagesExcludedWithReason: pagesExcluded,
     pagesExcluded,
-    candidateSellableOfferingsDiscovered: input.inventory.filter(page => page.likelyOffering).length,
-    careerProgrammesDiscovered: input.inventory.filter(page => page.roles.includes("career_programme")).length,
-    individualCoursesDiscovered: input.inventory.filter(page => page.roles.includes("individual_course")).length,
+    candidateSellableOfferingsDiscovered: input.inventory.filter(page => page.relevant && page.likelyOffering).length,
+    careerProgrammesDiscovered: input.inventory.filter(page => page.relevant && page.roles.includes("career_programme")).length,
+    individualCoursesDiscovered: input.inventory.filter(page => page.relevant && page.roles.includes("individual_course")).length,
     finalProposedOfferings: offeringKeys.size,
     offeringsFound: offeringKeys.size,
     offeringsWithEvidencedFullPrice: withPrice.size,
