@@ -510,11 +510,12 @@ export default function Onboarding() {
           "The results are review-only. Select and approve facts before they become trusted knowledge.",
       });
     },
-    onError: error =>
+    onError: () =>
       setFeedback({
         kind: "error",
-        title: "The business website could not be read",
-        detail: `No content became trusted knowledge. Check the public URL or site access and try again. ${error.message}`,
+        title: "Website scan interrupted",
+        detail:
+          "The website scan was interrupted before it completed. No content became trusted knowledge. Please try again.",
         actionLabel: "Retry website scan",
         onAction: () => discover.mutate(),
       }),

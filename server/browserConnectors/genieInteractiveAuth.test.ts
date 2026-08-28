@@ -212,7 +212,10 @@ describe("Genie interactive authentication", () => {
     const discovery = readFileSync(new URL("../companyDiscovery.ts", import.meta.url), "utf8");
     const verifier = readFileSync(new URL("../verifyGenieCommissioning.ts", import.meta.url), "utf8");
     expect(bridge).toContain("sharedBrowserConnecting");
-    expect(discovery).toContain("discoveryBrowserConnecting");
+    expect(discovery).toContain("new Worker(DISCOVERY_RENDER_WORKER");
+    expect(discovery).toContain("discoveryRenderQueue");
+    expect(discovery).toContain("context = await browser.newContext");
+    expect(discovery).not.toContain("browser.contexts()");
     for (const source of [bridge, discovery, verifier])
       expect(source).not.toContain("browser.close()");
   });

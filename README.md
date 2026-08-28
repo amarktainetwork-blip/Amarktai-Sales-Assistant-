@@ -106,6 +106,15 @@ sh deploy/webdock/verify-client-acceptance.sh
 
 A client handover requires `PRE_OTP_READY=PASS` before the single controlled Genie sign-in and, after live commissioning, `CLIENT_ACCEPTANCE=PASS`. A platform-ready deployment is not a claim that client acceptance is complete.
 
+To probe fresh public-website discovery without storing or approving knowledge, run the operator-only diagnostic inside the deployed app image:
+
+```bash
+docker compose -f deploy/webdock/docker-compose.yml --env-file .env run --no-deps --rm \
+  app node dist/verifyCompanyDiscovery.js https://PUBLIC_COMPANY_WEBSITE
+```
+
+The probe reports only fetch status, page/render counts and process stability. It does not write company knowledge, alter CRM data or interact with Genie.
+
 ## Backup and recovery
 
 Create a backup before updates/schema changes:

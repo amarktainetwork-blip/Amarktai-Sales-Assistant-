@@ -13,6 +13,10 @@ const strictVerifier = readFileSync(
   new URL("./verifyFeatures.ts", import.meta.url),
   "utf8"
 );
+const discoveryProbe = readFileSync(
+  new URL("./verifyCompanyDiscovery.ts", import.meta.url),
+  "utf8"
+);
 
 describe("deployment and client acceptance separation", () => {
   it("allows platform readiness before CRM commissioning without weakening strict acceptance", () => {
@@ -29,5 +33,17 @@ describe("deployment and client acceptance separation", () => {
     expect(strictVerifier).toContain("assistant_response_generated");
     expect(strictVerifier).toContain("two_factor_verified");
     expect(strictVerifier).toContain('event: "feature_acceptance"');
+  });
+
+  it("keeps the website discovery probe diagnostic-only", () => {
+    expect(discoveryProbe).toContain("discoverPublicWebsite(rawUrl)");
+    expect(discoveryProbe).toContain('line("DISCOVERY_FETCH", "PASS")');
+    expect(discoveryProbe).toContain('line("PAGES_COLLECTED"');
+    expect(discoveryProbe).toContain('line("RENDERED_PAGES"');
+    expect(discoveryProbe).toContain('line("RENDER_FALLBACKS"');
+    expect(discoveryProbe).toContain('line("APP_PROCESS_STABLE", "PASS")');
+    expect(discoveryProbe).not.toContain("saveWebsiteDiscoveryReview");
+    expect(discoveryProbe).not.toContain("approveKnowledge");
+    expect(discoveryProbe).not.toContain("Genie");
   });
 });
