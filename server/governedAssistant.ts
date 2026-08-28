@@ -7,6 +7,8 @@ import { getCrmAdapter } from "./crm/adapterRegistry";
 import type { NormalizedContact } from "./crm/types";
 import { routeConnectedSystemActions } from "./crmRouter";
 import { createWorkflowRun } from "./db";
+import { getManagerWatchtower } from "./managerWatchtower";
+import { getSalesWatchtower } from "./salesCommsWatchtower";
 import { routeSalesCommand } from "./supervisor";
 import { buildWorkflowPlan } from "./workflowRules";
 
@@ -29,6 +31,16 @@ type AssistantResult = {
 };
 
 type ReadIntent = "contact" | "opportunity" | "tasks" | "activity" | null;
+
+const WATCHTOWER_AGENT_KEYS = new Set([
+  "sales_comms_tracker",
+  "promise_tracker",
+  "revenue_leakage",
+  "relationship_health",
+  "pipeline_hygiene",
+  "attention_engine",
+  "manager_watchtower",
+]);
 
 function labelFromCommand(command: string) {
   const match = command.match(/\b(?:for|to|with)\s+([A-Za-z][A-Za-z0-9'’ .-]{1,120}?)(?:\s+(?:on|by|at|about|regarding)\b|[?.!,]|$)/i);
@@ -142,6 +154,61 @@ async function performSafeRead(input: {
   return { state: "answered", proposalCount: 0, summary: records.length ? "Here is the recent activity returned by the verified CRM." : "No recent activity was returned by the CRM.", needsClarification: false, route: input.route, data: { activities: records.slice(0, 30).map(item => ({ externalId: item.externalId, activityType: item.activityType, occurredAt: item.occurredAt.toISOString(), body: item.body || null })) } };
 }
 
+async function performWatchtowerAnalysis(input: {
+  userId: number;
+  organisationId: number;
+  route: ReturnType<typeof routeSalesCommand>;
+}): Promise<AssistantResult | null> {
+  if (input.route.intent !== "analytics" || !WATCHTOWER_AGENT_KEYS.has(input.route.agentKey)) return null;
+  try {
+    if (input.route.agentKey === "manager_watchtower") {
+      const manager = await getManagerWatchtower(input);
+      return {
+        state: "answered",
+        proposalCount: 0,
+        summary: manager.summary.peopleNeedingAttention
+          ? `${manager.summary.peopleNeedingAttention} mapped salesperson${manager.summary.peopleNeedingAttention === 1 ? " needs" : "s need"} attention. The watchtower is ranked from synchronized CRM exceptions only.`
+          : "No mapped salesperson currently has a watchtower exception in synchronized CRM evidence.",
+        needsClarification: false,
+        route: input.route,
+        data: { managerWatchtower: manager },
+      };
+    }
+    const watchtower = await getSalesWatchtower({
+      userId: input.userId,
+      organisationId: input.organisationId,
+      includePromises: input.route.agentKey === "promise_tracker",
+    });
+    if (input.route.agentKey === "sales_comms_tracker") {
+      const waiting = watchtower.salesComms.filter(item => item.waitingOnUs).length;
+      return { state: "answered", proposalCount: 0, summary: waiting ? `${waiting} customer${waiting === 1 ? " is" : "s are"} currently waiting on the team according to synchronized communication evidence.` : "No synchronized customer communication is currently marked as waiting on the team.", needsClarification: false, route: input.route, data: { salesComms: watchtower.salesComms, evidenceSummary: watchtower.evidenceSummary } };
+    }
+    if (input.route.agentKey === "promise_tracker") {
+      const overdue = watchtower.promises.filter(item => item.overdue).length;
+      return { state: "answered", proposalCount: 0, summary: watchtower.promiseAnalysis === "unavailable" ? "The synchronized communication evidence is available, but promise interpretation is temporarily unavailable. No commitments were guessed." : `${watchtower.promises.length} explicit commitment${watchtower.promises.length === 1 ? "" : "s"} found${overdue ? `, including ${overdue} overdue` : ""}.`, needsClarification: false, route: input.route, data: { promises: watchtower.promises, analysisStatus: watchtower.promiseAnalysis, evidenceSummary: watchtower.evidenceSummary } };
+    }
+    if (input.route.agentKey === "revenue_leakage") {
+      return { state: "answered", proposalCount: 0, summary: watchtower.revenueLeakage.length ? `${watchtower.revenueLeakage.length} evidence-backed revenue-risk item${watchtower.revenueLeakage.length === 1 ? "" : "s"} need attention.` : "No revenue-leakage exception is currently visible in synchronized CRM evidence.", needsClarification: false, route: input.route, data: { revenueLeakage: watchtower.revenueLeakage, evidenceSummary: watchtower.evidenceSummary } };
+    }
+    if (input.route.agentKey === "relationship_health") {
+      const highRisk = watchtower.customerHealth.filter(item => item.status === "high_risk").length;
+      return { state: "answered", proposalCount: 0, summary: highRisk ? `${highRisk} active deal${highRisk === 1 ? " is" : "s are"} currently high risk based on explainable CRM evidence.` : "No active deal is currently classified high risk by the operational health rules.", needsClarification: false, route: input.route, data: { customerHealth: watchtower.customerHealth, evidenceSummary: watchtower.evidenceSummary } };
+    }
+    if (input.route.agentKey === "pipeline_hygiene") {
+      return { state: "answered", proposalCount: 0, summary: watchtower.pipelineHygiene.length ? `${watchtower.pipelineHygiene.length} active pipeline record${watchtower.pipelineHygiene.length === 1 ? " has" : "s have"} a hygiene issue to review.` : "No active pipeline hygiene exception is currently visible in synchronized CRM evidence.", needsClarification: false, route: input.route, data: { pipelineHygiene: watchtower.pipelineHygiene, evidenceSummary: watchtower.evidenceSummary } };
+    }
+    return { state: "answered", proposalCount: 0, summary: watchtower.attention.length ? `I ranked ${watchtower.attention.length} customer attention item${watchtower.attention.length === 1 ? "" : "s"} from the current CRM evidence. The first item is the strongest operational exception, not an autonomous instruction to contact the customer.` : "There is no current CRM exception requiring a ranked next action.", needsClarification: false, route: input.route, data: { attention: watchtower.attention, evidenceSummary: watchtower.evidenceSummary } };
+  } catch (error) {
+    return {
+      state: "blocked",
+      proposalCount: 0,
+      summary: error instanceof Error ? error.message : "Sales intelligence could not be produced safely from the current CRM evidence.",
+      needsClarification: false,
+      route: input.route,
+    };
+  }
+}
+
 /** The one governed path for normal and live-CRM assistant requests. */
 export async function prepareGovernedAssistantRequest(input: {
   userId: number;
@@ -153,6 +220,8 @@ export async function prepareGovernedAssistantRequest(input: {
   const route = routeSalesCommand(command);
   const safeRead = await performSafeRead({ ...input, command, route });
   if (safeRead) return safeRead;
+  const watchtower = await performWatchtowerAnalysis({ ...input, route });
+  if (watchtower) return watchtower;
   const leadLabel = labelFromCommand(command);
   const systems = await listConnectedSystemsForUser(input.userId, input.organisationId);
   const browserSystem = input.crmContext?.connectedSystemId ? systems.find(system => system.id === input.crmContext?.connectedSystemId) : undefined;
