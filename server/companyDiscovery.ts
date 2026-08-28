@@ -66,6 +66,10 @@ export type DiscoveryResult = {
     fetchedAt: string;
     rendered: boolean;
     textChars: number;
+    description: string | null;
+    headings: string[];
+    links: string[];
+    jsonLd: Record<string, unknown>[];
   }>;
 };
 
@@ -1283,6 +1287,10 @@ export async function discoverPublicWebsite(
       fetchedAt: page.fetchedAt,
       rendered: page.rendered,
       textChars: page.text.length,
+      description: page.description,
+      headings: page.headings.slice(0, 40),
+      links: page.links.map(link => link.toString()).slice(0, 120),
+      jsonLd: page.jsonLd.slice(0, 20),
     })),
   };
 }

@@ -3,6 +3,7 @@ import type { DiscoveryKnowledgeCandidate } from "./companyDiscovery";
 import { runGenxAgent } from "./genx";
 
 export const COMPANY_INTELLIGENCE_CLASSIFICATIONS = [
+  "company_overview",
   "company_offering",
   "company_price",
   "company_finance",
@@ -320,16 +321,43 @@ const pageReviewItemSchema = z.object({
   confidence: z.enum(["high", "medium", "low"]),
   reviewState: z.enum(["review_required", "ambiguous", "conflict"]),
   trustEligible: z.boolean(),
+  evidence: z.array(z.object({
+    sourceUrl: z.string().url().max(1024),
+    pageTitle: z.string().trim().max(500).nullable(),
+    fetchedAt: z.string().datetime(),
+    evidenceText: z.string().trim().min(1).max(PAGE_REVIEW_EVIDENCE_CHARS),
+    materialFacts: z.array(z.string().trim().min(1).max(500)).max(24),
+  })).max(24).optional(),
   offering: z.object({
     name: z.string().trim().min(1).max(220),
     type: z.string().trim().max(100).optional(),
+    description: z.string().trim().max(1_200).optional(),
+    planName: z.string().trim().max(160).optional(),
+    prices: z.array(z.object({
+      value: z.string().trim().min(1).max(80),
+      semanticType: z.enum([
+        "full_current_price",
+        "deposit",
+        "finance_payment_plan",
+        "alternative_plan",
+        "other_fee",
+      ]),
+      label: z.string().trim().min(1).max(240),
+      sourceUrl: z.string().url().max(1024),
+      evidenceText: z.string().trim().min(1).max(PAGE_REVIEW_EVIDENCE_CHARS),
+    })).max(16).optional(),
     currentPrices: z.array(z.string().trim().max(80)).max(12).optional(),
     duration: z.array(z.string().trim().max(120)).max(12).optional(),
+    includedCourses: z.array(z.string().trim().max(220)).max(40).optional(),
+    includedExams: z.array(z.string().trim().max(220)).max(24).optional(),
     certifications: z.array(z.string().trim().max(160)).max(20).optional(),
+    awardingBodies: z.array(z.string().trim().max(160)).max(20).optional(),
     financeOptions: z.array(z.string().trim().max(500)).max(12).optional(),
     support: z.array(z.string().trim().max(500)).max(12).optional(),
     targetCustomer: z.string().trim().max(600).optional(),
+    entryRequirements: z.array(z.string().trim().max(500)).max(12).optional(),
     outcomes: z.array(z.string().trim().max(500)).max(12).optional(),
+    importantCaveats: z.array(z.string().trim().max(500)).max(12).optional(),
   }).optional(),
 });
 
@@ -408,14 +436,25 @@ export function verifyPageReviewProvenance(item: CompanyIntelligenceReviewItem, 
   const offeringClaims = item.offering
     ? [
         item.offering.name,
-        item.offering.type,
+        item.offering.description,
+        item.offering.planName,
+        ...(item.offering.prices || []).flatMap(price => [
+          price.value,
+          price.label,
+          price.evidenceText,
+        ]),
         ...(item.offering.currentPrices || []),
         ...(item.offering.duration || []),
+        ...(item.offering.includedCourses || []),
+        ...(item.offering.includedExams || []),
         ...(item.offering.certifications || []),
+        ...(item.offering.awardingBodies || []),
         ...(item.offering.financeOptions || []),
         ...(item.offering.support || []),
         item.offering.targetCustomer,
+        ...(item.offering.entryRequirements || []),
         ...(item.offering.outcomes || []),
+        ...(item.offering.importantCaveats || []),
       ]
     : [];
   const offeringGrounded = offeringClaims.every(claim => claimIsGrounded(claim, citedText));

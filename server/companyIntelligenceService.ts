@@ -1,22 +1,22 @@
 import { discoverPublicWebsite } from "./companyDiscovery";
-import type { CompanyIntelligenceReview } from "./companyIntelligenceReview";
 import {
   buildClientKnowledgeFacts,
   clientReadyKnowledgeItems,
   synthesiseCompanyKnowledge,
+  type CompanyKnowledgeMapResult,
+  type CompanyKnowledgeSynthesisResult,
+  type ReviewPage,
 } from "./companyKnowledgeSynthesis";
 
 type RetainedPageMetadata = {
   url: string;
   title?: string | null;
   fetchedAt?: string;
-};
-
-type ReviewPage = {
-  url: string;
-  title: string | null;
-  fetchedAt: string;
-  text: string;
+  category?: string;
+  description?: string | null;
+  headings?: string[];
+  links?: string[];
+  jsonLd?: Record<string, unknown>[];
 };
 
 function clientSafeIntelligenceError(error: unknown) {
@@ -46,6 +46,11 @@ export function retainedPagesForCompanyReview(
         title: page?.title || null,
         fetchedAt: page?.fetchedAt || new Date().toISOString(),
         text: segment[2] || "",
+        category: page?.category,
+        description: page?.description,
+        headings: page?.headings,
+        links: page?.links,
+        jsonLd: page?.jsonLd,
       };
     })
     .filter(page => page.text.trim().length > 0);
@@ -57,9 +62,13 @@ export function pagesForCompanyReview(
   return retainedPagesForCompanyReview(discovery.extractedText, discovery.pages);
 }
 
-function clientKnowledgeCategory(
-  classification: CompanyIntelligenceReview["items"][number]["classification"]
-) {
+function clientKnowledgeCategory(item: CompanyKnowledgeSynthesisResult["items"][number]) {
+  const classification = item.classification;
+  if (classification === "company_overview") return "overview";
+  if (classification === "company_offering")
+    return /career|programme|program/i.test(item.offering?.type || "")
+      ? "career_programmes"
+      : "individual_courses";
   if (classification === "company_contact") return "contact";
   if (classification === "company_faq") return "faq";
   if (classification === "company_policy") return "policies";
@@ -67,7 +76,7 @@ function clientKnowledgeCategory(
 }
 
 export function companyReviewCandidate(
-  item: CompanyIntelligenceReview["items"][number]
+  item: CompanyKnowledgeSynthesisResult["items"][number]
 ) {
   const offering = item.offering;
   const lines = [
@@ -76,6 +85,9 @@ export function companyReviewCandidate(
     offering?.currentPrices?.length
       ? `Current total price: ${offering.currentPrices.join(" / ")}`
       : "",
+    ...(offering?.prices || []).map(price =>
+      `${price.semanticType.replaceAll("_", " ")}: ${price.value} (${price.label})`
+    ),
     offering?.duration?.length
       ? `Duration: ${offering.duration.join(" / ")}`
       : "",
@@ -99,7 +111,7 @@ export function companyReviewCandidate(
     content: lines.join("\n\n"),
     sourceUrl: item.sourceUrls[0] || "",
     fetchedAt: item.fetchedAt,
-    category: clientKnowledgeCategory(item.classification),
+    category: clientKnowledgeCategory(item),
     classification: item.classification,
     reviewState: item.reviewState,
     confidence: item.confidence,
@@ -109,33 +121,17 @@ export function companyReviewCandidate(
     sourceUrls: item.sourceUrls,
     trustEligible: item.trustEligible,
     offering,
+    priceFacts: offering?.prices || [],
+    evidence: item.evidence || [],
   };
 }
 
-export async function discoverAndReviewCompanyIntelligence(input: {
-  userId: number;
-  organisationId: number;
-  websiteUrl: string;
-  reference: string;
-}) {
-  const discovery = await discoverPublicWebsite(input.websiteUrl);
-  const retainedPages = pagesForCompanyReview(discovery);
-  let review: CompanyIntelligenceReview;
-  try {
-    review = await synthesiseCompanyKnowledge({
-      userId: input.userId,
-      organisationId: input.organisationId,
-      pages: retainedPages,
-      reference: input.reference,
-    });
-  } catch (error) {
-    throw new Error(
-      `The public website was read, but Amarktai intelligence could not produce a verified company-knowledge document. Nothing is ready for approval and no raw scraper output was promoted. ${clientSafeIntelligenceError(error)}`
-    );
-  }
-
+export function buildReviewedCompanyDiscovery(
+  discovery: Awaited<ReturnType<typeof discoverPublicWebsite>>,
+  review: CompanyKnowledgeSynthesisResult
+) {
   const clientItems = clientReadyKnowledgeItems(review.items);
-  const clientFacts = buildClientKnowledgeFacts(review.items);
+  const clientFacts = buildClientKnowledgeFacts(review.items, review);
   const safeDiscovery = {
     ...discovery,
     proposedFacts: {
@@ -143,6 +139,10 @@ export async function discoverAndReviewCompanyIntelligence(input: {
       conflicts: clientFacts.conflicts,
       completeness: clientFacts.completeness,
       clientKnowledgeSynthesis: clientFacts.synthesis,
+      pageInventory: review.pageInventory,
+      mapResults: review.mapResults,
+      reconciliationStatus: review.reconciliationStatus,
+      reconciliationFailure: review.reconciliationFailure || null,
       rawCrawlerDiagnostics: {
         pagesCollected: discovery.pages.length,
         hiddenFromApproval: true,
@@ -151,7 +151,6 @@ export async function discoverAndReviewCompanyIntelligence(input: {
       },
     },
   };
-
   return {
     discovery: safeDiscovery,
     proposedKnowledge: clientItems.map(companyReviewCandidate),
@@ -161,24 +160,57 @@ export async function discoverAndReviewCompanyIntelligence(input: {
   };
 }
 
+export async function discoverAndReviewCompanyIntelligence(input: {
+  userId: number;
+  organisationId: number;
+  websiteUrl: string;
+  reference: string;
+  resumeMapResults?: CompanyKnowledgeMapResult[];
+  onCheckpoint?: (results: CompanyKnowledgeMapResult[]) => Promise<void> | void;
+}) {
+  const discovery = await discoverPublicWebsite(input.websiteUrl);
+  const retainedPages = pagesForCompanyReview(discovery);
+  let review: CompanyKnowledgeSynthesisResult;
+  try {
+    review = await synthesiseCompanyKnowledge({
+      userId: input.userId,
+      organisationId: input.organisationId,
+      pages: retainedPages,
+      reference: input.reference,
+      resumeMapResults: input.resumeMapResults,
+      onCheckpoint: input.onCheckpoint,
+    });
+  } catch (error) {
+    throw new Error(
+      `The public website was read, but Amarktai intelligence could not produce a verified company-knowledge document. Nothing is ready for approval and no raw scraper output was promoted. ${clientSafeIntelligenceError(error)}`
+    );
+  }
+
+  return buildReviewedCompanyDiscovery(discovery, review);
+}
+
 export async function reviewStoredCompanyIntelligence(input: {
   userId: number;
   organisationId: number;
   discoveryId: number;
   pages: ReviewPage[];
+  resumeMapResults?: CompanyKnowledgeMapResult[];
+  onCheckpoint?: (results: CompanyKnowledgeMapResult[]) => Promise<void> | void;
 }) {
   if (!input.pages.length)
     throw new Error(
       "Retained raw page evidence is unavailable; start a fresh discovery before retrying."
     );
 
-  let review: CompanyIntelligenceReview;
+  let review: CompanyKnowledgeSynthesisResult;
   try {
     review = await synthesiseCompanyKnowledge({
       userId: input.userId,
       organisationId: input.organisationId,
       pages: input.pages,
       reference: `website-review-retry:${input.discoveryId}:${Date.now()}`,
+      resumeMapResults: input.resumeMapResults,
+      onCheckpoint: input.onCheckpoint,
     });
   } catch (error) {
     throw new Error(

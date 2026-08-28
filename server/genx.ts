@@ -335,6 +335,8 @@ export async function runGenxAgent(input: {
   workingContext?: string;
   modelTier?: "fast" | "default" | "reasoning";
   billing?: GenxBillingContext;
+  maxContextChars?: number;
+  maxOutputTokens?: number;
 }) {
   const readiness = getGenxReadiness();
   const agent =
@@ -367,11 +369,17 @@ export async function runGenxAgent(input: {
 
   const maxContextChars = Math.min(
     60_000,
-    positiveInt(process.env.GENX_MAX_CONTEXT_CHARS, 24_000)
+    Math.max(
+      4_000,
+      input.maxContextChars || positiveInt(process.env.GENX_MAX_CONTEXT_CHARS, 24_000)
+    )
   );
   const maxOutputTokens = Math.min(
     4_000,
-    positiveInt(process.env.GENX_MAX_OUTPUT_TOKENS, 900)
+    Math.max(
+      100,
+      input.maxOutputTokens || positiveInt(process.env.GENX_MAX_OUTPUT_TOKENS, 900)
+    )
   );
   const knowledgeBudget = Math.min(12_000, Math.floor(maxContextChars * 0.45));
   const approvedKnowledge = input.approvedKnowledge

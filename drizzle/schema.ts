@@ -173,6 +173,72 @@ export const websiteDiscoveries = mysqlTable(
   ]
 );
 
+/** Durable, resumable orchestration for complete company-knowledge learning. */
+export const companyKnowledgeJobs = mysqlTable(
+  "companyKnowledgeJobs",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    userId: int("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    organisationId: int("organisationId")
+      .notNull()
+      .references(() => organisations.id, { onDelete: "cascade" }),
+    companyProfileId: int("companyProfileId")
+      .notNull()
+      .references(() => companyProfiles.id, { onDelete: "cascade" }),
+    websiteUrl: varchar("websiteUrl", { length: 1024 }).notNull(),
+    phase: mysqlEnum("phase", [
+      "SCANNING_WEBSITE",
+      "CLASSIFYING_PAGES",
+      "UNDERSTANDING_OFFERINGS",
+      "REVIEWING_PRICING_POLICIES",
+      "RECONCILING_KNOWLEDGE",
+      "CHECKING_COMPLETENESS",
+      "READY_FOR_REVIEW",
+    ]).notNull().default("SCANNING_WEBSITE"),
+    status: mysqlEnum("status", [
+      "queued",
+      "running",
+      "ready",
+      "needs_attention",
+      "failed",
+      "cancelled",
+    ]).notNull().default("queued"),
+    progress: json("progress").$type<Record<string, unknown>>().notNull(),
+    /** The successful bounded crawl is retained so synthesis retries do not recrawl. */
+    discoverySnapshot: longtext("discoverySnapshot"),
+    pageInventory: json("pageInventory").$type<Array<Record<string, unknown>>>(),
+    /** Successful page maps are checkpointed and reused after interruption. */
+    mapResults: json("mapResults").$type<Array<Record<string, unknown>>>(),
+    resultDiscoveryId: int("resultDiscoveryId").references(
+      () => websiteDiscoveries.id,
+      { onDelete: "set null" }
+    ),
+    attempt: int("attempt").notNull().default(0),
+    leaseExpiresAt: timestamp("leaseExpiresAt"),
+    lastError: text("lastError"),
+    startedAt: timestamp("startedAt"),
+    completedAt: timestamp("completedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    index("company_knowledge_profile_created_idx").on(
+      table.companyProfileId,
+      table.createdAt
+    ),
+    index("company_knowledge_org_status_idx").on(
+      table.organisationId,
+      table.status
+    ),
+    index("company_knowledge_status_lease_idx").on(
+      table.status,
+      table.leaseExpiresAt
+    ),
+  ]
+);
+
 export const crmConnections = mysqlTable(
   "crmConnections",
   {
@@ -2333,6 +2399,7 @@ export type InsertUser = typeof users.$inferInsert;
 export type IntegrationProfile = typeof integrationProfiles.$inferSelect;
 export type CompanyProfile = typeof companyProfiles.$inferSelect;
 export type WebsiteDiscovery = typeof websiteDiscoveries.$inferSelect;
+export type CompanyKnowledgeJob = typeof companyKnowledgeJobs.$inferSelect;
 export type CrmConnection = typeof crmConnections.$inferSelect;
 export type AutomationPlaybook = typeof automationPlaybooks.$inferSelect;
 export type WorkflowRun = typeof workflowRuns.$inferSelect;

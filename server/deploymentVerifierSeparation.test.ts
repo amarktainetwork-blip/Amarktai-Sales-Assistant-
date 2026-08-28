@@ -17,6 +17,10 @@ const discoveryProbe = readFileSync(
   new URL("./verifyCompanyDiscovery.ts", import.meta.url),
   "utf8"
 );
+const knowledgeProbe = readFileSync(
+  new URL("./verifyCompanyKnowledge.ts", import.meta.url),
+  "utf8"
+);
 
 describe("deployment and client acceptance separation", () => {
   it("allows platform readiness before CRM commissioning without weakening strict acceptance", () => {
@@ -45,5 +49,26 @@ describe("deployment and client acceptance separation", () => {
     expect(discoveryProbe).not.toContain("saveWebsiteDiscoveryReview");
     expect(discoveryProbe).not.toContain("approveKnowledge");
     expect(discoveryProbe).not.toContain("Genie");
+  });
+
+  it("keeps the full knowledge verifier review-only and separate from CRM and Genie", () => {
+    expect(knowledgeProbe).toContain("discoverAndReviewCompanyIntelligence");
+    for (const field of [
+      "PAGES_SCANNED",
+      "PAGES_CLASSIFIED",
+      "PAGES_USED",
+      "PAGES_EXCLUDED",
+      "CAREER_PROGRAMMES_FOUND",
+      "INDIVIDUAL_COURSES_FOUND",
+      "CONFLICTS_FOUND",
+      "COMPLETENESS_STATUS",
+      "KNOWLEDGE_PERSISTED",
+      "KNOWLEDGE_APPROVED",
+      "CRM_TOUCHED",
+    ]) expect(knowledgeProbe).toContain(field);
+    expect(knowledgeProbe).not.toContain("saveWebsiteDiscoveryReview");
+    expect(knowledgeProbe).not.toContain("confirmWebsiteDiscovery");
+    expect(knowledgeProbe).not.toContain("connectedSystems");
+    expect(knowledgeProbe).not.toContain("genie/");
   });
 });

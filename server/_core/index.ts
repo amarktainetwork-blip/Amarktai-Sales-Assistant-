@@ -6,6 +6,7 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "../routers";
 import { registerCrmOAuthRoutes } from "../crm/oauthRoutes";
 import { startAutomaticCommissioningWorker } from "../crm/automaticCommissioning";
+import { startCompanyKnowledgeWorker } from "../companyKnowledgeJobs";
 import { registerSidecarRoutes } from "../sidecar/routes";
 import { registerLiveCallRoutes } from "../liveCalls/routes";
 import { registerTeamAdminRoutes } from "../teamAdmin/routes";
@@ -178,6 +179,7 @@ async function startServer() {
     console.log(`Server running on http://0.0.0.0:${port}/`)
   );
   startAutomaticCommissioningWorker();
+  startCompanyKnowledgeWorker();
 }
 
 startServer().catch(error => {

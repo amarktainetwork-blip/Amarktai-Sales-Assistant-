@@ -38,7 +38,6 @@ import {
   appendLiveTranscript,
   completeLiveCallSession,
   recordAudit,
-  saveWebsiteDiscoveryReview,
   listCrmCustomers,
 } from "./db";
 import { getGenxReadiness, runGenxAgent } from "./genx";
@@ -78,7 +77,11 @@ import { routeSalesCommand } from "./supervisor";
 import { prepareGovernedAssistantRequest } from "./governedAssistant";
 import { prepareLiveCoachingTip, preparePostCallSummary } from "./liveCoach";
 import { getOutlookReadiness, validateEmailPreview } from "./outlook";
-import { discoverAndReviewCompanyIntelligence } from "./companyIntelligenceService";
+import {
+  getLatestCompanyKnowledgeJob,
+  retryCompanyKnowledgeJob,
+  startCompanyKnowledgeJob,
+} from "./companyKnowledgeJobs";
 import { routeConnectedSystemActions } from "./crmRouter";
 import {
   ensureDefaultOrganisation,
@@ -1677,6 +1680,20 @@ export const appRouter = router({
           ...input,
         });
       }),
+    companyLearningStatus: secondFactorProcedure.query(async ({ ctx }) => {
+      if (!ctx.activeOrganisation)
+        throw new Error("Choose an organisation before checking company learning.");
+      const setup = await getCompanySetup(
+        ctx.user.id,
+        ctx.activeOrganisation.organisationId
+      );
+      if (!setup.profile) return null;
+      return getLatestCompanyKnowledgeJob({
+        userId: ctx.user.id,
+        organisationId: ctx.activeOrganisation.organisationId,
+        companyProfileId: setup.profile.id,
+      });
+    }),
     discoverWebsite: secondFactorProcedure.mutation(async ({ ctx }) => {
       if (!ctx.activeOrganisation)
         throw new Error("Choose an organisation before discovering a website.");
@@ -1688,50 +1705,45 @@ export const appRouter = router({
         throw new Error(
           "Save a public company website before starting discovery."
         );
-      const canonical = await discoverAndReviewCompanyIntelligence({
-        userId: ctx.user.id,
-        organisationId: ctx.activeOrganisation.organisationId,
-        websiteUrl: setup.profile.websiteUrl,
-        reference: `website-review:${setup.profile.id}:${Date.now()}`,
-      });
-      const { discovery, proposedKnowledge, reviewState, reviewUnavailable, aiReview } = canonical;
-      const discoveryId = await saveWebsiteDiscoveryReview({
+      return startCompanyKnowledgeJob({
         userId: ctx.user.id,
         organisationId: ctx.activeOrganisation.organisationId,
         companyProfileId: setup.profile.id,
-        sourceUrl: discovery.sourceUrl,
-        pageTitle: discovery.pageTitle,
-        extractedText: discovery.extractedText,
-        proposedFacts: {
-          ...discovery.proposedFacts,
-          pages: discovery.pages,
-          companyIntelligenceReview: {
-            agentKey: "company_intelligence_review",
-            state: reviewState,
-            unavailableReason: reviewUnavailable || null,
-            review: aiReview,
-          },
-        },
-        proposedKnowledge,
-        reviewAgentKey: "company_intelligence_review",
-        reviewState,
+        websiteUrl: setup.profile.websiteUrl,
       });
-      return { ...discovery, proposedKnowledge, discoveryId, reviewState, reviewUnavailable };
     }),
+    retryWebsiteLearning: secondFactorProcedure
+      .input(z.object({ jobId: z.number().int().positive() }))
+      .mutation(async ({ ctx, input }) => {
+        if (!ctx.activeOrganisation)
+          throw new Error("Choose an organisation before retrying company learning.");
+        const setup = await getCompanySetup(
+          ctx.user.id,
+          ctx.activeOrganisation.organisationId
+        );
+        if (!setup.profile)
+          throw new Error("Save company details before retrying company learning.");
+        return retryCompanyKnowledgeJob({
+          jobId: input.jobId,
+          userId: ctx.user.id,
+          organisationId: ctx.activeOrganisation.organisationId,
+          companyProfileId: setup.profile.id,
+        });
+      }),
     confirmDiscovery: managementProcedure
       .input(
         z.object({
           discoveryId: z.number().int().positive(),
-          knowledgeIndexes: z.array(z.number().int().min(0).max(79)).max(80),
+          knowledgeIndexes: z.array(z.number().int().min(0).max(399)).max(400),
           corrections: z
             .array(
               z.object({
-                index: z.number().int().min(0).max(79),
+                index: z.number().int().min(0).max(399),
                 title: z.string().trim().min(1).max(220),
                 content: z.string().trim().min(1).max(40_000),
               })
             )
-            .max(80)
+            .max(400)
             .optional(),
         })
       )
