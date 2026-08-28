@@ -36,7 +36,11 @@ type GenxModelRecord = {
   capabilities?: unknown;
   input_modalities?: unknown;
   output_modalities?: unknown;
-  architecture?: { modality?: unknown; input_modalities?: unknown; output_modalities?: unknown };
+  architecture?: {
+    modality?: unknown;
+    input_modalities?: unknown;
+    output_modalities?: unknown;
+  };
 };
 
 export type GenxCapabilityCatalogue = {
@@ -48,6 +52,16 @@ export type GenxCapabilityCatalogue = {
 let capabilityCatalogueCache:
   | { expiresAt: number; value: GenxCapabilityCatalogue }
   | undefined;
+
+const GOVERNED_EVIDENCE_AGENT_KEYS = new Set([
+  "sales_comms_tracker",
+  "promise_tracker",
+  "revenue_leakage",
+  "relationship_health",
+  "pipeline_hygiene",
+  "attention_engine",
+  "manager_watchtower",
+]);
 
 function positiveInt(value: string | undefined, fallback: number) {
   const parsed = Number.parseInt(value || "", 10);
@@ -209,8 +223,10 @@ function advertisedCapabilities(model: GenxModelRecord) {
   const capabilities = new Set<string>();
   if (/text|chat|language|completion/.test(declared)) capabilities.add("text");
   if (/audio|speech|voice/.test(declared)) capabilities.add("audio");
-  if (/speech.to.text|transcri|asr/.test(declared)) capabilities.add("speech_to_text");
-  if (/text.to.speech|synth|tts/.test(declared)) capabilities.add("text_to_speech");
+  if (/speech.to.text|transcri|asr/.test(declared))
+    capabilities.add("speech_to_text");
+  if (/text.to.speech|synth|tts/.test(declared))
+    capabilities.add("text_to_speech");
   if (/image|vision/.test(declared)) capabilities.add("vision");
   return Array.from(capabilities);
 }
@@ -219,7 +235,11 @@ export async function discoverGenxCapabilities(options?: { force?: boolean }) {
   const readiness = getGenxReadiness();
   if (!readiness.configured)
     throw new Error("GenX must be configured before capability discovery.");
-  if (!options?.force && capabilityCatalogueCache?.expiresAt && capabilityCatalogueCache.expiresAt > Date.now())
+  if (
+    !options?.force &&
+    capabilityCatalogueCache?.expiresAt &&
+    capabilityCatalogueCache.expiresAt > Date.now()
+  )
     return capabilityCatalogueCache.value;
   const response = await genxFetch(
     modelsEndpoint(process.env.GENX_CHAT_COMPLETIONS_URL!),
@@ -232,23 +252,45 @@ export async function discoverGenxCapabilities(options?: { force?: boolean }) {
     { timeoutMs: 12_000, retries: 1 }
   );
   if (!response.ok)
-    throw new Error(`GenX model catalogue discovery failed with ${response.status}.`);
-  const payload = (await response.json().catch(() => ({}))) as { data?: GenxModelRecord[] };
+    throw new Error(
+      `GenX model catalogue discovery failed with ${response.status}.`
+    );
+  const payload = (await response.json().catch(() => ({}))) as {
+    data?: GenxModelRecord[];
+  };
   const models = (payload.data ?? [])
-    .filter((model): model is GenxModelRecord & { id: string } => Boolean(model.id?.trim()))
-    .map(model => ({ id: model.id.trim(), capabilities: advertisedCapabilities(model) }));
+    .filter(
+      (model): model is GenxModelRecord & { id: string } =>
+        Boolean(model.id?.trim())
+    )
+    .map(model => ({
+      id: model.id.trim(),
+      capabilities: advertisedCapabilities(model),
+    }));
   const capabilities: Record<string, string[]> = {};
   for (const model of models)
     for (const capability of model.capabilities)
       (capabilities[capability] ||= []).push(model.id);
-  const value = { fetchedAt: new Date().toISOString(), models, capabilities };
-  capabilityCatalogueCache = { value, expiresAt: Date.now() + 5 * 60_000 };
+  const value = {
+    fetchedAt: new Date().toISOString(),
+    models,
+    capabilities,
+  };
+  capabilityCatalogueCache = {
+    value,
+    expiresAt: Date.now() + 5 * 60_000,
+  };
   return value;
 }
 
 export async function selectAdvertisedGenxModel(input: {
   configuredModel?: string;
-  capability: "text" | "audio" | "speech_to_text" | "text_to_speech" | "vision";
+  capability:
+    | "text"
+    | "audio"
+    | "speech_to_text"
+    | "text_to_speech"
+    | "vision";
 }) {
   const configured = input.configuredModel?.trim();
   if (!configured) return undefined;
@@ -257,10 +299,13 @@ export async function selectAdvertisedGenxModel(input: {
   if (!model) return undefined;
   // A catalogue that only advertises IDs can still prove text via the existing
   // completion probe. Audio/voice routing always requires explicit metadata.
-  if (input.capability === "text" && !model.capabilities.length) return configured;
+  if (input.capability === "text" && !model.capabilities.length)
+    return configured;
   return model.capabilities.includes(input.capability) ||
-    (input.capability === "text_to_speech" && model.capabilities.includes("audio")) ||
-    (input.capability === "speech_to_text" && model.capabilities.includes("audio"))
+    (input.capability === "text_to_speech" &&
+      model.capabilities.includes("audio")) ||
+    (input.capability === "speech_to_text" &&
+      model.capabilities.includes("audio"))
     ? configured
     : undefined;
 }
@@ -322,7 +367,10 @@ export async function verifyGenxConnection() {
     model: selected,
     advertisedModelCount: modelIds.length,
     advertisedCapabilities: Object.fromEntries(
-      Object.entries(catalogue.capabilities).map(([key, models]) => [key, models.length])
+      Object.entries(catalogue.capabilities).map(([key, models]) => [
+        key,
+        models.length,
+      ])
     ),
     verifiedAt: new Date().toISOString(),
   };
@@ -338,6 +386,33 @@ export async function runGenxAgent(input: {
   maxContextChars?: number;
   maxOutputTokens?: number;
 }) {
+  // Agent Desk must never silently route these seven evidence specialists
+  // through generic model chat. Internal bounded extraction calls (currently
+  // Promise Tracker) provide explicit billing and therefore bypass this
+  // branch, preventing recursion while retaining metered AI extraction.
+  if (!input.billing && GOVERNED_EVIDENCE_AGENT_KEYS.has(input.agentKey)) {
+    const identity = currentAiRequestIdentity();
+    if (!identity)
+      return {
+        content:
+          "The authenticated workspace evidence context is unavailable, so this specialist cannot run safely.",
+        provider: "workspace_evidence_blocked" as const,
+        usage: {} as GenxUsage,
+        creditsCharged: 0,
+      };
+    const { isGovernedEvidenceAgent, runGovernedEvidenceAgent } = await import(
+      "./governedEvidenceAgents"
+    );
+    if (!isGovernedEvidenceAgent(input.agentKey))
+      throw new Error("The selected evidence specialist is not commissioned.");
+    return runGovernedEvidenceAgent({
+      userId: identity.userId,
+      organisationId: identity.organisationId,
+      agentKey: input.agentKey,
+      messages: input.messages,
+    });
+  }
+
   const readiness = getGenxReadiness();
   const agent =
     AGENT_CATALOG.find(item => item.key === input.agentKey) ?? AGENT_CATALOG[1];
@@ -371,24 +446,31 @@ export async function runGenxAgent(input: {
     60_000,
     Math.max(
       4_000,
-      input.maxContextChars || positiveInt(process.env.GENX_MAX_CONTEXT_CHARS, 24_000)
+      input.maxContextChars ||
+        positiveInt(process.env.GENX_MAX_CONTEXT_CHARS, 24_000)
     )
   );
   const maxOutputTokens = Math.min(
     4_000,
     Math.max(
       100,
-      input.maxOutputTokens || positiveInt(process.env.GENX_MAX_OUTPUT_TOKENS, 900)
+      input.maxOutputTokens ||
+        positiveInt(process.env.GENX_MAX_OUTPUT_TOKENS, 900)
     )
   );
-  const knowledgeBudget = Math.min(12_000, Math.floor(maxContextChars * 0.45));
+  const knowledgeBudget = Math.min(
+    12_000,
+    Math.floor(maxContextChars * 0.45)
+  );
   const approvedKnowledge = input.approvedKnowledge
     ?.trim()
     .slice(0, knowledgeBudget);
   const workingContext = input.workingContext?.trim().slice(0, 10_000);
   const conversationBudget = Math.max(
     4_000,
-    maxContextChars - (approvedKnowledge?.length ?? 0) - (workingContext?.length ?? 0)
+    maxContextChars -
+      (approvedKnowledge?.length ?? 0) -
+      (workingContext?.length ?? 0)
   );
   const messages = boundedMessages(input.messages, conversationBudget);
 
@@ -405,9 +487,14 @@ export async function runGenxAgent(input: {
         ? process.env.GENX_REASONING_MODEL.trim()
         : process.env.GENX_DEFAULT_MODEL!;
   const model =
-    (await selectAdvertisedGenxModel({ configuredModel, capability: "text" })) ||
+    (await selectAdvertisedGenxModel({
+      configuredModel,
+      capability: "text",
+    })) ||
     (() => {
-      throw new Error("The configured Amarktai intelligence model is no longer advertised for text use.");
+      throw new Error(
+        "The configured Amarktai intelligence model is no longer advertised for text use."
+      );
     })();
 
   const request = async () => {
