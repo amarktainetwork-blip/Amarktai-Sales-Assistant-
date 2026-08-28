@@ -85,6 +85,59 @@ async function updateJob(
     .where(eq(companyKnowledgeJobs.id, jobId));
 }
 
+async function claimCompanyKnowledgeJob(jobId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const now = new Date();
+  const result = await db
+    .update(companyKnowledgeJobs)
+    .set({
+      status: "running",
+      leaseExpiresAt: new Date(now.getTime() + JOB_LEASE_MS),
+      lastError: null,
+    })
+    .where(
+      and(
+        eq(companyKnowledgeJobs.id, jobId),
+        or(
+          eq(companyKnowledgeJobs.status, "queued"),
+          and(
+            eq(companyKnowledgeJobs.status, "running"),
+            or(
+              isNull(companyKnowledgeJobs.leaseExpiresAt),
+              lt(companyKnowledgeJobs.leaseExpiresAt, now)
+            )
+          )
+        )
+      )
+    );
+  return Number(result[0]?.affectedRows || 0) === 1;
+}
+
+function resumableMapResultsForRetry(job: CompanyKnowledgeJob) {
+  const results = (job.mapResults || []) as CompanyKnowledgeMapResult[];
+  if (!/likely sellable offering page/i.test(job.lastError || ""))
+    return results;
+  const inventory = (job.pageInventory || []) as Array<{
+    url?: string;
+    likelyOffering?: boolean;
+  }>;
+  const likelyOfferingUrls = new Set(
+    inventory
+      .filter(page => page.likelyOffering && page.url)
+      .map(page => page.url!)
+  );
+  return results.filter(result => {
+    if (result.status !== "completed" || !likelyOfferingUrls.has(result.pageUrl))
+      return true;
+    return result.items.some(item =>
+      item.classification === "company_offering"
+      && Boolean(item.offering?.name)
+      && item.sourceUrls.includes(result.pageUrl)
+    );
+  });
+}
+
 export function scheduleCompanyKnowledgeJob(jobId: number) {
   if (activeJobs.has(jobId)) return;
   activeJobs.add(jobId);
@@ -124,7 +177,10 @@ export async function startCompanyKnowledgeJob(input: {
       .limit(1)
   )[0];
   if (active) {
-    scheduleCompanyKnowledgeJob(active.id);
+    const leaseExpired =
+      !active.leaseExpiresAt || active.leaseExpiresAt.getTime() <= Date.now();
+    if (active.status === "queued" || leaseExpired)
+      scheduleCompanyKnowledgeJob(active.id);
     return presentCompanyKnowledgeJob(active);
   }
   const result = await db.insert(companyKnowledgeJobs).values({
@@ -205,12 +261,14 @@ export async function retryCompanyKnowledgeJob(input: {
   if (!job) throw new Error("The company-learning job is unavailable.");
   if (!["needs_attention", "failed"].includes(job.status))
     return presentCompanyKnowledgeJob(job);
+  const resumeMapResults = resumableMapResultsForRetry(job);
   await updateJob(job.id, {
     status: "queued",
     lastError: null,
     leaseExpiresAt: null,
     completedAt: null,
     attempt: job.attempt + 1,
+    mapResults: resumeMapResults,
     progress: {
       ...(job.progress || {}),
       humanStatus: job.discoverySnapshot
@@ -225,18 +283,15 @@ export async function retryCompanyKnowledgeJob(input: {
     lastError: null,
     completedAt: null,
     attempt: job.attempt + 1,
+    mapResults: resumeMapResults,
   });
 }
 
 async function advanceCompanyKnowledgeJob(jobId: number) {
+  const claimed = await claimCompanyKnowledgeJob(jobId);
+  if (!claimed) return;
   let job = await loadJob(jobId);
-  if (!job || !["queued", "running"].includes(job.status)) return;
-  await updateJob(job.id, {
-    status: "running",
-    leaseExpiresAt: new Date(Date.now() + JOB_LEASE_MS),
-    startedAt: job.startedAt || new Date(),
-    lastError: null,
-  });
+  if (!job || job.status !== "running") return;
   try {
     let discovery: DiscoveryResult;
     if (job.discoverySnapshot) {
