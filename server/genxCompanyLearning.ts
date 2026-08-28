@@ -372,8 +372,8 @@ export class GenxCompanyLearningClient {
     const form = new FormData();
     form.set(
       "file",
-      new Blob([input.jsonl], { type: "application/x-ndjson" }),
-      `amarktai-company-corpus-${input.corpusHash.slice(0, 16)}.jsonl`
+      new Blob([input.jsonl], { type: "text/plain" }),
+      `amarktai-company-corpus-${input.corpusHash.slice(0, 16)}.txt`
     );
     form.set("purpose", "company-learning");
     const payload = await this.request("/files", {
