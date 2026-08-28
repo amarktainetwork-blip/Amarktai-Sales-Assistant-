@@ -100,6 +100,62 @@ export const AGENT_CATALOG: AgentDefinition[] = [
     modelRole: "GenX evidence-led sales analysis model",
   },
   {
+    key: "sales_comms_tracker",
+    name: "Sales & Comms Tracker Agent",
+    purpose: "Builds an evidence-based customer communication timeline across verified CRM activity and inbound messages, showing unanswered customers, response gaps, channel preference, and the last meaningful contact without inventing communication state.",
+    category: "communications",
+    requiresModel: false,
+    modelRole: "Deterministic cross-channel communication tracker",
+  },
+  {
+    key: "promise_tracker",
+    name: "Promise & Commitment Tracker Agent",
+    purpose: "Finds explicit commitments made by the team or customer in verified CRM communication evidence, preserves the exact source record, and flags overdue dated commitments without inferring promises from ordinary discussion.",
+    category: "context",
+    requiresModel: true,
+    modelRole: "GenX bounded commitment extraction over verified CRM evidence",
+  },
+  {
+    key: "revenue_leakage",
+    name: "Revenue Leakage Agent",
+    purpose: "Detects evidence-backed revenue risk such as unanswered customers, overdue tasks, stale opportunities, missing next steps, and open deals whose expected close date has passed.",
+    category: "analysis",
+    requiresModel: false,
+    modelRole: "Deterministic revenue-risk rules over synchronized CRM truth",
+  },
+  {
+    key: "relationship_health",
+    name: "Customer & Deal Health Agent",
+    purpose: "Produces an explainable operational health score for active opportunities using only synchronized CRM evidence such as response state, activity age, overdue tasks, next steps, and close dates.",
+    category: "analysis",
+    requiresModel: false,
+    modelRole: "Explainable deterministic relationship-health scoring",
+  },
+  {
+    key: "pipeline_hygiene",
+    name: "Pipeline Hygiene Agent",
+    purpose: "Finds stale or incomplete pipeline records, including missing stages, missing owners, missing next steps, overdue next steps, stale activity and past close dates, without changing CRM data automatically.",
+    category: "analysis",
+    requiresModel: false,
+    modelRole: "Deterministic CRM quality and pipeline hygiene engine",
+  },
+  {
+    key: "attention_engine",
+    name: "Attention & Next-Best-Action Agent",
+    purpose: "Collapses competing CRM risk signals into one ranked customer attention queue so salespeople see who needs action first and why, without generating duplicate alerts.",
+    category: "orchestration",
+    requiresModel: false,
+    modelRole: "Deterministic evidence-weighted attention router",
+  },
+  {
+    key: "manager_watchtower",
+    name: "Manager Watchtower Agent",
+    purpose: "Gives authorised managers a team-level exception view of unanswered customers, overdue tasks, stale opportunities, missing next steps and pipeline value at risk, while respecting organisation and role boundaries.",
+    category: "analysis",
+    requiresModel: false,
+    modelRole: "Manager-only deterministic team exception intelligence",
+  },
+  {
     key: "objection_handler",
     name: "Objection Handling Agent",
     purpose: "Prepares factual, source-grounded responses to objections and clearly identifies missing information for human review.",
@@ -155,6 +211,9 @@ export function agentRuntimeStatus(key: string, dependencies: AgentRuntimeDepend
   if (key === "communications") return dependencies.genxReady && dependencies.communicationsReady ? "READY" : "NEEDS_CONNECTION";
   if (key === "conversation_coach" || key === "notes_agent") return dependencies.genxReady ? "READY" : "NEEDS_CONNECTION";
   if (key === "sales_intelligence") return dependencies.databaseReady && dependencies.genxReady && dependencies.crmReadReady ? "READY" : "NEEDS_CONNECTION";
+  if (key === "promise_tracker") return dependencies.databaseReady && dependencies.genxReady && dependencies.crmReadReady ? "READY" : "NEEDS_CONNECTION";
+  if (["sales_comms_tracker", "revenue_leakage", "relationship_health", "pipeline_hygiene", "attention_engine", "manager_watchtower"].includes(key))
+    return dependencies.databaseReady && dependencies.crmReadReady ? "READY" : "NEEDS_CONNECTION";
   if (key === "objection_handler" || key === "recommendation_agent") return dependencies.databaseReady && dependencies.genxReady ? "READY" : "NEEDS_CONNECTION";
   if (key === "pipeline_planner") return dependencies.databaseReady && dependencies.genxReady && (dependencies.crmReadReady || dependencies.crmRouteReady) ? "READY" : "NEEDS_CONNECTION";
   return "NOT_IMPLEMENTED";
