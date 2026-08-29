@@ -238,6 +238,8 @@ export const companyKnowledgeJobs = mysqlTable(
     temporaryResources:
       json("temporaryResources").$type<Record<string, unknown>>(),
     analysisCalls: int("analysisCalls").notNull().default(0),
+    auditCalls: int("auditCalls").notNull().default(0),
+    normalizationEvents: int("normalizationEvents").notNull().default(0),
     repairCalls: int("repairCalls").notNull().default(0),
     resultDiscoveryId: int("resultDiscoveryId").references(
       () => websiteDiscoveries.id,

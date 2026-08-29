@@ -1,5 +1,8 @@
 import { createHash } from "node:crypto";
-import type { CompanyCorpus, CompanyCorpusPage } from "./companyKnowledgeCorpus";
+import type {
+  CompanyCorpus,
+  CompanyCorpusPage,
+} from "./companyKnowledgeCorpus";
 import {
   companyKnowledgeAuditSchema,
   companyKnowledgePackSchema,
@@ -16,6 +19,11 @@ import {
   GenxCompanyLearningClient,
   type CompanyLearningResourceState,
 } from "./genxCompanyLearning";
+import {
+  CompanyKnowledgeOutputError,
+  formatCompanyKnowledgeOutputDiagnostic,
+  parseCanonicalCompanyKnowledgeOutput,
+} from "./companyKnowledgeModelOutput";
 
 export type {
   CompanyKnowledgePack,
@@ -65,7 +73,11 @@ type InlineCallStats = {
   analysis: number;
   audit: number;
   repair: number;
+  normalizationEvents: number;
+  normalizedResponses: number;
 };
+
+export type CompanyLearningRepairBudget = { used: number };
 
 function hashKey(value: string) {
   return createHash("sha256").update(value).digest("hex").slice(0, 32);
@@ -98,7 +110,10 @@ function pageMetadataUnit(page: CompanyCorpusPage) {
     `PRIMARY_HEADING=${compactLine(page.primaryHeading, 600)}`,
     `DESCRIPTION=${compactLine(page.description, 2_000)}`,
     `PAGE_HINT=${compactLine(page.pageHint, 200)}`,
-    `HEADINGS=${page.headings.map(item => compactLine(item, 600)).filter(Boolean).join(" | ")}`,
+    `HEADINGS=${page.headings
+      .map(item => compactLine(item, 600))
+      .filter(Boolean)
+      .join(" | ")}`,
   ].join("\n");
 }
 
@@ -140,9 +155,7 @@ function pageUnits(page: CompanyCorpusPage) {
   const units = [pageMetadataUnit(page)];
   units.push(...splitPageBody(page, "TEXT", page.text));
   if (page.jsonLd.length)
-    units.push(
-      ...splitPageBody(page, "JSON_LD", JSON.stringify(page.jsonLd))
-    );
+    units.push(...splitPageBody(page, "JSON_LD", JSON.stringify(page.jsonLd)));
   return units;
 }
 
@@ -180,10 +193,13 @@ export function buildCompanyInlineCorpusBatches(
       currentPageIds.push(unit.pageId);
     }
   }
-  if (current) grouped.push({ source: current, pageIds: unique(currentPageIds) });
+  if (current)
+    grouped.push({ source: current, pageIds: unique(currentPageIds) });
 
   if (!grouped.length)
-    throw new Error("Company-learning inline corpus produced no readable batches.");
+    throw new Error(
+      "Company-learning inline corpus produced no readable batches."
+    );
   if (grouped.length > MAX_COMPANY_INLINE_BATCHES)
     throw new Error(
       `Company-learning corpus requires ${grouped.length} bounded batches, exceeding the maximum of ${MAX_COMPANY_INLINE_BATCHES}.`
@@ -230,7 +246,9 @@ function dedupeStrings(values: string[]) {
 }
 
 function mergeSourcedFacts(
-  groups: Array<Array<{ title: string; details: string; sourcePageIds: string[] }>>
+  groups: Array<
+    Array<{ title: string; details: string; sourcePageIds: string[] }>
+  >
 ) {
   const merged = new Map<
     string,
@@ -239,8 +257,13 @@ function mergeSourcedFacts(
   for (const item of groups.flat()) {
     const key = `${normalise(item.title)}|${normalise(item.details)}`;
     const existing = merged.get(key);
-    if (existing) existing.sourcePageIds = unique([...existing.sourcePageIds, ...item.sourcePageIds]);
-    else merged.set(key, { ...item, sourcePageIds: unique(item.sourcePageIds) });
+    if (existing)
+      existing.sourcePageIds = unique([
+        ...existing.sourcePageIds,
+        ...item.sourcePageIds,
+      ]);
+    else
+      merged.set(key, { ...item, sourcePageIds: unique(item.sourcePageIds) });
   }
   return Array.from(merged.values());
 }
@@ -250,8 +273,13 @@ function mergeContacts(groups: CompanyKnowledgePack["contacts"][]) {
   for (const item of groups.flat()) {
     const key = `${item.type}|${normalise(item.value)}|${normalise(item.label)}`;
     const existing = merged.get(key);
-    if (existing) existing.sourcePageIds = unique([...existing.sourcePageIds, ...item.sourcePageIds]);
-    else merged.set(key, { ...item, sourcePageIds: unique(item.sourcePageIds) });
+    if (existing)
+      existing.sourcePageIds = unique([
+        ...existing.sourcePageIds,
+        ...item.sourcePageIds,
+      ]);
+    else
+      merged.set(key, { ...item, sourcePageIds: unique(item.sourcePageIds) });
   }
   return Array.from(merged.values());
 }
@@ -261,13 +289,20 @@ function mergeLocations(groups: CompanyKnowledgePack["locations"][]) {
   for (const item of groups.flat()) {
     const key = `${normalise(item.name)}|${normalise(item.address)}`;
     const existing = merged.get(key);
-    if (existing) existing.sourcePageIds = unique([...existing.sourcePageIds, ...item.sourcePageIds]);
-    else merged.set(key, { ...item, sourcePageIds: unique(item.sourcePageIds) });
+    if (existing)
+      existing.sourcePageIds = unique([
+        ...existing.sourcePageIds,
+        ...item.sourcePageIds,
+      ]);
+    else
+      merged.set(key, { ...item, sourcePageIds: unique(item.sourcePageIds) });
   }
   return Array.from(merged.values());
 }
 
-function mergePrices(groups: CompanyKnowledgePack["offerings"][number]["prices"][]) {
+function mergePrices(
+  groups: CompanyKnowledgePack["offerings"][number]["prices"][]
+) {
   const merged = new Map<
     string,
     CompanyKnowledgePack["offerings"][number]["prices"][number]
@@ -275,8 +310,13 @@ function mergePrices(groups: CompanyKnowledgePack["offerings"][number]["prices"]
   for (const item of groups.flat()) {
     const key = `${normalise(item.value)}|${item.semanticType}|${normalise(item.label)}`;
     const existing = merged.get(key);
-    if (existing) existing.sourcePageIds = unique([...existing.sourcePageIds, ...item.sourcePageIds]);
-    else merged.set(key, { ...item, sourcePageIds: unique(item.sourcePageIds) });
+    if (existing)
+      existing.sourcePageIds = unique([
+        ...existing.sourcePageIds,
+        ...item.sourcePageIds,
+      ]);
+    else
+      merged.set(key, { ...item, sourcePageIds: unique(item.sourcePageIds) });
   }
   return Array.from(merged.values());
 }
@@ -359,8 +399,13 @@ function mergeExcluded(groups: CompanyKnowledgePack["excludedContent"][]) {
   for (const item of groups.flat()) {
     const key = `${item.classification}|${normalise(item.reason)}`;
     const existing = merged.get(key);
-    if (existing) existing.sourcePageIds = unique([...existing.sourcePageIds, ...item.sourcePageIds]);
-    else merged.set(key, { ...item, sourcePageIds: unique(item.sourcePageIds) });
+    if (existing)
+      existing.sourcePageIds = unique([
+        ...existing.sourcePageIds,
+        ...item.sourcePageIds,
+      ]);
+    else
+      merged.set(key, { ...item, sourcePageIds: unique(item.sourcePageIds) });
   }
   return Array.from(merged.values());
 }
@@ -370,7 +415,11 @@ function mergeConflicts(groups: CompanyKnowledgePack["conflicts"][]) {
   for (const item of groups.flat()) {
     const key = `${normalise(item.subject)}|${dedupeStrings(item.values).map(normalise).sort().join("|")}`;
     const existing = merged.get(key);
-    if (existing) existing.sourcePageIds = unique([...existing.sourcePageIds, ...item.sourcePageIds]);
+    if (existing)
+      existing.sourcePageIds = unique([
+        ...existing.sourcePageIds,
+        ...item.sourcePageIds,
+      ]);
     else
       merged.set(key, {
         ...item,
@@ -385,18 +434,27 @@ export function mergeCompanyKnowledgeBatchPacks(
   packs: CompanyKnowledgePack[],
   corpus: CompanyCorpus
 ): CompanyKnowledgePack {
-  if (!packs.length) throw new Error("Company-learning analysis produced no batch packs.");
-  const homepagePack = packs.find(pack => pack.company.sourcePageIds.includes("PAGE_0001"));
+  if (!packs.length)
+    throw new Error("Company-learning analysis produced no batch packs.");
+  const homepagePack = packs.find(pack =>
+    pack.company.sourcePageIds.includes("PAGE_0001")
+  );
   const base = homepagePack || packs[0];
   const companyKey = normalise(base.company.name);
-  const matchingCompanies = packs.filter(pack => normalise(pack.company.name) === companyKey);
-  const differentCompanies = packs.filter(pack => normalise(pack.company.name) !== companyKey);
+  const matchingCompanies = packs.filter(
+    pack => normalise(pack.company.name) === companyKey
+  );
+  const differentCompanies = packs.filter(
+    pack => normalise(pack.company.name) !== companyKey
+  );
   const identityConflict = differentCompanies.length
     ? [
         {
           subject: "Company identity",
           values: dedupeStrings(packs.map(pack => pack.company.name)),
-          sourcePageIds: unique(packs.flatMap(pack => pack.company.sourcePageIds)),
+          sourcePageIds: unique(
+            packs.flatMap(pack => pack.company.sourcePageIds)
+          ),
           explanation:
             "Different bounded analysis batches returned different company identities. Human review is required before approval.",
         },
@@ -407,11 +465,12 @@ export function mergeCompanyKnowledgeBatchPacks(
     company: {
       name: base.company.name,
       legalName:
-        matchingCompanies.find(pack => pack.company.legalName)?.company.legalName ||
-        base.company.legalName,
-      description: matchingCompanies
-        .map(pack => pack.company.description)
-        .sort((left, right) => right.length - left.length)[0] || "",
+        matchingCompanies.find(pack => pack.company.legalName)?.company
+          .legalName || base.company.legalName,
+      description:
+        matchingCompanies
+          .map(pack => pack.company.description)
+          .sort((left, right) => right.length - left.length)[0] || "",
       sourcePageIds: unique(
         matchingCompanies.flatMap(pack => pack.company.sourcePageIds)
       ),
@@ -423,21 +482,29 @@ export function mergeCompanyKnowledgeBatchPacks(
     certificationsAndAccreditation: mergeSourcedFacts(
       packs.map(pack => pack.certificationsAndAccreditation)
     ),
-    supportAndOutcomes: mergeSourcedFacts(packs.map(pack => pack.supportAndOutcomes)),
+    supportAndOutcomes: mergeSourcedFacts(
+      packs.map(pack => pack.supportAndOutcomes)
+    ),
     policies: mergeSourcedFacts(packs.map(pack => pack.policies)),
     refundCancellationTerms: mergeSourcedFacts(
       packs.map(pack => pack.refundCancellationTerms)
     ),
-    contactKnowledge: mergeSourcedFacts(packs.map(pack => pack.contactKnowledge)),
+    contactKnowledge: mergeSourcedFacts(
+      packs.map(pack => pack.contactKnowledge)
+    ),
     faqs: mergeSourcedFacts(packs.map(pack => pack.faqs)),
-    salesUsefulFacts: mergeSourcedFacts(packs.map(pack => pack.salesUsefulFacts)),
+    salesUsefulFacts: mergeSourcedFacts(
+      packs.map(pack => pack.salesUsefulFacts)
+    ),
     excludedContent: mergeExcluded(packs.map(pack => pack.excludedContent)),
     conflicts: mergeConflicts([
       ...packs.map(pack => pack.conflicts),
       identityConflict,
     ]),
     importantGaps: dedupeStrings(packs.flatMap(pack => pack.importantGaps)),
-    sourceIndex: Object.fromEntries(corpus.pages.map(page => [page.pageId, page.url])),
+    sourceIndex: Object.fromEntries(
+      corpus.pages.map(page => [page.pageId, page.url])
+    ),
   });
 }
 
@@ -445,7 +512,9 @@ function mergeAudits(audits: CompanyKnowledgeAudit[]): CompanyKnowledgeAudit {
   return companyKnowledgeAuditSchema.parse({
     addOfferings: mergeOfferings(audits.map(item => item.addOfferings)),
     replaceOfferings: mergeOfferings(audits.map(item => item.replaceOfferings)),
-    removeOfferingIds: dedupeStrings(audits.flatMap(item => item.removeOfferingIds)),
+    removeOfferingIds: dedupeStrings(
+      audits.flatMap(item => item.removeOfferingIds)
+    ),
     addFinance: mergeSourcedFacts(audits.map(item => item.addFinance)),
     addCertificationsAndAccreditation: mergeSourcedFacts(
       audits.map(item => item.addCertificationsAndAccreditation)
@@ -462,7 +531,9 @@ function mergeAudits(audits: CompanyKnowledgeAudit[]): CompanyKnowledgeAudit {
     ),
     addContacts: mergeContacts(audits.map(item => item.addContacts)),
     addConflicts: mergeConflicts(audits.map(item => item.addConflicts)),
-    addExcludedContent: mergeExcluded(audits.map(item => item.addExcludedContent)),
+    addExcludedContent: mergeExcluded(
+      audits.map(item => item.addExcludedContent)
+    ),
     importantGaps: dedupeStrings(audits.flatMap(item => item.importantGaps)),
   });
 }
@@ -471,9 +542,14 @@ function intersects(sourcePageIds: string[], allowed: Set<string>) {
   return sourcePageIds.some(id => allowed.has(id));
 }
 
-function compactDraftForBatch(draft: CompanyKnowledgePack, batch: CompanyInlineCorpusBatch) {
+function compactDraftForBatch(
+  draft: CompanyKnowledgePack,
+  batch: CompanyInlineCorpusBatch
+) {
   const allowed = new Set(batch.pageIds);
-  const facts = (items: Array<{ title: string; details: string; sourcePageIds: string[] }>) =>
+  const facts = (
+    items: Array<{ title: string; details: string; sourcePageIds: string[] }>
+  ) =>
     items
       .filter(item => intersects(item.sourcePageIds, allowed))
       .map(item => ({
@@ -495,55 +571,49 @@ function compactDraftForBatch(draft: CompanyKnowledgePack, batch: CompanyInlineC
         financeOptions: item.financeOptions,
         sourcePageIds: item.sourcePageIds,
       })),
-    contacts: draft.contacts.filter(item => intersects(item.sourcePageIds, allowed)),
+    contacts: draft.contacts.filter(item =>
+      intersects(item.sourcePageIds, allowed)
+    ),
     finance: facts(draft.finance),
     certificationsAndAccreditation: facts(draft.certificationsAndAccreditation),
     supportAndOutcomes: facts(draft.supportAndOutcomes),
     policies: facts(draft.policies),
     refundCancellationTerms: facts(draft.refundCancellationTerms),
     contactKnowledge: facts(draft.contactKnowledge),
-    conflicts: draft.conflicts.filter(item => intersects(item.sourcePageIds, allowed)),
+    conflicts: draft.conflicts.filter(item =>
+      intersects(item.sourcePageIds, allowed)
+    ),
   };
-}
-
-function parseStructured<T>(raw: unknown, schema: { parse(value: unknown): T }) {
-  if (typeof raw !== "string") return schema.parse(raw);
-  const cleaned = raw
-    .trim()
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "")
-    .trim();
-  const first = cleaned.indexOf("{");
-  const last = cleaned.lastIndexOf("}");
-  if (first < 0 || last <= first) throw new Error("No structured JSON object was returned.");
-  const parsed = JSON.parse(cleaned.slice(first, last + 1)) as unknown;
-  try {
-    return schema.parse(parsed);
-  } catch (error) {
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      const entries = Object.entries(parsed as Record<string, unknown>);
-      if (entries.length === 1) return schema.parse(entries[0][1]);
-    }
-    throw error;
-  }
 }
 
 export class InlineBatchWholeSiteModel implements WholeSiteLearningModel {
   private readonly client: InlineClient;
   private resources: CompanyLearningResourceState = { sessionIds: [] };
-  private models?: Awaited<ReturnType<GenxCompanyLearningClient["selectModels"]>>;
-  private calls: InlineCallStats = { analysis: 0, audit: 0, repair: 0 };
+  private models?: Awaited<
+    ReturnType<GenxCompanyLearningClient["selectModels"]>
+  >;
+  private calls: Omit<InlineCallStats, "repair"> = {
+    analysis: 0,
+    audit: 0,
+    normalizationEvents: 0,
+    normalizedResponses: 0,
+  };
+  private readonly repairBudget: CompanyLearningRepairBudget;
 
   constructor(
     private readonly input: {
       userId: number;
       organisationId: number;
       reference: string;
-      onResource?: (resources: CompanyLearningResourceState) => Promise<void> | void;
+      onResource?: (
+        resources: CompanyLearningResourceState
+      ) => Promise<void> | void;
       client?: InlineClient;
+      repairBudget?: CompanyLearningRepairBudget;
     }
   ) {
     this.client = input.client || new GenxCompanyLearningClient();
+    this.repairBudget = input.repairBudget || { used: 0 };
   }
 
   private async ensureModels() {
@@ -558,7 +628,9 @@ export class InlineBatchWholeSiteModel implements WholeSiteLearningModel {
   private async closeSession(sessionId: string) {
     try {
       await this.client.closeSession(sessionId);
-      this.resources.sessionIds = this.resources.sessionIds.filter(id => id !== sessionId);
+      this.resources.sessionIds = this.resources.sessionIds.filter(
+        id => id !== sessionId
+      );
     } catch {
       // Keep the session in resource state so final cleanup can retry it.
     }
@@ -585,7 +657,6 @@ export class InlineBatchWholeSiteModel implements WholeSiteLearningModel {
 
     if (input.kind === "analysis") this.calls.analysis += 1;
     else if (input.kind === "audit") this.calls.audit += 1;
-    else this.calls.repair += 1;
 
     try {
       const parts: TextPart[] = [];
@@ -623,8 +694,11 @@ export class InlineBatchWholeSiteModel implements WholeSiteLearningModel {
     invalidOutput: string,
     validationError: string
   ) {
-    if (this.calls.repair >= MAX_COMPANY_INLINE_REPAIRS)
-      throw new Error("Company learning exceeded its bounded batch-repair contract.");
+    if (this.repairBudget.used >= MAX_COMPANY_INLINE_REPAIRS)
+      throw new Error(
+        `Company learning exceeded its bounded batch-repair contract. ${validationError.slice(0, 4_000)}`
+      );
+    this.repairBudget.used += 1;
     return this.run({
       batch,
       kind: "repair",
@@ -632,8 +706,13 @@ export class InlineBatchWholeSiteModel implements WholeSiteLearningModel {
       includeSource: false,
       systemPrompt:
         "Repair invalid structured company-learning JSON into the exact target schema. Do not add, infer or change facts. Preserve only facts and PAGE_XXXX identifiers already present in the invalid output. Return JSON only.",
-      prompt: `Repair this ${kind} batch output.\nValidation error: ${validationError.slice(0, 2_000)}\n\nTARGET SCHEMA:\n${companyKnowledgeRepairTargetPrompt(kind)}\n\nINVALID OUTPUT:\n${invalidOutput.slice(0, 24_000)}`,
+      prompt: `Repair this ${kind} batch output.\nRepair attempt: ${this.repairBudget.used}/${MAX_COMPANY_INLINE_REPAIRS}\nValidation diagnostic: ${validationError.slice(0, 4_000)}\n\nTARGET SCHEMA:\n${companyKnowledgeRepairTargetPrompt(kind)}\n\nINVALID OUTPUT:\n${invalidOutput.slice(0, 24_000)}`,
     });
+  }
+
+  private noteNormalization(actions: string[]) {
+    this.calls.normalizationEvents += actions.length;
+    if (actions.length) this.calls.normalizedResponses += 1;
   }
 
   private async parseBatch<T>(
@@ -643,15 +722,42 @@ export class InlineBatchWholeSiteModel implements WholeSiteLearningModel {
     schema: { parse(value: unknown): T }
   ) {
     try {
-      return parseStructured(raw, schema);
+      const parsed = parseCanonicalCompanyKnowledgeOutput({
+        raw,
+        mode: kind === "audit" ? "audit" : "full_analysis",
+        schema: schema as never,
+        context: {
+          phase: kind,
+          batchIndex: batch.index + 1,
+          batchTotal: batch.total,
+          pageIds: batch.pageIds,
+        },
+      });
+      this.noteNormalization(parsed.normalizationActions);
+      return parsed.data as T;
     } catch (error) {
+      if (error instanceof CompanyKnowledgeOutputError)
+        this.noteNormalization(error.diagnostic.normalizationActions);
       const repaired = await this.repairBatch(
         batch,
         kind,
         raw,
-        error instanceof Error ? error.message : String(error)
+        formatCompanyKnowledgeOutputDiagnostic(error)
       );
-      return parseStructured(repaired, schema);
+      const parsed = parseCanonicalCompanyKnowledgeOutput({
+        raw: repaired,
+        mode: kind === "audit" ? "audit" : "full_analysis",
+        schema: schema as never,
+        context: {
+          phase: "repair",
+          batchIndex: batch.index + 1,
+          batchTotal: batch.total,
+          pageIds: batch.pageIds,
+          repairAttempt: this.repairBudget.used,
+        },
+      });
+      this.noteNormalization(parsed.normalizationActions);
+      return parsed.data as T;
     }
   }
 
@@ -668,13 +774,24 @@ export class InlineBatchWholeSiteModel implements WholeSiteLearningModel {
             "You are a senior business analyst and sales-enablement architect. Use only the inline canonical first-party corpus batch in the current user message. Do not use prior knowledge or attachments. PAGE IDs may repeat when a long page is split; combine those segments. Extract every real company fact present in this batch and return strict JSON only.",
           prompt: `Build a PARTIAL CompanyKnowledgePack for only the supplied corpus batch. Use empty arrays when a category is absent. Every material fact must cite PAGE_XXXX IDs from this batch. Separate real offerings from categories, editorial pages, testimonials, examples, comparisons and competitors. Distinguish full current price, deposit, finance payment, alternative plan and other fees. Never silently resolve contradictory first-party facts.\n\n${companyKnowledgeRepairTargetPrompt("analysis")}\n\nDo not rename keys, add metadata keys, wrap the response, or use facts outside this batch. Return JSON only.`,
         });
-        return this.parseBatch(batch, "analysis", raw, companyKnowledgePackSchema);
+        return this.parseBatch(
+          batch,
+          "analysis",
+          raw,
+          companyKnowledgePackSchema
+        );
       }
     );
     return mergeCompanyKnowledgeBatchPacks(packs, corpus);
   }
 
-  async audit({ corpus, draft }: { corpus: CompanyCorpus; draft: CompanyKnowledgePack }) {
+  async audit({
+    corpus,
+    draft,
+  }: {
+    corpus: CompanyCorpus;
+    draft: CompanyKnowledgePack;
+  }) {
     const batches = buildCompanyInlineCorpusBatches(corpus);
     const audits = await mapWithConcurrency(
       batches,
@@ -689,7 +806,12 @@ export class InlineBatchWholeSiteModel implements WholeSiteLearningModel {
             "You are an independent adversarial company-knowledge auditor. Use only the inline canonical first-party corpus batch in the current user message. Do not use prior knowledge or attachments. Find omissions, false offerings, merged plans, wrong prices, finance, contacts, policies, certification, support, contradictions and unsupported claims. Return only the strict requested patch JSON.",
           prompt: `Audit the current merged draft items relevant to this batch against the supplied source batch.\n\nCURRENT DRAFT SUBSET:\n${JSON.stringify(compactDraft)}\n\n${companyKnowledgeRepairTargetPrompt("audit")}\n\nOnly propose corrections grounded in PAGE_XXXX IDs visible in this batch. Do not rename keys, add metadata keys, wrap the response, or invent facts. Return JSON only.`,
         });
-        return this.parseBatch(batch, "audit", raw, companyKnowledgeAuditSchema);
+        return this.parseBatch(
+          batch,
+          "audit",
+          raw,
+          companyKnowledgeAuditSchema
+        );
       }
     );
     return mergeAudits(audits);
@@ -716,7 +838,7 @@ export class InlineBatchWholeSiteModel implements WholeSiteLearningModel {
   }
 
   callStats() {
-    return { ...this.calls };
+    return { ...this.calls, repair: this.repairBudget.used };
   }
 }
 
@@ -739,12 +861,18 @@ export async function synthesiseCompanyKnowledge(
     organisationId: input.organisationId,
     reference: input.reference,
     onResource: resources =>
-      input.onCheckpoint?.({ kind: "resources", resources } as WholeSiteCheckpoint),
+      input.onCheckpoint?.({
+        kind: "resources",
+        resources,
+      } as WholeSiteCheckpoint),
   });
   const result = await synthesiseCompanyKnowledgeBase({ ...input, model });
   const stats = model.callStats();
-  result.analysisCalls = stats.analysis + stats.audit;
+  result.analysisCalls = stats.analysis;
+  result.auditCalls = stats.audit;
+  result.normalizationEvents = stats.normalizationEvents;
   result.repairCalls = stats.repair;
-  result.totalAiCalls = result.analysisCalls + result.repairCalls;
+  result.totalAiCalls =
+    result.analysisCalls + result.auditCalls + result.repairCalls;
   return result;
 }

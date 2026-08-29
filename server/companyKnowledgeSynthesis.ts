@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { z } from "zod";
 import {
   buildCompanyCorpus,
@@ -8,10 +7,14 @@ import {
   type CompanyCorpusPage,
 } from "./companyKnowledgeCorpus";
 import {
-  GenxCompanyLearningClient,
   MAX_COMPANY_SEMANTIC_PASSES,
   type CompanyLearningResourceState,
 } from "./genxCompanyLearning";
+import {
+  CompanyKnowledgeOutputError,
+  formatCompanyKnowledgeOutputDiagnostic,
+  parseCanonicalCompanyKnowledgeOutput,
+} from "./companyKnowledgeModelOutput";
 
 export type ReviewPage = CompanyCorpusInputPage;
 
@@ -33,10 +36,34 @@ export const PRICE_SEMANTIC_TYPES = [
   "other_fee",
 ] as const;
 
-const sourceIds = z
+const requiredSourceIds = z
   .array(z.string().regex(/^PAGE_\d{4}$/))
-  .max(500)
-  .default([]);
+  .min(1)
+  .max(500);
+const conflictSourceIds = z
+  .array(z.string().regex(/^PAGE_\d{4}$/))
+  .min(2)
+  .max(500);
+const conflictValues = z
+  .array(z.string().trim().min(1).max(4_000))
+  .min(2)
+  .max(500);
+const sourceUrl = z
+  .string()
+  .url()
+  .refine(value => {
+    try {
+      const parsed = new URL(value);
+      return (
+        ["http:", "https:"].includes(parsed.protocol) &&
+        !parsed.hostname.includes("...") &&
+        (parsed.hostname.includes(".") ||
+          /^\d{1,3}(?:\.\d{1,3}){3}$/.test(parsed.hostname))
+      );
+    } catch {
+      return false;
+    }
+  }, "Expected a real HTTP(S) source URL.");
 const strings = z
   .array(z.string().trim().min(1).max(4_000))
   .max(500)
@@ -47,7 +74,7 @@ const priceSchema = z
     value: z.string().trim().min(1).max(120),
     semanticType: z.enum(PRICE_SEMANTIC_TYPES),
     label: z.string().trim().min(1).max(300),
-    sourcePageIds: sourceIds,
+    sourcePageIds: requiredSourceIds,
   })
   .strict();
 
@@ -70,7 +97,7 @@ const offeringSchema = z
     entryRequirements: strings,
     outcomes: strings,
     caveats: strings,
-    sourcePageIds: sourceIds,
+    sourcePageIds: requiredSourceIds,
   })
   .strict();
 
@@ -78,7 +105,7 @@ const sourcedFactSchema = z
   .object({
     title: z.string().trim().min(1).max(500),
     details: z.string().trim().min(1).max(8_000),
-    sourcePageIds: sourceIds,
+    sourcePageIds: requiredSourceIds,
   })
   .strict();
 
@@ -87,7 +114,7 @@ const companySchema = z
     name: z.string().trim().min(1).max(300),
     legalName: z.string().trim().max(300).default(""),
     description: z.string().trim().max(8_000).default(""),
-    sourcePageIds: sourceIds,
+    sourcePageIds: requiredSourceIds,
   })
   .strict();
 
@@ -96,7 +123,7 @@ const contactSchema = z
     type: z.enum(["email", "phone", "website", "other"]),
     value: z.string().trim().min(1).max(500),
     label: z.string().trim().max(300).default(""),
-    sourcePageIds: sourceIds,
+    sourcePageIds: requiredSourceIds,
   })
   .strict();
 
@@ -104,13 +131,13 @@ const locationSchema = z
   .object({
     name: z.string().trim().min(1).max(500),
     address: z.string().trim().max(2_000).default(""),
-    sourcePageIds: sourceIds,
+    sourcePageIds: requiredSourceIds,
   })
   .strict();
 
 const excludedSchema = z
   .object({
-    sourcePageIds: sourceIds,
+    sourcePageIds: requiredSourceIds,
     classification: z.enum([
       "category",
       "editorial",
@@ -129,8 +156,8 @@ const excludedSchema = z
 const conflictSchema = z
   .object({
     subject: z.string().trim().min(1).max(500),
-    values: strings,
-    sourcePageIds: sourceIds,
+    values: conflictValues,
+    sourcePageIds: conflictSourceIds,
     explanation: z.string().trim().min(1).max(2_000),
   })
   .strict();
@@ -155,7 +182,9 @@ export const companyKnowledgePackSchema = z
     excludedContent: z.array(excludedSchema).max(1_000).default([]),
     conflicts: z.array(conflictSchema).max(500).default([]),
     importantGaps: strings,
-    sourceIndex: z.record(z.string(), z.string().url()).default({}),
+    sourceIndex: z
+      .record(z.string().regex(/^PAGE_\d{4}$/), sourceUrl)
+      .default({}),
   })
   .strict();
 
@@ -250,49 +279,13 @@ export type CompanyKnowledgeSynthesisResult = {
   completeness: CompanyKnowledgeCompleteness;
   reviewedAt: string;
   analysisCalls: number;
+  auditCalls: number;
+  normalizationEvents: number;
   repairCalls: number;
   totalAiCalls: number;
   cleanupFailures: string[];
   selectedModelOperations: { analysis: boolean; audit: boolean };
 };
-
-function hashKey(value: string) {
-  return createHash("sha256").update(value).digest("hex").slice(0, 32);
-}
-
-function parseJson(value: unknown) {
-  if (typeof value !== "string") return value;
-  const withoutFence = value
-    .trim()
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "")
-    .trim();
-  const first = withoutFence.indexOf("{");
-  const last = withoutFence.lastIndexOf("}");
-  if (first < 0 || last <= first)
-    throw new Error("No structured JSON object was returned.");
-  return JSON.parse(withoutFence.slice(first, last + 1)) as unknown;
-}
-
-function parseAgainstSchema<T>(raw: unknown, schema: z.ZodType<T>) {
-  const parsed = parseJson(raw);
-  const direct = schema.safeParse(parsed);
-  if (direct.success) return direct.data;
-  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-    const entries = Object.entries(parsed as Record<string, unknown>);
-    if (entries.length === 1) {
-      const inner = schema.safeParse(entries[0][1]);
-      if (inner.success) return inner.data;
-    }
-  }
-  throw direct.error;
-}
-
-function errorText(error: unknown) {
-  return error instanceof Error
-    ? error.message.slice(0, 2_000)
-    : String(error).slice(0, 2_000);
-}
 
 async function parseWithBoundedRepair<T>(input: {
   raw: unknown;
@@ -301,10 +294,21 @@ async function parseWithBoundedRepair<T>(input: {
   corpus: CompanyCorpus;
   model: WholeSiteLearningModel;
   repairBudget: { used: number };
+  normalization: { events: number };
 }) {
   try {
-    return parseAgainstSchema(input.raw, input.schema);
+    const parsed = parseCanonicalCompanyKnowledgeOutput({
+      raw: input.raw,
+      mode: input.kind === "analysis" ? "full_analysis" : "audit",
+      schema: input.schema,
+      context: { phase: input.kind },
+    });
+    input.normalization.events += parsed.normalizationActions.length;
+    return parsed.data;
   } catch (firstError) {
+    if (firstError instanceof CompanyKnowledgeOutputError)
+      input.normalization.events +=
+        firstError.diagnostic.normalizationActions.length;
     if (!input.model.repair || input.repairBudget.used >= 1) throw firstError;
     input.repairBudget.used += 1;
     const repaired = await input.model.repair({
@@ -314,14 +318,20 @@ async function parseWithBoundedRepair<T>(input: {
         typeof input.raw === "string"
           ? input.raw.slice(0, 200_000)
           : JSON.stringify(input.raw).slice(0, 200_000),
-      validationError: errorText(firstError),
+      validationError: formatCompanyKnowledgeOutputDiagnostic(firstError),
     });
-    return parseAgainstSchema(repaired, input.schema);
+    const parsed = parseCanonicalCompanyKnowledgeOutput({
+      raw: repaired,
+      mode: input.kind === "analysis" ? "full_analysis" : "audit",
+      schema: input.schema,
+      context: {
+        phase: "repair",
+        repairAttempt: input.repairBudget.used,
+      },
+    });
+    input.normalization.events += parsed.normalizationActions.length;
+    return parsed.data;
   }
-}
-
-function analystSystemPrompt() {
-  return "You are a senior business analyst and sales-enablement architect. Use only the attached canonical first-party website corpus. Understand the whole company rather than summarising pages. Return strict JSON matching the requested schema. Reference sources only by known PAGE_XXXX IDs. Separate real offerings from categories, career-path/editorial pages, testimonials, examples, comparisons and competitors. Distinguish full price, deposit, finance payment, alternative plan and other fees. Never silently resolve contradictory first-party facts.";
 }
 
 function companyKnowledgePackShapePrompt() {
@@ -334,162 +344,19 @@ function companyKnowledgePackShapePrompt() {
   "finance":[],"certificationsAndAccreditation":[],"supportAndOutcomes":[],"policies":[],"refundCancellationTerms":[],"contactKnowledge":[],"faqs":[],"salesUsefulFacts":[],
   "excludedContent":[{"sourcePageIds":[],"classification":"category|editorial|testimonial|comparison|competitor|example|duplicate|navigation|other_non_company_content","reason":""}],
   "conflicts":[{"subject":"","values":[],"sourcePageIds":[],"explanation":""}],
-  "importantGaps":[],"sourceIndex":{"PAGE_0001":"https://..."}
+  "importantGaps":[],"sourceIndex":{"PAGE_0001":"https://www.example.com/page"}
 }
 Every finance/certification/support/policy/refund/contact/FAQ/sales fact uses {"title":"","details":"","sourcePageIds":[]}.`;
-}
-
-function analystPrompt() {
-  return `Build the complete proposed CompanyKnowledgePack from the attached corpus.
-${companyKnowledgePackShapePrompt()}
-Every material claim and offering must cite PAGE_XXXX IDs from the corpus. Include every real offering and deliberate conflict. Do not rename keys, add metadata keys, or return an alternate schema. Return JSON only.`;
-}
-
-function auditorSystemPrompt() {
-  return "You are an independent adversarial company-knowledge auditor. Re-read the complete attached first-party corpus and try to disprove the proposed pack. Find missed offerings, false categories/editorial/examples/testimonials, duplicates, merged plans, missing or misclassified prices, finance, contacts, policies, certification, support, contradictions, unsupported claims and important omissions. Return corrections as the strict patch shape requested; do not return a replacement pack.";
 }
 
 function companyKnowledgeAuditShapePrompt() {
   return `Use exactly this JSON patch structure: {"addOfferings":[],"replaceOfferings":[],"removeOfferingIds":[],"addFinance":[],"addCertificationsAndAccreditation":[],"addSupportAndOutcomes":[],"addPolicies":[],"addRefundCancellationTerms":[],"addContactKnowledge":[],"addContacts":[],"addConflicts":[],"addExcludedContent":[],"importantGaps":[]}. Added/replaced offerings and facts must use the exact structures from the proposed pack and cite only known PAGE_XXXX IDs.`;
 }
 
-function auditorPrompt(draft: CompanyKnowledgePack) {
-  return `Audit this proposed pack against the attached corpus:\n${JSON.stringify(draft)}\n\n${companyKnowledgeAuditShapePrompt()} Do not rename keys, add metadata keys, or return an alternate schema. Return JSON only.`;
-}
-
-export function companyKnowledgeRepairTargetPrompt(
-  kind: "analysis" | "audit"
-) {
+export function companyKnowledgeRepairTargetPrompt(kind: "analysis" | "audit") {
   return kind === "analysis"
     ? companyKnowledgePackShapePrompt()
     : companyKnowledgeAuditShapePrompt();
-}
-
-class DefaultWholeSiteModel implements WholeSiteLearningModel {
-  private readonly client = new GenxCompanyLearningClient();
-  private resources: CompanyLearningResourceState = { sessionIds: [] };
-  private models?: Awaited<
-    ReturnType<GenxCompanyLearningClient["selectModels"]>
-  >;
-
-  constructor(
-    private readonly input: {
-      userId: number;
-      organisationId: number;
-      reference: string;
-      onResource?: (
-        resources: CompanyLearningResourceState
-      ) => Promise<void> | void;
-    }
-  ) {}
-
-  private async ensureFile(corpus: CompanyCorpus) {
-    this.models ||= await this.client.selectModels();
-    if (!this.resources.fileId) {
-      this.resources.fileId = await this.client.uploadCorpus(corpus);
-      await this.input.onResource?.(this.resourceState());
-    }
-    return this.resources.fileId;
-  }
-
-  private async run(input: {
-    corpus: CompanyCorpus;
-    kind: "analysis" | "audit" | "repair";
-    systemPrompt: string;
-    prompt: string;
-    auditModel?: boolean;
-  }) {
-    const fileId = await this.ensureFile(input.corpus);
-    const model = input.auditModel
-      ? this.models!.audit.id
-      : this.models!.analysis.id;
-    const sessionId = await this.client.createSession({
-      model,
-      systemPrompt: input.systemPrompt,
-      title: `Amarktai company ${input.kind}`,
-    });
-    this.resources.sessionIds.push(sessionId);
-    await this.input.onResource?.(this.resourceState());
-    const result = await this.client.sendSessionMessage({
-      sessionId,
-      content: input.prompt,
-      fileIds: [fileId],
-      idempotencyKey: hashKey(
-        `${this.input.reference}:${input.kind}:${input.corpus.corpusHash}`
-      ),
-      billing: {
-        userId: this.input.userId,
-        organisationId: this.input.organisationId,
-        feature: `company_learning_${input.kind}`,
-        reference: `${this.input.reference}:${input.kind}:${input.corpus.corpusHash}`,
-      },
-    });
-    await this.client.closeSession(sessionId);
-    this.resources.sessionIds = this.resources.sessionIds.filter(
-      id => id !== sessionId
-    );
-    await this.input.onResource?.(this.resourceState());
-    return result.content;
-  }
-
-  analyse({ corpus }: { corpus: CompanyCorpus }) {
-    return this.run({
-      corpus,
-      kind: "analysis",
-      systemPrompt: analystSystemPrompt(),
-      prompt: analystPrompt(),
-    });
-  }
-
-  audit({
-    corpus,
-    draft,
-  }: {
-    corpus: CompanyCorpus;
-    draft: CompanyKnowledgePack;
-  }) {
-    return this.run({
-      corpus,
-      kind: "audit",
-      systemPrompt: auditorSystemPrompt(),
-      prompt: auditorPrompt(draft),
-      auditModel: true,
-    });
-  }
-
-  repair(input: {
-    corpus: CompanyCorpus;
-    kind: "analysis" | "audit";
-    invalidOutput: string;
-    validationError: string;
-  }) {
-    return this.run({
-      corpus: input.corpus,
-      kind: "repair",
-      systemPrompt:
-        "Repair invalid structured company-learning JSON into the exact target schema supplied by the user. Do not add facts. Keep only PAGE_XXXX IDs present in the attached corpus. Do not return alternate key names, metadata, commentary, or wrapper objects. Return JSON only.",
-      prompt: `Repair this ${input.kind} output. Validation error: ${input.validationError}\n\nTARGET SCHEMA — every top-level key and nested shape must match exactly:\n${companyKnowledgeRepairTargetPrompt(input.kind)}\n\nPreserve only evidence-grounded facts from the invalid output and attached corpus. Do not invent facts, rename keys, add metadata keys, or wrap the result.\n\nInvalid output:\n${input.invalidOutput}`,
-      auditModel: input.kind === "audit",
-    });
-  }
-
-  async cleanup() {
-    const failures = await this.client.cleanup(this.resources);
-    if (!failures.length) this.resources = { sessionIds: [] };
-    await this.input.onResource?.(this.resourceState());
-    return failures;
-  }
-
-  resourceState() {
-    return {
-      fileId: this.resources.fileId,
-      sessionIds: [...this.resources.sessionIds],
-    };
-  }
-
-  selectedModels() {
-    return { analysis: this.models?.analysis.id, audit: this.models?.audit.id };
-  }
 }
 
 function unique<T>(values: T[]) {
@@ -778,6 +645,17 @@ export function validateCompanyKnowledgePack(
 ) {
   const pages = corpusPageMap(corpus);
   const gaps = [...proposed.importantGaps];
+  const companySourcePageIds = knownSources(
+    proposed.company.sourcePageIds,
+    pages
+  );
+  if (
+    !companySourcePageIds.length ||
+    !importantNameSupported(proposed.company.name, companySourcePageIds, pages)
+  )
+    throw new Error(
+      "Company-learning batches did not return a source-grounded company identity."
+    );
   const offerings: CompanyOffering[] = [];
   const seen = new Set<string>();
   for (const offering of proposed.offerings) {
@@ -826,13 +704,23 @@ export function validateCompanyKnowledgePack(
       ...offering,
       sourcePageIds,
       prices,
+      plans: supported(offering.plans),
       duration: supported(offering.duration),
       includedCourses: supported(offering.includedCourses),
       includedExams: supported(offering.includedExams),
       certifications: supported(offering.certifications),
       awardingBodies: supported(offering.awardingBodies),
       financeOptions: supported(offering.financeOptions),
+      support: supported(offering.support),
+      targetCustomer: claimSupported(
+        offering.targetCustomer,
+        sourcePageIds,
+        pages
+      )
+        ? offering.targetCustomer
+        : "",
       entryRequirements: supported(offering.entryRequirements),
+      outcomes: supported(offering.outcomes),
       caveats: supported(offering.caveats),
     });
   }
@@ -868,29 +756,34 @@ export function validateCompanyKnowledgePack(
     offerings,
     proposed.conflicts.flatMap(conflict => {
       const sourcePageIds = knownSources(conflict.sourcePageIds, pages);
-      return sourcePageIds.length > 1 ? [{ ...conflict, sourcePageIds }] : [];
+      const supportedValues = conflict.values.filter(value =>
+        claimSupported(value, sourcePageIds, pages)
+      );
+      return sourcePageIds.length > 1 && supportedValues.length > 1
+        ? [{ ...conflict, values: supportedValues, sourcePageIds }]
+        : [];
     })
   );
   return companyKnowledgePackSchema.parse({
     ...proposed,
     company: {
       ...proposed.company,
-      sourcePageIds: knownSources(proposed.company.sourcePageIds, pages),
+      sourcePageIds: companySourcePageIds,
     },
     contacts,
     locations,
     offerings,
-    finance: facts(proposed.finance),
+    finance: facts(proposed.finance, true),
     certificationsAndAccreditation: facts(
       proposed.certificationsAndAccreditation,
       true
     ),
-    supportAndOutcomes: facts(proposed.supportAndOutcomes),
-    policies: facts(proposed.policies),
-    refundCancellationTerms: facts(proposed.refundCancellationTerms),
-    contactKnowledge: facts(proposed.contactKnowledge),
-    faqs: facts(proposed.faqs),
-    salesUsefulFacts: facts(proposed.salesUsefulFacts),
+    supportAndOutcomes: facts(proposed.supportAndOutcomes, true),
+    policies: facts(proposed.policies, true),
+    refundCancellationTerms: facts(proposed.refundCancellationTerms, true),
+    contactKnowledge: facts(proposed.contactKnowledge, true),
+    faqs: facts(proposed.faqs, true),
+    salesUsefulFacts: facts(proposed.salesUsefulFacts, true),
     excludedContent,
     conflicts,
     importantGaps: unique(gaps),
@@ -1047,17 +940,15 @@ export async function synthesiseCompanyKnowledge(input: {
   const corpus = input.resume?.corpus || buildCompanyCorpus(input.pages);
   await input.onCheckpoint?.({ kind: "corpus", corpus });
   await input.onPhase?.("corpus");
-  const model =
-    input.model ||
-    new DefaultWholeSiteModel({
-      userId: input.userId,
-      organisationId: input.organisationId,
-      reference: input.reference,
-      onResource: resources =>
-        input.onCheckpoint?.({ kind: "resources", resources }),
-    });
+  if (!input.model)
+    throw new Error(
+      "Company learning requires the bounded inline partial-analysis runtime. File attachments are disabled as unsafe."
+    );
+  const model = input.model;
   const repairBudget = { used: 0 };
+  const normalization = { events: 0 };
   let analysisCalls = 0;
+  let auditCalls = 0;
   let result: CompanyKnowledgeSynthesisResult | undefined;
   let cleanupFailures: string[] = [];
   try {
@@ -1073,6 +964,7 @@ export async function synthesiseCompanyKnowledge(input: {
           corpus,
           model,
           repairBudget,
+          normalization,
         });
         await input.onCheckpoint?.({ kind: "analysis", draft: parsed });
         return parsed;
@@ -1081,7 +973,7 @@ export async function synthesiseCompanyKnowledge(input: {
     const audit =
       input.resume?.audit ||
       (await (async () => {
-        analysisCalls += 1;
+        auditCalls += 1;
         const parsed = await parseWithBoundedRepair({
           raw: await model.audit({ corpus, draft }),
           schema: companyKnowledgeAuditSchema,
@@ -1089,11 +981,15 @@ export async function synthesiseCompanyKnowledge(input: {
           corpus,
           model,
           repairBudget,
+          normalization,
         });
         await input.onCheckpoint?.({ kind: "audit", audit: parsed });
         return parsed;
       })());
-    if (analysisCalls + repairBudget.used > MAX_COMPANY_SEMANTIC_PASSES)
+    if (
+      analysisCalls + auditCalls + repairBudget.used >
+      MAX_COMPANY_SEMANTIC_PASSES
+    )
       throw new Error(
         "Company learning exceeded its bounded semantic-pass contract."
       );
@@ -1111,8 +1007,10 @@ export async function synthesiseCompanyKnowledge(input: {
       completeness: calculateCompanyKnowledgeCompleteness(pack, corpus),
       reviewedAt: new Date().toISOString(),
       analysisCalls,
+      auditCalls,
+      normalizationEvents: normalization.events,
       repairCalls: repairBudget.used,
-      totalAiCalls: analysisCalls + repairBudget.used,
+      totalAiCalls: analysisCalls + auditCalls + repairBudget.used,
       cleanupFailures: [],
       selectedModelOperations: {
         analysis: Boolean(model.selectedModels?.().analysis),

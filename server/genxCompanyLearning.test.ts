@@ -75,20 +75,22 @@ describe("governed GenX whole-site client", () => {
     ).toBe("grok-4.3");
   });
 
-  it("uses official catalogue, pricing, credits, file and session endpoints and cleans resources", async () => {
-    const calls: Array<{ url: string; method: string }> = [];
+  it("uses official account/session endpoints, omits file_ids and cleans sessions", async () => {
+    const calls: Array<{ url: string; method: string; body?: string }> = [];
     const fetchImpl = vi.fn(
       async (input: string | URL | Request, init?: RequestInit) => {
         const url = String(input);
         const method = init?.method || "GET";
-        calls.push({ url, method });
+        calls.push({
+          url,
+          method,
+          body: typeof init?.body === "string" ? init.body : undefined,
+        });
         if (url.endsWith("/models?category=text"))
           return json(["frontier-opus"]);
         if (url.endsWith("/account/pricing?category=text"))
           return json({ data: [{ model: "frontier-opus", input: 10 }] });
         if (url.endsWith("/account/credits")) return json({ balance: 10_000 });
-        if (url.endsWith("/files") && method === "POST")
-          return json({ id: "file-1" });
         if (url.endsWith("/sessions") && method === "POST")
           return json({ id: "session-1" });
         if (url.endsWith("/sessions/session-1/messages"))
@@ -98,8 +100,6 @@ describe("governed GenX whole-site client", () => {
           });
         if (url.endsWith("/sessions/session-1/close"))
           return json({ closed: true });
-        if (url.endsWith("/files/file-1") && method === "DELETE")
-          return new Response(null, { status: 204 });
         return json({ error: "unexpected" }, 404);
       }
     );
@@ -111,10 +111,6 @@ describe("governed GenX whole-site client", () => {
     });
     const selected = await client.selectModels();
     expect(selected.analysis.id).toBe("frontier-opus");
-    const fileId = await client.uploadCorpus({
-      jsonl: "{}",
-      corpusHash: "a".repeat(64),
-    });
     const sessionId = await client.createSession({
       model: selected.analysis.id,
       systemPrompt: "system",
@@ -123,7 +119,7 @@ describe("governed GenX whole-site client", () => {
     const response = await client.sendSessionMessage({
       sessionId,
       content: "analyse",
-      fileIds: [fileId],
+      fileIds: [],
       idempotencyKey: "stable-key",
       billing: {
         userId: 1,
@@ -133,18 +129,17 @@ describe("governed GenX whole-site client", () => {
       },
     });
     expect(response.content).toBe('{"ok":true}');
-    expect(await client.cleanup({ fileId, sessionIds: [sessionId] })).toEqual(
-      []
-    );
+    expect(await client.cleanup({ sessionIds: [sessionId] })).toEqual([]);
     expect(
       calls.map(call => `${call.method} ${new URL(call.url).pathname}`)
     ).toContain("POST /api/v1/sessions/session-1/close");
-    expect(
-      calls.map(call => `${call.method} ${new URL(call.url).pathname}`)
-    ).toContain("DELETE /api/v1/files/file-1");
+    const message = calls.find(call =>
+      call.url.endsWith("/sessions/session-1/messages")
+    );
+    expect(JSON.parse(message?.body || "{}")).not.toHaveProperty("file_ids");
   });
 
-  it("bounds retries to retryable failures", async () => {
+  it("rejects file_ids before transport", async () => {
     let attempts = 0;
     const fetchImpl = vi.fn(async () => {
       attempts += 1;
@@ -159,9 +154,20 @@ describe("governed GenX whole-site client", () => {
       retries: 1,
     });
     await expect(
-      client.uploadCorpus({ jsonl: "{}", corpusHash: "b".repeat(64) })
-    ).resolves.toBe("file-after-retry");
-    expect(attempts).toBe(2);
+      client.sendSessionMessage({
+        sessionId: "session-1",
+        content: "analyse",
+        fileIds: ["unsafe-file"],
+        idempotencyKey: "unsafe",
+        billing: {
+          userId: 1,
+          organisationId: 1,
+          feature: "test",
+          reference: "test",
+        },
+      })
+    ).rejects.toThrow(/file_ids are disabled as unsafe/i);
+    expect(attempts).toBe(0);
   });
 
   it("never logs or persists the raw API key and keeps upstream branding out of customer adapters", () => {

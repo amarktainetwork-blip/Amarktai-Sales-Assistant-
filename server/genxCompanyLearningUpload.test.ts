@@ -1,37 +1,30 @@
-import { describe, expect, it, vi } from "vitest";
-import { GenxCompanyLearningClient } from "./genxCompanyLearning";
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
 
-describe("GenX company corpus upload compatibility", () => {
-  it("uploads the unchanged JSONL corpus as a supported plain-text document", async () => {
-    let capturedBody: FormData | undefined;
-    const fetchImpl = vi.fn(
-      async (_input: string | URL | Request, init?: RequestInit) => {
-        capturedBody = init?.body as FormData;
-        return new Response(JSON.stringify({ id: "file-1" }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
+describe("GenX company-learning attachment safety", () => {
+  it("keeps file upload and file_ids out of production company-learning runtimes", () => {
+    const synthesis = readFileSync(
+      new URL("./companyKnowledgeSynthesis.ts", import.meta.url),
+      "utf8"
     );
-    const client = new GenxCompanyLearningClient({
-      apiKey: "gnxk_test_secret",
-      restBaseUrl: "https://query.test/api/v1",
-      fetchImpl: fetchImpl as typeof fetch,
-    });
-    const jsonl = '{"url":"https://example.com/a","text":"Alpha"}\n{"url":"https://example.com/b","text":"Beta"}';
-
-    await expect(
-      client.uploadCorpus({ jsonl, corpusHash: "a".repeat(64) })
-    ).resolves.toBe("file-1");
-
-    expect(capturedBody).toBeInstanceOf(FormData);
-    expect(capturedBody?.get("purpose")).toBe("company-learning");
-    const file = capturedBody?.get("file");
-    expect(file).toBeInstanceOf(Blob);
-    expect((file as File).name).toBe(
-      "amarktai-company-corpus-aaaaaaaaaaaaaaaa.txt"
+    const inline = readFileSync(
+      new URL("./companyKnowledgeInlineRuntime.ts", import.meta.url),
+      "utf8"
     );
-    expect((file as Blob).type).toBe("text/plain");
-    expect(await (file as Blob).text()).toBe(jsonl);
+    const partial = readFileSync(
+      new URL("./companyKnowledgePartialBatchRuntime.ts", import.meta.url),
+      "utf8"
+    );
+    const client = readFileSync(
+      new URL("./genxCompanyLearning.ts", import.meta.url),
+      "utf8"
+    );
+
+    expect(synthesis).not.toContain("uploadCorpus");
+    expect(inline).not.toMatch(/fileIds:\s*\[[^\]]+\]/);
+    expect(partial).not.toMatch(/fileIds:\s*\[[^\]]+\]/);
+    expect(client).not.toContain("async uploadCorpus");
+    expect(client).not.toMatch(/file_ids:\s*input/);
+    expect(client).toContain("file_ids are disabled as unsafe");
   });
 });

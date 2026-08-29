@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildCompanyCorpus, type CompanyCorpusInputPage } from "./companyKnowledgeCorpus";
+import {
+  buildCompanyCorpus,
+  type CompanyCorpusInputPage,
+} from "./companyKnowledgeCorpus";
 import {
   companyKnowledgeAuditSchema,
   companyKnowledgePackSchema,
@@ -13,7 +16,7 @@ function page(): CompanyCorpusInputPage {
     url: "https://example.test/course/alpha",
     title: "Alpha Course",
     fetchedAt: "2026-08-28T00:00:00.000Z",
-    text: "Alpha Course. Full price £719.",
+    text: "Example Learning. Alpha Course. Full price £719.",
     category: "courses",
     description: null,
     headings: ["Alpha Course"],
@@ -105,7 +108,9 @@ describe("company-learning schema envelopes", () => {
       model,
     });
 
-    expect(result.pack.offerings.map(item => item.name)).toEqual(["Alpha Course"]);
+    expect(result.pack.offerings.map(item => item.name)).toEqual([
+      "Alpha Course",
+    ]);
     expect(repairs).toBe(0);
     expect(result.repairCalls).toBe(0);
     expect(result.totalAiCalls).toBe(2);

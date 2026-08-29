@@ -14,11 +14,13 @@ import {
 import {
   companyKnowledgeAuditSchema,
   companyKnowledgePackSchema,
-  synthesiseCompanyKnowledge,
   type CompanyKnowledgeAudit,
   type CompanyKnowledgePack,
-  type WholeSiteCheckpoint,
 } from "./companyKnowledgeSynthesis";
+import {
+  synthesiseCompanyKnowledge,
+  type WholeSiteCheckpoint,
+} from "./companyKnowledgePartialBatchRuntime";
 import { type CompanyCorpus } from "./companyKnowledgeCorpus";
 import {
   GenxCompanyLearningClient,
@@ -453,6 +455,8 @@ async function advanceCompanyKnowledgeJob(jobId: number) {
       resultDiscoveryId: discoveryId,
       validatedPack: JSON.stringify(review.pack),
       analysisCalls: review.analysisCalls,
+      auditCalls: review.auditCalls,
+      normalizationEvents: review.normalizationEvents,
       repairCalls: review.repairCalls,
       temporaryResources: {},
       progress: {
@@ -463,6 +467,8 @@ async function advanceCompanyKnowledgeJob(jobId: number) {
         corpusPages: review.corpus.pageCount,
         corpusBytes: review.corpus.byteSize,
         analysisCalls: review.analysisCalls,
+        auditCalls: review.auditCalls,
+        normalizationEvents: review.normalizationEvents,
         repairCalls: review.repairCalls,
         totalAiCalls: review.totalAiCalls,
         knowledgePersisted: false,
