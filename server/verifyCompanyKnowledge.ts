@@ -7,7 +7,7 @@ import {
 import {
   synthesiseCompanyKnowledge,
   type WholeSiteCheckpoint,
-} from "./companyKnowledgePartialBatchRuntime";
+} from "./companyKnowledgeVerifiedRuntime";
 
 function positiveId(value: string | undefined, label: string) {
   const parsed = Number.parseInt(value || "", 10);
@@ -37,6 +37,7 @@ export async function verifyCompanyKnowledge(input: {
     line("MILESTONE", "Building company corpus");
     line("GENX_FILE_UPLOAD", "DISABLED_UNSAFE");
     line("PARTIAL_BATCH_SCHEMA", "ENABLED");
+    line("AUDIT_NORMALIZATION", "ENABLED");
     const review = await synthesiseCompanyKnowledge({
       userId: input.userId,
       organisationId: input.organisationId,
@@ -84,6 +85,7 @@ export async function verifyCompanyKnowledge(input: {
     line("ANALYSIS_MODEL_SELECTED", "PASS");
     line("ANALYSIS_PASS", "PASS");
     line("AUDIT_PASS", "PASS");
+    line("AUDIT_RESPONSES_NORMALIZED", review.auditResponsesNormalized);
     line("SOURCE_VALIDATION", "PASS");
     line("PAGES_USED", completeness.pagesUsed);
     line("PAGES_EXCLUDED", completeness.pagesExcluded);
