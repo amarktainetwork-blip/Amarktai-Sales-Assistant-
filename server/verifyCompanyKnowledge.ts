@@ -4,10 +4,8 @@ import {
   buildReviewedCompanyDiscovery,
   pagesForCompanyReview,
 } from "./companyIntelligenceService";
-import {
-  synthesiseCompanyKnowledge,
-  type WholeSiteCheckpoint,
-} from "./companyKnowledgeVerifiedRuntime";
+import { synthesiseCompanyKnowledge } from "./companyKnowledgeVerifiedRuntime";
+import type { WholeSiteCheckpoint } from "./companyKnowledgePartialBatchRuntime";
 
 function positiveId(value: string | undefined, label: string) {
   const parsed = Number.parseInt(value || "", 10);
