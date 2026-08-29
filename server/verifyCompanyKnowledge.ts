@@ -1,11 +1,17 @@
 import "dotenv/config";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import { discoverPublicWebsite } from "./companyDiscovery";
 import {
   buildReviewedCompanyDiscovery,
   pagesForCompanyReview,
 } from "./companyIntelligenceService";
-import { synthesiseCompanyKnowledge } from "./companyKnowledgeVerifiedRuntime";
-import type { WholeSiteCheckpoint } from "./companyKnowledgePartialBatchRuntime";
+import {
+  synthesiseCompanyKnowledge,
+  type CompanyKnowledgeSynthesisResult,
+  type WholeSiteCheckpoint,
+} from "./companyKnowledgePartialBatchRuntime";
+import { formatCompanyKnowledgeOutputDiagnostic } from "./companyKnowledgeModelOutput";
 
 function positiveId(value: string | undefined, label: string) {
   const parsed = Number.parseInt(value || "", 10);
@@ -18,24 +24,93 @@ function line(name: string, value: string | number) {
   console.log(`${name}=${value}`);
 }
 
+export function companyKnowledgeReviewArtifact(input: {
+  websiteUrl: string;
+  review: CompanyKnowledgeSynthesisResult;
+}) {
+  const { pack, corpus, completeness } = input.review;
+  return {
+    artifactType: "amarktai_company_learning_review",
+    generatedAt: input.review.reviewedAt,
+    websiteUrl: input.websiteUrl,
+    lifecycleState: "REVIEW_REQUIRED",
+    safety: {
+      knowledgePersisted: false,
+      knowledgeApproved: false,
+      crmTouched: false,
+      genieTouched: false,
+    },
+    corpus: {
+      pageCount: corpus.pageCount,
+      byteSize: corpus.byteSize,
+      corpusHash: corpus.corpusHash,
+      sources: corpus.pages.map(page => ({
+        pageId: page.pageId,
+        url: page.url,
+        title: page.title,
+        primaryHeading: page.primaryHeading,
+        contentHash: page.contentHash,
+      })),
+    },
+    company: pack.company,
+    offerings: pack.offerings,
+    finance: pack.finance,
+    contacts: pack.contacts,
+    locations: pack.locations,
+    policies: pack.policies,
+    refundCancellationTerms: pack.refundCancellationTerms,
+    certificationsAndAccreditation: pack.certificationsAndAccreditation,
+    supportAndOutcomes: pack.supportAndOutcomes,
+    contactKnowledge: pack.contactKnowledge,
+    faqs: pack.faqs,
+    salesUsefulFacts: pack.salesUsefulFacts,
+    excludedContent: pack.excludedContent,
+    conflicts: pack.conflicts,
+    importantGaps: completeness.importantGaps,
+    sourceIndex: pack.sourceIndex,
+    completeness,
+    calls: {
+      analysis: input.review.analysisCalls,
+      audit: input.review.auditCalls,
+      normalizationEvents: input.review.normalizationEvents,
+      repair: input.review.repairCalls,
+      total: input.review.totalAiCalls,
+    },
+  };
+}
+
+async function writeReviewArtifact(
+  outputPath: string,
+  artifact: ReturnType<typeof companyKnowledgeReviewArtifact>
+) {
+  const absolutePath = resolve(outputPath);
+  await mkdir(dirname(absolutePath), { recursive: true });
+  await writeFile(absolutePath, `${JSON.stringify(artifact, null, 2)}\n`, {
+    encoding: "utf8",
+    mode: 0o600,
+  });
+  return absolutePath;
+}
+
 export async function verifyCompanyKnowledge(input: {
   websiteUrl: string;
   userId: number;
   organisationId: number;
+  reviewOutputPath?: string;
 }) {
   const started = Date.now();
   let processStable = true;
   let inlineTransportObserved = false;
+  let discoveryFetched = false;
   try {
     line("MILESTONE", "Scanning website");
     const discovery = await discoverPublicWebsite(input.websiteUrl);
+    discoveryFetched = true;
     line("DISCOVERY_FETCH", "PASS");
     line("PAGES_SCANNED", discovery.pages.length);
     line("PAGES_CLASSIFIED", discovery.pages.length);
     line("MILESTONE", "Building company corpus");
     line("GENX_FILE_UPLOAD", "DISABLED_UNSAFE");
-    line("PARTIAL_BATCH_SCHEMA", "ENABLED");
-    line("AUDIT_NORMALIZATION", "ENABLED");
     const review = await synthesiseCompanyKnowledge({
       userId: input.userId,
       organisationId: input.organisationId,
@@ -81,9 +156,10 @@ export async function verifyCompanyKnowledge(input: {
       );
     const completeness = review.completeness;
     line("ANALYSIS_MODEL_SELECTED", "PASS");
+    line("PARTIAL_BATCH_SCHEMA", "PASS");
     line("ANALYSIS_PASS", "PASS");
+    line("AUDIT_NORMALIZATION", "PASS");
     line("AUDIT_PASS", "PASS");
-    line("AUDIT_RESPONSES_NORMALIZED", review.auditResponsesNormalized);
     line("SOURCE_VALIDATION", "PASS");
     line("PAGES_USED", completeness.pagesUsed);
     line("PAGES_EXCLUDED", completeness.pagesExcluded);
@@ -111,18 +187,29 @@ export async function verifyCompanyKnowledge(input: {
     line("CONFLICTS_FOUND", completeness.conflictsFound);
     line("COMPLETENESS_STATUS", completeness.status);
     line("AI_ANALYSIS_CALLS", review.analysisCalls);
+    line("AI_AUDIT_CALLS", review.auditCalls);
+    line("NORMALIZATION_EVENTS", review.normalizationEvents);
     line("AI_REPAIR_CALLS", review.repairCalls);
     line("TOTAL_AI_CALLS", review.totalAiCalls);
+    const reviewArtifactPath = await writeReviewArtifact(
+      input.reviewOutputPath ||
+        process.env.COMPANY_KNOWLEDGE_REVIEW_OUTPUT ||
+        "company-learning-review.json",
+      companyKnowledgeReviewArtifact({ websiteUrl: input.websiteUrl, review })
+    );
+    line("EXACT_REVIEW_PACK", "PASS");
+    line("REVIEW_ARTIFACT", reviewArtifactPath);
     line("ELAPSED_SECONDS", Math.ceil((Date.now() - started) / 1_000));
     if (completeness.status === "incomplete") process.exitCode = 1;
   } catch (error) {
     processStable = true;
-    line("DISCOVERY_FETCH", "FAIL");
+    if (!discoveryFetched) line("DISCOVERY_FETCH", "FAIL");
+    line("PIPELINE_STATUS", "FAIL");
     line("COMPLETENESS_STATUS", "incomplete");
     line("ELAPSED_SECONDS", Math.ceil((Date.now() - started) / 1_000));
     console.error(
       `Company knowledge verification failed: ${String(
-        error instanceof Error ? error.message : error
+        formatCompanyKnowledgeOutputDiagnostic(error)
       )
         .replace(
           /genx|provider|playwright|chromium|claude|openai|anthropic|gemini|grok|gpt[-\w.]*/gi,
@@ -165,6 +252,8 @@ if (invokedDirectly) {
         process.argv[4] || process.env.COMPANY_KNOWLEDGE_VERIFY_ORGANISATION_ID,
         "organisation-id"
       ),
+      reviewOutputPath:
+        process.argv[5] || process.env.COMPANY_KNOWLEDGE_REVIEW_OUTPUT,
     }).finally(() => process.exit(process.exitCode ?? 0));
   }
 }

@@ -118,11 +118,13 @@ The probe reports only fetch status, page/render counts and process stability. I
 To run the separate full company-learning proof without persisting or approving knowledge, supply an existing billing user and organisation explicitly:
 
 ```bash
+mkdir -p company-learning-output
 docker compose -f deploy/webdock/docker-compose.yml --env-file .env run --no-deps --rm \
-  app node dist/verifyCompanyKnowledge.js https://PUBLIC_COMPANY_WEBSITE USER_ID ORGANISATION_ID
+  -v "$PWD/company-learning-output:/output" \
+  app node dist/verifyCompanyKnowledge.js https://PUBLIC_COMPANY_WEBSITE USER_ID ORGANISATION_ID /output/company-learning-review.json
 ```
 
-This operator-only verifier builds the canonical whole-site corpus, runs one primary company-analysis pass and one isolated critic pass (plus at most one schema repair), validates material facts against retained sources, prints progress and call counts, and exits. It may consume configured Amarktai AI credits, but does not persist or approve knowledge, touch CRM data, or interact with Genie.
+This operator-only verifier builds the canonical whole-site corpus, uses bounded inline partial-analysis and compact audit-patch batches (GenX `file_ids` are disabled as unsafe), canonicalizes harmless response-shape variation, and then validates material facts against retained sources. It prints separate analysis, audit, normalization and repair counts and writes the exact source-linked review pack to the requested local path. The global repair cap remains three and is reserved for genuinely invalid semantic output. The run may consume configured Amarktai AI credits, but it does not persist or approve knowledge, touch CRM data, or interact with Genie.
 
 ## Backup and recovery
 

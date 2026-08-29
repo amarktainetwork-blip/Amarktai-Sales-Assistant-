@@ -81,18 +81,29 @@ describe("partial company-learning batch schema", () => {
   it("removes blank company and placeholder records without inventing facts", () => {
     const parsed = parsePartialCompanyKnowledgeBatch(
       JSON.stringify({
-        company: { name: "", legalName: "", description: "", sourcePageIds: [] },
+        company: {
+          name: "",
+          legalName: "",
+          description: "",
+          sourcePageIds: [],
+        },
         contacts: [{ type: "email", value: "", label: "", sourcePageIds: [] }],
         finance: [{ title: "", details: "", sourcePageIds: [] }],
-        sourceIndex: { PAGE_0001: "https://..." },
         ...offeringPartial(),
       })
     );
     expect(parsed.company).toBeUndefined();
     expect(parsed.contacts).toEqual([]);
     expect(parsed.finance).toEqual([]);
-    expect(parsed.sourceIndex).toEqual({});
     expect(parsed.offerings).toHaveLength(1);
+  });
+
+  it("fails closed on a fabricated source URL instead of hiding it", () => {
+    expect(() =>
+      parsePartialCompanyKnowledgeBatch(
+        JSON.stringify({ sourceIndex: { PAGE_0001: "https://..." } })
+      )
+    ).toThrow(/strict schema validation/i);
   });
 
   it("normalizes structured offering text-list values without inventing content", () => {
@@ -147,8 +158,8 @@ describe("partial company-learning batch schema", () => {
     const offering = parsePartialCompanyKnowledgeBatch(
       JSON.stringify(offeringPartial())
     );
-    expect(() => mergePartialCompanyKnowledgeBatches([offering], built)).toThrow(
-      /source-grounded company identity/i
-    );
+    expect(() =>
+      mergePartialCompanyKnowledgeBatches([offering], built)
+    ).toThrow(/source-grounded company identity/i);
   });
 });

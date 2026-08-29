@@ -36,6 +36,27 @@ function corpus() {
   );
 }
 
+function manyBatchCorpus() {
+  return buildCompanyCorpus(
+    Array.from({ length: 10 }, (_, index) => ({
+      url:
+        index === 0
+          ? "https://www.course2career.com/"
+          : `https://www.course2career.com/courses/example-${index}`,
+      title: index === 0 ? "Course2Career" : `Example Course ${index}`,
+      fetchedAt: "2026-08-29T00:00:00.000Z",
+      text: `${index === 0 ? "Course2Career online IT training." : `Example Course ${index}.`} ${"Source-backed course detail. ".repeat(1_100)}`,
+      category: index === 0 ? "company" : "course",
+      description:
+        index === 0 ? "Course2Career training" : `Example Course ${index}`,
+      headings: [index === 0 ? "Course2Career" : `Example Course ${index}`],
+      links: [],
+      jsonLd: [],
+    })),
+    "2026-08-29T00:00:00.000Z"
+  );
+}
+
 function emptyPack(pageId = "PAGE_0001") {
   return {
     company: {
@@ -90,10 +111,16 @@ describe("bounded inline company-learning runtime", () => {
 
     expect(batches.length).toBeGreaterThan(1);
     expect(
-      batches.every(batch => batch.charCount <= COMPANY_INLINE_SOURCE_BATCH_CHARS)
+      batches.every(
+        batch => batch.charCount <= COMPANY_INLINE_SOURCE_BATCH_CHARS
+      )
     ).toBe(true);
-    expect(batches.some(batch => batch.pageIds.includes("PAGE_0001"))).toBe(true);
-    expect(batches.some(batch => batch.pageIds.includes("PAGE_0002"))).toBe(true);
+    expect(batches.some(batch => batch.pageIds.includes("PAGE_0001"))).toBe(
+      true
+    );
+    expect(batches.some(batch => batch.pageIds.includes("PAGE_0002"))).toBe(
+      true
+    );
     expect(batches.map(batch => batch.source).join("\n")).toContain(
       "PAGE_ID=PAGE_0001"
     );
@@ -108,20 +135,30 @@ describe("bounded inline company-learning runtime", () => {
     const createSession = vi.fn(async (input: { title: string }) => {
       sequence += 1;
       const id = `session-${sequence}`;
-      sessionKinds.set(id, input.title.includes("audit") ? "audit" : "analysis");
+      sessionKinds.set(
+        id,
+        input.title.includes("audit") ? "audit" : "analysis"
+      );
       return id;
     });
-    const sendSessionMessage = vi.fn(async (input: {
-      sessionId: string;
-      content: unknown;
-      fileIds: string[];
-    }) => {
-      const kind = sessionKinds.get(input.sessionId);
-      return {
-        content: JSON.stringify(kind === "audit" ? emptyAudit : emptyPack()),
-        usage: {},
-      };
-    });
+    const sendSessionMessage = vi.fn(
+      async (input: {
+        sessionId: string;
+        content: unknown;
+        fileIds: string[];
+      }) => {
+        const kind = sessionKinds.get(input.sessionId);
+        const pageId =
+          JSON.stringify(input.content).match(/PAGE_ID=(PAGE_\d{4})/)?.[1] ||
+          "PAGE_0001";
+        return {
+          content: JSON.stringify(
+            kind === "audit" ? emptyAudit : emptyPack(pageId)
+          ),
+          usage: {},
+        };
+      }
+    );
     const client = {
       selectModels: vi.fn(async () => ({
         analysis: {
@@ -161,14 +198,139 @@ describe("bounded inline company-learning runtime", () => {
       expect(input.fileIds).toEqual([]);
       expect(Array.isArray(input.content)).toBe(true);
       expect(input.content).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ type: "text" }),
-        ])
+        expect.arrayContaining([expect.objectContaining({ type: "text" })])
       );
     }
     const stats = model.callStats();
     expect(stats.analysis).toBeGreaterThan(0);
     expect(stats.audit).toBeGreaterThan(0);
     expect(stats.repair).toBe(0);
+  });
+
+  it("normalizes harmless variation across many audit batches without spending repair budget", async () => {
+    let sequence = 0;
+    const client = {
+      selectModels: vi.fn(async () => ({
+        analysis: {
+          id: "analysis-model",
+          category: "text",
+          contextWindow: 0,
+          advertised: {},
+        },
+        audit: {
+          id: "audit-model",
+          category: "text",
+          contextWindow: 0,
+          advertised: {},
+        },
+        accountCredits: {},
+      })),
+      createSession: vi.fn(async () => `session-${++sequence}`),
+      sendSessionMessage: vi.fn(async (input: { content: unknown }) => {
+        const pageId =
+          JSON.stringify(input.content).match(/PAGE_ID=(PAGE_\d{4})/)?.[1] ||
+          "PAGE_0001";
+        return {
+          content: JSON.stringify({
+            result: {
+              importantGaps: { text: "Confirm this bounded source batch" },
+              addSupportAndOutcomes: {
+                title: { label: "Support" },
+                details: { text: "Tutor support" },
+                sourcePageIds: pageId,
+              },
+            },
+          }),
+          usage: {},
+        };
+      }),
+      closeSession: vi.fn(async () => undefined),
+      cleanup: vi.fn(async () => []),
+    };
+    const model = new InlineBatchWholeSiteModel({
+      userId: 1,
+      organisationId: 1,
+      reference: "many-normalized-audits",
+      client: client as never,
+    });
+    const built = manyBatchCorpus();
+    expect(buildCompanyInlineCorpusBatches(built).length).toBeGreaterThan(3);
+    const audit = await model.audit({
+      corpus: built,
+      draft: emptyPack() as never,
+    });
+    const stats = model.callStats();
+    expect(audit.importantGaps).toEqual(["Confirm this bounded source batch"]);
+    expect(stats.audit).toBeGreaterThan(3);
+    expect(stats.normalizedResponses).toBe(stats.audit);
+    expect(stats.normalizationEvents).toBeGreaterThan(stats.audit);
+    expect(stats.repair).toBe(0);
+  });
+
+  it("allows at most three semantic repairs globally and fails the fourth closed", async () => {
+    let sequence = 0;
+    const sessionKinds = new Map<string, "audit" | "repair">();
+    const client = {
+      selectModels: vi.fn(async () => ({
+        analysis: {
+          id: "analysis-model",
+          category: "text",
+          contextWindow: 0,
+          advertised: {},
+        },
+        audit: {
+          id: "audit-model",
+          category: "text",
+          contextWindow: 0,
+          advertised: {},
+        },
+        accountCredits: {},
+      })),
+      createSession: vi.fn(async (input: { title: string }) => {
+        const id = `session-${++sequence}`;
+        sessionKinds.set(
+          id,
+          input.title.includes("repair") ? "repair" : "audit"
+        );
+        return id;
+      }),
+      sendSessionMessage: vi.fn(async (input: { sessionId: string }) => ({
+        content:
+          sessionKinds.get(input.sessionId) === "repair"
+            ? JSON.stringify(emptyAudit)
+            : JSON.stringify({ addOfferings: [{ id: "", type: "unknown" }] }),
+        usage: {},
+      })),
+      closeSession: vi.fn(async () => undefined),
+      cleanup: vi.fn(async () => []),
+    };
+    const model = new InlineBatchWholeSiteModel({
+      userId: 1,
+      organisationId: 1,
+      reference: "repair-cap",
+      client: client as never,
+    });
+    let failure: unknown;
+    try {
+      await model.audit({
+        corpus: manyBatchCorpus(),
+        draft: emptyPack() as never,
+      });
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toMatch(
+      /bounded batch-repair contract/i
+    );
+    expect((failure as Error).message).toContain('"phase":"audit"');
+    expect((failure as Error).message).toContain('"batchIndex":');
+    expect((failure as Error).message).toContain("addOfferings[0]");
+    expect(model.callStats().repair).toBe(3);
+    expect(
+      client.createSession.mock.calls.filter(call =>
+        call[0].title.includes("repair")
+      )
+    ).toHaveLength(3);
   });
 });

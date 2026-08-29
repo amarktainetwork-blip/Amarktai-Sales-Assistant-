@@ -22,7 +22,7 @@ function page(
     url: `https://example.test${path}`,
     title: text.split(".")[0],
     fetchedAt: "2026-08-28T00:00:00.000Z",
-    text,
+    text: `Example Learning. ${text}`,
     category,
     description: null,
     headings: [text.split(".")[0]],
@@ -172,12 +172,66 @@ describe("whole-site company learning", () => {
     expect(Object.keys(validated.sourceIndex)).toEqual([id]);
   });
 
+  it("removes fabricated contacts, locations and sourced facts at the deterministic authority boundary", () => {
+    const corpus = buildCompanyCorpus([
+      page(
+        1,
+        "/contact",
+        "Contact help@example.test. London office. Refunds are available within 14 days.",
+        "contact"
+      ),
+    ]);
+    const id = corpus.pages[0].pageId;
+    const validated = validateCompanyKnowledgePack(
+      basePack({
+        contacts: [
+          {
+            type: "email",
+            value: "help@example.test",
+            label: "Help",
+            sourcePageIds: [id],
+          },
+          {
+            type: "email",
+            value: "invented@example.test",
+            label: "Invented",
+            sourcePageIds: [id],
+          },
+        ],
+        locations: [
+          { name: "London office", address: "", sourcePageIds: [id] },
+          { name: "Paris office", address: "", sourcePageIds: [id] },
+        ],
+        policies: [
+          {
+            title: "Refunds",
+            details: "Refunds are available within 14 days.",
+            sourcePageIds: [id],
+          },
+          {
+            title: "Lifetime guarantee",
+            details: "All purchases have a lifetime guarantee.",
+            sourcePageIds: [id],
+          },
+        ],
+      }),
+      corpus
+    );
+    expect(validated.contacts.map(item => item.value)).toEqual([
+      "help@example.test",
+    ]);
+    expect(validated.locations.map(item => item.name)).toEqual([
+      "London office",
+    ]);
+    expect(validated.policies.map(item => item.title)).toEqual(["Refunds"]);
+  });
+
   it("keeps deposits, monthly finance, exam fees and alternative plans distinct and rejects salary as price", () => {
     const corpus = buildCompanyCorpus([
       page(
         1,
         "/programme/data",
-        "Data Programme. Full price £2,999. Deposit £299. Finance £149 per month. Exam fee £120. Graduate salary £50,000. Premium plan £3,499."
+        "Data Programme. Standard plan and full price £2,999. Deposit £299. Finance £149 per month. Exam fee £120. Graduate salary £50,000. Premium plan £3,499."
       ),
     ]);
     const id = corpus.pages[0].pageId;
@@ -430,7 +484,13 @@ describe("whole-site company learning", () => {
   });
 
   it("allows only one bounded schema repair", async () => {
-    const pages = [page(1, "/course/alpha", "Alpha Course. Full price £719.")];
+    const pages = [
+      page(
+        1,
+        "/course/alpha",
+        "Alpha Course. Full price £719. Duration 12 months."
+      ),
+    ];
     let repairs = 0;
     const corpus = buildCompanyCorpus(pages);
     const id = corpus.pages[0].pageId;
@@ -443,7 +503,17 @@ describe("whole-site company learning", () => {
       },
       async repair() {
         repairs += 1;
-        return basePack({ offerings: [offering("alpha", "Alpha Course", id)] });
+        return {
+          result: {
+            ...basePack(),
+            offerings: [
+              {
+                ...offering("alpha", "Alpha Course", id),
+                duration: { value: "12", unit: "months" },
+              },
+            ],
+          },
+        };
       },
     };
     const result = await synthesiseCompanyKnowledge({
@@ -455,6 +525,8 @@ describe("whole-site company learning", () => {
     });
     expect(repairs).toBe(1);
     expect(result.repairCalls).toBe(1);
+    expect(result.normalizationEvents).toBeGreaterThan(0);
+    expect(result.pack.offerings[0].duration).toEqual(["12 months"]);
     expect(result.totalAiCalls).toBe(3);
   });
 

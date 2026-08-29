@@ -8,7 +8,7 @@ import {
   type CompanyKnowledgeSynthesisResult,
   type ReviewPage,
   type WholeSiteCheckpoint,
-} from "./companyKnowledgeSynthesis";
+} from "./companyKnowledgePartialBatchRuntime";
 
 type RetainedPageMetadata = {
   url: string;
@@ -320,6 +320,8 @@ export function buildReviewedCompanyDiscovery(
         wholeSiteLearning: {
           status: "completed",
           analysisCalls: review.analysisCalls,
+          auditCalls: review.auditCalls,
+          normalizationEvents: review.normalizationEvents,
           repairCalls: review.repairCalls,
           totalAiCalls: review.totalAiCalls,
           fieldLevelSourceValidation: true,

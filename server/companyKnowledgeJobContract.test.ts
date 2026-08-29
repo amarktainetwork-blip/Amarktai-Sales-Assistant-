@@ -34,6 +34,8 @@ describe("durable whole-site company knowledge job contract", () => {
       "validatedPack",
       "temporaryResources",
       "analysisCalls",
+      "auditCalls",
+      "normalizationEvents",
       "repairCalls",
     ])
       expect(schema).toContain(field);
@@ -85,5 +87,18 @@ describe("durable whole-site company knowledge job contract", () => {
       "discovery.pages.map(({ text: _text, ...page }) => page)"
     );
     expect(intelligence).toContain("pages: safePages");
+  });
+
+  it("uses the same bounded canonical runtime for verifier and review-only UI jobs", () => {
+    const jobs = read("./companyKnowledgeJobs.ts");
+    const intelligence = read("./companyIntelligenceService.ts");
+    const verifier = read("./verifyCompanyKnowledge.ts");
+    for (const source of [jobs, intelligence, verifier])
+      expect(source).toContain('from "./companyKnowledgePartialBatchRuntime"');
+    expect(intelligence).not.toContain('from "./companyKnowledgeSynthesis"');
+    expect(jobs).not.toContain("confirmWebsiteDiscovery(");
+    expect(jobs).toContain("knowledgeApproved: false");
+    expect(jobs).toContain("crmTouched: false");
+    expect(jobs).toContain("genieTouched: false");
   });
 });

@@ -18,7 +18,10 @@ describe("GenX async company-learning jobs", () => {
     const fetchImpl = vi.fn(
       async (input: string | URL | Request, init?: RequestInit) => {
         const url = String(input);
-        if (url.endsWith("/sessions/session-1/messages") && init?.method === "POST")
+        if (
+          url.endsWith("/sessions/session-1/messages") &&
+          init?.method === "POST"
+        )
           return json(
             {
               session_id: "session-1",
@@ -54,7 +57,7 @@ describe("GenX async company-learning jobs", () => {
       client.sendSessionMessage({
         sessionId: "session-1",
         content: "analyse",
-        fileIds: ["file-1"],
+        fileIds: [],
         idempotencyKey: "async-success",
         billing: {
           userId: 1,
@@ -72,7 +75,10 @@ describe("GenX async company-learning jobs", () => {
     const fetchImpl = vi.fn(
       async (input: string | URL | Request, init?: RequestInit) => {
         const url = String(input);
-        if (url.endsWith("/sessions/session-1/messages") && init?.method === "POST")
+        if (
+          url.endsWith("/sessions/session-1/messages") &&
+          init?.method === "POST"
+        )
           return json({ job_id: "job-failed", status: "queued" }, 202);
         if (url.endsWith("/jobs/job-failed"))
           return json({
@@ -113,7 +119,10 @@ describe("GenX async company-learning jobs", () => {
     const fetchImpl = vi.fn(
       async (input: string | URL | Request, init?: RequestInit) => {
         const url = String(input);
-        if (url.endsWith("/sessions/session-1/messages") && init?.method === "POST")
+        if (
+          url.endsWith("/sessions/session-1/messages") &&
+          init?.method === "POST"
+        )
           return json({ job_id: "job-stuck", status: "queued" }, 202);
         if (url.endsWith("/jobs/job-stuck"))
           return json({ job_id: "job-stuck", status: "processing" });

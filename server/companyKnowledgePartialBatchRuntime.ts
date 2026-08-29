@@ -14,13 +14,21 @@ import {
   buildCompanyInlineCorpusBatches,
   COMPANY_INLINE_BATCH_CONCURRENCY,
   InlineBatchWholeSiteModel,
+  MAX_COMPANY_INLINE_REPAIRS,
   mergeCompanyKnowledgeBatchPacks,
+  type CompanyLearningRepairBudget,
   type CompanyInlineCorpusBatch,
 } from "./companyKnowledgeInlineRuntime";
 import {
   GenxCompanyLearningClient,
   type CompanyLearningResourceState,
 } from "./genxCompanyLearning";
+import {
+  CompanyKnowledgeOutputError,
+  formatCompanyKnowledgeOutputDiagnostic,
+  parseCanonicalCompanyKnowledgeOutput,
+  type CompanyKnowledgeOutputContext,
+} from "./companyKnowledgeModelOutput";
 
 export type {
   CompanyKnowledgePack,
@@ -34,39 +42,6 @@ const partialPackSchema = companyKnowledgePackSchema.partial();
 type PartialPack = ReturnType<typeof partialPackSchema.parse>;
 type TextPart = { type: "text"; text: string };
 
-const COMPANY_PACK_TOP_LEVEL_KEYS = new Set([
-  "company",
-  "contacts",
-  "locations",
-  "offerings",
-  "finance",
-  "certificationsAndAccreditation",
-  "supportAndOutcomes",
-  "policies",
-  "refundCancellationTerms",
-  "contactKnowledge",
-  "faqs",
-  "salesUsefulFacts",
-  "excludedContent",
-  "conflicts",
-  "importantGaps",
-  "sourceIndex",
-]);
-
-const OFFERING_TEXT_LIST_KEYS = [
-  "plans",
-  "duration",
-  "includedCourses",
-  "includedExams",
-  "certifications",
-  "awardingBodies",
-  "financeOptions",
-  "support",
-  "entryRequirements",
-  "outcomes",
-  "caveats",
-] as const;
-
 type InlineClient = Pick<
   GenxCompanyLearningClient,
   | "selectModels"
@@ -77,7 +52,10 @@ type InlineClient = Pick<
 >;
 
 function timeoutFromEnvironment() {
-  const configured = Number.parseInt(process.env.GENX_COMPANY_TIMEOUT_MS || "", 10);
+  const configured = Number.parseInt(
+    process.env.GENX_COMPANY_TIMEOUT_MS || "",
+    10
+  );
   return Number.isFinite(configured) && configured >= 10_000
     ? Math.min(600_000, configured)
     : DEFAULT_PARTIAL_BATCH_TIMEOUT_MS;
@@ -87,193 +65,20 @@ function hashKey(value: string) {
   return createHash("sha256").update(value).digest("hex").slice(0, 32);
 }
 
-function object(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
-
-function parseJsonObject(raw: unknown) {
-  if (typeof raw !== "string") return object(raw);
-  const cleaned = raw
-    .trim()
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "")
-    .trim();
-  const first = cleaned.indexOf("{");
-  const last = cleaned.lastIndexOf("}");
-  if (first < 0 || last <= first)
-    throw new Error("Company-learning batch returned no JSON object.");
-  const parsed = JSON.parse(cleaned.slice(first, last + 1)) as unknown;
-  const root = object(parsed);
-  const entries = Object.entries(root);
-  if (
-    entries.length === 1 &&
-    !COMPANY_PACK_TOP_LEVEL_KEYS.has(entries[0][0])
-  ) {
-    const inner = object(entries[0][1]);
-    if (Object.keys(inner).length) return inner;
-  }
-  return root;
-}
-
-function nonEmpty(value: unknown) {
-  return typeof value === "string" && value.trim().length > 0;
-}
-
-function validSourceUrl(value: unknown) {
-  if (typeof value !== "string") return false;
-  try {
-    const url = new URL(value);
-    return (
-      (url.protocol === "http:" || url.protocol === "https:") &&
-      /[a-z0-9]/i.test(url.hostname)
-    );
-  } catch {
-    return false;
-  }
-}
-
-function primitiveText(value: unknown): string | undefined {
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    return trimmed || undefined;
-  }
-  if (typeof value === "number" && Number.isFinite(value)) return String(value);
-  return undefined;
-}
-
-/**
- * GenX occasionally expresses a text-list item as structured metadata, e.g.
- * { value: "12", unit: "months" }. The canonical pack intentionally keeps
- * these fields as string[], so normalize only scalar values already present in
- * the model output. Nested objects/arrays are ignored rather than guessed.
- */
-function canonicalTextItem(value: unknown): string | undefined {
-  const direct = primitiveText(value);
-  if (direct) return direct;
-  const record = object(value);
-  if (!Object.keys(record).length) return undefined;
-
-  const amount = primitiveText(record.value);
-  const unit = primitiveText(record.unit);
-  if (amount && unit) return `${amount} ${unit}`.trim();
-
-  for (const key of [
-    "text",
-    "label",
-    "name",
-    "duration",
-    "details",
-    "description",
-    "value",
-  ]) {
-    const candidate = primitiveText(record[key]);
-    if (candidate) return candidate;
-  }
-
-  const scalarParts = Object.entries(record)
-    .map(([key, item]) => {
-      const text = primitiveText(item);
-      return text ? `${key}: ${text}` : undefined;
-    })
-    .filter((item): item is string => Boolean(item));
-  return scalarParts.length ? scalarParts.join("; ") : undefined;
-}
-
-function canonicalTextList(value: unknown) {
-  const values = Array.isArray(value) ? value : value == null ? [] : [value];
-  return Array.from(
-    new Set(
-      values
-        .map(canonicalTextItem)
-        .filter((item): item is string => Boolean(item))
-    )
-  );
-}
-
-function sanitizePartialEnvelope(raw: unknown) {
-  const root = parseJsonObject(raw);
-
-  const company = object(root.company);
-  if (!nonEmpty(company.name)) delete root.company;
-
-  const filterRecords = (
-    key: string,
-    valid: (record: Record<string, unknown>) => boolean
-  ) => {
-    if (!Array.isArray(root[key])) return;
-    root[key] = (root[key] as unknown[])
-      .map(object)
-      .filter(record => Object.keys(record).length > 0 && valid(record));
-  };
-
-  filterRecords("contacts", record => nonEmpty(record.value));
-  filterRecords("locations", record => nonEmpty(record.name));
-  filterRecords(
-    "offerings",
-    record => nonEmpty(record.id) && nonEmpty(record.name)
-  );
-
-  const factKeys = [
-    "finance",
-    "certificationsAndAccreditation",
-    "supportAndOutcomes",
-    "policies",
-    "refundCancellationTerms",
-    "contactKnowledge",
-    "faqs",
-    "salesUsefulFacts",
-  ];
-  for (const key of factKeys)
-    filterRecords(key, record => nonEmpty(record.title) && nonEmpty(record.details));
-
-  filterRecords("excludedContent", record => nonEmpty(record.reason));
-  filterRecords(
-    "conflicts",
-    record =>
-      nonEmpty(record.subject) &&
-      nonEmpty(record.explanation) &&
-      canonicalTextList(record.values).length > 0
-  );
-
-  if (Array.isArray(root.offerings)) {
-    root.offerings = (root.offerings as Array<Record<string, unknown>>).map(
-      offering => {
-        for (const key of OFFERING_TEXT_LIST_KEYS) {
-          if (offering[key] !== undefined)
-            offering[key] = canonicalTextList(offering[key]);
-        }
-        if (Array.isArray(offering.prices)) {
-          offering.prices = offering.prices
-            .map(object)
-            .filter(price => nonEmpty(price.value) && nonEmpty(price.label));
-        }
-        return offering;
-      }
-    );
-  }
-
-  if (Array.isArray(root.conflicts)) {
-    root.conflicts = (root.conflicts as Array<Record<string, unknown>>).map(
-      conflict => ({ ...conflict, values: canonicalTextList(conflict.values) })
-    );
-  }
-  if (root.importantGaps !== undefined)
-    root.importantGaps = canonicalTextList(root.importantGaps);
-
-  const sourceIndex = object(root.sourceIndex);
-  root.sourceIndex = Object.fromEntries(
-    Object.entries(sourceIndex).filter(
-      ([pageId, url]) => /^PAGE_\d{4}$/.test(pageId) && validSourceUrl(url)
-    )
-  );
-
-  return root;
+export function parsePartialCompanyKnowledgeBatchDetailed(
+  raw: unknown,
+  context: CompanyKnowledgeOutputContext = { phase: "analysis" }
+) {
+  return parseCanonicalCompanyKnowledgeOutput({
+    raw,
+    mode: "partial_analysis",
+    schema: partialPackSchema,
+    context,
+  });
 }
 
 export function parsePartialCompanyKnowledgeBatch(raw: unknown) {
-  return partialPackSchema.parse(sanitizePartialEnvelope(raw));
+  return parsePartialCompanyKnowledgeBatchDetailed(raw).data;
 }
 
 function fullPackFromPartial(
@@ -348,15 +153,22 @@ export class PartialBatchWholeSiteModel implements WholeSiteLearningModel {
   private readonly client: InlineClient;
   private readonly auditDelegate: InlineBatchWholeSiteModel;
   private resources: CompanyLearningResourceState = { sessionIds: [] };
-  private models?: Awaited<ReturnType<GenxCompanyLearningClient["selectModels"]>>;
+  private models?: Awaited<
+    ReturnType<GenxCompanyLearningClient["selectModels"]>
+  >;
   private analysisCalls = 0;
+  private normalizationEvents = 0;
+  private normalizedResponses = 0;
+  private readonly repairBudget: CompanyLearningRepairBudget = { used: 0 };
 
   constructor(
     private readonly input: {
       userId: number;
       organisationId: number;
       reference: string;
-      onResource?: (resources: CompanyLearningResourceState) => Promise<void> | void;
+      onResource?: (
+        resources: CompanyLearningResourceState
+      ) => Promise<void> | void;
       client?: InlineClient;
     }
   ) {
@@ -369,6 +181,7 @@ export class PartialBatchWholeSiteModel implements WholeSiteLearningModel {
       reference: `${input.reference}:audit`,
       onResource: input.onResource,
       client: this.client as never,
+      repairBudget: this.repairBudget,
     });
   }
 
@@ -428,7 +241,86 @@ export class PartialBatchWholeSiteModel implements WholeSiteLearningModel {
           reference: `${this.input.reference}:partial-analysis:batch-${batch.index + 1}`,
         },
       });
-      return parsePartialCompanyKnowledgeBatch(result.content);
+      try {
+        const parsed = parsePartialCompanyKnowledgeBatchDetailed(
+          result.content,
+          {
+            phase: "analysis",
+            batchIndex: batch.index + 1,
+            batchTotal: batch.total,
+            pageIds: batch.pageIds,
+          }
+        );
+        this.noteNormalization(parsed.normalizationActions);
+        return parsed.data;
+      } catch (error) {
+        if (error instanceof CompanyKnowledgeOutputError)
+          this.noteNormalization(error.diagnostic.normalizationActions);
+        const repaired = await this.repairBatch(
+          batch,
+          result.content,
+          formatCompanyKnowledgeOutputDiagnostic(error)
+        );
+        const parsed = parsePartialCompanyKnowledgeBatchDetailed(repaired, {
+          phase: "repair",
+          batchIndex: batch.index + 1,
+          batchTotal: batch.total,
+          pageIds: batch.pageIds,
+          repairAttempt: this.repairBudget.used,
+        });
+        this.noteNormalization(parsed.normalizationActions);
+        return parsed.data;
+      }
+    } finally {
+      await this.closeSession(sessionId);
+    }
+  }
+
+  private noteNormalization(actions: string[]) {
+    this.normalizationEvents += actions.length;
+    if (actions.length) this.normalizedResponses += 1;
+  }
+
+  private async repairBatch(
+    batch: CompanyInlineCorpusBatch,
+    invalidOutput: string,
+    validationDiagnostic: string
+  ) {
+    if (this.repairBudget.used >= MAX_COMPANY_INLINE_REPAIRS)
+      throw new Error(
+        `Company learning exceeded its bounded batch-repair contract. ${validationDiagnostic.slice(0, 4_000)}`
+      );
+    this.repairBudget.used += 1;
+    const models = await this.ensureModels();
+    const sessionId = await this.client.createSession({
+      model: models.analysis.id,
+      systemPrompt:
+        "Repair invalid structured company-learning JSON into the exact partial target schema. Do not add, infer or change facts. Preserve only facts and PAGE_XXXX identifiers already present in the invalid output. Return JSON only.",
+      title: `Amarktai partial company repair ${batch.index + 1}/${batch.total}`,
+    });
+    this.resources.sessionIds.push(sessionId);
+    await this.noteResources();
+    try {
+      const result = await this.client.sendSessionMessage({
+        sessionId,
+        content: [
+          {
+            type: "text",
+            text: `Repair attempt: ${this.repairBudget.used}/${MAX_COMPANY_INLINE_REPAIRS}\nValidation diagnostic: ${validationDiagnostic.slice(0, 4_000)}\n\nTARGET SCHEMA:\n${companyKnowledgeRepairTargetPrompt("analysis")}\n\nThis remains a PARTIAL batch response: omit top-level categories that were not present.\n\nINVALID OUTPUT:\n${invalidOutput.slice(0, 24_000)}`,
+          },
+        ] as unknown as string,
+        fileIds: [],
+        idempotencyKey: hashKey(
+          `${this.input.reference}:partial-repair:${batch.index}:${this.repairBudget.used}`
+        ),
+        billing: {
+          userId: this.input.userId,
+          organisationId: this.input.organisationId,
+          feature: "company_learning_repair",
+          reference: `${this.input.reference}:partial-repair:batch-${batch.index + 1}:attempt-${this.repairBudget.used}`,
+        },
+      });
+      return result.content;
     } finally {
       await this.closeSession(sessionId);
     }
@@ -474,7 +366,11 @@ export class PartialBatchWholeSiteModel implements WholeSiteLearningModel {
     return {
       analysis: this.analysisCalls,
       audit: auditStats.audit,
-      repair: auditStats.repair,
+      repair: this.repairBudget.used,
+      normalizationEvents:
+        this.normalizationEvents + auditStats.normalizationEvents,
+      normalizedResponses:
+        this.normalizedResponses + auditStats.normalizedResponses,
     };
   }
 }
@@ -491,12 +387,18 @@ export async function synthesiseCompanyKnowledge(
     organisationId: input.organisationId,
     reference: input.reference,
     onResource: resources =>
-      input.onCheckpoint?.({ kind: "resources", resources } as WholeSiteCheckpoint),
+      input.onCheckpoint?.({
+        kind: "resources",
+        resources,
+      } as WholeSiteCheckpoint),
   });
   const result = await synthesiseCompanyKnowledgeBase({ ...input, model });
   const stats = model.callStats();
-  result.analysisCalls = stats.analysis + stats.audit;
+  result.analysisCalls = stats.analysis;
+  result.auditCalls = stats.audit;
+  result.normalizationEvents = stats.normalizationEvents;
   result.repairCalls = stats.repair;
-  result.totalAiCalls = result.analysisCalls + result.repairCalls;
+  result.totalAiCalls =
+    result.analysisCalls + result.auditCalls + result.repairCalls;
   return result;
 }

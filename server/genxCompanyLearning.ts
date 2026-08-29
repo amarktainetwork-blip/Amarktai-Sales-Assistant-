@@ -250,8 +250,7 @@ export function selectCompanyLearningModel(input: {
       return {
         id,
         category: modelCategory(record),
-        contextWindow:
-          modelContext(record) || modelContext(modelPricing || {}),
+        contextWindow: modelContext(record) || modelContext(modelPricing || {}),
         advertised: record,
         pricing: modelPricing,
       };
@@ -413,7 +412,9 @@ export class GenxCompanyLearningClient {
         status &&
         !/^(queued|processing|pending|running|in_progress)$/.test(status)
       )
-        throw new Error(`Company-learning job returned unknown status: ${status}`);
+        throw new Error(
+          `Company-learning job returned unknown status: ${status}`
+        );
 
       const remaining = deadline - Date.now();
       if (remaining <= 0)
@@ -446,24 +447,6 @@ export class GenxCompanyLearningClient {
     };
   }
 
-  async uploadCorpus(input: { jsonl: string; corpusHash: string }) {
-    const form = new FormData();
-    form.set(
-      "file",
-      new Blob([input.jsonl], { type: "text/plain" }),
-      `amarktai-company-corpus-${input.corpusHash.slice(0, 16)}.txt`
-    );
-    form.set("purpose", "company-learning");
-    const payload = await this.request("/files", {
-      method: "POST",
-      body: form,
-    });
-    const fileId = responseId(payload, ["file_id", "id"]);
-    if (!fileId)
-      throw new Error("Company corpus upload returned no file identifier.");
-    return fileId;
-  }
-
   async createSession(input: {
     model: string;
     systemPrompt: string;
@@ -483,7 +466,7 @@ export class GenxCompanyLearningClient {
   async sendSessionMessage(input: {
     sessionId: string;
     content: string;
-    fileIds: string[];
+    fileIds?: string[];
     idempotencyKey: string;
     billing: {
       userId: number;
@@ -492,13 +475,16 @@ export class GenxCompanyLearningClient {
       reference: string;
     };
   }) {
+    if (input.fileIds?.length)
+      throw new Error(
+        "GenX file_ids are disabled as unsafe for company learning. Use bounded inline context."
+      );
     const submitted = await this.json(
       `/sessions/${encodeURIComponent(input.sessionId)}/messages`,
       "POST",
       {
         role: "user",
         content: input.content,
-        file_ids: input.fileIds,
         idempotency_key: input.idempotencyKey,
       }
     );

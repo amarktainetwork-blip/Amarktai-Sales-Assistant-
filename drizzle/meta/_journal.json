@@ -211,6 +211,13 @@
       "when": 1787926307490,
       "tag": "0029_old_spot",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "5",
+      "when": 1788004670970,
+      "tag": "0030_bizarre_zemo",
+      "breakpoints": true
     }
   ]
 }
