@@ -53,6 +53,20 @@ const COMPANY_PACK_TOP_LEVEL_KEYS = new Set([
   "sourceIndex",
 ]);
 
+const OFFERING_TEXT_LIST_KEYS = [
+  "plans",
+  "duration",
+  "includedCourses",
+  "includedExams",
+  "certifications",
+  "awardingBodies",
+  "financeOptions",
+  "support",
+  "entryRequirements",
+  "outcomes",
+  "caveats",
+] as const;
+
 type InlineClient = Pick<
   GenxCompanyLearningClient,
   | "selectModels"
@@ -120,6 +134,64 @@ function validSourceUrl(value: unknown) {
   }
 }
 
+function primitiveText(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed || undefined;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return undefined;
+}
+
+/**
+ * GenX occasionally expresses a text-list item as structured metadata, e.g.
+ * { value: "12", unit: "months" }. The canonical pack intentionally keeps
+ * these fields as string[], so normalize only scalar values already present in
+ * the model output. Nested objects/arrays are ignored rather than guessed.
+ */
+function canonicalTextItem(value: unknown): string | undefined {
+  const direct = primitiveText(value);
+  if (direct) return direct;
+  const record = object(value);
+  if (!Object.keys(record).length) return undefined;
+
+  const amount = primitiveText(record.value);
+  const unit = primitiveText(record.unit);
+  if (amount && unit) return `${amount} ${unit}`.trim();
+
+  for (const key of [
+    "text",
+    "label",
+    "name",
+    "duration",
+    "details",
+    "description",
+    "value",
+  ]) {
+    const candidate = primitiveText(record[key]);
+    if (candidate) return candidate;
+  }
+
+  const scalarParts = Object.entries(record)
+    .map(([key, item]) => {
+      const text = primitiveText(item);
+      return text ? `${key}: ${text}` : undefined;
+    })
+    .filter((item): item is string => Boolean(item));
+  return scalarParts.length ? scalarParts.join("; ") : undefined;
+}
+
+function canonicalTextList(value: unknown) {
+  const values = Array.isArray(value) ? value : value == null ? [] : [value];
+  return Array.from(
+    new Set(
+      values
+        .map(canonicalTextItem)
+        .filter((item): item is string => Boolean(item))
+    )
+  );
+}
+
 function sanitizePartialEnvelope(raw: unknown) {
   const root = parseJsonObject(raw);
 
@@ -162,13 +234,16 @@ function sanitizePartialEnvelope(raw: unknown) {
     record =>
       nonEmpty(record.subject) &&
       nonEmpty(record.explanation) &&
-      Array.isArray(record.values) &&
-      record.values.some(nonEmpty)
+      canonicalTextList(record.values).length > 0
   );
 
   if (Array.isArray(root.offerings)) {
     root.offerings = (root.offerings as Array<Record<string, unknown>>).map(
       offering => {
+        for (const key of OFFERING_TEXT_LIST_KEYS) {
+          if (offering[key] !== undefined)
+            offering[key] = canonicalTextList(offering[key]);
+        }
         if (Array.isArray(offering.prices)) {
           offering.prices = offering.prices
             .map(object)
@@ -178,6 +253,14 @@ function sanitizePartialEnvelope(raw: unknown) {
       }
     );
   }
+
+  if (Array.isArray(root.conflicts)) {
+    root.conflicts = (root.conflicts as Array<Record<string, unknown>>).map(
+      conflict => ({ ...conflict, values: canonicalTextList(conflict.values) })
+    );
+  }
+  if (root.importantGaps !== undefined)
+    root.importantGaps = canonicalTextList(root.importantGaps);
 
   const sourceIndex = object(root.sourceIndex);
   root.sourceIndex = Object.fromEntries(
@@ -323,7 +406,7 @@ export class PartialBatchWholeSiteModel implements WholeSiteLearningModel {
     this.analysisCalls += 1;
 
     try {
-      const prompt = `This is bounded corpus batch ${batch.index + 1}/${batch.total}.\n\nReturn a PARTIAL CompanyKnowledgePack. Use only top-level keys for facts actually present in this batch. OMIT the company key if company identity is not directly evidenced here. OMIT absent top-level categories instead of emitting placeholder objects. Empty arrays are allowed, but never return objects with blank required strings. Every included fact and offering must cite only PAGE_XXXX IDs visible in this batch. Preserve contradictory first-party facts; do not silently choose one.\n\nNested objects must follow the exact structures shown in this reference schema:\n${companyKnowledgeRepairTargetPrompt("analysis")}\n\nFor this partial response you MAY OMIT any top-level key not evidenced in this batch, including company. Do not rename keys, add metadata, wrap the JSON, or output commentary.`;
+      const prompt = `This is bounded corpus batch ${batch.index + 1}/${batch.total}.\n\nReturn a PARTIAL CompanyKnowledgePack. Use only top-level keys for facts actually present in this batch. OMIT the company key if company identity is not directly evidenced here. OMIT absent top-level categories instead of emitting placeholder objects. Empty arrays are allowed, but never return objects with blank required strings. Every included fact and offering must cite only PAGE_XXXX IDs visible in this batch. Preserve contradictory first-party facts; do not silently choose one.\n\nNested objects must follow the exact structures shown in this reference schema:\n${companyKnowledgeRepairTargetPrompt("analysis")}\n\nFor this partial response you MAY OMIT any top-level key not evidenced in this batch, including company. All offering text-list fields (including duration, support, certifications and outcomes) should be arrays of plain strings. Do not rename keys, add metadata, wrap the JSON, or output commentary.`;
       const parts: TextPart[] = [
         {
           type: "text",
