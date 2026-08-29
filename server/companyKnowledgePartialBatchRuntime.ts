@@ -34,6 +34,25 @@ const partialPackSchema = companyKnowledgePackSchema.partial();
 type PartialPack = ReturnType<typeof partialPackSchema.parse>;
 type TextPart = { type: "text"; text: string };
 
+const COMPANY_PACK_TOP_LEVEL_KEYS = new Set([
+  "company",
+  "contacts",
+  "locations",
+  "offerings",
+  "finance",
+  "certificationsAndAccreditation",
+  "supportAndOutcomes",
+  "policies",
+  "refundCancellationTerms",
+  "contactKnowledge",
+  "faqs",
+  "salesUsefulFacts",
+  "excludedContent",
+  "conflicts",
+  "importantGaps",
+  "sourceIndex",
+]);
+
 type InlineClient = Pick<
   GenxCompanyLearningClient,
   | "selectModels"
@@ -74,7 +93,10 @@ function parseJsonObject(raw: unknown) {
   const parsed = JSON.parse(cleaned.slice(first, last + 1)) as unknown;
   const root = object(parsed);
   const entries = Object.entries(root);
-  if (entries.length === 1) {
+  if (
+    entries.length === 1 &&
+    !COMPANY_PACK_TOP_LEVEL_KEYS.has(entries[0][0])
+  ) {
     const inner = object(entries[0][1]);
     if (Object.keys(inner).length) return inner;
   }
@@ -83,6 +105,19 @@ function parseJsonObject(raw: unknown) {
 
 function nonEmpty(value: unknown) {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function validSourceUrl(value: unknown) {
+  if (typeof value !== "string") return false;
+  try {
+    const url = new URL(value);
+    return (
+      (url.protocol === "http:" || url.protocol === "https:") &&
+      /[a-z0-9]/i.test(url.hostname)
+    );
+  } catch {
+    return false;
+  }
 }
 
 function sanitizePartialEnvelope(raw: unknown) {
@@ -147,10 +182,7 @@ function sanitizePartialEnvelope(raw: unknown) {
   const sourceIndex = object(root.sourceIndex);
   root.sourceIndex = Object.fromEntries(
     Object.entries(sourceIndex).filter(
-      ([pageId, url]) =>
-        /^PAGE_\d{4}$/.test(pageId) &&
-        typeof url === "string" &&
-        /^https?:\/\//i.test(url)
+      ([pageId, url]) => /^PAGE_\d{4}$/.test(pageId) && validSourceUrl(url)
     )
   );
 
