@@ -7,7 +7,7 @@ import {
 import {
   synthesiseCompanyKnowledge,
   type WholeSiteCheckpoint,
-} from "./companyKnowledgeSynthesis";
+} from "./companyKnowledgeInlineRuntime";
 
 function positiveId(value: string | undefined, label: string) {
   const parsed = Number.parseInt(value || "", 10);
@@ -27,7 +27,7 @@ export async function verifyCompanyKnowledge(input: {
 }) {
   const started = Date.now();
   let processStable = true;
-  let uploadObserved = false;
+  let inlineTransportObserved = false;
   try {
     line("MILESTONE", "Scanning website");
     const discovery = await discoverPublicWebsite(input.websiteUrl);
@@ -35,6 +35,7 @@ export async function verifyCompanyKnowledge(input: {
     line("PAGES_SCANNED", discovery.pages.length);
     line("PAGES_CLASSIFIED", discovery.pages.length);
     line("MILESTONE", "Building company corpus");
+    line("GENX_FILE_UPLOAD", "DISABLED_UNSAFE");
     const review = await synthesiseCompanyKnowledge({
       userId: input.userId,
       organisationId: input.organisationId,
@@ -48,11 +49,11 @@ export async function verifyCompanyKnowledge(input: {
         }
         if (
           checkpoint.kind === "resources" &&
-          checkpoint.resources.fileId &&
-          !uploadObserved
+          checkpoint.resources.sessionIds.length > 0 &&
+          !inlineTransportObserved
         ) {
-          uploadObserved = true;
-          line("GENX_FILE_UPLOAD", "PASS");
+          inlineTransportObserved = true;
+          line("GENX_INLINE_CONTEXT", "PASS");
         }
       },
       onPhase: async phase => {
@@ -67,8 +68,8 @@ export async function verifyCompanyKnowledge(input: {
       },
     });
     buildReviewedCompanyDiscovery(discovery, review);
-    if (!uploadObserved)
-      throw new Error("The company corpus upload milestone was not observed.");
+    if (!inlineTransportObserved)
+      throw new Error("The bounded inline company-learning transport milestone was not observed.");
     if (
       !review.selectedModelOperations.analysis ||
       !review.selectedModelOperations.audit
