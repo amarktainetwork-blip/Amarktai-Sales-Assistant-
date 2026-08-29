@@ -95,6 +95,25 @@ describe("partial company-learning batch schema", () => {
     expect(parsed.offerings).toHaveLength(1);
   });
 
+  it("normalizes structured offering text-list values without inventing content", () => {
+    const input = offeringPartial();
+    const offering = input.offerings[0] as Record<string, unknown>;
+    offering.duration = [
+      { value: "12", unit: "months", sourcePageIds: ["PAGE_0002"] },
+      { text: "Self-paced" },
+      { nested: { ignored: "not promoted" } },
+    ];
+    offering.support = [{ label: "Tutor support" }, "Tutor support"];
+    offering.certifications = { name: "Example Certification" };
+
+    const parsed = parsePartialCompanyKnowledgeBatch(JSON.stringify(input));
+    expect(parsed.offerings?.[0].duration).toEqual(["12 months", "Self-paced"]);
+    expect(parsed.offerings?.[0].support).toEqual(["Tutor support"]);
+    expect(parsed.offerings?.[0].certifications).toEqual([
+      "Example Certification",
+    ]);
+  });
+
   it("fills only missing batch identity from a real sourced identity before deterministic merge", () => {
     const built = corpus();
     const identity = parsePartialCompanyKnowledgeBatch(
