@@ -7,7 +7,7 @@ import {
 import {
   synthesiseCompanyKnowledge,
   type WholeSiteCheckpoint,
-} from "./companyKnowledgeInlineRuntime";
+} from "./companyKnowledgePartialBatchRuntime";
 
 function positiveId(value: string | undefined, label: string) {
   const parsed = Number.parseInt(value || "", 10);
@@ -36,6 +36,7 @@ export async function verifyCompanyKnowledge(input: {
     line("PAGES_CLASSIFIED", discovery.pages.length);
     line("MILESTONE", "Building company corpus");
     line("GENX_FILE_UPLOAD", "DISABLED_UNSAFE");
+    line("PARTIAL_BATCH_SCHEMA", "ENABLED");
     const review = await synthesiseCompanyKnowledge({
       userId: input.userId,
       organisationId: input.organisationId,
@@ -69,7 +70,9 @@ export async function verifyCompanyKnowledge(input: {
     });
     buildReviewedCompanyDiscovery(discovery, review);
     if (!inlineTransportObserved)
-      throw new Error("The bounded inline company-learning transport milestone was not observed.");
+      throw new Error(
+        "The bounded inline company-learning transport milestone was not observed."
+      );
     if (
       !review.selectedModelOperations.analysis ||
       !review.selectedModelOperations.audit
