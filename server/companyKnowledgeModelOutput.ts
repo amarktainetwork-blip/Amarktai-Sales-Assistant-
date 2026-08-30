@@ -330,6 +330,20 @@ function normalizeConflict(
   return conflict;
 }
 
+function incompletePartialConflict(value: Record<string, unknown>) {
+  const values = Array.isArray(value.values)
+    ? value.values
+        .map(item => primitiveText(item))
+        .filter((item): item is string => Boolean(item))
+    : [];
+  const sourcePageIds = Array.isArray(value.sourcePageIds)
+    ? value.sourcePageIds
+        .map(item => primitiveText(item))
+        .filter((item): item is string => Boolean(item))
+    : [];
+  return new Set(values).size < 2 || new Set(sourcePageIds).size < 2;
+}
+
 function normalizeExcluded(
   value: unknown,
   path: string,
@@ -442,7 +456,13 @@ function normalizeAnalysisRoot(
       item => !primitiveText(item.title) || !primitiveText(item.details)
     );
   normalizeRecordArray(root, "excludedContent", state, normalizeExcluded);
-  normalizeRecordArray(root, "conflicts", state, normalizeConflict);
+  normalizeRecordArray(
+    root,
+    "conflicts",
+    state,
+    normalizeConflict,
+    mode === "partial_analysis" ? incompletePartialConflict : undefined
+  );
   if ("importantGaps" in root)
     root.importantGaps = canonicalTextList(
       root.importantGaps,
