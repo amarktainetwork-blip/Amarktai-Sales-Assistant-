@@ -542,6 +542,28 @@ function intersects(sourcePageIds: string[], allowed: Set<string>) {
   return sourcePageIds.some(id => allowed.has(id));
 }
 
+export function scopeAuditDraftProvenanceForBatch<T>(
+  value: T,
+  pageIds: string[]
+): T {
+  const allowed = new Set(pageIds);
+  const visit = (item: unknown): unknown => {
+    if (Array.isArray(item)) return item.map(visit);
+    if (!item || typeof item !== "object") return item;
+    return Object.fromEntries(
+      Object.entries(item as Record<string, unknown>).map(([key, child]) => [
+        key,
+        key === "sourcePageIds" && Array.isArray(child)
+          ? child.filter(
+              id => typeof id === "string" && allowed.has(id)
+            )
+          : visit(child),
+      ])
+    );
+  };
+  return visit(value) as T;
+}
+
 function compactDraftForBatch(
   draft: CompanyKnowledgePack,
   batch: CompanyInlineCorpusBatch
@@ -557,7 +579,7 @@ function compactDraftForBatch(
         details: item.details.slice(0, 1_000),
         sourcePageIds: item.sourcePageIds,
       }));
-  return {
+  const compact = {
     company: draft.company,
     offerings: draft.offerings
       .filter(item => intersects(item.sourcePageIds, allowed))
@@ -584,6 +606,7 @@ function compactDraftForBatch(
       intersects(item.sourcePageIds, allowed)
     ),
   };
+  return scopeAuditDraftProvenanceForBatch(compact, batch.pageIds);
 }
 
 export class InlineBatchWholeSiteModel implements WholeSiteLearningModel {
@@ -705,8 +728,8 @@ export class InlineBatchWholeSiteModel implements WholeSiteLearningModel {
       auditModel: kind === "audit",
       includeSource: false,
       systemPrompt:
-        "Repair invalid structured company-learning JSON into the exact target schema. Do not add, infer or change facts. Preserve only facts and PAGE_XXXX identifiers already present in the invalid output. Return JSON only.",
-      prompt: `Repair this ${kind} batch output.\nRepair attempt: ${this.repairBudget.used}/${MAX_COMPANY_INLINE_REPAIRS}\nValidation diagnostic: ${validationError.slice(0, 4_000)}\n\nTARGET SCHEMA:\n${companyKnowledgeRepairTargetPrompt(kind)}\n\nINVALID OUTPUT:\n${invalidOutput.slice(0, 24_000)}`,
+        "Repair invalid structured company-learning JSON into the exact target schema. Do not add, infer or change facts. Preserve only facts and PAGE_XXXX identifiers already present in the invalid output, except remove identifiers that the validation diagnostic explicitly marks unsupported for this bounded batch. Never replace removed identifiers with new identifiers. Return JSON only.",
+      prompt: `Repair this ${kind} batch output.\nRepair attempt: ${this.repairBudget.used}/${MAX_COMPANY_INLINE_REPAIRS}\nAllowed PAGE IDs for this batch: ${batch.pageIds.join(", ")}\nValidation diagnostic: ${validationError.slice(0, 4_000)}\n\nTARGET SCHEMA:\n${companyKnowledgeRepairTargetPrompt(kind)}\n\nINVALID OUTPUT:\n${invalidOutput.slice(0, 24_000)}`,
     });
   }
 
