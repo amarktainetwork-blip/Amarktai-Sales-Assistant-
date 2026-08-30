@@ -108,6 +108,14 @@ const OFFERING_TEXT_LIST_KEYS = [
   "caveats",
 ] as const;
 
+const PRICE_SEMANTIC_TYPES = new Set([
+  "full_current_price",
+  "deposit",
+  "finance_payment_plan",
+  "alternative_plan",
+  "other_fee",
+]);
+
 const EXCLUDED_CLASSIFICATIONS = new Set([
   "category",
   "editorial",
@@ -268,6 +276,25 @@ function normalizePrice(
   return price;
 }
 
+function normalizeAuditPrice(
+  value: unknown,
+  path: string,
+  state: NormalizationState
+) {
+  const price = record(value);
+  const semanticType = primitiveText(price.semanticType);
+  if (!semanticType) return price;
+  const canonical = semanticType
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  if (canonical !== semanticType && PRICE_SEMANTIC_TYPES.has(canonical)) {
+    price.semanticType = canonical;
+    note(state, `${path}.semanticType:canonicalized_format`);
+  }
+  return price;
+}
+
 function normalizeOffering(
   value: unknown,
   path: string,
@@ -303,7 +330,13 @@ function normalizeAuditOffering(
     delete offering.courses;
     note(state, `${path}.courses:renamed_to_includedCourses`);
   }
-  return normalizeOffering(offering, path, state);
+  const normalized = normalizeOffering(offering, path, state);
+  if (Array.isArray(normalized.prices)) {
+    normalized.prices = normalized.prices.map((price, index) =>
+      normalizeAuditPrice(price, `${path}.prices[${index}]`, state)
+    );
+  }
+  return normalized;
 }
 
 function normalizeFact(
