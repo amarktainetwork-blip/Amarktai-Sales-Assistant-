@@ -20,7 +20,13 @@ const partialSchema = z
   })
   .partial();
 
-describe("partial company-learning conflict compatibility", () => {
+const auditSchema = z
+  .object({
+    addConflicts: z.array(conflictSchema).default([]),
+  })
+  .partial();
+
+describe("batched company-learning conflict compatibility", () => {
   it("drops an incomplete one-source conflict candidate in partial analysis", () => {
     const parsed = parseCanonicalCompanyKnowledgeOutput({
       raw: {
@@ -70,6 +76,84 @@ describe("partial company-learning conflict compatibility", () => {
     });
 
     expect(parsed.data.conflicts).toHaveLength(1);
+  });
+
+  it("drops an incomplete noncanonical conflict candidate in a bounded audit batch", () => {
+    const parsed = parseCanonicalCompanyKnowledgeOutput({
+      raw: {
+        addConflicts: [
+          {
+            sourcePageIds: ["PAGE_0001", "PAGE_0002"],
+            candidate: "Possible contradiction requiring further evidence.",
+            evidence: ["first statement", "second statement"],
+          },
+        ],
+      },
+      mode: "audit",
+      schema: auditSchema,
+      context: {
+        phase: "audit",
+        batchIndex: 2,
+        batchTotal: 36,
+        pageIds: ["PAGE_0001", "PAGE_0002"],
+      },
+    });
+
+    expect(parsed.data.addConflicts).toEqual([]);
+    expect(parsed.normalizationActions).toContain(
+      "addConflicts[0]:removed_blank_placeholder"
+    );
+  });
+
+  it("retains a fully evidenced audit conflict", () => {
+    const parsed = parseCanonicalCompanyKnowledgeOutput({
+      raw: {
+        addConflicts: [
+          {
+            subject: "Programme price",
+            values: ["£2,499", "£2,699"],
+            sourcePageIds: ["PAGE_0001", "PAGE_0002"],
+            explanation: "Two first-party pages publish different prices.",
+          },
+        ],
+      },
+      mode: "audit",
+      schema: auditSchema,
+      context: {
+        phase: "audit",
+        batchIndex: 2,
+        batchTotal: 36,
+        pageIds: ["PAGE_0001", "PAGE_0002"],
+      },
+    });
+
+    expect(parsed.data.addConflicts).toHaveLength(1);
+  });
+
+  it("keeps strict validation for complete audit conflicts with extra keys", () => {
+    expect(() =>
+      parseCanonicalCompanyKnowledgeOutput({
+        raw: {
+          addConflicts: [
+            {
+              subject: "Programme price",
+              values: ["£2,499", "£2,699"],
+              sourcePageIds: ["PAGE_0001", "PAGE_0002"],
+              explanation: "Two first-party pages publish different prices.",
+              confidence: "high",
+            },
+          ],
+        },
+        mode: "audit",
+        schema: auditSchema,
+        context: {
+          phase: "audit",
+          batchIndex: 2,
+          batchTotal: 36,
+          pageIds: ["PAGE_0001", "PAGE_0002"],
+        },
+      })
+    ).toThrow(CompanyKnowledgeOutputError);
   });
 
   it("does not weaken full-analysis conflict validation", () => {
