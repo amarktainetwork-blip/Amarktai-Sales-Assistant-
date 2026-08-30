@@ -3,7 +3,10 @@ import {
   CompanyKnowledgeOutputError,
   parseCanonicalCompanyKnowledgeOutput,
 } from "./companyKnowledgeModelOutput";
-import { companyKnowledgeAuditSchema } from "./companyKnowledgeSynthesis";
+import {
+  companyKnowledgeAuditSchema,
+  companyKnowledgePackSchema,
+} from "./companyKnowledgeSynthesis";
 
 function audit(overrides: Record<string, unknown> = {}) {
   return {
@@ -48,6 +51,15 @@ function parse(raw: unknown) {
   });
 }
 
+function price(semanticType: string) {
+  return {
+    value: "£1,000",
+    semanticType,
+    label: "Published price",
+    sourcePageIds: ["PAGE_0076"],
+  };
+}
+
 describe("bounded audit schema compatibility", () => {
   it("maps the audit-only courses key to includedCourses when the canonical key is absent", () => {
     const result = parse(
@@ -81,6 +93,63 @@ describe("bounded audit schema compatibility", () => {
           ],
         })
       )
+    ).toThrow(CompanyKnowledgeOutputError);
+  });
+
+  it("canonicalizes formatting-equivalent audit price semantic types", () => {
+    const result = parse(
+      audit({
+        replaceOfferings: [
+          offering({
+            prices: [price("Full Current Price")],
+          }),
+        ],
+      })
+    );
+
+    expect(result.data.replaceOfferings[0].prices[0].semanticType).toBe(
+      "full_current_price"
+    );
+    expect(result.normalizationActions).toContain(
+      "replaceOfferings[0].prices[0].semanticType:canonicalized_format"
+    );
+  });
+
+  it("keeps semantically unknown audit price semantic types invalid", () => {
+    expect(() =>
+      parse(
+        audit({
+          replaceOfferings: [
+            offering({
+              prices: [price("monthly_installment")],
+            }),
+          ],
+        })
+      )
+    ).toThrow(CompanyKnowledgeOutputError);
+  });
+
+  it("does not normalize price semantic types in full analysis", () => {
+    expect(() =>
+      parseCanonicalCompanyKnowledgeOutput({
+        raw: {
+          company: {
+            name: "Course2Career",
+            sourcePageIds: ["PAGE_0076"],
+          },
+          offerings: [
+            offering({
+              prices: [price("Full Current Price")],
+            }),
+          ],
+        },
+        mode: "full_analysis",
+        schema: companyKnowledgePackSchema,
+        context: {
+          phase: "analysis",
+          pageIds: ["PAGE_0076"],
+        },
+      })
     ).toThrow(CompanyKnowledgeOutputError);
   });
 
