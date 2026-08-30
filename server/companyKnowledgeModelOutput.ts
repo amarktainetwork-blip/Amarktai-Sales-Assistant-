@@ -246,6 +246,13 @@ function normalizePrice(
   const price = normalizeSourcePageIds(record(value), path, state);
   normalizeTextField(price, "value", path, state);
   normalizeTextField(price, "label", path, state);
+  if (!primitiveText(price.label)) {
+    const semanticType = primitiveText(price.semanticType);
+    if (semanticType) {
+      price.label = semanticType.replace(/_/g, " ");
+      note(state, `${path}.label:derived_from_semantic_type`);
+    }
+  }
   return price;
 }
 
