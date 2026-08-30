@@ -110,10 +110,15 @@ const OFFERING_TEXT_LIST_KEYS = [
 
 const PRICE_SEMANTIC_TYPES = new Set([
   "full_current_price",
+  "original_price",
   "deposit",
   "finance_payment_plan",
   "alternative_plan",
   "other_fee",
+]);
+
+const AUDIT_PRICE_SEMANTIC_ALIASES = new Map([
+  ["was_price", "original_price"],
 ]);
 
 const EXCLUDED_CLASSIFICATIONS = new Set([
@@ -291,6 +296,11 @@ function normalizeAuditPrice(
   if (canonical !== semanticType && PRICE_SEMANTIC_TYPES.has(canonical)) {
     price.semanticType = canonical;
     note(state, `${path}.semanticType:canonicalized_format`);
+  }
+  const alias = AUDIT_PRICE_SEMANTIC_ALIASES.get(canonical);
+  if (alias) {
+    price.semanticType = alias;
+    note(state, `${path}.semanticType:canonicalized_alias`);
   }
   return price;
 }

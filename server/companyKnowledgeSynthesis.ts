@@ -30,6 +30,7 @@ export const OFFERING_TYPES = [
 
 export const PRICE_SEMANTIC_TYPES = [
   "full_current_price",
+  "original_price",
   "deposit",
   "finance_payment_plan",
   "alternative_plan",

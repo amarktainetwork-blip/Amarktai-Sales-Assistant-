@@ -170,6 +170,44 @@ describe("bounded audit schema compatibility", () => {
     );
   });
 
+  it("preserves canonical original prices as historical pricing", () => {
+    const result = parse(
+      audit({
+        replaceOfferings: [
+          offering({
+            prices: [price("original_price")],
+          }),
+        ],
+      })
+    );
+
+    expect(result.data.replaceOfferings[0].prices[0].semanticType).toBe(
+      "original_price"
+    );
+    expect(result.normalizationActions).not.toContain(
+      "replaceOfferings[0].prices[0].semanticType:canonicalized_alias"
+    );
+  });
+
+  it("maps only the proven audit was_price alias to original_price", () => {
+    const result = parse(
+      audit({
+        replaceOfferings: [
+          offering({
+            prices: [price("was_price")],
+          }),
+        ],
+      })
+    );
+
+    expect(result.data.replaceOfferings[0].prices[0].semanticType).toBe(
+      "original_price"
+    );
+    expect(result.normalizationActions).toContain(
+      "replaceOfferings[0].prices[0].semanticType:canonicalized_alias"
+    );
+  });
+
   it("keeps semantically unknown audit price semantic types invalid", () => {
     expect(() =>
       parse(
@@ -184,7 +222,7 @@ describe("bounded audit schema compatibility", () => {
     ).toThrow(CompanyKnowledgeOutputError);
   });
 
-  it("does not normalize price semantic types in full analysis", () => {
+  it("does not normalize formatting variants in full analysis", () => {
     expect(() =>
       parseCanonicalCompanyKnowledgeOutput({
         raw: {
@@ -195,6 +233,30 @@ describe("bounded audit schema compatibility", () => {
           offerings: [
             offering({
               prices: [price("Full Current Price")],
+            }),
+          ],
+        },
+        mode: "full_analysis",
+        schema: companyKnowledgePackSchema,
+        context: {
+          phase: "analysis",
+          pageIds: ["PAGE_0076"],
+        },
+      })
+    ).toThrow(CompanyKnowledgeOutputError);
+  });
+
+  it("does not apply the audit-only was_price alias in full analysis", () => {
+    expect(() =>
+      parseCanonicalCompanyKnowledgeOutput({
+        raw: {
+          company: {
+            name: "Course2Career",
+            sourcePageIds: ["PAGE_0076"],
+          },
+          offerings: [
+            offering({
+              prices: [price("was_price")],
             }),
           ],
         },
