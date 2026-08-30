@@ -10,6 +10,7 @@ import {
   type WholeSiteLearningModel,
 } from "./companyKnowledgeSynthesis";
 import type { CompanyCorpus } from "./companyKnowledgeCorpus";
+import { finaliseCompanyKnowledgeRuntimeResult } from "./companyKnowledgeRuntimeFinalization";
 import {
   buildCompanyInlineCorpusBatches,
   COMPANY_INLINE_BATCH_CONCURRENCY,
@@ -400,5 +401,5 @@ export async function synthesiseCompanyKnowledge(
   result.repairCalls = stats.repair;
   result.totalAiCalls =
     result.analysisCalls + result.auditCalls + result.repairCalls;
-  return result;
+  return finaliseCompanyKnowledgeRuntimeResult(result);
 }
