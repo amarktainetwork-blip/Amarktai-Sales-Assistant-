@@ -442,6 +442,26 @@ function normalizeAuditExcluded(
   const excluded = normalizeExcluded(value, path, state);
   const classification = primitiveText(excluded.classification);
   if (!classification) return excluded;
+
+  if (!primitiveText(excluded.reason)) {
+    const reason =
+      primitiveText(excluded.details) ||
+      primitiveText(excluded.description) ||
+      primitiveText(excluded.title);
+    if (reason) {
+      excluded.reason = reason;
+      note(state, `${path}.reason:derived_from_audit_description`);
+    }
+  }
+  if (primitiveText(excluded.reason)) {
+    for (const key of ["title", "details", "description"]) {
+      if (key in excluded) {
+        delete excluded[key];
+        note(state, `${path}.${key}:removed_audit_annotation`);
+      }
+    }
+  }
+
   const canonical = classification
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
@@ -451,6 +471,62 @@ function normalizeAuditExcluded(
     note(state, `${path}.classification:canonicalized_format`);
   }
   return excluded;
+}
+
+function unclassifiedAuditExcludedGap(
+  value: Record<string, unknown>
+): string | undefined {
+  if (primitiveText(value.classification)) return undefined;
+  const sourcePageIds = Array.isArray(value.sourcePageIds)
+    ? value.sourcePageIds
+        .map(item => primitiveText(item))
+        .filter((item): item is string => Boolean(item))
+        .filter(id => /^PAGE_\d{4}$/.test(id))
+    : [];
+  const title = primitiveText(value.title);
+  const details =
+    primitiveText(value.reason) ||
+    primitiveText(value.details) ||
+    primitiveText(value.description);
+  const text = [title, details]
+    .filter((item): item is string => Boolean(item))
+    .filter((item, index, items) => items.indexOf(item) === index)
+    .join(": ");
+  if (!sourcePageIds.length || !text) return undefined;
+  const gap = `Audit note requiring classification (${sourcePageIds.join(", ")}): ${text}`;
+  return gap.length <= 4_000 ? gap : undefined;
+}
+
+function normalizeAuditExcludedContent(
+  root: Record<string, unknown>,
+  state: NormalizationState
+) {
+  if (!("addExcludedContent" in root)) return;
+  const retained: Record<string, unknown>[] = [];
+  const gaps: string[] = [];
+  canonicalArray(root.addExcludedContent, "addExcludedContent", state).forEach(
+    (value, index) => {
+      const path = `addExcludedContent[${index}]`;
+      const excluded = normalizeSourcePageIds(record(value), path, state);
+      const gap = unclassifiedAuditExcludedGap(excluded);
+      if (gap) {
+        gaps.push(gap);
+        note(state, `${path}:moved_unclassified_exclusion_to_important_gap`);
+        return;
+      }
+      retained.push(normalizeAuditExcluded(excluded, path, state));
+    }
+  );
+  root.addExcludedContent = retained;
+  if (gaps.length) {
+    const existing =
+      "importantGaps" in root
+        ? canonicalTextList(root.importantGaps, "importantGaps", state)
+        : [];
+    root.importantGaps = [...existing, ...gaps].filter(
+      (gap, index, all) => all.indexOf(gap) === index
+    );
+  }
 }
 
 function normalizeRecordArray(
@@ -602,12 +678,7 @@ function normalizeAuditRoot(
     normalizeConflict,
     incompleteConflictCandidate
   );
-  normalizeRecordArray(
-    root,
-    "addExcludedContent",
-    state,
-    normalizeAuditExcluded
-  );
+  normalizeAuditExcludedContent(root, state);
   if ("removeOfferingIds" in root)
     root.removeOfferingIds = canonicalTextList(
       root.removeOfferingIds,
@@ -657,11 +728,30 @@ function diagnostic(
   };
 }
 
+function preservedAuditGapSourcePaths(
+  value: string,
+  allowedPageIds: Set<string>,
+  path: string
+) {
+  const prefix = "Audit note requiring classification (";
+  if (!value.startsWith(prefix)) return [];
+  const end = value.indexOf("): ", prefix.length);
+  if (end < 0) return [];
+  return value
+    .slice(prefix.length, end)
+    .split(",")
+    .map(id => id.trim())
+    .filter(id => /^PAGE_\d{4}$/.test(id) && !allowedPageIds.has(id))
+    .map(id => `${path}: unsupported source ${id}`);
+}
+
 function unsupportedSourcePaths(
   value: unknown,
   allowedPageIds: Set<string>,
   path = "$"
 ): string[] {
+  if (typeof value === "string")
+    return preservedAuditGapSourcePaths(value, allowedPageIds, path);
   if (Array.isArray(value))
     return value.flatMap((item, index) =>
       unsupportedSourcePaths(item, allowedPageIds, `${path}[${index}]`)
