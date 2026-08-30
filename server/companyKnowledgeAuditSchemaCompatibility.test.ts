@@ -96,6 +96,61 @@ describe("bounded audit schema compatibility", () => {
     ).toThrow(CompanyKnowledgeOutputError);
   });
 
+  it("removes only the explicit audit offering _comment annotation", () => {
+    const result = parse(
+      audit({
+        replaceOfferings: [
+          offering({
+            _comment: "Model explanation that is not company knowledge.",
+          }),
+        ],
+      })
+    );
+
+    expect(result.data.replaceOfferings[0]).not.toHaveProperty("_comment");
+    expect(result.normalizationActions).toContain(
+      "replaceOfferings[0]._comment:removed_audit_annotation"
+    );
+  });
+
+  it("keeps other unknown audit offering keys invalid", () => {
+    expect(() =>
+      parse(
+        audit({
+          replaceOfferings: [
+            offering({
+              _note: "Unknown model metadata must not be silently accepted.",
+            }),
+          ],
+        })
+      )
+    ).toThrow(CompanyKnowledgeOutputError);
+  });
+
+  it("keeps _comment invalid in full analysis", () => {
+    expect(() =>
+      parseCanonicalCompanyKnowledgeOutput({
+        raw: {
+          company: {
+            name: "Course2Career",
+            sourcePageIds: ["PAGE_0076"],
+          },
+          offerings: [
+            offering({
+              _comment: "Audit-only metadata must remain strict here.",
+            }),
+          ],
+        },
+        mode: "full_analysis",
+        schema: companyKnowledgePackSchema,
+        context: {
+          phase: "analysis",
+          pageIds: ["PAGE_0076"],
+        },
+      })
+    ).toThrow(CompanyKnowledgeOutputError);
+  });
+
   it("canonicalizes formatting-equivalent audit price semantic types", () => {
     const result = parse(
       audit({

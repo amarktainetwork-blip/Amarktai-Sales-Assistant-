@@ -325,6 +325,10 @@ function normalizeAuditOffering(
   state: NormalizationState
 ) {
   const offering = record(value);
+  if ("_comment" in offering) {
+    delete offering._comment;
+    note(state, `${path}._comment:removed_audit_annotation`);
+  }
   if ("courses" in offering && !("includedCourses" in offering)) {
     offering.includedCourses = offering.courses;
     delete offering.courses;
