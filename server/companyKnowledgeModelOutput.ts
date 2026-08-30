@@ -330,7 +330,9 @@ function normalizeConflict(
   return conflict;
 }
 
-function incompletePartialConflict(value: Record<string, unknown>) {
+function incompleteConflictCandidate(value: Record<string, unknown>) {
+  const subject = primitiveText(value.subject);
+  const explanation = primitiveText(value.explanation);
   const values = Array.isArray(value.values)
     ? value.values
         .map(item => primitiveText(item))
@@ -341,7 +343,12 @@ function incompletePartialConflict(value: Record<string, unknown>) {
         .map(item => primitiveText(item))
         .filter((item): item is string => Boolean(item))
     : [];
-  return new Set(values).size < 2 || new Set(sourcePageIds).size < 2;
+  return (
+    !subject ||
+    !explanation ||
+    new Set(values).size < 2 ||
+    new Set(sourcePageIds).size < 2
+  );
 }
 
 function normalizeExcluded(
@@ -461,7 +468,7 @@ function normalizeAnalysisRoot(
     "conflicts",
     state,
     normalizeConflict,
-    mode === "partial_analysis" ? incompletePartialConflict : undefined
+    mode === "partial_analysis" ? incompleteConflictCandidate : undefined
   );
   if ("importantGaps" in root)
     root.importantGaps = canonicalTextList(
@@ -496,7 +503,13 @@ function normalizeAuditRoot(
     normalizeContact,
     item => !primitiveText(item.value)
   );
-  normalizeRecordArray(root, "addConflicts", state, normalizeConflict);
+  normalizeRecordArray(
+    root,
+    "addConflicts",
+    state,
+    normalizeConflict,
+    incompleteConflictCandidate
+  );
   normalizeRecordArray(root, "addExcludedContent", state, normalizeExcluded);
   if ("removeOfferingIds" in root)
     root.removeOfferingIds = canonicalTextList(
