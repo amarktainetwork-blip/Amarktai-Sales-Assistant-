@@ -108,6 +108,18 @@ const OFFERING_TEXT_LIST_KEYS = [
   "caveats",
 ] as const;
 
+const EXCLUDED_CLASSIFICATIONS = new Set([
+  "category",
+  "editorial",
+  "testimonial",
+  "comparison",
+  "competitor",
+  "example",
+  "duplicate",
+  "navigation",
+  "other_non_company_content",
+]);
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -280,6 +292,20 @@ function normalizeOffering(
   return offering;
 }
 
+function normalizeAuditOffering(
+  value: unknown,
+  path: string,
+  state: NormalizationState
+) {
+  const offering = record(value);
+  if ("courses" in offering && !("includedCourses" in offering)) {
+    offering.includedCourses = offering.courses;
+    delete offering.courses;
+    note(state, `${path}.courses:renamed_to_includedCourses`);
+  }
+  return normalizeOffering(offering, path, state);
+}
+
 function normalizeFact(
   value: unknown,
   path: string,
@@ -358,6 +384,25 @@ function normalizeExcluded(
 ) {
   const excluded = normalizeSourcePageIds(record(value), path, state);
   normalizeTextField(excluded, "reason", path, state);
+  return excluded;
+}
+
+function normalizeAuditExcluded(
+  value: unknown,
+  path: string,
+  state: NormalizationState
+) {
+  const excluded = normalizeExcluded(value, path, state);
+  const classification = primitiveText(excluded.classification);
+  if (!classification) return excluded;
+  const canonical = classification
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  if (canonical !== classification && EXCLUDED_CLASSIFICATIONS.has(canonical)) {
+    excluded.classification = canonical;
+    note(state, `${path}.classification:canonicalized_format`);
+  }
   return excluded;
 }
 
@@ -487,7 +532,7 @@ function normalizeAuditRoot(
   state: NormalizationState
 ) {
   for (const key of ["addOfferings", "replaceOfferings"])
-    normalizeRecordArray(root, key, state, normalizeOffering);
+    normalizeRecordArray(root, key, state, normalizeAuditOffering);
   for (const key of AUDIT_FACT_KEYS)
     normalizeRecordArray(
       root,
@@ -510,7 +555,12 @@ function normalizeAuditRoot(
     normalizeConflict,
     incompleteConflictCandidate
   );
-  normalizeRecordArray(root, "addExcludedContent", state, normalizeExcluded);
+  normalizeRecordArray(
+    root,
+    "addExcludedContent",
+    state,
+    normalizeAuditExcluded
+  );
   if ("removeOfferingIds" in root)
     root.removeOfferingIds = canonicalTextList(
       root.removeOfferingIds,
