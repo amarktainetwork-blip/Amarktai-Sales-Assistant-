@@ -1,5 +1,6 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
+import { crmDesktopViewport, normalizeCrmWheelDelta } from "@/lib/crmViewerInput";
 import { trpc } from "@/lib/trpc";
 import {
   ArrowLeft,
@@ -65,6 +66,7 @@ type StreamMessage =
   | { type: "frame"; data: string; url: string; metadata?: FrameMetadata }
   | { type: "navigation"; url: string }
   | { type: "control"; control: string; message?: string }
+  | { type: "pong"; expiresAt?: string }
   | { type: "error"; code: string; message?: string }
   | { type: "disconnected"; message: string }
   | {
@@ -214,6 +216,7 @@ function LiveWorkspace({
   const pendingInputsRef = useRef<BrowserInputEvent[]>([]);
   const humanControlRequestedRef = useRef(false);
   const pendingAiControlRef = useRef(false);
+  const lastPointerMoveAtRef = useRef(0);
 
   useEffect(() => {
     controlRef.current = control;
@@ -263,12 +266,21 @@ function LiveWorkspace({
 
   const queueOrSendInput = (event: BrowserInputEvent) => {
     if (controlRef.current === "AGENT_CONTROL") {
-      toast.info("Amarktai is working in the CRM. Take control to work manually.");
+      if (!(event.kind === "mouse" && event.type === "mouseMoved"))
+        toast.info("Amarktai is working in the CRM. Take control to work manually.");
       return;
     }
     if (controlRef.current === "HUMAN_CONTROL") {
       send({ type: "input", event });
       return;
+    }
+
+    // Hover should become responsive as soon as the pointer enters the CRM,
+    // but a burst of pointer-move events must not fill the websocket queue.
+    if (event.kind === "mouse" && event.type === "mouseMoved") {
+      pendingInputsRef.current = pendingInputsRef.current.filter(
+        pending => !(pending.kind === "mouse" && pending.type === "mouseMoved")
+      );
     }
     pendingInputsRef.current.push(event);
     if (pendingInputsRef.current.length > 12)
@@ -301,11 +313,12 @@ function LiveWorkspace({
     const sendSize = () => {
       const rect = viewerRef.current?.getBoundingClientRect();
       if (!rect || socket.readyState !== WebSocket.OPEN) return;
+      const viewport = crmDesktopViewport({ width: rect.width, height: rect.height });
       socket.send(
         JSON.stringify({
           type: "resize",
-          width: Math.max(320, Math.round(rect.width)),
-          height: Math.max(320, Math.round(rect.height)),
+          width: viewport.width,
+          height: viewport.height,
           deviceScaleFactor: 1,
         })
       );
@@ -400,8 +413,13 @@ function LiveWorkspace({
 
     const observer = new ResizeObserver(sendSize);
     if (viewerRef.current) observer.observe(viewerRef.current);
+    const heartbeat = window.setInterval(() => {
+      if (socket.readyState === WebSocket.OPEN && !document.hidden)
+        socket.send(JSON.stringify({ type: "ping" }));
+    }, 25_000);
 
     return () => {
+      window.clearInterval(heartbeat);
       observer.disconnect();
       socket.close();
     };
@@ -459,7 +477,12 @@ function LiveWorkspace({
     event: PointerEvent<HTMLDivElement>,
     type: "mousePressed" | "mouseReleased" | "mouseMoved"
   ) => {
-    if (type === "mouseMoved" && controlRef.current !== "HUMAN_CONTROL") return;
+    if (type === "mouseMoved") {
+      if (controlRef.current === "AGENT_CONTROL") return;
+      const now = performance.now();
+      if (now - lastPointerMoveAtRef.current < 30) return;
+      lastPointerMoveAtRef.current = now;
+    }
     const point = mapPointer(event.clientX, event.clientY);
     if (!point) return;
     if (type === "mousePressed")
@@ -483,13 +506,14 @@ function LiveWorkspace({
   const forwardWheel = (event: WheelEvent<HTMLDivElement>) => {
     event.preventDefault();
     const point = mapPointer(event.clientX, event.clientY);
-    if (!point) return;
+    const rect = viewerRef.current?.getBoundingClientRect();
+    if (!point || !rect) return;
     queueOrSendInput({
       kind: "mouse",
       type: "mouseWheel",
       ...point,
-      deltaX: event.deltaX,
-      deltaY: event.deltaY,
+      deltaX: normalizeCrmWheelDelta(event.deltaX, event.deltaMode, rect.width),
+      deltaY: normalizeCrmWheelDelta(event.deltaY, event.deltaMode, rect.height),
     });
   };
 
@@ -694,6 +718,7 @@ function LiveWorkspace({
             role="application"
             aria-label={`${crmName} live CRM`}
             tabIndex={0}
+            onPointerEnter={() => requestHumanControl()}
             onPointerDown={event => forwardPointer(event, "mousePressed")}
             onPointerUp={event => forwardPointer(event, "mouseReleased")}
             onPointerMove={event => forwardPointer(event, "mouseMoved")}
@@ -725,7 +750,7 @@ function LiveWorkspace({
                   Sign in directly to {crmName}
                 </p>
                 <p className="mt-0.5 text-[11px] text-[#6C798B]">
-                  Click anywhere in the CRM. Control is automatic.
+                  Move into the CRM to take control automatically.
                 </p>
               </div>
             ) : null}
@@ -736,7 +761,7 @@ function LiveWorkspace({
                 ? "You control the CRM"
                 : control === "AGENT_CONTROL"
                   ? "Amarktai is working"
-                  : "Click to take control"}
+                  : "Move here to take control"}
             </div>
           </div>
         </section>
@@ -838,7 +863,7 @@ function LiveWorkspace({
 
               <details className="mt-3 rounded-xl border border-[#D7E0EA] bg-white">
                 <summary className="cursor-pointer list-none px-3 py-2.5 text-xs font-bold text-[#33445B]">
-                  Capabilities · {readyCapabilities.length} ready
+                  CRM functions · {readyCapabilities.length} ready
                 </summary>
                 <div className="flex flex-wrap gap-1.5 border-t border-[#E5EAF0] p-3">
                   {capabilities.length ? (
@@ -856,7 +881,7 @@ function LiveWorkspace({
                     ))
                   ) : (
                     <span className="text-xs text-[#77859A]">
-                      Capabilities will appear after CRM discovery.
+                      Functions will appear as Amarktai verifies them.
                     </span>
                   )}
                 </div>
