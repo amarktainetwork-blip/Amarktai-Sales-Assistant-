@@ -19,6 +19,7 @@ import {
   TeamsPage,
 } from "./marketing/SecondaryPages";
 import AdminControls from "./pages/AdminControls";
+import Assistant from "./pages/Assistant";
 import Auth from "./pages/Auth";
 import CompanySetup from "./pages/CompanySetup";
 import ConnectionsV2 from "./pages/ConnectionsV2";
@@ -33,7 +34,6 @@ import TeamIntelligence from "./pages/TeamIntelligence";
 import TeamManagement from "./pages/TeamManagement";
 import Today from "./pages/Today";
 import {
-  AgentDesk,
   CommandCentre,
   KnowledgeHub,
   WorkflowStudio,
@@ -54,24 +54,32 @@ function Router() {
         <Route path="/teams" component={TeamsPage} />
         <Route path="/integrations" component={IntegrationsPage} />
         <Route path="/auth" component={Auth} />
-        <Route path="/dashboard" component={Today} />
+
+        <Route path="/dashboard" component={Assistant} />
+        <Route path="/assistant" component={Assistant} />
+        <Route path="/agents" component={Assistant} />
         <Route path="/today" component={Today} />
         <Route path="/sell" component={Today} />
         <Route path="/customers" component={Customers} />
-        <Route path="/reports" component={Reports} />
-        <Route path="/automation" component={SalesAutomation} />
-        <Route path="/team" component={TeamIntelligence} />
-        <Route path="/team/manage" component={TeamManagement} />
-        <Route path="/admin-controls" component={AdminControls} />
-        <Route path="/workspace" component={CommandCentre} />
-        <Route path="/workflows" component={WorkflowStudio} />
-        <Route path="/agents" component={AgentDesk} />
         <Route path="/calls" component={LiveCalls} />
-        <Route path="/knowledge" component={KnowledgeHub} />
-        <Route path="/connections" component={ConnectionsV2} />
         <Route path="/crm/:connectedSystemId" component={CrmWorkspace} />
         <Route path="/crm" component={CrmWorkspace} />
+
+        <Route path="/team" component={TeamIntelligence} />
+        <Route path="/team/manage" component={TeamManagement} />
+        <Route path="/connections" component={ConnectionsV2} />
         <Route path="/company-setup" component={CompanySetup} />
+
+        {/* Existing specialist/admin surfaces remain addressable for managers
+            while the normal product navigation is Assistant-first. */}
+        <Route path="/reviews" component={CommandCentre} />
+        <Route path="/workspace" component={CommandCentre} />
+        <Route path="/workflows" component={WorkflowStudio} />
+        <Route path="/knowledge" component={KnowledgeHub} />
+        <Route path="/reports" component={Reports} />
+        <Route path="/automation" component={SalesAutomation} />
+        <Route path="/admin-controls" component={AdminControls} />
+
         <Route path="/404" component={NotFound} />
         <Route component={NotFound} />
       </Switch>
