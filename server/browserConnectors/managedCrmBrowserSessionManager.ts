@@ -228,84 +228,106 @@ async function inspectAuthentication(
   };
 }
 
+async function ensureCommissioning(session: ManagedCrmBrowserSession) {
+  const { ensureAutomaticCommissioning } = await import(
+    "../crm/ensureCommissioning"
+  );
+  await ensureAutomaticCommissioning({
+    userId: session.openedByUserId,
+    organisationId: session.connection.organisationId,
+    connectedSystemId: session.connection.id,
+  });
+}
+
 async function persistAuthenticatedSession(
   session: ManagedCrmBrowserSession,
   force = false
 ) {
-  if (session.authenticatedPersisted && !force) return;
-  session.authenticatedPersisted = true;
-  try {
-    const browserSession = await captureBrowserSessionPackage({
-      context: session.context,
-      organisationId: session.connection.organisationId,
-      connectedSystemId: session.connection.id,
-      authenticatedUrl: session.page.url(),
-      authorise: rawUrl =>
-        assertAuthorisedConnectionUrl({
+  const shouldPersist = !session.authenticatedPersisted || force;
+
+  if (shouldPersist) {
+    session.authenticatedPersisted = true;
+    try {
+      const browserSession = await captureBrowserSessionPackage({
+        context: session.context,
+        organisationId: session.connection.organisationId,
+        connectedSystemId: session.connection.id,
+        authenticatedUrl: session.page.url(),
+        authorise: rawUrl =>
+          assertAuthorisedConnectionUrl({
+            organisationId: session.connection.organisationId,
+            connectedSystemId: session.connection.id,
+            rawUrl,
+          }).then(() => undefined),
+      });
+      const existing =
+        (await loadConnectionSecret({
           organisationId: session.connection.organisationId,
           connectedSystemId: session.connection.id,
-          rawUrl,
-        }).then(() => undefined),
-    });
-    const existing =
-      (await loadConnectionSecret({
+          secretKind: "browser",
+        })) || {};
+      await saveConnectionSecret({
+        userId: session.openedByUserId,
         organisationId: session.connection.organisationId,
         connectedSystemId: session.connection.id,
         secretKind: "browser",
-      })) || {};
-    await saveConnectionSecret({
-      userId: session.openedByUserId,
-      organisationId: session.connection.organisationId,
-      connectedSystemId: session.connection.id,
-      secretKind: "browser",
-      // Preserve deprecated material for an operator-led migration, but runtime
-      // code never reads credentials, MFA values, or the legacy session package.
-      secret: { ...existing, browserSession },
-    });
-    const db = await getDb();
-    if (db)
-      await db
-        .update(connectedSystems)
-        .set({
-          status: "testing",
-          lastHealthSummary:
-            "Secure CRM session ready. Discovering available functions.",
-        })
-        .where(
-          and(
-            eq(connectedSystems.id, session.connection.id),
-            eq(
-              connectedSystems.organisationId,
-              session.connection.organisationId
+        // Preserve deprecated material for an operator-led migration, but runtime
+        // code never reads credentials, MFA values, or the legacy session package.
+        secret: { ...existing, browserSession },
+      });
+      const db = await getDb();
+      if (db)
+        await db
+          .update(connectedSystems)
+          .set({
+            status: "testing",
+            lastHealthSummary:
+              "Secure CRM session ready. Discovering available functions.",
+          })
+          .where(
+            and(
+              eq(connectedSystems.id, session.connection.id),
+              eq(
+                connectedSystems.organisationId,
+                session.connection.organisationId
+              )
             )
-          )
-        );
-    await recordAudit({
-      userId: session.openedByUserId,
-      organisationId: session.connection.organisationId,
-      eventType: "crm_session_authenticated",
-      entityType: "connected_system",
-      entityId: String(session.connection.id),
-      summary: "A customer authenticated directly in the Secure CRM Browser.",
-      metadata: {
-        provider: session.connection.provider,
-        credentialsObserved: false,
-      },
-    });
-    const { startAutomaticCommissioning } = await import(
-      "../crm/automaticCommissioning"
-    );
-    await startAutomaticCommissioning({
-      userId: session.openedByUserId,
-      organisationId: session.connection.organisationId,
-      connectedSystemId: session.connection.id,
-    });
-  } catch (error) {
-    session.authenticatedPersisted = false;
+          );
+      await recordAudit({
+        userId: session.openedByUserId,
+        organisationId: session.connection.organisationId,
+        eventType: "crm_session_authenticated",
+        entityType: "connected_system",
+        entityId: String(session.connection.id),
+        summary: "A customer authenticated directly in the Secure CRM Browser.",
+        metadata: {
+          provider: session.connection.provider,
+          credentialsObserved: false,
+        },
+      });
+    } catch (error) {
+      session.authenticatedPersisted = false;
+      emit(session, {
+        authenticationState: "ERROR",
+        connectionHealth: "needs_attention",
+        errorMessage: publicMessage(error),
+      });
+      return;
+    }
+  }
+
+  // A restored browser package means persistence has already happened, not
+  // that automatic capability commissioning has happened. Always ensure the
+  // durable job exists/resumes after authentication; the helper refuses to
+  // restart any controlled-write or readback phase automatically.
+  try {
+    await ensureCommissioning(session);
+  } catch {
     emit(session, {
-      authenticationState: "ERROR",
+      authenticationState: "AUTHENTICATED",
       connectionHealth: "needs_attention",
-      errorMessage: publicMessage(error),
+      errorMessage:
+        "Your CRM is signed in, but automatic function setup needs attention.",
     });
   }
 }
