@@ -1,4 +1,4 @@
-name: Persistent Browser Profile
+name: Connection-Scoped Browser Sessions
 
 on:
   pull_request:
@@ -30,7 +30,7 @@ jobs:
           docker compose -f deploy/webdock/docker-compose.yml --env-file .env config >/dev/null
       - name: Build app and browser images
         run: docker compose -f deploy/webdock/docker-compose.yml --env-file .env build app browser
-      - name: Prove live page handoff and durable profile volume
+      - name: Prove isolated connection-scoped browser sessions
         shell: bash
         run: |
           set -euo pipefail
@@ -53,69 +53,33 @@ jobs:
 
           wait_for_browser
           cid="$($COMPOSE ps -q browser)"
-          docker inspect --format '{{json .Mounts}}' "$cid" | grep -q '"Destination":"/home/chrome/profile"'
-          docker inspect --format '{{json .Mounts}}' "$cid" | grep -q '"Type":"volume"'
+          ! docker inspect --format '{{json .Mounts}}' "$cid" | grep -q '"Destination":"/home/chrome/profile"'
+          docker inspect --format '{{json .Config.Cmd}}' "$cid" | grep -q -- '--user-data-dir=/tmp/chrome-profile'
           test "$(docker inspect --format '{{.HostConfig.ReadonlyRootfs}}' "$cid")" = "true"
           test -z "$(docker port "$cid")"
 
-          # The critical Genie guarantee: the browser lives independently of an
-          # app/CDP client. Create one page, let that client process exit, then
-          # reconnect from a completely new app container and prove the exact
-          # page is still present and usable. This models the retained MFA tab.
+          # Prove the new universal contract: each active connection receives an
+          # isolated BrowserContext, only its explicit session package restores
+          # its state, and a fresh connection cannot inherit another CRM cookie.
           $COMPOSE run --no-deps --rm app node --input-type=module -e '
             import { chromium } from "playwright-core";
             const browser = await chromium.connectOverCDP("http://browser:9222");
-            const contexts = browser.contexts();
-            if (contexts.length !== 1) throw new Error(`expected one persistent context, got ${contexts.length}`);
-            const page = await contexts[0].newPage();
-            await page.goto("data:text/html,<title>amarktai-live-page-probe</title><h1 id=probe>retained-live-page</h1>");
-            if (await page.textContent("#probe") !== "retained-live-page") throw new Error("live page probe was not created");
-            process.exit(0);
-          '
+            const connectionA = await browser.newContext();
+            await connectionA.addCookies([{ name: "crm_session", value: "organisation-7-connection-11", domain: "crm-a.example", path: "/", secure: true, httpOnly: true }]);
+            const packageA = await connectionA.storageState();
+            await connectionA.close();
 
-          $COMPOSE run --no-deps --rm app node --input-type=module -e '
-            import { chromium } from "playwright-core";
-            const browser = await chromium.connectOverCDP("http://browser:9222");
-            const contexts = browser.contexts();
-            if (contexts.length !== 1) throw new Error(`expected one persistent context after reconnect, got ${contexts.length}`);
-            let retained;
-            for (const page of contexts[0].pages()) {
-              if ((await page.title().catch(() => "")) === "amarktai-live-page-probe") {
-                retained = page;
-                break;
-              }
-            }
-            if (!retained) throw new Error("exact browser page did not survive CDP client reconnect");
-            if (await retained.textContent("#probe") !== "retained-live-page") throw new Error("retained browser page was not usable after reconnect");
-            console.log("LIVE_BROWSER_PAGE_HANDOFF=PASS");
-            await retained.close();
-            process.exit(0);
-          '
+            const restoredA = await browser.newContext({ storageState: packageA });
+            const restoredCookies = await restoredA.cookies("https://crm-a.example/");
+            if (restoredCookies.find(cookie => cookie.name === "crm_session")?.value !== "organisation-7-connection-11") throw new Error("connection-scoped package did not restore");
 
-          # The named profile volume is a separate durability property. Prove
-          # its filesystem survives a Chromium/container restart without making
-          # the false claim that an in-memory authenticated tab survives that
-          # process restart too.
-          docker exec "$cid" sh -c 'printf "%s" "durable-profile-volume" > /home/chrome/profile/.amarktai-volume-probe'
-          test "$(docker exec "$cid" cat /home/chrome/profile/.amarktai-volume-probe)" = "durable-profile-volume"
+            const connectionB = await browser.newContext();
+            const crossover = await connectionB.cookies("https://crm-a.example/");
+            if (crossover.some(cookie => cookie.name === "crm_session")) throw new Error("CRM session crossed connection boundary");
+            if (restoredA === connectionB) throw new Error("connections reused one BrowserContext");
 
-          $COMPOSE restart browser
-          wait_for_browser
-          cid="$($COMPOSE ps -q browser)"
-          test "$(docker exec "$cid" cat /home/chrome/profile/.amarktai-volume-probe)" = "durable-profile-volume"
-          echo "BROWSER_PROFILE_VOLUME=PASS"
-
-          # After a Chromium process restart the exact live tab is intentionally
-          # considered lost. Genie runtime code must fail closed rather than
-          # manufacture a replacement page and trigger repeated MFA.
-          $COMPOSE run --no-deps --rm app node --input-type=module -e '
-            import { chromium } from "playwright-core";
-            const browser = await chromium.connectOverCDP("http://browser:9222");
-            const contexts = browser.contexts();
-            if (contexts.length !== 1) throw new Error(`expected one persistent context after browser restart, got ${contexts.length}`);
-            for (const page of contexts[0].pages()) {
-              if ((await page.title().catch(() => "")) === "amarktai-live-page-probe") throw new Error("live-page probe unexpectedly survived Chromium process restart");
-            }
-            console.log("BROWSER_RESTART_INVALIDATES_LIVE_PAGE=PASS");
+            await restoredA.close();
+            await connectionB.close();
+            console.log("CONNECTION_SCOPED_BROWSER_SESSION=PASS");
             process.exit(0);
           '
