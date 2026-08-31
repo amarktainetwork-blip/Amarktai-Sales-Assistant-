@@ -217,7 +217,19 @@ export function parseCanonicalCompanyKnowledgeOutput<T>(input: {
   schema: z.ZodType<T>;
   context: CompanyKnowledgeOutputContext;
 }) {
-  const normalized = canonicalizeCompanyKnowledgeOutput(input.raw, input.mode);
+  if (input.mode !== "audit") {
+    return parseCanonicalCompanyKnowledgeOutputCore(input);
+  }
+
+  let normalized: ReturnType<typeof canonicalizeCompanyKnowledgeOutput>;
+  try {
+    normalized = canonicalizeCompanyKnowledgeOutput(input.raw, input.mode);
+  } catch {
+    // Preserve the original parser boundary: malformed audit JSON and other
+    // pre-schema failures must still surface as CompanyKnowledgeOutputError.
+    return parseCanonicalCompanyKnowledgeOutputCore(input);
+  }
+
   try {
     const parsed = parseCanonicalCompanyKnowledgeOutputCore({
       ...input,
