@@ -9,7 +9,7 @@ const CALL_PHOTO = "https://images.pexels.com/photos/14596539/pexels-photo-14596
 const setup = [
   ["01", "Create the workspace", "Every person has their own Amarktai Network login. A company does not share one Sales Assistant account across the team."],
   ["02", "Teach Amarktai the business", "The authorised website and company information are analysed, grounded against retained evidence and reviewed before becoming trusted sales context."],
-  ["03", "Connect the CRM", "The company connects the system of record. Where required, each salesperson keeps their own CRM identity, credentials and personal session."],
+  ["03", "Connect the CRM", "The company connects the system of record. Native connectors use OAuth; browser-connected CRM users sign in directly on the real CRM page without giving Amarktai their password."],
   ["04", "Prove what the CRM can do", "Reads, writes, tasks, notes, pipeline actions and other functions are tested against the real connected CRM instead of being assumed."],
   ["05", "Start from the sales day", "Today, Customers, Assistant, Calls and CRM become the core workspace. Shared company context stays shared; personal selling work stays personal."],
 ] as const;
@@ -64,7 +64,7 @@ export function HowItWorksPage() {
           </div>
           <div className="amk-page-section__copy">
             <p><strong>Individual salesperson:</strong> complete personal onboarding, add business context where needed, connect your own CRM access and work from your own sales workspace.</p>
-            <p><strong>Company or team:</strong> the first owner or manager completes the shared company setup and approves company knowledge. Later team members inherit that approved context, but still complete their own onboarding and use their own CRM identity and credentials where required.</p>
+            <p><strong>Company or team:</strong> the first owner or manager completes the shared company setup and approves company knowledge. Later team members inherit that approved context, complete their own onboarding and use the organisation's governed CRM connection.</p>
             <p>Private Assistant conversations, reminders and personal sales work are not treated as a shared company chat.</p>
           </div>
         </div>

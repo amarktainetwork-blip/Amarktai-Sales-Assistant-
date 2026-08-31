@@ -27,14 +27,12 @@ describe("new-user Genie commissioning journey contract", () => {
     expect(onboarding).toContain('workspaceMode === "individual"');
     expect(onboarding).toContain('workspaceMode === "team"');
     expect(onboarding).toContain("confirm.mutate");
-    expect(onboarding).toContain("browserCredentials.username");
-    expect(onboarding).toContain("browserCredentials.password");
-    expect(onboarding).toContain("Start automatic setup");
-    expect(onboarding).toContain("/commissioning");
-    expect(administration).toContain('secretKind: "browser"');
-    expect(administration).toContain("saveConnectionSecret");
+    expect(onboarding).toContain("sign in there directly");
+    expect(onboarding).toContain("Open CRM");
+    expect(onboarding).not.toContain('type="password"');
+    expect(administration).not.toContain("interactive-auth/verify");
     expect(adapter).toContain("connection.baseUrl");
-    expect(adapter).toContain("GENIE_LOGIN_CALIBRATION_REQUIRED");
+    expect(adapter).toContain("isBrowserSessionPackage");
     expect(onboarding).not.toContain("GENIE_USERNAME");
     expect(onboarding).not.toContain("GENIE_PASSWORD");
     expect(onboarding).not.toContain("browserProfile");
@@ -124,9 +122,9 @@ describe("new-user Genie commissioning journey contract", () => {
 
   it("keeps technical commissioning out of the normal onboarding screen", () => {
     const onboarding = read("../client/src/pages/Onboarding.tsx");
-    expect(onboarding).toContain("Connect the CRM you already use");
-    expect(onboarding).toContain("Connect → Discover → Test → Ready");
-    expect(onboarding).toContain("Advanced CRM Setup");
+    expect(onboarding).toContain('title="Connect your CRM"');
+    expect(onboarding).toContain("Open CRM to continue");
+    expect(onboarding).toContain("Secure CRM Browser");
     for (const technicalTerm of [
       "Teach Amarktai",
       "LIVE_PROVEN",
@@ -191,32 +189,13 @@ describe("new-user Genie commissioning journey contract", () => {
     expect(jobs).toContain("auditDraft");
   });
 
-  it("shows durable customer-facing commissioning truth and no mysterious restart action", () => {
+  it("shows the human-controlled CRM browser path", () => {
     const onboarding = read("../client/src/pages/Onboarding.tsx");
-    for (const label of [
-      "Signed in",
-      "Secure session checked",
-      "CRM discovered",
-      "Customer data checked",
-      "Test update approved",
-      "Update verified",
-      "Ready",
-      "Awaiting approval",
-    ])
-      expect(onboarding).toContain(label);
-    expect(onboarding).not.toContain("Controlled write test");
-    expect(onboarding).not.toContain("Result readback");
-    expect(onboarding).not.toContain("Restart automatic setup");
-  });
-
-  it("keeps Genie verification single-submit, replay-aware and refresh-free", () => {
-    const prompt = read(
-      "../client/src/components/GenieInteractiveAuthPrompt.tsx"
-    );
-    expect(prompt).toContain("disabled={pending || !code.trim()}");
-    expect(prompt).toContain("GENIE_SESSION_REPLAY_FAILED");
-    expect(prompt).toContain("Genie sign-in approved");
-    expect(prompt).not.toContain("window.location.reload()");
+    const workspace = read("../client/src/pages/CrmWorkspace.tsx");
+    expect(onboarding).toContain("sign in there directly");
+    expect(workspace).toContain("I've finished signing in");
+    expect(workspace).toContain("Take control");
+    expect(workspace).toContain("Give control to Amarktai");
   });
 
   it("keeps the standard CRM choice provider-neutral and capability selection automatic", () => {
@@ -230,9 +209,7 @@ describe("new-user Genie commissioning journey contract", () => {
       '"custom_browser"',
     ])
       expect(onboarding).toContain(provider);
-    expect(onboarding).toContain(
-      "You do not need to choose technical permissions"
-    );
+    expect(onboarding).toContain("sign in there directly");
     expect(onboarding).not.toContain("capabilityOptions");
     expect(onboarding).not.toContain("toggleCapability");
   });
@@ -245,13 +222,9 @@ describe("new-user Genie commissioning journey contract", () => {
     expect(layout).toContain("Your manager is finishing company setup.");
   });
 
-  it("documents installation Genie values as fallback rather than a commissioning requirement", () => {
+  it("does not require installation-level CRM credentials", () => {
     const preflight = read("../deploy/webdock/preflight.sh");
-    expect(preflight).toContain(
-      "Installation-level Genie fallback is not configured. Per-connection Genie commissioning remains available in the application."
-    );
-    expect(preflight).not.toContain(
-      "Genie live validation will remain unavailable"
-    );
+    expect(preflight).toContain("optional Genie preset URL");
+    expect(preflight).not.toContain("GENIE_PASSWORD");
   });
 });

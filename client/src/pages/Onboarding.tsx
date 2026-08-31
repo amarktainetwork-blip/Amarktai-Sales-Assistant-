@@ -76,18 +76,6 @@ type AutomaticCommissioning = {
   optionalFailures: Record<string, string>;
 };
 
-type PreOtpReadiness = {
-  ready: boolean;
-  states: {
-    browserReady: boolean;
-    genieLoginReachable: boolean;
-    secureSignInReady: boolean;
-    sessionHandoffReady: boolean;
-  };
-  labels: Record<keyof PreOtpReadiness["states"], string>;
-  advancedDiagnostics: Array<{ check: string; passed: boolean }>;
-  failure?: string;
-};
 type WebsiteKnowledgeCandidate = {
   title: string;
   content: string;
@@ -459,13 +447,9 @@ export default function Onboarding() {
   const [crm, setCrm] = useState<CrmForm>({
     provider: "genie",
     displayName: "Genie CRM",
-    baseUrl: "",
+    baseUrl: "https://genie.entrepreneurscircle.org/",
     connectionMethod: "browser",
     capabilities: defaultCapabilities,
-  });
-  const [browserCredentials, setBrowserCredentials] = useState({
-    username: "",
-    password: "",
   });
   const [browserConnectionId, setBrowserConnectionId] = useState<number | null>(
     null
@@ -473,9 +457,6 @@ export default function Onboarding() {
   const [commissioning, setCommissioning] =
     useState<AutomaticCommissioning | null>(null);
   const [commissioningPending, setCommissioningPending] = useState(false);
-  const [preOtpReadiness, setPreOtpReadiness] =
-    useState<PreOtpReadiness | null>(null);
-  const [preOtpPending, setPreOtpPending] = useState(false);
   const [playbook, setPlaybook] = useState({
     title: "",
     trigger: "",
@@ -782,29 +763,12 @@ export default function Onboarding() {
     onSuccess: async id => {
       if (!organisationId) return;
       if (isBrowser(crm.provider)) {
-        const url = new URL(crm.baseUrl);
-        await addDomain.mutateAsync({
-          organisationId,
-          connectedSystemId: id,
-          hostname: url.hostname,
-          allowedPaths: ["/"],
-        });
-        await jsonRequest(`/api/connected-system-admin/${id}/browser`, {
-          method: "PUT",
-          body: JSON.stringify(browserCredentials),
-        });
-        setBrowserCredentials(current => ({ ...current, password: "" }));
         setBrowserConnectionId(id);
         await systems.refetch();
-        setPreOtpReadiness(null);
-        setFeedback({
-          kind: "success",
-          title: "Secure CRM sign-in saved",
-          detail:
-            crm.provider === "genie"
-              ? "Before requesting a verification code, check secure sign-in readiness. This does not submit your credentials or generate a code."
-              : "Start automatic setup when you are ready.",
-        });
+        toast.success(
+          "CRM connection created. Sign in directly on the CRM website."
+        );
+        navigate(`/crm/${id}`);
         return;
       }
       await systems.refetch();
@@ -930,79 +894,6 @@ export default function Onboarding() {
       allowedReadCapabilities,
       allowedWriteCapabilities,
     });
-  }
-
-  async function startBrowserCommissioning() {
-    if (!browserSystem) return;
-    if (browserSystem.provider === "genie" && !preOtpReadiness?.ready) {
-      setFeedback({
-        kind: "error",
-        title: "Secure sign-in is not ready",
-        detail:
-          "Run the readiness check and wait for all four items to pass before requesting a Genie verification code.",
-      });
-      return;
-    }
-    try {
-      setCommissioningPending(true);
-      setFeedback({
-        kind: "loading",
-        title: "Setting up your CRM",
-        detail:
-          "Automatic discovery and safe read testing are starting in the background.",
-      });
-      const result = await jsonRequest(
-        `/api/connected-system-admin/${browserSystem.id}/commissioning`,
-        { method: "POST", body: "{}" }
-      );
-      setCommissioning(result as AutomaticCommissioning);
-    } catch (error) {
-      if (browserSystem.provider === "genie") setPreOtpReadiness(null);
-      setFeedback({
-        kind: "error",
-        title: "CRM setup could not start",
-        detail: humanizeCrmFailure(
-          error instanceof Error ? error.message : String(error)
-        ),
-      });
-    } finally {
-      setCommissioningPending(false);
-    }
-  }
-
-  async function checkPreOtpReadiness() {
-    if (!browserSystem || browserSystem.provider !== "genie") return;
-    try {
-      setPreOtpPending(true);
-      setFeedback({
-        kind: "loading",
-        title: "Checking secure sign-in readiness",
-        detail:
-          "Amarktai is proving browser continuity and the Genie login structure without submitting credentials or generating a verification code.",
-      });
-      const result = (await jsonRequest(
-        `/api/connected-system-admin/${browserSystem.id}/pre-otp`,
-        { method: "POST", body: "{}" }
-      )) as PreOtpReadiness;
-      setPreOtpReadiness(result);
-      setFeedback({
-        kind: "success",
-        title: "Secure sign-in is ready",
-        detail:
-          "All non-MFA checks passed. You can now request one fresh Genie verification code.",
-      });
-    } catch (error) {
-      setPreOtpReadiness(null);
-      setFeedback({
-        kind: "error",
-        title: "Secure sign-in is not ready",
-        detail: humanizeCrmFailure(
-          error instanceof Error ? error.message : String(error)
-        ),
-      });
-    } finally {
-      setPreOtpPending(false);
-    }
   }
 
   async function approveSafeTestRecord() {
@@ -1733,8 +1624,8 @@ export default function Onboarding() {
                 <StepHeading
                   icon={Network}
                   number="03"
-                  title="Connect the CRM you already use"
-                  text="Choose your CRM and sign in. Amarktai automatically uses the correct secure connection, discovery and testing flow."
+                  title="Connect your CRM"
+                  text="Choose your CRM, open the real website inside Amarktai, and sign in there directly. Amarktai never asks for your CRM password or verification code."
                 />
                 <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {(
@@ -1759,65 +1650,35 @@ export default function Onboarding() {
                       <p className="mt-1 text-xs text-[#A9BFDF]">
                         {isBrowser(provider)
                           ? "Secure browser connection"
-                          : "Secure provider sign-in"}
+                          : "Reliable API connection + CRM workspace"}
                       </p>
                     </button>
                   ))}
                 </div>
-                <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                  {isBrowser(crm.provider) && (
-                    <>
-                      <Input
-                        value={crm.baseUrl}
-                        onChange={event =>
-                          setCrm({ ...crm, baseUrl: event.target.value })
-                        }
-                        placeholder="https://crm.company.example/login"
-                        className="border-white/15 bg-[#08172F] text-white sm:col-span-2"
-                        aria-label="CRM login page"
-                      />
-                      <Input
-                        value={browserCredentials.username}
-                        onChange={event =>
-                          setBrowserCredentials({
-                            ...browserCredentials,
-                            username: event.target.value,
-                          })
-                        }
-                        placeholder="Username or email"
-                        autoComplete="off"
-                        className="border-white/15 bg-[#08172F] text-white"
-                      />
-                      <Input
-                        type="password"
-                        value={browserCredentials.password}
-                        onChange={event =>
-                          setBrowserCredentials({
-                            ...browserCredentials,
-                            password: event.target.value,
-                          })
-                        }
-                        placeholder="Password"
-                        autoComplete="new-password"
-                        className="border-white/15 bg-[#08172F] text-white"
-                      />
-                    </>
-                  )}
-                </div>
+                {crm.provider === "custom_browser" ? (
+                  <Input
+                    value={crm.baseUrl}
+                    onChange={event =>
+                      setCrm({ ...crm, baseUrl: event.target.value })
+                    }
+                    placeholder="https://crm.company.example/"
+                    className="mt-5 border-white/15 bg-[#08172F] text-white"
+                    aria-label="CRM sign-in address"
+                  />
+                ) : (
+                  <p className="mt-5 text-sm text-[#A9BFDF]">
+                    Authorised address:{" "}
+                    <span className="font-mono text-xs">{crm.baseUrl}</span>
+                  </p>
+                )}
                 <p className="mt-4 text-sm leading-6 text-[#A9BFDF]">
-                  Amarktai will discover the functions permitted by this
-                  account. You do not need to choose technical permissions
-                  manually.
+                  If MFA, SSO, CAPTCHA, or a security-key prompt appears,
+                  complete it yourself in the Secure CRM Browser.
                 </p>
                 <Button
                   disabled={
                     !organisationId ||
-                    !crm.displayName.trim() ||
-                    !crm.capabilities.length ||
-                    (isBrowser(crm.provider) && !crm.baseUrl.trim()) ||
-                    (isBrowser(crm.provider) &&
-                      (!browserCredentials.username.trim() ||
-                        !browserCredentials.password)) ||
+                    !crm.baseUrl.trim() ||
                     addConnection.isPending ||
                     beginOAuth.isPending
                   }
@@ -1825,442 +1686,51 @@ export default function Onboarding() {
                   className="mt-5 bg-[#1B64F2]"
                 >
                   <Plus className="mr-2 size-4" />
-                  {isBrowser(crm.provider) ? "Connect" : "Sign in securely"}
+                  {isBrowser(crm.provider)
+                    ? `Open ${providerLabels[crm.provider] === "Other CRM" ? "CRM" : providerLabels[crm.provider]}`
+                    : `Connect ${providerLabels[crm.provider]}`}
                 </Button>
-                {browserSystem && organisationId && (
-                  <section className="mt-6 space-y-5 rounded-2xl border border-[#4E8BFF]/35 bg-[#071326] p-5">
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#83AEFF]">
-                        Connect → Discover → Test → Ready
-                      </p>
-                      <h3 className="mt-1 font-display text-2xl font-bold text-white">
-                        Setting up your CRM
-                      </h3>
-                      <p className="mt-2 text-xs leading-5 text-[#A9BFDF]">
-                        Amarktai checks sign-in and discovers CRM functions
-                        automatically. A function is shown as Ready only after
-                        the existing safe test confirms it; optional functions
-                        can remain unavailable without blocking your core sales
-                        work.
-                      </p>
-                    </div>
-                    {commissioning && (
-                      <div className="rounded-xl border border-white/10 bg-[#08172F] p-4">
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <p className="text-[10px] font-black uppercase tracking-[.12em] text-[#83AEFF]">
-                              CRM
-                            </p>
-                            <p className="font-bold text-white">
-                              {browserSystem.displayName || "Genie"}
-                            </p>
-                            <p className="mt-1 text-xs text-[#B7CAE7]">
-                              {commissioning.humanStatus}
-                            </p>
-                          </div>
-                          <span
-                            className={`text-xs font-bold ${commissioning.status === "ready" ? "text-emerald-200" : commissioning.advancedFallback ? "text-amber-100" : "text-[#9FC2FF]"}`}
-                          >
-                            {commissioning.status === "ready"
-                              ? "Ready"
-                              : commissioning.advancedFallback
-                                ? "Needs setup"
-                                : "Working"}
-                          </span>
-                        </div>
-                        <div className="mt-3 grid gap-2 text-xs text-[#B7CAE7] sm:grid-cols-2">
-                          {[
-                            {
-                              label: "Signed in",
-                              value: commissioning.progress.authentication,
-                              active: commissioning.state === "AUTHENTICATE",
-                            },
-                            {
-                              label: "Secure session checked",
-                              value: commissioning.progress.sessionReplay,
-                            },
-                            {
-                              label: "CRM discovered",
-                              value: commissioning.progress.capabilities,
-                              active: [
-                                "DISCOVER_NAVIGATION",
-                                "DISCOVER_CAPABILITIES",
-                              ].includes(commissioning.state),
-                            },
-                            {
-                              label: "Customer data checked",
-                              value: commissioning.progress.safeReads,
-                              active: commissioning.state === "TEST_SAFE_READS",
-                            },
-                            {
-                              label: "Test update approved",
-                              value: commissioning.progress.controlledWrites,
-                              active: [
-                                "TEST_CONTROLLED_WRITES",
-                                "VERIFY_READBACK",
-                              ].includes(commissioning.state),
-                              awaitingApproval: commissioning.safeTestRequired,
-                            },
-                            {
-                              label: "Update verified",
-                              value: commissioning.progress.readback,
-                              active: commissioning.state === "VERIFY_READBACK",
-                            },
-                            {
-                              label: "Ready",
-                              value:
-                                commissioning.status === "ready"
-                                  ? "complete"
-                                  : undefined,
-                              active:
-                                commissioning.state ===
-                                "PUBLISH_PROVEN_OPERATIONS",
-                            },
-                          ].map(item => {
-                            const stepLabel = setupStepLabel(item);
-                            return (
-                              <div
-                                key={item.label}
-                                className="flex items-center justify-between rounded-lg bg-black/15 px-3 py-2"
-                              >
-                                <span>{item.label}</span>
-                                <span
-                                  className={
-                                    stepLabel === "Complete"
-                                      ? "font-bold text-emerald-200"
-                                      : stepLabel === "Awaiting approval"
-                                        ? "font-bold text-amber-100"
-                                        : stepLabel === "Running"
-                                          ? "font-bold text-[#9FC2FF]"
-                                          : "text-[#7896C1]"
-                                  }
-                                >
-                                  {stepLabel}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                    {browserSystem.provider === "genie" &&
-                      (!commissioning ||
-                        ["needs_attention", "failed", "cancelled"].includes(
-                          commissioning.status
-                        )) && (
-                        <div className="space-y-3 rounded-xl border border-[#4E8BFF]/25 bg-[#0B1B36] p-4">
-                          <div className="grid gap-2 sm:grid-cols-2">
-                            {(
-                              [
-                                ["browserReady", "Browser ready"],
-                                [
-                                  "genieLoginReachable",
-                                  "Genie login reachable",
-                                ],
-                                ["secureSignInReady", "Secure sign-in ready"],
-                                [
-                                  "sessionHandoffReady",
-                                  "Session handoff ready",
-                                ],
-                              ] as const
-                            ).map(([key, label]) => {
-                              const passed =
-                                preOtpReadiness?.states[key] === true;
-                              return (
-                                <div
-                                  key={key}
-                                  className="flex items-center justify-between rounded-lg bg-black/15 px-3 py-2 text-xs"
-                                >
-                                  <span className="text-[#C7D6EC]">
-                                    {label}
-                                  </span>
-                                  <span
-                                    className={
-                                      passed
-                                        ? "font-bold text-emerald-200"
-                                        : "text-[#7896C1]"
-                                    }
-                                  >
-                                    {passed ? "Ready" : "Not checked"}
-                                  </span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            <Button
-                              variant="outline"
-                              onClick={() => void checkPreOtpReadiness()}
-                              disabled={
-                                preOtpPending ||
-                                !managementStatus.data?.elevated
-                              }
-                              className="border-white/15 bg-white/5 text-white"
-                            >
-                              {preOtpPending
-                                ? "Checking readiness…"
-                                : "Check secure sign-in readiness"}
-                            </Button>
-                            <Button
-                              onClick={() => void startBrowserCommissioning()}
-                              disabled={
-                                commissioningPending || !preOtpReadiness?.ready
-                              }
-                              className="bg-[#1B64F2]"
-                            >
-                              {commissioningPending
-                                ? "Requesting code…"
-                                : "Request Genie verification code"}
-                            </Button>
-                          </div>
-                          {!managementStatus.data?.elevated && (
-                            <p className="text-xs text-amber-100">
-                              Re-verify management mode above before checking
-                              secure sign-in readiness.
-                            </p>
-                          )}
-                          {managementStatus.data?.elevated &&
-                            preOtpReadiness && (
-                              <details className="rounded-lg border border-white/10 p-3">
-                                <summary className="cursor-pointer text-xs font-bold text-[#9FC2FF]">
-                                  Advanced diagnostics
-                                </summary>
-                                <div className="mt-2 grid gap-1 text-[11px] text-[#91A9CF]">
-                                  {preOtpReadiness.advancedDiagnostics.map(
-                                    item => (
-                                      <div
-                                        key={item.check}
-                                        className="flex justify-between gap-4"
-                                      >
-                                        <span>{item.check}</span>
-                                        <span
-                                          className={
-                                            item.passed
-                                              ? "text-emerald-200"
-                                              : "text-rose-200"
-                                          }
-                                        >
-                                          {item.passed ? "Pass" : "Blocked"}
-                                        </span>
-                                      </div>
-                                    )
-                                  )}
-                                </div>
-                              </details>
-                            )}
-                        </div>
-                      )}
-                    {browserSystem.provider !== "genie" &&
-                      (!commissioning ||
-                        ["needs_attention", "failed", "cancelled"].includes(
-                          commissioning.status
-                        )) && (
-                        <Button
-                          onClick={() => void startBrowserCommissioning()}
-                          disabled={commissioningPending}
-                          className="bg-[#1B64F2]"
-                        >
-                          {commissioningPending
-                            ? "Setting up CRM…"
-                            : commissioning
-                              ? "Retry CRM setup"
-                              : "Start automatic setup"}
-                        </Button>
-                      )}
-                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                      {CRM_CAPABILITY_PRESENTATION.map(capability => {
-                        const status = humanBrowserCapabilityStatus(
-                          browserReadiness.data?.operations,
-                          capability.keys
-                        );
-                        return (
-                          <div
-                            key={capability.label}
-                            className="rounded-xl border border-white/10 bg-[#08172F] p-3"
-                          >
-                            <p className="text-sm font-bold text-white">
-                              {capability.label}
-                            </p>
-                            <p
-                              className={`mt-1 text-xs font-bold ${status === "Ready" ? "text-emerald-200" : status === "Failed" ? "text-rose-200" : "text-amber-100"}`}
-                            >
-                              {status}
-                            </p>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    {commissioning?.safeTestRequired && (
-                      <div className="rounded-xl border border-amber-300/20 bg-amber-400/[.06] p-4">
-                        <h4 className="font-bold text-amber-100">
-                          Complete your CRM setup
-                        </h4>
-                        <p className="mt-2 text-xs leading-5 text-[#D7C9A4]">
-                          To make sure Amarktai can update your CRM safely,
-                          choose a test customer. Amarktai will then run the
-                          available controlled tests automatically and verify
-                          each result.
-                        </p>
-                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                          <label className="flex items-center gap-2 text-xs text-white">
-                            <input
-                              type="radio"
-                              checked={safeTestMode === "existing"}
-                              onChange={() => setSafeTestMode("existing")}
-                            />
-                            Enter an existing CRM test record
-                          </label>
-                          {commissioning.temporaryRecordSupported && (
-                            <label className="flex items-center gap-2 text-xs text-white">
-                              <input
-                                type="radio"
-                                checked={safeTestMode === "temporary"}
-                                onChange={() => setSafeTestMode("temporary")}
-                              />
-                              Create an Amarktai Setup Test contact
-                            </label>
-                          )}
-                        </div>
-                        {safeTestMode === "existing" ? (
-                          <Input
-                            value={safeTestCustomer}
-                            onChange={event =>
-                              setSafeTestCustomer(event.target.value)
-                            }
-                            placeholder="Exact CRM contact ID, email, phone, or unique name"
-                            className="mt-3 border-white/15 bg-[#071326] text-white"
-                          />
-                        ) : (
-                          <p className="mt-3 text-xs leading-5 text-[#D7C9A4]">
-                            Amarktai will create an explicitly labelled
-                            temporary contact and retain its exact ID. It
-                            remains for a manager to remove unless this
-                            connector has an already verified, explicitly safe
-                            delete operation.
+                {systems.data?.length ? (
+                  <div className="mt-6 space-y-3 rounded-xl border border-white/10 bg-[#08172F] p-4">
+                    <p className="text-sm font-bold text-white">
+                      CRM connections
+                    </p>
+                    {systems.data.map(system => (
+                      <div
+                        key={system.id}
+                        className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-black/15 px-3 py-2"
+                      >
+                        <div>
+                          <p className="text-sm font-semibold text-white">
+                            {system.displayName}
                           </p>
-                        )}
-                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                          <Input
-                            value={safeTestEmail}
-                            onChange={event =>
-                              setSafeTestEmail(event.target.value)
-                            }
-                            placeholder="Authorised test email (optional)"
-                            className="border-white/15 bg-[#071326] text-white"
-                          />
-                          <Input
-                            value={safeTestPhone}
-                            onChange={event =>
-                              setSafeTestPhone(event.target.value)
-                            }
-                            placeholder="Authorised test phone (optional)"
-                            className="border-white/15 bg-[#071326] text-white"
-                          />
+                          <p className="text-xs text-[#A9BFDF]">
+                            {system.status === "ready"
+                              ? "Connected · Secure session ready"
+                              : system.status === "testing"
+                                ? "Discovering functions…"
+                                : "Open CRM to continue"}
+                          </p>
                         </div>
-                        <p className="mt-2 text-xs leading-5 text-[#D7C9A4]">
-                          Messaging and calling are tested only when you provide
-                          the matching authorised destination. Otherwise those
-                          optional functions remain unavailable.
-                        </p>
-                        {canManage && (
-                          <Button
-                            variant="outline"
-                            disabled={
-                              (safeTestMode === "existing" &&
-                                !safeTestCustomer.trim()) ||
-                              commissioningPending
-                            }
-                            onClick={() => void approveSafeTestRecord()}
-                            className="mt-3 border-white/15 bg-white/5 text-white"
-                          >
-                            Approve and test automatically
-                          </Button>
-                        )}
-                      </div>
-                    )}
-                    {canManage && commissioning?.advancedFallback && (
-                      <details className="rounded-xl border border-white/10 bg-[#08172F] p-4">
-                        <summary className="cursor-pointer text-sm font-bold text-[#A9C7FF]">
-                          Advanced CRM Setup
-                        </summary>
-                        <p className="mt-2 text-xs leading-5 text-[#91A9CF]">
-                          Automatic setup could not safely finish one or more
-                          functions. Manager-only calibration, diagnostics and
-                          individual replay remain available as fallback.
-                        </p>
                         <Button
                           variant="outline"
-                          onClick={() => navigate("/connections")}
-                          className="mt-3 border-white/15 bg-white/5 text-white"
+                          onClick={() => navigate(`/crm/${system.id}`)}
+                          className="border-white/15 bg-white/5 text-white"
                         >
-                          Open Advanced CRM Setup
+                          Open CRM
                         </Button>
-                      </details>
-                    )}
+                      </div>
+                    ))}
                     <div className="flex justify-end">
                       <Button
                         onClick={() => setStep(4)}
-                        disabled={!sellingReadiness.coreGenieReady}
                         className="bg-emerald-600 hover:bg-emerald-500"
                       >
                         Continue to ready to sell
                       </Button>
                     </div>
-                  </section>
-                )}
-                {systems.data?.some(
-                  system => system.connectionMethod === "oauth"
-                ) && (
-                  <div className="mt-6 space-y-2 rounded-xl border border-white/10 bg-[#08172F] p-4">
-                    <p className="text-sm font-bold text-white">
-                      Connected CRM
-                    </p>
-                    {systems.data
-                      .filter(system => system.connectionMethod === "oauth")
-                      .map(system => {
-                        const checked = [
-                          "ready",
-                          "limited_permissions",
-                        ].includes(system.status);
-                        return (
-                          <div
-                            key={system.id}
-                            className="flex items-center justify-between gap-3 rounded-lg bg-black/15 px-3 py-2"
-                          >
-                            <span className="text-sm text-[#DCE7F8]">
-                              {system.displayName}
-                            </span>
-                            <span
-                              className={`text-xs font-bold ${checked ? "text-emerald-200" : "text-amber-100"}`}
-                            >
-                              {checked
-                                ? "Connected and checked"
-                                : "Needs setup"}
-                            </span>
-                          </div>
-                        );
-                      })}
                   </div>
-                )}
-                <div className="mt-6 rounded-xl border border-white/10 bg-[#08172F] p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="font-bold text-white">
-                        Microsoft 365 / Outlook
-                      </p>
-                      <p className="mt-1 text-xs leading-5 text-[#A9BFDF]">
-                        Optional reviewed sales email and calendar actions use
-                        the approved Microsoft Graph tenant configured for this
-                        deployment.
-                      </p>
-                    </div>
-                    <span
-                      className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${outlook.data?.ready ? "bg-emerald-400/15 text-emerald-200" : "bg-white/8 text-[#A9BFDF]"}`}
-                    >
-                      {outlook.data?.ready ? "Configured" : "Not configured"}
-                    </span>
-                  </div>
-                </div>
+                ) : null}
               </Card>
             )}
             {step === 4 && (

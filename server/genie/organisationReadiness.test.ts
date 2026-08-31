@@ -10,10 +10,7 @@ import { getOrganisationGenieReadiness } from "./organisationReadiness";
 describe("organisation Genie readiness", () => {
   beforeEach(() => mocks.readiness.mockReset());
 
-  it("uses connected-system verification and learned operations instead of GENIE_* environment state", async () => {
-    delete process.env.GENIE_LOGIN_URL;
-    delete process.env.GENIE_USERNAME;
-    delete process.env.GENIE_PASSWORD;
+  it("uses connected-system verification and learned operations", async () => {
     mocks.readiness.mockResolvedValue({
       operations: [
         { key: "contact.read", status: "LIVE_PROVEN" },

@@ -975,7 +975,7 @@ export async function startAutomaticCommissioning(input: {
         secretKind: "browser",
       })
     : undefined;
-  const initialState = system.provider === "genie" && approvedBrowserSecret?.browserSession && isBrowserSessionPackage(approvedBrowserSecret.browserSession)
+  const initialState = approvedBrowserSecret?.browserSession && isBrowserSessionPackage(approvedBrowserSecret.browserSession)
     ? "DISCOVER_NAVIGATION" as const
     : "AUTHENTICATE" as const;
   const values = {
@@ -986,9 +986,9 @@ export async function startAutomaticCommissioning(input: {
     state: initialState,
     status: "queued" as const,
     progress: {
-      humanStatus: initialState === "DISCOVER_NAVIGATION" ? "Genie sign-in approved; finding CRM navigation" : "Connecting",
-      steps: initialState === "DISCOVER_NAVIGATION" ? { authentication: "complete", sessionReplay: "complete" } : {},
-      ...(initialState === "DISCOVER_NAVIGATION" ? { authentication: "complete", sessionReplay: "complete" } : {}),
+      humanStatus: initialState === "DISCOVER_NAVIGATION" ? "CRM sign-in complete; finding available navigation" : "Connecting",
+      steps: initialState === "DISCOVER_NAVIGATION" ? { authentication: "complete", secureSession: "complete" } : {},
+      ...(initialState === "DISCOVER_NAVIGATION" ? { authentication: "complete", secureSession: "complete" } : {}),
     },
     safeTestRecord: null,
     discoveredOperationKeys: [],
@@ -1016,7 +1016,6 @@ export async function startAutomaticCommissioning(input: {
   scheduleAutomaticCommissioning(job.id);
   return presentCommissioningJob(job);
 }
-
 export async function authoriseCommissioningSafeTest(input: {
   userId: number;
   organisationId: number;

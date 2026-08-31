@@ -1,35 +1,36 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const source = readFileSync(
+const onboarding = readFileSync(
   new URL("../client/src/pages/Onboarding.tsx", import.meta.url),
   "utf8"
 );
+const connections = readFileSync(
+  new URL("../client/src/pages/ConnectionsV2.tsx", import.meta.url),
+  "utf8"
+);
 
-describe("browser CRM onboarding commissioning flow", () => {
-  it("keeps the normal CRM flow provider-neutral and hands advanced setup off explicitly", () => {
-    expect(source).toContain("Connect the CRM you already use");
-    expect(source).toContain("Connect → Discover → Test → Ready");
-    expect(source).toContain("Setting up your CRM");
-    expect(source).toContain("HubSpot");
-    expect(source).toContain("Salesforce");
-    expect(source).toContain("Pipedrive");
-    expect(source).toContain("Zoho CRM");
-    expect(source).toContain("Other CRM");
-    expect(source).toContain("/browser");
-    expect(source).toContain("/commissioning");
-    expect(source).toContain("Approve and test automatically");
-    expect(source).toContain("Advanced CRM Setup");
-    expect(source).not.toContain("Teach Amarktai");
-    expect(source).not.toContain("BrowserOperationMatrix");
-    expect(source).not.toContain("LoginCalibration");
-    expect(source).not.toContain("LIVE_PROVEN");
-    expect(source).not.toContain("TEST_READY");
-    expect(source).not.toContain("sidecar");
-    expect(source).not.toContain("browserProfile");
-    expect(source).not.toContain("GENIE_USERNAME");
-    expect(source).not.toContain("GENIE_PASSWORD");
-    expect(source).not.toContain("operation ID");
-    expect(source).not.toContain("Open Connections");
+describe("universal CRM onboarding", () => {
+  it("offers known presets and a first-class unknown CRM route", () => {
+    for (const label of [
+      "Genie",
+      "HubSpot",
+      "Salesforce",
+      "Pipedrive",
+      "Zoho CRM",
+      "Other CRM",
+    ])
+      expect(onboarding).toContain(label);
+    expect(onboarding).toContain("sign in there directly");
+    expect(connections).toContain("Amarktai never asks for or");
+    expect(connections).toContain("stores them");
+    expect(connections).toContain("https://crm.example.com/");
+  });
+
+  it("contains no CRM credential form or old interactive-auth endpoint", () => {
+    expect(onboarding).not.toContain('type="password"');
+    expect(onboarding).not.toContain("/interactive-auth/");
+    expect(onboarding).not.toContain("/pre-otp");
+    expect(connections).not.toContain('type="password"');
   });
 });

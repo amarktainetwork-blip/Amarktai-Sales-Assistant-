@@ -1,4 +1,4 @@
-import { and, desc, eq, like } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import {
   authorisedDomains,
   connectedSystems,
@@ -21,6 +21,7 @@ import type {
   ConnectionTest,
   CrmProvider,
 } from "./crm/types";
+import { crmBrowserPreset } from "./browserConnectors/crmBrowserPresets";
 
 const connectionMethods = [
   "oauth",
@@ -155,7 +156,26 @@ export async function createConnectedSystem(input: {
     scopes: [],
     configuration: { configuredHostname: hostnameFromUrl(input.baseUrl) },
   });
-  return Number(result[0].insertId);
+  const connectedSystemId = Number(result[0].insertId);
+  if (input.baseUrl) {
+    const startUrl = await assertPublicHttpUrl(input.baseUrl);
+    const preset = crmBrowserPreset(input.provider);
+    const hostnames = Array.from(
+      new Set([startUrl.hostname.toLowerCase(), ...preset.knownHostnames])
+    );
+    for (const hostname of hostnames)
+      await db
+        .insert(authorisedDomains)
+        .values({
+          organisationId: input.organisationId,
+          connectedSystemId,
+          hostname,
+          allowedPaths: ["/"],
+          status: "verified",
+          verifiedAt: new Date(),
+        });
+  }
+  return connectedSystemId;
 }
 
 export async function getConnectedSystemForUser(
@@ -229,9 +249,7 @@ export async function addAuthorisedDomain(input: {
   const allowedPaths = input.allowedPaths
     .map(path => path.trim())
     .filter(Boolean);
-  if (
-    allowedPaths.some(path => !path.startsWith("/") || path.includes("//"))
-  )
+  if (allowedPaths.some(path => !path.startsWith("/") || path.includes("//")))
     throw new Error("Authorised paths must be absolute path prefixes.");
   await assertPublicHttpUrl(`https://${hostname}${allowedPaths[0] || "/"}`);
   const db = await getDb();
@@ -351,13 +369,9 @@ export async function saveConnectionSecret(input: {
     input.organisationId,
     input.connectedSystemId
   );
-  const secretKind =
-    system.provider === "genie" && input.secretKind === "browser"
-      ? personalSecretKind(input.userId, input.secretKind)
-      : input.secretKind;
   await persistSecret({
     connectedSystemId: input.connectedSystemId,
-    secretKind,
+    secretKind: input.secretKind,
     secret: input.secret,
   });
 }
@@ -407,27 +421,6 @@ export async function loadConnectionSecret(input: {
       .limit(1)
   )[0];
   if (!system) return undefined;
-
-  if (system.provider === "genie" && input.secretKind === "browser") {
-    const personal = await db
-      .select({ secret: connectionSecrets })
-      .from(connectionSecrets)
-      .where(
-        and(
-          eq(connectionSecrets.connectedSystemId, input.connectedSystemId),
-          like(connectionSecrets.secretKind, "browser:user:%")
-        )
-      )
-      .limit(2);
-    if (personal.length > 1)
-      throw new Error(
-        "GENIE_PERSONAL_SECRET_AMBIGUOUS: this Genie connection has multiple personal CRM sessions; the runtime must identify the acting user explicitly."
-      );
-    const personalSecret = personal[0]?.secret;
-    return personalSecret
-      ? decryptConnectionSecret<ConnectionSecretPayload>(personalSecret)
-      : undefined;
-  }
 
   const rows = await db
     .select({ secret: connectionSecrets })

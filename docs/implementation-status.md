@@ -18,7 +18,7 @@ The production source has no executable Manus/Forge hosted-preview dependency. L
 - Atomic action claims and correlation-bound finalisation to prevent duplicate approved writes.
 - GenX agent execution with bounded context/output, timeouts/retries, live commissioning probe and AI-credit accounting.
 - Native OAuth CRM adapters for **HubSpot, Salesforce, Pipedrive and Zoho CRM**.
-- **Genie** and **Other CRM** deterministic browser adapters with encrypted credentials, reviewed saved scripts, screenshot evidence and authorised-domain/private-network controls.
+- **Genie** and **Other CRM** deterministic browser adapters with direct customer sign-in through the Secure CRM Browser, encrypted connection-scoped session packages, reviewed saved scripts, screenshot evidence and authorised-domain/private-network controls.
 - CRM synchronization, normalized contacts/companies/opportunities/tasks/activities, pipeline reads and verified-capability routing.
 - Review-first sales email/SMS/WhatsApp actions. CRM-native delivery is preferred where supported; generic SMTP/webhook delivery can log the completed communication back to CRM.
 - Microsoft 365 / Outlook Graph support for reviewed outbound sales mail and approved calendar-event creation when the installation tenant is configured and commissioned.
@@ -41,7 +41,7 @@ The user-facing connection choices intentionally expose only executable paths:
 | Genie | Deterministic authorised browser connector |
 | Other web CRM | Organisation-specific deterministic browser connector |
 
-A company with another browser-accessible CRM can use **Other CRM** after its authorised hostname, login and reviewed operation profile are calibrated. The product does not pretend to have a native API adapter for every CRM.
+A company with another browser-accessible CRM can use **Other CRM** after its authorised hostname and reviewed operation profile are calibrated. The customer signs in on the real CRM page; Amarktai does not collect browser-CRM credentials. The product does not pretend to have a native API adapter for every CRM.
 
 ## Microsoft 365 / communications
 
@@ -66,8 +66,8 @@ These actions cannot truthfully be proven by repository code alone:
 - Webdock host, DNS and Caddy TLS.
 - Real SMTP delivery and login second-factor completion.
 - Real GenX model/API response.
-- OAuth/credentials and capability verification for the client's chosen CRM.
-- Selector/profile calibration for Genie/Other CRM.
+- OAuth authorisation for native connectors or direct customer sign-in for browser connectors, followed by capability verification for the client's chosen CRM.
+- Operation-profile calibration for Genie/Other CRM.
 - Microsoft Graph token/mail/calendar acceptance if Outlook is used.
 - Real STT audio acceptance if Live Call Companion transcription is enabled.
 - SMS/WhatsApp sender acceptance if those channels are enabled.
