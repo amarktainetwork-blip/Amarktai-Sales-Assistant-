@@ -23,6 +23,7 @@ const partialSchema = z
 const auditSchema = z
   .object({
     addConflicts: z.array(conflictSchema).default([]),
+    importantGaps: z.array(z.string()).default([]),
   })
   .partial();
 
