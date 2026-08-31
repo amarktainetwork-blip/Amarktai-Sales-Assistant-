@@ -8,11 +8,17 @@ import type { AdapterConnection, CrmProvider } from "../crm/types";
 import {
   assertAuthorisedConnectionUrl,
   loadConnectionSecret,
+  loadUserConnectionSecret,
   saveConnectionSecret,
+  saveUserConnectionSecret,
 } from "../connectedSystems";
 import { getDb, recordAudit } from "../db";
 import { connectedSystems } from "../../drizzle/schema";
 import { and, eq } from "drizzle-orm";
+import {
+  canManageOrganisationForUser,
+  requireOrganisationMembership,
+} from "../organisation";
 import {
   captureBrowserSessionPackage,
   createContextWithBrowserSession,
@@ -102,6 +108,8 @@ type ManagedCrmBrowserSession = {
   customerConfirmed: boolean;
   authenticatedPersisted: boolean;
   restoredSession: boolean;
+  canCommission: boolean;
+  sharedCommissioningIdentity: boolean;
   reauthenticationRecorded?: boolean;
   evaluating?: Promise<void>;
   idleTimer?: ReturnType<typeof setTimeout>;
@@ -111,8 +119,12 @@ const activeSessions = new Map<string, ManagedCrmBrowserSession>();
 const browserPool = new Map<string, Promise<Browser>>();
 const IDLE_TIMEOUT_MS = 30 * 60_000;
 
-function sessionKey(organisationId: number, connectedSystemId: number) {
-  return `${organisationId}:${connectedSystemId}`;
+function sessionKey(
+  organisationId: number,
+  connectedSystemId: number,
+  userId: number
+) {
+  return `${organisationId}:${connectedSystemId}:user:${userId}`;
 }
 
 function publicMessage(error: unknown) {
@@ -174,15 +186,12 @@ function endpointFor(connection: AdapterConnection) {
 }
 
 async function visible(page: Page, selectors: string[]) {
-  for (const selector of selectors)
-    if (
-      await page
-        .locator(selector)
-        .first()
-        .isVisible()
-        .catch(() => false)
-    )
-      return true;
+  for (const selector of selectors) {
+    const locator = page.locator(selector);
+    const count = Math.min(await locator.count().catch(() => 0), 16);
+    for (let index = 0; index < count; index++)
+      if (await locator.nth(index).isVisible().catch(() => false)) return true;
+  }
   return false;
 }
 
@@ -229,6 +238,7 @@ async function inspectAuthentication(
 }
 
 async function ensureCommissioning(session: ManagedCrmBrowserSession) {
+  if (!session.canCommission) return;
   const { ensureAutomaticCommissioning } = await import(
     "../crm/ensureCommissioning"
   );
@@ -239,12 +249,52 @@ async function ensureCommissioning(session: ManagedCrmBrowserSession) {
   });
 }
 
+async function persistPersonalSession(
+  session: ManagedCrmBrowserSession,
+  browserSession: Awaited<ReturnType<typeof captureBrowserSessionPackage>>
+) {
+  const existingPersonal =
+    (await loadUserConnectionSecret({
+      userId: session.openedByUserId,
+      organisationId: session.connection.organisationId,
+      connectedSystemId: session.connection.id,
+      secretKind: "browser",
+    })) || {};
+  await saveUserConnectionSecret({
+    userId: session.openedByUserId,
+    organisationId: session.connection.organisationId,
+    connectedSystemId: session.connection.id,
+    secretKind: "browser",
+    secret: { ...existingPersonal, browserSession },
+  });
+}
+
+async function persistSharedCommissioningSession(
+  session: ManagedCrmBrowserSession,
+  browserSession: Awaited<ReturnType<typeof captureBrowserSessionPackage>>
+) {
+  if (!session.canCommission) return;
+  const existingShared =
+    (await loadConnectionSecret({
+      organisationId: session.connection.organisationId,
+      connectedSystemId: session.connection.id,
+      secretKind: "browser",
+    })) || {};
+  await saveConnectionSecret({
+    userId: session.openedByUserId,
+    organisationId: session.connection.organisationId,
+    connectedSystemId: session.connection.id,
+    secretKind: "browser",
+    secret: { ...existingShared, browserSession },
+  });
+  session.sharedCommissioningIdentity = true;
+}
+
 async function persistAuthenticatedSession(
   session: ManagedCrmBrowserSession,
   force = false
 ) {
   const shouldPersist = !session.authenticatedPersisted || force;
-
   if (shouldPersist) {
     session.authenticatedPersisted = true;
     try {
@@ -260,39 +310,29 @@ async function persistAuthenticatedSession(
             rawUrl,
           }).then(() => undefined),
       });
-      const existing =
-        (await loadConnectionSecret({
-          organisationId: session.connection.organisationId,
-          connectedSystemId: session.connection.id,
-          secretKind: "browser",
-        })) || {};
-      await saveConnectionSecret({
-        userId: session.openedByUserId,
-        organisationId: session.connection.organisationId,
-        connectedSystemId: session.connection.id,
-        secretKind: "browser",
-        // Preserve deprecated material for an operator-led migration, but runtime
-        // code never reads credentials, MFA values, or the legacy session package.
-        secret: { ...existing, browserSession },
-      });
-      const db = await getDb();
-      if (db)
-        await db
-          .update(connectedSystems)
-          .set({
-            status: "testing",
-            lastHealthSummary:
-              "Secure CRM session ready. Discovering available functions.",
-          })
-          .where(
-            and(
-              eq(connectedSystems.id, session.connection.id),
-              eq(
-                connectedSystems.organisationId,
-                session.connection.organisationId
+      await persistPersonalSession(session, browserSession);
+      await persistSharedCommissioningSession(session, browserSession);
+
+      if (session.canCommission) {
+        const db = await getDb();
+        if (db)
+          await db
+            .update(connectedSystems)
+            .set({
+              status: "testing",
+              lastHealthSummary:
+                "Secure CRM session ready. Discovering available functions.",
+            })
+            .where(
+              and(
+                eq(connectedSystems.id, session.connection.id),
+                eq(
+                  connectedSystems.organisationId,
+                  session.connection.organisationId
+                )
               )
-            )
-          );
+            );
+      }
       await recordAudit({
         userId: session.openedByUserId,
         organisationId: session.connection.organisationId,
@@ -303,6 +343,8 @@ async function persistAuthenticatedSession(
         metadata: {
           provider: session.connection.provider,
           credentialsObserved: false,
+          identityScope: "user",
+          commissioningIdentityUpdated: session.canCommission,
         },
       });
     } catch (error) {
@@ -317,9 +359,9 @@ async function persistAuthenticatedSession(
   }
 
   // A restored browser package means persistence has already happened, not
-  // that automatic capability commissioning has happened. Always ensure the
-  // durable job exists/resumes after authentication; the helper refuses to
-  // restart any controlled-write or readback phase automatically.
+  // that automatic capability commissioning has happened. Only managers can
+  // resume the company-level commissioning job; ordinary salespeople keep a
+  // private browser identity without changing the shared connector lifecycle.
   try {
     await ensureCommissioning(session);
   } catch {
@@ -352,36 +394,40 @@ async function evaluate(session: ManagedCrmBrowserSession) {
         )
       )
         session.authenticatedPersisted = false;
+
       if (
         state === "REAUTHENTICATION_REQUIRED" &&
         !session.reauthenticationRecorded
       ) {
         session.reauthenticationRecorded = true;
-        const db = await getDb();
-        if (db)
-          await db
-            .update(connectedSystems)
-            .set({
-              status: "authentication_expired",
-              lastHealthSummary: "Your CRM needs you to sign in again.",
-            })
-            .where(
-              and(
-                eq(connectedSystems.id, session.connection.id),
-                eq(
-                  connectedSystems.organisationId,
-                  session.connection.organisationId
+        if (session.canCommission && session.sharedCommissioningIdentity) {
+          const db = await getDb();
+          if (db)
+            await db
+              .update(connectedSystems)
+              .set({
+                status: "authentication_expired",
+                lastHealthSummary:
+                  "The commissioning CRM identity needs a manager to sign in again.",
+              })
+              .where(
+                and(
+                  eq(connectedSystems.id, session.connection.id),
+                  eq(
+                    connectedSystems.organisationId,
+                    session.connection.organisationId
+                  )
                 )
-              )
-            );
+              );
+        }
         await recordAudit({
           userId: session.openedByUserId,
           organisationId: session.connection.organisationId,
           eventType: "crm_reauthentication_required",
           entityType: "connected_system",
           entityId: String(session.connection.id),
-          summary: "The CRM session expired and requires human sign-in.",
-          metadata: {},
+          summary: "A user's CRM session expired and requires human sign-in.",
+          metadata: { identityScope: "user" },
         });
       }
       if (state === "AUTHENTICATED") await persistAuthenticatedSession(session);
@@ -448,7 +494,8 @@ function armIdle(session: ManagedCrmBrowserSession) {
     () =>
       void managedCrmBrowserSessionManager.teardown(
         session.connection.organisationId,
-        session.connection.id
+        session.connection.id,
+        session.openedByUserId
       ),
     IDLE_TIMEOUT_MS
   );
@@ -458,7 +505,8 @@ export const managedCrmBrowserSessionManager = {
   async open(input: { connection: AdapterConnection; userId: number }) {
     const key = sessionKey(
       input.connection.organisationId,
-      input.connection.id
+      input.connection.id,
+      input.userId
     );
     const existing = activeSessions.get(key);
     if (
@@ -466,10 +514,18 @@ export const managedCrmBrowserSessionManager = {
       !existing.page.isClosed() &&
       existing.browser.isConnected()
     ) {
-      existing.openedByUserId = input.userId;
       armIdle(existing);
       return existing;
     }
+
+    const membership = await requireOrganisationMembership(
+      input.userId,
+      input.connection.organisationId
+    );
+    const canCommission = await canManageOrganisationForUser(
+      input.userId,
+      membership.role
+    );
     const preset = crmBrowserPreset(input.connection.provider);
     const startUrl = input.connection.baseUrl || preset.defaultStartUrl;
     if (!startUrl) throw new Error("CRM_START_URL_REQUIRED");
@@ -478,18 +534,34 @@ export const managedCrmBrowserSessionManager = {
       connectedSystemId: input.connection.id,
       rawUrl: startUrl,
     });
-    const secret =
-      (await loadConnectionSecret({
+
+    const personalSecret =
+      (await loadUserConnectionSecret({
+        userId: input.userId,
         organisationId: input.connection.organisationId,
         connectedSystemId: input.connection.id,
         secretKind: "browser",
       })) || {};
-    const restored = isBrowserSessionPackage(secret.browserSession)
-      ? secret.browserSession
+    const personalSession = isBrowserSessionPackage(personalSecret.browserSession)
+      ? personalSecret.browserSession
       : undefined;
-    const browser = await connectManagedCrmBrowser(
-      endpointFor(input.connection)
-    );
+
+    // Backward-compatible migration for the manager who commissioned an older
+    // shared browser session. Ordinary members can never inherit that identity.
+    const sharedSecret =
+      !personalSession && canCommission
+        ? (await loadConnectionSecret({
+            organisationId: input.connection.organisationId,
+            connectedSystemId: input.connection.id,
+            secretKind: "browser",
+          })) || {}
+        : {};
+    const sharedSession = isBrowserSessionPackage(sharedSecret.browserSession)
+      ? sharedSecret.browserSession
+      : undefined;
+    const restored = personalSession || sharedSession;
+
+    const browser = await connectManagedCrmBrowser(endpointFor(input.connection));
     const context = await createContextWithBrowserSession({
       browser,
       browserSession: restored,
@@ -517,8 +589,10 @@ export const managedCrmBrowserSessionManager = {
       },
       listeners: new Set(),
       customerConfirmed: false,
-      authenticatedPersisted: Boolean(restored),
+      authenticatedPersisted: Boolean(personalSession),
       restoredSession: Boolean(restored),
+      canCommission,
+      sharedCommissioningIdentity: Boolean(sharedSession),
     };
     activeSessions.set(key, session);
     installPageGovernance(session, page);
@@ -566,6 +640,7 @@ export const managedCrmBrowserSessionManager = {
   snapshot(session: ManagedCrmBrowserSession) {
     return { ...session.snapshot };
   },
+
   subscribe(
     session: ManagedCrmBrowserSession,
     listener: (snapshot: CrmBrowserSessionSnapshot) => void
@@ -574,11 +649,13 @@ export const managedCrmBrowserSessionManager = {
     listener({ ...session.snapshot });
     return () => session.listeners.delete(listener);
   },
+
   async customerFinishedSigningIn(session: ManagedCrmBrowserSession) {
     session.customerConfirmed = true;
     await evaluate(session);
     return { ...session.snapshot };
   },
+
   async navigate(
     session: ManagedCrmBrowserSession,
     action: "back" | "forward" | "refresh"
@@ -591,19 +668,43 @@ export const managedCrmBrowserSessionManager = {
     armIdle(session);
     await evaluate(session);
   },
+
   async persist(session: ManagedCrmBrowserSession) {
     if (session.snapshot.authenticationState === "AUTHENTICATED")
       await persistAuthenticatedSession(session, true);
   },
-  async teardown(organisationId: number, connectedSystemId: number) {
-    const key = sessionKey(organisationId, connectedSystemId);
-    const session = activeSessions.get(key);
-    if (!session) return;
-    activeSessions.delete(key);
-    if (session.idleTimer) clearTimeout(session.idleTimer);
-    await this.persist(session).catch(() => undefined);
-    await session.context.close().catch(() => undefined);
+
+  async teardown(
+    organisationId: number,
+    connectedSystemId: number,
+    userId?: number
+  ) {
+    const targets = Array.from(activeSessions.values()).filter(
+      session =>
+        session.connection.organisationId === organisationId &&
+        session.connection.id === connectedSystemId &&
+        (userId === undefined || session.openedByUserId === userId)
+    );
+    for (const session of targets) {
+      activeSessions.delete(session.key);
+      if (session.idleTimer) clearTimeout(session.idleTimer);
+      await this.persist(session).catch(() => undefined);
+      await session.context.close().catch(() => undefined);
+    }
   },
+
+  async teardownConnection(organisationId: number, connectedSystemId: number) {
+    await this.teardown(organisationId, connectedSystemId);
+  },
+
+  activeUserSessionCount(organisationId: number, connectedSystemId: number) {
+    return Array.from(activeSessions.values()).filter(
+      session =>
+        session.connection.organisationId === organisationId &&
+        session.connection.id === connectedSystemId
+    ).length;
+  },
+
   resetForTests() {
     activeSessions.forEach(session => {
       if (session.idleTimer) clearTimeout(session.idleTimer);
