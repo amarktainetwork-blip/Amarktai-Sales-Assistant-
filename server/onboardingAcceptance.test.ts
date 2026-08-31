@@ -193,7 +193,7 @@ describe("new-user Genie commissioning journey contract", () => {
     const onboarding = read("../client/src/pages/Onboarding.tsx");
     const workspace = read("../client/src/pages/CrmWorkspace.tsx");
     expect(onboarding).toContain("sign in there directly");
-    expect(workspace).toContain("I've finished signing in");
+    expect(workspace).toContain("Check my sign-in");
     expect(workspace).toContain("Take control");
     expect(workspace).toContain("Give control to Amarktai");
   });
