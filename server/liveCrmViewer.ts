@@ -22,11 +22,15 @@ import {
   type ManagedCrmBrowserSessionHandle,
 } from "./browserConnectors/managedCrmBrowserSessionManager";
 
-const VIEWER_TTL_MS = 5 * 60_000;
-const IDLE_LEASE_MS = 8_000;
+// Viewer tokens are still scoped to one authenticated user + organisation +
+// connected system, but a normal sales session must not expire while somebody
+// is actively working. Every valid websocket message renews this inactivity
+// window.
+const VIEWER_TTL_MS = 30 * 60_000;
+const IDLE_LEASE_MS = 20_000;
 const MAX_MESSAGE_BYTES = 16 * 1024;
 const MAX_FRAME_BYTES = 1_600_000;
-const MAX_FRAME_RATE = 10;
+const MAX_FRAME_RATE = 20;
 const MAX_VIEWERS_PER_SESSION = 1;
 
 type ControlState = BrowserControlState;
@@ -185,6 +189,12 @@ function assertInput(event: ViewerInputEvent) {
       )
     )
       throw new Error("CRM_VIEWER_MOUSE_TYPE_INVALID");
+    if (
+      event.type === "mouseWheel" &&
+      (!boundedNumber(event.deltaX ?? 0, -10_000, 10_000) ||
+        !boundedNumber(event.deltaY ?? 0, -10_000, 10_000))
+    )
+      throw new Error("CRM_VIEWER_WHEEL_BOUNDS_INVALID");
     return event;
   }
   if (event.kind === "key") {
@@ -251,6 +261,12 @@ function armSessionExpiry(session: LiveCrmSession) {
   );
 }
 
+function touchViewerSession(session: LiveCrmSession) {
+  if (!session.interactive) return;
+  session.expiresAt = Date.now() + VIEWER_TTL_MS;
+  armSessionExpiry(session);
+}
+
 function pruneExpiredSessions() {
   Array.from(sessions.values()).forEach(session => {
     if (session.expiresAt <= Date.now()) expireSession(session);
@@ -259,15 +275,6 @@ function pruneExpiredSessions() {
 
 function setHumanLease(session: LiveCrmSession) {
   acquireHumanBrowserControl(controlScope(session), IDLE_LEASE_MS);
-}
-
-function releaseExpiredLease(session: LiveCrmSession) {
-  if (session.leaseExpiresAt && session.leaseExpiresAt < Date.now()) {
-    session.control = "IDLE";
-    session.leaseOwner = undefined;
-    session.leaseExpiresAt = undefined;
-    broadcast(session, { type: "control", control: session.control });
-  }
 }
 
 export function acquireAiControl(
@@ -283,6 +290,7 @@ export function acquireAiControl(
     !session.interactive
   )
     throw new Error("CRM_VIEWER_SESSION_NOT_FOUND");
+  touchViewerSession(session);
   return acquireAiBrowserControl(controlScope(session), IDLE_LEASE_MS);
 }
 
@@ -298,6 +306,7 @@ export function releaseAiControl(
     session.userId !== userId
   )
     throw new Error("CRM_VIEWER_SESSION_NOT_FOUND");
+  touchViewerSession(session);
   return releaseBrowserControl(controlScope(session));
 }
 
@@ -311,7 +320,7 @@ async function startStream(session: LiveCrmSession) {
   session.streaming = true;
   await cdp.send("Page.startScreencast", {
     format: "jpeg",
-    quality: 72,
+    quality: 68,
     maxWidth: 1_920,
     maxHeight: 1_200,
     everyNthFrame: 1,
@@ -361,6 +370,7 @@ async function dispatchInput(session: LiveCrmSession, event: ViewerInputEvent) {
     throw new Error("CRM_VIEWER_SESSION_EXPIRED");
   if (!canAcceptBrowserInput(browserControlState(controlScope(session))))
     throw new Error("CRM_VIEWER_HUMAN_CONTROL_REQUIRED");
+  touchViewerSession(session);
   setHumanLease(session);
   if (!session.cdp) throw new Error("CRM_VIEWER_STREAM_UNAVAILABLE");
   const input = assertInput(event);
@@ -400,8 +410,7 @@ export async function createLiveCrmViewerSession(input: {
   );
   const existing = existingId ? sessions.get(existingId) : undefined;
   if (existing && existing.expiresAt > Date.now()) {
-    existing.expiresAt = Date.now() + VIEWER_TTL_MS;
-    armSessionExpiry(existing);
+    touchViewerSession(existing);
     return viewerDescriptor(existing);
   }
   const connection = await getConnectedSystemForUser(
@@ -494,6 +503,7 @@ export async function getSanitisedLiveCrmContext(input: {
     session.userId !== input.userId
   )
     throw new Error("CRM_VIEWER_SESSION_NOT_FOUND");
+  touchViewerSession(session);
   const url = new URL(session.lastUrl);
   const title = (await session.managed.page.title().catch(() => ""))
     .replace(/\s+/g, " ")
@@ -565,6 +575,7 @@ export function registerLiveCrmViewerSocket(server: Server) {
           throw new Error("CRM_VIEWER_SCOPE_BLOCKED");
         if (session.sockets.size >= MAX_VIEWERS_PER_SESSION)
           throw new Error("CRM_VIEWER_ALREADY_OPEN");
+        touchViewerSession(session);
         wss.handleUpgrade(request, socket, head, ws => {
           wss.emit("connection", ws, request, session);
         });
@@ -578,6 +589,7 @@ export function registerLiveCrmViewerSocket(server: Server) {
     "connection",
     (socket: WebSocket, _request: IncomingMessage, session: LiveCrmSession) => {
       session.sockets.add(socket);
+      touchViewerSession(session);
       void startStream(session)
         .then(() => {
           socketPayload(socket, {
@@ -599,6 +611,7 @@ export function registerLiveCrmViewerSocket(server: Server) {
         void (async () => {
           try {
             const message = parseMessage(raw);
+            touchViewerSession(session);
             if (message.type === "input")
               await dispatchInput(session, message.event);
             else if (message.type === "visibility") {
@@ -611,15 +624,23 @@ export function registerLiveCrmViewerSocket(server: Server) {
                 !boundedNumber(message.height, 240, 2_400)
               )
                 throw new Error("CRM_VIEWER_RESIZE_INVALID");
+              const width = Math.round(message.width);
+              const height = Math.round(message.height);
               await session.cdp?.send("Emulation.setDeviceMetricsOverride", {
-                width: Math.round(message.width),
-                height: Math.round(message.height),
+                width,
+                height,
+                screenWidth: width,
+                screenHeight: height,
                 deviceScaleFactor:
                   typeof message.deviceScaleFactor === "number" &&
                   boundedNumber(message.deviceScaleFactor, 1, 2)
                     ? message.deviceScaleFactor
                     : 1,
                 mobile: false,
+                scale: 1,
+                positionX: 0,
+                positionY: 0,
+                dontSetVisibleSize: false,
               });
             } else if (message.type === "releaseHumanControl") {
               releaseBrowserControl(controlScope(session));
@@ -644,7 +665,10 @@ export function registerLiveCrmViewerSocket(server: Server) {
                 session.managed
               );
             } else if (message.type === "ping")
-              socketPayload(socket, { type: "pong" });
+              socketPayload(socket, {
+                type: "pong",
+                expiresAt: new Date(session.expiresAt).toISOString(),
+              });
           } catch (error) {
             socketPayload(socket, {
               type: "error",
@@ -675,6 +699,7 @@ export function resetLiveCrmViewerForTests() {
 
 export const LIVE_CRM_VIEWER_LIMITS = {
   viewerTtlMs: VIEWER_TTL_MS,
+  idleLeaseMs: IDLE_LEASE_MS,
   maxMessageBytes: MAX_MESSAGE_BYTES,
   maxFrameBytes: MAX_FRAME_BYTES,
   maxFrameRate: MAX_FRAME_RATE,
