@@ -2,7 +2,11 @@ import { and, eq } from "drizzle-orm";
 import { auditEntries, connectedSystems, type ActionProposal } from "../../drizzle/schema";
 import { getDb, recordAudit } from "../db";
 import { getCrmAdapter } from "./adapterRegistry";
-import { loadConnectionSecret, toAdapterConnection } from "../connectedSystems";
+import {
+  loadConnectionSecret,
+  loadUserConnectionSecret,
+  toAdapterConnection,
+} from "../connectedSystems";
 import { sendSalesMessage } from "../communications";
 import { connectedSystemSupportsAction } from "../crmRouter";
 import { createOutlookCalendarEvent, getOutlookReadiness } from "../outlook";
@@ -70,21 +74,30 @@ async function verifiedSystem(
 }
 
 async function connectionSecret(
+  userId: number,
   organisationId: number,
   system: typeof connectedSystems.$inferSelect
 ): Promise<ConnectionSecretPayload> {
-  const kind =
+  const browser =
     system.connectionMethod === "browser" ||
-    system.connectionMethod === "sidecar"
-      ? "browser"
-      : "oauth";
-  return (
-    (await loadConnectionSecret({
-      organisationId,
-      connectedSystemId: system.id,
-      secretKind: kind,
-    })) || {}
-  );
+    system.connectionMethod === "sidecar";
+  const secret = browser
+    ? await loadUserConnectionSecret({
+        userId,
+        organisationId,
+        connectedSystemId: system.id,
+        secretKind: "browser",
+      })
+    : await loadConnectionSecret({
+        organisationId,
+        connectedSystemId: system.id,
+        secretKind: "oauth",
+      });
+  if (!secret && browser)
+    throw new Error("Your CRM needs you to sign in again before this approved change can be applied.");
+  if (!secret)
+    throw new Error("The CRM connection needs attention before this approved change can be applied.");
+  return secret;
 }
 
 function fields(payload: Record<string, unknown>) {
@@ -261,7 +274,11 @@ export async function executeApprovedCrmAction(input: {
   );
   const connection = toAdapterConnection(system);
   const adapter = getCrmAdapter(system.provider);
-  const secret = await connectionSecret(input.organisationId, system);
+  const secret = await connectionSecret(
+    input.proposal.userId,
+    input.organisationId,
+    system
+  );
   if (batchPlan) {
     const instruction = typeof payload.instruction === "string"
       ? payload.instruction
