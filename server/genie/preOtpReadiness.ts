@@ -29,12 +29,31 @@ const PROOF_VERSION = 1 as const;
 const PROOF_MAX_AGE_MS = 30 * 60 * 1_000;
 const PROFILE_DIRECTORY = "/home/chrome/profile";
 const SENTINEL_PREFIX = "amarktai-pre-otp";
+const LOGIN_RENDER_TIMEOUT_MS = 15_000;
 const SAFE_CONNECTION_STATES = new Set([
   "disconnected",
   "needs_attention",
   "authentication_expired",
   "error",
 ]);
+
+const DEFAULT_USERNAME_SELECTOR = [
+  "#email",
+  'input[type="email"]',
+  'input[autocomplete="username" i]',
+  'input[name*="email" i]',
+  'input[name*="user" i]',
+  'input[placeholder*="email" i]',
+].join(", ");
+const DEFAULT_PASSWORD_SELECTOR = [
+  "#password",
+  'input[type="password"]',
+  'input[placeholder*="password" i]',
+].join(", ");
+const DEFAULT_SUBMIT_SELECTOR = [
+  'button[type="submit"]',
+  'input[type="submit"]',
+].join(", ");
 
 export const PRE_OTP_CHECKS = [
   "browserServiceHealthy",
@@ -294,6 +313,11 @@ async function connectionPreconditions(input: {
   };
 }
 
+function selectorWithFallback(configured: unknown, fallback: string) {
+  if (typeof configured !== "string" || !configured.trim()) return fallback;
+  return `${configured.trim()}, ${fallback}`;
+}
+
 function loginSelectors(
   system: Awaited<ReturnType<typeof getConnectedSystemForUser>>
 ) {
@@ -308,19 +332,44 @@ function loginSelectors(
       ? (login as Record<string, unknown>)
       : {};
   return {
-    username:
-      typeof configured.usernameSelector === "string"
-        ? configured.usernameSelector
-        : "#email",
-    password:
-      typeof configured.passwordSelector === "string"
-        ? configured.passwordSelector
-        : "#password",
-    submit:
-      typeof configured.submitSelector === "string"
-        ? configured.submitSelector
-        : 'button[type="submit"]',
+    username: selectorWithFallback(
+      configured.usernameSelector,
+      DEFAULT_USERNAME_SELECTOR
+    ),
+    password: selectorWithFallback(
+      configured.passwordSelector,
+      DEFAULT_PASSWORD_SELECTOR
+    ),
+    submit: selectorWithFallback(
+      configured.submitSelector,
+      DEFAULT_SUBMIT_SELECTOR
+    ),
   };
+}
+
+async function hasVisibleControl(page: Page, selector: string) {
+  const locator = page.locator(selector);
+  const count = Math.min(await locator.count(), 16);
+  for (let index = 0; index < count; index += 1)
+    if (await locator.nth(index).isVisible().catch(() => false)) return true;
+  return false;
+}
+
+async function waitForLoginControls(
+  page: Page,
+  selectors: ReturnType<typeof loginSelectors>
+) {
+  const deadline = Date.now() + LOGIN_RENDER_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    const visible = await Promise.all([
+      hasVisibleControl(page, selectors.username).catch(() => false),
+      hasVisibleControl(page, selectors.password).catch(() => false),
+      hasVisibleControl(page, selectors.submit).catch(() => false),
+    ]);
+    if (visible.every(Boolean)) return;
+    await page.waitForTimeout(250);
+  }
+  throw new Error("PRE_OTP_LOGIN_FORM_NOT_IDENTIFIED");
 }
 
 export async function createPreOtpHandoffProbe(input: {
@@ -493,17 +542,7 @@ export async function verifyPreOtpHandoffProbe(input: {
       rawUrl: probe.url(),
     });
     const selectors = loginSelectors(system);
-    const controlsVisible = await Promise.all(
-      [selectors.username, selectors.password, selectors.submit].map(selector =>
-        probe
-          .locator(selector)
-          .first()
-          .isVisible()
-          .catch(() => false)
-      )
-    );
-    if (controlsVisible.some(visible => !visible))
-      throw new Error("PRE_OTP_LOGIN_FORM_NOT_IDENTIFIED");
+    await waitForLoginControls(probe, selectors);
   } finally {
     if (!probe.isClosed()) await probe.close();
   }
