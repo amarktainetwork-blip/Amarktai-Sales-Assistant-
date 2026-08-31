@@ -51,6 +51,16 @@ describe("conservative CRM authentication proof", () => {
     );
   });
 
+  it("does not let customer confirmation replace a known CRM marker", () => {
+    expect(
+      authenticationStateFromEvidence({
+        ...authenticated,
+        strongAuthenticatedMarker: false,
+        customerConfirmed: true,
+      })
+    ).toBe("CHECKING");
+  });
+
   it("requires confirmation and structural proof for an unknown CRM", () => {
     const unknown = {
       ...authenticated,

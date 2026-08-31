@@ -70,7 +70,9 @@ export function authenticationStateFromEvidence(
     evidence.safeReadInspectionPassed;
   if (
     commonProof &&
-    (evidence.strongAuthenticatedMarker || evidence.customerConfirmed)
+    (evidence.knownProvider
+      ? evidence.strongAuthenticatedMarker
+      : evidence.customerConfirmed)
   )
     return "AUTHENTICATED";
   return evidence.customerConfirmed ? "CHECKING" : "USER_AUTHENTICATING";
