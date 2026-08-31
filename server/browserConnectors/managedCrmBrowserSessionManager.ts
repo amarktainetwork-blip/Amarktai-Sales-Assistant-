@@ -109,7 +109,6 @@ type ManagedCrmBrowserSession = {
   authenticatedPersisted: boolean;
   restoredSession: boolean;
   canCommission: boolean;
-  sharedCommissioningIdentity: boolean;
   reauthenticationRecorded?: boolean;
   evaluating?: Promise<void>;
   idleTimer?: ReturnType<typeof setTimeout>;
@@ -269,6 +268,11 @@ async function persistPersonalSession(
   });
 }
 
+/**
+ * Company capability commissioning may run after the interactive browser closes.
+ * Keep one backend-only snapshot for that job, but bind it permanently to the
+ * manager who established it. It is never restored into another user's browser.
+ */
 async function persistSharedCommissioningSession(
   session: ManagedCrmBrowserSession,
   browserSession: Awaited<ReturnType<typeof captureBrowserSessionPackage>>
@@ -280,14 +284,31 @@ async function persistSharedCommissioningSession(
       connectedSystemId: session.connection.id,
       secretKind: "browser",
     })) || {};
+  const existingOwner = Number(existingShared.commissioningUserId || 0);
+  if (existingOwner && existingOwner !== session.openedByUserId) return;
   await saveConnectionSecret({
     userId: session.openedByUserId,
     organisationId: session.connection.organisationId,
     connectedSystemId: session.connection.id,
     secretKind: "browser",
-    secret: { ...existingShared, browserSession },
+    secret: {
+      ...existingShared,
+      browserSession,
+      commissioningUserId: session.openedByUserId,
+    },
   });
-  session.sharedCommissioningIdentity = true;
+}
+
+async function ownsSharedCommissioningSession(
+  session: ManagedCrmBrowserSession
+) {
+  if (!session.canCommission) return false;
+  const shared = await loadConnectionSecret({
+    organisationId: session.connection.organisationId,
+    connectedSystemId: session.connection.id,
+    secretKind: "browser",
+  });
+  return Number(shared?.commissioningUserId || 0) === session.openedByUserId;
 }
 
 async function persistAuthenticatedSession(
@@ -344,7 +365,9 @@ async function persistAuthenticatedSession(
           provider: session.connection.provider,
           credentialsObserved: false,
           identityScope: "user",
-          commissioningIdentityUpdated: session.canCommission,
+          commissioningIdentityUpdated:
+            session.canCommission &&
+            (await ownsSharedCommissioningSession(session)),
         },
       });
     } catch (error) {
@@ -358,8 +381,8 @@ async function persistAuthenticatedSession(
     }
   }
 
-  // A restored browser package means persistence has already happened, not
-  // that automatic capability commissioning has happened. Only managers can
+  // A restored personal browser package means persistence has already happened,
+  // not that automatic capability commissioning has happened. Only managers can
   // resume the company-level commissioning job; ordinary salespeople keep a
   // private browser identity without changing the shared connector lifecycle.
   try {
@@ -400,7 +423,7 @@ async function evaluate(session: ManagedCrmBrowserSession) {
         !session.reauthenticationRecorded
       ) {
         session.reauthenticationRecorded = true;
-        if (session.canCommission && session.sharedCommissioningIdentity) {
+        if (await ownsSharedCommissioningSession(session)) {
           const db = await getDb();
           if (db)
             await db
@@ -546,20 +569,9 @@ export const managedCrmBrowserSessionManager = {
       ? personalSecret.browserSession
       : undefined;
 
-    // Backward-compatible migration for the manager who commissioned an older
-    // shared browser session. Ordinary members can never inherit that identity.
-    const sharedSecret =
-      !personalSession && canCommission
-        ? (await loadConnectionSecret({
-            organisationId: input.connection.organisationId,
-            connectedSystemId: input.connection.id,
-            secretKind: "browser",
-          })) || {}
-        : {};
-    const sharedSession = isBrowserSessionPackage(sharedSecret.browserSession)
-      ? sharedSecret.browserSession
-      : undefined;
-    const restored = personalSession || sharedSession;
+    // Interactive restoration is always user-scoped. The backend-only
+    // commissioning snapshot is never attached to another user's browser.
+    const restored = personalSession;
 
     const browser = await connectManagedCrmBrowser(endpointFor(input.connection));
     const context = await createContextWithBrowserSession({
@@ -592,7 +604,6 @@ export const managedCrmBrowserSessionManager = {
       authenticatedPersisted: Boolean(personalSession),
       restoredSession: Boolean(restored),
       canCommission,
-      sharedCommissioningIdentity: Boolean(sharedSession),
     };
     activeSessions.set(key, session);
     installPageGovernance(session, page);
