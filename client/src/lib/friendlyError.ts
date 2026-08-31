@@ -1,12 +1,19 @@
 const technicalError =
-  /zod|invalid_(?:type|format)|schema|trpc|stack|sql|database|cdp|websocket|selector|operation[_ ]key|commission|live_proven|internal server|request failed \(\d+\)/i;
+  /zod|invalid_(?:type|format)|json schema|schema error|trpc|stack trace|sql|database|prisma|drizzle|redis|mariadb|mysql|postgres|playwright|cdp|websocket|selector|operation[_ ]key|commission|live_proven|pre[_ -]?otp|challengeid|pendinginteractiveauth|livechallenges|session replay|genie_session|genx|correlation id|internal server|backend enum|unexpected end of json|request failed \(\d+\)/i;
+
+const backendEnum = /\b[A-Z][A-Z0-9]+(?:_[A-Z0-9]+)+\b/;
 
 export function friendlyError(
   error: unknown,
   fallback = "That didn't work just now. Nothing was changed, so you can safely try again."
 ) {
   const raw = error instanceof Error ? error.message : String(error || "");
-  if (!raw || technicalError.test(raw) || /^[A-Z0-9_:\- ]{5,}$/.test(raw))
+  if (
+    !raw ||
+    technicalError.test(raw) ||
+    backendEnum.test(raw) ||
+    /^[A-Z0-9_:\- ]{5,}$/.test(raw)
+  )
     return fallback;
   if (/full crm address|invalid.*url|url.*invalid|https required/i.test(raw))
     return "Enter the full CRM address, including https://";
