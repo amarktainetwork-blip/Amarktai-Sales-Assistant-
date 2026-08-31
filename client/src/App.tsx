@@ -32,7 +32,6 @@ import Home from "./pages/Home";
 import Knowledge from "./pages/Knowledge";
 import LiveCalls from "./pages/LiveCalls";
 import Pricing from "./pages/Pricing";
-import Reports from "./pages/Reports";
 import Reviews from "./pages/Reviews";
 import TeamIntelligence from "./pages/TeamIntelligence";
 import TeamManagement from "./pages/TeamManagement";
@@ -159,13 +158,6 @@ function Router() {
             </ManagementOnly>
           )}
         </Route>
-        <Route path="/reports">
-          {() => (
-            <ManagementOnly>
-              <Reports />
-            </ManagementOnly>
-          )}
-        </Route>
         <Route path="/admin-controls">
           {() => (
             <ManagementOnly platformAdminOnly>
@@ -174,6 +166,7 @@ function Router() {
           )}
         </Route>
 
+        <Route path="/reports">{() => <LegacyRedirect to="/team" />}</Route>
         <Route path="/workspace">
           {() => <LegacyRedirect to="/assistant" />}
         </Route>
