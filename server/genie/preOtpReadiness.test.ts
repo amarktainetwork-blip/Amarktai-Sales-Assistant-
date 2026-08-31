@@ -55,7 +55,7 @@ describe("Genie pre-OTP hard gate", () => {
     expect(Object.values(readiness.states).every(value => !value)).toBe(true);
   });
 
-  it("runs every CDP readiness/consume client in a disposable process without closing shared Chromium", () => {
+  it("waits for the rendered login controls and keeps every CDP readiness/consume client disposable without closing shared Chromium", () => {
     const readinessSource = readFileSync(
       new URL("./preOtpReadiness.ts", import.meta.url),
       "utf8"
@@ -68,7 +68,11 @@ describe("Genie pre-OTP hard gate", () => {
       new URL("../verifyGeniePreOtp.ts", import.meta.url),
       "utf8"
     );
-    expect(readinessSource).toMatch(/\.first\(\)\s*\.isVisible\(\)/);
+    expect(readinessSource).toContain("LOGIN_RENDER_TIMEOUT_MS = 15_000");
+    expect(readinessSource).toContain("waitForLoginControls");
+    expect(readinessSource).toContain("locator.nth(index).isVisible()");
+    expect(readinessSource).toContain('input[placeholder*="email" i]');
+    expect(readinessSource).toContain('input[placeholder*="password" i]');
     expect(readinessSource).toContain("PRE_OTP_STALE_GENIE_PAGE_PRESENT");
     expect(readinessSource).not.toContain("browser.close()");
     expect(readinessSource).not.toContain("context.close()");
