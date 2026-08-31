@@ -12,6 +12,7 @@ import { registerLiveCallRoutes } from "../liveCalls/routes";
 import { registerTeamAdminRoutes } from "../teamAdmin/routes";
 import { registerManagementSettingsRoutes } from "../managementSettingsRoutes";
 import { registerConnectedSystemAdminRoutes } from "../connectedSystemAdminRoutes";
+import { registerConnectedSystemLifecycleRoutes } from "../connectedSystemLifecycleRoutes";
 import { registerSalesAutomationRoutes } from "../salesAutomationRoutes";
 import { registerSalesTargetsRoutes } from "../salesTargetsRoutes";
 import { registerAiCreditsRoutes } from "../aiCreditsRoutes";
@@ -124,6 +125,7 @@ async function startServer() {
     enforceAppOrigin
   );
   registerConnectedSystemAdminRoutes(app);
+  registerConnectedSystemLifecycleRoutes(app);
   app.use(
     "/api/company-intelligence",
     rateLimit({ limit: 12, windowMs: 60_000 }),
