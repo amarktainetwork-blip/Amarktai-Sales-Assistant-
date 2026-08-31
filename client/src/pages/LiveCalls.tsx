@@ -1,6 +1,7 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { friendlyError } from "@/lib/friendlyError";
 import { trpc } from "@/lib/trpc";
 import {
   AlertTriangle,
@@ -59,6 +60,19 @@ type CallContext = {
   objective?: string;
 };
 
+function callError(error: unknown, fallback: string) {
+  return friendlyError(error, fallback);
+}
+
+function actionStatus(state: string) {
+  const normalized = state.toLowerCase();
+  if (/executed|completed|succeeded|applied/.test(normalized)) return "Completed";
+  if (/approved/.test(normalized)) return "Approved";
+  if (/review/.test(normalized)) return "Ready for review";
+  if (/skip|cancel/.test(normalized)) return "Skipped";
+  return "Prepared";
+}
+
 function blobToBase64(blob: Blob) {
   return blob.arrayBuffer().then(buffer => {
     const bytes = new Uint8Array(buffer);
@@ -110,7 +124,7 @@ async function getCaptureStream(mode: CaptureMode) {
     display.getTracks().forEach(track => track.stop());
     mic.getTracks().forEach(track => track.stop());
     throw new Error(
-      "No shared tab/system audio was provided. Select a browser tab and enable Share audio."
+      "No call audio was shared. Select the browser tab with the call and enable Share audio."
     );
   }
   const context = new AudioContext();
@@ -181,6 +195,7 @@ export default function LiveCalls() {
   useEffect(() => {
     if (initialSessionId > 0 && !sessionId) setSessionId(initialSessionId);
   }, [initialSessionId, sessionId]);
+
   useEffect(() => {
     if (initialContactId <= 0 || selectedContactId) return;
     const contact = initialCustomers.data?.find(
@@ -190,6 +205,7 @@ export default function LiveCalls() {
     setSelectedContactId(contact.id);
     setLeadLabel(contact.name);
   }, [initialContactId, initialCustomers.data, selectedContactId]);
+
   useEffect(() => {
     if (!callContext.data) return;
     setLeadLabel(callContext.data.leadLabel);
@@ -198,6 +214,7 @@ export default function LiveCalls() {
     setTaskExternalId(context?.taskExternalId || "");
     setOpportunityExternalId(context?.opportunityExternalId || "");
   }, [callContext.data]);
+
   useEffect(() => {
     if (contactMatches.data?.length === 1)
       setSelectedContactId(contactMatches.data[0].id);
@@ -205,7 +222,7 @@ export default function LiveCalls() {
       !contactMatches.data?.some(contact => contact.id === selectedContactId)
     )
       setSelectedContactId(undefined);
-  }, [contactMatches.data]);
+  }, [contactMatches.data, selectedContactId]);
 
   useEffect(() => {
     fetch("/api/live-calls/readiness", { credentials: "include" })
@@ -220,12 +237,14 @@ export default function LiveCalls() {
       .catch(error => {
         setSttReady(false);
         setWorkflowError(
-          error instanceof Error
-            ? error.message
-            : "Transcription readiness could not be checked."
+          callError(
+            error,
+            "Live transcription could not be checked. You can reload the call companion and try again."
+          )
         );
         setRetryAction(() => () => window.location.reload());
       });
+
     return () => {
       if (recorderRef.current && recorderRef.current.state !== "inactive")
         recorderRef.current.stop();
@@ -248,7 +267,10 @@ export default function LiveCalls() {
       setTip(result.content);
     } catch (error) {
       setWorkflowError(
-        error instanceof Error ? error.message : "Live coaching failed."
+        callError(
+          error,
+          "Live coaching is temporarily unavailable. Your call notes are still safe."
+        )
       );
       setRetryAction(() => () => void requestCoaching(activeSessionId, text));
     } finally {
@@ -305,15 +327,16 @@ export default function LiveCalls() {
 
   async function begin() {
     if (!leadLabel.trim())
-      return toast.error("Enter the customer/contact before starting.");
+      return toast.error("Choose the customer before starting.");
     if (!consent)
       return toast.error(
-        "Confirm that this call may be transcribed under your organisation's policy."
+        "Confirm that your organisation allows transcription assistance for this call."
       );
     if (!sttReady)
       return toast.error(
-        "Speech-to-text is not configured for this deployment."
+        "Live transcription isn't available right now. You can still record a no-answer or voicemail outcome."
       );
+
     try {
       const started = sessionId
         ? undefined
@@ -342,10 +365,10 @@ export default function LiveCalls() {
         pendingRef.current = pendingRef.current
           .then(() => uploadChunk(event.data, activeSessionId))
           .catch(error => {
-            const detail =
-              error instanceof Error
-                ? error.message
-                : "Live transcription failed.";
+            const detail = callError(
+              error,
+              "Live transcription was interrupted. Your existing call notes are still available."
+            );
             setWorkflowError(detail);
             setRetryAction(
               () => () => void uploadChunk(event.data, activeSessionId)
@@ -357,7 +380,7 @@ export default function LiveCalls() {
       setRecording(true);
       toast.success(
         captureMode === "mixed"
-          ? "Live Call Companion started. Keep the selected call tab/system audio shared."
+          ? "Live Call Companion started. Keep the call tab audio shared."
           : "Microphone transcription started."
       );
     } catch (error) {
@@ -367,10 +390,10 @@ export default function LiveCalls() {
       sourcesRef.current = [];
       void audioContextRef.current?.close();
       audioContextRef.current = undefined;
-      const detail =
-        error instanceof Error
-          ? error.message
-          : "Could not start audio capture.";
+      const detail = callError(
+        error,
+        "The call companion could not start. Check microphone and browser permissions, then try again."
+      );
       setWorkflowError(detail);
       setRetryAction(() => () => void begin());
       toast.error(detail);
@@ -409,10 +432,10 @@ export default function LiveCalls() {
       setOutcome("no_answer");
       setAwaitingCloseout(true);
     } catch (error) {
-      const detail =
-        error instanceof Error
-          ? error.message
-          : "Could not start call attempt.";
+      const detail = callError(
+        error,
+        "The call attempt could not be opened. Nothing was changed."
+      );
       setWorkflowError(detail);
       setRetryAction(() => () => void recordAttemptWithoutAudio());
       toast.error(detail);
@@ -467,14 +490,17 @@ export default function LiveCalls() {
       setTip(result.content);
       setCloseoutActions(result.actions || []);
       setAwaitingCloseout(false);
+      const completed = result.autoExecutions?.length || 0;
       toast.success(
-        `Follow-up prepared. ${result.autoExecutions?.length || 0} already-approved item(s) completed; the rest are ready for review.`
+        completed
+          ? `Follow-up prepared. ${completed} already-approved ${completed === 1 ? "item was" : "items were"} completed; anything else is ready for review.`
+          : "Follow-up prepared. Any CRM changes that need approval are ready for review."
       );
     } catch (error) {
-      const detail =
-        error instanceof Error
-          ? error.message
-          : "Could not complete the call closeout.";
+      const detail = callError(
+        error,
+        "The follow-up could not be prepared. Nothing new was sent or changed."
+      );
       setWorkflowError(detail);
       setRetryAction(() => () => void completeCloseout());
       toast.error(detail);
@@ -498,6 +524,7 @@ export default function LiveCalls() {
           useful. You stay in control of what is saved or sent.
         </p>
       </header>
+
       {workflowError ? (
         <section
           role="alert"
@@ -523,6 +550,7 @@ export default function LiveCalls() {
           </div>
         </section>
       ) : null}
+
       {callContext.data?.context && (
         <section className="mt-6 rounded-[1.5rem] border border-[#3D69AD]/40 bg-[#0E2142] p-6">
           <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#7FAAF8]">
@@ -532,26 +560,22 @@ export default function LiveCalls() {
             {[
               [
                 "Customer",
-                `${callContext.data.context.contactName}${callContext.data.context.companyName ? ` · ${callContext.data.context.companyName}` : ""}\n${callContext.data.context.phone || callContext.data.context.email || "No synchronized phone/email"}`,
+                `${callContext.data.context.contactName}${callContext.data.context.companyName ? ` · ${callContext.data.context.companyName}` : ""}\n${callContext.data.context.phone || callContext.data.context.email || "No phone or email available"}`,
               ],
               [
                 "CRM",
                 `${callContext.data.context.pipeline || "No pipeline"} / ${callContext.data.context.stage || "No stage"}\n${callContext.data.context.opportunityName || "No open opportunity"}`,
               ],
-              [
-                "Current work",
-                callContext.data.context.taskTitle ||
-                  "No current synchronized task",
-              ],
+              ["Current work", callContext.data.context.taskTitle || "No current task"],
               [
                 "Recent history",
                 callContext.data.context.recentInbound ||
                   callContext.data.context.lastInteraction ||
-                  "No recent synchronized interaction",
+                  "No recent interaction",
               ],
               [
                 "Why call now / objective",
-                `${callContext.data.context.reasons.join(" · ") || "Manual verified contact"}\n${callContext.data.context.objective || "Confirm the next factual step"}`,
+                `${callContext.data.context.reasons.join(" · ") || "Selected customer"}\n${callContext.data.context.objective || "Confirm the next factual step"}`,
               ],
             ].map(([label, value]) => (
               <div key={label} className="rounded-xl bg-[#08172F] p-4">
@@ -566,6 +590,7 @@ export default function LiveCalls() {
           </div>
         </section>
       )}
+
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.05fr_.95fr]">
         <section className="rounded-[1.5rem] border border-white/10 bg-[#0E2142] p-6">
           <div className="flex items-center justify-between gap-4">
@@ -592,6 +617,7 @@ export default function LiveCalls() {
                   : "Transcription unavailable"}
             </span>
           </div>
+
           <label className="mt-6 block text-xs font-black uppercase tracking-[.12em] text-[#9EB6DB]">
             Customer / contact
           </label>
@@ -606,6 +632,7 @@ export default function LiveCalls() {
             placeholder="Jane Smith, email, or phone"
             className="mt-2 border-white/15 bg-[#08172F] text-white placeholder:text-[#607EA8]"
           />
+
           {!sessionId && !!contactMatches.data?.length && (
             <div className="mt-2 space-y-1 rounded-xl border border-white/10 bg-[#071326] p-2">
               <p className="px-2 py-1 text-[10px] font-black uppercase text-[#7896C1]">
@@ -629,6 +656,7 @@ export default function LiveCalls() {
               ))}
             </div>
           )}
+
           <div className="mt-5 grid gap-3 md:grid-cols-2">
             <button
               disabled={recording}
@@ -640,8 +668,8 @@ export default function LiveCalls() {
                 Call audio + microphone
               </p>
               <p className="mt-1 text-xs leading-5 text-[#9EB6DB]">
-                Best for browser diallers. Select the call tab/system source and
-                share its audio; Amarktai mixes it with your microphone.
+                Best for browser calls. Select the call tab and share its audio;
+                Amarktai combines it with your microphone.
               </p>
             </button>
             <button
@@ -652,11 +680,12 @@ export default function LiveCalls() {
               <Mic className="size-5 text-[#8BB4FF]" />
               <p className="mt-3 font-bold text-white">Microphone only</p>
               <p className="mt-1 text-xs leading-5 text-[#9EB6DB]">
-                Fallback for speakerphone/headset environments where the
-                microphone can capture the authorised conversation.
+                Use this for speakerphone or headset calls where your microphone
+                can capture the authorised conversation.
               </p>
             </button>
           </div>
+
           <label className="mt-5 flex cursor-pointer gap-3 rounded-xl border border-white/10 bg-[#08172F] p-4 text-sm leading-6 text-[#C4D3E9]">
             <input
               type="checkbox"
@@ -666,11 +695,12 @@ export default function LiveCalls() {
               className="mt-1 size-4"
             />
             <span>
-              I confirm that my organisation authorises transcription/recording
-              assistance for this call and that required participant
-              notice/consent has been handled.
+              I confirm that my organisation allows transcription assistance for
+              this call and that any required participant notice or consent has
+              been handled.
             </span>
           </label>
+
           <div className="mt-5 flex flex-wrap gap-3">
             {!recording ? (
               <Button
@@ -696,7 +726,7 @@ export default function LiveCalls() {
                 className="h-12 bg-rose-600 hover:bg-rose-500"
               >
                 <Square className="mr-2 size-4" />
-                Stop & prepare closeout
+                Stop & prepare follow-up
               </Button>
             )}
             {!recording && (
@@ -723,26 +753,28 @@ export default function LiveCalls() {
             )}
             {completing && (
               <span className="inline-flex items-center rounded-xl bg-white/10 px-4 text-sm font-bold text-[#DCE6F6]">
-                Preparing closeout…
+                Preparing follow-up…
               </span>
             )}
           </div>
+
           <div className="mt-6 min-h-48 rounded-xl border border-white/10 bg-[#08172F] p-4">
             <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#7FAAF8]">
               LIVE TRANSCRIPT
             </p>
             <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-[#DCE6F6]">
               {transcript ||
-                "Finalised transcript chunks will appear here while the call is running."}
+                "Call notes will appear here while the conversation is running."}
             </p>
           </div>
+
           {awaitingCloseout && (
             <section className="mt-5 rounded-xl border border-[#4E8BFF]/40 bg-[#0B1B37] p-5">
               <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#7FAAF8]">
-                SALESPERSON-CONFIRMED CLOSEOUT
+                CALL OUTCOME
               </p>
               <h3 className="mt-2 font-display text-2xl font-bold text-white">
-                Confirm facts. Amarktai handles the admin.
+                Confirm what happened and prepare the next step.
               </h3>
               <div className="mt-4 grid gap-3 md:grid-cols-2">
                 <label className="grid gap-2 text-xs font-bold text-[#AFC3E2]">
@@ -788,7 +820,7 @@ export default function LiveCalls() {
                   />
                 </label>
                 <label className="grid gap-2 text-xs font-bold text-[#AFC3E2]">
-                  Approved follow-up
+                  Follow-up
                   <select
                     value={communicationChannel}
                     onChange={event =>
@@ -818,10 +850,10 @@ export default function LiveCalls() {
                   ? "This call is linked to the selected customer. "
                   : "Choose a customer before preparing CRM changes. "}
                 Amarktai will prepare a factual note and call activity
-                {taskExternalId ? " + complete current task" : ""}
-                {callbackAt ? " + create callback" : ""}
+                {taskExternalId ? " + complete the current task" : ""}
+                {callbackAt ? " + create a callback" : ""}
                 {communicationChannel
-                  ? ` + prepare ${communicationChannel} template (review-controlled by policy)`
+                  ? ` + prepare a ${communicationChannel} template for your review`
                   : ""}
                 . You can review any external change before it is made.
               </div>
@@ -836,10 +868,11 @@ export default function LiveCalls() {
               </Button>
             </section>
           )}
+
           {!!closeoutActions?.length && (
             <section className="mt-5 rounded-xl border border-emerald-300/20 bg-emerald-400/[.05] p-5">
               <p className="text-[10px] font-black uppercase tracking-[.13em] text-emerald-200">
-                CLOSEOUT PREVIEW
+                FOLLOW-UP
               </p>
               <div className="mt-3 space-y-2">
                 {closeoutActions.map(action => (
@@ -851,8 +884,7 @@ export default function LiveCalls() {
                       {action.title}
                     </span>
                     <span className="text-[10px] font-black uppercase text-[#A9C7FF]">
-                      {action.autoEligible ? "Auto safe" : "Review"} ·{" "}
-                      {action.state}
+                      {actionStatus(action.state)}
                     </span>
                   </div>
                 ))}
@@ -860,6 +892,7 @@ export default function LiveCalls() {
             </section>
           )}
         </section>
+
         <div className="grid gap-6">
           <section className="rounded-[1.5rem] border border-white/10 bg-[#0E2142] p-6">
             <div className="flex items-center gap-3">
@@ -891,6 +924,7 @@ export default function LiveCalls() {
               )}
             </div>
           </section>
+
           <section className="rounded-[1.5rem] border border-white/10 bg-[#0E2142] p-6">
             <div className="flex items-center gap-3">
               <CheckCircle2 className="size-5 text-[#83AEFF]" />
