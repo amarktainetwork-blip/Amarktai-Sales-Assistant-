@@ -5,7 +5,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "NODE_ENV=development tsx watch server/_core/index.ts",
-    "build": "vite build && esbuild server/_core/index.ts server/genie/healthWorker.ts server/reportSchedulerWorker.ts server/compliance/retentionWorker.ts server/migrate.ts server/verifyIntegrations.ts server/verifyVoice.ts server/verifyFeatures.ts server/verifyCompanyDiscovery.ts server/verifyCompanyKnowledge.ts server/verifyGenieCommissioning.ts server/verifyGeniePreOtp.ts server/resetGenieConnection.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
+    "build": "vite build && esbuild server/_core/index.ts server/genie/healthWorker.ts server/reportSchedulerWorker.ts server/compliance/retentionWorker.ts server/migrate.ts server/verifyIntegrations.ts server/verifyVoice.ts server/verifyFeatures.ts server/verifyCompanyDiscovery.ts server/verifyCompanyKnowledge.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
     "start": "NODE_ENV=production node dist/_core/index.js",
     "check": "tsc --noEmit",
     "format": "prettier --write .",
@@ -16,9 +16,7 @@
     "verify:voice": "node dist/verifyVoice.js",
     "verify:features": "node dist/verifyFeatures.js",
     "verify:company-discovery": "node dist/verifyCompanyDiscovery.js",
-    "verify:company-knowledge": "node dist/verifyCompanyKnowledge.js",
-    "verify:genie-commissioning": "node dist/verifyGenieCommissioning.js",
-    "verify:genie-pre-otp": "node dist/verifyGeniePreOtp.js"
+    "verify:company-knowledge": "node dist/verifyCompanyKnowledge.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.693.0",

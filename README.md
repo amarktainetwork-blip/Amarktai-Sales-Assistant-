@@ -104,7 +104,7 @@ AMARKTAI_DEPLOY_PROFILE=full \
 sh deploy/webdock/verify-client-acceptance.sh
 ```
 
-A client handover requires `PRE_OTP_READY=PASS` before the single controlled Genie sign-in and, after live commissioning, `CLIENT_ACCEPTANCE=PASS`. A platform-ready deployment is not a claim that client acceptance is complete.
+A client handover requires the customer to authenticate directly in the Secure CRM Browser and, after live commissioning, `CLIENT_ACCEPTANCE=PASS`. A platform-ready deployment is not a claim that client acceptance is complete.
 
 To probe fresh public-website discovery without storing or approving knowledge, run the operator-only diagnostic inside the deployed app image:
 

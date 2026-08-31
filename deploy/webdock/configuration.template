@@ -81,16 +81,8 @@ ZOHO_CLIENT_ID=
 ZOHO_CLIENT_SECRET=
 ZOHO_ACCOUNTS_URL=https://accounts.zoho.com
 
-# Genie / Other CRM deterministic browser automation.
-# Installation-level Genie credentials are an optional single-client fallback.
-# Per-connection browser credentials are encrypted by the application.
+# Secure CRM Browser. Customers authenticate directly in the managed session.
 GENIE_LOGIN_URL=https://your-genie-login-url.example
-GENIE_USERNAME=replace_with_genie_username
-GENIE_PASSWORD=replace_with_genie_password
-GENIE_USERNAME_SELECTOR=input[name="username"]
-GENIE_PASSWORD_SELECTOR=input[type="password"]
-GENIE_LOGIN_SUBMIT_SELECTOR=button[type="submit"]
-GENIE_DASHBOARD_SELECTOR=body
 
 # Microsoft 365 / Outlook Graph (optional).
 # Used only when explicitly commissioned for Microsoft 365 mail/calendar workflows.

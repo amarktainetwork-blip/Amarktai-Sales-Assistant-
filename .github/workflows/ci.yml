@@ -86,7 +86,6 @@ jobs:
             test -f dist/verifyFeatures.js
             test -f dist/verifyCompanyDiscovery.js
             test -f dist/verifyCompanyKnowledge.js
-            test -f dist/verifyGenieCommissioning.js
             test -f drizzle/meta/_journal.json
             test -f dist/public/index.html
           '
@@ -132,11 +131,6 @@ jobs:
                 await page.close();
                 process.exit(0);
               '
-              $COMPOSE run --no-deps --rm \
-                -e BROWSERLESS_WS_ENDPOINT=http://browser:9222 \
-                app node dist/verifyGenieCommissioning.js 2>&1 | tee /tmp/genie-commissioning.log
-              grep -q '"status": "LIVE_PROVEN"' /tmp/genie-commissioning.log
-              grep -q '"globalGenieCredentialsRequired": false' /tmp/genie-commissioning.log
               test "$(docker exec "$cid" id -u)" = "10001"
               test "$(docker inspect --format '{{.HostConfig.ReadonlyRootfs}}' "$cid")" = "true"
               docker inspect --format '{{json .HostConfig.CapDrop}}' "$cid" | grep -q '"ALL"'

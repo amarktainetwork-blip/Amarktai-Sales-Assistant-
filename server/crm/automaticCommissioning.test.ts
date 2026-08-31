@@ -32,10 +32,33 @@ const snapshot = {
   pageUrl: "https://crm.example.test/app",
   readOnly: true as const,
   controls: [
-    { tag: "a", role: "link", label: "Customers", selector: "#customers", href: "https://crm.example.test/customers" },
-    { tag: "a", role: "link", label: "Tasks and callbacks", selector: "#tasks", href: "https://crm.example.test/tasks" },
-    { tag: "a", role: "link", label: "Deals and pipeline", selector: "#deals", href: "https://crm.example.test/deals" },
-    { tag: "button", role: "button", label: "Send WhatsApp", selector: '[data-testid="whatsapp"]' },
+    {
+      tag: "a",
+      role: "link",
+      label: "Customers",
+      selector: "#customers",
+      href: "https://crm.example.test/customers",
+    },
+    {
+      tag: "a",
+      role: "link",
+      label: "Tasks and callbacks",
+      selector: "#tasks",
+      href: "https://crm.example.test/tasks",
+    },
+    {
+      tag: "a",
+      role: "link",
+      label: "Deals and pipeline",
+      selector: "#deals",
+      href: "https://crm.example.test/deals",
+    },
+    {
+      tag: "button",
+      role: "button",
+      label: "Send WhatsApp",
+      selector: '[data-testid="whatsapp"]',
+    },
   ],
 };
 
@@ -111,13 +134,17 @@ describe("automatic CRM commissioning product contract", () => {
     const definition = {
       mode: "write",
       execute: { steps: [{ action: "click", selector: "REPLACE_SAVE" }] },
-      targetRead: { steps: [{ action: "goto", value: "https://replace-with-url" }] },
+      targetRead: {
+        steps: [{ action: "goto", value: "https://replace-with-url" }],
+      },
       postconditionRead: { steps: [{ action: "read_text", selector: "" }] },
     };
-    expect(findIncompleteBrowserDefinition(definition).map(item => item.reason))
-      .toEqual(expect.arrayContaining(["placeholder", "missing_selector"]));
-    expect(() => assertCompleteBrowserDefinition(definition))
-      .toThrow("INCOMPLETE_BROWSER_OPERATION");
+    expect(
+      findIncompleteBrowserDefinition(definition).map(item => item.reason)
+    ).toEqual(expect.arrayContaining(["placeholder", "missing_selector"]));
+    expect(() => assertCompleteBrowserDefinition(definition)).toThrow(
+      "INCOMPLETE_BROWSER_OPERATION"
+    );
   });
 
   it("resolves exact contact/opportunity/task IDs and refuses ambiguous related objects", async () => {
@@ -130,10 +157,21 @@ describe("automatic CRM commissioning product contract", () => {
       raw: {},
     };
     const opportunities = [
-      { externalId: "opp-1", contactExternalId: "contact-1", name: "Safe deal", raw: {} },
+      {
+        externalId: "opp-1",
+        contactExternalId: "contact-1",
+        name: "Safe deal",
+        raw: {},
+      },
     ];
     const tasks = [
-      { externalId: "task-1", contactExternalId: "contact-1", title: "Safe task", status: "open", raw: {} },
+      {
+        externalId: "task-1",
+        contactExternalId: "contact-1",
+        title: "Safe task",
+        status: "open",
+        raw: {},
+      },
     ];
     const adapter = {
       searchContacts: vi.fn(async () => [contact]),
@@ -153,7 +191,11 @@ describe("automatic CRM commissioning product contract", () => {
         connectionMethod: "browser",
         allowedReadCapabilities: [],
         allowedWriteCapabilities: [],
-        verifiedCapabilities: ["contacts.read", "opportunities.read", "tasks.read"],
+        verifiedCapabilities: [
+          "contacts.read",
+          "opportunities.read",
+          "tasks.read",
+        ],
         scopes: [],
         configuration: {},
       },
@@ -172,29 +214,53 @@ describe("automatic CRM commissioning product contract", () => {
     ).not.toHaveProperty("taskExternalId", "contact-1");
 
     adapter.syncOpportunities = vi.fn(async () => ({
-      records: [...opportunities, { externalId: "opp-2", contactExternalId: "contact-1", name: "Second deal", raw: {} }],
+      records: [
+        ...opportunities,
+        {
+          externalId: "opp-2",
+          contactExternalId: "contact-1",
+          name: "Second deal",
+          raw: {},
+        },
+      ],
     }));
-    await expect(resolveSafeTestContext({
-      record: { mode: "existing", reference: "contact-1" },
-      operationKeys: ["opportunity.update"],
-      connection: {
-        id: 1, organisationId: 7, provider: "genie", displayName: "Genie",
-        baseUrl: "https://genie.example.test", connectionMethod: "browser",
-        allowedReadCapabilities: [], allowedWriteCapabilities: [],
-        verifiedCapabilities: ["contacts.read", "opportunities.read"], scopes: [], configuration: {},
-      },
-      adapter,
-      secret: {},
-      correlationId: "safe-context-2",
-    })).rejects.toThrow("SAFE_TEST_OPPORTUNITY_SELECTION_REQUIRED");
+    await expect(
+      resolveSafeTestContext({
+        record: { mode: "existing", reference: "contact-1" },
+        operationKeys: ["opportunity.update"],
+        connection: {
+          id: 1,
+          organisationId: 7,
+          provider: "genie",
+          displayName: "Genie",
+          baseUrl: "https://genie.example.test",
+          connectionMethod: "browser",
+          allowedReadCapabilities: [],
+          allowedWriteCapabilities: [],
+          verifiedCapabilities: ["contacts.read", "opportunities.read"],
+          scopes: [],
+          configuration: {},
+        },
+        adapter,
+        secret: {},
+        correlationId: "safe-context-2",
+      })
+    ).rejects.toThrow("SAFE_TEST_OPPORTUNITY_SELECTION_REQUIRED");
   });
 
   it("creates a temporary contact only when the connector's exact create function is verified", async () => {
     const browserConnection = {
-      id: 3, organisationId: 7, provider: "genie" as const, displayName: "Genie",
-      baseUrl: "https://genie.example.test", connectionMethod: "browser" as const,
-      allowedReadCapabilities: ["contacts.read"], allowedWriteCapabilities: ["contacts.write"],
-      verifiedCapabilities: ["contacts.read", "contacts.write"], scopes: [], configuration: {},
+      id: 3,
+      organisationId: 7,
+      provider: "genie" as const,
+      displayName: "Genie",
+      baseUrl: "https://genie.example.test",
+      connectionMethod: "browser" as const,
+      allowedReadCapabilities: ["contacts.read"],
+      allowedWriteCapabilities: ["contacts.write"],
+      verifiedCapabilities: ["contacts.read", "contacts.write"],
+      scopes: [],
+      configuration: {},
     };
     const created = {
       externalId: "temporary-contact-77",
@@ -212,16 +278,20 @@ describe("automatic CRM commissioning product contract", () => {
       getContact: vi.fn(async () => created),
       searchContacts: vi.fn(async () => [created]),
     } as unknown as CrmAdapter;
-    expect(connectorSupportsTemporaryTestRecord({
-      connection: browserConnection,
-      adapter,
-      contactCreateLiveProven: false,
-    })).toBe(false);
-    expect(connectorSupportsTemporaryTestRecord({
-      connection: browserConnection,
-      adapter,
-      contactCreateLiveProven: true,
-    })).toBe(true);
+    expect(
+      connectorSupportsTemporaryTestRecord({
+        connection: browserConnection,
+        adapter,
+        contactCreateLiveProven: false,
+      })
+    ).toBe(false);
+    expect(
+      connectorSupportsTemporaryTestRecord({
+        connection: browserConnection,
+        adapter,
+        contactCreateLiveProven: true,
+      })
+    ).toBe(true);
     const context = await resolveSafeTestContext({
       record: { mode: "temporary", reference: "" },
       operationKeys: ["note.create"],
@@ -270,7 +340,7 @@ describe("automatic CRM commissioning product contract", () => {
     expect(coreBrowserCommissioningReady(statuses)).toBe(true);
   });
 
-  it("keeps Genie zero-training and Advanced CRM Setup fallback separate", () => {
+  it("keeps known-preset bootstrap and proven-operation commissioning separate", () => {
     const service = readFileSync(
       new URL("./automaticCommissioning.ts", import.meta.url),
       "utf8"
@@ -287,9 +357,8 @@ describe("automatic CRM commissioning product contract", () => {
     expect(onboarding).not.toContain("Teach Amarktai");
     expect(onboarding).not.toContain("BrowserOperationMatrix");
     expect(onboarding).not.toContain("sessionStorage.setItem");
-    expect(onboarding).toContain("commissioning/safe-test");
-    expect(onboarding).toContain("commissioning?.advancedFallback");
-    expect(onboarding).toContain("Advanced CRM Setup");
+    expect(onboarding).toContain("Open CRM to continue");
+    expect(onboarding).toContain("Secure CRM Browser");
   });
 
   it("retains the simple native OAuth adapter flow", () => {
@@ -311,14 +380,21 @@ describe("automatic CRM commissioning product contract", () => {
     expect(adapter).toContain("assertAuthorisedConnectionUrl");
     expect(adapter).toContain("postconditionRead");
     expect(adapter).toContain("EXECUTION_UNVERIFIED");
-    expect(adapter).toContain("postconditionVerified: learned.definition.mode === \"write\"");
+    expect(adapter).toContain(
+      'postconditionVerified: learned.definition.mode === "write"'
+    );
   });
 
-  it("continues a replay-approved Genie session at discovery instead of looping through login", () => {
-    const service = readFileSync(new URL("./automaticCommissioning.ts", import.meta.url), "utf8");
-    expect(service).toContain("isBrowserSessionPackage(approvedBrowserSecret.browserSession)");
-    expect(service).toContain('? "DISCOVER_NAVIGATION" as const');
-    expect(service).toContain('sessionReplay: "complete"');
+  it("continues any approved browser session at discovery instead of looping through login", () => {
+    const service = readFileSync(
+      new URL("./automaticCommissioning.ts", import.meta.url),
+      "utf8"
+    );
+    expect(service).toContain(
+      "isBrowserSessionPackage(approvedBrowserSecret.browserSession)"
+    );
+    expect(service).toContain('"DISCOVER_NAVIGATION" as const');
+    expect(service).toContain('secureSession: "complete"');
   });
 });
 
@@ -343,7 +419,10 @@ describe("deterministic CRM batch execution", () => {
         const start = cursor ? Number(cursor) : 0;
         const page = records.slice(start, start + pageSize);
         const next = start + page.length;
-        return { records: page, nextCursor: next < records.length ? String(next) : undefined };
+        return {
+          records: page,
+          nextCursor: next < records.length ? String(next) : undefined,
+        };
       },
       recordId: record => record.id,
       execute: async (_record, _plan, key) => {

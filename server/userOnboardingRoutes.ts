@@ -20,7 +20,9 @@ function sendError(res: Response, error: unknown) {
   if (detail === "AUTH_REQUIRED")
     return res.status(401).json({ error: "Authentication is required." });
   if (detail === "TWO_FACTOR_REQUIRED")
-    return res.status(403).json({ error: "Second-factor verification is required." });
+    return res
+      .status(403)
+      .json({ error: "Second-factor verification is required." });
   return res
     .status(400)
     .json({ error: detail.slice(0, 500) || "Onboarding failed." });
@@ -187,64 +189,6 @@ export function registerUserOnboardingRoutes(app: Express) {
     }
   });
 
-  app.put("/api/user-onboarding/crm/:id/credentials", async (req, res) => {
-    try {
-      const { userId, membership } = await requireLocalHttpContext(req);
-      const connectedSystemId = Number(req.params.id);
-      if (!Number.isInteger(connectedSystemId) || connectedSystemId <= 0)
-        throw new Error("Choose a valid CRM connection.");
-      const system = await getConnectedSystemForUser(
-        userId,
-        membership.organisationId,
-        connectedSystemId
-      );
-      if (
-        system.connectionMethod !== "browser" &&
-        system.connectionMethod !== "sidecar"
-      )
-        throw new Error(
-          "Personal credentials are only required for browser-based CRM connections."
-        );
-      const username =
-        typeof req.body?.username === "string"
-          ? req.body.username.trim().slice(0, 500)
-          : "";
-      const password =
-        typeof req.body?.password === "string"
-          ? req.body.password.slice(0, 2000)
-          : "";
-      if (!username || !password)
-        throw new Error("CRM username and password are both required.");
-      await saveUserConnectionSecret({
-        userId,
-        organisationId: membership.organisationId,
-        connectedSystemId,
-        secretKind: "browser",
-        secret: { credentials: { username, password } },
-      });
-      await updateMemberOnboardingState({
-        userId,
-        membership,
-        crmCredentialsSaved: true,
-      });
-      await recordAudit({
-        userId,
-        organisationId: membership.organisationId,
-        eventType: "member_crm_credentials_saved",
-        entityType: "connected_system",
-        entityId: String(connectedSystemId),
-        summary: `${system.displayName} personal CRM credentials were encrypted for this member.`,
-        metadata: {
-          personalCredentialScope: true,
-          credentialContentRetainedInAudit: false,
-        },
-      });
-      return res.json({ ok: true, credentialsSaved: true });
-    } catch (error) {
-      return sendError(res, error);
-    }
-  });
-
   app.post("/api/user-onboarding/complete", async (req, res) => {
     try {
       const { userId, membership } = await requireLocalHttpContext(req);
@@ -252,7 +196,9 @@ export function registerUserOnboardingRoutes(app: Express) {
       if (!current.member.persona)
         throw new Error("Choose how you work before completing onboarding.");
       if (!current.member.primaryGoal?.trim())
-        throw new Error("Add your main sales goal before completing onboarding.");
+        throw new Error(
+          "Add your main sales goal before completing onboarding."
+        );
 
       // Company setup is separate. Owners/managers may finish their own personal
       // onboarding first and are then sent into company setup. Non-managers must
@@ -287,7 +233,8 @@ export function registerUserOnboardingRoutes(app: Express) {
         step: 6,
         complete: true,
         crmCredentialsSaved:
-          browserConnection?.hasCredentials ?? current.member.crmCredentialsSaved,
+          browserConnection?.hasCredentials ??
+          current.member.crmCredentialsSaved,
         crmIdentityConfirmed:
           current.identity.mapped || current.member.crmIdentityConfirmed,
       });
@@ -301,7 +248,7 @@ export function registerUserOnboardingRoutes(app: Express) {
         metadata: {
           role: membership.role,
           companySetupInherited: !current.canManage,
-          personalCrmCredentials: Boolean(browserConnection?.hasCredentials),
+          browserCrmSessionReady: browserConnection?.status === "ready",
           crmIdentityConfirmed: Boolean(current.identity.mapped),
         },
       });

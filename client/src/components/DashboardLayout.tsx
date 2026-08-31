@@ -1,6 +1,5 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { BrandMark } from "@/components/BrandMark";
-import GenieInteractiveAuthPrompt from "@/components/GenieInteractiveAuthPrompt";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -218,12 +217,11 @@ export default function DashboardLayout({
 
   return (
     <>
-      <GenieInteractiveAuthPrompt
-        organisationId={organisation.data?.organisationId}
-        enabled={canManage}
-      />
       <SidebarProvider>
-        <Sidebar collapsible="icon" className="border-r border-[#52677F] bg-[#3A4D66] text-white">
+        <Sidebar
+          collapsible="icon"
+          className="border-r border-[#52677F] bg-[#3A4D66] text-white"
+        >
           <SidebarHeader className="h-[98px] justify-center border-b border-white/15 px-5">
             <BrandMark inverse />
           </SidebarHeader>
@@ -289,8 +287,17 @@ export default function DashboardLayout({
           <main className="min-h-[calc(100vh-66px)] p-4 sm:p-6 lg:p-8">
             {canManage && (!workspaceMode || !onboardingComplete) ? (
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#D5DFEB] bg-white px-4 py-3 text-sm text-[#33445B]">
-                <span><strong>Setup is still in progress.</strong> Continue the guided setup when you are ready.</span>
-                <Button size="sm" variant="outline" onClick={() => navigate("/company-setup")}>Continue setup</Button>
+                <span>
+                  <strong>Setup is still in progress.</strong> Continue the
+                  guided setup when you are ready.
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => navigate("/company-setup")}
+                >
+                  Continue setup
+                </Button>
               </div>
             ) : null}
             {children}
@@ -723,7 +730,9 @@ function AppNavItem({ icon: Icon, label, path }: NavItem) {
         className={`h-11 rounded-lg px-3 transition-all hover:bg-[#465C77] hover:text-white ${active ? "bg-[#F7F9FB] text-[#26354A] hover:bg-[#F7F9FB]" : "text-[#E1E7EE]"}`}
       >
         <Icon className="size-[18px]" />
-        <span className="font-semibold group-data-[collapsible=icon]:hidden">{label}</span>
+        <span className="font-semibold group-data-[collapsible=icon]:hidden">
+          {label}
+        </span>
       </SidebarMenuButton>
     </SidebarMenuItem>
   );

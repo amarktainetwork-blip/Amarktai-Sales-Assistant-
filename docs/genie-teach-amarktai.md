@@ -29,9 +29,9 @@ Connection authentication is not operation readiness. Broad normalized capabilit
 ## Commissioning flow
 
 1. Create the Genie or Other CRM Connected System with its real HTTPS login URL. Authorise only the required host/path. Genie derives its normal login profile from this connection URL; install-level `GENIE_*` settings are fallback diagnostics only.
-2. Save the client username/password through **Secure sign-in**. These values use the encrypted connection-secret store and are never returned by an API.
-3. Run the connection test. Amarktai discovers one visible username/email field, one visible password field and one submit control, then requires meaningful proof that the login form is gone or an authorised authenticated CRM marker/page is present. It never treats `body` as authentication proof.
-4. If discovery is ambiguous, an elevated manager uses **Calibrate sign-in** to save only the username, password, submit and authenticated-marker selectors. The expert JSON editor remains a fallback, not a normal onboarding requirement.
+2. Open the CRM in the **Secure CRM Browser**. The customer types their username, password, SSO approval and verification code directly into the real Genie page; Amarktai never asks for or stores those values.
+3. Confirm sign-in only after Genie finishes loading. Amarktai requires meaningful authenticated application structure on an authorised domain and never treats a generic page or the customer confirmation alone as authentication proof.
+4. If sign-in redirects to an unrecognised identity-provider hostname, an elevated manager approves that hostname before the browser may continue. Operation calibration begins only after the authenticated session is established.
 5. If authentication redirects through another public hostname, approve only the exact hostname reported by the blocked test for this connection. Private-network redirects remain blocked. MFA, SSO and CAPTCHA are never bypassed; without a securely commissioned reusable session the result is `GENIE_INTERACTIVE_AUTH_REQUIRED`.
 6. Issue a short-lived Sidecar session and connect the Sidecar on the authorised CRM tab.
 7. For a common function, choose **Teach** in the operation matrix. For anything else the CRM exposes, use **Teach another CRM function**, give it a clear name, and classify it as read-only or write.

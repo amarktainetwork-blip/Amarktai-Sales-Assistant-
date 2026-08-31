@@ -51,8 +51,6 @@ BROWSERLESS_WS_ENDPOINT="$(env_get BROWSERLESS_WS_ENDPOINT)"
 HUBSPOT_CLIENT_ID="$(env_get HUBSPOT_CLIENT_ID)"
 HUBSPOT_CLIENT_SECRET="$(env_get HUBSPOT_CLIENT_SECRET)"
 GENIE_LOGIN_URL="$(env_get GENIE_LOGIN_URL)"
-GENIE_USERNAME="$(env_get GENIE_USERNAME)"
-GENIE_PASSWORD="$(env_get GENIE_PASSWORD)"
 STT_TRANSCRIPTIONS_URL="$(env_get STT_TRANSCRIPTIONS_URL)"
 STT_MODEL="$(env_get STT_MODEL)"
 TTS_BASE_URL="$(env_get TTS_BASE_URL)"
@@ -117,10 +115,8 @@ else
   info "HubSpot OAuth client configuration is present."
 fi
 
-if is_placeholder "$GENIE_LOGIN_URL" || is_placeholder "$GENIE_USERNAME" || is_placeholder "$GENIE_PASSWORD"; then
-  warn "Installation-level Genie fallback is not configured. Per-connection Genie commissioning remains available in the application."
-else
-  info "Installation-level Genie fallback is configured; per-connection commissioning remains the canonical application workflow."
+if is_placeholder "$GENIE_LOGIN_URL"; then
+  warn "The optional Genie preset URL is not configured; managers can still enter an authorised CRM URL in the application."
 fi
 
 if is_placeholder "$STT_TRANSCRIPTIONS_URL" || is_placeholder "$STT_MODEL"; then

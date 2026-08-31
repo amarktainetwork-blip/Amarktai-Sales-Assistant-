@@ -10,8 +10,7 @@ This checklist tracks the current trailing-hyphen repository. Historical wish li
 - [x] Today prioritisation, customer context, pre-call preparation, consented live-call companion, transcript/coaching, confirmed closeout and review-first CRM actions.
 - [x] Approvals, action evidence/readback, audit history, automation policies, manager controls, CSV/PDF exports and a distinct Reports page.
 - [x] Shared commercial plan source in `shared/pricing.ts`, truthful public pricing and secure public contact delivery.
-- [x] Scoped fresh Genie reset that preserves users, company knowledge, unrelated connections and external CRM records.
-- [x] Nineteen-check Genie PRE-OTP gate with cross-process retained-page proof and no OTP generation.
+- [x] Provider-neutral Secure CRM Browser with direct customer sign-in, isolated organisation/connection sessions and explicit human/agent control.
 - [x] Strict client acceptance that requires `LIVE_PROVEN` for every critical customer-specific feature.
 - [x] One coherent public/product visual direction with responsive navigation, focus states and reduced-motion handling.
 
@@ -28,8 +27,7 @@ These items require the deployed environment, authorised accounts or a customer-
 
 - Deploy merged main using the safe production sequence; preserve MariaDB, Valkey, users and company knowledge.
 - Run the production platform verifier and obtain `PLATFORM_READY=PASS`.
-- Run the deployed non-MFA verifier and obtain `PRE_OTP_READY=PASS` before contacting the customer.
-- Perform one controlled Genie authentication using a privately entered fresh customer code; do not reuse a stale challenge or start an automatic retry loop.
+- Perform one controlled Genie authentication entirely inside the Secure CRM Browser; Amarktai must not receive the CRM password or verification code.
 - Calibrate and live-prove only the capabilities exposed by the authorised Genie account, using the dedicated safe test record for writes/readback.
 - Run Course2Career discovery, human-review current facts and explicitly resolve any conflicting prices.
 - Prove the real Assistant, call companion, closeout, CRM write/readback, activity and report journey.

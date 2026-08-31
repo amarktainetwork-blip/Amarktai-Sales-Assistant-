@@ -85,7 +85,10 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return body;
 }
 
-function personaForRole(role: Snapshot["role"], mode: Snapshot["company"]["workspaceMode"]): Persona {
+function personaForRole(
+  role: Snapshot["role"],
+  mode: Snapshot["company"]["workspaceMode"]
+): Persona {
   if (role === "salesperson") return "salesperson";
   if (role === "manager") return "manager";
   if (role === "auditor") return "auditor";
@@ -110,18 +113,24 @@ export default function MemberOnboardingGate() {
   const [persona, setPersona] = useState<Persona | null>(null);
   const [primaryGoal, setPrimaryGoal] = useState("");
   const [workingStyle, setWorkingStyle] = useState("");
-  const [credentials, setCredentials] = useState({ username: "", password: "" });
 
   async function refresh() {
     try {
       const next = await api<Snapshot>("/api/user-onboarding");
       setSnapshot(next);
-      setPersona(next.member.persona || personaForRole(next.role, next.company.workspaceMode));
+      setPersona(
+        next.member.persona ||
+          personaForRole(next.role, next.company.workspaceMode)
+      );
       setPrimaryGoal(next.member.primaryGoal || "");
       setWorkingStyle(next.member.workingStyle || "");
       setError("");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Onboarding could not be loaded.");
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Onboarding could not be loaded."
+      );
     } finally {
       setLoading(false);
     }
@@ -132,24 +141,28 @@ export default function MemberOnboardingGate() {
   }, []);
 
   const browserCrm = snapshot?.personalCrm[0];
-  const needsPersonalCrm = Boolean(
-    browserCrm && snapshot?.role !== "auditor" && !browserCrm.hasCredentials
-  );
+  const needsPersonalCrm = false;
   const needsIdentity = Boolean(
     snapshot?.role === "salesperson" &&
       snapshot.identity.mappingsExist &&
       !snapshot.identity.mapped
   );
-  const pathname = typeof window === "undefined" ? "" : window.location.pathname;
+  const pathname =
+    typeof window === "undefined" ? "" : window.location.pathname;
   const companySetupAllowed = pathname === "/company-setup";
 
   const shouldBlock = useMemo(() => {
     if (loading) return true;
     if (!snapshot) return Boolean(error);
     if (!snapshot.member.complete) return true;
-    if (snapshot.canManage && !snapshot.company.complete && !companySetupAllowed)
+    if (
+      snapshot.canManage &&
+      !snapshot.company.complete &&
+      !companySetupAllowed
+    )
       return true;
-    if (snapshot.company.complete && (needsPersonalCrm || needsIdentity)) return true;
+    if (snapshot.company.complete && (needsPersonalCrm || needsIdentity))
+      return true;
     return false;
   }, [
     loading,
@@ -178,25 +191,11 @@ export default function MemberOnboardingGate() {
       });
       await refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Your onboarding details were not saved.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function saveCredentials() {
-    if (!browserCrm || !credentials.username.trim() || !credentials.password) return;
-    try {
-      setSaving(true);
-      setError("");
-      await api(`/api/user-onboarding/crm/${browserCrm.id}/credentials`, {
-        method: "PUT",
-        body: JSON.stringify(credentials),
-      });
-      setCredentials({ username: "", password: "" });
-      await refresh();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Your CRM login was not saved.");
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Your onboarding details were not saved."
+      );
     } finally {
       setSaving(false);
     }
@@ -212,7 +211,11 @@ export default function MemberOnboardingGate() {
       });
       await refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Your CRM identity could not be confirmed.");
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Your CRM identity could not be confirmed."
+      );
     } finally {
       setSaving(false);
     }
@@ -228,7 +231,11 @@ export default function MemberOnboardingGate() {
       });
       window.location.assign("/dashboard");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Onboarding could not be completed.");
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Onboarding could not be completed."
+      );
       await refresh();
     } finally {
       setSaving(false);
@@ -253,7 +260,10 @@ export default function MemberOnboardingGate() {
             Your workspace could not be prepared.
           </h1>
           <p className="mt-4 text-sm leading-6 text-stone-600">{error}</p>
-          <Button className="mt-6 bg-[#171719] text-white" onClick={() => void refresh()}>
+          <Button
+            className="mt-6 bg-[#171719] text-white"
+            onClick={() => void refresh()}
+          >
             Retry
           </Button>
         </div>
@@ -283,18 +293,30 @@ export default function MemberOnboardingGate() {
               Set up the person behind the sales work.
             </h1>
             <p className="mt-6 max-w-xl text-sm leading-7 text-stone-600">
-              Company knowledge can be shared. Your Amarktai account, assistant context,
-              CRM identity and CRM login belong to you. Every person completes this once.
+              Company knowledge can be shared. Your Amarktai account, assistant
+              context, CRM identity belongs to you; CRM sign-in happens directly
+              on the CRM website. Every person completes this once.
             </p>
             <div className="mt-8 space-y-3 text-sm text-stone-700">
-              <p className="flex gap-3"><Check className="mt-0.5 size-4 text-[#2466cc]" /> Your own Amarktai login and private assistant workspace</p>
-              <p className="flex gap-3"><Check className="mt-0.5 size-4 text-[#2466cc]" /> Shared approved company knowledge when you are on a team</p>
-              <p className="flex gap-3"><Check className="mt-0.5 size-4 text-[#2466cc]" /> Your own CRM identity and encrypted CRM login</p>
+              <p className="flex gap-3">
+                <Check className="mt-0.5 size-4 text-[#2466cc]" /> Your own
+                Amarktai login and private assistant workspace
+              </p>
+              <p className="flex gap-3">
+                <Check className="mt-0.5 size-4 text-[#2466cc]" /> Shared
+                approved company knowledge when you are on a team
+              </p>
+              <p className="flex gap-3">
+                <Check className="mt-0.5 size-4 text-[#2466cc]" /> Your own CRM
+                identity and human-controlled CRM session
+              </p>
             </div>
           </section>
 
           <section className="border border-stone-300 bg-[#fffefa] p-6 sm:p-8">
-            {snapshot.member.complete && snapshot.canManage && !snapshot.company.complete ? (
+            {snapshot.member.complete &&
+            snapshot.canManage &&
+            !snapshot.company.complete ? (
               <>
                 <div className="grid size-11 place-items-center rounded-full bg-stone-900 text-white">
                   <Building2 size={19} />
@@ -306,9 +328,10 @@ export default function MemberOnboardingGate() {
                   Now set up the company once.
                 </h2>
                 <p className="mt-4 text-sm leading-6 text-stone-600">
-                  Add the company details, let Amarktai understand the public website,
-                  approve the useful knowledge and connect the CRM. Future team members inherit
-                  that shared company setup, but still complete their own personal onboarding.
+                  Add the company details, let Amarktai understand the public
+                  website, approve the useful knowledge and connect the CRM.
+                  Future team members inherit that shared company setup, but
+                  still complete their own personal onboarding.
                 </p>
                 <Button
                   className="mt-7 h-11 bg-[#171719] text-white hover:bg-black"
@@ -331,14 +354,21 @@ export default function MemberOnboardingGate() {
                 <div className="mt-6 grid gap-3 sm:grid-cols-2">
                   {(snapshot.role === "owner"
                     ? (["individual", "company_owner"] as Persona[])
-                    : ([personaForRole(snapshot.role, snapshot.company.workspaceMode)] as Persona[])
+                    : ([
+                        personaForRole(
+                          snapshot.role,
+                          snapshot.company.workspaceMode
+                        ),
+                      ] as Persona[])
                   ).map(option => (
                     <button
                       key={option}
                       onClick={() => setPersona(option)}
                       className={`border p-4 text-left transition ${persona === option ? "border-[#2466cc] bg-[#eef4ff]" : "border-stone-300 bg-white hover:border-stone-500"}`}
                     >
-                      <span className="text-sm font-bold">{personaLabel(option)}</span>
+                      <span className="text-sm font-bold">
+                        {personaLabel(option)}
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -365,48 +395,10 @@ export default function MemberOnboardingGate() {
                   onClick={() => void saveProfile()}
                   className="mt-6 h-11 bg-[#171719] text-white hover:bg-black"
                 >
-                  {saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+                  {saving ? (
+                    <Loader2 className="mr-2 size-4 animate-spin" />
+                  ) : null}
                   Save and continue
-                </Button>
-              </>
-            ) : needsPersonalCrm ? (
-              <>
-                <div className="grid size-11 place-items-center rounded-full bg-stone-900 text-white">
-                  <KeyRound size={19} />
-                </div>
-                <p className="mt-6 text-[10px] font-black uppercase tracking-[.14em] text-[#2466cc]">
-                  02 / Your CRM login
-                </p>
-                <h2 className="mt-2 font-display text-3xl font-bold tracking-[-.055em]">
-                  Connect your own {browserCrm?.displayName} account.
-                </h2>
-                <p className="mt-4 text-sm leading-6 text-stone-600">
-                  The company CRM definition and approved capabilities are shared. These credentials are encrypted for your user only and are not shown to managers or other salespeople.
-                </p>
-                <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                  <Input
-                    autoComplete="off"
-                    value={credentials.username}
-                    onChange={event => setCredentials(current => ({ ...current, username: event.target.value }))}
-                    placeholder="CRM username or email"
-                    className="border-stone-300 bg-white text-[#171719]"
-                  />
-                  <Input
-                    type="password"
-                    autoComplete="new-password"
-                    value={credentials.password}
-                    onChange={event => setCredentials(current => ({ ...current, password: event.target.value }))}
-                    placeholder="CRM password"
-                    className="border-stone-300 bg-white text-[#171719]"
-                  />
-                </div>
-                <Button
-                  disabled={!credentials.username.trim() || !credentials.password || saving}
-                  onClick={() => void saveCredentials()}
-                  className="mt-6 h-11 bg-[#171719] text-white hover:bg-black"
-                >
-                  {saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : <ShieldCheck className="mr-2 size-4" />}
-                  Save encrypted CRM login
                 </Button>
               </>
             ) : needsIdentity ? (
@@ -421,7 +413,9 @@ export default function MemberOnboardingGate() {
                   Confirm who you are in the CRM.
                 </h2>
                 <p className="mt-4 text-sm leading-6 text-stone-600">
-                  This keeps your customers, tasks, activity and reporting tied to the correct salesperson without exposing another salesperson’s private workspace.
+                  This keeps your customers, tasks, activity and reporting tied
+                  to the correct salesperson without exposing another
+                  salesperson’s private workspace.
                 </p>
                 <div className="mt-6 grid gap-3">
                   {snapshot.identity.candidates.length ? (
@@ -433,15 +427,22 @@ export default function MemberOnboardingGate() {
                         className="flex items-center justify-between gap-4 border border-stone-300 bg-white p-4 text-left hover:border-[#2466cc]"
                       >
                         <span>
-                          <strong className="block text-sm">{candidate.displayName}</strong>
-                          <span className="mt-1 block text-xs text-stone-500">{candidate.email || "CRM salesperson record"}</span>
+                          <strong className="block text-sm">
+                            {candidate.displayName}
+                          </strong>
+                          <span className="mt-1 block text-xs text-stone-500">
+                            {candidate.email || "CRM salesperson record"}
+                          </span>
                         </span>
                         <ArrowRight className="size-4 text-[#2466cc]" />
                       </button>
                     ))
                   ) : (
                     <p className="border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
-                      Your CRM salesperson identity has not been mapped yet. Ask your manager to link your CRM owner record to your Amarktai user; you will not need to repeat company onboarding.
+                      Your CRM salesperson identity has not been mapped yet. Ask
+                      your manager to link your CRM owner record to your
+                      Amarktai user; you will not need to repeat company
+                      onboarding.
                     </p>
                   )}
                 </div>
@@ -467,14 +468,19 @@ export default function MemberOnboardingGate() {
                   onClick={() => void complete()}
                   className="mt-7 h-11 bg-[#171719] text-white hover:bg-black"
                 >
-                  {saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+                  {saving ? (
+                    <Loader2 className="mr-2 size-4 animate-spin" />
+                  ) : null}
                   Complete my onboarding <ArrowRight className="ml-2 size-4" />
                 </Button>
               </>
             )}
 
             {error ? (
-              <p role="alert" className="mt-5 border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+              <p
+                role="alert"
+                className="mt-5 border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800"
+              >
                 {error}
               </p>
             ) : null}

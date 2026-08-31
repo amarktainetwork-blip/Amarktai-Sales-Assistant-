@@ -1,4 +1,4 @@
-export type BrowserControlState = "AI_CONTROL" | "HUMAN_CONTROL" | "READ_ONLY_OBSERVE";
+export type BrowserControlState = "AGENT_CONTROL" | "HUMAN_CONTROL" | "IDLE";
 
 type ControlKey = {
   organisationId: number;
@@ -31,7 +31,7 @@ function clearTimer(lease: Lease) {
 
 function releaseLease(key: string, lease: Lease) {
   clearTimer(lease);
-  lease.state = "READ_ONLY_OBSERVE";
+  lease.state = "IDLE";
   lease.expiresAt = undefined;
   emit(lease);
   if (!lease.listeners.size) leases.delete(key);
@@ -41,17 +41,26 @@ function getLease(input: ControlKey) {
   const key = keyOf(input);
   let lease = leases.get(key);
   if (!lease) {
-    lease = { state: "READ_ONLY_OBSERVE", listeners: new Set() };
+    lease = { state: "IDLE", listeners: new Set() };
     leases.set(key, lease);
   }
-  if (lease.expiresAt && lease.expiresAt <= Date.now()) releaseLease(key, lease);
+  if (lease.expiresAt && lease.expiresAt <= Date.now())
+    releaseLease(key, lease);
   return { key, lease };
 }
 
-function acquire(input: ControlKey, state: Extract<BrowserControlState, "AI_CONTROL" | "HUMAN_CONTROL">, ttlMs = DEFAULT_LEASE_MS) {
+function acquire(
+  input: ControlKey,
+  state: Extract<BrowserControlState, "AGENT_CONTROL" | "HUMAN_CONTROL">,
+  ttlMs = DEFAULT_LEASE_MS
+) {
   const { key, lease } = getLease(input);
-  if (lease.state !== "READ_ONLY_OBSERVE" && lease.state !== state)
-    throw new Error(state === "AI_CONTROL" ? "CRM_VIEWER_HUMAN_CONTROL_ACTIVE" : "CRM_VIEWER_AI_CONTROL_ACTIVE");
+  if (lease.state !== "IDLE" && lease.state !== state)
+    throw new Error(
+      state === "AGENT_CONTROL"
+        ? "CRM_VIEWER_HUMAN_CONTROL_ACTIVE"
+        : "CRM_VIEWER_AGENT_CONTROL_ACTIVE"
+    );
   clearTimer(lease);
   lease.state = state;
   lease.expiresAt = Date.now() + ttlMs;
@@ -60,38 +69,49 @@ function acquire(input: ControlKey, state: Extract<BrowserControlState, "AI_CONT
   return { control: state, expiresAt: new Date(lease.expiresAt).toISOString() };
 }
 
-export function acquireHumanBrowserControl(input: ControlKey, ttlMs = DEFAULT_LEASE_MS) {
+export function acquireHumanBrowserControl(
+  input: ControlKey,
+  ttlMs = DEFAULT_LEASE_MS
+) {
   return acquire(input, "HUMAN_CONTROL", ttlMs);
 }
 
-export function acquireAiBrowserControl(input: ControlKey, ttlMs = DEFAULT_LEASE_MS) {
-  return acquire(input, "AI_CONTROL", ttlMs);
+export function acquireAiBrowserControl(
+  input: ControlKey,
+  ttlMs = DEFAULT_LEASE_MS
+) {
+  return acquire(input, "AGENT_CONTROL", ttlMs);
 }
 
 export function releaseBrowserControl(input: ControlKey) {
   const { key, lease } = getLease(input);
   releaseLease(key, lease);
-  return { control: "READ_ONLY_OBSERVE" as const };
+  return { control: "IDLE" as const };
 }
 
 export function browserControlState(input: ControlKey) {
   return getLease(input).lease.state;
 }
 
-export function subscribeBrowserControl(input: ControlKey, listener: (state: BrowserControlState) => void) {
+export function subscribeBrowserControl(
+  input: ControlKey,
+  listener: (state: BrowserControlState) => void
+) {
   const { key, lease } = getLease(input);
   lease.listeners.add(listener);
   listener(lease.state);
   return () => {
     lease.listeners.delete(listener);
-    if (!lease.listeners.size && lease.state === "READ_ONLY_OBSERVE") leases.delete(key);
+    if (!lease.listeners.size && lease.state === "IDLE") leases.delete(key);
   };
 }
 
 export function assertBrowserOperationCanRun(input: ControlKey) {
   const state = browserControlState(input);
-  if (state === "HUMAN_CONTROL") throw new Error("CRM_VIEWER_HUMAN_CONTROL_ACTIVE");
-  if (state === "AI_CONTROL") throw new Error("CRM_VIEWER_AI_CONTROL_ACTIVE");
+  if (state === "HUMAN_CONTROL")
+    throw new Error("CRM_VIEWER_HUMAN_CONTROL_ACTIVE");
+  if (state === "AGENT_CONTROL")
+    throw new Error("CRM_VIEWER_AGENT_CONTROL_ACTIVE");
 }
 
 export function resetBrowserControlArbitrationForTests() {
