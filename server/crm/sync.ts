@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { crmActivities, crmCompanies, crmContacts, crmOpportunities, crmSyncCursors, crmTasks, salesActivityEvents } from "../../drizzle/schema";
 import { getDb } from "../db";
-import { getConnectedSystemForUser, loadConnectionSecret, saveConnectionSecret, toAdapterConnection } from "../connectedSystems";
+import { getConnectedSystemForUser, loadConnectionSecret, loadUserConnectionSecret, saveConnectionSecret, toAdapterConnection } from "../connectedSystems";
 import { getCrmAdapter } from "./adapterRegistry";
 import type { AdapterConnection, NormalizedActivity, NormalizedCompany, NormalizedContact, NormalizedOpportunity, NormalizedTask } from "./types";
 import { normalizeCrmEmail, normalizeCrmPhone } from "./identity";
@@ -24,9 +24,22 @@ function secretKind(connection: AdapterConnection) {
 
 async function usableSecret(input: { userId: number; organisationId: number; connection: AdapterConnection }) {
   const kind = secretKind(input.connection);
-  const secret = await loadConnectionSecret({ organisationId: input.organisationId, connectedSystemId: input.connection.id, secretKind: kind });
-  if (!secret && kind !== "browser") throw new Error("No encrypted credentials are available for this connected system.");
-  const current = secret ?? {};
+  const secret = kind === "browser"
+    ? await loadUserConnectionSecret({
+        userId: input.userId,
+        organisationId: input.organisationId,
+        connectedSystemId: input.connection.id,
+        secretKind: "browser",
+      })
+    : await loadConnectionSecret({
+        organisationId: input.organisationId,
+        connectedSystemId: input.connection.id,
+        secretKind: "oauth",
+      });
+  if (!secret && kind === "browser")
+    throw new Error("Your CRM needs you to sign in again before synchronisation can continue.");
+  if (!secret) throw new Error("No encrypted credentials are available for this connected system.");
+  const current = secret;
   if (kind === "browser" || !current.expiresAt || new Date(current.expiresAt).valueOf() > Date.now() + 60_000) return current;
   const adapter = getCrmAdapter(input.connection.provider);
   const refreshed = await adapter.refreshAuthentication({ connection: input.connection, secret: current, correlationId: crypto.randomUUID() });
