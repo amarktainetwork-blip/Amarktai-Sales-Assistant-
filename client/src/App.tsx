@@ -1,11 +1,11 @@
+import { useAuth } from "@/_core/hooks/useAuth";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { publicPageMetadata } from "@/marketing/site";
 import { trpc } from "@/lib/trpc";
+import { publicPageMetadata } from "@/marketing/site";
 import NotFound from "@/pages/NotFound";
 import { useEffect } from "react";
 import { Route, Switch, useLocation } from "wouter";
-import { useAuth } from "@/_core/hooks/useAuth";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { DashboardLayoutSkeleton } from "./components/DashboardLayoutSkeleton";
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -29,14 +29,14 @@ import ConnectionsV2 from "./pages/ConnectionsV2";
 import CrmWorkspace from "./pages/CrmWorkspace";
 import Customers from "./pages/Customers";
 import Home from "./pages/Home";
-import LiveCalls from "./pages/LiveCalls";
 import Knowledge from "./pages/Knowledge";
+import LiveCalls from "./pages/LiveCalls";
 import Pricing from "./pages/Pricing";
 import Reports from "./pages/Reports";
+import Reviews from "./pages/Reviews";
 import TeamIntelligence from "./pages/TeamIntelligence";
 import TeamManagement from "./pages/TeamManagement";
 import Today from "./pages/Today";
-import { CommandCentre } from "./pages/Workspace";
 
 function LegacyRedirect({ to }: { to: string }) {
   const [, navigate] = useLocation();
@@ -65,6 +65,7 @@ function ManagementOnly({
     : organisation.data?.role === "owner" ||
       organisation.data?.role === "manager" ||
       user?.role === "admin";
+
   useEffect(() => {
     if (!loading && !user) {
       navigate("/auth", { replace: true });
@@ -90,6 +91,7 @@ function ManagementOnly({
     security.data?.verified,
     user,
   ]);
+
   if (loading || security.isLoading || organisation.isLoading || !allowed)
     return <DashboardLayoutSkeleton />;
   return <>{children}</>;
@@ -120,6 +122,7 @@ function Router() {
         <Route path="/calls" component={LiveCalls} />
         <Route path="/crm/:connectedSystemId" component={CrmWorkspace} />
         <Route path="/crm" component={CrmWorkspace} />
+        <Route path="/reviews" component={Reviews} />
 
         <Route path="/team">
           {() => (
@@ -149,16 +152,6 @@ function Router() {
             </ManagementOnly>
           )}
         </Route>
-
-        {/* Existing specialist/admin surfaces remain addressable for managers
-            while the normal product navigation is Assistant-first. */}
-        <Route path="/reviews" component={CommandCentre} />
-        <Route path="/workspace">
-          {() => <LegacyRedirect to="/reviews" />}
-        </Route>
-        <Route path="/workflows">
-          {() => <LegacyRedirect to="/assistant" />}
-        </Route>
         <Route path="/knowledge">
           {() => (
             <ManagementOnly>
@@ -173,15 +166,22 @@ function Router() {
             </ManagementOnly>
           )}
         </Route>
-        <Route path="/automation">
-          {() => <LegacyRedirect to="/assistant" />}
-        </Route>
         <Route path="/admin-controls">
           {() => (
             <ManagementOnly platformAdminOnly>
               <AdminControls />
             </ManagementOnly>
           )}
+        </Route>
+
+        <Route path="/workspace">
+          {() => <LegacyRedirect to="/assistant" />}
+        </Route>
+        <Route path="/workflows">
+          {() => <LegacyRedirect to="/assistant" />}
+        </Route>
+        <Route path="/automation">
+          {() => <LegacyRedirect to="/assistant" />}
         </Route>
 
         <Route path="/404" component={NotFound} />
