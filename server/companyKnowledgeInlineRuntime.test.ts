@@ -267,7 +267,7 @@ describe("bounded inline company-learning runtime", () => {
     expect(stats.repair).toBe(0);
   });
 
-  it("allows at most three semantic repairs globally and fails the fourth closed", async () => {
+  it("keeps the three-repair global ceiling for unreadable audit JSON", async () => {
     let sequence = 0;
     const sessionKinds = new Map<string, "audit" | "repair">();
     const client = {
@@ -298,7 +298,7 @@ describe("bounded inline company-learning runtime", () => {
         content:
           sessionKinds.get(input.sessionId) === "repair"
             ? JSON.stringify(emptyAudit)
-            : JSON.stringify({ addOfferings: [{ id: "", type: "unknown" }] }),
+            : "not json at all",
         usage: {},
       })),
       closeSession: vi.fn(async () => undefined),
@@ -307,7 +307,7 @@ describe("bounded inline company-learning runtime", () => {
     const model = new InlineBatchWholeSiteModel({
       userId: 1,
       organisationId: 1,
-      reference: "repair-cap",
+      reference: "repair-cap-unreadable-json",
       client: client as never,
     });
     let failure: unknown;
@@ -325,7 +325,7 @@ describe("bounded inline company-learning runtime", () => {
     );
     expect((failure as Error).message).toContain('"phase":"audit"');
     expect((failure as Error).message).toContain('"batchIndex":');
-    expect((failure as Error).message).toContain("addOfferings[0]");
+    expect((failure as Error).message).toContain("$json");
     expect(model.callStats().repair).toBe(3);
     expect(
       client.createSession.mock.calls.filter(call =>

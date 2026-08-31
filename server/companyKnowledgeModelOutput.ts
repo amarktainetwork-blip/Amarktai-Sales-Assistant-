@@ -172,10 +172,7 @@ function normalizeAuditOfferingChanges(
   return droppedIds;
 }
 
-function applyAuditCompatibility(
-  value: unknown,
-  actions: string[]
-) {
+function applyAuditCompatibility(value: unknown, actions: string[]) {
   const root = object(value);
   if (!root) return value;
 
@@ -198,6 +195,59 @@ function applyAuditCompatibility(
   }
 
   return root;
+}
+
+function reviewableAuditSchemaError(error: CompanyKnowledgeOutputError) {
+  const paths = error.diagnostic.schemaErrorPaths;
+  if (!paths.length) return false;
+  if (paths.some(path => path === "$json" || path.includes("unsupported source")))
+    return false;
+  return true;
+}
+
+function auditHumanReviewGap(
+  context: CompanyKnowledgeOutputContext,
+  error: CompanyKnowledgeOutputError
+) {
+  const batch = context.batchIndex
+    ? `${context.batchIndex}/${context.batchTotal || "?"}`
+    : "unknown";
+  const pages = (context.pageIds || [])
+    .filter(id => /^PAGE_\d{4}$/.test(id))
+    .join(", ");
+  const issues = error.diagnostic.schemaErrorPaths
+    .slice(0, 8)
+    .map(path => path.replace(/\s+/g, " ").slice(0, 350))
+    .join("; ");
+  return [
+    `Human review required for audit batch ${batch}${pages ? ` (${pages})` : ""}.`,
+    "The audit proposed a change that could not be represented safely, so the complete audit patch for this batch was quarantined and the previously validated company draft was left unchanged.",
+    issues ? `Review reason: ${issues}` : "",
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .slice(0, 4_000);
+}
+
+function quarantinedAuditPatch(
+  context: CompanyKnowledgeOutputContext,
+  error: CompanyKnowledgeOutputError
+) {
+  return {
+    addOfferings: [],
+    replaceOfferings: [],
+    removeOfferingIds: [],
+    addFinance: [],
+    addCertificationsAndAccreditation: [],
+    addSupportAndOutcomes: [],
+    addPolicies: [],
+    addRefundCancellationTerms: [],
+    addContactKnowledge: [],
+    addContacts: [],
+    addConflicts: [],
+    addExcludedContent: [],
+    importantGaps: [auditHumanReviewGap(context, error)],
+  };
 }
 
 export function canonicalizeCompanyKnowledgeOutput(
@@ -225,8 +275,9 @@ export function parseCanonicalCompanyKnowledgeOutput<T>(input: {
   try {
     normalized = canonicalizeCompanyKnowledgeOutput(input.raw, input.mode);
   } catch {
-    // Preserve the original parser boundary: malformed audit JSON and other
-    // pre-schema failures must still surface as CompanyKnowledgeOutputError.
+    // Malformed JSON and other pre-schema failures still fail closed and may use
+    // the existing bounded model-repair path. Human review never bypasses an
+    // unreadable model response.
     return parseCanonicalCompanyKnowledgeOutputCore(input);
   }
 
@@ -243,14 +294,38 @@ export function parseCanonicalCompanyKnowledgeOutput<T>(input: {
     };
   } catch (error) {
     if (!(error instanceof CompanyKnowledgeOutputError)) throw error;
+    const normalizationActions = Array.from(
+      new Set([
+        ...normalized.actions,
+        ...error.diagnostic.normalizationActions,
+      ])
+    ).slice(0, 100);
+
+    // Audit-only uncertainty is quarantined for deliberate human review rather
+    // than allowed to consume the global repair budget or abort the whole-site
+    // job. The quarantine is an empty mutation: no disputed audit fact is
+    // trusted, no source is invented, and the already validated draft remains
+    // unchanged. Malformed JSON and out-of-batch provenance remain hard errors.
+    if (reviewableAuditSchemaError(error)) {
+      const quarantined = parseCanonicalCompanyKnowledgeOutputCore({
+        ...input,
+        raw: quarantinedAuditPatch(input.context, error),
+      });
+      return {
+        data: quarantined.data,
+        normalizationActions: Array.from(
+          new Set([
+            ...normalizationActions,
+            "$:quarantined_audit_schema_for_human_review",
+            ...quarantined.normalizationActions,
+          ])
+        ),
+      };
+    }
+
     throw new CompanyKnowledgeOutputError(error.message, {
       ...error.diagnostic,
-      normalizationActions: Array.from(
-        new Set([
-          ...normalized.actions,
-          ...error.diagnostic.normalizationActions,
-        ])
-      ).slice(0, 100),
+      normalizationActions,
     });
   }
 }

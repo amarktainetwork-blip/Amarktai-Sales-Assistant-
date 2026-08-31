@@ -51,6 +51,17 @@ function parse(raw: unknown) {
   });
 }
 
+function expectHumanReview(result: ReturnType<typeof parse>) {
+  expect(result.data.replaceOfferings).toEqual([]);
+  expect(result.data.addOfferings).toEqual([]);
+  expect(result.data.importantGaps[0]).toContain(
+    "Human review required for audit batch 27/36"
+  );
+  expect(result.normalizationActions).toContain(
+    "$:quarantined_audit_schema_for_human_review"
+  );
+}
+
 function price(semanticType: string) {
   return {
     value: "£1,000",
@@ -81,19 +92,18 @@ describe("bounded audit schema compatibility", () => {
     );
   });
 
-  it("does not guess how to merge courses when includedCourses is already present", () => {
-    expect(() =>
-      parse(
-        audit({
-          replaceOfferings: [
-            offering({
-              courses: ["Unclear Course"],
-              includedCourses: ["Canonical Course"],
-            }),
-          ],
-        })
-      )
-    ).toThrow(CompanyKnowledgeOutputError);
+  it("quarantines an ambiguous courses merge for human review instead of guessing", () => {
+    const result = parse(
+      audit({
+        replaceOfferings: [
+          offering({
+            courses: ["Unclear Course"],
+            includedCourses: ["Canonical Course"],
+          }),
+        ],
+      })
+    );
+    expectHumanReview(result);
   });
 
   it("removes only the explicit audit offering _comment annotation", () => {
@@ -113,18 +123,18 @@ describe("bounded audit schema compatibility", () => {
     );
   });
 
-  it("keeps other unknown audit offering keys invalid", () => {
-    expect(() =>
-      parse(
-        audit({
-          replaceOfferings: [
-            offering({
-              _note: "Unknown model metadata must not be silently accepted.",
-            }),
-          ],
-        })
-      )
-    ).toThrow(CompanyKnowledgeOutputError);
+  it("quarantines unknown audit offering metadata for human review", () => {
+    const result = parse(
+      audit({
+        replaceOfferings: [
+          offering({
+            _note: "Unknown model metadata must not become company knowledge.",
+          }),
+        ],
+      })
+    );
+    expectHumanReview(result);
+    expect(result.data.importantGaps[0]).toContain("_note");
   });
 
   it("keeps _comment invalid in full analysis", () => {
@@ -208,18 +218,18 @@ describe("bounded audit schema compatibility", () => {
     );
   });
 
-  it("keeps semantically unknown audit price semantic types invalid", () => {
-    expect(() =>
-      parse(
-        audit({
-          replaceOfferings: [
-            offering({
-              prices: [price("monthly_installment")],
-            }),
-          ],
-        })
-      )
-    ).toThrow(CompanyKnowledgeOutputError);
+  it("quarantines semantically unknown audit price types for a human decision", () => {
+    const result = parse(
+      audit({
+        replaceOfferings: [
+          offering({
+            prices: [price("monthly_installment")],
+          }),
+        ],
+      })
+    );
+    expectHumanReview(result);
+    expect(result.data.importantGaps[0]).toContain("semanticType");
   });
 
   it("does not normalize formatting variants in full analysis", () => {
@@ -291,19 +301,19 @@ describe("bounded audit schema compatibility", () => {
     );
   });
 
-  it("keeps semantically unknown excluded-content classifications invalid", () => {
-    expect(() =>
-      parse(
-        audit({
-          addExcludedContent: [
-            {
-              sourcePageIds: ["PAGE_0076"],
-              classification: "programme_page",
-              reason: "Unknown semantic classification.",
-            },
-          ],
-        })
-      )
-    ).toThrow(CompanyKnowledgeOutputError);
+  it("quarantines semantically unknown excluded-content classifications", () => {
+    const result = parse(
+      audit({
+        addExcludedContent: [
+          {
+            sourcePageIds: ["PAGE_0076"],
+            classification: "programme_page",
+            reason: "Unknown semantic classification.",
+          },
+        ],
+      })
+    );
+    expectHumanReview(result);
+    expect(result.data.importantGaps[0]).toContain("classification");
   });
 });

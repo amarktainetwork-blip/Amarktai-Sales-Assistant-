@@ -42,6 +42,17 @@ function parseAudit(raw: unknown, pageIds: string[]) {
   });
 }
 
+function expectHumanReview(result: ReturnType<typeof parseAudit>) {
+  expect(result.data.replaceOfferings).toEqual([]);
+  expect(result.data.addOfferings).toEqual([]);
+  expect(result.data.importantGaps[0]).toContain(
+    "Human review required for audit batch 1/36"
+  );
+  expect(result.normalizationActions).toContain(
+    "$:quarantined_audit_schema_for_human_review"
+  );
+}
+
 describe("audit price provenance compatibility", () => {
   it("ignores a replacement offering whose prices explicitly have empty provenance and preserves its draft id from removal", () => {
     const parsed = parseAudit(
@@ -180,78 +191,75 @@ describe("audit price provenance compatibility", () => {
     );
   });
 
-  it("keeps an unsupported schema_price strict when it is not a proven duplicate", () => {
-    expect(() =>
-      parseAudit(
-        {
-          replaceOfferings: [
-            offering({
-              id: "microsoft-sc-900",
-              name: "Microsoft SC-900",
-              sourcePageIds: ["PAGE_0049"],
-              prices: [
-                {
-                  value: "£999.00",
-                  semanticType: "schema_price",
-                  label: "Schema.org listed price",
-                  sourcePageIds: ["PAGE_0049"],
-                },
-              ],
-            }),
-          ],
-        },
-        ["PAGE_0049"]
-      )
-    ).toThrow(CompanyKnowledgeOutputError);
+  it("quarantines an unsupported non-duplicate schema_price for human review", () => {
+    const parsed = parseAudit(
+      {
+        replaceOfferings: [
+          offering({
+            id: "microsoft-sc-900",
+            name: "Microsoft SC-900",
+            sourcePageIds: ["PAGE_0049"],
+            prices: [
+              {
+                value: "£999.00",
+                semanticType: "schema_price",
+                label: "Schema.org listed price",
+                sourcePageIds: ["PAGE_0049"],
+              },
+            ],
+          }),
+        ],
+      },
+      ["PAGE_0049"]
+    );
+    expectHumanReview(parsed);
   });
 
-  it("keeps other unknown price semantics strict", () => {
-    expect(() =>
-      parseAudit(
-        {
-          replaceOfferings: [
-            offering({
-              id: "course-a",
-              name: "Course A",
-              sourcePageIds: ["PAGE_0001"],
-              prices: [
-                {
-                  value: "£100",
-                  semanticType: "monthly_installment",
-                  label: "Monthly",
-                  sourcePageIds: ["PAGE_0001"],
-                },
-              ],
-            }),
-          ],
-        },
-        ["PAGE_0001"]
-      )
-    ).toThrow(CompanyKnowledgeOutputError);
+  it("quarantines other unknown audit price semantics for human review", () => {
+    const parsed = parseAudit(
+      {
+        replaceOfferings: [
+          offering({
+            id: "course-a",
+            name: "Course A",
+            sourcePageIds: ["PAGE_0001"],
+            prices: [
+              {
+                value: "£100",
+                semanticType: "monthly_installment",
+                label: "Monthly",
+                sourcePageIds: ["PAGE_0001"],
+              },
+            ],
+          }),
+        ],
+      },
+      ["PAGE_0001"]
+    );
+    expectHumanReview(parsed);
   });
 
-  it("does not normalize a missing price sourcePageIds property", () => {
-    expect(() =>
-      parseAudit(
-        {
-          replaceOfferings: [
-            offering({
-              id: "course-a",
-              name: "Course A",
-              sourcePageIds: ["PAGE_0001"],
-              prices: [
-                {
-                  value: "£100",
-                  semanticType: "full_current_price",
-                  label: "Full price",
-                },
-              ],
-            }),
-          ],
-        },
-        ["PAGE_0001"]
-      )
-    ).toThrow(CompanyKnowledgeOutputError);
+  it("quarantines a missing audit price sourcePageIds property rather than inventing provenance", () => {
+    const parsed = parseAudit(
+      {
+        replaceOfferings: [
+          offering({
+            id: "course-a",
+            name: "Course A",
+            sourcePageIds: ["PAGE_0001"],
+            prices: [
+              {
+                value: "£100",
+                semanticType: "full_current_price",
+                label: "Full price",
+              },
+            ],
+          }),
+        ],
+      },
+      ["PAGE_0001"]
+    );
+    expectHumanReview(parsed);
   });
 
   it("does not weaken partial analysis price provenance", () => {

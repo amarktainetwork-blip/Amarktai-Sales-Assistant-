@@ -23,6 +23,7 @@ const partialSchema = z
 const auditSchema = z
   .object({
     addConflicts: z.array(conflictSchema).default([]),
+    importantGaps: z.array(z.string()).default([]),
   })
   .partial();
 
@@ -130,30 +131,37 @@ describe("batched company-learning conflict compatibility", () => {
     expect(parsed.data.addConflicts).toHaveLength(1);
   });
 
-  it("keeps strict validation for complete audit conflicts with extra keys", () => {
-    expect(() =>
-      parseCanonicalCompanyKnowledgeOutput({
-        raw: {
-          addConflicts: [
-            {
-              subject: "Programme price",
-              values: ["£2,499", "£2,699"],
-              sourcePageIds: ["PAGE_0001", "PAGE_0002"],
-              explanation: "Two first-party pages publish different prices.",
-              confidence: "high",
-            },
-          ],
-        },
-        mode: "audit",
-        schema: auditSchema,
-        context: {
-          phase: "audit",
-          batchIndex: 2,
-          batchTotal: 36,
-          pageIds: ["PAGE_0001", "PAGE_0002"],
-        },
-      })
-    ).toThrow(CompanyKnowledgeOutputError);
+  it("quarantines complete audit conflicts with extra keys for human review", () => {
+    const parsed = parseCanonicalCompanyKnowledgeOutput({
+      raw: {
+        addConflicts: [
+          {
+            subject: "Programme price",
+            values: ["£2,499", "£2,699"],
+            sourcePageIds: ["PAGE_0001", "PAGE_0002"],
+            explanation: "Two first-party pages publish different prices.",
+            confidence: "high",
+          },
+        ],
+      },
+      mode: "audit",
+      schema: auditSchema,
+      context: {
+        phase: "audit",
+        batchIndex: 2,
+        batchTotal: 36,
+        pageIds: ["PAGE_0001", "PAGE_0002"],
+      },
+    });
+
+    expect(parsed.data.addConflicts).toEqual([]);
+    expect(parsed.data.importantGaps?.[0]).toContain(
+      "Human review required for audit batch 2/36"
+    );
+    expect(parsed.data.importantGaps?.[0]).toContain("confidence");
+    expect(parsed.normalizationActions).toContain(
+      "$:quarantined_audit_schema_for_human_review"
+    );
   });
 
   it("does not weaken full-analysis conflict validation", () => {
