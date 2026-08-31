@@ -5,6 +5,7 @@ import type {
 } from "./companyKnowledgeSynthesis";
 
 const MISSING_OFFERING_GAP = /^\d+ likely offering page\(s\) were not represented in the final pack\.$/;
+const HUMAN_REVIEW_AUDIT_GAP = /^Human review required for audit batch /;
 
 function unique<T>(values: T[]) {
   return Array.from(new Set(values));
@@ -149,9 +150,12 @@ export function finaliseCompanyKnowledgeRuntimeResult(
     cleanupIncomplete ||
     !pack.offerings.length ||
     missingLikely.length > threshold;
+  const humanReviewRequired = result.completeness.importantGaps.some(gap =>
+    HUMAN_REVIEW_AUDIT_GAP.test(gap)
+  );
   const status = incomplete
     ? "incomplete"
-    : conflicts.length
+    : conflicts.length || humanReviewRequired
       ? "complete_with_conflicts"
       : "complete";
 
