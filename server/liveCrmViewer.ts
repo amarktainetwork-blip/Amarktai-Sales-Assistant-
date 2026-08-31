@@ -22,10 +22,8 @@ import {
   type ManagedCrmBrowserSessionHandle,
 } from "./browserConnectors/managedCrmBrowserSessionManager";
 
-// Viewer tokens are still scoped to one authenticated user + organisation +
-// connected system, but a normal sales session must not expire while somebody
-// is actively working. Every valid websocket message renews this inactivity
-// window.
+// Viewer tokens are scoped to one authenticated user + organisation + CRM.
+// A normal sales session renews this inactivity window on every valid message.
 const VIEWER_TTL_MS = 30 * 60_000;
 const IDLE_LEASE_MS = 20_000;
 const MAX_MESSAGE_BYTES = 16 * 1024;
@@ -81,8 +79,6 @@ type LiveCrmSession = {
   expiresAt: number;
   lastUrl: string;
   control: ControlState;
-  leaseOwner?: "human" | "ai";
-  leaseExpiresAt?: number;
   visible: boolean;
   streaming: boolean;
   lastFrameAt: number;
@@ -142,8 +138,10 @@ function boundedNumber(value: unknown, low: number, high: number) {
 
 function viewerMessage(error: unknown) {
   const detail = error instanceof Error ? error.message : String(error);
+  if (/DISCONNECTED|RETIRED/i.test(detail))
+    return "This CRM is disconnected. Reconnect it from Connections to continue.";
   if (/HUMAN_CONTROL_REQUIRED/i.test(detail))
-    return "Select Take control before typing or clicking in the CRM.";
+    return "Take control before using browser navigation or entering information.";
   if (/AGENT_CONTROL|AI_CONTROL/i.test(detail))
     return "Amarktai is working in your CRM. Take control when it reaches a safe stopping point.";
   if (/ADDRESS_REQUIRED|START_URL_REQUIRED|URL/i.test(detail))
@@ -217,17 +215,20 @@ function controlScope(
     "organisationId" | "connectedSystemId" | "userId"
   >
 ) {
-  // Current Genie commissioning is an explicit shared_connection identity mode.
-  // Viewer authorization stays user-scoped; the physical retained page lock is
-  // shared at the organisation + connection boundary so no automation can race it.
+  // Control belongs to the user's isolated browser identity. Company connector
+  // definition/capabilities are shared, but one salesperson cannot seize or
+  // block another salesperson's live CRM page.
   return {
     organisationId: session.organisationId,
     connectedSystemId: session.connectedSystemId,
-    userId: 0,
+    userId: session.userId,
   };
 }
 
-function expireSession(session: LiveCrmSession) {
+function retireViewerSession(
+  session: LiveCrmSession,
+  reason: "expired" | "disconnected" | "reset" = "expired"
+) {
   if (!sessions.has(session.id)) return;
   session.interactive = false;
   if (session.expiresTimer) clearTimeout(session.expiresTimer);
@@ -235,7 +236,12 @@ function expireSession(session: LiveCrmSession) {
   session.unsubscribeSession?.();
   void stopStream(session);
   session.sockets.forEach(socket =>
-    socket.close(4001, "Viewer session expired")
+    socket.close(
+      reason === "disconnected" ? 4002 : 4001,
+      reason === "disconnected"
+        ? "CRM disconnected"
+        : "Viewer session expired"
+    )
   );
   sessions.delete(session.id);
   scopeIndex.delete(
@@ -245,10 +251,14 @@ function expireSession(session: LiveCrmSession) {
   void recordAudit({
     userId: session.userId,
     organisationId: session.organisationId,
-    eventType: "crm_viewer_expired",
+    eventType:
+      reason === "disconnected" ? "crm_viewer_disconnected" : "crm_viewer_expired",
     entityType: "connected_system",
     entityId: String(session.connectedSystemId),
-    summary: "A live CRM viewer session expired and was closed.",
+    summary:
+      reason === "disconnected"
+        ? "A live CRM viewer was closed because the CRM was disconnected."
+        : "A live CRM viewer session expired and was closed.",
     metadata: { viewerSessionId: session.id },
   });
 }
@@ -256,7 +266,7 @@ function expireSession(session: LiveCrmSession) {
 function armSessionExpiry(session: LiveCrmSession) {
   if (session.expiresTimer) clearTimeout(session.expiresTimer);
   session.expiresTimer = setTimeout(
-    () => expireSession(session),
+    () => retireViewerSession(session),
     Math.max(1, session.expiresAt - Date.now())
   );
 }
@@ -269,12 +279,19 @@ function touchViewerSession(session: LiveCrmSession) {
 
 function pruneExpiredSessions() {
   Array.from(sessions.values()).forEach(session => {
-    if (session.expiresAt <= Date.now()) expireSession(session);
+    if (session.expiresAt <= Date.now()) retireViewerSession(session);
   });
 }
 
 function setHumanLease(session: LiveCrmSession) {
   acquireHumanBrowserControl(controlScope(session), IDLE_LEASE_MS);
+}
+
+function assertHumanControl(session: LiveCrmSession) {
+  if (!canAcceptBrowserInput(browserControlState(controlScope(session))))
+    throw new Error("CRM_VIEWER_HUMAN_CONTROL_REQUIRED");
+  touchViewerSession(session);
+  setHumanLease(session);
 }
 
 export function acquireAiControl(
@@ -368,10 +385,7 @@ async function stopStream(session: LiveCrmSession) {
 async function dispatchInput(session: LiveCrmSession, event: ViewerInputEvent) {
   if (!session.interactive || session.expiresAt <= Date.now())
     throw new Error("CRM_VIEWER_SESSION_EXPIRED");
-  if (!canAcceptBrowserInput(browserControlState(controlScope(session))))
-    throw new Error("CRM_VIEWER_HUMAN_CONTROL_REQUIRED");
-  touchViewerSession(session);
-  setHumanLease(session);
+  assertHumanControl(session);
   if (!session.cdp) throw new Error("CRM_VIEWER_STREAM_UNAVAILABLE");
   const input = assertInput(event);
   if (input.kind === "mouse") {
@@ -413,12 +427,22 @@ export async function createLiveCrmViewerSession(input: {
     touchViewerSession(existing);
     return viewerDescriptor(existing);
   }
+
   const connection = await getConnectedSystemForUser(
     input.userId,
     input.organisationId,
     input.connectedSystemId
   );
+  const configuration =
+    connection.configuration &&
+    typeof connection.configuration === "object" &&
+    !Array.isArray(connection.configuration)
+      ? (connection.configuration as Record<string, unknown>)
+      : {};
+  if (typeof configuration.retiredAt === "string")
+    throw new Error("CRM_VIEWER_DISCONNECTED");
   if (!connection.baseUrl) throw new Error("CRM_VIEWER_ADDRESS_REQUIRED");
+
   let managed: ManagedCrmBrowserSessionHandle;
   try {
     managed = await managedCrmBrowserSessionManager.open({
@@ -428,6 +452,7 @@ export async function createLiveCrmViewerSession(input: {
   } catch (error) {
     throw new Error(viewerMessage(error));
   }
+
   const id = randomUUID();
   const session: LiveCrmSession = {
     id,
@@ -473,8 +498,12 @@ export async function createLiveCrmViewerSession(input: {
     entityType: "connected_system",
     entityId: String(input.connectedSystemId),
     summary:
-      "A live CRM workspace viewer was opened for the signed-in salesperson.",
-    metadata: { viewerSessionId: id, provider: connection.provider },
+      "A private live CRM workspace viewer was opened for the signed-in salesperson.",
+    metadata: {
+      viewerSessionId: id,
+      provider: connection.provider,
+      identityScope: "user",
+    },
   });
   return viewerDescriptor(session);
 }
@@ -515,7 +544,7 @@ export async function getSanitisedLiveCrmContext(input: {
     authorisedUrlPath: `${url.origin}${url.pathname}`,
     pageTitle: title || undefined,
     control: browserControlState(controlScope(session)),
-    connectionIdentityMode: "organisation_connection" as const,
+    connectionIdentityMode: "user_connection" as const,
   };
 }
 
@@ -585,6 +614,7 @@ export function registerLiveCrmViewerSocket(server: Server) {
       }
     })();
   });
+
   wss.on(
     "connection",
     (socket: WebSocket, _request: IncomingMessage, session: LiveCrmSession) => {
@@ -607,14 +637,15 @@ export function registerLiveCrmViewerSocket(server: Server) {
           });
           socket.close(1011, "Stream unavailable");
         });
+
       socket.on("message", (raw: RawData) => {
         void (async () => {
           try {
             const message = parseMessage(raw);
             touchViewerSession(session);
-            if (message.type === "input")
+            if (message.type === "input") {
               await dispatchInput(session, message.event);
-            else if (message.type === "visibility") {
+            } else if (message.type === "visibility") {
               session.visible = Boolean(message.visible);
               if (!session.visible) await stopStream(session);
               else await startStream(session);
@@ -653,9 +684,12 @@ export function registerLiveCrmViewerSocket(server: Server) {
                 entityType: "connected_system",
                 entityId: String(session.connectedSystemId),
                 summary: "The customer took control of the Secure CRM Browser.",
-                metadata: {},
+                metadata: { identityScope: "user" },
               });
             } else if (message.type === "navigation") {
+              // Browser history/reload can submit forms or replay page state, so
+              // it is a human-controlled browser action just like clicking.
+              assertHumanControl(session);
               await managedCrmBrowserSessionManager.navigate(
                 session.managed,
                 message.action
@@ -664,11 +698,12 @@ export function registerLiveCrmViewerSocket(server: Server) {
               await managedCrmBrowserSessionManager.customerFinishedSigningIn(
                 session.managed
               );
-            } else if (message.type === "ping")
+            } else if (message.type === "ping") {
               socketPayload(socket, {
                 type: "pong",
                 expiresAt: new Date(session.expiresAt).toISOString(),
               });
+            }
           } catch (error) {
             socketPayload(socket, {
               type: "error",
@@ -678,6 +713,7 @@ export function registerLiveCrmViewerSocket(server: Server) {
           }
         })();
       });
+
       socket.on("close", () => {
         session.sockets.delete(socket);
         if (!session.sockets.size) void stopStream(session);
@@ -686,13 +722,24 @@ export function registerLiveCrmViewerSocket(server: Server) {
   );
 }
 
+/** Close every user's live viewer for one company CRM before disconnecting it. */
+export function closeLiveCrmViewerSessionsForConnection(input: {
+  organisationId: number;
+  connectedSystemId: number;
+}) {
+  const targets = Array.from(sessions.values()).filter(
+    session =>
+      session.organisationId === input.organisationId &&
+      session.connectedSystemId === input.connectedSystemId
+  );
+  targets.forEach(session => retireViewerSession(session, "disconnected"));
+  return targets.length;
+}
+
 export function resetLiveCrmViewerForTests() {
-  sessions.forEach(session => {
-    if (session.expiresTimer) clearTimeout(session.expiresTimer);
-    session.unsubscribeControl?.();
-    session.unsubscribeSession?.();
-    void stopStream(session);
-  });
+  Array.from(sessions.values()).forEach(session =>
+    retireViewerSession(session, "reset")
+  );
   sessions.clear();
   scopeIndex.clear();
 }
