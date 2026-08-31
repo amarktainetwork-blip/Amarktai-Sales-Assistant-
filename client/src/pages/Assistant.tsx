@@ -2,6 +2,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
+import { friendlyError } from "@/lib/friendlyError";
 import {
   ArrowRight,
   Bot,
@@ -10,6 +11,7 @@ import {
   Headphones,
   Loader2,
   MessageCircle,
+  RotateCcw,
   Send,
   Sparkles,
   UserRound,
@@ -39,19 +41,6 @@ const quickPrompts = [
   "What promises have we made?",
 ];
 
-function friendlyError(error: unknown) {
-  const raw = error instanceof Error ? error.message : String(error || "");
-  if (/sign in|authentication|session|verification/i.test(raw))
-    return "Your session needs attention. Sign in again and I’ll pick up from here.";
-  if (/credit/i.test(raw))
-    return "AI guidance needs more credits right now, but I can still help with your CRM tasks, priorities, reminders and callbacks.";
-  if (/network|fetch|connection|timeout/i.test(raw))
-    return "I lost the connection for a moment. Nothing was changed. Try that again.";
-  return raw && raw.length < 180
-    ? raw
-    : "I couldn't complete that request just now. Nothing was changed.";
-}
-
 async function askAssistant(input: {
   messages: Array<{ role: "user" | "assistant"; content: string }>;
   contactId?: number;
@@ -63,7 +52,8 @@ async function askAssistant(input: {
     body: JSON.stringify(input),
   });
   const body = (await response.json().catch(() => ({}))) as AssistantResponse;
-  if (!response.ok) throw new Error(body.error || "The Assistant could not respond.");
+  if (!response.ok)
+    throw new Error(body.error || "The Assistant could not respond.");
   return body;
 }
 
@@ -88,7 +78,9 @@ export default function Assistant() {
   );
 
   useEffect(() => {
-    const prompt = new URLSearchParams(window.location.search).get("prompt")?.trim();
+    const prompt = new URLSearchParams(window.location.search)
+      .get("prompt")
+      ?.trim();
     if (prompt) setDraft(prompt.slice(0, 12_000));
   }, []);
 
@@ -116,12 +108,51 @@ export default function Assistant() {
         ...current,
         {
           role: "assistant",
-          content: response.content || "I’m ready. What would you like to do next?",
+          content:
+            response.content || "I’m ready. What would you like to do next?",
           action: response.suggestedAction,
         },
       ]);
     } catch (cause) {
-      setError(friendlyError(cause));
+      setError(
+        friendlyError(
+          cause,
+          "I couldn't complete that request just now. Nothing was changed."
+        )
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function retry() {
+    if (busy || !messages.length) return;
+    setError("");
+    setBusy(true);
+    try {
+      const response = await askAssistant({
+        contactId,
+        messages: messages.map(message => ({
+          role: message.role,
+          content: message.content,
+        })),
+      });
+      setMessages(current => [
+        ...current,
+        {
+          role: "assistant",
+          content:
+            response.content || "I’m ready. What would you like to do next?",
+          action: response.suggestedAction,
+        },
+      ]);
+    } catch (cause) {
+      setError(
+        friendlyError(
+          cause,
+          "I couldn't complete that request just now. Nothing was changed."
+        )
+      );
     } finally {
       setBusy(false);
     }
@@ -291,8 +322,21 @@ export default function Assistant() {
                 ) : null}
 
                 {error ? (
-                  <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-                    {error}
+                  <div
+                    role="alert"
+                    className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+                  >
+                    <p>{error}</p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="mt-3"
+                      onClick={() => void retry()}
+                      disabled={busy}
+                    >
+                      <RotateCcw className="mr-2 h-3.5 w-3.5" />
+                      Try again
+                    </Button>
                   </div>
                 ) : null}
                 <div ref={chatEnd} />
@@ -359,7 +403,9 @@ function Snapshot({
         <Icon className="h-4 w-4" />
       </span>
       <span>
-        <strong className="block text-lg leading-5 text-[#26354A]">{value}</strong>
+        <strong className="block text-lg leading-5 text-[#26354A]">
+          {value}
+        </strong>
         <span className="text-xs text-[#718096]">{label}</span>
       </span>
     </button>

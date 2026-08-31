@@ -3,10 +3,14 @@ import { routeSalesCommand } from "./supervisor";
 
 describe("supervisor routing", () => {
   it("routes final closure commands into the governed workflow", () => {
-    expect(routeSalesCommand("Close the final unsuccessful contact")).toMatchObject({ intent: "workflow", workflowKey: "final_close" });
+    expect(
+      routeSalesCommand("Close the final unsuccessful contact")
+    ).toMatchObject({ intent: "workflow", workflowKey: "final_close" });
   });
-  it("requires factual notes for live coaching", () => {
-    expect(routeSalesCommand("Help with this objection on my call")).toMatchObject({ intent: "coaching", agentKey: "conversation_coach" });
+  it("routes explicit objection help to the objection specialist", () => {
+    expect(
+      routeSalesCommand("Help with this objection on my call")
+    ).toMatchObject({ intent: "coaching", agentKey: "objection_handler" });
   });
   it.each([
     ["Who has been waiting for us?", "sales_comms_tracker"],
@@ -17,6 +21,9 @@ describe("supervisor routing", () => {
     ["Who should I contact first today?", "attention_engine"],
     ["Manager watchtower: who is not following up?", "manager_watchtower"],
   ])("routes %s to %s", (command, agentKey) => {
-    expect(routeSalesCommand(command)).toMatchObject({ intent: "analytics", agentKey });
+    expect(routeSalesCommand(command)).toMatchObject({
+      intent: "analytics",
+      agentKey,
+    });
   });
 });

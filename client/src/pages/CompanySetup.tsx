@@ -1,20 +1,19 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import ManagementElevation from "@/components/ManagementElevation";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
+import { friendlyError } from "@/lib/friendlyError";
 import {
   buildBusinessBasicsApproval,
   type WebsiteKnowledgeApprovalCandidate,
 } from "@shared/companyKnowledgeApprovalPolicy";
-import {
-  BadgeCheck,
-  Check,
-  Loader2,
-  ShieldCheck,
-} from "lucide-react";
-import { useMemo, useState } from "react";
+import { BadgeCheck, Check, Loader2, ShieldCheck } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import Onboarding from "./Onboarding";
+import Knowledge from "./Knowledge";
 
 const groupLabels = {
   company: "Your business",
@@ -22,10 +21,6 @@ const groupLabels = {
   credentials: "Credentials",
   contact: "Contact and support",
 } as const;
-
-function friendlyError() {
-  return "I couldn't save that confirmation. Nothing changed, so you can safely try again.";
-}
 
 function CompanyKnowledgeReview() {
   const utils = trpc.useUtils();
@@ -39,10 +34,17 @@ function CompanyKnowledgeReview() {
   });
   const updateOnboarding = trpc.organisation.updateOnboarding.useMutation();
   const [error, setError] = useState("");
+  const [corrections, setCorrections] = useState<
+    Record<number, { title: string; content: string }>
+  >({});
 
   const discovery = setup.data?.currentDiscovery ?? null;
-  const candidates = (discovery?.proposedKnowledge ?? []) as WebsiteKnowledgeApprovalCandidate[];
-  const basics = useMemo(() => buildBusinessBasicsApproval(candidates), [candidates]);
+  const candidates = (discovery?.proposedKnowledge ??
+    []) as WebsiteKnowledgeApprovalCandidate[];
+  const basics = useMemo(
+    () => buildBusinessBasicsApproval(candidates),
+    [candidates]
+  );
   const groups = useMemo(
     () =>
       (["company", "offerings", "credentials", "contact"] as const)
@@ -53,6 +55,15 @@ function CompanyKnowledgeReview() {
         .filter(group => group.items.length),
     [basics]
   );
+
+  useEffect(() => {
+    setCorrections(current => {
+      const next = { ...current };
+      for (const item of basics)
+        next[item.index] ??= { title: item.title, content: item.content };
+      return next;
+    });
+  }, [basics]);
 
   const confirm = trpc.companySetup.confirmDiscovery.useMutation({
     onSuccess: async () => {
@@ -65,7 +76,13 @@ function CompanyKnowledgeReview() {
       toast.success("Business knowledge confirmed.");
       window.location.assign("/company-setup");
     },
-    onError: () => setError(friendlyError()),
+    onError: cause =>
+      setError(
+        friendlyError(
+          cause,
+          "I couldn't save that confirmation. Nothing changed, so you can safely try again."
+        )
+      ),
   });
 
   if (!discovery) return <Onboarding />;
@@ -86,8 +103,19 @@ function CompanyKnowledgeReview() {
                 Here’s what I learned about your business.
               </h1>
               <p className="mt-4 max-w-3xl text-sm leading-6 text-[#66758A]">
-                Check these basics once. They become the trusted company context I use when helping your sales team.
+                Check and correct these basics once. They become the trusted
+                company context I use when helping your sales team.
               </p>
+              {discovery.sourceUrl ? (
+                <a
+                  className="mt-3 inline-block text-xs font-semibold text-[#3F70D8] hover:underline"
+                  href={discovery.sourceUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  View website source
+                </a>
+              ) : null}
             </div>
           </div>
         </header>
@@ -95,19 +123,53 @@ function CompanyKnowledgeReview() {
         <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_300px]">
           <section className="space-y-4">
             {groups.map(({ group, items }) => (
-              <article key={group} className="rounded-3xl border border-[#DCE4EE] bg-white p-5 shadow-sm sm:p-6">
+              <article
+                key={group}
+                className="rounded-3xl border border-[#DCE4EE] bg-white p-5 shadow-sm sm:p-6"
+              >
                 <h2 className="font-display text-2xl font-bold tracking-[-.04em]">
                   {groupLabels[group]}
                 </h2>
                 <div className="mt-4 space-y-3">
                   {items.map(item => (
-                    <div key={`${item.index}-${item.title}`} className="flex gap-3 rounded-2xl border border-[#E5EAF0] bg-[#FAFCFF] p-4">
+                    <div
+                      key={`${item.index}-${item.title}`}
+                      className="flex gap-3 rounded-2xl border border-[#E5EAF0] bg-[#FAFCFF] p-4"
+                    >
                       <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-emerald-100 text-emerald-700">
                         <Check className="h-3.5 w-3.5" />
                       </span>
                       <div>
-                        <p className="font-bold text-[#26354A]">{item.title}</p>
-                        <p className="mt-1 text-sm leading-6 text-[#66758A]">{item.content}</p>
+                        <Input
+                          aria-label={`Title for ${item.title}`}
+                          value={corrections[item.index]?.title ?? item.title}
+                          onChange={event =>
+                            setCorrections(current => ({
+                              ...current,
+                              [item.index]: {
+                                title: event.target.value,
+                                content:
+                                  current[item.index]?.content ?? item.content,
+                              },
+                            }))
+                          }
+                        />
+                        <Textarea
+                          aria-label={`Details for ${item.title}`}
+                          className="mt-2 min-h-24"
+                          value={
+                            corrections[item.index]?.content ?? item.content
+                          }
+                          onChange={event =>
+                            setCorrections(current => ({
+                              ...current,
+                              [item.index]: {
+                                title: current[item.index]?.title ?? item.title,
+                                content: event.target.value,
+                              },
+                            }))
+                          }
+                        />
                       </div>
                     </div>
                   ))}
@@ -117,7 +179,8 @@ function CompanyKnowledgeReview() {
 
             {!basics.length ? (
               <article className="rounded-3xl border border-amber-200 bg-amber-50 p-6 text-amber-900">
-                I couldn’t find enough clear business basics to confirm yet. Nothing has been added to trusted knowledge.
+                I couldn’t find enough clear business basics to confirm yet.
+                Nothing has been added to trusted knowledge.
               </article>
             ) : null}
           </section>
@@ -127,29 +190,42 @@ function CompanyKnowledgeReview() {
               <ShieldCheck className="h-5 w-5 text-[#3F70D8]" />
               <h2 className="mt-4 font-bold">You stay in control</h2>
               <p className="mt-2 text-sm leading-6 text-[#66758A]">
-                Website prices, finance terms, guarantees and other commercial details are not automatically treated as trusted sales facts. Add or confirm those deliberately from an authoritative source when needed.
+                Website prices, finance terms, guarantees and other commercial
+                details are not automatically treated as trusted sales facts.
+                Add or confirm those deliberately from an authoritative source
+                when needed.
               </p>
             </div>
 
             <ManagementElevation />
 
             {error ? (
-              <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+              <p
+                role="alert"
+                className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800"
+              >
                 {error}
               </p>
             ) : null}
 
             <Button
               className="w-full"
-              disabled={!basics.length || !management.data?.elevated || confirm.isPending || updateOnboarding.isPending}
+              disabled={
+                !basics.length ||
+                !management.data?.elevated ||
+                confirm.isPending ||
+                updateOnboarding.isPending
+              }
               onClick={() =>
                 confirm.mutate({
                   discoveryId: discovery.id,
                   knowledgeIndexes: basics.map(item => item.index),
                   corrections: basics.map(item => ({
                     index: item.index,
-                    title: item.title,
-                    content: item.content,
+                    ...(corrections[item.index] ?? {
+                      title: item.title,
+                      content: item.content,
+                    }),
                   })),
                 })
               }
@@ -163,7 +239,8 @@ function CompanyKnowledgeReview() {
             </Button>
             {!management.data?.elevated ? (
               <p className="text-center text-xs leading-5 text-[#8290A3]">
-                Confirm management access above before approving shared company knowledge.
+                Confirm management access above before approving shared company
+                knowledge.
               </p>
             ) : null}
           </aside>
@@ -174,12 +251,15 @@ function CompanyKnowledgeReview() {
 }
 
 export default function CompanySetup() {
+  const organisation = trpc.organisation.current.useQuery(undefined, {
+    retry: false,
+  });
   const setup = trpc.companySetup.get.useQuery(undefined, {
     retry: false,
     refetchInterval: 3_000,
   });
 
-  if (setup.isLoading)
+  if (setup.isLoading || organisation.isLoading)
     return (
       <DashboardLayout>
         <div className="grid min-h-[55vh] place-items-center text-[#66758A]">
@@ -192,5 +272,13 @@ export default function CompanySetup() {
     );
 
   if (setup.data?.currentDiscovery) return <CompanyKnowledgeReview />;
+  const onboarding = organisation.data?.settings?.onboarding;
+  if (
+    onboarding &&
+    typeof onboarding === "object" &&
+    !Array.isArray(onboarding) &&
+    (onboarding as { complete?: unknown }).complete === true
+  )
+    return <Knowledge />;
   return <Onboarding />;
 }

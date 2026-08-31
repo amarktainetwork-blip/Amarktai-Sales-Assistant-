@@ -187,7 +187,6 @@ export async function startCompanyKnowledgeJob(input: {
       .from(companyKnowledgeJobs)
       .where(
         and(
-          eq(companyKnowledgeJobs.userId, input.userId),
           eq(companyKnowledgeJobs.organisationId, input.organisationId),
           eq(companyKnowledgeJobs.companyProfileId, input.companyProfileId),
           inArray(companyKnowledgeJobs.status, ["queued", "running"])
@@ -249,7 +248,6 @@ export async function getLatestCompanyKnowledgeJob(input: {
       .from(companyKnowledgeJobs)
       .where(
         and(
-          eq(companyKnowledgeJobs.userId, input.userId),
           eq(companyKnowledgeJobs.organisationId, input.organisationId),
           eq(companyKnowledgeJobs.companyProfileId, input.companyProfileId)
         )
@@ -275,7 +273,6 @@ export async function retryCompanyKnowledgeJob(input: {
       .where(
         and(
           eq(companyKnowledgeJobs.id, input.jobId),
-          eq(companyKnowledgeJobs.userId, input.userId),
           eq(companyKnowledgeJobs.organisationId, input.organisationId),
           eq(companyKnowledgeJobs.companyProfileId, input.companyProfileId)
         )

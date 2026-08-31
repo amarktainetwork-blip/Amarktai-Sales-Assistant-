@@ -1,10 +1,13 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { publicPageMetadata } from "@/marketing/site";
+import { trpc } from "@/lib/trpc";
 import NotFound from "@/pages/NotFound";
 import { useEffect } from "react";
 import { Route, Switch, useLocation } from "wouter";
+import { useAuth } from "@/_core/hooks/useAuth";
 import ErrorBoundary from "./components/ErrorBoundary";
+import { DashboardLayoutSkeleton } from "./components/DashboardLayoutSkeleton";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import "./dashboard-final.css";
 import "./dashboard-client-readability.css";
@@ -27,17 +30,70 @@ import CrmWorkspace from "./pages/CrmWorkspace";
 import Customers from "./pages/Customers";
 import Home from "./pages/Home";
 import LiveCalls from "./pages/LiveCalls";
+import Knowledge from "./pages/Knowledge";
 import Pricing from "./pages/Pricing";
 import Reports from "./pages/Reports";
-import SalesAutomation from "./pages/SalesAutomation";
 import TeamIntelligence from "./pages/TeamIntelligence";
 import TeamManagement from "./pages/TeamManagement";
 import Today from "./pages/Today";
-import {
-  CommandCentre,
-  KnowledgeHub,
-  WorkflowStudio,
-} from "./pages/Workspace";
+import { CommandCentre } from "./pages/Workspace";
+
+function LegacyRedirect({ to }: { to: string }) {
+  const [, navigate] = useLocation();
+  useEffect(() => navigate(to, { replace: true }), [navigate, to]);
+  return <DashboardLayoutSkeleton />;
+}
+
+function ManagementOnly({
+  children,
+  platformAdminOnly = false,
+}: {
+  children: React.ReactNode;
+  platformAdminOnly?: boolean;
+}) {
+  const [, navigate] = useLocation();
+  const { user, loading } = useAuth();
+  const security = trpc.security.status.useQuery(undefined, {
+    enabled: Boolean(user),
+  });
+  const organisation = trpc.organisation.current.useQuery(undefined, {
+    enabled: Boolean(user && security.data?.verified),
+    retry: false,
+  });
+  const allowed = platformAdminOnly
+    ? user?.role === "admin"
+    : organisation.data?.role === "owner" ||
+      organisation.data?.role === "manager" ||
+      user?.role === "admin";
+  useEffect(() => {
+    if (!loading && !user) {
+      navigate("/auth", { replace: true });
+      return;
+    }
+    if (!loading && user && security.data && !security.data.verified) {
+      navigate("/assistant", { replace: true });
+      return;
+    }
+    if (
+      !loading &&
+      user &&
+      security.data?.verified &&
+      !organisation.isLoading &&
+      !allowed
+    )
+      navigate("/assistant", { replace: true });
+  }, [
+    allowed,
+    loading,
+    navigate,
+    organisation.isLoading,
+    security.data?.verified,
+    user,
+  ]);
+  if (loading || security.isLoading || organisation.isLoading || !allowed)
+    return <DashboardLayoutSkeleton />;
+  return <>{children}</>;
+}
 
 function Router() {
   return (
@@ -57,28 +113,76 @@ function Router() {
 
         <Route path="/dashboard" component={Assistant} />
         <Route path="/assistant" component={Assistant} />
-        <Route path="/agents" component={Assistant} />
+        <Route path="/agents">{() => <LegacyRedirect to="/assistant" />}</Route>
         <Route path="/today" component={Today} />
-        <Route path="/sell" component={Today} />
+        <Route path="/sell">{() => <LegacyRedirect to="/today" />}</Route>
         <Route path="/customers" component={Customers} />
         <Route path="/calls" component={LiveCalls} />
         <Route path="/crm/:connectedSystemId" component={CrmWorkspace} />
         <Route path="/crm" component={CrmWorkspace} />
 
-        <Route path="/team" component={TeamIntelligence} />
-        <Route path="/team/manage" component={TeamManagement} />
-        <Route path="/connections" component={ConnectionsV2} />
-        <Route path="/company-setup" component={CompanySetup} />
+        <Route path="/team">
+          {() => (
+            <ManagementOnly>
+              <TeamIntelligence />
+            </ManagementOnly>
+          )}
+        </Route>
+        <Route path="/team/manage">
+          {() => (
+            <ManagementOnly>
+              <TeamManagement />
+            </ManagementOnly>
+          )}
+        </Route>
+        <Route path="/connections">
+          {() => (
+            <ManagementOnly>
+              <ConnectionsV2 />
+            </ManagementOnly>
+          )}
+        </Route>
+        <Route path="/company-setup">
+          {() => (
+            <ManagementOnly>
+              <CompanySetup />
+            </ManagementOnly>
+          )}
+        </Route>
 
         {/* Existing specialist/admin surfaces remain addressable for managers
             while the normal product navigation is Assistant-first. */}
         <Route path="/reviews" component={CommandCentre} />
-        <Route path="/workspace" component={CommandCentre} />
-        <Route path="/workflows" component={WorkflowStudio} />
-        <Route path="/knowledge" component={KnowledgeHub} />
-        <Route path="/reports" component={Reports} />
-        <Route path="/automation" component={SalesAutomation} />
-        <Route path="/admin-controls" component={AdminControls} />
+        <Route path="/workspace">
+          {() => <LegacyRedirect to="/reviews" />}
+        </Route>
+        <Route path="/workflows">
+          {() => <LegacyRedirect to="/assistant" />}
+        </Route>
+        <Route path="/knowledge">
+          {() => (
+            <ManagementOnly>
+              <Knowledge />
+            </ManagementOnly>
+          )}
+        </Route>
+        <Route path="/reports">
+          {() => (
+            <ManagementOnly>
+              <Reports />
+            </ManagementOnly>
+          )}
+        </Route>
+        <Route path="/automation">
+          {() => <LegacyRedirect to="/assistant" />}
+        </Route>
+        <Route path="/admin-controls">
+          {() => (
+            <ManagementOnly platformAdminOnly>
+              <AdminControls />
+            </ManagementOnly>
+          )}
+        </Route>
 
         <Route path="/404" component={NotFound} />
         <Route component={NotFound} />

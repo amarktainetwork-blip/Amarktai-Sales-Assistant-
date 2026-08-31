@@ -132,7 +132,6 @@ export default function LiveCalls() {
   const [signals, setSignals] = useState<Signal[]>([]);
   const [tip, setTip] = useState("");
   const [sttReady, setSttReady] = useState<boolean | null>(null);
-  const [sttLabel, setSttLabel] = useState("Speech-to-text");
   const [completing, setCompleting] = useState(false);
   const [awaitingCloseout, setAwaitingCloseout] = useState(false);
   const [outcome, setOutcome] = useState("interested");
@@ -184,7 +183,9 @@ export default function LiveCalls() {
   }, [initialSessionId, sessionId]);
   useEffect(() => {
     if (initialContactId <= 0 || selectedContactId) return;
-    const contact = initialCustomers.data?.find(item => item.id === initialContactId);
+    const contact = initialCustomers.data?.find(
+      item => item.id === initialContactId
+    );
     if (!contact) return;
     setSelectedContactId(contact.id);
     setLeadLabel(contact.name);
@@ -215,11 +216,14 @@ export default function LiveCalls() {
             body.error || "Could not check transcription readiness."
           );
         setSttReady(Boolean(body.ready));
-        setSttLabel(body.provider || "Speech-to-text");
       })
       .catch(error => {
         setSttReady(false);
-        setWorkflowError(error instanceof Error ? error.message : "Transcription readiness could not be checked.");
+        setWorkflowError(
+          error instanceof Error
+            ? error.message
+            : "Transcription readiness could not be checked."
+        );
         setRetryAction(() => () => window.location.reload());
       });
     return () => {
@@ -243,7 +247,9 @@ export default function LiveCalls() {
       });
       setTip(result.content);
     } catch (error) {
-      setWorkflowError(error instanceof Error ? error.message : "Live coaching failed.");
+      setWorkflowError(
+        error instanceof Error ? error.message : "Live coaching failed."
+      );
       setRetryAction(() => () => void requestCoaching(activeSessionId, text));
     } finally {
       coachingRef.current = false;
@@ -336,9 +342,14 @@ export default function LiveCalls() {
         pendingRef.current = pendingRef.current
           .then(() => uploadChunk(event.data, activeSessionId))
           .catch(error => {
-            const detail = error instanceof Error ? error.message : "Live transcription failed.";
+            const detail =
+              error instanceof Error
+                ? error.message
+                : "Live transcription failed.";
             setWorkflowError(detail);
-            setRetryAction(() => () => void uploadChunk(event.data, activeSessionId));
+            setRetryAction(
+              () => () => void uploadChunk(event.data, activeSessionId)
+            );
             toast.error(detail);
           });
       };
@@ -356,7 +367,10 @@ export default function LiveCalls() {
       sourcesRef.current = [];
       void audioContextRef.current?.close();
       audioContextRef.current = undefined;
-      const detail = error instanceof Error ? error.message : "Could not start audio capture.";
+      const detail =
+        error instanceof Error
+          ? error.message
+          : "Could not start audio capture.";
       setWorkflowError(detail);
       setRetryAction(() => () => void begin());
       toast.error(detail);
@@ -395,7 +409,10 @@ export default function LiveCalls() {
       setOutcome("no_answer");
       setAwaitingCloseout(true);
     } catch (error) {
-      const detail = error instanceof Error ? error.message : "Could not start call attempt.";
+      const detail =
+        error instanceof Error
+          ? error.message
+          : "Could not start call attempt.";
       setWorkflowError(detail);
       setRetryAction(() => () => void recordAttemptWithoutAudio());
       toast.error(detail);
@@ -427,7 +444,12 @@ export default function LiveCalls() {
               : outcome === "lost"
                 ? "lost"
                 : "unchanged",
-          contactStatus: ["qualified", "unqualified", "not_interested", "wrong_number"].includes(outcome)
+          contactStatus: [
+            "qualified",
+            "unqualified",
+            "not_interested",
+            "wrong_number",
+          ].includes(outcome)
             ? outcome
             : undefined,
           commitmentsConfirmed: true,
@@ -446,10 +468,13 @@ export default function LiveCalls() {
       setCloseoutActions(result.actions || []);
       setAwaitingCloseout(false);
       toast.success(
-        `Closeout prepared. ${result.autoExecutions?.length || 0} policy-approved item(s) ran automatically; the rest remain governed.`
+        `Follow-up prepared. ${result.autoExecutions?.length || 0} already-approved item(s) completed; the rest are ready for review.`
       );
     } catch (error) {
-      const detail = error instanceof Error ? error.message : "Could not complete the call closeout.";
+      const detail =
+        error instanceof Error
+          ? error.message
+          : "Could not complete the call closeout.";
       setWorkflowError(detail);
       setRetryAction(() => () => void completeCloseout());
       toast.error(detail);
@@ -468,26 +493,40 @@ export default function LiveCalls() {
           Listen less to the admin. Listen more to the customer.
         </h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-[#A9BFDF]">
-          Authorised call audio is transcribed in short chunks, live signals are
-          detected locally in code, and Amarktai reasoning is used only when semantic
-          coaching is useful. Raw chunks are forwarded to your configured STT
-          service and are not retained by this bridge.
+          With your permission, Amarktai can transcribe the call, notice
+          important questions and commitments, and offer coaching when it is
+          useful. You stay in control of what is saved or sent.
         </p>
       </header>
       {workflowError ? (
-        <section role="alert" className="mt-6 rounded-2xl border border-rose-300/25 bg-rose-400/10 p-5 text-rose-50">
+        <section
+          role="alert"
+          className="mt-6 rounded-2xl border border-rose-300/25 bg-rose-400/10 p-5 text-rose-50"
+        >
           <p className="font-bold">The current call step needs attention.</p>
-          <p className="mt-2 text-sm leading-6 text-rose-100/85">{workflowError}</p>
+          <p className="mt-2 text-sm leading-6 text-rose-100/85">
+            {workflowError}
+          </p>
           <div className="mt-4 flex gap-2">
-            {retryAction ? <Button onClick={retryAction} className="bg-[#1B64F2]">Retry</Button> : null}
-            <Button variant="outline" onClick={() => setWorkflowError("")} className="border-white/15 bg-white/5 text-white">Dismiss</Button>
+            {retryAction ? (
+              <Button onClick={retryAction} className="bg-[#1B64F2]">
+                Retry
+              </Button>
+            ) : null}
+            <Button
+              variant="outline"
+              onClick={() => setWorkflowError("")}
+              className="border-white/15 bg-white/5 text-white"
+            >
+              Dismiss
+            </Button>
           </div>
         </section>
       ) : null}
       {callContext.data?.context && (
         <section className="mt-6 rounded-[1.5rem] border border-[#3D69AD]/40 bg-[#0E2142] p-6">
           <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#7FAAF8]">
-            DETERMINISTIC PRE-CALL BRIEF
+            PRE-CALL BRIEF
           </p>
           <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
             {[
@@ -497,7 +536,7 @@ export default function LiveCalls() {
               ],
               [
                 "CRM",
-                `${callContext.data.context.provider} · ${callContext.data.context.pipeline || "No pipeline"} / ${callContext.data.context.stage || "No stage"}\n${callContext.data.context.opportunityName || "No open opportunity"}`,
+                `${callContext.data.context.pipeline || "No pipeline"} / ${callContext.data.context.stage || "No stage"}\n${callContext.data.context.opportunityName || "No open opportunity"}`,
               ],
               [
                 "Current work",
@@ -547,10 +586,10 @@ export default function LiveCalls() {
               className={`rounded-full px-3 py-1 text-xs font-bold ${sttReady ? "bg-emerald-400/10 text-emerald-200" : "bg-amber-400/10 text-amber-100"}`}
             >
               {sttReady === null
-                ? "Checking STT…"
+                ? "Checking transcription…"
                 : sttReady
-                  ? `${sttLabel} ready`
-                  : "STT not configured"}
+                  ? "Transcription ready"
+                  : "Transcription unavailable"}
             </span>
           </div>
           <label className="mt-6 block text-xs font-black uppercase tracking-[.12em] text-[#9EB6DB]">
@@ -564,13 +603,13 @@ export default function LiveCalls() {
               setLeadLabel(event.target.value);
               setSelectedContactId(undefined);
             }}
-            placeholder="Jane Smith, exact email, or CRM ID"
+            placeholder="Jane Smith, email, or phone"
             className="mt-2 border-white/15 bg-[#08172F] text-white placeholder:text-[#607EA8]"
           />
           {!sessionId && !!contactMatches.data?.length && (
             <div className="mt-2 space-y-1 rounded-xl border border-white/10 bg-[#071326] p-2">
               <p className="px-2 py-1 text-[10px] font-black uppercase text-[#7896C1]">
-                Choose the verified normalized CRM contact
+                Choose the customer
               </p>
               {contactMatches.data.map(contact => (
                 <button
@@ -584,9 +623,7 @@ export default function LiveCalls() {
                 >
                   <b>{contact.name}</b>
                   <span className="ml-2 text-[#8FA9CE]">
-                    {contact.email ||
-                      contact.phone ||
-                      `CRM contact ${contact.id}`}
+                    {contact.email || contact.phone || "CRM customer"}
                   </span>
                 </button>
               ))}
@@ -776,49 +813,17 @@ export default function LiveCalls() {
                   />
                 </label>
               </div>
-              <details className="mt-4">
-                <summary className="cursor-pointer text-xs font-bold text-[#8FB7FF]">
-                  Advanced commissioning identifiers
-                </summary>
-                <p className="mt-2 text-xs text-[#8FA9CE]">
-                  Normal Today and resolved-contact calls inherit verified IDs
-                  automatically. Values entered here are still checked against
-                  the active organisation before use.
-                </p>
-                <div className="mt-3 grid gap-3 md:grid-cols-3">
-                  <Input
-                    value={contactExternalId}
-                    onChange={event => setContactExternalId(event.target.value)}
-                    placeholder="Contact external ID"
-                    className="border-white/15 bg-[#071326] text-white"
-                  />
-                  <Input
-                    value={taskExternalId}
-                    onChange={event => setTaskExternalId(event.target.value)}
-                    placeholder="Current task / Manual Action ID"
-                    className="border-white/15 bg-[#071326] text-white"
-                  />
-                  <Input
-                    value={opportunityExternalId}
-                    onChange={event =>
-                      setOpportunityExternalId(event.target.value)
-                    }
-                    placeholder="Opportunity external ID"
-                    className="border-white/15 bg-[#071326] text-white"
-                  />
-                </div>
-              </details>
               <div className="mt-4 rounded-xl bg-[#153B7A]/45 p-3 text-xs leading-5 text-[#DCE7F8]">
                 {callContext.data?.context
-                  ? "Verified CRM identity inherited. "
-                  : "No verified CRM identity is attached; external actions will fail closed. "}
-                Preview: factual note + call activity
+                  ? "This call is linked to the selected customer. "
+                  : "Choose a customer before preparing CRM changes. "}
+                Amarktai will prepare a factual note and call activity
                 {taskExternalId ? " + complete current task" : ""}
                 {callbackAt ? " + create callback" : ""}
                 {communicationChannel
                   ? ` + prepare ${communicationChannel} template (review-controlled by policy)`
                   : ""}
-                . Transcript ambiguity never creates a commitment.
+                . You can review any external change before it is made.
               </div>
               <Button
                 disabled={completing}
@@ -826,8 +831,8 @@ export default function LiveCalls() {
                 className="mt-4 bg-[#1B64F2] hover:bg-[#2B76FF]"
               >
                 {completing
-                  ? "Preparing governed actions…"
-                  : "Confirm outcome and run allowed admin"}
+                  ? "Preparing follow-up…"
+                  : "Confirm outcome and prepare follow-up"}
               </Button>
             </section>
           )}
@@ -881,8 +886,7 @@ export default function LiveCalls() {
               ) : (
                 <p className="text-sm leading-6 text-[#9EB6DB]">
                   Questions, objections, commitments, callback requests and
-                  buying signals detected by deterministic rules will appear
-                  here.
+                  buying signals noticed during the call will appear here.
                 </p>
               )}
             </div>
@@ -896,7 +900,7 @@ export default function LiveCalls() {
             </div>
             <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-[#D9E5F7]">
               {tip ||
-                "A short coaching response appears only when an important signal or question warrants semantic help. Routine transcription does not request semantic coaching."}
+                "Coaching appears when an important question or signal needs help. Routine transcription stays focused on accurate notes."}
             </p>
           </section>
         </div>

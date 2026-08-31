@@ -1,5 +1,12 @@
 import { and, eq } from "drizzle-orm";
-import { organisationMembers, organisations, users } from "../drizzle/schema";
+import {
+  companyProfiles,
+  connectedSystems,
+  crmCommissioningJobs,
+  organisationMembers,
+  organisations,
+  users,
+} from "../drizzle/schema";
 import { getDb } from "./db";
 import {
   canManageOrganisation,
@@ -13,7 +20,12 @@ export type { OrganisationRole } from "./organisationAccess";
 export type MemberOnboardingState = {
   step: number;
   complete: boolean;
-  persona?: "individual" | "company_owner" | "manager" | "salesperson" | "auditor";
+  persona?:
+    | "individual"
+    | "company_owner"
+    | "manager"
+    | "salesperson"
+    | "auditor";
   primaryGoal?: string;
   workingStyle?: string;
   crmIdentityConfirmed?: boolean;
@@ -89,9 +101,15 @@ export function memberOnboardingFor(
         ? Math.max(1, Math.min(6, row.step))
         : 1,
     complete: row.complete === true,
-    ...(typeof row.persona === "string" ? { persona: row.persona as MemberOnboardingState["persona"] } : {}),
-    ...(typeof row.primaryGoal === "string" ? { primaryGoal: row.primaryGoal } : {}),
-    ...(typeof row.workingStyle === "string" ? { workingStyle: row.workingStyle } : {}),
+    ...(typeof row.persona === "string"
+      ? { persona: row.persona as MemberOnboardingState["persona"] }
+      : {}),
+    ...(typeof row.primaryGoal === "string"
+      ? { primaryGoal: row.primaryGoal }
+      : {}),
+    ...(typeof row.workingStyle === "string"
+      ? { workingStyle: row.workingStyle }
+      : {}),
     ...(typeof row.crmIdentityConfirmed === "boolean"
       ? { crmIdentityConfirmed: row.crmIdentityConfirmed }
       : {}),
@@ -105,12 +123,15 @@ export function memberOnboardingFor(
   };
 }
 
-function withMemberOnboarding<T extends Omit<OrganisationMembership, "memberOnboarding">>(
-  membership: T
-): OrganisationMembership {
+function withMemberOnboarding<
+  T extends Omit<OrganisationMembership, "memberOnboarding">,
+>(membership: T): OrganisationMembership {
   return {
     ...membership,
-    memberOnboarding: memberOnboardingFor(membership.settings, membership.userId),
+    memberOnboarding: memberOnboardingFor(
+      membership.settings,
+      membership.userId
+    ),
   };
 }
 
@@ -215,9 +236,63 @@ export async function updateOnboardingState(input: {
   complete?: boolean;
 }) {
   if (!canManageOrganisation(input.membership.role))
-    throw new Error("Your organisation role does not permit company setup changes.");
+    throw new Error(
+      "Your organisation role does not permit company setup changes."
+    );
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
+  if (input.complete === true) {
+    const organisationId = input.membership.organisationId;
+    const [profiles, systems, jobs] = await Promise.all([
+      db
+        .select({ discoveryStatus: companyProfiles.discoveryStatus })
+        .from(companyProfiles)
+        .where(eq(companyProfiles.organisationId, organisationId)),
+      db
+        .select({
+          id: connectedSystems.id,
+          status: connectedSystems.status,
+          connectionMethod: connectedSystems.connectionMethod,
+        })
+        .from(connectedSystems)
+        .where(eq(connectedSystems.organisationId, organisationId)),
+      db
+        .select({
+          connectedSystemId: crmCommissioningJobs.connectedSystemId,
+          progress: crmCommissioningJobs.progress,
+        })
+        .from(crmCommissioningJobs)
+        .where(eq(crmCommissioningJobs.organisationId, organisationId)),
+    ]);
+    if (!profiles.some(profile => profile.discoveryStatus === "confirmed"))
+      throw new Error("Confirm the company knowledge before completing setup.");
+    const safeReadConnections = new Set(
+      jobs
+        .filter(job => {
+          const progress = job.progress as {
+            safeReads?: { status?: unknown };
+          } | null;
+          return progress?.safeReads?.status === "Ready";
+        })
+        .map(job => job.connectedSystemId)
+    );
+    const crmReady = systems.some(
+      system =>
+        ["ready", "limited_permissions"].includes(system.status) ||
+        (["browser", "sidecar"].includes(system.connectionMethod) &&
+          ![
+            "authentication_expired",
+            "paused",
+            "disconnected",
+            "error",
+          ].includes(system.status) &&
+          safeReadConnections.has(system.id))
+    );
+    if (!crmReady)
+      throw new Error(
+        "Your CRM is still checking safe read access. Keep it open and try again shortly."
+      );
+  }
   const row = (
     await db
       .select({ settings: organisations.settings })

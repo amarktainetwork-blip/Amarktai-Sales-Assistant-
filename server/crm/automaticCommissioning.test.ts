@@ -357,8 +357,8 @@ describe("automatic CRM commissioning product contract", () => {
     expect(onboarding).not.toContain("Teach Amarktai");
     expect(onboarding).not.toContain("BrowserOperationMatrix");
     expect(onboarding).not.toContain("sessionStorage.setItem");
-    expect(onboarding).toContain("Open CRM to continue");
-    expect(onboarding).toContain("Secure CRM Browser");
+    expect(onboarding).toContain("Connect {provider.label}");
+    expect(onboarding).toContain("Secure CRM workspace");
   });
 
   it("retains the simple native OAuth adapter flow", () => {

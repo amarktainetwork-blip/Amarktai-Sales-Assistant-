@@ -5,7 +5,7 @@ const read = (relative: string) =>
   readFileSync(new URL(relative, import.meta.url), "utf8");
 
 describe("durable whole-site company knowledge job contract", () => {
-  it("scopes status and retry operations to user, organisation and company profile", () => {
+  it("scopes shared company status and retry operations to organisation and company profile", () => {
     const jobs = read("./companyKnowledgeJobs.ts");
     const statusScope = jobs.slice(
       jobs.indexOf("export async function getLatestCompanyKnowledgeJob"),
@@ -16,9 +16,11 @@ describe("durable whole-site company knowledge job contract", () => {
       jobs.indexOf("async function checkpoint")
     );
     for (const scope of [statusScope, retryScope]) {
-      expect(scope).toContain("companyKnowledgeJobs.userId");
       expect(scope).toContain("companyKnowledgeJobs.organisationId");
       expect(scope).toContain("companyKnowledgeJobs.companyProfileId");
+      expect(scope).not.toContain(
+        "eq(companyKnowledgeJobs.userId, input.userId)"
+      );
     }
   });
 

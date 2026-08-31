@@ -1,6 +1,7 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
+import { friendlyError } from "@/lib/friendlyError";
 import {
   AlertCircle,
   CheckCircle2,
@@ -91,55 +92,39 @@ const writeCapabilities = [
   "sequences.apply",
 ];
 
-function publicError(error: unknown) {
-  const detail = error instanceof Error ? error.message : String(error);
-  if (/url|format|https/i.test(detail))
-    return "Enter the full CRM address, including https://";
-  if (/management password|elevation/i.test(detail))
-    return "Confirm your management password before changing this CRM connection.";
-  if (/authentication|sign.?in|session/i.test(detail))
-    return "Your CRM needs you to sign in again.";
-  if (/already|duplicate|reuse/i.test(detail))
-    return "That CRM is already connected. Open the existing connection instead.";
-  return "The CRM connection could not be changed safely. Try again.";
-}
-
-function statusPresentation(status: string, verified: number, total: number) {
+function statusPresentation(status: string) {
   if (status === "ready")
     return {
       tone: "ready" as const,
       title: "Connected",
-      detail:
-        verified > 0
-          ? `${verified} verified CRM functions are ready for Amarktai.`
-          : "The CRM session is connected and ready for function verification.",
+      detail: "Your CRM is connected and available to Amarktai.",
     };
   if (status === "testing" || status === "connecting")
     return {
       tone: "working" as const,
       title: "Finishing setup",
-      detail:
-        total > 0 && verified > 0
-          ? `${verified} of ${total} CRM functions verified so far.`
-          : "Amarktai is learning and safely checking the CRM functions it can use.",
+      detail: "Amarktai is safely checking the CRM data it can use.",
     };
   if (status === "authentication_expired")
     return {
       tone: "attention" as const,
       title: "Sign in again",
-      detail: "The saved CRM session expired. Reopen the CRM and sign in directly.",
+      detail:
+        "The saved CRM session expired. Reopen the CRM and sign in directly.",
     };
   if (status === "limited_permissions")
     return {
       tone: "attention" as const,
       title: "Connected with limits",
-      detail: `${verified} CRM functions are verified. Some functions need additional CRM permission.`,
+      detail:
+        "The CRM is connected, but some actions need additional CRM permission.",
     };
   if (status === "needs_attention" || status === "error")
     return {
       tone: "attention" as const,
       title: "Needs attention",
-      detail: "Open the CRM to finish the connection or resolve the sign-in issue.",
+      detail:
+        "Open the CRM to finish the connection or resolve the sign-in issue.",
     };
   return {
     tone: "working" as const,
@@ -208,11 +193,18 @@ export default function ConnectionsV2() {
         });
         window.location.assign(result.authorizationUrl);
       } else {
-        toast.success("CRM ready. Sign in directly inside your secure workspace.");
+        toast.success(
+          "CRM ready. Sign in directly inside your secure workspace."
+        );
         navigate(`/crm/${id}`);
       }
     } catch (cause) {
-      setError(publicError(cause));
+      setError(
+        friendlyError(
+          cause,
+          "The CRM connection could not be changed safely. Try again."
+        )
+      );
     }
   }
 
@@ -241,7 +233,10 @@ export default function ConnectionsV2() {
       );
       await systems.refetch();
     } catch (cause) {
-      const message = publicError(cause);
+      const message = friendlyError(
+        cause,
+        "The CRM connection could not be changed safely. Try again."
+      );
       setError(message);
       toast.error(message);
     } finally {
@@ -263,9 +258,9 @@ export default function ConnectionsV2() {
               </h1>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-[#66758A]">
                 Connect the company CRM once. Each salesperson signs in directly
-                inside their own private CRM workspace. Amarktai never asks for or
-                records the password or verification code; encrypted browser session
-                state is retained so the user can reconnect securely.
+                inside their own private CRM workspace. Amarktai never asks for
+                or records the password or verification code; encrypted browser
+                session state is retained so the user can reconnect securely.
               </p>
             </div>
             {canManage ? (
@@ -283,10 +278,12 @@ export default function ConnectionsV2() {
 
         {adding ? (
           <section className="rounded-2xl border border-[#DCE4EE] bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-bold text-[#26354A]">Choose your CRM</h2>
+            <h2 className="text-lg font-bold text-[#26354A]">
+              Choose your CRM
+            </h2>
             <p className="mt-1 text-sm text-[#718096]">
-              If this CRM already exists, Amarktai reuses the existing connection
-              instead of creating a duplicate.
+              If this CRM already exists, Amarktai reuses the existing
+              connection instead of creating a duplicate.
             </p>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {providers.map(item => (
@@ -303,7 +300,9 @@ export default function ConnectionsV2() {
                       : "border-[#DCE4EE] bg-white hover:border-[#AFC3E8] hover:bg-[#FAFCFF]"
                   }`}
                 >
-                  <span className="font-semibold text-[#26354A]">{item.label}</span>
+                  <span className="font-semibold text-[#26354A]">
+                    {item.label}
+                  </span>
                   <span className="mt-1 block text-xs text-[#718096]">
                     {item.transport === "oauth"
                       ? "Secure account connection"
@@ -381,21 +380,7 @@ export default function ConnectionsV2() {
           ) : null}
 
           {connected.map(system => {
-            const capabilities = Array.from(
-              new Set([
-                ...system.allowedReadCapabilities,
-                ...system.allowedWriteCapabilities,
-              ])
-            );
-            const ready = Array.from(new Set(system.verifiedCapabilities));
-            const presentation = statusPresentation(
-              system.status,
-              ready.length,
-              capabilities.length
-            );
-            const progress = capabilities.length
-              ? Math.round((ready.length / capabilities.length) * 100)
-              : 0;
+            const presentation = statusPresentation(system.status);
             const confirming = confirmDisconnectId === system.id;
 
             return (
@@ -431,11 +416,6 @@ export default function ConnectionsV2() {
                     <p className="mt-2 max-w-2xl text-sm leading-6 text-[#66758A]">
                       {presentation.detail}
                     </p>
-                    {system.lastHealthSummary && system.status !== "ready" ? (
-                      <p className="mt-2 max-w-2xl text-xs leading-5 text-[#8793A4]">
-                        {system.lastHealthSummary}
-                      </p>
-                    ) : null}
                   </div>
 
                   <div className="flex flex-wrap gap-2">
@@ -458,44 +438,6 @@ export default function ConnectionsV2() {
                   </div>
                 </div>
 
-                <div className="mt-5 rounded-xl border border-[#E2E8F0] bg-[#FAFCFF] p-4">
-                  <div className="flex items-center justify-between gap-3 text-xs">
-                    <span className="font-bold text-[#33445B]">CRM functions</span>
-                    <span className="text-[#718096]">
-                      {ready.length} verified{capabilities.length ? ` of ${capabilities.length}` : ""}
-                    </span>
-                  </div>
-                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#E6ECF4]">
-                    <div
-                      className="h-full rounded-full bg-[#3F70D8] transition-all"
-                      style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
-                    />
-                  </div>
-                  {ready.length ? (
-                    <div className="mt-3 flex flex-wrap gap-1.5">
-                      {ready.slice(0, 8).map(capability => (
-                        <span
-                          key={capability}
-                          className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700"
-                        >
-                          {capability}
-                        </span>
-                      ))}
-                      {ready.length > 8 ? (
-                        <span className="rounded-full bg-[#EEF2F7] px-2.5 py-1 text-[11px] font-semibold text-[#66758A]">
-                          +{ready.length - 8} more
-                        </span>
-                      ) : null}
-                    </div>
-                  ) : (
-                    <p className="mt-3 text-xs leading-5 text-[#718096]">
-                      {system.status === "testing" || system.status === "connecting"
-                        ? "Amarktai is checking safe CRM functions. Write actions stay unavailable until they are explicitly proven."
-                        : "Open the CRM to begin safe function verification."}
-                    </p>
-                  )}
-                </div>
-
                 {canManage ? (
                   <div className="mt-4 border-t border-[#E5EAF0] pt-4">
                     {confirming ? (
@@ -506,8 +448,8 @@ export default function ConnectionsV2() {
                           </p>
                           <p className="mt-1 text-xs leading-5 text-red-700">
                             This closes live browser sessions and removes saved
-                            authentication. Retained CRM history and audit evidence are
-                            preserved.
+                            authentication. Retained CRM history and audit
+                            evidence are preserved.
                           </p>
                         </div>
                         <div className="flex gap-2">
@@ -551,10 +493,12 @@ export default function ConnectionsV2() {
 
           {!systems.isLoading && connected.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-[#C9D4E2] bg-white p-10 text-center shadow-sm">
-              <h2 className="text-lg font-bold text-[#26354A]">No CRM connected</h2>
+              <h2 className="text-lg font-bold text-[#26354A]">
+                No CRM connected
+              </h2>
               <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-[#718096]">
-                A manager connects the company CRM once. Team members then sign in
-                with their own CRM account when they open the workspace.
+                A manager connects the company CRM once. Team members then sign
+                in with their own CRM account when they open the workspace.
               </p>
               {canManage ? (
                 <Button className="mt-5" onClick={() => setAdding(true)}>

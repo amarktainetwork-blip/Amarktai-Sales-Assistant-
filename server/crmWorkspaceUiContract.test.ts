@@ -19,7 +19,7 @@ describe("CRM workspace customer interaction contract", () => {
     expect(source).toContain("pendingInputsRef");
     expect(source).toContain('type: "acquireHumanControl"');
     expect(source).toContain("flushPendingInput");
-    expect(source).toContain("Click anywhere in the CRM. Control is automatic.");
+    expect(source).toContain("Move here to take control");
   });
 
   it("maps the streamed browser image back to Chromium coordinates", () => {
@@ -35,13 +35,16 @@ describe("CRM workspace customer interaction contract", () => {
     expect(source).toContain("onKeyDown");
     expect(source).toContain("onKeyUp");
     expect(source).toContain("onPaste");
-    expect(source).toContain('.slice(0, 4_000)');
+    expect(source).toContain(".slice(0, 4_000)");
   });
 
   it("keeps secondary controls in the Assistant drawer", () => {
-    expect(source).toContain('const [assistantOpen, setAssistantOpen] = useState(false)');
+    expect(source).toContain(
+      "const [assistantOpen, setAssistantOpen] = useState(false)"
+    );
     expect(source).toContain("CRM controls");
-    expect(source).toContain("Capabilities ·");
     expect(source).toContain("Recent CRM activity");
+    expect(source).not.toContain("CRM functions ·");
+    expect(source).not.toContain("readyCapabilities.map");
   });
 });

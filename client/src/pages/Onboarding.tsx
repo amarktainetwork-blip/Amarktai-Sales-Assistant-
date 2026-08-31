@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
+import { friendlyError } from "@/lib/friendlyError";
 import {
   ArrowRight,
   Bot,
@@ -96,17 +97,6 @@ const allowedWriteCapabilities = [
   "sequences.apply",
 ];
 
-function friendlyError(error: unknown, fallback: string) {
-  const raw = error instanceof Error ? error.message : String(error || "");
-  if (/url|format|https/i.test(raw))
-    return "Enter the full address, including https://";
-  if (/management|elevation/i.test(raw))
-    return "Confirm management access and try again.";
-  if (/network|timeout|fetch/i.test(raw))
-    return "The connection was interrupted. Your saved progress is safe; try again.";
-  return fallback;
-}
-
 function StepDot({
   number,
   label,
@@ -164,9 +154,9 @@ export default function Onboarding() {
   const createConnection = trpc.connectedSystems.create.useMutation();
   const beginOAuth = trpc.connectedSystems.beginOAuth.useMutation();
 
-  const [workspaceMode, setWorkspaceMode] = useState<"individual" | "team" | null>(
-    null
-  );
+  const [workspaceMode, setWorkspaceMode] = useState<
+    "individual" | "team" | null
+  >(null);
   const [profile, setProfile] = useState({
     companyName: "",
     websiteUrl: "",
@@ -210,10 +200,13 @@ export default function Onboarding() {
   }, [setup.data?.profile]);
 
   const profileSaved = Boolean(setup.data?.profile);
-  const knowledgeConfirmed = setup.data?.profile?.discoveryStatus === "confirmed";
+  const knowledgeConfirmed =
+    setup.data?.profile?.discoveryStatus === "confirmed";
   const connectedSystems = systems.data ?? [];
   const crmConnected = connectedSystems.length > 0;
-  const learningRunning = ["queued", "running"].includes(learning.data?.status || "");
+  const learningRunning = ["queued", "running"].includes(
+    learning.data?.status || ""
+  );
   const learningNeedsAttention = ["needs_attention", "failed"].includes(
     learning.data?.status || ""
   );
@@ -232,7 +225,9 @@ export default function Onboarding() {
       setWorkspaceMode(mode);
       await utils.organisation.current.invalidate();
     } catch (cause) {
-      setError(friendlyError(cause, "Your workspace choice could not be saved."));
+      setError(
+        friendlyError(cause, "Your workspace choice could not be saved.")
+      );
     }
   }
 
@@ -252,7 +247,9 @@ export default function Onboarding() {
       ]);
       toast.success("Business details saved.");
     } catch (cause) {
-      setError(friendlyError(cause, "Your business details could not be saved."));
+      setError(
+        friendlyError(cause, "Your business details could not be saved.")
+      );
     }
   }
 
@@ -279,7 +276,10 @@ export default function Onboarding() {
       await learning.refetch();
     } catch (cause) {
       setError(
-        friendlyError(cause, "Company learning could not resume. Please try again.")
+        friendlyError(
+          cause,
+          "Company learning could not resume. Please try again."
+        )
       );
     }
   }
@@ -311,21 +311,17 @@ export default function Onboarding() {
         window.location.assign(result.authorizationUrl);
         return;
       }
-      toast.success("CRM added. Sign in directly inside your private CRM workspace.");
+      toast.success(
+        "CRM added. Sign in directly inside your private CRM workspace."
+      );
       navigate(`/crm/${id}`);
     } catch (cause) {
-      setError(friendlyError(cause, "The CRM could not be connected. Please try again."));
-    }
-  }
-
-  async function finish() {
-    try {
-      setError("");
-      await updateOnboarding.mutateAsync({ step: 4, complete: true });
-      await utils.organisation.current.invalidate();
-      navigate("/assistant");
-    } catch (cause) {
-      setError(friendlyError(cause, "Setup could not be completed. Please try again."));
+      setError(
+        friendlyError(
+          cause,
+          "The CRM could not be connected. Please try again."
+        )
+      );
     }
   }
 
@@ -350,9 +346,9 @@ export default function Onboarding() {
             Your workspace is ready for you.
           </h1>
           <p className="mt-4 text-sm leading-6 text-[#66758A]">
-            Your company has already set up the shared business knowledge and CRM.
-            You only need your own Amarktai account and, when required, your own
-            CRM sign-in.
+            Your company has already set up the shared business knowledge and
+            CRM. You only need your own Amarktai account and, when required,
+            your own CRM sign-in.
           </p>
           <Button className="mt-6" onClick={() => navigate("/assistant")}>
             Open Assistant <ArrowRight className="ml-2 h-4 w-4" />
@@ -383,14 +379,23 @@ export default function Onboarding() {
                 key={label}
                 number={index + 1}
                 label={label}
-                state={index + 1 < step ? "done" : index + 1 === step ? "current" : "next"}
+                state={
+                  index + 1 < step
+                    ? "done"
+                    : index + 1 === step
+                      ? "current"
+                      : "next"
+                }
               />
             ))}
           </div>
         </header>
 
         {error ? (
-          <div role="alert" className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <div
+            role="alert"
+            className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+          >
             {error}
           </div>
         ) : null}
@@ -407,7 +412,9 @@ export default function Onboarding() {
                     <p className="text-xs font-black uppercase tracking-[.12em] text-[#8290A3]">
                       First
                     </p>
-                    <h2 className="font-display text-2xl font-bold">Who will use this workspace?</h2>
+                    <h2 className="font-display text-2xl font-bold">
+                      Who will use this workspace?
+                    </h2>
                   </div>
                 </div>
                 <div className="mt-6 grid gap-4 sm:grid-cols-2">
@@ -432,7 +439,8 @@ export default function Onboarding() {
                     <Users className="h-5 w-5 text-[#3F70D8]" />
                     <p className="mt-4 font-bold">My sales team</p>
                     <p className="mt-2 text-sm leading-6 text-[#718096]">
-                      Shared company knowledge with private salesperson workspaces.
+                      Shared company knowledge with private salesperson
+                      workspaces.
                     </p>
                   </button>
                 </div>
@@ -444,54 +452,91 @@ export default function Onboarding() {
                     <Building2 className="h-5 w-5" />
                   </span>
                   <div>
-                    <p className="text-xs font-black uppercase tracking-[.12em] text-[#8290A3]">Step 1</p>
-                    <h2 className="font-display text-2xl font-bold">Tell me about your business.</h2>
+                    <p className="text-xs font-black uppercase tracking-[.12em] text-[#8290A3]">
+                      Step 1
+                    </p>
+                    <h2 className="font-display text-2xl font-bold">
+                      Tell me about your business.
+                    </h2>
                   </div>
                 </div>
                 <p className="mt-4 max-w-2xl text-sm leading-6 text-[#66758A]">
-                  Start with the essentials. I’ll learn the public website in the next step and ask you to confirm what I found.
+                  Start with the essentials. I’ll learn the public website in
+                  the next step and ask you to confirm what I found.
                 </p>
                 <div className="mt-6 grid gap-4 sm:grid-cols-2">
                   <Input
                     value={profile.companyName}
-                    onChange={event => setProfile(current => ({ ...current, companyName: event.target.value }))}
+                    onChange={event =>
+                      setProfile(current => ({
+                        ...current,
+                        companyName: event.target.value,
+                      }))
+                    }
                     placeholder="Company name"
                     aria-label="Company name"
                   />
                   <Input
                     value={profile.websiteUrl}
-                    onChange={event => setProfile(current => ({ ...current, websiteUrl: event.target.value }))}
+                    onChange={event =>
+                      setProfile(current => ({
+                        ...current,
+                        websiteUrl: event.target.value,
+                      }))
+                    }
                     placeholder="https://yourcompany.com"
                     aria-label="Company website"
                   />
                   <Input
                     value={profile.industry}
-                    onChange={event => setProfile(current => ({ ...current, industry: event.target.value }))}
+                    onChange={event =>
+                      setProfile(current => ({
+                        ...current,
+                        industry: event.target.value,
+                      }))
+                    }
                     placeholder="Industry (optional)"
                     aria-label="Industry"
                   />
                   <Input
                     value={profile.primarySalesObjective}
-                    onChange={event => setProfile(current => ({ ...current, primarySalesObjective: event.target.value }))}
+                    onChange={event =>
+                      setProfile(current => ({
+                        ...current,
+                        primarySalesObjective: event.target.value,
+                      }))
+                    }
                     placeholder="Main sales goal (optional)"
                     aria-label="Main sales goal"
                   />
                 </div>
                 <Textarea
                   value={profile.productsServices}
-                  onChange={event => setProfile(current => ({ ...current, productsServices: event.target.value }))}
+                  onChange={event =>
+                    setProfile(current => ({
+                      ...current,
+                      productsServices: event.target.value,
+                    }))
+                  }
                   placeholder="Anything important about what you sell? (optional)"
                   className="mt-4 min-h-24"
                 />
                 <div className="mt-5 flex flex-wrap gap-3">
                   <Button
-                    disabled={!profile.companyName.trim() || saveProfile.isPending}
+                    disabled={
+                      !profile.companyName.trim() || saveProfile.isPending
+                    }
                     onClick={() => void saveBusiness()}
                   >
-                    {saveProfile.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    {saveProfile.isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : null}
                     Save and continue
                   </Button>
-                  <Button variant="ghost" onClick={() => setWorkspaceMode(null)}>
+                  <Button
+                    variant="ghost"
+                    onClick={() => setWorkspaceMode(null)}
+                  >
                     Change workspace type
                   </Button>
                 </div>
@@ -507,12 +552,18 @@ export default function Onboarding() {
                 <Globe2 className="h-5 w-5" />
               </span>
               <div>
-                <p className="text-xs font-black uppercase tracking-[.12em] text-[#8290A3]">Step 2</p>
-                <h2 className="font-display text-2xl font-bold">Let me learn your business.</h2>
+                <p className="text-xs font-black uppercase tracking-[.12em] text-[#8290A3]">
+                  Step 2
+                </p>
+                <h2 className="font-display text-2xl font-bold">
+                  Let me learn your business.
+                </h2>
               </div>
             </div>
             <p className="mt-4 max-w-2xl text-sm leading-6 text-[#66758A]">
-              I’ll read the public company website, organise the useful business facts and then show you a short review before anything becomes trusted knowledge.
+              I’ll read the public company website, organise the useful business
+              facts and then show you a short review before anything becomes
+              trusted knowledge.
             </p>
 
             {learningRunning ? (
@@ -529,11 +580,18 @@ export default function Onboarding() {
               </div>
             ) : learningNeedsAttention ? (
               <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5">
-                <p className="font-bold text-amber-900">Learning paused before it finished.</p>
-                <p className="mt-2 text-sm leading-6 text-amber-800">
-                  Nothing new was trusted. Resume from the saved progress when you’re ready.
+                <p className="font-bold text-amber-900">
+                  Learning paused before it finished.
                 </p>
-                <Button className="mt-4" variant="outline" onClick={() => void retryCompanyLearning()}>
+                <p className="mt-2 text-sm leading-6 text-amber-800">
+                  Nothing new was trusted. Resume from the saved progress when
+                  you’re ready.
+                </p>
+                <Button
+                  className="mt-4"
+                  variant="outline"
+                  onClick={() => void retryCompanyLearning()}
+                >
                   <RefreshCw className="mr-2 h-4 w-4" /> Resume
                 </Button>
               </div>
@@ -543,7 +601,11 @@ export default function Onboarding() {
                 disabled={!profile.websiteUrl.trim() || discover.isPending}
                 onClick={() => void startLearning()}
               >
-                {discover.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Globe2 className="mr-2 h-4 w-4" />}
+                {discover.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Globe2 className="mr-2 h-4 w-4" />
+                )}
                 Learn from website
               </Button>
             )}
@@ -562,12 +624,17 @@ export default function Onboarding() {
                 <Network className="h-5 w-5" />
               </span>
               <div>
-                <p className="text-xs font-black uppercase tracking-[.12em] text-[#8290A3]">Step 3</p>
-                <h2 className="font-display text-2xl font-bold">Connect your CRM.</h2>
+                <p className="text-xs font-black uppercase tracking-[.12em] text-[#8290A3]">
+                  Step 3
+                </p>
+                <h2 className="font-display text-2xl font-bold">
+                  Connect your CRM.
+                </h2>
               </div>
             </div>
             <p className="mt-4 max-w-2xl text-sm leading-6 text-[#66758A]">
-              Choose the CRM your team already uses. For browser-based CRMs, you sign in directly inside your private CRM workspace.
+              Choose the CRM your team already uses. For browser-based CRMs, you
+              sign in directly inside your private CRM workspace.
             </p>
             <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {providers.map(option => (
@@ -586,7 +653,9 @@ export default function Onboarding() {
                 >
                   <p className="font-bold">{option.label}</p>
                   <p className="mt-1 text-xs text-[#718096]">
-                    {option.method === "browser" ? "Secure CRM workspace" : "Secure account connection"}
+                    {option.method === "browser"
+                      ? "Secure CRM workspace"
+                      : "Secure account connection"}
                   </p>
                 </button>
               ))}
@@ -602,10 +671,18 @@ export default function Onboarding() {
             ) : null}
             <Button
               className="mt-5"
-              disabled={createConnection.isPending || beginOAuth.isPending || (provider.provider === "custom_browser" && !customUrl.trim())}
+              disabled={
+                createConnection.isPending ||
+                beginOAuth.isPending ||
+                (provider.provider === "custom_browser" && !customUrl.trim())
+              }
               onClick={() => void connectCrm()}
             >
-              {createConnection.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Network className="mr-2 h-4 w-4" />}
+              {createConnection.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Network className="mr-2 h-4 w-4" />
+              )}
               Connect {provider.label}
             </Button>
           </section>
@@ -618,20 +695,29 @@ export default function Onboarding() {
                 <CheckCircle2 className="h-5 w-5" />
               </span>
               <div>
-                <p className="text-xs font-black uppercase tracking-[.12em] text-emerald-700">Ready</p>
-                <h2 className="font-display text-3xl font-bold">You’re ready to use Amarktai.</h2>
+                <p className="text-xs font-black uppercase tracking-[.12em] text-emerald-700">
+                  Final step
+                </p>
+                <h2 className="font-display text-3xl font-bold">
+                  Sign in to your CRM.
+                </h2>
               </div>
             </div>
             <p className="mt-4 max-w-2xl text-sm leading-6 text-[#66758A]">
-              Your business knowledge and CRM are connected. Amarktai will keep checking available CRM features safely in the background. You don’t need to manage those technical checks.
+              Open your private CRM workspace and sign in directly. Once
+              Amarktai confirms safe read access, setup completes automatically
+              and your Assistant opens.
             </p>
             <div className="mt-6 grid gap-3 sm:grid-cols-3">
               {[
                 ["Business", "Understood"],
                 ["CRM", connectedSystems[0]?.displayName || "Connected"],
-                ["Assistant", "Ready to help"],
+                ["Assistant", "Ready after sign-in"],
               ].map(([label, value]) => (
-                <div key={label} className="rounded-2xl border border-[#E1E7EF] bg-[#FAFCFF] p-4">
+                <div
+                  key={label}
+                  className="rounded-2xl border border-[#E1E7EF] bg-[#FAFCFF] p-4"
+                >
                   <p className="text-xs font-bold text-[#8290A3]">{label}</p>
                   <p className="mt-1 font-bold text-[#26354A]">{value}</p>
                 </div>
@@ -639,11 +725,10 @@ export default function Onboarding() {
             </div>
             <Button
               className="mt-6"
-              disabled={updateOnboarding.isPending}
-              onClick={() => void finish()}
+              onClick={() => navigate(`/crm/${connectedSystems[0]?.id}`)}
             >
-              {updateOnboarding.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Bot className="mr-2 h-4 w-4" />}
-              Open Amarktai Assistant
+              <Network className="mr-2 h-4 w-4" />
+              Open CRM and finish setup
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </section>

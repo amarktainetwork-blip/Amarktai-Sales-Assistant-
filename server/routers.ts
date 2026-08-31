@@ -1,7 +1,11 @@
 import { z } from "zod";
 import { parse as parseCookieHeader } from "cookie";
 import { TRPCError } from "@trpc/server";
-import { AGENT_CATALOG, agentRuntimeStatus, WORKFLOW_KEYS } from "./agentCatalog";
+import {
+  AGENT_CATALOG,
+  agentRuntimeStatus,
+  WORKFLOW_KEYS,
+} from "./agentCatalog";
 import {
   createCallSession,
   confirmWebsiteDiscovery,
@@ -9,6 +13,7 @@ import {
   createTwoFactorChallenge,
   createIntegrationProfile,
   createKnowledgeSource,
+  updateKnowledgeSource,
   createWorkflowRun,
   createLiveCallSession,
   getAssistantDashboard,
@@ -680,7 +685,10 @@ export const appRouter = router({
       let databaseReady = true;
       if (ctx.activeOrganisation) {
         try {
-          systems = await listConnectedSystemsForUser(ctx.user.id, ctx.activeOrganisation.organisationId);
+          systems = await listConnectedSystemsForUser(
+            ctx.user.id,
+            ctx.activeOrganisation.organisationId
+          );
         } catch {
           databaseReady = false;
         }
@@ -689,12 +697,28 @@ export const appRouter = router({
       const dependencies = {
         databaseReady,
         genxReady: genx.ready,
-        crmReadReady: verified.some(system => system.verifiedCapabilities.some(capability => capability.endsWith(".read"))),
-        crmRouteReady: verified.some(system => system.verifiedCapabilities.length > 0),
-        communicationsReady: verified.some(system => system.verifiedCapabilities.some(capability => ["email.send", "sms.send", "whatsapp.send"].includes(capability))),
+        crmReadReady: verified.some(system =>
+          system.verifiedCapabilities.some(capability =>
+            capability.endsWith(".read")
+          )
+        ),
+        crmRouteReady: verified.some(
+          system => system.verifiedCapabilities.length > 0
+        ),
+        communicationsReady: verified.some(system =>
+          system.verifiedCapabilities.some(capability =>
+            ["email.send", "sms.send", "whatsapp.send"].includes(capability)
+          )
+        ),
         voiceReady: false,
       };
-      return { agents: AGENT_CATALOG.map(agent => ({ ...agent, runtime: agentRuntimeStatus(agent.key, dependencies) })), genx };
+      return {
+        agents: AGENT_CATALOG.map(agent => ({
+          ...agent,
+          runtime: agentRuntimeStatus(agent.key, dependencies),
+        })),
+        genx,
+      };
     }),
     actions: secondFactorProcedure
       .input(
@@ -950,23 +974,19 @@ export const appRouter = router({
           today: {
             generatedAt: today.generatedAt,
             metrics: today.metrics,
-            priority: today.queues.priority
-              .slice(0, 5)
-              .map(item => ({
-                id: item.id,
-                name: item.name,
-                pipeline: item.pipeline,
-                stage: item.stage,
-                reasons: item.reasons,
-                nextStepAt: item.nextStepAt,
-              })),
-            callbacks: today.queues.callbacks
-              .slice(0, 5)
-              .map(item => ({
-                title: item.title,
-                leadLabel: item.leadLabel,
-                dueAt: item.dueAt,
-              })),
+            priority: today.queues.priority.slice(0, 5).map(item => ({
+              id: item.id,
+              name: item.name,
+              pipeline: item.pipeline,
+              stage: item.stage,
+              reasons: item.reasons,
+              nextStepAt: item.nextStepAt,
+            })),
+            callbacks: today.queues.callbacks.slice(0, 5).map(item => ({
+              title: item.title,
+              leadLabel: item.leadLabel,
+              dueAt: item.dueAt,
+            })),
             reminders: today.queues.reminders
               .slice(0, 5)
               .map(item => ({ title: item.title, dueAt: item.dueAt })),
@@ -1573,7 +1593,9 @@ export const appRouter = router({
       .input(z.object({ viewerSessionId: z.string().uuid() }))
       .mutation(({ ctx, input }) => {
         if (!ctx.activeOrganisation)
-          throw new Error("Choose a company before controlling its CRM workspace.");
+          throw new Error(
+            "Choose a company before controlling its CRM workspace."
+          );
         return acquireAiControl(
           input.viewerSessionId,
           ctx.activeOrganisation.organisationId,
@@ -1584,7 +1606,9 @@ export const appRouter = router({
       .input(z.object({ viewerSessionId: z.string().uuid() }))
       .mutation(({ ctx, input }) => {
         if (!ctx.activeOrganisation)
-          throw new Error("Choose a company before controlling its CRM workspace.");
+          throw new Error(
+            "Choose a company before controlling its CRM workspace."
+          );
         return releaseAiControl(
           input.viewerSessionId,
           ctx.activeOrganisation.organisationId,
@@ -1592,10 +1616,17 @@ export const appRouter = router({
         );
       }),
     askAssistant: secondFactorProcedure
-      .input(z.object({ viewerSessionId: z.string().uuid(), command: z.string().trim().min(2).max(4_000) }))
+      .input(
+        z.object({
+          viewerSessionId: z.string().uuid(),
+          command: z.string().trim().min(2).max(4_000),
+        })
+      )
       .mutation(async ({ ctx, input }) => {
         if (!ctx.activeOrganisation)
-          throw new Error("Choose a company before asking about this CRM workspace.");
+          throw new Error(
+            "Choose a company before asking about this CRM workspace."
+          );
         const pageContext = await getSanitisedLiveCrmContext({
           viewerSessionId: input.viewerSessionId,
           organisationId: ctx.activeOrganisation.organisationId,
@@ -1619,7 +1650,7 @@ export const appRouter = router({
         ctx.activeOrganisation.organisationId
       );
     }),
-    add: secondFactorProcedure
+    add: managementProcedure
       .input(
         z.object({
           title: z.string().trim().min(2).max(220),
@@ -1632,6 +1663,23 @@ export const appRouter = router({
         if (!ctx.activeOrganisation)
           throw new Error("Choose an organisation before adding knowledge.");
         return createKnowledgeSource({
+          userId: ctx.user.id,
+          organisationId: ctx.activeOrganisation.organisationId,
+          ...input,
+        });
+      }),
+    update: managementProcedure
+      .input(
+        z.object({
+          id: z.number().int().positive(),
+          title: z.string().trim().min(2).max(220),
+          content: z.string().trim().min(1).max(40_000),
+        })
+      )
+      .mutation(({ ctx, input }) => {
+        if (!ctx.activeOrganisation)
+          throw new Error("Choose an organisation before updating knowledge.");
+        return updateKnowledgeSource({
           userId: ctx.user.id,
           organisationId: ctx.activeOrganisation.organisationId,
           ...input,
@@ -1674,6 +1722,10 @@ export const appRouter = router({
           throw new Error(
             "Choose an organisation before saving company setup."
           );
+        if (!canManageOrganisation(ctx.activeOrganisation.role))
+          throw new Error(
+            "Your organisation role does not permit company setup changes."
+          );
         return upsertCompanyProfile({
           userId: ctx.user.id,
           organisationId: ctx.activeOrganisation.organisationId,
@@ -1682,7 +1734,9 @@ export const appRouter = router({
       }),
     companyLearningStatus: secondFactorProcedure.query(async ({ ctx }) => {
       if (!ctx.activeOrganisation)
-        throw new Error("Choose an organisation before checking company learning.");
+        throw new Error(
+          "Choose an organisation before checking company learning."
+        );
       const setup = await getCompanySetup(
         ctx.user.id,
         ctx.activeOrganisation.organisationId
@@ -1697,6 +1751,10 @@ export const appRouter = router({
     discoverWebsite: secondFactorProcedure.mutation(async ({ ctx }) => {
       if (!ctx.activeOrganisation)
         throw new Error("Choose an organisation before discovering a website.");
+      if (!canManageOrganisation(ctx.activeOrganisation.role))
+        throw new Error(
+          "Your organisation role does not permit company setup changes."
+        );
       const setup = await getCompanySetup(
         ctx.user.id,
         ctx.activeOrganisation.organisationId
@@ -1716,13 +1774,21 @@ export const appRouter = router({
       .input(z.object({ jobId: z.number().int().positive() }))
       .mutation(async ({ ctx, input }) => {
         if (!ctx.activeOrganisation)
-          throw new Error("Choose an organisation before retrying company learning.");
+          throw new Error(
+            "Choose an organisation before retrying company learning."
+          );
+        if (!canManageOrganisation(ctx.activeOrganisation.role))
+          throw new Error(
+            "Your organisation role does not permit company setup changes."
+          );
         const setup = await getCompanySetup(
           ctx.user.id,
           ctx.activeOrganisation.organisationId
         );
         if (!setup.profile)
-          throw new Error("Save company details before retrying company learning.");
+          throw new Error(
+            "Save company details before retrying company learning."
+          );
         return retryCompanyKnowledgeJob({
           jobId: input.jobId,
           userId: ctx.user.id,

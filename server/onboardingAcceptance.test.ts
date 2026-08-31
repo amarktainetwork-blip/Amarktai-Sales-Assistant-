@@ -12,23 +12,25 @@ const read = (relative: string) =>
   readFileSync(new URL(relative, import.meta.url), "utf8");
 
 describe("new-user Genie commissioning journey contract", () => {
-  it("keeps registration, 2FA, SetupGate and guided per-connection commissioning connected without deployment credentials or raw JSON", () => {
+  it("keeps registration, 2FA and guided per-connection setup connected without deployment credentials or raw JSON", () => {
     const routers = read("./routers.ts");
     const layout = read("../client/src/components/DashboardLayout.tsx");
     const onboarding = read("../client/src/pages/Onboarding.tsx");
+    const companySetup = read("../client/src/pages/CompanySetup.tsx");
     const administration = read("./connectedSystemAdminRoutes.ts");
     const adapter = read("./browserConnectors/browserCrmAdapter.ts");
 
     expect(routers).toContain("registerLocalUser(input)");
     expect(routers).toContain("createTwoFactorChallenge");
     expect(routers).toContain("consumeValidTwoFactorChallenge");
-    expect(layout).toContain("<SetupGate");
-    expect(layout).toContain("Continue guided setup");
-    expect(onboarding).toContain('workspaceMode === "individual"');
-    expect(onboarding).toContain('workspaceMode === "team"');
-    expect(onboarding).toContain("confirm.mutate");
-    expect(onboarding).toContain("sign in there directly");
-    expect(onboarding).toContain("Open CRM");
+    expect(layout).toContain("storedCompanyComplete");
+    expect(layout).toContain("<WorkspaceSetupPending");
+    expect(layout).toContain("Continue setup");
+    expect(onboarding).toContain('chooseMode("individual")');
+    expect(onboarding).toContain('chooseMode("team")');
+    expect(companySetup).toContain("confirm.mutate");
+    expect(onboarding).toContain("sign in directly");
+    expect(onboarding).toContain("navigate(`/crm/${id}`)");
     expect(onboarding).not.toContain('type="password"');
     expect(administration).not.toContain("interactive-auth/verify");
     expect(adapter).toContain("connection.baseUrl");
@@ -122,9 +124,9 @@ describe("new-user Genie commissioning journey contract", () => {
 
   it("keeps technical commissioning out of the normal onboarding screen", () => {
     const onboarding = read("../client/src/pages/Onboarding.tsx");
-    expect(onboarding).toContain('title="Connect your CRM"');
-    expect(onboarding).toContain("Open CRM to continue");
-    expect(onboarding).toContain("Secure CRM Browser");
+    expect(onboarding).toContain("Connect your CRM.");
+    expect(onboarding).toContain("Connect {provider.label}");
+    expect(onboarding).toContain("Secure CRM workspace");
     for (const technicalTerm of [
       "Teach Amarktai",
       "LIVE_PROVEN",
@@ -139,27 +141,21 @@ describe("new-user Genie commissioning journey contract", () => {
 
   it("turns interrupted website responses into a safe customer message", () => {
     const onboarding = read("../client/src/pages/Onboarding.tsx");
-    expect(onboarding).toContain("Website scan interrupted");
-    expect(onboarding).toContain(
-      "The website scan was interrupted before it completed. No content became trusted knowledge. Please try again."
-    );
+    expect(onboarding).toContain("Learning paused before it finished.");
+    expect(onboarding).toContain("Nothing new was trusted.");
     expect(onboarding).not.toContain("Failed to execute 'json' on 'Response'");
     expect(onboarding).not.toContain("Unexpected end of JSON input");
   });
 
   it("requires deliberate knowledge selection and exposes complete-site coverage", () => {
     const onboarding = read("../client/src/pages/Onboarding.tsx");
+    const companySetup = read("../client/src/pages/CompanySetup.tsx");
     const database = read("./db.ts");
-    expect(onboarding).toContain("setSelectedKnowledge([])");
-    expect(onboarding).toContain(
-      'preview.completeness.status === "incomplete"'
-    );
-    expect(onboarding).toContain("selectedKnowledge.length === 0");
-    expect(onboarding).toContain('"Pages scanned"');
-    expect(onboarding).toContain('"Relevant pages used"');
-    expect(onboarding).toContain('"Excluded / non-sales"');
-    expect(onboarding).toContain("Full / current price");
-    expect(onboarding).toContain("Finance / payment plan");
+    expect(companySetup).toContain("buildBusinessBasicsApproval");
+    expect(companySetup).toContain("setCorrections");
+    expect(companySetup).toContain("View website source");
+    expect(companySetup).toContain("knowledgeIndexes: basics.map");
+    expect(onboarding).toMatch(/before anything becomes\s+trusted knowledge/);
     expect(database).toContain('completeness?.status === "incomplete"');
     expect(database).toContain(
       "Retry company learning before approving any facts"
@@ -192,7 +188,7 @@ describe("new-user Genie commissioning journey contract", () => {
   it("shows the human-controlled CRM browser path", () => {
     const onboarding = read("../client/src/pages/Onboarding.tsx");
     const workspace = read("../client/src/pages/CrmWorkspace.tsx");
-    expect(onboarding).toContain("sign in there directly");
+    expect(onboarding).toContain("sign in directly");
     expect(workspace).toContain("Check my sign-in");
     expect(workspace).toContain("Take control");
     expect(workspace).toContain("Give control to Amarktai");
@@ -209,7 +205,7 @@ describe("new-user Genie commissioning journey contract", () => {
       '"custom_browser"',
     ])
       expect(onboarding).toContain(provider);
-    expect(onboarding).toContain("sign in there directly");
+    expect(onboarding).toContain("sign in directly");
     expect(onboarding).not.toContain("capabilityOptions");
     expect(onboarding).not.toContain("toggleCapability");
   });
@@ -217,9 +213,9 @@ describe("new-user Genie commissioning journey contract", () => {
   it("routes invited salespeople through identity confirmation without company onboarding", () => {
     const layout = read("../client/src/components/DashboardLayout.tsx");
     expect(layout).toContain("/api/team/crm-identity");
-    expect(layout).toContain("Confirm who you are in the CRM.");
-    expect(layout).toMatch(/you will not\s+repeat\s+company onboarding/i);
-    expect(layout).toContain("Your manager is finishing company setup.");
+    expect(layout).toContain("Which CRM salesperson are you?");
+    expect(layout).toContain("won’t need to repeat that setup");
+    expect(layout).toContain("Your company workspace is being prepared.");
   });
 
   it("does not require installation-level CRM credentials", () => {

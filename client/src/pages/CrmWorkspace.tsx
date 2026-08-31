@@ -4,6 +4,7 @@ import {
   crmDesktopViewport,
   normalizeCrmWheelDelta,
 } from "@/lib/crmViewerInput";
+import { friendlyError } from "@/lib/friendlyError";
 import { trpc } from "@/lib/trpc";
 import {
   ArrowLeft,
@@ -93,32 +94,19 @@ function streamUrl(session: ViewerReady) {
   return url.toString();
 }
 
-function friendlyMessage(error: unknown, fallback: string) {
-  const raw = error instanceof Error ? error.message : String(error || "");
-  if (/full crm address|address|required|invalid.*url|url.*invalid/i.test(raw))
-    return "Enter the full CRM address, including https://";
-  if (/disconnected|retired/i.test(raw))
-    return "This CRM is disconnected. Reconnect it from Connections to continue.";
-  if (/sign.?in|authentication|session.*expired/i.test(raw))
-    return "Your CRM needs you to sign in again.";
-  if (/human.*control|required.*control/i.test(raw))
-    return "Take control before using that CRM browser action.";
-  if (/agent.*control|ai.*control/i.test(raw))
-    return "Amarktai is working in the CRM. Take control when you want to work manually.";
-  if (/host|domain|redirect|approved/i.test(raw))
-    return "This CRM opened a new sign-in service that needs approval.";
-  if (/browser|cdp|socket|websocket|closed|timeout/i.test(raw))
-    return "The CRM browser connection was interrupted. Reopen the CRM and continue.";
-  if (/zod|invalid_(type|format)|schema|trpc|stack|internal server/i.test(raw))
-    return fallback;
-  if (/^[A-Z0-9_:\- ]{5,}$/.test(raw)) return fallback;
-  return raw && raw.length <= 160 ? raw : fallback;
-}
-
 export default function CrmWorkspace() {
   const [, params] = useRoute("/crm/:connectedSystemId");
   const [, navigate] = useLocation();
   const organisation = trpc.organisation.current.useQuery();
+  const utils = trpc.useUtils();
+  const canManage =
+    organisation.data?.role === "owner" ||
+    organisation.data?.role === "manager";
+  const companySetup = trpc.companySetup.get.useQuery(undefined, {
+    enabled: Boolean(canManage),
+    retry: false,
+  });
+  const completeOnboarding = trpc.organisation.updateOnboarding.useMutation();
   const systems = trpc.connectedSystems.list.useQuery(
     { organisationId: organisation.data?.organisationId || 0 },
     {
@@ -129,6 +117,10 @@ export default function CrmWorkspace() {
   const [selectedId, setSelectedId] = useState<number | null>(
     params?.connectedSystemId ? Number(params.connectedSystemId) : null
   );
+  const [browserAuthenticationState, setBrowserAuthenticationState] =
+    useState("STARTING");
+  const [safeReadsReady, setSafeReadsReady] = useState(false);
+  const completionAttemptedRef = useRef(false);
   const selected = useMemo(
     () =>
       systems.data?.find(system => system.id === selectedId) ||
@@ -140,6 +132,78 @@ export default function CrmWorkspace() {
   useEffect(() => {
     if (selected && selected.id !== selectedId) setSelectedId(selected.id);
   }, [selected, selectedId]);
+
+  const onboarding = organisation.data?.settings?.onboarding;
+  const onboardingComplete = Boolean(
+    onboarding &&
+      typeof onboarding === "object" &&
+      !Array.isArray(onboarding) &&
+      (onboarding as { complete?: unknown }).complete === true
+  );
+
+  useEffect(() => {
+    setSafeReadsReady(false);
+    setBrowserAuthenticationState("STARTING");
+    completionAttemptedRef.current = false;
+    if (!selected || !canManage || onboardingComplete) return;
+    let cancelled = false;
+    const check = async () => {
+      const response = await fetch(
+        `/api/connected-system-admin/${selected.id}/commissioning`,
+        { credentials: "include" }
+      );
+      if (!response.ok || cancelled) return;
+      const body = (await response.json().catch(() => ({}))) as {
+        job?: { progress?: { safeReads?: { status?: string } } } | null;
+      };
+      if (body.job?.progress?.safeReads?.status === "Ready")
+        setSafeReadsReady(true);
+    };
+    void check();
+    const timer = window.setInterval(() => void check(), 3_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [canManage, onboardingComplete, selected]);
+
+  useEffect(() => {
+    if (
+      !canManage ||
+      onboardingComplete ||
+      completionAttemptedRef.current ||
+      browserAuthenticationState !== "AUTHENTICATED" ||
+      !safeReadsReady ||
+      companySetup.data?.profile?.discoveryStatus !== "confirmed"
+    )
+      return;
+    completionAttemptedRef.current = true;
+    void completeOnboarding
+      .mutateAsync({ step: 4, complete: true })
+      .then(async () => {
+        await utils.organisation.current.invalidate();
+        toast.success("Setup complete. Your Assistant is ready.");
+        navigate("/assistant");
+      })
+      .catch(error => {
+        completionAttemptedRef.current = false;
+        toast.error(
+          friendlyError(
+            error,
+            "Setup is ready, but completion could not be saved. Try reopening the CRM."
+          )
+        );
+      });
+  }, [
+    browserAuthenticationState,
+    canManage,
+    companySetup.data?.profile?.discoveryStatus,
+    completeOnboarding,
+    onboardingComplete,
+    navigate,
+    safeReadsReady,
+    utils.organisation.current,
+  ]);
 
   return (
     <DashboardLayout>
@@ -167,11 +231,7 @@ export default function CrmWorkspace() {
             systems={systems.data ?? []}
             onChoose={id => navigate(`/crm/${id}`)}
             onToday={() => navigate("/today")}
-            capabilities={[
-              ...selected.allowedReadCapabilities,
-              ...selected.allowedWriteCapabilities,
-            ]}
-            readyCapabilities={selected.verifiedCapabilities}
+            onAuthenticationState={setBrowserAuthenticationState}
           />
         ) : (
           <NoBrowserCrm onConnections={() => navigate("/connections")} />
@@ -187,16 +247,14 @@ function LiveWorkspace({
   systems,
   onChoose,
   onToday,
-  capabilities,
-  readyCapabilities,
+  onAuthenticationState,
 }: {
   connectedSystemId: number;
   crmName: string;
   systems: Array<{ id: number; displayName: string; baseUrl?: string | null }>;
   onChoose: (id: number) => void;
   onToday: () => void;
-  capabilities: string[];
-  readyCapabilities: string[];
+  onAuthenticationState: (state: string) => void;
 }) {
   const open = trpc.crmViewer.open.useMutation();
   const acquireAi = trpc.crmViewer.acquireAssistantControl.useMutation();
@@ -207,7 +265,9 @@ function LiveWorkspace({
   const [control, setControl] = useState("IDLE");
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [image, setImage] = useState("");
-  const [frameMetadata, setFrameMetadata] = useState<FrameMetadata | null>(null);
+  const [frameMetadata, setFrameMetadata] = useState<FrameMetadata | null>(
+    null
+  );
   const [status, setStatus] = useState("Opening your CRM…");
   const [currentUrl, setCurrentUrl] = useState("");
   const [authenticationState, setAuthenticationState] = useState("STARTING");
@@ -254,9 +314,7 @@ function LiveWorkspace({
       controlRef.current = next.control;
       setCurrentUrl(next.url);
     } catch (error) {
-      setStatus(
-        friendlyMessage(error, "The CRM workspace could not be opened.")
-      );
+      setStatus(friendlyError(error, "The CRM workspace could not be opened."));
     }
   };
 
@@ -277,7 +335,9 @@ function LiveWorkspace({
   const queueOrSendInput = (event: BrowserInputEvent) => {
     if (controlRef.current === "AGENT_CONTROL") {
       if (!(event.kind === "mouse" && event.type === "mouseMoved"))
-        toast.info("Amarktai is working in the CRM. Take control to work manually.");
+        toast.info(
+          "Amarktai is working in the CRM. Take control to work manually."
+        );
       return;
     }
     if (controlRef.current === "HUMAN_CONTROL") {
@@ -314,7 +374,7 @@ function LiveWorkspace({
       await acquireAi.mutateAsync({ viewerSessionId: session.viewerSessionId });
     } catch (error) {
       toast.error(
-        friendlyMessage(error, "Amarktai could not take CRM control right now.")
+        friendlyError(error, "Amarktai could not take CRM control right now.")
       );
     }
   };
@@ -395,6 +455,7 @@ function LiveWorkspace({
       } else if (message.type === "session") {
         setCurrentUrl(message.currentUrl);
         setAuthenticationState(message.authenticationState);
+        onAuthenticationState(message.authenticationState);
         setStatus(
           message.errorMessage ||
             (message.authenticationState === "AUTHENTICATED"
@@ -420,7 +481,7 @@ function LiveWorkspace({
       } else if (message.type === "disconnected") {
         setStatus("The CRM browser connection paused. Reopen it to continue.");
       } else if (message.type === "error") {
-        const friendly = friendlyMessage(
+        const friendly = friendlyError(
           message.message || message.code,
           "That CRM action could not be completed."
         );
@@ -542,7 +603,11 @@ function LiveWorkspace({
       type: "mouseWheel",
       ...point,
       deltaX: normalizeCrmWheelDelta(event.deltaX, event.deltaMode, rect.width),
-      deltaY: normalizeCrmWheelDelta(event.deltaY, event.deltaMode, rect.height),
+      deltaY: normalizeCrmWheelDelta(
+        event.deltaY,
+        event.deltaMode,
+        rect.height
+      ),
     });
   };
 
@@ -612,7 +677,7 @@ function LiveWorkspace({
       viewerRef.current?.focus({ preventScroll: true });
     } catch (error) {
       toast.error(
-        friendlyMessage(error, "CRM control could not be returned to you.")
+        friendlyError(error, "CRM control could not be returned to you.")
       );
     }
   };
@@ -628,7 +693,9 @@ function LiveWorkspace({
 
   const navigateBrowser = (action: BrowserNavigationAction) => {
     if (controlRef.current === "AGENT_CONTROL") {
-      toast.info("Amarktai is working in the CRM. Take control before navigating.");
+      toast.info(
+        "Amarktai is working in the CRM. Take control before navigating."
+      );
       return;
     }
     if (controlRef.current === "HUMAN_CONTROL") {
@@ -639,8 +706,7 @@ function LiveWorkspace({
     requestHumanControl();
   };
 
-  const confirmSignedIn = () =>
-    send({ type: "customerFinishedSigningIn" });
+  const confirmSignedIn = () => send({ type: "customerFinishedSigningIn" });
 
   const submitAssistant = async () => {
     if (!session || !assistantPrompt.trim()) return;
@@ -653,7 +719,7 @@ function LiveWorkspace({
       setAssistantPrompt("");
     } catch (error) {
       setAssistantResult(
-        friendlyMessage(error, "Amarktai could not complete that request.")
+        friendlyError(error, "Amarktai could not complete that request.")
       );
     }
   };
@@ -874,7 +940,9 @@ function LiveWorkspace({
                     size="sm"
                     className="w-full justify-start"
                     onClick={requestAi}
-                    disabled={control === "AGENT_CONTROL" || acquireAi.isPending}
+                    disabled={
+                      control === "AGENT_CONTROL" || acquireAi.isPending
+                    }
                   >
                     <ShieldCheck className="mr-2 h-4 w-4" />
                     {control === "AGENT_CONTROL"
@@ -904,32 +972,6 @@ function LiveWorkspace({
                     />
                     Reconnect browser
                   </Button>
-                </div>
-              </details>
-
-              <details className="mt-3 rounded-xl border border-[#D7E0EA] bg-white">
-                <summary className="cursor-pointer list-none px-3 py-2.5 text-xs font-bold text-[#33445B]">
-                  CRM functions · {readyCapabilities.length} ready
-                </summary>
-                <div className="flex flex-wrap gap-1.5 border-t border-[#E5EAF0] p-3">
-                  {capabilities.length ? (
-                    capabilities.map(capability => (
-                      <span
-                        key={capability}
-                        className={`rounded-full px-2 py-1 text-[10px] font-semibold ${
-                          readyCapabilities.includes(capability)
-                            ? "bg-emerald-100 text-emerald-800"
-                            : "bg-[#EFF2F6] text-[#77859A]"
-                        }`}
-                      >
-                        {capability}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="text-xs text-[#77859A]">
-                      Functions will appear as Amarktai verifies them.
-                    </span>
-                  )}
                 </div>
               </details>
 
@@ -977,7 +1019,9 @@ function LiveWorkspace({
       </div>
 
       <div className="sr-only" aria-live="polite">
-        {control === "HUMAN_CONTROL" ? "You currently control the CRM." : status}
+        {control === "HUMAN_CONTROL"
+          ? "You currently control the CRM."
+          : status}
       </div>
     </div>
   );
