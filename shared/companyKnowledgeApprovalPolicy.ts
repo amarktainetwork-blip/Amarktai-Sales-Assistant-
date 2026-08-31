@@ -89,17 +89,32 @@ export function websiteKnowledgePassesCommercialApprovalPolicy(
   return !containsCommercialKnowledge(`${correction.title}\n${correction.content}`);
 }
 
+function safeIdentityTitle(value: string) {
+  const title = compactText(value);
+  if (!title || containsCommercialKnowledge(title)) return null;
+  return title.slice(0, 220);
+}
+
 function safeOfferingIdentity(candidate: WebsiteKnowledgeApprovalCandidate) {
-  const name = compactText(candidate.offering?.name || candidate.title);
-  if (!name || containsCommercialKnowledge(name)) return null;
+  const name = safeIdentityTitle(candidate.offering?.name || candidate.title);
+  if (!name) return null;
   const rawType = compactText(candidate.offering?.type || "");
   const type = rawType && !containsCommercialKnowledge(rawType) ? rawType : "offering";
   return {
-    title: name.slice(0, 220),
+    title: name,
     content: `${name} is a ${type.replaceAll("_", " ")} offered by the business.`.slice(
       0,
       40_000
     ),
+  };
+}
+
+function safeCompanyIdentity(candidate: WebsiteKnowledgeApprovalCandidate) {
+  const name = safeIdentityTitle(candidate.title);
+  if (!name) return null;
+  return {
+    title: name,
+    content: `${name} is part of the organisation identity confirmed during company setup.`,
   };
 }
 
@@ -123,12 +138,9 @@ export function buildBusinessBasicsApproval(
       if (!identity) return;
       item = { ...identity, group: "offerings" };
     } else if (companyCategories.has(category)) {
-      if (containsCommercialKnowledge(`${candidate.title}\n${candidate.content}`)) return;
-      item = {
-        title: compactText(candidate.title).slice(0, 220),
-        content: compactText(candidate.content).slice(0, 40_000),
-        group: "company",
-      };
+      const identity = safeCompanyIdentity(candidate);
+      if (!identity) return;
+      item = { ...identity, group: "company" };
     } else if (credentialCategories.has(category)) {
       if (containsCommercialKnowledge(`${candidate.title}\n${candidate.content}`)) return;
       item = {
