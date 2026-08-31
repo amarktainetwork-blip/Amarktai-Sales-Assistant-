@@ -1,6 +1,9 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
-import { crmDesktopViewport, normalizeCrmWheelDelta } from "@/lib/crmViewerInput";
+import {
+  crmDesktopViewport,
+  normalizeCrmWheelDelta,
+} from "@/lib/crmViewerInput";
 import { trpc } from "@/lib/trpc";
 import {
   ArrowLeft,
@@ -61,6 +64,8 @@ type BrowserInputEvent =
       modifiers?: number;
     };
 
+type BrowserNavigationAction = "back" | "forward" | "refresh";
+
 type StreamMessage =
   | { type: "ready"; url: string; control: string; expiresAt: string }
   | { type: "frame"; data: string; url: string; metadata?: FrameMetadata }
@@ -92,15 +97,17 @@ function friendlyMessage(error: unknown, fallback: string) {
   const raw = error instanceof Error ? error.message : String(error || "");
   if (/full crm address|address|required|invalid.*url|url.*invalid/i.test(raw))
     return "Enter the full CRM address, including https://";
+  if (/disconnected|retired/i.test(raw))
+    return "This CRM is disconnected. Reconnect it from Connections to continue.";
   if (/sign.?in|authentication|session.*expired/i.test(raw))
     return "Your CRM needs you to sign in again.";
   if (/human.*control|required.*control/i.test(raw))
-    return "Select the CRM and try again. Amarktai will give you control automatically.";
+    return "Take control before using that CRM browser action.";
   if (/agent.*control|ai.*control/i.test(raw))
     return "Amarktai is working in the CRM. Take control when you want to work manually.";
   if (/host|domain|redirect|approved/i.test(raw))
     return "This CRM opened a new sign-in service that needs approval.";
-  if (/browser|cdp|socket|websocket|disconnected|closed|timeout/i.test(raw))
+  if (/browser|cdp|socket|websocket|closed|timeout/i.test(raw))
     return "The CRM browser connection was interrupted. Reopen the CRM and continue.";
   if (/zod|invalid_(type|format)|schema|trpc|stack|internal server/i.test(raw))
     return fallback;
@@ -214,6 +221,7 @@ function LiveWorkspace({
   const socketRef = useRef<WebSocket | null>(null);
   const controlRef = useRef(control);
   const pendingInputsRef = useRef<BrowserInputEvent[]>([]);
+  const pendingNavigationRef = useRef<BrowserNavigationAction | null>(null);
   const humanControlRequestedRef = useRef(false);
   const pendingAiControlRef = useRef(false);
   const lastPointerMoveAtRef = useRef(0);
@@ -233,6 +241,7 @@ function LiveWorkspace({
       socketRef.current?.close(1000, "Replacing CRM viewer session");
       socketRef.current = null;
       pendingInputsRef.current = [];
+      pendingNavigationRef.current = null;
       humanControlRequestedRef.current = false;
       pendingAiControlRef.current = false;
       setSession(null);
@@ -242,6 +251,7 @@ function LiveWorkspace({
       const next = await open.mutateAsync({ connectedSystemId });
       setSession(next);
       setControl(next.control);
+      controlRef.current = next.control;
       setCurrentUrl(next.url);
     } catch (error) {
       setStatus(
@@ -275,8 +285,6 @@ function LiveWorkspace({
       return;
     }
 
-    // Hover should become responsive as soon as the pointer enters the CRM,
-    // but a burst of pointer-move events must not fill the websocket queue.
     if (event.kind === "mouse" && event.type === "mouseMoved") {
       pendingInputsRef.current = pendingInputsRef.current.filter(
         pending => !(pending.kind === "mouse" && pending.type === "mouseMoved")
@@ -291,6 +299,12 @@ function LiveWorkspace({
   const flushPendingInput = () => {
     const queued = pendingInputsRef.current.splice(0);
     for (const event of queued) send({ type: "input", event });
+  };
+
+  const flushPendingNavigation = () => {
+    const action = pendingNavigationRef.current;
+    pendingNavigationRef.current = null;
+    if (action) send({ type: "navigation", action });
   };
 
   const actuallyRequestAiControl = async () => {
@@ -313,7 +327,10 @@ function LiveWorkspace({
     const sendSize = () => {
       const rect = viewerRef.current?.getBoundingClientRect();
       if (!rect || socket.readyState !== WebSocket.OPEN) return;
-      const viewport = crmDesktopViewport({ width: rect.width, height: rect.height });
+      const viewport = crmDesktopViewport({
+        width: rect.width,
+        height: rect.height,
+      });
       socket.send(
         JSON.stringify({
           type: "resize",
@@ -342,12 +359,19 @@ function LiveWorkspace({
         if (message.control === "HUMAN_CONTROL") {
           humanControlRequestedRef.current = false;
           flushPendingInput();
+          flushPendingNavigation();
         } else if (message.control === "IDLE") {
           humanControlRequestedRef.current = false;
           if (pendingAiControlRef.current) void actuallyRequestAiControl();
+          else if (
+            pendingInputsRef.current.length ||
+            pendingNavigationRef.current
+          )
+            requestHumanControl();
         } else if (message.control === "AGENT_CONTROL") {
           humanControlRequestedRef.current = false;
           pendingInputsRef.current = [];
+          pendingNavigationRef.current = null;
         }
 
         setActivity(current =>
@@ -396,18 +420,23 @@ function LiveWorkspace({
       } else if (message.type === "disconnected") {
         setStatus("The CRM browser connection paused. Reopen it to continue.");
       } else if (message.type === "error") {
-        setStatus(
-          friendlyMessage(
-            message.message || message.code,
-            "That CRM action could not be completed."
-          )
+        const friendly = friendlyMessage(
+          message.message || message.code,
+          "That CRM action could not be completed."
         );
+        setStatus(friendly);
+        toast.error(friendly);
       }
     };
 
-    socket.onclose = () => {
-      setStatus("Connection paused. Reconnect to continue.");
+    socket.onclose = event => {
+      setStatus(
+        event.code === 4002
+          ? "This CRM was disconnected. Reconnect it from Connections to continue."
+          : "Connection paused. Reconnect to continue."
+      );
       pendingInputsRef.current = [];
+      pendingNavigationRef.current = null;
       humanControlRequestedRef.current = false;
     };
 
@@ -524,11 +553,11 @@ function LiveWorkspace({
     const commandKey = event.metaKey || event.ctrlKey;
     const key = event.key.toLowerCase();
 
+    // Keep browser/app-level shortcuts outside the remote page. Paste is the
+    // exception: allow the browser to emit the ClipboardEvent, which is then
+    // forwarded through the bounded Input.insertText path below.
     if (commandKey && ["l", "r", "t", "n", "q", "w"].includes(key)) return;
-    if (commandKey && key === "v") {
-      event.preventDefault();
-      return;
-    }
+    if (commandKey && key === "v") return;
 
     event.preventDefault();
     const modifiers =
@@ -569,10 +598,16 @@ function LiveWorkspace({
 
   const takeControl = async () => {
     try {
-      if (controlRef.current === "AGENT_CONTROL" && session)
+      if (controlRef.current === "AGENT_CONTROL" && session) {
         await releaseAi.mutateAsync({
           viewerSessionId: session.viewerSessionId,
         });
+        // The mutation has synchronously released the server arbitration lock.
+        // Do not wait on a websocket IDLE frame before asking for human control.
+        controlRef.current = "IDLE";
+        setControl("IDLE");
+        humanControlRequestedRef.current = false;
+      }
       requestHumanControl();
       viewerRef.current?.focus({ preventScroll: true });
     } catch (error) {
@@ -585,13 +620,24 @@ function LiveWorkspace({
   const requestAi = () => {
     if (!session || controlRef.current === "AGENT_CONTROL") return;
     pendingAiControlRef.current = true;
+    pendingNavigationRef.current = null;
     if (controlRef.current === "HUMAN_CONTROL")
       send({ type: "releaseHumanControl" });
     else void actuallyRequestAiControl();
   };
 
-  const navigateBrowser = (action: "back" | "forward" | "refresh") =>
-    send({ type: "navigation", action });
+  const navigateBrowser = (action: BrowserNavigationAction) => {
+    if (controlRef.current === "AGENT_CONTROL") {
+      toast.info("Amarktai is working in the CRM. Take control before navigating.");
+      return;
+    }
+    if (controlRef.current === "HUMAN_CONTROL") {
+      send({ type: "navigation", action });
+      return;
+    }
+    pendingNavigationRef.current = action;
+    requestHumanControl();
+  };
 
   const confirmSignedIn = () =>
     send({ type: "customerFinishedSigningIn" });
@@ -796,7 +842,7 @@ function LiveWorkspace({
                 <p className="text-xs font-bold text-[#26354A]">{status}</p>
                 <p className="mt-1 text-xs leading-5 text-[#6C798B]">
                   {authReady
-                    ? "Your CRM session is connected. Ask me to work with the customer or use the CRM yourself."
+                    ? "Your private CRM session is connected. Ask me to work with the customer or use the CRM yourself."
                     : "Finish signing in inside the CRM. Your password and verification code stay between you and the CRM."}
                 </p>
               </div>
@@ -856,7 +902,7 @@ function LiveWorkspace({
                         open.isPending ? "animate-spin" : ""
                       }`}
                     />
-                    Reconnect CRM
+                    Reconnect browser
                   </Button>
                 </div>
               </details>
@@ -946,8 +992,8 @@ function NoBrowserCrm({ onConnections }: { onConnections: () => void }) {
           Connect a CRM to work here
         </h2>
         <p className="mx-auto mt-2 text-sm leading-6 text-[#6C798B]">
-          Connect your CRM once, then use it directly beside the Amarktai
-          Assistant and your sales tools.
+          Connect the company CRM once. Each salesperson then signs in to their
+          own private CRM workspace beside the Amarktai Assistant.
         </p>
         <Button className="mt-5" onClick={onConnections}>
           Open connections
