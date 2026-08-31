@@ -326,6 +326,18 @@ export default function CompanySetup() {
     refetchInterval: 3_000,
   });
 
+  if (setup.isLoading) {
+    return (
+      <DashboardLayout>
+        <div className="mx-auto max-w-3xl text-[#EEF5FF]">
+          <ReviewCard>
+            <p className="text-sm font-bold text-white">Loading company setup…</p>
+            <p className="mt-2 text-xs text-[#91A9CF]">Checking the saved company-learning state before showing the next setup step.</p>
+          </ReviewCard>
+        </div>
+      </DashboardLayout>
+    );
+  }
   if (setup.data?.currentDiscovery) return <CompanyKnowledgeReview />;
   return <Onboarding />;
 }
