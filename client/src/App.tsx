@@ -20,7 +20,7 @@ import {
 } from "./marketing/SecondaryPages";
 import AdminControls from "./pages/AdminControls";
 import Auth from "./pages/Auth";
-import CompanySetup from "./pages/CompanySetup";
+import CompanySetupProgressGate from "./pages/CompanySetupProgressGate";
 import ConnectionsV2 from "./pages/ConnectionsV2";
 import CrmWorkspace from "./pages/CrmWorkspace";
 import Customers from "./pages/Customers";
@@ -71,7 +71,7 @@ function Router() {
         <Route path="/connections" component={ConnectionsV2} />
         <Route path="/crm/:connectedSystemId" component={CrmWorkspace} />
         <Route path="/crm" component={CrmWorkspace} />
-        <Route path="/company-setup" component={CompanySetup} />
+        <Route path="/company-setup" component={CompanySetupProgressGate} />
         <Route path="/404" component={NotFound} />
         <Route component={NotFound} />
       </Switch>
