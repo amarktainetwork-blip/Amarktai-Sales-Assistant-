@@ -79,8 +79,10 @@ describe("commercial Sales Assistant product boundaries", () => {
     const crm = read("../client/src/pages/CrmWorkspace.tsx");
     expect(auth).toContain("CRM sign-in stays between you and your CRM");
     expect(auth).not.toContain("CRM credentials stay server-side");
-    expect(auth).not.toContain("Credentials and connection secrets remain on the server");
-    expect(crm).toContain("Sign in to the real CRM here");
+    expect(auth).not.toContain(
+      "Credentials and connection secrets remain on the server"
+    );
+    expect(crm).toContain("Sign in directly to");
     expect(crm).not.toContain("Request Genie verification code");
     expect(crm).not.toContain("pendingInteractiveAuth");
   });
