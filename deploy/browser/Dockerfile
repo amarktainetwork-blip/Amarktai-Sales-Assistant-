@@ -4,7 +4,7 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends chromium ca-certificates curl fonts-liberation nginx \
   && rm -rf /var/lib/apt/lists/* \
   && useradd --create-home --uid 10001 --shell /usr/sbin/nologin chrome \
-  && mkdir -p /home/chrome/profile /home/chrome/.cache /home/chrome/.config /home/chrome/.local /home/chrome/.pki \
+  && mkdir -p /home/chrome/.cache /home/chrome/.config /home/chrome/.local /home/chrome/.pki \
   && chown -R chrome:chrome /home/chrome
 
 COPY deploy/browser/nginx.conf /etc/nginx/nginx.conf
