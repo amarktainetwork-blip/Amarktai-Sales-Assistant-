@@ -41,6 +41,16 @@ function parseAudit(raw: unknown) {
   });
 }
 
+function expectHumanReview(result: ReturnType<typeof parseAudit>) {
+  expect(result.data.addExcludedContent).toEqual([]);
+  expect(result.data.importantGaps[0]).toContain(
+    "Human review required for audit batch 28/36"
+  );
+  expect(result.normalizationActions).toContain(
+    "$:quarantined_audit_schema_for_human_review"
+  );
+}
+
 describe("audit unclassified exclusion compatibility", () => {
   it("preserves the observed title/details shape as a review gap without guessing a classification", () => {
     const result = parseAudit(
@@ -109,34 +119,33 @@ describe("audit unclassified exclusion compatibility", () => {
     );
   });
 
-  it("does not convert semantically unknown classifications into review gaps", () => {
-    expect(() =>
-      parseAudit(
-        audit({
-          addExcludedContent: [
-            {
-              classification: "programme_page",
-              description: "Unknown semantic classification.",
-              sourcePageIds: ["PAGE_0076"],
-            },
-          ],
-        })
-      )
-    ).toThrow(CompanyKnowledgeOutputError);
+  it("quarantines semantically unknown classifications for human review", () => {
+    const result = parseAudit(
+      audit({
+        addExcludedContent: [
+          {
+            classification: "programme_page",
+            description: "Unknown semantic classification.",
+            sourcePageIds: ["PAGE_0076"],
+          },
+        ],
+      })
+    );
+    expectHumanReview(result);
+    expect(result.data.importantGaps[0]).toContain("classification");
   });
 
-  it("keeps an unclassified object with no reviewable text invalid", () => {
-    expect(() =>
-      parseAudit(
-        audit({
-          addExcludedContent: [
-            {
-              sourcePageIds: ["PAGE_0076"],
-            },
-          ],
-        })
-      )
-    ).toThrow(CompanyKnowledgeOutputError);
+  it("quarantines an unclassified object with no reviewable text", () => {
+    const result = parseAudit(
+      audit({
+        addExcludedContent: [
+          {
+            sourcePageIds: ["PAGE_0076"],
+          },
+        ],
+      })
+    );
+    expectHumanReview(result);
   });
 
   it("keeps out-of-batch provenance invalid after moving an unclassified note to review gaps", () => {
@@ -154,19 +163,18 @@ describe("audit unclassified exclusion compatibility", () => {
     ).toThrow(CompanyKnowledgeOutputError);
   });
 
-  it("does not truncate oversized malformed exclusions into valid review gaps", () => {
-    expect(() =>
-      parseAudit(
-        audit({
-          addExcludedContent: [
-            {
-              description: "x".repeat(4_100),
-              sourcePageIds: ["PAGE_0076"],
-            },
-          ],
-        })
-      )
-    ).toThrow(CompanyKnowledgeOutputError);
+  it("quarantines oversized malformed exclusions instead of truncating them into trusted content", () => {
+    const result = parseAudit(
+      audit({
+        addExcludedContent: [
+          {
+            description: "x".repeat(4_100),
+            sourcePageIds: ["PAGE_0076"],
+          },
+        ],
+      })
+    );
+    expectHumanReview(result);
   });
 
   it("keeps the same missing-classification shape invalid in full analysis", () => {
