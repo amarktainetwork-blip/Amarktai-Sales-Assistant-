@@ -117,6 +117,63 @@ export async function createAssistantMemory(input: { userId: number; organisatio
   return { id: Number(result[0].insertId), trust };
 }
 
+export async function listAssistantMemories(input: { userId: number; organisationId: number; maximum?: number }) {
+  await requireOrganisationMembership(input.userId, input.organisationId);
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const maximum = Math.max(1, Math.min(250, input.maximum ?? 160));
+  return db
+    .select()
+    .from(assistantMemories)
+    .where(
+      and(
+        eq(assistantMemories.organisationId, input.organisationId),
+        eq(assistantMemories.userId, input.userId),
+        eq(assistantMemories.status, "active")
+      )
+    )
+    .orderBy(desc(assistantMemories.occurredAt), desc(assistantMemories.createdAt))
+    .limit(maximum);
+}
+
+function conversationCanBeRemembered(value: string) {
+  const text = value.toLowerCase();
+  return !/(?:password|passcode|one[- ]?time code|otp|mfa|2fa|verification code|api key|secret key|access token|refresh token|bearer token|private key)/i.test(text);
+}
+
+export async function rememberAssistantConversation(input: {
+  userId: number;
+  organisationId: number;
+  userMessage: string;
+  assistantMessage: string;
+  occurredAt?: Date;
+  contactExternalId?: string;
+  opportunityExternalId?: string;
+  sourceReference?: string;
+}) {
+  const userMessage = input.userMessage.trim();
+  const assistantMessage = input.assistantMessage.trim();
+  if (!userMessage || !assistantMessage) return { stored: false as const, reason: "empty" as const };
+  if (!conversationCanBeRemembered(`${userMessage}\n${assistantMessage}`))
+    return { stored: false as const, reason: "sensitive" as const };
+  const occurredAt = input.occurredAt ?? new Date();
+  const subject = userMessage.replace(/\s+/g, " ").slice(0, 180) || "Assistant conversation";
+  await createAssistantMemory({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    memoryType: "conversation_reference",
+    subject,
+    content: `User: ${userMessage.slice(0, 4_000)}\nAssistant: ${assistantMessage.slice(0, 6_000)}`,
+    provenance: "approved_ai_extraction",
+    trust: "inferred",
+    contactExternalId: input.contactExternalId,
+    opportunityExternalId: input.opportunityExternalId,
+    sourceReference: input.sourceReference ?? `assistant:${occurredAt.toISOString()}`,
+    occurredAt,
+  });
+  return { stored: true as const };
+}
+
 export async function executeAssistantMemoryCommand(input: { userId: number; organisationId: number; command: string; timezone: string; now?: Date; contactExternalId?: string; opportunityExternalId?: string }) {
   const reminder = parseDeterministicReminder(input.command, input.now ?? new Date(), input.timezone);
   if (reminder) return { kind: "reminder" as const, record: await createReminder({ ...input, ...reminder, source: "assistant" }) };
