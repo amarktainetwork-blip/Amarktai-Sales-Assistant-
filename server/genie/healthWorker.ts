@@ -2,6 +2,7 @@ import "dotenv/config";
 import { runGenieOperationWatchdog } from "./operationWatchdog";
 import { processNextOutlookInbound } from "../communications/outlookInboundQueue";
 import { startCompanyKnowledgeWorker } from "../companyKnowledgeJobs";
+import { startCompanyKnowledgeAutoRefreshWorker } from "../companyKnowledgeRefresh";
 import { startAutomaticCommissioningWorker } from "../crm/automaticCommissioning";
 
 const intervalMs = Number(
@@ -65,6 +66,7 @@ setInterval(
 );
 
 startCompanyKnowledgeWorker();
+startCompanyKnowledgeAutoRefreshWorker();
 startAutomaticCommissioningWorker();
 
 process.on("SIGTERM", () => process.exit(0));
