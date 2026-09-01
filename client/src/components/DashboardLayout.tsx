@@ -245,10 +245,10 @@ export default function DashboardLayout({
     <SidebarProvider>
       <Sidebar
         collapsible="icon"
-        className="border-r border-[#1B2B44] bg-[#0B1B36] text-white"
+        className="border-r border-[#DCE4EE] bg-white text-[#26354A]"
       >
-        <SidebarHeader className="h-[76px] justify-center border-b border-white/10 px-5">
-          <BrandMark inverse />
+        <SidebarHeader className="h-[82px] justify-center border-b border-[#E5EAF0] px-5">
+          <BrandMark />
         </SidebarHeader>
         <SidebarContent className="px-3 py-4">
           <OrganisationSwitcher
@@ -267,7 +267,7 @@ export default function DashboardLayout({
           </SidebarMenu>
 
           {secondaryMenu.length ? (
-            <SidebarMenu className="mt-4 gap-1 border-t border-white/10 pt-4">
+            <SidebarMenu className="mt-4 gap-1 border-t border-[#E7ECF2] pt-4">
               {secondaryMenu.map(item => (
                 <AppNavItem key={item.path} {...item} />
               ))}
@@ -275,18 +275,18 @@ export default function DashboardLayout({
           ) : null}
         </SidebarContent>
 
-        <SidebarFooter className="border-t border-white/10 p-3">
-          <div className="flex items-center gap-2 rounded-xl bg-white/[.06] p-2">
-            <Avatar className="size-9 shrink-0 border border-white/15 bg-[#17335E] group-data-[collapsible=icon]:hidden">
-              <AvatarFallback className="bg-[#17335E] text-xs font-bold text-white">
+        <SidebarFooter className="border-t border-[#E5EAF0] p-3">
+          <div className="flex items-center gap-2 px-1 py-1">
+            <Avatar className="size-9 shrink-0 border border-[#D5DEEA] bg-[#EAF1FF] group-data-[collapsible=icon]:hidden">
+              <AvatarFallback className="bg-[#EAF1FF] text-xs font-bold text-[#2F6FED]">
                 {user.name?.slice(0, 1).toUpperCase() ?? "A"}
               </AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
-              <p className="truncate text-sm font-bold text-white">
+              <p className="truncate text-sm font-bold text-[#26354A]">
                 {user.name || "Amarktai user"}
               </p>
-              <p className="truncate text-[11px] text-[#AFC0D7]">
+              <p className="truncate text-[11px] text-[#7B8798]">
                 {user.email || "Sales workspace"}
               </p>
             </div>
@@ -295,15 +295,16 @@ export default function DashboardLayout({
               onClick={logout}
               aria-label="Sign out"
               title="Sign out"
-              className="grid size-9 shrink-0 place-items-center rounded-lg text-[#B8C7DB] transition hover:bg-white/10 hover:text-white"
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-[#D7E0EA] bg-white px-2.5 text-xs font-semibold text-[#607086] transition hover:border-[#AFC1D8] hover:bg-[#F5F8FC] hover:text-[#26354A]"
             >
               <LogOut className="size-4" />
+              <span className="group-data-[collapsible=icon]:hidden">Sign out</span>
             </button>
           </div>
         </SidebarFooter>
       </Sidebar>
 
-      <SidebarInset className="bg-[#F3F6FB]">
+      <SidebarInset className="bg-[#F4F7FA]">
         <AppTopbar title={pageTitle(location)} />
         <main className="min-h-[calc(100vh-58px)] p-4 sm:p-5 lg:p-6">
           {canManage && !setupComplete && location !== "/company-setup" ? (
@@ -338,7 +339,7 @@ function pageTitle(location: string) {
   if (location.startsWith("/company-setup")) return "Company setup";
   if (location.startsWith("/connections")) return "CRM connection";
   if (location.startsWith("/knowledge")) return "Company knowledge";
-  if (location.startsWith("/crm")) return "Secure CRM sign-in";
+  if (location.startsWith("/crm")) return "CRM workspace";
   return "Home";
 }
 
@@ -557,15 +558,15 @@ function OrganisationSwitcher({
 }) {
   if (organisations.length < 2)
     return (
-      <div className="rounded-lg border border-white/15 bg-white/[.06] px-3 py-2">
-        <p className="truncate text-xs font-bold text-white">
+      <div className="rounded-lg border border-[#DCE4EE] bg-[#F8FAFC] px-3 py-2.5">
+        <p className="truncate text-xs font-bold text-[#33445B]">
           {currentName || "Sales workspace"}
         </p>
       </div>
     );
   return (
-    <label className="block rounded-lg border border-white/15 bg-white/[.06] px-3 py-2">
-      <span className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[.12em] text-[#D7E0EA]">
+    <label className="block rounded-lg border border-[#DCE4EE] bg-[#F8FAFC] px-3 py-2.5">
+      <span className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[.12em] text-[#7A889A]">
         <Building2 size={13} /> Workspace
       </span>
       <select
@@ -576,7 +577,7 @@ function OrganisationSwitcher({
             ?.organisationId ?? ""
         }
         onChange={event => onSelect(Number(event.target.value))}
-        className="mt-1 w-full bg-transparent text-sm font-bold text-white outline-none"
+        className="mt-1 w-full bg-transparent text-sm font-bold text-[#33445B] outline-none"
       >
         <option value="" disabled>
           Select workspace
@@ -585,7 +586,7 @@ function OrganisationSwitcher({
           <option
             key={item.organisationId}
             value={item.organisationId}
-            className="bg-[#0B1B36]"
+            className="bg-white text-[#26354A]"
           >
             {item.organisationName}
           </option>
@@ -639,10 +640,10 @@ function AppNavItem({ icon: Icon, label, path }: NavItem) {
         onClick={() => setLocation(path)}
         tooltip={label}
         aria-label={label}
-        className={`h-11 rounded-lg px-3 transition-all hover:bg-white/10 hover:text-white ${
+        className={`h-11 rounded-lg px-3 transition-all ${
           active
-            ? "bg-[#2F6FED] text-white hover:bg-[#2F6FED]"
-            : "text-[#D7E2F0]"
+            ? "bg-[#EAF1FF] text-[#2459C2] hover:bg-[#E3ECFF] hover:text-[#2459C2]"
+            : "text-[#607086] hover:bg-[#F2F5F8] hover:text-[#26354A]"
         }`}
       >
         <Icon className="size-[18px]" />
