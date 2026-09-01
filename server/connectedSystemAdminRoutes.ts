@@ -362,6 +362,10 @@ export function registerConnectedSystemAdminRoutes(app: Express) {
           connectedSystemId,
           secretKind: "browser",
         });
+        if (Number(secret?.commissioningUserId || 0) !== userId)
+          throw new Error(
+            "Only the manager who owns this CRM commissioning session can run its controlled test."
+          );
         const correlationId = randomUUID();
         const evidence = await testLearnedBrowserOperation({
           connection: toAdapterConnection(system),

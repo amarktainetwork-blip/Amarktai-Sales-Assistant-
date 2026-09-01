@@ -14,8 +14,10 @@ const manager = readFileSync(
 );
 
 describe("connection-scoped CRM browser secret boundary", () => {
-  it("keys active sessions by organisation and connected system, never provider", () => {
-    expect(manager).toContain("`${organisationId}:${connectedSystemId}`");
+  it("keys active sessions by organisation, connected system and user, never provider", () => {
+    expect(manager).toContain(
+      "`${organisationId}:${connectedSystemId}:user:${userId}`"
+    );
     expect(manager).not.toContain("`${provider}:");
   });
 
@@ -36,8 +38,11 @@ describe("connection-scoped CRM browser secret boundary", () => {
     );
   });
 
-  it("uses the shared connection session package for every browser provider", () => {
+  it("uses a personal session package and a manager-only shared commissioning identity", () => {
     expect(manager).toContain('secretKind: "browser"');
+    expect(manager).toContain("loadUserConnectionSecret");
+    expect(manager).toContain("persistPersonalSession");
+    expect(manager).toContain("if (!session.canCommission) return");
     expect(manager).toContain(
       "organisationId: session.connection.organisationId"
     );

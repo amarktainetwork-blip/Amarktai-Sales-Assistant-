@@ -55,6 +55,15 @@ export async function runGenieOperationWatchdog() {
       connectedSystemId: system.id,
       secretKind: "browser",
     });
+    if (!secret?.commissioningUserId) {
+      results.push({
+        connectedSystemId: system.id,
+        operationKey: "commissioning-session",
+        status: "degraded",
+        detail: "The commissioning manager must sign in again.",
+      });
+      continue;
+    }
     for (const operation of Array.from(selected.values())) {
       try {
         const prerequisites = operation.prerequisites as Record<
@@ -101,11 +110,17 @@ export async function runGenieOperationWatchdog() {
           operationKey: operation.operationKey,
           previousVersion: operation.version,
         }).catch(repairError =>
-          console.warn("[genie-watchdog] automatic repair candidate unavailable", {
-            connectedSystemId: system.id,
-            operationKey: operation.operationKey,
-            detail: repairError instanceof Error ? repairError.message : String(repairError),
-          })
+          console.warn(
+            "[genie-watchdog] automatic repair candidate unavailable",
+            {
+              connectedSystemId: system.id,
+              operationKey: operation.operationKey,
+              detail:
+                repairError instanceof Error
+                  ? repairError.message
+                  : String(repairError),
+            }
+          )
         );
         results.push({
           connectedSystemId: system.id,

@@ -1,18 +1,91 @@
-import { useState } from "react";
-import { ShieldCheck } from "lucide-react";
-import { toast } from "sonner";
-import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { friendlyError } from "@/lib/friendlyError";
+import { trpc } from "@/lib/trpc";
+import { ShieldCheck } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 
 export default function ManagementElevation() {
-  const status = trpc.managementElevation.status.useQuery(undefined, { retry: false, refetchInterval: 15_000 });
-  const [password, setPassword] = useState("");
-  const start = trpc.managementElevation.start.useMutation({
-    onSuccess: async result => { setPassword(""); await status.refetch(); toast.success(`Management mode active for ${result.ttlMinutes} minutes.`); },
-    onError: error => toast.error(error.message),
+  const status = trpc.managementElevation.status.useQuery(undefined, {
+    retry: false,
+    refetchInterval: 15_000,
   });
-  const revoke = trpc.managementElevation.revoke.useMutation({ onSuccess: () => status.refetch() });
+  const [password, setPassword] = useState("");
+
+  const start = trpc.managementElevation.start.useMutation({
+    onSuccess: async result => {
+      setPassword("");
+      await status.refetch();
+      toast.success(`Management access confirmed for ${result.ttlMinutes} minutes.`);
+    },
+    onError: cause =>
+      toast.error(
+        friendlyError(
+          cause,
+          "Management access could not be confirmed. Check your Amarktai password and try again."
+        )
+      ),
+  });
+
+  const revoke = trpc.managementElevation.revoke.useMutation({
+    onSuccess: async () => {
+      await status.refetch();
+      toast.success("Management access ended.");
+    },
+    onError: cause =>
+      toast.error(
+        friendlyError(cause, "Management access could not be ended. Try again.")
+      ),
+  });
+
   if (!status.data?.eligible) return null;
-  return <section className="rounded-2xl border border-[#4E8BFF]/30 bg-[#0E2142] p-4"><div className="flex flex-col gap-3 lg:flex-row lg:items-end"><div className="flex-1"><div className="flex items-center gap-2 text-[#9FC2FF]"><ShieldCheck size={17}/><p className="text-xs font-black uppercase tracking-[.12em]">Sensitive management mode</p></div><p className="mt-2 text-xs leading-5 text-[#A9BFDF]">{status.data.elevated ? "Management mode is active. It will end automatically when the server session expires." : "Re-verify to manage credentials, training publication, team permissions, billing, automation and compliance. Ordinary sales work is unaffected."}</p></div>{status.data.elevated ? <Button variant="outline" disabled={revoke.isPending} onClick={() => revoke.mutate()} className="border-white/15 text-white">End management mode</Button> : <div className="flex gap-2"><Input type="password" aria-label="Password for management verification" value={password} onChange={event => setPassword(event.target.value)} placeholder="Re-enter your password" autoComplete="current-password" className="border-white/15 bg-[#08172F] text-white"/><Button disabled={!password || start.isPending} onClick={() => start.mutate({ password })} className="bg-[#1B64F2]">Re-verify</Button></div>}</div></section>;
+
+  return (
+    <section className="rounded-2xl border border-[#DCE4EE] bg-white p-4 shadow-sm">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 text-[#3F70D8]">
+            <ShieldCheck size={17} />
+            <p className="text-xs font-black uppercase tracking-[.12em]">
+              Confirm management access
+            </p>
+          </div>
+          <p className="mt-2 text-xs leading-5 text-[#66758A]">
+            {status.data.elevated
+              ? "Management access is active for a short time so you can make company changes."
+              : "For sensitive company changes, confirm your Amarktai password. Your CRM sign-in is never requested here."}
+          </p>
+        </div>
+
+        {status.data.elevated ? (
+          <Button
+            variant="outline"
+            disabled={revoke.isPending}
+            onClick={() => revoke.mutate()}
+          >
+            End management access
+          </Button>
+        ) : (
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Input
+              type="password"
+              aria-label="Amarktai password for management access"
+              value={password}
+              onChange={event => setPassword(event.target.value)}
+              placeholder="Re-enter your Amarktai password"
+              autoComplete="current-password"
+              className="min-w-[230px]"
+            />
+            <Button
+              disabled={!password || start.isPending}
+              onClick={() => start.mutate({ password })}
+            >
+              Confirm
+            </Button>
+          </div>
+        )}
+      </div>
+    </section>
+  );
 }

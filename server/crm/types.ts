@@ -49,6 +49,8 @@ export type ConnectionSecretPayload = {
   tokenType?: string;
   /** Encrypted at rest. Versioned, organisation/connection-scoped browser session package. */
   browserSession?: Record<string, unknown>;
+  /** Backend-only owner tag for the manager session copied into company commissioning. */
+  commissioningUserId?: number;
 };
 
 export type AdapterEvidence = {

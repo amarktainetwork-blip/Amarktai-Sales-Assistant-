@@ -7,9 +7,9 @@ describe("final dashboard information architecture", () => {
     const app = readFileSync(path.resolve("client/src/App.tsx"), "utf8");
     expect(app).toContain('import "./dashboard-final.css"');
     expect(app).toContain('import "./dashboard-client-readability.css"');
-    expect(app.indexOf('import "./dashboard-client-readability.css"')).toBeGreaterThan(
-      app.indexOf('import "./dashboard-final.css"')
-    );
+    expect(
+      app.indexOf('import "./dashboard-client-readability.css"')
+    ).toBeGreaterThan(app.indexOf('import "./dashboard-final.css"'));
     expect(app).not.toContain('import "./app-final.css"');
     expect(app).not.toContain('import "./dashboard-v6.css"');
     expect(app).not.toContain('import "./dashboard-v2.css"');
@@ -31,8 +31,8 @@ describe("final dashboard information architecture", () => {
     expect(layout).not.toContain('label: "Approvals"');
     expect(layout).toContain('label: "Knowledge"');
     expect(layout).toContain('label: "Connections"');
-    expect(layout).toContain('label: "Settings"');
-    expect(layout).toContain("Daily work");
+    expect(layout).toContain('label: "Company"');
+    expect(layout).toContain("Sales workspace");
     expect(layout).toContain("Manage");
   });
 

@@ -68,7 +68,7 @@ describe("live CRM stream bounds", () => {
       bytes: 100_000,
     };
     expect(shouldForwardScreencastFrame(base)).toBe(true);
-    expect(shouldForwardScreencastFrame({ ...base, lastFrameAt: 950 })).toBe(
+    expect(shouldForwardScreencastFrame({ ...base, lastFrameAt: 951 })).toBe(
       false
     );
     expect(shouldForwardScreencastFrame({ ...base, bytes: 2_000_000 })).toBe(

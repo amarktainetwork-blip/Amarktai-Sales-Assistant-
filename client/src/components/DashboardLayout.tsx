@@ -23,6 +23,7 @@ import {
 import { startLogin } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
 import { trpc } from "@/lib/trpc";
+import { friendlyError } from "@/lib/friendlyError";
 import {
   Bot,
   Building2,
@@ -33,14 +34,14 @@ import {
   Headphones,
   LayoutDashboard,
   LibraryBig,
-  MonitorUp,
   LockKeyhole,
   LogOut,
   MailCheck,
+  MonitorUp,
   Settings2,
   Users,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
@@ -56,24 +57,24 @@ type CrmIdentity = {
   }>;
 };
 
-const primaryMenu: NavItem[] = [
+const dailyMenu: NavItem[] = [
+  { icon: Bot, label: "Assistant", path: "/assistant" },
   { icon: CalendarDays, label: "Today", path: "/today" },
   { icon: ContactRound, label: "Customers", path: "/customers" },
-  { icon: Bot, label: "Assistant", path: "/agents" },
   { icon: Headphones, label: "Calls", path: "/calls" },
   { icon: MonitorUp, label: "CRM", path: "/crm" },
 ];
-const individualSecondaryMenu: NavItem[] = [
-  { icon: LibraryBig, label: "Knowledge", path: "/knowledge" },
+
+const managerMenu: NavItem[] = [
   { icon: Cable, label: "Connections", path: "/connections" },
-  { icon: Settings2, label: "Settings", path: "/company-setup" },
+  { icon: LibraryBig, label: "Knowledge", path: "/knowledge" },
+  { icon: Settings2, label: "Company", path: "/company-setup" },
 ];
-const teamSecondaryMenu: NavItem[] = [
-  { icon: LayoutDashboard, label: "Team intelligence", path: "/team" },
+
+const teamManagerMenu: NavItem[] = [
+  { icon: LayoutDashboard, label: "Team", path: "/team" },
   { icon: Users, label: "Team members", path: "/team/manage" },
-  { icon: LibraryBig, label: "Knowledge", path: "/knowledge" },
-  { icon: Cable, label: "Connections", path: "/connections" },
-  { icon: Settings2, label: "Settings", path: "/company-setup" },
+  ...managerMenu,
 ];
 
 export default function DashboardLayout({
@@ -94,6 +95,10 @@ export default function DashboardLayout({
   const organisations = trpc.organisation.available.useQuery(undefined, {
     enabled: Boolean(user && security.data?.verified),
   });
+  const canManage =
+    organisation.data?.role === "owner" ||
+    organisation.data?.role === "manager" ||
+    user?.role === "admin";
   const utils = trpc.useUtils();
   const switchOrganisation = trpc.organisation.switch.useMutation({
     onSuccess: async () => {
@@ -103,8 +108,9 @@ export default function DashboardLayout({
       ]);
       window.location.reload();
     },
-    onError: error => toast.error(error.message),
+    onError: () => toast.error("That workspace could not be opened."),
   });
+
   const settings = organisation.data?.settings;
   const workspaceMode =
     settings?.workspaceMode === "team"
@@ -116,27 +122,21 @@ export default function DashboardLayout({
     settings?.onboarding && typeof settings.onboarding === "object"
       ? (settings.onboarding as { complete?: unknown })
       : null;
-  const onboardingComplete = onboarding?.complete === true;
-  const canManage =
-    organisation.data?.role === "owner" ||
-    organisation.data?.role === "manager" ||
-    user?.role === "admin";
+  const storedCompanyComplete = onboarding?.complete === true;
   const requiresSalespersonIdentity =
     organisation.data?.role === "salesperson" &&
     !canManage &&
-    onboardingComplete;
+    storedCompanyComplete;
 
   useEffect(() => {
     if (!requiresSalespersonIdentity) return;
     fetch("/api/team/crm-identity", { credentials: "include" })
       .then(async response => {
-        const body = await response.json();
-        if (!response.ok)
-          throw new Error(body.error || "CRM identity could not be loaded.");
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error("CRM identity could not be loaded.");
         setCrmIdentity(body as CrmIdentity);
       })
-      .catch(error => {
-        console.error("[salesperson-onboarding] identity lookup failed", error);
+      .catch(() => {
         setCrmIdentity({ mapped: false, candidates: [] });
         toast.error("Your CRM identity could not be checked.");
       });
@@ -151,26 +151,25 @@ export default function DashboardLayout({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mappingId }),
       });
-      const body = await response.json();
-      if (!response.ok)
-        throw new Error(body.error || "CRM identity could not be confirmed.");
+      if (!response.ok) throw new Error("CRM identity could not be confirmed.");
       setCrmIdentity({ mapped: true, candidates: [] });
-      toast.success("CRM identity confirmed. Your sales workspace is ready.");
+      toast.success("Your CRM identity is connected.");
     } catch (error) {
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "CRM identity could not be confirmed."
+        friendlyError(
+          error,
+          "Your CRM identity could not be confirmed. Try again or ask your manager for help."
+        )
       );
     } finally {
       setIdentityPending(false);
     }
   }
 
-  const secondaryMenu =
-    workspaceMode === "team" && canManage
-      ? teamSecondaryMenu
-      : individualSecondaryMenu;
+  const secondaryMenu = useMemo(() => {
+    if (!canManage) return [];
+    return workspaceMode === "team" ? teamManagerMenu : managerMenu;
+  }, [canManage, workspaceMode]);
 
   if (loading || security.isLoading) return <DashboardLayoutSkeleton />;
   if (!user) return <SignedOut />;
@@ -196,14 +195,12 @@ export default function DashboardLayout({
         }
       />
     );
-  if ((!workspaceMode || !onboardingComplete) && !canManage)
-    return <WorkspaceSetupPending />;
-  if (
-    (!workspaceMode || !onboardingComplete) &&
-    !canManage &&
-    location !== "/company-setup"
-  )
-    return <SetupGate onContinue={() => navigate("/company-setup")} />;
+
+  // Team members inherit the company setup. Only block them while the shared
+  // company really has not completed setup; stale manager progress flags do not
+  // create another onboarding loop.
+  if (!canManage && !storedCompanyComplete) return <WorkspaceSetupPending />;
+
   if (requiresSalespersonIdentity && !crmIdentity)
     return <DashboardLayoutSkeleton />;
   if (requiresSalespersonIdentity && crmIdentity && !crmIdentity.mapped)
@@ -216,146 +213,119 @@ export default function DashboardLayout({
     );
 
   return (
-    <>
-      <SidebarProvider>
-        <Sidebar
-          collapsible="icon"
-          className="border-r border-[#52677F] bg-[#3A4D66] text-white"
-        >
-          <SidebarHeader className="h-[98px] justify-center border-b border-white/15 px-5">
-            <BrandMark inverse />
-          </SidebarHeader>
-          <SidebarContent className="px-3 py-5">
-            <OrganisationSwitcher
-              currentName={organisation.data?.organisationName}
-              organisations={organisations.data ?? []}
-              pending={switchOrganisation.isPending}
-              onSelect={organisationId =>
-                switchOrganisation.mutate({ organisationId })
-              }
-            />
-            <p className="px-3 pb-2 pt-6 text-[9px] font-black uppercase tracking-[.15em] text-[#C4D0DD]">
-              Daily work
-            </p>
-            <SidebarMenu>
-              {primaryMenu.map(item => (
-                <AppNavItem key={item.path} {...item} />
-              ))}
-            </SidebarMenu>
-            <p className="px-3 pb-2 pt-6 text-[9px] font-black uppercase tracking-[.15em] text-[#C4D0DD]">
-              Manage
-            </p>
-            <SidebarMenu>
-              {secondaryMenu.map(item => (
-                <AppNavItem key={item.path} {...item} />
-              ))}
-            </SidebarMenu>
-          </SidebarContent>
-          <SidebarFooter className="border-t border-white/15 p-3">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="flex w-full items-center gap-3 rounded-lg p-2 text-left transition hover:bg-white/10">
-                  <Avatar className="size-9 border border-white/20 bg-[#58708D]">
-                    <AvatarFallback className="bg-[#58708D] text-xs font-bold text-white">
-                      {user.name?.slice(0, 1).toUpperCase() ?? "A"}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-bold text-white">
-                      {user.name || "Amarktai user"}
-                    </p>
-                    <p className="truncate text-xs text-[#CFD8E3]">
-                      {user.email || "Authenticated workspace"}
-                    </p>
-                  </div>
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-52">
-                <DropdownMenuItem
-                  onClick={logout}
-                  className="cursor-pointer text-destructive focus:text-destructive"
-                >
-                  <LogOut className="mr-2 size-4" />
-                  Sign out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarFooter>
-        </Sidebar>
-        <SidebarInset className="bg-[#F5F7FA]">
-          <AppTopbar />
-          <main className="min-h-[calc(100vh-66px)] p-4 sm:p-6 lg:p-8">
-            {canManage && (!workspaceMode || !onboardingComplete) ? (
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#D5DFEB] bg-white px-4 py-3 text-sm text-[#33445B]">
-                <span>
-                  <strong>Setup is still in progress.</strong> Continue the
-                  guided setup when you are ready.
-                </span>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => navigate("/company-setup")}
-                >
-                  Continue setup
-                </Button>
-              </div>
-            ) : null}
-            {children}
-          </main>
-        </SidebarInset>
-      </SidebarProvider>
-    </>
-  );
-}
+    <SidebarProvider>
+      <Sidebar
+        collapsible="icon"
+        className="border-r border-[#52677F] bg-[#3A4D66] text-white"
+      >
+        <SidebarHeader className="h-[88px] justify-center border-b border-white/15 px-5">
+          <BrandMark inverse />
+        </SidebarHeader>
+        <SidebarContent className="px-3 py-4">
+          <OrganisationSwitcher
+            currentName={organisation.data?.organisationName}
+            organisations={organisations.data ?? []}
+            pending={switchOrganisation.isPending}
+            onSelect={organisationId =>
+              switchOrganisation.mutate({ organisationId })
+            }
+          />
 
-function SetupGate({ onContinue }: { onContinue: () => void }) {
-  return (
-    <div className="grid min-h-screen place-items-center bg-[#F5F7FA] p-5 text-[#26354A]">
-      <div className="w-full max-w-xl rounded-[1.5rem] border border-[#DCE2E9] bg-white p-8 shadow-[0_20px_55px_rgba(45,61,82,.1)] sm:p-10">
-        <BrandMark />
-        <div className="mt-12 grid size-12 place-items-center rounded-2xl bg-[#EDF3FF] text-[#315BB6]">
-          <Settings2 size={23} />
-        </div>
-        <p className="mt-7 text-xs font-black uppercase tracking-[.16em] text-[#3F70D8]">
-          Complete setup
-        </p>
-        <h1 className="mt-3 font-display text-4xl font-bold tracking-[-.065em]">
-          Connect, discover, test—then sell.
-        </h1>
-        <p className="mt-4 text-sm leading-6 text-[#6C798B]">
-          Choose an individual or company experience, confirm business
-          knowledge, connect the CRM, and pass the friendly readiness check.
-          Your progress is saved.
-        </p>
-        <Button
-          onClick={onContinue}
-          className="mt-8 h-12 w-full rounded-xl bg-[#3F70D8] font-bold hover:bg-[#315BB6]"
-        >
-          Continue guided setup
-        </Button>
-      </div>
-    </div>
+          <p className="px-3 pb-2 pt-5 text-[9px] font-black uppercase tracking-[.15em] text-[#C4D0DD]">
+            Sales workspace
+          </p>
+          <SidebarMenu>
+            {dailyMenu.map(item => (
+              <AppNavItem key={item.path} {...item} />
+            ))}
+          </SidebarMenu>
+
+          {secondaryMenu.length ? (
+            <>
+              <p className="px-3 pb-2 pt-5 text-[9px] font-black uppercase tracking-[.15em] text-[#C4D0DD]">
+                Manage
+              </p>
+              <SidebarMenu>
+                {secondaryMenu.map(item => (
+                  <AppNavItem key={item.path} {...item} />
+                ))}
+              </SidebarMenu>
+            </>
+          ) : null}
+        </SidebarContent>
+        <SidebarFooter className="border-t border-white/15 p-3">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="flex w-full items-center gap-3 rounded-lg p-2 text-left transition hover:bg-white/10">
+                <Avatar className="size-9 border border-white/20 bg-[#58708D]">
+                  <AvatarFallback className="bg-[#58708D] text-xs font-bold text-white">
+                    {user.name?.slice(0, 1).toUpperCase() ?? "A"}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold text-white">
+                    {user.name || "Amarktai user"}
+                  </p>
+                  <p className="truncate text-xs text-[#CFD8E3]">
+                    {user.email || "Sales workspace"}
+                  </p>
+                </div>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              <DropdownMenuItem
+                onClick={logout}
+                className="cursor-pointer text-destructive focus:text-destructive"
+              >
+                <LogOut className="mr-2 size-4" />
+                Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </SidebarFooter>
+      </Sidebar>
+
+      <SidebarInset className="bg-[#F5F7FA]">
+        <AppTopbar onAssistant={() => navigate("/assistant")} />
+        <main className="min-h-[calc(100vh-66px)] p-4 sm:p-6 lg:p-8">
+          {canManage &&
+          !storedCompanyComplete &&
+          location !== "/company-setup" ? (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#D5DFEB] bg-white px-4 py-3 text-sm text-[#33445B] shadow-sm">
+              <span>
+                Finish the company setup so Amarktai can use your business and
+                CRM context.
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => navigate("/company-setup")}
+              >
+                Continue setup
+              </Button>
+            </div>
+          ) : null}
+          {children}
+        </main>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }
 
 function WorkspaceSetupPending() {
   return (
     <div className="grid min-h-screen place-items-center bg-[#F5F7FA] p-5 text-[#26354A]">
-      <div className="w-full max-w-xl rounded-[1.5rem] border border-[#DCE2E9] bg-white p-8 shadow-[0_20px_55px_rgba(45,61,82,.1)] sm:p-10">
+      <div className="w-full max-w-xl rounded-3xl border border-[#DCE2E9] bg-white p-8 shadow-sm sm:p-10">
         <BrandMark />
-        <div className="mt-12 grid size-12 place-items-center rounded-2xl bg-[#EDF3FF] text-[#315BB6]">
+        <div className="mt-10 grid size-12 place-items-center rounded-2xl bg-[#EDF3FF] text-[#315BB6]">
           <Building2 size={23} />
         </div>
-        <p className="mt-7 text-xs font-black uppercase tracking-[.16em] text-[#3F70D8]">
-          Team workspace
-        </p>
-        <h1 className="mt-3 font-display text-4xl font-bold tracking-[-.065em]">
-          Your manager is finishing company setup.
+        <h1 className="mt-6 font-display text-4xl font-bold tracking-[-.06em]">
+          Your company workspace is being prepared.
         </h1>
         <p className="mt-4 text-sm leading-6 text-[#6C798B]">
-          You will inherit the approved knowledge, CRM connection, available
-          functions and policies. You will not need to scan the website,
-          reconnect the CRM or repeat company-wide tests.
+          Your manager is connecting the shared business knowledge and CRM. You
+          won’t need to repeat that setup when it’s ready.
         </p>
       </div>
     </div>
@@ -373,24 +343,20 @@ function SalespersonIdentityGate({
 }) {
   return (
     <div className="grid min-h-screen place-items-center bg-[#F5F7FA] p-5 text-[#26354A]">
-      <div className="w-full max-w-xl rounded-[1.5rem] border border-[#DCE2E9] bg-white p-8 shadow-[0_20px_55px_rgba(45,61,82,.1)] sm:p-10">
+      <div className="w-full max-w-xl rounded-3xl border border-[#DCE2E9] bg-white p-8 shadow-sm sm:p-10">
         <BrandMark />
-        <div className="mt-12 grid size-12 place-items-center rounded-2xl bg-[#EDF3FF] text-[#315BB6]">
+        <div className="mt-10 grid size-12 place-items-center rounded-2xl bg-[#EDF3FF] text-[#315BB6]">
           <ContactRound size={23} />
         </div>
-        <p className="mt-7 text-xs font-black uppercase tracking-[.16em] text-[#3F70D8]">
-          Your sales identity
-        </p>
-        <h1 className="mt-3 font-display text-4xl font-bold tracking-[-.065em]">
-          Confirm who you are in the CRM.
+        <h1 className="mt-6 font-display text-4xl font-bold tracking-[-.06em]">
+          Which CRM salesperson are you?
         </h1>
         <p className="mt-4 text-sm leading-6 text-[#6C798B]">
-          Your company knowledge, CRM connection and policies are already set
-          up. Confirm your matching salesperson identity; you will not repeat
-          company onboarding.
+          Confirm your match once so your customers and tasks stay tied to the
+          right person.
         </p>
         {candidates.length ? (
-          <div className="mt-7 grid gap-3">
+          <div className="mt-6 grid gap-3">
             {candidates.map(candidate => (
               <button
                 key={candidate.id}
@@ -398,23 +364,20 @@ function SalespersonIdentityGate({
                 onClick={() => onConfirm(candidate.id)}
                 className="rounded-xl border border-[#DCE2E9] bg-[#F8FAFC] p-4 text-left transition hover:border-[#8EACEB] hover:bg-[#EDF3FF]"
               >
-                <p className="font-bold text-[#26354A]">
-                  We found {candidate.displayName} in your CRM. Is this you?
-                </p>
+                <p className="font-bold">{candidate.displayName}</p>
                 <p className="mt-1 text-xs text-[#6C798B]">
-                  {candidate.email || "Matched CRM salesperson"}
+                  {candidate.email || "CRM salesperson"}
                 </p>
                 <span className="mt-3 inline-block text-sm font-bold text-[#3F70D8]">
-                  Yes, that's me
+                  This is me
                 </span>
               </button>
             ))}
           </div>
         ) : (
-          <p className="mt-7 rounded-xl border border-[#E8D5A8] bg-[#FBF3DF] p-4 text-sm leading-6 text-[#7B5A22]">
-            No exact CRM identity match is available yet. Ask your workspace
-            manager to link your CRM salesperson record; you do not need to
-            reconnect the CRM or repeat company setup.
+          <p className="mt-6 rounded-xl border border-[#E8D5A8] bg-[#FBF3DF] p-4 text-sm leading-6 text-[#7B5A22]">
+            We couldn’t find an exact match yet. Ask your manager to link your
+            CRM salesperson record to your Amarktai account.
           </p>
         )}
       </div>
@@ -425,26 +388,22 @@ function SalespersonIdentityGate({
 function SignedOut() {
   return (
     <div className="grid min-h-screen place-items-center bg-[#F5F7FA] p-5 text-[#26354A]">
-      <div className="w-full max-w-md rounded-[1.5rem] border border-[#DCE2E9] bg-white p-8 shadow-[0_20px_55px_rgba(45,61,82,.1)]">
+      <div className="w-full max-w-md rounded-3xl border border-[#DCE2E9] bg-white p-8 shadow-sm">
         <BrandMark />
-        <div className="mb-5 mt-11 grid size-12 place-items-center rounded-2xl bg-[#EDF3FF] text-[#315BB6]">
+        <div className="mb-5 mt-10 grid size-12 place-items-center rounded-2xl bg-[#EDF3FF] text-[#315BB6]">
           <Bot size={23} />
         </div>
-        <p className="mb-2 text-xs font-black uppercase tracking-[.16em] text-[#3F70D8]">
-          Protected workspace
-        </p>
-        <h1 className="font-display text-4xl font-bold tracking-[-.065em]">
-          A clear view of the sales day.
+        <h1 className="font-display text-4xl font-bold tracking-[-.06em]">
+          Your sales assistant is ready when you are.
         </h1>
         <p className="mt-4 leading-6 text-[#6C798B]">
-          Sign in to open your sales dashboard, prepare work, review decisions
-          and connect the team’s CRM.
+          Sign in to work with your customers, calls, priorities and CRM.
         </p>
         <Button
           onClick={() => startLogin()}
-          className="mt-8 h-12 w-full rounded-xl bg-[#3F70D8] font-bold text-white hover:bg-[#315BB6]"
+          className="mt-7 h-12 w-full rounded-xl bg-[#3F70D8] font-bold text-white hover:bg-[#315BB6]"
         >
-          Open secure access
+          Sign in
         </Button>
       </div>
     </div>
@@ -460,121 +419,79 @@ function SecondFactorGate({
 }) {
   const [requested, setRequested] = useState(false);
   const [code, setCode] = useState("");
-  const [feedback, setFeedback] = useState<"send" | "verify" | null>(null);
-  const [feedbackDetail, setFeedbackDetail] = useState("");
+  const [feedback, setFeedback] = useState("");
   const status = trpc.security.status.useQuery();
   const requestCode = trpc.security.requestEmailCode.useMutation({
     onSuccess: () => {
       setRequested(true);
-      setFeedback(null);
-      toast.success("A verification code was sent to your email.");
+      setFeedback("");
+      toast.success("Verification code sent.");
     },
-    onError: error => {
-      setFeedback("send");
-      setFeedbackDetail(error.message);
-    },
+    onError: () => setFeedback("The code could not be sent. Please try again."),
   });
   const verifyCode = trpc.security.verifyEmailCode.useMutation({
     onSuccess: () => {
-      setFeedback(null);
-      toast.success("Access verification complete.");
+      setFeedback("");
       status.refetch();
       window.location.assign("/dashboard");
     },
-    onError: error => {
-      setFeedback("verify");
-      setFeedbackDetail(error.message);
-    },
+    onError: () =>
+      setFeedback(
+        "That code wasn’t accepted. Check the six digits or request a new one."
+      ),
   });
+
   return (
     <div className="grid min-h-screen place-items-center bg-[#F5F7FA] p-5 text-[#26354A]">
-      <div className="grid w-full max-w-4xl overflow-hidden rounded-[1.5rem] border border-[#DCE2E9] bg-white shadow-[0_20px_60px_rgba(45,61,82,.12)] lg:grid-cols-[.9fr_1.1fr]">
+      <div className="grid w-full max-w-4xl overflow-hidden rounded-3xl border border-[#DCE2E9] bg-white shadow-sm lg:grid-cols-[.9fr_1.1fr]">
         <section className="bg-[#EEF4FB] p-8 sm:p-10">
           <BrandMark />
-          <div className="mt-16 grid size-12 place-items-center rounded-2xl bg-[#DDE9FB] text-[#315BB6]">
+          <div className="mt-14 grid size-12 place-items-center rounded-2xl bg-[#DDE9FB] text-[#315BB6]">
             <LockKeyhole size={21} />
           </div>
-          <p className="mt-7 text-xs font-black uppercase tracking-[.15em] text-[#3F70D8]">
-            Access verification
-          </p>
-          <h1 className="mt-3 font-display text-5xl font-bold leading-[.88] tracking-[-.075em]">
-            Protect the work that matters.
+          <h1 className="mt-6 font-display text-5xl font-bold leading-[.9] tracking-[-.07em]">
+            One quick security check.
           </h1>
           <p className="mt-5 text-sm leading-6 text-[#6C798B]">
-            Verify your email before Amarktai can show customer context, team
-            performance or external actions.
+            Verify your email before opening customer and company information.
           </p>
-          <div className="mt-8 space-y-3 text-sm text-[#516178]">
-            <p className="flex gap-2">
-              <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-[#3F70D8]" />
-              Codes expire after ten minutes.
-            </p>
-            <p className="flex gap-2">
-              <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-[#3F70D8]" />
-              Verification persists for twelve hours.
-            </p>
-          </div>
         </section>
         <section className="p-8 sm:p-10">
           <div className="grid size-11 place-items-center rounded-2xl bg-[#EDF3FF] text-[#315BB6]">
             <MailCheck size={20} />
           </div>
-          <h2 className="mt-6 font-display text-4xl font-bold leading-[.9] tracking-[-.07em]">
-            Confirm access.
+          <h2 className="mt-6 font-display text-4xl font-bold tracking-[-.06em]">
+            Confirm access
           </h2>
           {feedback ? (
-            <div
+            <p
               role="alert"
-              className="mt-5 rounded-xl border border-[#E5B9C0] bg-[#FAECEF] p-4 text-sm text-[#923F4B]"
+              className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"
             >
-              <p className="font-bold">
-                {feedback === "send"
-                  ? "The verification email could not be sent."
-                  : "That verification code was not accepted."}
-              </p>
-              <p className="mt-1 leading-5">
-                {feedbackDetail}{" "}
-                {feedback === "send"
-                  ? "Check email delivery and try again."
-                  : "Check the six digits or request a new code."}
-              </p>
-              <Button
-                size="sm"
-                onClick={() =>
-                  feedback === "send"
-                    ? requestCode.mutate()
-                    : verifyCode.mutate({ code })
-                }
-                className="mt-3 bg-[#3F70D8]"
-              >
-                Retry
-              </Button>
-            </div>
+              {feedback}
+            </p>
           ) : null}
           {!hasEmail ? (
-            <Notice text="This account has no configured email address. Add the administrator email before enabling access verification." />
+            <Notice text="This account needs an email address before access can be verified." />
           ) : !smtpReady ? (
-            <Notice text="SMTP is not configured yet. Add the SMTP settings before sending access codes." />
+            <Notice text="Email verification is not available yet. Ask the administrator to finish email setup." />
           ) : !requested ? (
             <>
               <p className="mt-4 text-sm leading-6 text-[#6C798B]">
-                We will send a six-digit code to the authenticated email
-                address.
+                We’ll send a six-digit code to your account email.
               </p>
               <Button
                 onClick={() => requestCode.mutate()}
                 disabled={requestCode.isPending}
-                className="mt-8 h-12 w-full rounded-xl bg-[#3F70D8] font-bold hover:bg-[#315BB6]"
+                className="mt-7 h-12 w-full"
               >
-                {requestCode.isPending
-                  ? "Sending code…"
-                  : "Send verification code"}
+                {requestCode.isPending ? "Sending…" : "Send code"}
               </Button>
             </>
           ) : (
             <>
               <p className="mt-4 text-sm leading-6 text-[#6C798B]">
-                Enter the code sent to your email.
+                Enter the six-digit code.
               </p>
               <input
                 inputMode="numeric"
@@ -584,16 +501,14 @@ function SecondFactorGate({
                   setCode(event.target.value.replace(/\D/g, ""))
                 }
                 placeholder="000000"
-                className="mt-6 h-14 w-full rounded-xl border-2 border-[#D5DDE7] bg-white text-center font-display text-3xl font-bold tracking-[.32em] text-[#26354A] outline-none placeholder:text-[#A7B0BC] focus:border-[#6F91E2]"
+                className="mt-6 h-14 w-full rounded-xl border-2 border-[#D5DDE7] text-center font-display text-3xl font-bold tracking-[.32em] outline-none focus:border-[#6F91E2]"
               />
               <Button
                 onClick={() => verifyCode.mutate({ code })}
                 disabled={code.length !== 6 || verifyCode.isPending}
-                className="mt-4 h-12 w-full rounded-xl bg-[#3F70D8] font-bold hover:bg-[#315BB6]"
+                className="mt-4 h-12 w-full"
               >
-                {verifyCode.isPending
-                  ? "Verifying…"
-                  : "Verify and open dashboard"}
+                {verifyCode.isPending ? "Checking…" : "Continue"}
               </Button>
               <button
                 onClick={() => requestCode.mutate()}
@@ -632,26 +547,21 @@ function OrganisationSwitcher({
     return (
       <div className="rounded-lg border border-white/15 bg-white/10 px-3 py-2">
         <p className="truncate text-xs font-bold text-white">
-          {currentName || "Loading workspace"}
-        </p>
-        <p className="mt-0.5 text-[9px] font-black uppercase tracking-[.12em] text-[#CFD8E3]">
-          Active organisation
+          {currentName || "Sales workspace"}
         </p>
       </div>
     );
   return (
     <label className="block rounded-lg border border-white/15 bg-white/10 px-3 py-2">
       <span className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[.12em] text-[#D7E0EA]">
-        <Building2 size={13} />
-        Active organisation
+        <Building2 size={13} /> Workspace
       </span>
       <select
-        aria-label="Active organisation"
+        aria-label="Workspace"
         disabled={pending}
         value={
-          organisations.find(
-            organisation => organisation.organisationName === currentName
-          )?.organisationId ?? ""
+          organisations.find(item => item.organisationName === currentName)
+            ?.organisationId ?? ""
         }
         onChange={event => onSelect(Number(event.target.value))}
         className="mt-1 w-full bg-transparent text-sm font-bold text-white outline-none"
@@ -659,13 +569,13 @@ function OrganisationSwitcher({
         <option value="" disabled>
           Select workspace
         </option>
-        {organisations.map(organisation => (
+        {organisations.map(item => (
           <option
-            key={organisation.organisationId}
-            value={organisation.organisationId}
+            key={item.organisationId}
+            value={item.organisationId}
             className="bg-[#3A4D66]"
           >
-            {organisation.organisationName}
+            {item.organisationName}
           </option>
         ))}
       </select>
@@ -684,30 +594,20 @@ function OrganisationSelectionGate({
 }) {
   return (
     <div className="grid min-h-screen place-items-center bg-[#F5F7FA] p-5 text-[#26354A]">
-      <div className="w-full max-w-xl rounded-[1.5rem] border border-[#DCE2E9] bg-white p-8 shadow-[0_20px_55px_rgba(45,61,82,.1)] sm:p-10">
+      <div className="w-full max-w-xl rounded-3xl border border-[#DCE2E9] bg-white p-8 shadow-sm sm:p-10">
         <BrandMark />
-        <div className="mt-12 grid size-12 place-items-center rounded-2xl bg-[#EDF3FF] text-[#315BB6]">
-          <Building2 size={23} />
-        </div>
-        <p className="mt-7 text-xs font-black uppercase tracking-[.16em] text-[#3F70D8]">
-          Choose workspace
-        </p>
-        <h1 className="mt-3 font-display text-4xl font-bold tracking-[-.065em]">
-          Which organisation are you working in?
+        <h1 className="mt-10 font-display text-4xl font-bold tracking-[-.06em]">
+          Which workspace are you using?
         </h1>
-        <p className="mt-4 text-sm leading-6 text-[#6C798B]">
-          Amarktai keeps sales data, connected systems, and reviews separated by
-          organisation. Select an authorised workspace to continue.
-        </p>
-        <div className="mt-7 grid gap-3">
-          {organisations.map(organisation => (
+        <div className="mt-6 grid gap-3">
+          {organisations.map(item => (
             <button
-              key={organisation.organisationId}
+              key={item.organisationId}
               disabled={pending}
-              onClick={() => onSelect(organisation.organisationId)}
-              className="flex items-center justify-between rounded-xl border border-[#DCE2E9] bg-[#F8FAFC] px-4 py-4 text-left font-bold text-[#26354A] transition hover:border-[#8EACEB] hover:bg-[#EDF3FF]"
+              onClick={() => onSelect(item.organisationId)}
+              className="flex items-center justify-between rounded-xl border border-[#DCE2E9] bg-[#F8FAFC] px-4 py-4 text-left font-bold transition hover:border-[#8EACEB] hover:bg-[#EDF3FF]"
             >
-              <span>{organisation.organisationName}</span>
+              <span>{item.organisationName}</span>
               <Building2 size={17} className="text-[#3F70D8]" />
             </button>
           ))}
@@ -719,7 +619,8 @@ function OrganisationSelectionGate({
 
 function AppNavItem({ icon: Icon, label, path }: NavItem) {
   const [location, setLocation] = useLocation();
-  const active = location === path;
+  const active =
+    location === path || (path === "/crm" && location.startsWith("/crm/"));
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
@@ -727,7 +628,11 @@ function AppNavItem({ icon: Icon, label, path }: NavItem) {
         onClick={() => setLocation(path)}
         tooltip={label}
         aria-label={label}
-        className={`h-11 rounded-lg px-3 transition-all hover:bg-[#465C77] hover:text-white ${active ? "bg-[#F7F9FB] text-[#26354A] hover:bg-[#F7F9FB]" : "text-[#E1E7EE]"}`}
+        className={`h-11 rounded-lg px-3 transition-all hover:bg-[#465C77] hover:text-white ${
+          active
+            ? "bg-[#F7F9FB] text-[#26354A] hover:bg-[#F7F9FB]"
+            : "text-[#E1E7EE]"
+        }`}
       >
         <Icon className="size-[18px]" />
         <span className="font-semibold group-data-[collapsible=icon]:hidden">
@@ -738,24 +643,34 @@ function AppNavItem({ icon: Icon, label, path }: NavItem) {
   );
 }
 
-function AppTopbar() {
+function AppTopbar({ onAssistant }: { onAssistant: () => void }) {
   const isMobile = useIsMobile();
   if (!isMobile)
     return (
       <header className="flex h-[66px] items-center justify-between border-b border-[#DCE2E9] bg-white/95 px-8 backdrop-blur">
-        <p className="text-[10px] font-black uppercase tracking-[.16em] text-[#748196]">
-          Amarktai / Sales workspace
-        </p>
-        <div className="flex items-center gap-2 rounded-full border border-[#D5DFEB] bg-[#F3F6FA] px-3 py-1.5 text-xs font-bold text-[#5A6A80]">
-          <span className="size-1.5 rounded-full bg-[#438F91]" />
-          Governed automation ready
-        </div>
+        <p className="text-sm font-bold text-[#526277]">Sales workspace</p>
+        <button
+          onClick={onAssistant}
+          className="flex items-center gap-2 rounded-full border border-[#D5DFEB] bg-[#F3F6FA] px-3 py-1.5 text-xs font-bold text-[#526277] transition hover:border-[#9CB8E8] hover:bg-[#EDF3FF]"
+        >
+          <Bot className="h-3.5 w-3.5 text-[#3F70D8]" />
+          Ask Amarktai
+        </button>
       </header>
     );
   return (
-    <header className="flex h-14 items-center border-b border-[#DCE2E9] bg-white px-2">
-      <SidebarTrigger className="rounded-lg text-[#26354A] hover:bg-[#EEF2F5]" />
-      <span className="ml-2 text-sm font-bold text-[#26354A]">Amarktai</span>
+    <header className="flex h-14 items-center justify-between border-b border-[#DCE2E9] bg-white px-2">
+      <div className="flex items-center">
+        <SidebarTrigger className="rounded-lg text-[#26354A] hover:bg-[#EEF2F5]" />
+        <span className="ml-2 text-sm font-bold text-[#26354A]">Amarktai</span>
+      </div>
+      <button
+        onClick={onAssistant}
+        aria-label="Ask Amarktai"
+        className="mr-2 text-[#3F70D8]"
+      >
+        <Bot className="h-5 w-5" />
+      </button>
     </header>
   );
 }

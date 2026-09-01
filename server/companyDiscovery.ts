@@ -18,6 +18,7 @@ const MAX_KNOWLEDGE = 80;
 const MAX_RENDERED_PAGES = 24;
 const MIN_DIRECT_TEXT_CHARS = 1_200;
 const RENDER_TIMEOUT_MS = 35_000;
+const MAX_CRAWL_TIME_MS = 3 * 60_000;
 
 const CATEGORY_RULES: Array<[string, RegExp]> = [
   ["pricing", /(?:pricing|price|fees?|cost)/i],
@@ -81,6 +82,13 @@ export type DiscoveryRenderer = (
 ) => Promise<RenderedPublicPage | null>;
 export type DiscoveryOptions = {
   renderer?: DiscoveryRenderer;
+  /** Test/internal overrides may only tighten the production ceilings. */
+  limits?: Partial<{
+    maxPages: number;
+    fetchTimeoutMs: number;
+    renderTimeoutMs: number;
+    maxCrawlTimeMs: number;
+  }>;
 };
 type DiscoveryDiagnostics = {
   renderAttempts: number;
@@ -211,16 +219,21 @@ function canonicalize(input: URL) {
   return url;
 }
 
+export async function validatePublicWebsiteUrl(rawUrl: string) {
+  return canonicalize(await assertPublicUrl(rawUrl.trim())).toString();
+}
+
 async function boundedFetch(
   initialUrl: URL,
   approvedHostname: string,
-  accept: string
+  accept: string,
+  timeoutMs = FETCH_TIMEOUT_MS
 ) {
   let url = await assertPublicUrl(initialUrl.toString(), approvedHostname);
   for (let redirect = 0; redirect <= 5; redirect += 1) {
     const response = await fetch(url, {
       redirect: "manual",
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
       headers: { "User-Agent": USER_AGENT, Accept: accept },
     });
     if (response.status >= 300 && response.status < 400) {
@@ -619,9 +632,7 @@ function runRenderWorker(input: {
       workerData: { ...input, maxPageBytes: MAX_PAGE_BYTES },
     });
     let settled = false;
-    const finish = (
-      action: () => void
-    ) => {
+    const finish = (action: () => void) => {
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
@@ -733,12 +744,17 @@ function parseRobots(text: string, origin: URL): RobotsPolicy {
   };
 }
 
-async function loadRobots(origin: URL, approvedHostname: string) {
+async function loadRobots(
+  origin: URL,
+  approvedHostname: string,
+  fetchTimeoutMs: number
+) {
   try {
     const { response } = await boundedFetch(
       new URL("/robots.txt", origin),
       approvedHostname,
-      "text/plain,*/*;q=0.2"
+      "text/plain,*/*;q=0.2",
+      fetchTimeoutMs
     );
     if (!response.ok) return parseRobots("", origin);
     return parseRobots(await readTextBounded(response, 250_000), origin);
@@ -750,7 +766,8 @@ async function loadRobots(origin: URL, approvedHostname: string) {
 async function loadSitemapUrls(
   origin: URL,
   approvedHostname: string,
-  policy: RobotsPolicy
+  policy: RobotsPolicy,
+  fetchTimeoutMs: number
 ) {
   const sitemapQueue = Array.from(
     new Set([...policy.sitemapUrls, new URL("/sitemap.xml", origin).toString()])
@@ -772,7 +789,8 @@ async function loadSitemapUrls(
       const { response } = await boundedFetch(
         sitemapUrl,
         approvedHostname,
-        "application/xml,text/xml,*/*;q=0.2"
+        "application/xml,text/xml,*/*;q=0.2",
+        fetchTimeoutMs
       );
       if (!response.ok) continue;
       const xml = await readTextBounded(response, MAX_PAGE_BYTES);
@@ -839,9 +857,13 @@ function linkPriority(url: URL) {
   return order.indexOf(category) < 0 ? 100 : order.indexOf(category);
 }
 
-function shouldRender(page: ParsedPage, renderAttempts: number) {
+function shouldRender(
+  page: ParsedPage,
+  renderAttempts: number,
+  maxRenderedPages: number
+) {
   if (
-    renderAttempts >= MAX_RENDERED_PAGES ||
+    renderAttempts >= maxRenderedPages ||
     !process.env.BROWSERLESS_WS_ENDPOINT?.trim()
   )
     return false;
@@ -852,13 +874,24 @@ async function fetchPage(
   candidate: PageCandidate,
   approvedHostname: string,
   renderer: DiscoveryRenderer,
-  diagnostics: DiscoveryDiagnostics
+  diagnostics: DiscoveryDiagnostics,
+  limits: {
+    fetchTimeoutMs: number;
+    renderTimeoutMs: number;
+    maxRenderedPages: number;
+  }
 ) {
   const { response, finalUrl } = await boundedFetch(
     candidate.url,
     approvedHostname,
-    "text/html,application/xhtml+xml"
+    "text/html,application/xhtml+xml",
+    limits.fetchTimeoutMs
   );
+  if (response.status === 429 || response.status >= 500) {
+    throw new Error(
+      `Website returned temporary HTTP ${response.status} while reading ${finalUrl}.`
+    );
+  }
   if (!response.ok) return null;
   const contentType = response.headers.get("content-type")?.toLowerCase() || "";
   if (
@@ -868,10 +901,21 @@ async function fetchPage(
     return null;
   const html = await readTextBounded(response, MAX_PAGE_BYTES);
   let page = parseHtml(html, finalUrl, false);
-  if (shouldRender(page, diagnostics.renderAttempts)) {
+  if (shouldRender(page, diagnostics.renderAttempts, limits.maxRenderedPages)) {
     diagnostics.renderAttempts += 1;
     try {
-      const rendered = await renderer(finalUrl, approvedHostname);
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      const rendered = await Promise.race([
+        renderer(finalUrl, approvedHostname),
+        new Promise<never>((_, reject) => {
+          timeout = setTimeout(
+            () => reject(new Error("Optional website rendering timed out.")),
+            limits.renderTimeoutMs
+          );
+        }),
+      ]).finally(() => {
+        if (timeout) clearTimeout(timeout);
+      });
       if (!rendered) diagnostics.renderFallbacks += 1;
       else {
         const renderedPage = parseHtml(rendered.html, rendered.url, true);
@@ -1105,15 +1149,39 @@ export async function discoverPublicWebsite(
   rawUrl: string,
   options: DiscoveryOptions = {}
 ): Promise<DiscoveryResult> {
+  const tighten = (value: number | undefined, ceiling: number) =>
+    Number.isFinite(value)
+      ? Math.max(1, Math.min(ceiling, Math.floor(value!)))
+      : ceiling;
+  const limits = {
+    maxPages: tighten(options.limits?.maxPages, MAX_PAGES),
+    fetchTimeoutMs: tighten(options.limits?.fetchTimeoutMs, FETCH_TIMEOUT_MS),
+    renderTimeoutMs: tighten(
+      options.limits?.renderTimeoutMs,
+      RENDER_TIMEOUT_MS
+    ),
+    maxCrawlTimeMs: tighten(options.limits?.maxCrawlTimeMs, MAX_CRAWL_TIME_MS),
+    maxRenderedPages: MAX_RENDERED_PAGES,
+  };
+  const deadline = Date.now() + limits.maxCrawlTimeMs;
   const startedAt = new Date().toISOString();
   const initial = canonicalize(await assertPublicUrl(rawUrl.trim()));
   const approvedHostname = initial.hostname.toLowerCase();
-  const robots = await loadRobots(initial, approvedHostname);
+  const robots = await loadRobots(
+    initial,
+    approvedHostname,
+    limits.fetchTimeoutMs
+  );
   if (!robots.allowed(initial.pathname))
     throw new Error(
       "The website robots policy does not allow discovery of the supplied page."
     );
-  const sitemap = await loadSitemapUrls(initial, approvedHostname, robots);
+  const sitemap = await loadSitemapUrls(
+    initial,
+    approvedHostname,
+    robots,
+    limits.fetchTimeoutMs
+  );
   const queue: PageCandidate[] = [
     { url: initial, depth: 0, priority: -1 },
     ...sitemap.urls.map(url => ({
@@ -1125,6 +1193,7 @@ export async function discoverPublicWebsite(
   const queued = new Set(queue.map(item => item.url.toString()));
   const visited = new Set<string>();
   const pages: ParsedPage[] = [];
+  let lastFetchError: unknown;
   let totalText = 0;
   const diagnostics: DiscoveryDiagnostics = {
     renderAttempts: 0,
@@ -1134,8 +1203,9 @@ export async function discoverPublicWebsite(
 
   while (
     queue.length &&
-    pages.length < MAX_PAGES &&
-    totalText < MAX_TOTAL_TEXT
+    pages.length < limits.maxPages &&
+    totalText < MAX_TOTAL_TEXT &&
+    Date.now() < deadline
   ) {
     queue.sort(
       (a, b) =>
@@ -1153,12 +1223,21 @@ export async function discoverPublicWebsite(
           candidate,
           approvedHostname,
           renderer,
-          diagnostics
-        ).catch(() => null)
+          diagnostics,
+          limits
+        ).catch(error => {
+          lastFetchError = error;
+          return null;
+        })
       )
     );
     for (let index = 0; index < results.length; index += 1) {
-      if (pages.length >= MAX_PAGES || totalText >= MAX_TOTAL_TEXT) break;
+      if (
+        pages.length >= limits.maxPages ||
+        totalText >= MAX_TOTAL_TEXT ||
+        Date.now() >= deadline
+      )
+        break;
       const page = results[index];
       const candidate = batch[index];
       if (!page) continue;
@@ -1190,6 +1269,7 @@ export async function discoverPublicWebsite(
     }
   }
 
+  if (!pages.length && lastFetchError) throw lastFetchError;
   if (!pages.length)
     throw new Error(
       "The website did not return any readable public HTML pages."
@@ -1270,12 +1350,15 @@ export async function discoverPublicWebsite(
       renderAttempts: diagnostics.renderAttempts,
       renderFallbacks: diagnostics.renderFallbacks,
       limits: {
-        maxPages: MAX_PAGES,
+        maxPages: limits.maxPages,
         maxDepth: MAX_DEPTH,
         maxPageBytes: MAX_PAGE_BYTES,
         maxTotalText: MAX_TOTAL_TEXT,
         maxSitemaps: MAX_SITEMAPS,
         concurrency: CONCURRENCY,
+        fetchTimeoutMs: limits.fetchTimeoutMs,
+        renderTimeoutMs: limits.renderTimeoutMs,
+        maxCrawlTimeMs: limits.maxCrawlTimeMs,
       },
       startedAt,
       completedAt: new Date().toISOString(),

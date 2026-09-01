@@ -1,11 +1,8 @@
 import type { Express, Response } from "express";
 import { and, eq } from "drizzle-orm";
-import { externalUserMappings } from "../drizzle/schema";
+import { companyProfiles, externalUserMappings } from "../drizzle/schema";
 import {
-  getConnectedSystemForUser,
-  hasUserConnectionSecret,
   listConnectedSystemsForUser,
-  saveUserConnectionSecret,
 } from "./connectedSystems";
 import { getDb, getUserById, recordAudit } from "./db";
 import { requireLocalHttpContext } from "./httpAuth";
@@ -23,9 +20,15 @@ function sendError(res: Response, error: unknown) {
     return res
       .status(403)
       .json({ error: "Second-factor verification is required." });
-  return res
-    .status(400)
-    .json({ error: detail.slice(0, 500) || "Onboarding failed." });
+  console.error(
+    JSON.stringify({ event: "user_onboarding_error", detail: detail.slice(0, 300) })
+  );
+  return res.status(400).json({
+    error:
+      /identity/i.test(detail) && /crm/i.test(detail)
+        ? "Confirm your salesperson identity before continuing."
+        : "Your setup could not be saved. Please try again.",
+  });
 }
 
 function companyOnboarding(settings: Record<string, unknown>) {
@@ -98,6 +101,25 @@ async function identityState(input: {
   };
 }
 
+async function confirmedCompanyProfile(organisationId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const row = (
+    await db
+      .select({
+        id: companyProfiles.id,
+        discoveryStatus: companyProfiles.discoveryStatus,
+        confirmedAt: companyProfiles.confirmedAt,
+      })
+      .from(companyProfiles)
+      .where(eq(companyProfiles.organisationId, organisationId))
+      .limit(1)
+  )[0];
+  return Boolean(
+    row && row.discoveryStatus === "confirmed" && row.confirmedAt
+  );
+}
+
 async function snapshotWithMembership(input: {
   userId: number;
   membership: Awaited<ReturnType<typeof requireLocalHttpContext>>["membership"];
@@ -111,21 +133,35 @@ async function snapshotWithMembership(input: {
       system.connectionMethod === "browser" ||
       system.connectionMethod === "sidecar"
   );
-  const personalCrm = await Promise.all(
-    browserSystems.map(async system => ({
-      id: system.id,
-      provider: system.provider,
-      displayName: system.displayName,
-      baseUrl: system.baseUrl,
-      status: system.status,
-      hasCredentials: await hasUserConnectionSecret({
-        userId: input.userId,
-        organisationId: input.membership.organisationId,
-        connectedSystemId: system.id,
-        secretKind: "browser",
-      }),
-    }))
+  const personalCrm = browserSystems.map(system => ({
+    id: system.id,
+    provider: system.provider,
+    displayName: system.displayName,
+    baseUrl: system.baseUrl,
+    status: system.status,
+    // CRM passwords are never a setup requirement. A user authenticates in the
+    // private CRM browser when the CRM itself needs a sign-in.
+    signInRequired: ["disconnected", "authentication_expired"].includes(
+      system.status
+    ),
+  }));
+  const storedCompany = companyOnboarding(input.membership.settings);
+  const companyKnowledgeReady = await confirmedCompanyProfile(
+    input.membership.organisationId
   );
+  const crmConnected = systems.some(system =>
+    [
+      "connecting",
+      "testing",
+      "ready",
+      "limited_permissions",
+      "needs_attention",
+      "authentication_expired",
+    ].includes(system.status)
+  );
+  const effectiveCompanyComplete =
+    storedCompany.complete || (companyKnowledgeReady && crmConnected);
+
   return {
     member: input.membership.memberOnboarding,
     role: input.membership.role,
@@ -133,13 +169,17 @@ async function snapshotWithMembership(input: {
     organisationName: input.membership.organisationName,
     canManage: canManageOrganisation(input.membership.role),
     company: {
-      ...companyOnboarding(input.membership.settings),
+      complete: effectiveCompanyComplete,
+      storedComplete: storedCompany.complete,
+      step: effectiveCompanyComplete ? Math.max(4, storedCompany.step) : storedCompany.step,
       workspaceMode:
         input.membership.settings.workspaceMode === "team"
           ? "team"
           : input.membership.settings.workspaceMode === "individual"
             ? "individual"
             : null,
+      knowledgeReady: companyKnowledgeReady,
+      crmConnected,
     },
     personalCrm,
     identity: await identityState({
@@ -200,41 +240,28 @@ export function registerUserOnboardingRoutes(app: Express) {
           "Add your main sales goal before completing onboarding."
         );
 
-      // Company setup is separate. Owners/managers may finish their own personal
-      // onboarding first and are then sent into company setup. Non-managers must
-      // inherit a completed company setup before entering the sales workspace.
+      // Company setup is shared. New team members inherit it; they do not repeat
+      // website learning, CRM commissioning, or capability testing.
       if (!current.canManage && !current.company.complete)
         throw new Error(
-          "Your company setup is not finished yet. Your manager must complete it before your workspace can open."
+          "Your company workspace is still being prepared by a manager."
         );
 
-      const browserConnection = current.personalCrm[0];
-      if (
-        browserConnection &&
-        membership.role !== "auditor" &&
-        !browserConnection.hasCredentials
-      )
-        throw new Error(
-          `Save your own ${browserConnection.displayName} login before completing onboarding.`
-        );
-
+      // Only a known salesperson mapping is a legitimate per-user blocker. CRM
+      // sign-in itself happens naturally inside that user's private CRM browser.
       if (
         membership.role === "salesperson" &&
         current.identity.mappingsExist &&
         !current.identity.mapped
       )
-        throw new Error(
-          "Confirm your matching salesperson identity in the CRM before completing onboarding."
-        );
+        throw new Error("Confirm your salesperson identity in the CRM first.");
 
       const state = await updateMemberOnboardingState({
         userId,
         membership,
         step: 6,
         complete: true,
-        crmCredentialsSaved:
-          browserConnection?.hasCredentials ??
-          current.member.crmCredentialsSaved,
+        crmCredentialsSaved: true,
         crmIdentityConfirmed:
           current.identity.mapped || current.member.crmIdentityConfirmed,
       });
@@ -244,11 +271,11 @@ export function registerUserOnboardingRoutes(app: Express) {
         eventType: "member_onboarding_completed",
         entityType: "organisation_member",
         entityId: String(userId),
-        summary: "A member completed their mandatory first-login onboarding.",
+        summary: "A member completed their personal Sales Assistant setup.",
         metadata: {
           role: membership.role,
           companySetupInherited: !current.canManage,
-          browserCrmSessionReady: browserConnection?.status === "ready",
+          personalCrmSignInDeferred: true,
           crmIdentityConfirmed: Boolean(current.identity.mapped),
         },
       });

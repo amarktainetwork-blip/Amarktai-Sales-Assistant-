@@ -5,13 +5,13 @@ import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "../routers";
 import { registerCrmOAuthRoutes } from "../crm/oauthRoutes";
-import { startAutomaticCommissioningWorker } from "../crm/automaticCommissioning";
-import { startCompanyKnowledgeWorker } from "../companyKnowledgeJobs";
 import { registerSidecarRoutes } from "../sidecar/routes";
 import { registerLiveCallRoutes } from "../liveCalls/routes";
 import { registerTeamAdminRoutes } from "../teamAdmin/routes";
 import { registerManagementSettingsRoutes } from "../managementSettingsRoutes";
 import { registerConnectedSystemAdminRoutes } from "../connectedSystemAdminRoutes";
+import { registerConnectedSystemLifecycleRoutes } from "../connectedSystemLifecycleRoutes";
+import { registerAssistantRoutes } from "../assistantRoutes";
 import { registerSalesAutomationRoutes } from "../salesAutomationRoutes";
 import { registerSalesTargetsRoutes } from "../salesTargetsRoutes";
 import { registerAiCreditsRoutes } from "../aiCreditsRoutes";
@@ -70,10 +70,7 @@ async function startServer() {
   // decoded chunk limit safely below the parser boundary while remaining bounded.
   app.use(express.json({ limit: "2mb" }));
   app.use(express.urlencoded({ limit: "64kb", extended: true }));
-  app.use(
-    "/api/outlook/inbound",
-    rateLimit({ limit: 120, windowMs: 60_000 })
-  );
+  app.use("/api/outlook/inbound", rateLimit({ limit: 120, windowMs: 60_000 }));
   registerOutlookInboundRoutes(app);
   app.get("/healthz", (_req, res) =>
     res.status(200).json({ status: "ok", service: "amarktai-sales" })
@@ -124,6 +121,14 @@ async function startServer() {
     enforceAppOrigin
   );
   registerConnectedSystemAdminRoutes(app);
+  registerConnectedSystemLifecycleRoutes(app);
+  app.use(
+    "/api/assistant",
+    rateLimit({ limit: 60, windowMs: 60_000 }),
+    enforceAppOrigin,
+    withAiRequestIdentity
+  );
+  registerAssistantRoutes(app);
   app.use(
     "/api/company-intelligence",
     rateLimit({ limit: 12, windowMs: 60_000 }),
@@ -178,8 +183,6 @@ async function startServer() {
   server.listen(port, "0.0.0.0", () =>
     console.log(`Server running on http://0.0.0.0:${port}/`)
   );
-  startAutomaticCommissioningWorker();
-  startCompanyKnowledgeWorker();
 }
 
 startServer().catch(error => {

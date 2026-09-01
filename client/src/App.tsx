@@ -1,10 +1,13 @@
+import { useAuth } from "@/_core/hooks/useAuth";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { trpc } from "@/lib/trpc";
 import { publicPageMetadata } from "@/marketing/site";
 import NotFound from "@/pages/NotFound";
 import { useEffect } from "react";
 import { Route, Switch, useLocation } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
+import { DashboardLayoutSkeleton } from "./components/DashboardLayoutSkeleton";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import "./dashboard-final.css";
 import "./dashboard-client-readability.css";
@@ -19,25 +22,79 @@ import {
   TeamsPage,
 } from "./marketing/SecondaryPages";
 import AdminControls from "./pages/AdminControls";
+import Assistant from "./pages/Assistant";
 import Auth from "./pages/Auth";
 import CompanySetup from "./pages/CompanySetup";
 import ConnectionsV2 from "./pages/ConnectionsV2";
 import CrmWorkspace from "./pages/CrmWorkspace";
 import Customers from "./pages/Customers";
 import Home from "./pages/Home";
+import Knowledge from "./pages/Knowledge";
 import LiveCalls from "./pages/LiveCalls";
 import Pricing from "./pages/Pricing";
-import Reports from "./pages/Reports";
-import SalesAutomation from "./pages/SalesAutomation";
+import Reviews from "./pages/Reviews";
 import TeamIntelligence from "./pages/TeamIntelligence";
 import TeamManagement from "./pages/TeamManagement";
 import Today from "./pages/Today";
-import {
-  AgentDesk,
-  CommandCentre,
-  KnowledgeHub,
-  WorkflowStudio,
-} from "./pages/Workspace";
+
+function LegacyRedirect({ to }: { to: string }) {
+  const [, navigate] = useLocation();
+  useEffect(() => navigate(to, { replace: true }), [navigate, to]);
+  return <DashboardLayoutSkeleton />;
+}
+
+function ManagementOnly({
+  children,
+  platformAdminOnly = false,
+}: {
+  children: React.ReactNode;
+  platformAdminOnly?: boolean;
+}) {
+  const [, navigate] = useLocation();
+  const { user, loading } = useAuth();
+  const security = trpc.security.status.useQuery(undefined, {
+    enabled: Boolean(user),
+  });
+  const organisation = trpc.organisation.current.useQuery(undefined, {
+    enabled: Boolean(user && security.data?.verified),
+    retry: false,
+  });
+  const allowed = platformAdminOnly
+    ? user?.role === "admin"
+    : organisation.data?.role === "owner" ||
+      organisation.data?.role === "manager" ||
+      user?.role === "admin";
+
+  useEffect(() => {
+    if (!loading && !user) {
+      navigate("/auth", { replace: true });
+      return;
+    }
+    if (!loading && user && security.data && !security.data.verified) {
+      navigate("/assistant", { replace: true });
+      return;
+    }
+    if (
+      !loading &&
+      user &&
+      security.data?.verified &&
+      !organisation.isLoading &&
+      !allowed
+    )
+      navigate("/assistant", { replace: true });
+  }, [
+    allowed,
+    loading,
+    navigate,
+    organisation.isLoading,
+    security.data?.verified,
+    user,
+  ]);
+
+  if (loading || security.isLoading || organisation.isLoading || !allowed)
+    return <DashboardLayoutSkeleton />;
+  return <>{children}</>;
+}
 
 function Router() {
   return (
@@ -54,24 +111,72 @@ function Router() {
         <Route path="/teams" component={TeamsPage} />
         <Route path="/integrations" component={IntegrationsPage} />
         <Route path="/auth" component={Auth} />
-        <Route path="/dashboard" component={Today} />
+
+        <Route path="/dashboard" component={Assistant} />
+        <Route path="/assistant" component={Assistant} />
+        <Route path="/agents">{() => <LegacyRedirect to="/assistant" />}</Route>
         <Route path="/today" component={Today} />
-        <Route path="/sell" component={Today} />
+        <Route path="/sell">{() => <LegacyRedirect to="/today" />}</Route>
         <Route path="/customers" component={Customers} />
-        <Route path="/reports" component={Reports} />
-        <Route path="/automation" component={SalesAutomation} />
-        <Route path="/team" component={TeamIntelligence} />
-        <Route path="/team/manage" component={TeamManagement} />
-        <Route path="/admin-controls" component={AdminControls} />
-        <Route path="/workspace" component={CommandCentre} />
-        <Route path="/workflows" component={WorkflowStudio} />
-        <Route path="/agents" component={AgentDesk} />
         <Route path="/calls" component={LiveCalls} />
-        <Route path="/knowledge" component={KnowledgeHub} />
-        <Route path="/connections" component={ConnectionsV2} />
         <Route path="/crm/:connectedSystemId" component={CrmWorkspace} />
         <Route path="/crm" component={CrmWorkspace} />
-        <Route path="/company-setup" component={CompanySetup} />
+        <Route path="/reviews" component={Reviews} />
+
+        <Route path="/team">
+          {() => (
+            <ManagementOnly>
+              <TeamIntelligence />
+            </ManagementOnly>
+          )}
+        </Route>
+        <Route path="/team/manage">
+          {() => (
+            <ManagementOnly>
+              <TeamManagement />
+            </ManagementOnly>
+          )}
+        </Route>
+        <Route path="/connections">
+          {() => (
+            <ManagementOnly>
+              <ConnectionsV2 />
+            </ManagementOnly>
+          )}
+        </Route>
+        <Route path="/company-setup">
+          {() => (
+            <ManagementOnly>
+              <CompanySetup />
+            </ManagementOnly>
+          )}
+        </Route>
+        <Route path="/knowledge">
+          {() => (
+            <ManagementOnly>
+              <Knowledge />
+            </ManagementOnly>
+          )}
+        </Route>
+        <Route path="/admin-controls">
+          {() => (
+            <ManagementOnly platformAdminOnly>
+              <AdminControls />
+            </ManagementOnly>
+          )}
+        </Route>
+
+        <Route path="/reports">{() => <LegacyRedirect to="/team" />}</Route>
+        <Route path="/workspace">
+          {() => <LegacyRedirect to="/assistant" />}
+        </Route>
+        <Route path="/workflows">
+          {() => <LegacyRedirect to="/assistant" />}
+        </Route>
+        <Route path="/automation">
+          {() => <LegacyRedirect to="/assistant" />}
+        </Route>
+
         <Route path="/404" component={NotFound} />
         <Route component={NotFound} />
       </Switch>

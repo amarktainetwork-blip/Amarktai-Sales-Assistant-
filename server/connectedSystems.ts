@@ -4,8 +4,9 @@ import {
   connectedSystems,
   connectionSecrets,
   connectorVerificationRuns,
+  crmCommissioningJobs,
 } from "../drizzle/schema";
-import { getDb } from "./db";
+import { getDb, recordAudit } from "./db";
 import {
   canManageOrganisationForUser,
   requireOrganisationMembership,
@@ -31,6 +32,9 @@ const connectionMethods = [
   "import",
 ] as const;
 type ConnectionMethod = (typeof connectionMethods)[number];
+type ConnectedSystemRow = typeof connectedSystems.$inferSelect;
+type Db = Exclude<Awaited<ReturnType<typeof getDb>>, null | undefined>;
+
 const privateExecutionKey =
   /(?:password|secret|token|cookie|authorization|credential|storageState|browserProfile|authenticated|session)/i;
 const safeVerificationEvidenceKeys = new Set([
@@ -43,6 +47,86 @@ const safeVerificationEvidenceKeys = new Set([
   "learnedOperationReadinessInspected",
   "configuredOperations",
 ]);
+
+const connectionStatusRank: Record<ConnectedSystemRow["status"], number> = {
+  ready: 90,
+  limited_permissions: 80,
+  testing: 70,
+  connecting: 60,
+  needs_attention: 50,
+  authentication_expired: 40,
+  paused: 30,
+  disconnected: 20,
+  error: 10,
+};
+
+function configurationRecord(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function isRetired(system: Pick<ConnectedSystemRow, "configuration">) {
+  return typeof configurationRecord(system.configuration).retiredAt === "string";
+}
+
+function normalizedOrigin(baseUrl?: string | null) {
+  if (!baseUrl) return null;
+  const parsed = new URL(baseUrl);
+  if (!/^https?:$/.test(parsed.protocol))
+    throw new Error("Connected systems must use an HTTP(S) URL.");
+  const defaultPort =
+    (parsed.protocol === "https:" && parsed.port === "443") ||
+    (parsed.protocol === "http:" && parsed.port === "80");
+  const port = parsed.port && !defaultPort ? `:${parsed.port}` : "";
+  return `${parsed.protocol}//${parsed.hostname.toLowerCase()}${port}`;
+}
+
+function hostnameFromUrl(baseUrl?: string | null) {
+  const origin = normalizedOrigin(baseUrl);
+  return origin ? new URL(origin).hostname.toLowerCase() : null;
+}
+
+/** Stable product identity used to prevent duplicate CRM cards/rows. */
+export function canonicalConnectionIdentity(input: {
+  provider: string;
+  baseUrl?: string | null;
+  connectionMethod: string;
+}) {
+  const origin = normalizedOrigin(input.baseUrl);
+  return origin
+    ? `${input.provider.trim().toLowerCase()}|${origin}`
+    : `${input.provider.trim().toLowerCase()}|${input.connectionMethod}`;
+}
+
+function canonicalRow(rows: ConnectedSystemRow[]) {
+  return [...rows].sort((left, right) => {
+    const status = connectionStatusRank[right.status] - connectionStatusRank[left.status];
+    if (status) return status;
+    const ready = Number(Boolean(right.readyAt)) - Number(Boolean(left.readyAt));
+    if (ready) return ready;
+    return right.updatedAt.getTime() - left.updatedAt.getTime();
+  })[0];
+}
+
+/**
+ * Existing legacy duplicates are kept in storage so CRM history is never
+ * destroyed, but only one canonical active connection is exposed to product UI.
+ */
+export function selectCanonicalConnectedSystems(rows: ConnectedSystemRow[]) {
+  const groups = new Map<string, ConnectedSystemRow[]>();
+  for (const row of rows) {
+    if (isRetired(row)) continue;
+    const identity = canonicalConnectionIdentity(row);
+    const group = groups.get(identity) || [];
+    group.push(row);
+    groups.set(identity, group);
+  }
+  return Array.from(groups.values())
+    .map(group => canonicalRow(group))
+    .filter((row): row is ConnectedSystemRow => Boolean(row))
+    .sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime());
+}
 
 export function sanitizeVerificationProviderResult(
   value: Record<string, unknown>
@@ -82,17 +166,7 @@ export function sanitizeConnectedSystemForApi<
   } as T;
 }
 
-function hostnameFromUrl(baseUrl?: string | null) {
-  if (!baseUrl) return null;
-  const parsed = new URL(baseUrl);
-  if (!/^https?:$/.test(parsed.protocol))
-    throw new Error("Connected systems must use an HTTP(S) URL.");
-  return parsed.hostname.toLowerCase();
-}
-
-function toAdapterConnection(
-  connection: typeof connectedSystems.$inferSelect
-): AdapterConnection {
+function toAdapterConnection(connection: ConnectedSystemRow): AdapterConnection {
   return {
     id: connection.id,
     organisationId: connection.organisationId,
@@ -108,6 +182,49 @@ function toAdapterConnection(
   };
 }
 
+async function ensureAuthorisedDomains(input: {
+  db: Db;
+  organisationId: number;
+  connectedSystemId: number;
+  provider: CrmProvider;
+  startUrl?: URL;
+}) {
+  if (!input.startUrl) return;
+  const preset = crmBrowserPreset(input.provider);
+  const hostnames = Array.from(
+    new Set([
+      input.startUrl.hostname.toLowerCase(),
+      ...preset.knownHostnames.map(hostname => hostname.toLowerCase()),
+    ])
+  );
+  for (const hostname of hostnames)
+    await input.db
+      .insert(authorisedDomains)
+      .values({
+        organisationId: input.organisationId,
+        connectedSystemId: input.connectedSystemId,
+        hostname,
+        allowedPaths: ["/"],
+        status: "verified",
+        verifiedAt: new Date(),
+      })
+      .onDuplicateKeyUpdate({
+        set: {
+          allowedPaths: ["/"],
+          status: "verified",
+          verifiedAt: new Date(),
+        },
+      });
+}
+
+async function organisationRows(db: Db, organisationId: number) {
+  return db
+    .select()
+    .from(connectedSystems)
+    .where(eq(connectedSystems.organisationId, organisationId))
+    .orderBy(desc(connectedSystems.updatedAt));
+}
+
 export async function listConnectedSystemsForUser(
   userId: number,
   organisationId: number
@@ -115,11 +232,9 @@ export async function listConnectedSystemsForUser(
   await requireOrganisationMembership(userId, organisationId);
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
-  const systems = await db
-    .select()
-    .from(connectedSystems)
-    .where(eq(connectedSystems.organisationId, organisationId))
-    .orderBy(desc(connectedSystems.updatedAt));
+  const systems = selectCanonicalConnectedSystems(
+    await organisationRows(db, organisationId)
+  );
   return systems.map(system => sanitizeConnectedSystemForApi(system));
 }
 
@@ -141,8 +256,103 @@ export async function createConnectedSystem(input: {
     throw new Error(
       "Only organisation owners, managers, and platform owners can add connected systems."
     );
+
+  // Validate network policy before any database mutation. A rejected URL must
+  // never leave behind a ghost connection row.
+  const startUrl = input.baseUrl
+    ? await assertPublicHttpUrl(input.baseUrl)
+    : undefined;
+  const identity = canonicalConnectionIdentity(input);
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
+  const all = await organisationRows(db, input.organisationId);
+  const matches = all.filter(
+    row => canonicalConnectionIdentity(row) === identity
+  );
+  const active = canonicalRow(matches.filter(row => !isRetired(row)));
+
+  if (active) {
+    const allowedReadCapabilities = Array.from(
+      new Set([...active.allowedReadCapabilities, ...input.allowedReadCapabilities])
+    );
+    const allowedWriteCapabilities = Array.from(
+      new Set([...active.allowedWriteCapabilities, ...input.allowedWriteCapabilities])
+    );
+    await db
+      .update(connectedSystems)
+      .set({
+        displayName: input.displayName,
+        allowedReadCapabilities,
+        allowedWriteCapabilities,
+      })
+      .where(eq(connectedSystems.id, active.id));
+    await ensureAuthorisedDomains({
+      db,
+      organisationId: input.organisationId,
+      connectedSystemId: active.id,
+      provider: input.provider,
+      startUrl,
+    });
+    await recordAudit({
+      userId: input.userId,
+      organisationId: input.organisationId,
+      eventType: "connected_system_reused",
+      entityType: "connected_system",
+      entityId: String(active.id),
+      summary: `${input.displayName} was already connected, so Amarktai reused the existing CRM connection instead of creating a duplicate.`,
+      metadata: { provider: input.provider, connectionMethod: input.connectionMethod },
+    });
+    return active.id;
+  }
+
+  const retired = canonicalRow(matches.filter(isRetired));
+  if (retired) {
+    const oldConfiguration = configurationRecord(retired.configuration);
+    const {
+      retiredAt: _retiredAt,
+      retiredByUserId: _retiredByUserId,
+      ...retainedConfiguration
+    } = oldConfiguration;
+    await db
+      .update(connectedSystems)
+      .set({
+        provider: input.provider,
+        displayName: input.displayName,
+        baseUrl: input.baseUrl ?? null,
+        connectionMethod: input.connectionMethod,
+        status: "disconnected",
+        allowedReadCapabilities: input.allowedReadCapabilities,
+        allowedWriteCapabilities: input.allowedWriteCapabilities,
+        verifiedCapabilities: [],
+        scopes: [],
+        configuration: {
+          ...retainedConfiguration,
+          configuredHostname: hostnameFromUrl(input.baseUrl),
+        },
+        lastHealthCheckAt: null,
+        lastHealthSummary: "CRM connection reactivated. Sign in to continue.",
+        readyAt: null,
+      })
+      .where(eq(connectedSystems.id, retired.id));
+    await ensureAuthorisedDomains({
+      db,
+      organisationId: input.organisationId,
+      connectedSystemId: retired.id,
+      provider: input.provider,
+      startUrl,
+    });
+    await recordAudit({
+      userId: input.userId,
+      organisationId: input.organisationId,
+      eventType: "connected_system_reactivated",
+      entityType: "connected_system",
+      entityId: String(retired.id),
+      summary: `${input.displayName} was reconnected using its existing CRM history.`,
+      metadata: { provider: input.provider, connectionMethod: input.connectionMethod },
+    });
+    return retired.id;
+  }
+
   const result = await db.insert(connectedSystems).values({
     organisationId: input.organisationId,
     provider: input.provider,
@@ -157,24 +367,22 @@ export async function createConnectedSystem(input: {
     configuration: { configuredHostname: hostnameFromUrl(input.baseUrl) },
   });
   const connectedSystemId = Number(result[0].insertId);
-  if (input.baseUrl) {
-    const startUrl = await assertPublicHttpUrl(input.baseUrl);
-    const preset = crmBrowserPreset(input.provider);
-    const hostnames = Array.from(
-      new Set([startUrl.hostname.toLowerCase(), ...preset.knownHostnames])
-    );
-    for (const hostname of hostnames)
-      await db
-        .insert(authorisedDomains)
-        .values({
-          organisationId: input.organisationId,
-          connectedSystemId,
-          hostname,
-          allowedPaths: ["/"],
-          status: "verified",
-          verifiedAt: new Date(),
-        });
-  }
+  await ensureAuthorisedDomains({
+    db,
+    organisationId: input.organisationId,
+    connectedSystemId,
+    provider: input.provider,
+    startUrl,
+  });
+  await recordAudit({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    eventType: "connected_system_created",
+    entityType: "connected_system",
+    entityId: String(connectedSystemId),
+    summary: `${input.displayName} CRM connection was created.`,
+    metadata: { provider: input.provider, connectionMethod: input.connectionMethod },
+  });
   return connectedSystemId;
 }
 
@@ -199,6 +407,99 @@ export async function getConnectedSystemForUser(
   if (!result[0])
     throw new Error("Connected system was not found in this organisation.");
   return result[0];
+}
+
+export async function getConnectedSystemIdentityClusterForUser(input: {
+  userId: number;
+  organisationId: number;
+  connectedSystemId: number;
+}) {
+  const target = await getConnectedSystemForUser(
+    input.userId,
+    input.organisationId,
+    input.connectedSystemId
+  );
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const identity = canonicalConnectionIdentity(target);
+  return (await organisationRows(db, input.organisationId)).filter(
+    row => canonicalConnectionIdentity(row) === identity && !isRetired(row)
+  );
+}
+
+export async function disconnectConnectedSystem(input: {
+  userId: number;
+  organisationId: number;
+  connectedSystemId: number;
+}) {
+  const membership = await requireOrganisationMembership(
+    input.userId,
+    input.organisationId
+  );
+  if (!(await canManageOrganisationForUser(input.userId, membership.role)))
+    throw new Error(
+      "Only organisation owners, managers, and platform owners can disconnect CRM systems."
+    );
+  const cluster = await getConnectedSystemIdentityClusterForUser(input);
+  if (!cluster.length) return { retiredIds: [] as number[] };
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const retiredAt = new Date();
+  const retiredIds = cluster.map(row => row.id);
+
+  await db.transaction(async tx => {
+    for (const system of cluster) {
+      await tx
+        .delete(connectionSecrets)
+        .where(eq(connectionSecrets.connectedSystemId, system.id));
+      await tx
+        .update(authorisedDomains)
+        .set({ status: "revoked" })
+        .where(eq(authorisedDomains.connectedSystemId, system.id));
+      await tx
+        .update(crmCommissioningJobs)
+        .set({
+          status: "cancelled",
+          cancelRequested: true,
+          leaseExpiresAt: null,
+          lastError: null,
+        })
+        .where(eq(crmCommissioningJobs.connectedSystemId, system.id));
+      await tx
+        .update(connectedSystems)
+        .set({
+          status: "disconnected",
+          verifiedCapabilities: [],
+          scopes: [],
+          readyAt: null,
+          lastHealthCheckAt: retiredAt,
+          lastHealthSummary:
+            "CRM disconnected. Authentication was removed; retained CRM history remains available for audit and reporting.",
+          configuration: {
+            ...configurationRecord(system.configuration),
+            retiredAt: retiredAt.toISOString(),
+            retiredByUserId: input.userId,
+          },
+        })
+        .where(eq(connectedSystems.id, system.id));
+    }
+  });
+
+  await recordAudit({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    eventType: "connected_system_disconnected",
+    entityType: "connected_system",
+    entityId: String(input.connectedSystemId),
+    summary: `${cluster[0].displayName} was disconnected without deleting retained CRM history.`,
+    metadata: {
+      provider: cluster[0].provider,
+      retiredConnectionIds: retiredIds,
+      authenticationRemoved: true,
+      crmHistoryDeleted: false,
+    },
+  });
+  return { retiredIds };
 }
 
 export async function markConnectionAuthenticationExpired(input: {
@@ -364,7 +665,7 @@ export async function saveConnectionSecret(input: {
     throw new Error(
       "Only organisation owners, managers, and platform owners can manage shared connection credentials."
     );
-  const system = await getConnectedSystemForUser(
+  await getConnectedSystemForUser(
     input.userId,
     input.organisationId,
     input.connectedSystemId
@@ -421,7 +722,6 @@ export async function loadConnectionSecret(input: {
       .limit(1)
   )[0];
   if (!system) return undefined;
-
   const rows = await db
     .select({ secret: connectionSecrets })
     .from(connectionSecrets)
@@ -438,8 +738,9 @@ export async function loadConnectionSecret(input: {
     )
     .limit(1);
   const secret = rows[0]?.secret;
-  if (!secret) return undefined;
-  return decryptConnectionSecret<ConnectionSecretPayload>(secret);
+  return secret
+    ? decryptConnectionSecret<ConnectionSecretPayload>(secret)
+    : undefined;
 }
 
 export async function loadUserConnectionSecret(input: {

@@ -922,8 +922,53 @@ export async function createKnowledgeSource(input: {
   const db = await requireDb();
   const result = await db
     .insert(knowledgeSources)
-    .values({ ...input, visibility: "private", status: "ready" });
-  return Number(result[0].insertId);
+    .values({ ...input, visibility: "organisation", status: "ready" });
+  const id = Number(result[0].insertId);
+  await recordAudit({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    eventType: "company_knowledge_added",
+    entityType: "knowledge_source",
+    entityId: String(id),
+    summary: "Approved company knowledge was added by management.",
+    metadata: {
+      sourceType: input.sourceType,
+      sourceUrl: input.sourceUrl || null,
+    },
+  });
+  return id;
+}
+
+export async function updateKnowledgeSource(input: {
+  userId: number;
+  organisationId: number;
+  id: number;
+  title: string;
+  content: string;
+}) {
+  const db = await requireDb();
+  const result = await db
+    .update(knowledgeSources)
+    .set({ title: input.title, content: input.content, status: "ready" })
+    .where(
+      and(
+        eq(knowledgeSources.id, input.id),
+        eq(knowledgeSources.organisationId, input.organisationId),
+        eq(knowledgeSources.visibility, "organisation")
+      )
+    );
+  if (Number(result[0].affectedRows || 0) !== 1)
+    throw new Error("That knowledge item is no longer available.");
+  await recordAudit({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    eventType: "company_knowledge_updated",
+    entityType: "knowledge_source",
+    entityId: String(input.id),
+    summary: "Approved company knowledge was corrected by management.",
+    metadata: { contentRetainedInAudit: false },
+  });
+  return input.id;
 }
 
 export async function createCallSession(input: {
@@ -1366,22 +1411,16 @@ export async function getCompanySetup(userId: number, organisationId: number) {
     db
       .select()
       .from(companyProfiles)
-      .where(
-        and(
-          eq(companyProfiles.userId, userId),
-          eq(companyProfiles.organisationId, organisationId)
-        )
+      .where(eq(companyProfiles.organisationId, organisationId))
+      .orderBy(
+        desc(companyProfiles.confirmedAt),
+        desc(companyProfiles.updatedAt)
       )
       .limit(1),
     db
       .select()
       .from(websiteDiscoveries)
-      .where(
-        and(
-          eq(websiteDiscoveries.userId, userId),
-          eq(websiteDiscoveries.organisationId, organisationId)
-        )
-      )
+      .where(eq(websiteDiscoveries.organisationId, organisationId))
       .orderBy(desc(websiteDiscoveries.createdAt))
       .limit(8),
     db
@@ -1399,7 +1438,8 @@ export async function getCompanySetup(userId: number, organisationId: number) {
     profile: profile[0] ?? null,
     discoveries,
     currentDiscovery:
-      discoveries.find(discovery => discovery.status === "review_required") ?? null,
+      discoveries.find(discovery => discovery.status === "review_required") ??
+      null,
     playbooks,
   };
 }
@@ -1419,32 +1459,48 @@ export async function upsertCompanyProfile(input: {
   brandVoice?: string | null;
 }) {
   const db = await requireDb();
-  await db
-    .insert(companyProfiles)
-    .values(input)
-    .onDuplicateKeyUpdate({
-      set: {
-        companyName: input.companyName,
-        websiteUrl: input.websiteUrl ?? null,
-        industry: input.industry ?? null,
-        companySize: input.companySize ?? null,
-        primaryMarket: input.primaryMarket ?? null,
-        salesMotion: input.salesMotion ?? null,
-        productsServices: input.productsServices ?? null,
-        typicalCustomer: input.typicalCustomer ?? null,
-        primarySalesObjective: input.primarySalesObjective ?? null,
-        brandVoice: input.brandVoice ?? null,
-      },
-    });
+  const existing = (
+    await db
+      .select({ id: companyProfiles.id })
+      .from(companyProfiles)
+      .where(eq(companyProfiles.organisationId, input.organisationId))
+      .orderBy(
+        desc(companyProfiles.confirmedAt),
+        desc(companyProfiles.updatedAt)
+      )
+      .limit(1)
+  )[0];
+  const values = {
+    companyName: input.companyName,
+    websiteUrl: input.websiteUrl ?? null,
+    industry: input.industry ?? null,
+    companySize: input.companySize ?? null,
+    primaryMarket: input.primaryMarket ?? null,
+    salesMotion: input.salesMotion ?? null,
+    productsServices: input.productsServices ?? null,
+    typicalCustomer: input.typicalCustomer ?? null,
+    primarySalesObjective: input.primarySalesObjective ?? null,
+    brandVoice: input.brandVoice ?? null,
+  };
+  if (existing)
+    await db
+      .update(companyProfiles)
+      .set(values)
+      .where(
+        and(
+          eq(companyProfiles.id, existing.id),
+          eq(companyProfiles.organisationId, input.organisationId)
+        )
+      );
+  else await db.insert(companyProfiles).values({ ...input, ...values });
   const profile = (
     await db
       .select()
       .from(companyProfiles)
-      .where(
-        and(
-          eq(companyProfiles.userId, input.userId),
-          eq(companyProfiles.organisationId, input.organisationId)
-        )
+      .where(eq(companyProfiles.organisationId, input.organisationId))
+      .orderBy(
+        desc(companyProfiles.confirmedAt),
+        desc(companyProfiles.updatedAt)
       )
       .limit(1)
   )[0];
@@ -1633,8 +1689,7 @@ export async function listCrmCustomers(organisationId: number) {
     const key = `${task.connectedSystemId}:${task.contactExternalId}`;
     const current = taskByContact.get(key);
     const dueAt = task.dueAt?.getTime() ?? Number.POSITIVE_INFINITY;
-    const currentDueAt =
-      current?.dueAt?.getTime() ?? Number.POSITIVE_INFINITY;
+    const currentDueAt = current?.dueAt?.getTime() ?? Number.POSITIVE_INFINITY;
     if (!current || dueAt < currentDueAt) taskByContact.set(key, task);
   }
   return contacts.map(contact => ({
@@ -1693,7 +1748,6 @@ export async function saveWebsiteDiscoveryReview(input: {
       .where(
         and(
           eq(companyProfiles.id, input.companyProfileId),
-          eq(companyProfiles.userId, input.userId),
           eq(companyProfiles.organisationId, input.organisationId)
         )
       )
@@ -1744,7 +1798,6 @@ export async function saveWebsiteDiscoveryReview(input: {
     .where(
       and(
         eq(companyProfiles.id, input.companyProfileId),
-        eq(companyProfiles.userId, input.userId),
         eq(companyProfiles.organisationId, input.organisationId)
       )
     );
@@ -1786,7 +1839,6 @@ export async function confirmWebsiteDiscovery(input: {
       .where(
         and(
           eq(companyProfiles.id, input.companyProfileId),
-          eq(companyProfiles.userId, input.userId),
           eq(companyProfiles.organisationId, input.organisationId)
         )
       )
@@ -1802,7 +1854,6 @@ export async function confirmWebsiteDiscovery(input: {
         and(
           eq(websiteDiscoveries.id, input.discoveryId),
           eq(websiteDiscoveries.companyProfileId, input.companyProfileId),
-          eq(websiteDiscoveries.userId, input.userId),
           eq(websiteDiscoveries.organisationId, input.organisationId),
           eq(websiteDiscoveries.status, "review_required")
         )
@@ -1813,9 +1864,11 @@ export async function confirmWebsiteDiscovery(input: {
     throw new Error(
       "The website review is unavailable or has already been completed. Run discovery again."
     );
-  const completeness = (discovery.proposedFacts as {
-    completeness?: { status?: string };
-  }).completeness;
+  const completeness = (
+    discovery.proposedFacts as {
+      completeness?: { status?: string };
+    }
+  ).completeness;
   if (completeness?.status === "incomplete")
     throw new Error(
       "This company-knowledge pack is incomplete. Retry company learning before approving any facts."
@@ -1846,14 +1899,23 @@ export async function confirmWebsiteDiscovery(input: {
     "ambiguous",
     "exclude",
   ]);
-  const selectedIndexes = Array.from(new Set(input.knowledgeIndexes)).filter(index => {
-    if (index < 0 || index >= candidates.length) return false;
-    const candidate = candidates[index];
-    // A human may resolve a genuine first-party fact conflict, but may never turn
-    // contextual/comparative material or an unavailable AI review into company truth.
-    if (permanentlyExcluded.has(candidate.category || "") || candidate.reviewState === "ambiguous") return false;
-    return candidate.trustEligible !== false || (candidate.reviewState === "conflict" && corrections.has(index));
-  });
+  const selectedIndexes = Array.from(new Set(input.knowledgeIndexes)).filter(
+    index => {
+      if (index < 0 || index >= candidates.length) return false;
+      const candidate = candidates[index];
+      // A human may resolve a genuine first-party fact conflict, but may never turn
+      // contextual/comparative material or an unavailable AI review into company truth.
+      if (
+        permanentlyExcluded.has(candidate.category || "") ||
+        candidate.reviewState === "ambiguous"
+      )
+        return false;
+      return (
+        candidate.trustEligible !== false ||
+        (candidate.reviewState === "conflict" && corrections.has(index))
+      );
+    }
+  );
   const confirmedKnowledge = selectedIndexes
     .map(index => {
       const candidate = candidates[index];
@@ -1886,7 +1948,6 @@ export async function confirmWebsiteDiscovery(input: {
       .where(
         and(
           eq(companyProfiles.id, input.companyProfileId),
-          eq(companyProfiles.userId, input.userId),
           eq(companyProfiles.organisationId, input.organisationId)
         )
       );

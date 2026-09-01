@@ -21,9 +21,10 @@ describe("universal CRM onboarding", () => {
       "Other CRM",
     ])
       expect(onboarding).toContain(label);
-    expect(onboarding).toContain("sign in there directly");
-    expect(connections).toContain("Amarktai never asks for or");
-    expect(connections).toContain("stores them");
+    expect(onboarding).toContain("sign in directly");
+    expect(connections).toMatch(
+      /Amarktai never asks for\s+or records the password or verification code/
+    );
     expect(connections).toContain("https://crm.example.com/");
   });
 

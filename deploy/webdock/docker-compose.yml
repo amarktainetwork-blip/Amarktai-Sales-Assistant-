@@ -87,6 +87,8 @@ services:
       GENIE_ARTIFACT_DIR: /app/data/connector-evidence
       GENIE_PERSISTENT_PROFILE_BINDING_PATH: /app/data/connector-evidence/.genie-persistent-profile-owner.json
       CRM_HEALTH_INTERVAL_MS: 43200000
+      COMPANY_KNOWLEDGE_WORKER_ENABLED: "true"
+      COMPANY_KNOWLEDGE_WORKER_CONCURRENCY: 1
     command: ["node", "dist/genie/healthWorker.js"]
     volumes:
       - ./config:/app/config:ro

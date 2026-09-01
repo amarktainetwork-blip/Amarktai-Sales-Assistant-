@@ -5,7 +5,7 @@ const read = (relative: string) =>
   readFileSync(new URL(relative, import.meta.url), "utf8");
 
 describe("durable whole-site company knowledge job contract", () => {
-  it("scopes status and retry operations to user, organisation and company profile", () => {
+  it("scopes shared company status and retry operations to organisation and company profile", () => {
     const jobs = read("./companyKnowledgeJobs.ts");
     const statusScope = jobs.slice(
       jobs.indexOf("export async function getLatestCompanyKnowledgeJob"),
@@ -16,9 +16,11 @@ describe("durable whole-site company knowledge job contract", () => {
       jobs.indexOf("async function checkpoint")
     );
     for (const scope of [statusScope, retryScope]) {
-      expect(scope).toContain("companyKnowledgeJobs.userId");
       expect(scope).toContain("companyKnowledgeJobs.organisationId");
       expect(scope).toContain("companyKnowledgeJobs.companyProfileId");
+      expect(scope).not.toContain(
+        "eq(companyKnowledgeJobs.userId, input.userId)"
+      );
     }
   });
 
@@ -100,5 +102,54 @@ describe("durable whole-site company knowledge job contract", () => {
     expect(jobs).toContain("knowledgeApproved: false");
     expect(jobs).toContain("crmTouched: false");
     expect(jobs).toContain("genieTouched: false");
+  });
+
+  it("keeps the API enqueue-only and runs durable scans in the dedicated worker process", () => {
+    const jobs = read("./companyKnowledgeJobs.ts");
+    const api = read("./_core/index.ts");
+    const worker = read("./genie/healthWorker.ts");
+    const commissioning = read("./crm/automaticCommissioning.ts");
+    const ensureCommissioning = read("./crm/ensureCommissioning.ts");
+    const compose = read("../deploy/webdock/docker-compose.yml");
+    const enqueue = jobs.slice(
+      jobs.indexOf("export async function startCompanyKnowledgeJob"),
+      jobs.indexOf("export async function getLatestCompanyKnowledgeJob")
+    );
+    const retry = jobs.slice(
+      jobs.indexOf("export async function retryCompanyKnowledgeJob"),
+      jobs.indexOf("async function checkpoint")
+    );
+    expect(enqueue).not.toContain("scheduleCompanyKnowledgeJob");
+    expect(enqueue).not.toContain("advanceCompanyKnowledgeJob");
+    expect(retry).not.toContain("scheduleCompanyKnowledgeJob");
+    expect(api).not.toContain("startCompanyKnowledgeWorker");
+    expect(api).not.toContain("startAutomaticCommissioningWorker");
+    expect(worker).toContain("startCompanyKnowledgeWorker()");
+    expect(worker).toContain("startAutomaticCommissioningWorker()");
+    expect(
+      commissioning.slice(
+        commissioning.indexOf(
+          "export async function startAutomaticCommissioning"
+        ),
+        commissioning.indexOf(
+          "export async function authoriseCommissioningSafeTest"
+        )
+      )
+    ).not.toContain("scheduleAutomaticCommissioning");
+    expect(ensureCommissioning).not.toContain("scheduleAutomaticCommissioning");
+    expect(compose).toContain('COMPANY_KNOWLEDGE_WORKER_ENABLED: "true"');
+  });
+
+  it("bounds worker concurrency and retries transient failures with durable backoff", () => {
+    const jobs = read("./companyKnowledgeJobs.ts");
+    expect(jobs).toContain("COMPANY_KNOWLEDGE_WORKER_CONCURRENCY");
+    expect(jobs).toContain("MAX_AUTO_ATTEMPTS");
+    expect(jobs).toContain("RETRY_BASE_MS");
+    expect(jobs).toContain('status: retrying ? "queued" : "failed"');
+    expect(jobs).toContain("leaseExpiresAt: retrying");
+    expect(jobs).toContain("workerConcurrency() - activeJobs.size");
+    expect(jobs).toContain("lt(companyKnowledgeJobs.leaseExpiresAt, now)");
+    expect(jobs).toContain('job.status === "queued"');
+    expect(jobs).toContain('"Queued to retry"');
   });
 });
