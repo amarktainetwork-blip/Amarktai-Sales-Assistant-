@@ -571,7 +571,9 @@ export default function Onboarding() {
                 <div className="flex items-center gap-3">
                   <Loader2 className="h-5 w-5 animate-spin text-[#3F70D8]" />
                   <div>
-                    <p className="font-bold">Learning your business…</p>
+                    <p className="font-bold">
+                      {learning.data?.humanStatus || "Reading website"}
+                    </p>
                     <p className="mt-1 text-sm text-[#718096]">
                       You can leave this page. Progress is saved automatically.
                     </p>

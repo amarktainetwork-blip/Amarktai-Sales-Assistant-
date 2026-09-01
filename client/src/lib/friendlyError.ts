@@ -1,5 +1,5 @@
 const technicalError =
-  /zod|invalid_(?:type|format)|json schema|schema error|trpc|stack trace|sql|database|prisma|drizzle|redis|mariadb|mysql|postgres|playwright|cdp|websocket|selector|operation[_ ]key|commission|live_proven|pre[_ -]?otp|challengeid|pendinginteractiveauth|livechallenges|session replay|genie_session|genx|correlation id|internal server|backend enum|unexpected end of json|request failed \(\d+\)/i;
+  /zod|invalid_(?:type|format)|json schema|schema error|trpc|stack trace|sql|database|prisma|drizzle|redis|mariadb|mysql|postgres|playwright|cdp|websocket|selector|operation[_ ]key|commission|live_proven|pre[_ -]?otp|challengeid|pendinginteractiveauth|livechallenges|session replay|genie_session|gen.?x|correlation id|internal server|backend enum|unexpected end of json|request failed \(\d+\)/i;
 
 const backendEnum = /\b[A-Z][A-Z0-9]+(?:_[A-Z0-9]+)+\b/;
 

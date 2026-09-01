@@ -2,7 +2,6 @@ import type { CommissioningState } from "./automaticCommissioning";
 import {
   getAutomaticCommissioning,
   presentCommissioningJob,
-  scheduleAutomaticCommissioning,
   startAutomaticCommissioning,
 } from "./automaticCommissioning";
 
@@ -67,6 +66,5 @@ export async function ensureAutomaticCommissioning(input: {
 
   if (!job) return startAutomaticCommissioning(input);
 
-  if (action === "resume") scheduleAutomaticCommissioning(job.id);
   return presentCommissioningJob(job);
 }

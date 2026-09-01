@@ -1,9 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("node:dns/promises", () => ({
-  lookup: vi
-    .fn()
-    .mockResolvedValue([{ address: "93.184.216.34", family: 4 }]),
+  lookup: vi.fn().mockResolvedValue([{ address: "93.184.216.34", family: 4 }]),
 }));
 
 import { discoverPublicWebsite } from "./companyDiscovery";
@@ -29,9 +27,9 @@ describe("professional public website discovery", () => {
   it("rejects local and private-network targets before a fetch is attempted", async () => {
     const fetchSpy = vi.fn();
     globalThis.fetch = fetchSpy;
-    await expect(discoverPublicWebsite("http://127.0.0.1/private")).rejects.toThrow(
-      "Private-network and local URLs cannot be discovered."
-    );
+    await expect(
+      discoverPublicWebsite("http://127.0.0.1/private")
+    ).rejects.toThrow("Private-network and local URLs cannot be discovered.");
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
@@ -59,7 +57,9 @@ describe("professional public website discovery", () => {
           )
         );
       return Promise.resolve(
-        html("<h1>Build a new career</h1><p>Flexible professional training.</p>")
+        html(
+          "<h1>Build a new career</h1><p>Flexible professional training.</p>"
+        )
       );
     });
 
@@ -107,7 +107,9 @@ describe("professional public website discovery", () => {
         );
       if (url.pathname === "/courses/data-analytics")
         return Promise.resolve(
-          html("<h1>Data Analytics</h1><h2>Course price</h2><p>£1,799 for 12 months.</p>")
+          html(
+            "<h1>Data Analytics</h1><h2>Course price</h2><p>£1,799 for 12 months.</p>"
+          )
         );
       return Promise.resolve(
         html(
@@ -119,7 +121,9 @@ describe("professional public website discovery", () => {
     const result = await discoverPublicWebsite("https://example.co.za");
     expect(result.pages.map(page => page.category)).toContain("courses");
     expect(requested.some(url => url.includes("/private"))).toBe(false);
-    expect(requested.some(url => url.startsWith("https://other.example"))).toBe(false);
+    expect(requested.some(url => url.startsWith("https://other.example"))).toBe(
+      false
+    );
     expect(result.proposedFacts).toMatchObject({
       sitemapDiscovered: true,
       completeness: { offeringsFound: 1, offeringsWithPublishedPrice: 1 },
@@ -143,11 +147,15 @@ describe("professional public website discovery", () => {
         );
       if (url.pathname === "/courses/ai-career")
         return Promise.resolve(
-          html("<h1>AI Career Programme</h1><p>Full price £2,499. Study for 12 months.</p>")
+          html(
+            "<h1>AI Career Programme</h1><p>Full price £2,499. Study for 12 months.</p>"
+          )
         );
       if (url.pathname === "/pricing/ai-career")
         return Promise.resolve(
-          html("<h1>AI Career Programme</h1><p>Current programme price £2,999.</p>")
+          html(
+            "<h1>AI Career Programme</h1><p>Current programme price £2,999.</p>"
+          )
         );
       return Promise.resolve(html("<h1>Career programmes</h1>"));
     });
@@ -171,24 +179,41 @@ describe("professional public website discovery", () => {
       item.title.includes("AI Career Programme")
     );
     expect(conflictedCandidates.length).toBeGreaterThan(0);
-    expect(conflictedCandidates.every(item =>
-      item.reviewState === "conflict" &&
-      item.confidence === "conflicting" &&
-      item.trustEligible === false
-    )).toBe(true);
+    expect(
+      conflictedCandidates.every(
+        item =>
+          item.reviewState === "conflict" &&
+          item.confidence === "conflicting" &&
+          item.trustEligible === false
+      )
+    ).toBe(true);
   });
 
   it("does not mistake a price list on one source page for conflicting evidence", async () => {
     globalThis.fetch = vi.fn().mockImplementation((input: URL | string) => {
       const url = new URL(String(input));
-      if (url.pathname === "/robots.txt") return Promise.resolve(new Response("User-agent: *"));
-      if (url.pathname === "/sitemap.xml") return Promise.resolve(new Response("<urlset></urlset>", { headers: { "content-type": "application/xml" } }));
-      return Promise.resolve(html("<h1>Data Programme</h1><p>Pay £999 upfront or £99 per month.</p>"));
+      if (url.pathname === "/robots.txt")
+        return Promise.resolve(new Response("User-agent: *"));
+      if (url.pathname === "/sitemap.xml")
+        return Promise.resolve(
+          new Response("<urlset></urlset>", {
+            headers: { "content-type": "application/xml" },
+          })
+        );
+      return Promise.resolve(
+        html("<h1>Data Programme</h1><p>Pay £999 upfront or £99 per month.</p>")
+      );
     });
-    const result = await discoverPublicWebsite("https://example.co.za/courses/data");
+    const result = await discoverPublicWebsite(
+      "https://example.co.za/courses/data"
+    );
     const facts = result.proposedFacts as { conflicts: unknown[] };
     expect(facts.conflicts).toEqual([]);
-    expect(result.proposedKnowledge.find(item => item.title.includes("Data Programme"))?.trustEligible).toBe(true);
+    expect(
+      result.proposedKnowledge.find(item =>
+        item.title.includes("Data Programme")
+      )?.trustEligible
+    ).toBe(true);
   });
 
   it("keeps substantial Course2Career-shaped server-rendered HTML on the direct path despite framework markers", async () => {
@@ -225,7 +250,9 @@ describe("professional public website discovery", () => {
       { renderer }
     );
     expect(renderer).not.toHaveBeenCalled();
-    expect(result.extractedText).toContain("Project Management Career Programme");
+    expect(result.extractedText).toContain(
+      "Project Management Career Programme"
+    );
     expect(result.extractedText).toContain("£2,695");
     expect(result.extractedText).toContain("£1,899");
     expect(result.pages).toEqual([
@@ -296,13 +323,121 @@ describe("professional public website discovery", () => {
     });
   });
 
-  it.each([
-    "Invalid InterceptionId.",
-    "Target closed",
-    "Session closed",
-  ])("contains representative CDP failure: %s", async message => {
+  it.each(["Invalid InterceptionId.", "Target closed", "Session closed"])(
+    "contains representative CDP failure: %s",
+    async message => {
+      process.env.BROWSERLESS_WS_ENDPOINT = "http://browser:9222";
+      const renderer = vi.fn().mockRejectedValue(new Error(message));
+      globalThis.fetch = vi.fn().mockImplementation((input: URL | string) => {
+        const url = new URL(String(input));
+        if (url.pathname === "/robots.txt")
+          return Promise.resolve(new Response("User-agent: *"));
+        if (url.pathname === "/sitemap.xml")
+          return Promise.resolve(new Response("", { status: 404 }));
+        return Promise.resolve(
+          html("<h1>Thin public page</h1><p>Valid direct evidence.</p>")
+        );
+      });
+
+      await expect(
+        discoverPublicWebsite("https://example.co.za", { renderer })
+      ).resolves.toMatchObject({
+        pageTitle: "Example Company",
+        pages: [expect.objectContaining({ rendered: false })],
+        proposedFacts: {
+          renderAttempts: 1,
+          renderFallbacks: 1,
+        },
+      });
+    }
+  );
+
+  it("blocks a public redirect to a private address before the private target is fetched", async () => {
+    const requested: string[] = [];
+    globalThis.fetch = vi.fn().mockImplementation((input: URL | string) => {
+      const url = new URL(String(input));
+      requested.push(url.toString());
+      if (url.pathname === "/robots.txt")
+        return Promise.resolve(new Response("User-agent: *"));
+      if (url.pathname === "/sitemap.xml")
+        return Promise.resolve(new Response("", { status: 404 }));
+      return Promise.resolve(
+        new Response(null, {
+          status: 302,
+          headers: { location: "http://127.0.0.1/internal" },
+        })
+      );
+    });
+
+    await expect(
+      discoverPublicWebsite("https://example.co.za")
+    ).rejects.toThrow(/authorised hostname|private|local|reserved/i);
+    expect(requested.some(url => url.includes("127.0.0.1"))).toBe(false);
+  });
+
+  it("enforces the page ceiling and ignores cross-origin link fan-out", async () => {
+    const requested: string[] = [];
+    const sitemapUrls = Array.from(
+      { length: 12 },
+      (_, index) =>
+        `<url><loc>https://example.co.za/page-${index + 1}</loc></url>`
+    ).join("");
+    globalThis.fetch = vi.fn().mockImplementation((input: URL | string) => {
+      const url = new URL(String(input));
+      requested.push(url.toString());
+      if (url.pathname === "/robots.txt")
+        return Promise.resolve(new Response("User-agent: *"));
+      if (url.pathname === "/sitemap.xml")
+        return Promise.resolve(
+          new Response(`<urlset>${sitemapUrls}</urlset>`, {
+            headers: { "content-type": "application/xml" },
+          })
+        );
+      return Promise.resolve(
+        html(
+          `<h1>${url.pathname}</h1><p>Public company information.</p>` +
+            Array.from(
+              { length: 20 },
+              (_, index) =>
+                `<a href="https://external-${index}.example/private">outside</a>`
+            ).join("")
+        )
+      );
+    });
+
+    const result = await discoverPublicWebsite("https://example.co.za", {
+      limits: { maxPages: 3 },
+    });
+    expect(result.pages).toHaveLength(3);
+    expect(
+      requested.every(url => new URL(url).hostname === "example.co.za")
+    ).toBe(true);
+  });
+
+  it("bounds HTTP waits with an abort timeout", async () => {
+    globalThis.fetch = vi.fn().mockImplementation(
+      (_input: URL | string, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          const signal = init?.signal;
+          if (!signal) return reject(new Error("missing timeout signal"));
+          if (signal.aborted) return reject(signal.reason);
+          signal.addEventListener("abort", () => reject(signal.reason), {
+            once: true,
+          });
+        })
+    );
+
+    await expect(
+      discoverPublicWebsite("https://example.co.za", {
+        limits: { fetchTimeoutMs: 10 },
+      })
+    ).rejects.toThrow(/abort|timeout/i);
+    expect(globalThis.fetch).toHaveBeenCalled();
+  });
+
+  it("falls back to bounded direct HTML when rendering times out", async () => {
     process.env.BROWSERLESS_WS_ENDPOINT = "http://browser:9222";
-    const renderer = vi.fn().mockRejectedValue(new Error(message));
+    const renderer = vi.fn(() => new Promise<never>(() => undefined));
     globalThis.fetch = vi.fn().mockImplementation((input: URL | string) => {
       const url = new URL(String(input));
       if (url.pathname === "/robots.txt")
@@ -310,19 +445,19 @@ describe("professional public website discovery", () => {
       if (url.pathname === "/sitemap.xml")
         return Promise.resolve(new Response("", { status: 404 }));
       return Promise.resolve(
-        html("<h1>Thin public page</h1><p>Valid direct evidence.</p>")
+        html("<h1>Thin page</h1><p>Bounded direct evidence remains.</p>")
       );
     });
 
-    await expect(
-      discoverPublicWebsite("https://example.co.za", { renderer })
-    ).resolves.toMatchObject({
-      pageTitle: "Example Company",
-      pages: [expect.objectContaining({ rendered: false })],
-      proposedFacts: {
-        renderAttempts: 1,
-        renderFallbacks: 1,
-      },
+    const result = await discoverPublicWebsite("https://example.co.za", {
+      renderer,
+      limits: { renderTimeoutMs: 10 },
+    });
+    expect(renderer).toHaveBeenCalledTimes(1);
+    expect(result.extractedText).toContain("Bounded direct evidence remains");
+    expect(result.proposedFacts).toMatchObject({
+      renderAttempts: 1,
+      renderFallbacks: 1,
     });
   });
 });

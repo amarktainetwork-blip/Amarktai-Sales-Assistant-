@@ -6,7 +6,9 @@ const read = (relative: string) =>
 
 describe("browser CRM identity isolation", () => {
   it("restores the interactive CRM browser only from the current user's session", () => {
-    const manager = read("./browserConnectors/managedCrmBrowserSessionManager.ts");
+    const manager = read(
+      "./browserConnectors/managedCrmBrowserSessionManager.ts"
+    );
 
     expect(manager).toContain("loadUserConnectionSecret");
     expect(manager).toContain("const restored = personalSession");
@@ -16,7 +18,9 @@ describe("browser CRM identity isolation", () => {
   });
 
   it("binds the backend-only commissioning snapshot to one manager and never treats it as an interactive restore", () => {
-    const manager = read("./browserConnectors/managedCrmBrowserSessionManager.ts");
+    const manager = read(
+      "./browserConnectors/managedCrmBrowserSessionManager.ts"
+    );
     const types = read("./crm/types.ts");
 
     expect(types).toContain("commissioningUserId?: number");
@@ -31,7 +35,9 @@ describe("browser CRM identity isolation", () => {
 
     expect(sync).toContain("loadUserConnectionSecret");
     expect(sync).toContain("userId: input.userId");
-    expect(sync).toContain("Your CRM needs you to sign in again before synchronisation can continue.");
+    expect(sync).toContain(
+      "Your CRM needs you to sign in again before synchronisation can continue."
+    );
   });
 
   it("uses the proposal owner's browser identity for reviewed CRM writes", () => {
@@ -39,6 +45,22 @@ describe("browser CRM identity isolation", () => {
 
     expect(execute).toContain("loadUserConnectionSecret");
     expect(execute).toContain("input.proposal.userId");
-    expect(execute).toContain("Your CRM needs you to sign in again before this approved change can be applied.");
+    expect(execute).toContain(
+      "Your CRM needs you to sign in again before this approved change can be applied."
+    );
+  });
+
+  it("has no generic organisation-level browser-session fallback", () => {
+    const adapter = read("./browserConnectors/browserCrmAdapter.ts");
+    const commissioning = read("./crm/automaticCommissioning.ts");
+    const admin = read("./connectedSystemAdminRoutes.ts");
+
+    expect(adapter).not.toContain("loadConnectionSecret");
+    expect(adapter).toContain(
+      "A user-owned or commissioning-owner CRM browser session is required."
+    );
+    expect(commissioning).toContain("ownedCommissioningSecret");
+    expect(commissioning).toContain("commissioningUserId");
+    expect(admin).toContain("secret?.commissioningUserId");
   });
 });

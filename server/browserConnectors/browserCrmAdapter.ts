@@ -5,10 +5,7 @@ import {
   type Locator,
   type Page,
 } from "playwright-core";
-import {
-  assertAuthorisedConnectionUrl,
-  loadConnectionSecret,
-} from "../connectedSystems";
+import { assertAuthorisedConnectionUrl } from "../connectedSystems";
 import type {
   AdapterConnection,
   AdapterEvidence,
@@ -249,12 +246,8 @@ async function browserSecret(
   supplied?: ConnectionSecretPayload
 ) {
   if (supplied && Object.keys(supplied).length) return supplied;
-  return (
-    (await loadConnectionSecret({
-      organisationId: connection.organisationId,
-      connectedSystemId: connection.id,
-      secretKind: "browser",
-    })) || {}
+  throw new Error(
+    "A user-owned or commissioning-owner CRM browser session is required."
   );
 }
 function operationScript(profile: BrowserProfile, operation: string) {

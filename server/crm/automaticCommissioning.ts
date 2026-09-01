@@ -97,7 +97,10 @@ const CORE_BROWSER_OPERATIONS = [
   "opportunity.update",
 ] as const;
 
-const COMMUNICATION_OPERATIONS: Record<string, keyof NonNullable<SafeTestRecord["authorisedDestinations"]>> = {
+const COMMUNICATION_OPERATIONS: Record<
+  string,
+  keyof NonNullable<SafeTestRecord["authorisedDestinations"]>
+> = {
   "email.send": "email",
   "sms.send": "sms",
   "whatsapp.send": "whatsapp",
@@ -108,16 +111,46 @@ const discoveryMatchers: Array<{
   pattern: RegExp;
   operations: string[];
 }> = [
-  { pattern: /contact|customer|lead|prospect/, operations: ["contact.search", "contact.read", "contact.create", "contact.update"] },
-  { pattern: /compan|account|organisation|organization/, operations: ["company.read", "company.create"] },
-  { pattern: /task|manual action/, operations: ["task.list", "task.read", "task.create", "task.complete"] },
+  {
+    pattern: /contact|customer|lead|prospect/,
+    operations: [
+      "contact.search",
+      "contact.read",
+      "contact.create",
+      "contact.update",
+    ],
+  },
+  {
+    pattern: /compan|account|organisation|organization/,
+    operations: ["company.read", "company.create"],
+  },
+  {
+    pattern: /task|manual action/,
+    operations: ["task.list", "task.read", "task.create", "task.complete"],
+  },
   { pattern: /callback|reminder/, operations: ["task.create_callback"] },
-  { pattern: /note|history|timeline/, operations: ["note.read", "note.create", "history.read"] },
-  { pattern: /opportunit|deal/, operations: ["opportunity.read", "opportunity.update", "opportunity.create"] },
+  {
+    pattern: /note|history|timeline/,
+    operations: ["note.read", "note.create", "history.read"],
+  },
+  {
+    pattern: /opportunit|deal/,
+    operations: [
+      "opportunity.read",
+      "opportunity.update",
+      "opportunity.create",
+    ],
+  },
   { pattern: /pipeline/, operations: ["pipeline.list"] },
   { pattern: /stage|status/, operations: ["stage.read", "stage.update"] },
-  { pattern: /owner|assignee|salesperson/, operations: ["owner.sync", "owner.assign"] },
-  { pattern: /activit|interaction/, operations: ["activity.sync", "activity.create"] },
+  {
+    pattern: /owner|assignee|salesperson/,
+    operations: ["owner.sync", "owner.assign"],
+  },
+  {
+    pattern: /activit|interaction/,
+    operations: ["activity.sync", "activity.create"],
+  },
   { pattern: /e-?mail/, operations: ["email.send"] },
   { pattern: /\bsms\b|text message/, operations: ["sms.send"] },
   { pattern: /whats\s?app/, operations: ["whatsapp.send"] },
@@ -126,7 +159,10 @@ const discoveryMatchers: Array<{
   { pattern: /appointment|meeting|calendar/, operations: ["appointment.book"] },
   { pattern: /quote|proposal/, operations: ["quote.create"] },
   { pattern: /workflow|automation/, operations: ["workflow.execute"] },
-  { pattern: /custom field|properties/, operations: ["custom.read.custom_fields"] },
+  {
+    pattern: /custom field|properties/,
+    operations: ["custom.read.custom_fields"],
+  },
 ];
 
 function safeText(value: unknown, maximum = 500) {
@@ -136,36 +172,46 @@ function safeText(value: unknown, maximum = 500) {
 export function connectorClass(provider: string) {
   if (["hubspot", "salesforce", "pipedrive", "zoho"].includes(provider))
     return "native_api" as const;
-  return provider === "genie" ? "known_browser" as const : "unknown_browser" as const;
+  return provider === "genie"
+    ? ("known_browser" as const)
+    : ("unknown_browser" as const);
 }
 
 export function humanCommissioningStatus(state: CommissioningState) {
-  return ({
-    AUTHENTICATE: "Connecting",
-    DISCOVER_NAVIGATION: "Finding CRM navigation",
-    DISCOVER_CAPABILITIES: "Finding sales functions",
-    TEST_SAFE_READS: "Testing safe reads",
-    AWAIT_SAFE_TEST_RECORD: "Waiting for test customer",
-    TEST_CONTROLLED_WRITES: "Testing updates",
-    VERIFY_READBACK: "Checking results",
-    PUBLISH_PROVEN_OPERATIONS: "Finishing setup",
-    READY: "Ready",
-  } as const)[state];
+  return (
+    {
+      AUTHENTICATE: "Connecting",
+      DISCOVER_NAVIGATION: "Finding CRM navigation",
+      DISCOVER_CAPABILITIES: "Finding sales functions",
+      TEST_SAFE_READS: "Testing safe reads",
+      AWAIT_SAFE_TEST_RECORD: "Waiting for test customer",
+      TEST_CONTROLLED_WRITES: "Testing updates",
+      VERIFY_READBACK: "Checking results",
+      PUBLISH_PROVEN_OPERATIONS: "Finishing setup",
+      READY: "Ready",
+    } as const
+  )[state];
 }
 
 export function buildSecretFreeDiscoveryPrompt(snapshot: DiscoverySnapshot) {
   const serialized = JSON.stringify({
     pageUrl: snapshot.pageUrl,
-    controls: snapshot.controls.map(({ tag, role, label, selector, href, pageUrl }) => ({
-      tag,
-      role,
-      label: safeText(label, 160),
-      selector: safeText(selector, 300),
-      href: safeText(href, 1_000) || undefined,
-      pageUrl: safeText(pageUrl, 1_000) || undefined,
-    })),
+    controls: snapshot.controls.map(
+      ({ tag, role, label, selector, href, pageUrl }) => ({
+        tag,
+        role,
+        label: safeText(label, 160),
+        selector: safeText(selector, 300),
+        href: safeText(href, 1_000) || undefined,
+        pageUrl: safeText(pageUrl, 1_000) || undefined,
+      })
+    ),
   });
-  if (/"(?:password|credentials?|authorization|cookies?|storageState|browserSession|secret)"\s*:/i.test(serialized))
+  if (
+    /"(?:password|credentials?|authorization|cookies?|storageState|browserSession|secret)"\s*:/i.test(
+      serialized
+    )
+  )
     throw new Error("DISCOVERY_PROMPT_SECRET_FIELD_REJECTED");
   return `Identify CRM navigation capabilities from this bounded control-only snapshot. Return operation keys only. Never infer a write as safe.\n${serialized}`;
 }
@@ -174,18 +220,27 @@ export function inferBrowserOperationCandidates(snapshot: DiscoverySnapshot) {
   buildSecretFreeDiscoveryPrompt(snapshot);
   const candidates = new Map<
     string,
-    { operationKey: string; mode: BrowserOperationMode; control: BrowserDiscoveryControl }
+    {
+      operationKey: string;
+      mode: BrowserOperationMode;
+      control: BrowserDiscoveryControl;
+    }
   >();
   for (const control of snapshot.controls) {
-    const semantic = `${control.label} ${control.href || ""} ${control.role}`.toLowerCase();
+    const semantic =
+      `${control.label} ${control.href || ""} ${control.role}`.toLowerCase();
     for (const matcher of discoveryMatchers) {
       if (!matcher.pattern.test(semantic)) continue;
       for (const operationKey of matcher.operations) {
         if (candidates.has(operationKey)) continue;
-        const catalogue = BROWSER_OPERATION_CATALOGUE.find(item => item.key === operationKey);
+        const catalogue = BROWSER_OPERATION_CATALOGUE.find(
+          item => item.key === operationKey
+        );
         candidates.set(operationKey, {
           operationKey,
-          mode: catalogue?.mode || (operationKey.startsWith("custom.write.") ? "write" : "read"),
+          mode:
+            catalogue?.mode ||
+            (operationKey.startsWith("custom.write.") ? "write" : "read"),
           control,
         });
       }
@@ -204,8 +259,16 @@ export function controlledWritePayload(
     : undefined;
   if (destinationKind && !destination)
     throw new Error("AUTHORISED_TEST_DESTINATION_REQUIRED");
-  const extended = ["appointment.book", "quote.create", "workflow.execute", "sequence.apply"];
-  if (extended.includes(operationKey) && !record.authorisedOperationKeys?.includes(operationKey))
+  const extended = [
+    "appointment.book",
+    "quote.create",
+    "workflow.execute",
+    "sequence.apply",
+  ];
+  if (
+    extended.includes(operationKey) &&
+    !record.authorisedOperationKeys?.includes(operationKey)
+  )
     throw new Error("EXPLICIT_OPERATION_AUTHORISATION_REQUIRED");
   const requiresOpportunity = new Set([
     "opportunity.update",
@@ -226,20 +289,23 @@ export function controlledWritePayload(
       : record.contactExternalId;
   return {
     externalId: exactExternalId,
-    contactExternalId: requiresContact || operationKey === "task.create_callback"
-      ? record.contactExternalId
-      : undefined,
+    contactExternalId:
+      requiresContact || operationKey === "task.create_callback"
+        ? record.contactExternalId
+        : undefined,
     companyExternalId: record.companyExternalId,
-    opportunityExternalId: requiresOpportunity || operationKey === "task.create_callback"
-      ? record.opportunityExternalId
-      : undefined,
+    opportunityExternalId:
+      requiresOpportunity || operationKey === "task.create_callback"
+        ? record.opportunityExternalId
+        : undefined,
     taskExternalId: requiresTask ? record.taskExternalId : undefined,
     leadLabel: record.contactLabel,
     contactName: record.contactLabel,
     query: record.contactExternalId,
     to: destination,
     email: destinationKind === "email" ? destination : undefined,
-    phone: destinationKind && destinationKind !== "email" ? destination : undefined,
+    phone:
+      destinationKind && destinationKind !== "email" ? destination : undefined,
     content: "Amarktai controlled setup verification",
     noteBody: "Amarktai controlled setup verification",
     taskTitle: "Amarktai setup verification",
@@ -250,8 +316,12 @@ export function controlledWritePayload(
 }
 
 function normalizedContactLabel(contact: NormalizedContact) {
-  return `${contact.firstName || ""} ${contact.lastName || ""}`.trim() ||
-    contact.email || contact.phone || contact.externalId;
+  return (
+    `${contact.firstName || ""} ${contact.lastName || ""}`.trim() ||
+    contact.email ||
+    contact.phone ||
+    contact.externalId
+  );
 }
 
 function exactContactMatches(contact: NormalizedContact, reference: string) {
@@ -282,8 +352,10 @@ async function collectPages<T>(
 function evidenceExternalId(value: unknown): string | undefined {
   if (!value || typeof value !== "object") return undefined;
   for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-    if (/^(?:externalId|id|contactId)$/i.test(key) &&
-        (typeof child === "string" || typeof child === "number")) {
+    if (
+      /^(?:externalId|id|contactId)$/i.test(key) &&
+      (typeof child === "string" || typeof child === "number")
+    ) {
       const candidate = String(child).trim();
       if (candidate) return candidate;
     }
@@ -294,7 +366,8 @@ function evidenceExternalId(value: unknown): string | undefined {
 }
 
 function browserEvidenceRows(value: unknown) {
-  if (!value || typeof value !== "object") return [] as Record<string, unknown>[];
+  if (!value || typeof value !== "object")
+    return [] as Record<string, unknown>[];
   const providerResult = (value as Record<string, unknown>).providerResult;
   if (!providerResult || typeof providerResult !== "object") return [];
   const data = (providerResult as Record<string, unknown>).data;
@@ -333,7 +406,8 @@ function oneRelatedRecord<T extends { externalId: string }>(input: {
     return selected;
   }
   if (input.records.length <= 1) return input.records[0];
-  const choices = input.records.slice(0, 10)
+  const choices = input.records
+    .slice(0, 10)
     .map(record => `${input.label(record)} (${record.externalId})`)
     .join(", ");
   throw new Error(
@@ -386,19 +460,22 @@ export async function resolveSafeTestContext(input: {
     });
     const createdId = evidenceExternalId(evidence.providerResult);
     if (createdId)
-      contact = await input.adapter.getContact({
-        connection: input.connection,
-        secret: input.secret,
-        externalId: createdId,
-      }) || undefined;
+      contact =
+        (await input.adapter.getContact({
+          connection: input.connection,
+          secret: input.secret,
+          externalId: createdId,
+        })) || undefined;
     if (!contact) {
       const matches = await input.adapter.searchContacts({
         connection: input.connection,
         secret: input.secret,
         query: label,
       });
-      const exact = matches.filter(candidate =>
-        normalizedContactLabel(candidate).toLowerCase() === label.toLowerCase()
+      const exact = matches.filter(
+        candidate =>
+          normalizedContactLabel(candidate).toLowerCase() ===
+          label.toLowerCase()
       );
       if (exact.length !== 1)
         throw new Error(
@@ -443,31 +520,51 @@ export async function resolveSafeTestContext(input: {
   let opportunity: NormalizedOpportunity | undefined;
   let task: NormalizedTask | undefined;
   if (needsOpportunity) {
-    const browser = ["browser", "sidecar"].includes(input.connection.connectionMethod);
-    const available = browser && input.adapter.executeCustomAction
-      ? browserEvidenceRows(await input.adapter.executeCustomAction({
-          connection: input.connection,
-          secret: input.secret,
-          actionName: "opportunity.read",
-          payload: { contactExternalId: contact.externalId },
-          correlationId: `${input.correlationId}:opportunity-read`,
-        })).map(item => ({
-          externalId: String(item.externalId || item.id || ""),
-          contactExternalId: typeof item.contactExternalId === "string" ? item.contactExternalId : undefined,
-          companyExternalId: typeof item.companyExternalId === "string" ? item.companyExternalId : undefined,
-          name: String(item.name || item.label || "Opportunity"),
-          raw: item,
-        } satisfies NormalizedOpportunity)).filter(item => item.externalId)
-      : await collectPages(cursor =>
-          input.adapter.syncOpportunities({
-            connection: input.connection,
-            secret: input.secret,
-            cursor,
-          })
-        );
-    const related = available.filter(item =>
-      item.contactExternalId === contact!.externalId ||
-      Boolean(contact!.companyExternalId && item.companyExternalId === contact!.companyExternalId)
+    const browser = ["browser", "sidecar"].includes(
+      input.connection.connectionMethod
+    );
+    const available =
+      browser && input.adapter.executeCustomAction
+        ? browserEvidenceRows(
+            await input.adapter.executeCustomAction({
+              connection: input.connection,
+              secret: input.secret,
+              actionName: "opportunity.read",
+              payload: { contactExternalId: contact.externalId },
+              correlationId: `${input.correlationId}:opportunity-read`,
+            })
+          )
+            .map(
+              item =>
+                ({
+                  externalId: String(item.externalId || item.id || ""),
+                  contactExternalId:
+                    typeof item.contactExternalId === "string"
+                      ? item.contactExternalId
+                      : undefined,
+                  companyExternalId:
+                    typeof item.companyExternalId === "string"
+                      ? item.companyExternalId
+                      : undefined,
+                  name: String(item.name || item.label || "Opportunity"),
+                  raw: item,
+                }) satisfies NormalizedOpportunity
+            )
+            .filter(item => item.externalId)
+        : await collectPages(cursor =>
+            input.adapter.syncOpportunities({
+              connection: input.connection,
+              secret: input.secret,
+              cursor,
+            })
+          );
+    const related = available.filter(
+      item =>
+        item.contactExternalId === contact!.externalId ||
+        Boolean(
+          contact!.companyExternalId &&
+            item.companyExternalId === contact!.companyExternalId
+        )
     );
     opportunity = oneRelatedRecord({
       kind: "opportunity",
@@ -481,30 +578,48 @@ export async function resolveSafeTestContext(input: {
       );
   }
   if (needsTask) {
-    const browser = ["browser", "sidecar"].includes(input.connection.connectionMethod);
-    const available = browser && input.adapter.executeCustomAction
-      ? browserEvidenceRows(await input.adapter.executeCustomAction({
-          connection: input.connection,
-          secret: input.secret,
-          actionName: "task.list",
-          payload: { contactExternalId: contact.externalId },
-          correlationId: `${input.correlationId}:task-read`,
-        })).map(item => ({
-          externalId: String(item.externalId || item.id || ""),
-          contactExternalId: typeof item.contactExternalId === "string" ? item.contactExternalId : undefined,
-          opportunityExternalId: typeof item.opportunityExternalId === "string" ? item.opportunityExternalId : undefined,
-          title: String(item.title || item.name || "Task"),
-          status: String(item.status || "open"),
-          raw: item,
-        } satisfies NormalizedTask)).filter(item => item.externalId)
-      : await collectPages(cursor =>
-          input.adapter.syncTasks({
-            connection: input.connection,
-            secret: input.secret,
-            cursor,
-          })
-        );
-    const related = available.filter(item => item.contactExternalId === contact!.externalId);
+    const browser = ["browser", "sidecar"].includes(
+      input.connection.connectionMethod
+    );
+    const available =
+      browser && input.adapter.executeCustomAction
+        ? browserEvidenceRows(
+            await input.adapter.executeCustomAction({
+              connection: input.connection,
+              secret: input.secret,
+              actionName: "task.list",
+              payload: { contactExternalId: contact.externalId },
+              correlationId: `${input.correlationId}:task-read`,
+            })
+          )
+            .map(
+              item =>
+                ({
+                  externalId: String(item.externalId || item.id || ""),
+                  contactExternalId:
+                    typeof item.contactExternalId === "string"
+                      ? item.contactExternalId
+                      : undefined,
+                  opportunityExternalId:
+                    typeof item.opportunityExternalId === "string"
+                      ? item.opportunityExternalId
+                      : undefined,
+                  title: String(item.title || item.name || "Task"),
+                  status: String(item.status || "open"),
+                  raw: item,
+                }) satisfies NormalizedTask
+            )
+            .filter(item => item.externalId)
+        : await collectPages(cursor =>
+            input.adapter.syncTasks({
+              connection: input.connection,
+              secret: input.secret,
+              cursor,
+            })
+          );
+    const related = available.filter(
+      item => item.contactExternalId === contact!.externalId
+    );
     task = oneRelatedRecord({
       kind: "task",
       records: related,
@@ -544,9 +659,13 @@ export function nextCommissioningState(input: {
   if (input.state === "DISCOVER_NAVIGATION") return "DISCOVER_CAPABILITIES";
   if (input.state === "DISCOVER_CAPABILITIES") return "TEST_SAFE_READS";
   if (input.state === "TEST_SAFE_READS")
-    return input.hasWrites ? "AWAIT_SAFE_TEST_RECORD" : "PUBLISH_PROVEN_OPERATIONS";
+    return input.hasWrites
+      ? "AWAIT_SAFE_TEST_RECORD"
+      : "PUBLISH_PROVEN_OPERATIONS";
   if (input.state === "AWAIT_SAFE_TEST_RECORD")
-    return input.hasSafeTestRecord ? "TEST_CONTROLLED_WRITES" : "AWAIT_SAFE_TEST_RECORD";
+    return input.hasSafeTestRecord
+      ? "TEST_CONTROLLED_WRITES"
+      : "AWAIT_SAFE_TEST_RECORD";
   if (input.state === "TEST_CONTROLLED_WRITES") return "VERIFY_READBACK";
   if (input.state === "VERIFY_READBACK") return "PUBLISH_PROVEN_OPERATIONS";
   if (input.state === "PUBLISH_PROVEN_OPERATIONS") return "READY";
@@ -556,7 +675,9 @@ export function nextCommissioningState(input: {
 export function coreBrowserCommissioningReady(
   statuses: ReadonlyMap<string, string>
 ) {
-  return CORE_BROWSER_OPERATIONS.every(key => statuses.get(key) === "LIVE_PROVEN");
+  return CORE_BROWSER_OPERATIONS.every(
+    key => statuses.get(key) === "LIVE_PROVEN"
+  );
 }
 
 export function automaticRepairStatusAfterProof(input: {
@@ -577,7 +698,13 @@ export function automaticRepairStatusAfterProof(input: {
 async function loadJob(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
-  return (await db.select().from(crmCommissioningJobs).where(eq(crmCommissioningJobs.id, id)).limit(1))[0];
+  return (
+    await db
+      .select()
+      .from(crmCommissioningJobs)
+      .where(eq(crmCommissioningJobs.id, id))
+      .limit(1)
+  )[0];
 }
 
 async function updateJob(
@@ -586,19 +713,29 @@ async function updateJob(
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
-  await db.update(crmCommissioningJobs).set(values).where(eq(crmCommissioningJobs.id, id));
+  await db
+    .update(crmCommissioningJobs)
+    .set(values)
+    .where(eq(crmCommissioningJobs.id, id));
 }
 
 async function systemForJob(job: CrmCommissioningJob) {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
   const system = (
-    await db.select().from(connectedSystems).where(and(
-      eq(connectedSystems.id, job.connectedSystemId),
-      eq(connectedSystems.organisationId, job.organisationId)
-    )).limit(1)
+    await db
+      .select()
+      .from(connectedSystems)
+      .where(
+        and(
+          eq(connectedSystems.id, job.connectedSystemId),
+          eq(connectedSystems.organisationId, job.organisationId)
+        )
+      )
+      .limit(1)
   )[0];
-  if (!system) throw new Error("Connected system was not found for commissioning.");
+  if (!system)
+    throw new Error("Connected system was not found for commissioning.");
   return system;
 }
 
@@ -608,11 +745,14 @@ async function insertCandidate(input: {
   mode: BrowserOperationMode;
   control: BrowserDiscoveryControl;
 }) {
-  if (await latestBrowserOperation({
-    organisationId: input.job.organisationId,
-    connectedSystemId: input.job.connectedSystemId,
-    operationKey: input.operationKey,
-  })) return false;
+  if (
+    await latestBrowserOperation({
+      organisationId: input.job.organisationId,
+      connectedSystemId: input.job.connectedSystemId,
+      operationKey: input.operationKey,
+    })
+  )
+    return false;
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
   const definition = {
@@ -635,7 +775,10 @@ async function insertCandidate(input: {
     prerequisites: { automaticCandidate: true },
     targetAssertions: {},
     postconditionAssertions: [],
-    checksum: operationChecksum({ operationKey: input.operationKey, definition }),
+    checksum: operationChecksum({
+      operationKey: input.operationKey,
+      definition,
+    }),
     evidence: { automaticDiscovery: true, readOnly: true },
     createdByUserId: input.job.requestedByUserId,
   });
@@ -647,10 +790,26 @@ export async function attemptBoundedAutomaticRepair(input: {
   operationKey: string;
   previousVersion: number;
 }) {
-  if (input.system.provider !== "genie" && input.system.provider !== "custom_browser")
+  if (
+    input.system.provider !== "genie" &&
+    input.system.provider !== "custom_browser"
+  )
     return { proposed: false, reason: "not_browser" };
+  const sharedSecret = await loadConnectionSecret({
+    organisationId: input.system.organisationId,
+    connectedSystemId: input.system.id,
+    secretKind: "browser",
+  });
+  const commissioningUserId = Number(sharedSecret?.commissioningUserId || 0);
+  const secret = await ownedCommissioningSecret({
+    userId: commissioningUserId || null,
+    organisationId: input.system.organisationId,
+    connectedSystemId: input.system.id,
+    connectionMethod: input.system.connectionMethod,
+  });
   const snapshot = await inspectBrowserCrmNavigation({
     connection: toAdapterConnection(input.system),
+    secret,
     provider: input.system.provider,
   });
   const candidate = inferBrowserOperationCandidates(snapshot).find(
@@ -672,34 +831,58 @@ export async function attemptBoundedAutomaticRepair(input: {
       requiresControlledWriteProof: candidate.mode === "write",
     },
   };
-  await db.insert(browserLearnedOperations).values({
-    organisationId: input.system.organisationId,
-    connectedSystemId: input.system.id,
-    operationKey: input.operationKey,
+  await db
+    .insert(browserLearnedOperations)
+    .values({
+      organisationId: input.system.organisationId,
+      connectedSystemId: input.system.id,
+      operationKey: input.operationKey,
+      version: input.previousVersion + 1,
+      status: "NOT_LEARNED",
+      definition,
+      prerequisites: { automaticRepairCandidate: true },
+      targetAssertions: {},
+      postconditionAssertions: [],
+      checksum: operationChecksum({
+        operationKey: input.operationKey,
+        definition,
+      }),
+      evidence: { automaticRepair: true, readOnlyDiscovery: true },
+    })
+    .onDuplicateKeyUpdate({
+      set: { evidence: { automaticRepair: true, readOnlyDiscovery: true } },
+    });
+  return {
+    proposed: true,
     version: input.previousVersion + 1,
-    status: "NOT_LEARNED",
-    definition,
-    prerequisites: { automaticRepairCandidate: true },
-    targetAssertions: {},
-    postconditionAssertions: [],
-    checksum: operationChecksum({ operationKey: input.operationKey, definition }),
-    evidence: { automaticRepair: true, readOnlyDiscovery: true },
-  }).onDuplicateKeyUpdate({ set: { evidence: { automaticRepair: true, readOnlyDiscovery: true } } });
-  return { proposed: true, version: input.previousVersion + 1, status: "NOT_LEARNED" as const };
+    status: "NOT_LEARNED" as const,
+  };
 }
 
-export async function installKnownGeniePack(job: CrmCommissioningJob, system: typeof connectedSystems.$inferSelect) {
-  const profile = await resolveBrowserProfile(toAdapterConnection(system), "genie");
-  if (!profile) return { installed: [] as string[], needsDiscovery: [] as string[] };
+export async function installKnownGeniePack(
+  job: CrmCommissioningJob,
+  system: typeof connectedSystems.$inferSelect
+) {
+  const profile = await resolveBrowserProfile(
+    toAdapterConnection(system),
+    "genie"
+  );
+  if (!profile)
+    return { installed: [] as string[], needsDiscovery: [] as string[] };
   const installed: string[] = [];
   const needsDiscovery: string[] = [];
-  for (const [operationKey, packed] of Object.entries(profile.operationDefinitions || {})) {
+  for (const [operationKey, packed] of Object.entries(
+    profile.operationDefinitions || {}
+  )) {
     try {
       const source = packed.definition as Record<string, unknown>;
       const script = (key: string) => {
         const name = typeof source[key] === "string" ? source[key] : "";
         const selected = name ? profile.scripts[name] : undefined;
-        if (!selected) throw new Error(`Known Genie operation '${operationKey}' references missing script '${name}'.`);
+        if (!selected)
+          throw new Error(
+            `Known Genie operation '${operationKey}' references missing script '${name}'.`
+          );
         return selected;
       };
       const definition = validateLearnedOperationDefinition(
@@ -707,8 +890,14 @@ export async function installKnownGeniePack(job: CrmCommissioningJob, system: ty
           ? {
               mode: source.mode,
               execute: script("executeScript"),
-              targetRead: typeof source.targetReadScript === "string" ? script("targetReadScript") : undefined,
-              postconditionRead: typeof source.postconditionReadScript === "string" ? script("postconditionReadScript") : undefined,
+              targetRead:
+                typeof source.targetReadScript === "string"
+                  ? script("targetReadScript")
+                  : undefined,
+              postconditionRead:
+                typeof source.postconditionReadScript === "string"
+                  ? script("postconditionReadScript")
+                  : undefined,
               resultKey: source.resultKey,
             }
           : packed.definition
@@ -725,18 +914,26 @@ export async function installKnownGeniePack(job: CrmCommissioningJob, system: ty
         connectedSystemId: job.connectedSystemId,
         operationKey,
         definition,
-        prerequisites: { ...(packed.prerequisites || {}), knownGeniePack: true },
+        prerequisites: {
+          ...(packed.prerequisites || {}),
+          knownGeniePack: true,
+        },
         targetAssertions: packed.targetAssertions || {},
-        postconditionAssertions: (packed.postconditionAssertions || []) as BrowserPostcondition[],
+        postconditionAssertions: (packed.postconditionAssertions ||
+          []) as BrowserPostcondition[],
       });
       installed.push(operationKey);
     } catch {
       needsDiscovery.push(operationKey);
     }
   }
-  for (const [adapterOperation, scriptName] of Object.entries(profile.operationMap || {})) {
+  for (const [adapterOperation, scriptName] of Object.entries(
+    profile.operationMap || {}
+  )) {
     const operationKey = ADAPTER_OPERATION_KEYS[adapterOperation];
-    const metadata = BROWSER_OPERATION_CATALOGUE.find(item => item.key === operationKey);
+    const metadata = BROWSER_OPERATION_CATALOGUE.find(
+      item => item.key === operationKey
+    );
     const script = profile.scripts[scriptName];
     if (!operationKey || metadata?.mode !== "read" || !script) continue;
     try {
@@ -745,7 +942,14 @@ export async function installKnownGeniePack(job: CrmCommissioningJob, system: ty
       needsDiscovery.push(operationKey);
       continue;
     }
-    if (await latestBrowserOperation({ organisationId: job.organisationId, connectedSystemId: job.connectedSystemId, operationKey })) continue;
+    if (
+      await latestBrowserOperation({
+        organisationId: job.organisationId,
+        connectedSystemId: job.connectedSystemId,
+        operationKey,
+      })
+    )
+      continue;
     await saveLearnedBrowserOperation({
       userId: job.requestedByUserId!,
       organisationId: job.organisationId,
@@ -769,7 +973,8 @@ function parseJsonObject(value: string) {
     .trim();
   const start = cleaned.indexOf("{");
   const end = cleaned.lastIndexOf("}");
-  if (start < 0 || end <= start) throw new Error("Semantic discovery returned no JSON object.");
+  if (start < 0 || end <= start)
+    throw new Error("Semantic discovery returned no JSON object.");
   return JSON.parse(cleaned.slice(start, end + 1)) as Record<string, unknown>;
 }
 
@@ -797,13 +1002,17 @@ async function discoverSemanticOperationDefinitions(input: {
       feature: "crm_commissioning_discovery",
       reference: `crm-commissioning:${input.job.id}:semantic-discovery`,
     },
-    messages: [{
-      role: "user",
-      content: `${prompt}\n\nReturn strict JSON: {"operations":[{"operationKey":"contact.read","definition":{"mode":"read","execute":{"steps":[...]}},"prerequisites":{},"targetAssertions":{},"postconditionAssertions":[]}]}. Use only declarative saved-browser actions and selectors present in the snapshot. Reads may be proposed only when their output is deterministic. Writes require a deterministic target-read, execution, postcondition-read, target assertions and postcondition assertions. Never include credentials, cookies, tokens, customer values, executable JavaScript, or navigation outside listed authorised URLs. If uncertain, omit the operation.`,
-    }],
+    messages: [
+      {
+        role: "user",
+        content: `${prompt}\n\nReturn strict JSON: {"operations":[{"operationKey":"contact.read","definition":{"mode":"read","execute":{"steps":[...]}},"prerequisites":{},"targetAssertions":{},"postconditionAssertions":[]}]}. Use only declarative saved-browser actions and selectors present in the snapshot. Reads may be proposed only when their output is deterministic. Writes require a deterministic target-read, execution, postcondition-read, target assertions and postcondition assertions. Never include credentials, cookies, tokens, customer values, executable JavaScript, or navigation outside listed authorised URLs. If uncertain, omit the operation.`,
+      },
+    ],
   });
   const parsed = parseJsonObject(response.content);
-  const operations = Array.isArray(parsed.operations) ? parsed.operations.slice(0, 80) : [];
+  const operations = Array.isArray(parsed.operations)
+    ? parsed.operations.slice(0, 80)
+    : [];
   const installed: string[] = [];
   for (const raw of operations) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
@@ -811,8 +1020,14 @@ async function discoverSemanticOperationDefinitions(input: {
     const operationKey = safeText(candidate.operationKey, 120);
     if (semanticTargets.length && !semanticTargets.includes(operationKey))
       continue;
-    const known = BROWSER_OPERATION_CATALOGUE.some(item => item.key === operationKey);
-    if (!known && !/^custom\.(?:read|write)\.[a-z0-9_.:-]{2,100}$/.test(operationKey)) continue;
+    const known = BROWSER_OPERATION_CATALOGUE.some(
+      item => item.key === operationKey
+    );
+    if (
+      !known &&
+      !/^custom\.(?:read|write)\.[a-z0-9_.:-]{2,100}$/.test(operationKey)
+    )
+      continue;
     const existing = await latestBrowserOperation({
       organisationId: input.job.organisationId,
       connectedSystemId: input.job.connectedSystemId,
@@ -822,13 +1037,19 @@ async function discoverSemanticOperationDefinitions(input: {
       existing &&
       existing.status !== "NOT_LEARNED" &&
       !input.allowReplacement
-    ) continue;
+    )
+      continue;
     try {
-      const definition = validateLearnedOperationDefinition(candidate.definition);
-      const postconditionAssertions = Array.isArray(candidate.postconditionAssertions)
-        ? candidate.postconditionAssertions as BrowserPostcondition[]
+      const definition = validateLearnedOperationDefinition(
+        candidate.definition
+      );
+      const postconditionAssertions = Array.isArray(
+        candidate.postconditionAssertions
+      )
+        ? (candidate.postconditionAssertions as BrowserPostcondition[])
         : [];
-      if (definition.mode === "write" && !postconditionAssertions.length) continue;
+      if (definition.mode === "write" && !postconditionAssertions.length)
+        continue;
       await saveLearnedBrowserOperation({
         userId: input.job.requestedByUserId,
         organisationId: input.job.organisationId,
@@ -836,15 +1057,19 @@ async function discoverSemanticOperationDefinitions(input: {
         operationKey,
         definition,
         prerequisites: {
-          ...(candidate.prerequisites && typeof candidate.prerequisites === "object" && !Array.isArray(candidate.prerequisites)
-            ? candidate.prerequisites as Record<string, unknown>
+          ...(candidate.prerequisites &&
+          typeof candidate.prerequisites === "object" &&
+          !Array.isArray(candidate.prerequisites)
+            ? (candidate.prerequisites as Record<string, unknown>)
             : {}),
           automaticSemanticDiscovery: true,
           boundedReplacementOfVersion: existing?.version,
         },
         targetAssertions:
-          candidate.targetAssertions && typeof candidate.targetAssertions === "object" && !Array.isArray(candidate.targetAssertions)
-            ? candidate.targetAssertions as Record<string, unknown>
+          candidate.targetAssertions &&
+          typeof candidate.targetAssertions === "object" &&
+          !Array.isArray(candidate.targetAssertions)
+            ? (candidate.targetAssertions as Record<string, unknown>)
             : {},
         postconditionAssertions,
       });
@@ -859,17 +1084,28 @@ async function discoverSemanticOperationDefinitions(input: {
 async function testOperations(input: {
   job: CrmCommissioningJob;
   mode: BrowserOperationMode;
+  secret: ConnectionSecretPayload;
   safeTestRecord?: SafeTestContext;
 }) {
   const system = await systemForJob(input.job);
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
-  const rows = await db.select().from(browserLearnedOperations).where(and(
-    eq(browserLearnedOperations.organisationId, input.job.organisationId),
-    eq(browserLearnedOperations.connectedSystemId, input.job.connectedSystemId)
-  )).orderBy(desc(browserLearnedOperations.version));
+  const rows = await db
+    .select()
+    .from(browserLearnedOperations)
+    .where(
+      and(
+        eq(browserLearnedOperations.organisationId, input.job.organisationId),
+        eq(
+          browserLearnedOperations.connectedSystemId,
+          input.job.connectedSystemId
+        )
+      )
+    )
+    .orderBy(desc(browserLearnedOperations.version));
   const latest = new Map<string, (typeof rows)[number]>();
-  for (const row of rows) if (!latest.has(row.operationKey)) latest.set(row.operationKey, row);
+  for (const row of rows)
+    if (!latest.has(row.operationKey)) latest.set(row.operationKey, row);
   const selected = Array.from(latest.values()).filter(row => {
     if (row.status !== "TEST_READY") return false;
     const definition = row.definition as Record<string, unknown>;
@@ -879,11 +1115,13 @@ async function testOperations(input: {
   const proven: string[] = [];
   const failedOperationKeys: string[] = [];
   const runOne = async (operationKey: string) => {
-    const payload = input.mode === "write"
-      ? controlledWritePayload(operationKey, input.safeTestRecord!)
-      : {};
+    const payload =
+      input.mode === "write"
+        ? controlledWritePayload(operationKey, input.safeTestRecord!)
+        : {};
     await testLearnedBrowserOperation({
       connection: toAdapterConnection(system),
+      secret: input.secret,
       provider: system.provider as "genie" | "custom_browser",
       operationKey,
       payload,
@@ -911,6 +1149,7 @@ async function testOperations(input: {
     try {
       const snapshot = await inspectBrowserCrmNavigation({
         connection: toAdapterConnection(system),
+        secret: input.secret,
         provider: "genie",
       });
       const repair = await discoverSemanticOperationDefinitions({
@@ -941,15 +1180,45 @@ async function testOperations(input: {
 
 const activeJobs = new Set<number>();
 
-export function scheduleAutomaticCommissioning(jobId: number) {
+async function ownedCommissioningSecret(input: {
+  userId: number | null;
+  organisationId: number;
+  connectedSystemId: number;
+  connectionMethod: string;
+}) {
+  const browser = ["browser", "sidecar"].includes(input.connectionMethod);
+  const secret = await loadConnectionSecret({
+    organisationId: input.organisationId,
+    connectedSystemId: input.connectedSystemId,
+    secretKind: browser ? "browser" : "oauth",
+  });
+  if (!secret)
+    throw new Error(
+      browser
+        ? "The manager who started CRM setup must sign in before commissioning can continue."
+        : "The CRM connection needs attention before commissioning can continue."
+    );
+  if (
+    browser &&
+    (!input.userId || Number(secret.commissioningUserId || 0) !== input.userId)
+  )
+    throw new Error(
+      "CRM commissioning cannot continue with another user's browser session. The manager who started setup must sign in."
+    );
+  return secret;
+}
+
+function scheduleAutomaticCommissioning(jobId: number) {
   if (activeJobs.has(jobId)) return;
   activeJobs.add(jobId);
   setImmediate(() => {
     void advanceAutomaticCommissioning(jobId)
-      .catch(error => console.error("[crm-commissioning] background step failed", {
-        jobId,
-        detail: error instanceof Error ? error.message : String(error),
-      }))
+      .catch(error =>
+        console.error("[crm-commissioning] background step failed", {
+          jobId,
+          detail: error instanceof Error ? error.message : String(error),
+        })
+      )
       .finally(() => activeJobs.delete(jobId));
   });
 }
@@ -962,22 +1231,34 @@ export async function startAutomaticCommissioning(input: {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
   const system = (
-    await db.select().from(connectedSystems).where(and(
-      eq(connectedSystems.id, input.connectedSystemId),
-      eq(connectedSystems.organisationId, input.organisationId)
-    )).limit(1)
+    await db
+      .select()
+      .from(connectedSystems)
+      .where(
+        and(
+          eq(connectedSystems.id, input.connectedSystemId),
+          eq(connectedSystems.organisationId, input.organisationId)
+        )
+      )
+      .limit(1)
   )[0];
-  if (!system) throw new Error("Connected system was not found in this organisation.");
-  const approvedBrowserSecret = ["browser", "sidecar"].includes(system.connectionMethod)
+  if (!system)
+    throw new Error("Connected system was not found in this organisation.");
+  const approvedBrowserSecret = ["browser", "sidecar"].includes(
+    system.connectionMethod
+  )
     ? await loadConnectionSecret({
         organisationId: input.organisationId,
         connectedSystemId: input.connectedSystemId,
         secretKind: "browser",
       })
     : undefined;
-  const initialState = approvedBrowserSecret?.browserSession && isBrowserSessionPackage(approvedBrowserSecret.browserSession)
-    ? "DISCOVER_NAVIGATION" as const
-    : "AUTHENTICATE" as const;
+  const initialState =
+    approvedBrowserSecret?.browserSession &&
+    Number(approvedBrowserSecret.commissioningUserId || 0) === input.userId &&
+    isBrowserSessionPackage(approvedBrowserSecret.browserSession)
+      ? ("DISCOVER_NAVIGATION" as const)
+      : ("AUTHENTICATE" as const);
   const values = {
     organisationId: input.organisationId,
     connectedSystemId: input.connectedSystemId,
@@ -986,9 +1267,17 @@ export async function startAutomaticCommissioning(input: {
     state: initialState,
     status: "queued" as const,
     progress: {
-      humanStatus: initialState === "DISCOVER_NAVIGATION" ? "CRM sign-in complete; finding available navigation" : "Connecting",
-      steps: initialState === "DISCOVER_NAVIGATION" ? { authentication: "complete", secureSession: "complete" } : {},
-      ...(initialState === "DISCOVER_NAVIGATION" ? { authentication: "complete", secureSession: "complete" } : {}),
+      humanStatus:
+        initialState === "DISCOVER_NAVIGATION"
+          ? "CRM sign-in complete; finding available navigation"
+          : "Connecting",
+      steps:
+        initialState === "DISCOVER_NAVIGATION"
+          ? { authentication: "complete", secureSession: "complete" }
+          : {},
+      ...(initialState === "DISCOVER_NAVIGATION"
+        ? { authentication: "complete", secureSession: "complete" }
+        : {}),
     },
     safeTestRecord: null,
     discoveredOperationKeys: [],
@@ -1000,9 +1289,18 @@ export async function startAutomaticCommissioning(input: {
     startedAt: new Date(),
     completedAt: null,
   };
-  await db.insert(crmCommissioningJobs).values(values).onDuplicateKeyUpdate({ set: values });
+  await db
+    .insert(crmCommissioningJobs)
+    .values(values)
+    .onDuplicateKeyUpdate({ set: values });
   const job = (
-    await db.select().from(crmCommissioningJobs).where(eq(crmCommissioningJobs.connectedSystemId, input.connectedSystemId)).limit(1)
+    await db
+      .select()
+      .from(crmCommissioningJobs)
+      .where(
+        eq(crmCommissioningJobs.connectedSystemId, input.connectedSystemId)
+      )
+      .limit(1)
   )[0];
   await recordAudit({
     userId: input.userId,
@@ -1011,9 +1309,11 @@ export async function startAutomaticCommissioning(input: {
     entityType: "crm_commissioning_job",
     entityId: String(job.id),
     summary: `${system.displayName} automatic commissioning started.`,
-    metadata: { connectedSystemId: system.id, connectorClass: values.connectorClass },
+    metadata: {
+      connectedSystemId: system.id,
+      connectorClass: values.connectorClass,
+    },
   });
-  scheduleAutomaticCommissioning(job.id);
   return presentCommissioningJob(job);
 }
 export async function authoriseCommissioningSafeTest(input: {
@@ -1026,7 +1326,14 @@ export async function authoriseCommissioningSafeTest(input: {
     organisationId: input.organisationId,
     connectedSystemId: input.connectedSystemId,
   });
-  if (!job) throw new Error("Start automatic commissioning before choosing a test customer.");
+  if (!job)
+    throw new Error(
+      "Start automatic commissioning before choosing a test customer."
+    );
+  if (job.requestedByUserId !== input.userId)
+    throw new Error(
+      "Only the manager who started CRM setup can authorise its controlled test."
+    );
   if (input.record.mode === "existing" && !input.record.reference.trim())
     throw new Error("Choose a valid authorised test customer.");
   const requestedRecord: SafeTestRecord = {
@@ -1040,40 +1347,43 @@ export async function authoriseCommissioningSafeTest(input: {
     authorisedOperationKeys: (input.record.authorisedOperationKeys || [])
       .filter(key => BROWSER_OPERATION_CATALOGUE.some(item => item.key === key))
       .slice(0, 30),
-    selectedOpportunityExternalId: safeText(
-      input.record.selectedOpportunityExternalId,
-      500
-    ) || undefined,
-    selectedTaskExternalId: safeText(
-      input.record.selectedTaskExternalId,
-      500
-    ) || undefined,
+    selectedOpportunityExternalId:
+      safeText(input.record.selectedOpportunityExternalId, 500) || undefined,
+    selectedTaskExternalId:
+      safeText(input.record.selectedTaskExternalId, 500) || undefined,
   };
   const system = await systemForJob(job);
   const connection = toAdapterConnection(system);
   const adapter = getCrmAdapter(system.provider);
-  const secret = await loadConnectionSecret({
+  const secret = await ownedCommissioningSecret({
+    userId: job.requestedByUserId,
     organisationId: input.organisationId,
     connectedSystemId: input.connectedSystemId,
-    secretKind: system.connectionMethod === "oauth" ? "oauth" : "browser",
-  }) || {};
-  const matrix = system.connectionMethod === "oauth"
-    ? null
-    : await browserOperationReadinessForSystem({
-        organisationId: input.organisationId,
-        connectedSystemId: input.connectedSystemId,
-      });
-  const operationKeys = matrix?.operations
-    .filter(operation => operation.mode === "write" && operation.status === "TEST_READY")
-    .map(operation => operation.key) || [];
+    connectionMethod: system.connectionMethod,
+  });
+  const matrix =
+    system.connectionMethod === "oauth"
+      ? null
+      : await browserOperationReadinessForSystem({
+          organisationId: input.organisationId,
+          connectedSystemId: input.connectedSystemId,
+        });
+  const operationKeys =
+    matrix?.operations
+      .filter(
+        operation =>
+          operation.mode === "write" && operation.status === "TEST_READY"
+      )
+      .map(operation => operation.key) || [];
   const safeRecord = await resolveSafeTestContext({
     record: requestedRecord,
     operationKeys,
     connection,
     adapter,
     secret,
-    contactCreateLiveProven: matrix?.operations.some(operation =>
-      operation.key === "contact.create" && operation.status === "LIVE_PROVEN"
+    contactCreateLiveProven: matrix?.operations.some(
+      operation =>
+        operation.key === "contact.create" && operation.status === "LIVE_PROVEN"
     ),
     correlationId: `commissioning-${job.id}-${randomUUID()}`,
   });
@@ -1090,7 +1400,8 @@ export async function authoriseCommissioningSafeTest(input: {
     eventType: "crm_commissioning_test_record_authorised",
     entityType: "crm_commissioning_job",
     entityId: String(job.id),
-    summary: "A controlled CRM setup record was authorised for automatic write testing.",
+    summary:
+      "A controlled CRM setup record was authorised for automatic write testing.",
     metadata: {
       connectedSystemId: input.connectedSystemId,
       mode: safeRecord.mode,
@@ -1103,8 +1414,12 @@ export async function authoriseCommissioningSafeTest(input: {
       authorisedOperationKeys: safeRecord.authorisedOperationKeys,
     },
   });
-  scheduleAutomaticCommissioning(job.id);
-  return presentCommissioningJob({ ...job, safeTestRecord: safeRecord, state: "TEST_CONTROLLED_WRITES", status: "queued" });
+  return presentCommissioningJob({
+    ...job,
+    safeTestRecord: safeRecord,
+    state: "TEST_CONTROLLED_WRITES",
+    status: "queued",
+  });
 }
 
 export async function getAutomaticCommissioning(input: {
@@ -1114,10 +1429,16 @@ export async function getAutomaticCommissioning(input: {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
   return (
-    await db.select().from(crmCommissioningJobs).where(and(
-      eq(crmCommissioningJobs.organisationId, input.organisationId),
-      eq(crmCommissioningJobs.connectedSystemId, input.connectedSystemId)
-    )).limit(1)
+    await db
+      .select()
+      .from(crmCommissioningJobs)
+      .where(
+        and(
+          eq(crmCommissioningJobs.organisationId, input.organisationId),
+          eq(crmCommissioningJobs.connectedSystemId, input.connectedSystemId)
+        )
+      )
+      .limit(1)
   )[0];
 }
 
@@ -1131,14 +1452,18 @@ export function presentCommissioningJob(job: CrmCommissioningJob) {
     connectorClass: job.connectorClass,
     state: job.state,
     status: job.status,
-    humanStatus: needsSetup ? "Needs setup" : humanCommissioningStatus(job.state),
+    humanStatus: needsSetup
+      ? "Needs setup"
+      : humanCommissioningStatus(job.state),
     progress: publicProgress,
     optionalFailures: job.optionalFailures,
     safeTestRequired: job.state === "AWAIT_SAFE_TEST_RECORD",
     temporaryRecordSupported:
-      (publicProgress as Record<string, unknown>).temporaryRecordSupported === true,
+      (publicProgress as Record<string, unknown>).temporaryRecordSupported ===
+      true,
     temporaryRecordGuidance:
-      (publicProgress as Record<string, unknown>).temporaryRecordSupported === true
+      (publicProgress as Record<string, unknown>).temporaryRecordSupported ===
+      true
         ? "Create an explicitly labelled temporary setup contact"
         : "Enter an existing CRM test record",
     advancedFallback: needsSetup,
@@ -1152,7 +1477,6 @@ export async function automaticCommissioningStatus(input: {
 }) {
   const job = await getAutomaticCommissioning(input);
   if (!job) return null;
-  if (["queued", "running"].includes(job.status)) scheduleAutomaticCommissioning(job.id);
   return presentCommissioningJob(job);
 }
 
@@ -1161,52 +1485,75 @@ export async function advanceAutomaticCommissioning(jobId: number) {
   if (!candidate || !["queued", "running"].includes(candidate.status)) return;
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
-  const claimed = await db.update(crmCommissioningJobs).set({
-    status: "running",
-    attempt: candidate.attempt + 1,
-    leaseExpiresAt: new Date(Date.now() + 5 * 60_000),
-    progress: {
-      ...(candidate.progress || {}),
-      humanStatus: humanCommissioningStatus(candidate.state),
-    },
-  }).where(and(
-    eq(crmCommissioningJobs.id, jobId),
-    inArray(crmCommissioningJobs.status, ["queued", "running"]),
-    or(
-      isNull(crmCommissioningJobs.leaseExpiresAt),
-      lt(crmCommissioningJobs.leaseExpiresAt, new Date())
-    )
-  ));
+  const claimed = await db
+    .update(crmCommissioningJobs)
+    .set({
+      status: "running",
+      attempt: candidate.attempt + 1,
+      leaseExpiresAt: new Date(Date.now() + 5 * 60_000),
+      progress: {
+        ...(candidate.progress || {}),
+        humanStatus: humanCommissioningStatus(candidate.state),
+      },
+    })
+    .where(
+      and(
+        eq(crmCommissioningJobs.id, jobId),
+        inArray(crmCommissioningJobs.status, ["queued", "running"]),
+        or(
+          isNull(crmCommissioningJobs.leaseExpiresAt),
+          lt(crmCommissioningJobs.leaseExpiresAt, new Date())
+        )
+      )
+    );
   if (Number(claimed[0].affectedRows || 0) !== 1) return;
   const job = await loadJob(jobId);
   if (!job) return;
   if (job.cancelRequested) {
-    await updateJob(job.id, { status: "cancelled", completedAt: new Date(), leaseExpiresAt: null });
+    await updateJob(job.id, {
+      status: "cancelled",
+      completedAt: new Date(),
+      leaseExpiresAt: null,
+    });
     return;
   }
   if (job.state === "AWAIT_SAFE_TEST_RECORD" && !job.safeTestRecord) return;
   try {
     const system = await systemForJob(job);
+    const commissioningSecret = await ownedCommissioningSecret({
+      userId: job.requestedByUserId,
+      organisationId: job.organisationId,
+      connectedSystemId: job.connectedSystemId,
+      connectionMethod: system.connectionMethod,
+    });
     let next = job.state as CommissioningState;
     let progress = { ...(job.progress || {}) } as Record<string, unknown>;
     let failures = { ...(job.optionalFailures || {}) };
     let discovered = [...(job.discoveredOperationKeys || [])];
     if (job.state === "AUTHENTICATE") {
       const adapter = getCrmAdapter(system.provider);
-      const secret = await loadConnectionSecret({
+      const correlationId = randomUUID();
+      const test = await adapter.testConnection({
+        connection: toAdapterConnection(system),
+        secret: commissioningSecret,
+        correlationId,
+      });
+      if (test.status === "failed") throw new Error(test.summary);
+      await recordConnectionVerification({
         organisationId: job.organisationId,
         connectedSystemId: job.connectedSystemId,
-        secretKind: system.connectionMethod === "oauth" ? "oauth" : "browser",
+        correlationId,
+        test,
       });
-      const correlationId = randomUUID();
-      const test = await adapter.testConnection({ connection: toAdapterConnection(system), secret, correlationId });
-      if (test.status === "failed") throw new Error(test.summary);
-      await recordConnectionVerification({ organisationId: job.organisationId, connectedSystemId: job.connectedSystemId, correlationId, test });
       progress.authentication = "Ready";
-      next = job.connectorClass === "native_api" ? "PUBLISH_PROVEN_OPERATIONS" : "DISCOVER_NAVIGATION";
+      next =
+        job.connectorClass === "native_api"
+          ? "PUBLISH_PROVEN_OPERATIONS"
+          : "DISCOVER_NAVIGATION";
     } else if (job.state === "DISCOVER_NAVIGATION") {
       const snapshot = await inspectBrowserCrmNavigation({
         connection: toAdapterConnection(system),
+        secret: commissioningSecret,
         provider: system.provider as "genie" | "custom_browser",
       });
       buildSecretFreeDiscoveryPrompt(snapshot);
@@ -1214,11 +1561,17 @@ export async function advanceAutomaticCommissioning(jobId: number) {
       progress.navigation = "Ready";
       next = "DISCOVER_CAPABILITIES";
     } else if (job.state === "DISCOVER_CAPABILITIES") {
-      const snapshot = progress.discoverySnapshot as DiscoverySnapshot | undefined;
-      if (!snapshot) throw new Error("Automatic discovery snapshot is missing; restart commissioning.");
+      const snapshot = progress.discoverySnapshot as
+        | DiscoverySnapshot
+        | undefined;
+      if (!snapshot)
+        throw new Error(
+          "Automatic discovery snapshot is missing; restart commissioning."
+        );
       const inferred = inferBrowserOperationCandidates(snapshot);
       for (const candidate of inferred)
-        if (await insertCandidate({ job, ...candidate })) discovered.push(candidate.operationKey);
+        if (await insertCandidate({ job, ...candidate }))
+          discovered.push(candidate.operationKey);
       let genieDiscoveryTargets: string[] = [];
       if (system.provider === "genie") {
         const knownPack = await installKnownGeniePack(job, system);
@@ -1226,7 +1579,10 @@ export async function advanceAutomaticCommissioning(jobId: number) {
         genieDiscoveryTargets = knownPack.needsDiscovery;
         progress.placeholderOperationsRejected = knownPack.needsDiscovery;
       }
-      if (system.provider === "custom_browser" || genieDiscoveryTargets.length) {
+      if (
+        system.provider === "custom_browser" ||
+        genieDiscoveryTargets.length
+      ) {
         const semantic = await discoverSemanticOperationDefinitions({
           job,
           snapshot,
@@ -1234,8 +1590,10 @@ export async function advanceAutomaticCommissioning(jobId: number) {
             ? genieDiscoveryTargets
             : undefined,
           allowReplacement: system.provider === "genie",
-        })
-          .catch(() => ({ calls: getGenxReadiness().configured ? 1 : 0, installed: [] as string[] }));
+        }).catch(() => ({
+          calls: getGenxReadiness().configured ? 1 : 0,
+          installed: [] as string[],
+        }));
         discovered.push(...semantic.installed);
         progress.semanticDiscoveryCalls = semantic.calls;
         if (genieDiscoveryTargets.length)
@@ -1247,47 +1605,93 @@ export async function advanceAutomaticCommissioning(jobId: number) {
       delete progress.discoverySnapshot;
       next = "TEST_SAFE_READS";
     } else if (job.state === "TEST_SAFE_READS") {
-      const result = await testOperations({ job, mode: "read" });
+      const result = await testOperations({
+        job,
+        mode: "read",
+        secret: commissioningSecret,
+      });
       failures = result.failures;
-      progress.safeReads = { status: "Ready", proven: result.proven, attempted: result.attempted };
-      const matrix = await browserOperationReadinessForSystem({ organisationId: job.organisationId, connectedSystemId: job.connectedSystemId });
+      progress.safeReads = {
+        status: "Ready",
+        proven: result.proven,
+        attempted: result.attempted,
+      };
+      const matrix = await browserOperationReadinessForSystem({
+        organisationId: job.organisationId,
+        connectedSystemId: job.connectedSystemId,
+      });
       progress.temporaryRecordSupported = connectorSupportsTemporaryTestRecord({
         connection: toAdapterConnection(system),
         adapter: getCrmAdapter(system.provider),
-        contactCreateLiveProven: matrix.operations.some(operation =>
-          operation.key === "contact.create" && operation.status === "LIVE_PROVEN"
+        contactCreateLiveProven: matrix.operations.some(
+          operation =>
+            operation.key === "contact.create" &&
+            operation.status === "LIVE_PROVEN"
         ),
       });
-      const hasWrites = matrix.operations.some(operation => operation.mode === "write" && operation.status === "TEST_READY");
+      const hasWrites = matrix.operations.some(
+        operation =>
+          operation.mode === "write" && operation.status === "TEST_READY"
+      );
       next = nextCommissioningState({ state: job.state, hasWrites });
     } else if (job.state === "TEST_CONTROLLED_WRITES") {
-      if (!job.safeTestRecord) throw new Error("AUTHORISED_TEST_RECORD_REQUIRED");
-      const result = await testOperations({ job, mode: "write", safeTestRecord: job.safeTestRecord as SafeTestContext });
+      if (!job.safeTestRecord)
+        throw new Error("AUTHORISED_TEST_RECORD_REQUIRED");
+      const result = await testOperations({
+        job,
+        mode: "write",
+        secret: commissioningSecret,
+        safeTestRecord: job.safeTestRecord as SafeTestContext,
+      });
       failures = result.failures;
-      progress.controlledWrites = { status: "Ready", proven: result.proven, attempted: result.attempted };
+      progress.controlledWrites = {
+        status: "Ready",
+        proven: result.proven,
+        attempted: result.attempted,
+      };
       next = "VERIFY_READBACK";
     } else if (job.state === "VERIFY_READBACK") {
       progress.readback = "Ready";
       next = "PUBLISH_PROVEN_OPERATIONS";
     } else if (job.state === "PUBLISH_PROVEN_OPERATIONS") {
       const adapter = getCrmAdapter(system.provider);
-      const secret = await loadConnectionSecret({
+      const correlationId = randomUUID();
+      const test = await adapter.testConnection({
+        connection: toAdapterConnection(system),
+        secret: commissioningSecret,
+        correlationId,
+      });
+      await recordConnectionVerification({
         organisationId: job.organisationId,
         connectedSystemId: job.connectedSystemId,
-        secretKind: system.connectionMethod === "oauth" ? "oauth" : "browser",
+        correlationId,
+        test,
       });
-      const correlationId = randomUUID();
-      const test = await adapter.testConnection({ connection: toAdapterConnection(system), secret, correlationId });
-      await recordConnectionVerification({ organisationId: job.organisationId, connectedSystemId: job.connectedSystemId, correlationId, test });
-      const matrix = system.connectionMethod === "oauth" ? null : await browserOperationReadinessForSystem({ organisationId: job.organisationId, connectedSystemId: job.connectedSystemId });
-      const statuses = new Map(matrix?.operations.map(operation => [operation.key, operation.status]) || []);
-      const coreReady = system.connectionMethod === "oauth" || coreBrowserCommissioningReady(statuses);
+      const matrix =
+        system.connectionMethod === "oauth"
+          ? null
+          : await browserOperationReadinessForSystem({
+              organisationId: job.organisationId,
+              connectedSystemId: job.connectedSystemId,
+            });
+      const statuses = new Map(
+        matrix?.operations.map(operation => [
+          operation.key,
+          operation.status,
+        ]) || []
+      );
+      const coreReady =
+        system.connectionMethod === "oauth" ||
+        coreBrowserCommissioningReady(statuses);
       progress.published = "Ready";
       next = "READY";
       await updateJob(job.id, {
         state: "READY",
         status: coreReady ? "ready" : "needs_attention",
-        progress: { ...progress, humanStatus: coreReady ? "Ready" : "Core functions need setup" },
+        progress: {
+          ...progress,
+          humanStatus: coreReady ? "Ready" : "Core functions need setup",
+        },
         optionalFailures: failures,
         discoveredOperationKeys: discovered,
         completedAt: new Date(),
@@ -1307,7 +1711,10 @@ export async function advanceAutomaticCommissioning(jobId: number) {
     });
     if (!waiting && next !== "READY") scheduleAutomaticCommissioning(job.id);
   } catch (error) {
-    const detail = safeText(error instanceof Error ? error.message : String(error), 2_000);
+    const detail = safeText(
+      error instanceof Error ? error.message : String(error),
+      2_000
+    );
     await updateJob(job.id, {
       status: "needs_attention",
       lastError: detail,
@@ -1320,10 +1727,19 @@ export async function advanceAutomaticCommissioning(jobId: number) {
 export async function resumeAutomaticCommissioningJobs() {
   const db = await getDb();
   if (!db) return 0;
-  const jobs = await db.select({ id: crmCommissioningJobs.id }).from(crmCommissioningJobs).where(and(
-    inArray(crmCommissioningJobs.status, ["queued", "running"]),
-    or(isNull(crmCommissioningJobs.leaseExpiresAt), lt(crmCommissioningJobs.leaseExpiresAt, new Date()))
-  )).limit(100);
+  const jobs = await db
+    .select({ id: crmCommissioningJobs.id })
+    .from(crmCommissioningJobs)
+    .where(
+      and(
+        inArray(crmCommissioningJobs.status, ["queued", "running"]),
+        or(
+          isNull(crmCommissioningJobs.leaseExpiresAt),
+          lt(crmCommissioningJobs.leaseExpiresAt, new Date())
+        )
+      )
+    )
+    .limit(100);
   jobs.forEach(job => scheduleAutomaticCommissioning(job.id));
   return jobs.length;
 }
@@ -1335,11 +1751,12 @@ export function startAutomaticCommissioningWorker(intervalMs = 10_000) {
     })
   );
   const timer = setInterval(
-    () => void resumeAutomaticCommissioningJobs().catch(error =>
-      console.error("[crm-commissioning] poll failed", {
-        detail: error instanceof Error ? error.message : String(error),
-      })
-    ),
+    () =>
+      void resumeAutomaticCommissioningJobs().catch(error =>
+        console.error("[crm-commissioning] poll failed", {
+          detail: error instanceof Error ? error.message : String(error),
+        })
+      ),
     Math.max(2_000, intervalMs)
   );
   timer.unref();

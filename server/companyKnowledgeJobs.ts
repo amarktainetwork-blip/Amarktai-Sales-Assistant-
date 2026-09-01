@@ -6,6 +6,7 @@ import {
 import {
   discoverPublicWebsite,
   type DiscoveryResult,
+  validatePublicWebsiteUrl,
 } from "./companyDiscovery";
 import {
   buildReviewedCompanyDiscovery,
@@ -29,7 +30,18 @@ import {
 import { getDb, recordAudit, saveWebsiteDiscoveryReview } from "./db";
 
 const JOB_LEASE_MS = 15 * 60_000;
+const MAX_AUTO_ATTEMPTS = 3;
+const RETRY_BASE_MS = 30_000;
 const activeJobs = new Set<number>();
+
+function workerConcurrency() {
+  const configured = Number(
+    process.env.COMPANY_KNOWLEDGE_WORKER_CONCURRENCY || 1
+  );
+  return Number.isInteger(configured)
+    ? Math.max(1, Math.min(4, configured))
+    : 1;
+}
 
 function safeText(value: unknown, maximum = 2_000) {
   return String(value || "")
@@ -60,12 +72,20 @@ function humanPhase(phase: CompanyKnowledgeJob["phase"]) {
 }
 
 export function presentCompanyKnowledgeJob(job: CompanyKnowledgeJob) {
+  const humanStatus =
+    job.status === "queued"
+      ? job.attempt > 0
+        ? "Queued to retry"
+        : "Queued"
+      : job.status === "failed"
+        ? "Failed"
+        : humanPhase(job.phase);
   return {
     id: job.id,
     companyProfileId: job.companyProfileId,
     phase: job.phase,
     status: job.status,
-    humanStatus: humanPhase(job.phase),
+    humanStatus,
     progress: job.progress,
     attempt: job.attempt,
     resultDiscoveryId: job.resultDiscoveryId,
@@ -114,7 +134,13 @@ async function claimCompanyKnowledgeJob(jobId: number) {
       and(
         eq(companyKnowledgeJobs.id, jobId),
         or(
-          eq(companyKnowledgeJobs.status, "queued"),
+          and(
+            eq(companyKnowledgeJobs.status, "queued"),
+            or(
+              isNull(companyKnowledgeJobs.leaseExpiresAt),
+              lt(companyKnowledgeJobs.leaseExpiresAt, now)
+            )
+          ),
           and(
             eq(companyKnowledgeJobs.status, "running"),
             or(
@@ -158,7 +184,7 @@ async function cleanupAbandonedResources(job: CompanyKnowledgeJob) {
   await updateJob(job.id, { temporaryResources: {} });
 }
 
-export function scheduleCompanyKnowledgeJob(jobId: number) {
+function scheduleCompanyKnowledgeJob(jobId: number) {
   if (activeJobs.has(jobId)) return;
   activeJobs.add(jobId);
   setImmediate(() => {
@@ -179,6 +205,7 @@ export async function startCompanyKnowledgeJob(input: {
   companyProfileId: number;
   websiteUrl: string;
 }) {
+  const websiteUrl = await validatePublicWebsiteUrl(input.websiteUrl);
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
   const active = (
@@ -196,19 +223,13 @@ export async function startCompanyKnowledgeJob(input: {
       .limit(1)
   )[0];
   if (active) {
-    if (
-      active.status === "queued" ||
-      !active.leaseExpiresAt ||
-      active.leaseExpiresAt.getTime() <= Date.now()
-    )
-      scheduleCompanyKnowledgeJob(active.id);
     return presentCompanyKnowledgeJob(active);
   }
   const result = await db.insert(companyKnowledgeJobs).values({
     userId: input.userId,
     organisationId: input.organisationId,
     companyProfileId: input.companyProfileId,
-    websiteUrl: input.websiteUrl,
+    websiteUrl,
     phase: "SCANNING_WEBSITE",
     status: "queued",
     progress: {
@@ -231,7 +252,6 @@ export async function startCompanyKnowledgeJob(input: {
     summary: "Whole-site company learning started in the background.",
     metadata: { companyProfileId: input.companyProfileId },
   });
-  scheduleCompanyKnowledgeJob(job.id);
   return presentCompanyKnowledgeJob(job);
 }
 
@@ -295,7 +315,6 @@ export async function retryCompanyKnowledgeJob(input: {
         : "Scanning website",
     },
   });
-  scheduleCompanyKnowledgeJob(job.id);
   return presentCompanyKnowledgeJob({
     ...job,
     status: "queued",
@@ -497,14 +516,25 @@ async function advanceCompanyKnowledgeJob(jobId: number) {
     });
   } catch (error) {
     const detail = safeText(error);
+    const nextAttempt = job.attempt + 1;
+    const transient =
+      /abort|timeout|timed out|fetch failed|econn|enotfound|eai_again|could not be resolved|429|too many requests|(?:http|status)\s*5\d\d|temporar|network|socket|target closed|session closed|browser|renderer|website reader/i.test(
+        error instanceof Error ? error.message : String(error || "")
+      );
+    const retrying = transient && nextAttempt < MAX_AUTO_ATTEMPTS;
     await updateJob(job.id, {
-      status: "needs_attention",
+      status: retrying ? "queued" : "failed",
+      attempt: nextAttempt,
       lastError: detail,
-      leaseExpiresAt: null,
-      completedAt: new Date(),
+      leaseExpiresAt: retrying
+        ? new Date(Date.now() + RETRY_BASE_MS * 2 ** (nextAttempt - 1))
+        : null,
+      completedAt: retrying ? null : new Date(),
       progress: {
         ...(job.progress || {}),
-        humanStatus: "Company learning needs attention",
+        humanStatus: retrying
+          ? "Website reading will retry shortly"
+          : "Company learning needs attention",
         knowledgePersisted: false,
         knowledgeApproved: false,
         crmTouched: false,
@@ -517,6 +547,8 @@ async function advanceCompanyKnowledgeJob(jobId: number) {
 export async function resumeCompanyKnowledgeJobs() {
   const db = await getDb();
   if (!db) return 0;
+  const available = workerConcurrency() - activeJobs.size;
+  if (available <= 0) return 0;
   const jobs = await db
     .select({ id: companyKnowledgeJobs.id })
     .from(companyKnowledgeJobs)
@@ -529,12 +561,16 @@ export async function resumeCompanyKnowledgeJobs() {
         )
       )
     )
-    .limit(100);
+    .limit(available);
   jobs.forEach(job => scheduleCompanyKnowledgeJob(job.id));
   return jobs.length;
 }
 
 export function startCompanyKnowledgeWorker(intervalMs = 10_000) {
+  if (process.env.COMPANY_KNOWLEDGE_WORKER_ENABLED !== "true")
+    throw new Error(
+      "Company knowledge worker requires explicit worker-process enablement."
+    );
   void resumeCompanyKnowledgeJobs().catch(error =>
     console.error("[company-knowledge] resume failed", {
       detail: safeText(error),

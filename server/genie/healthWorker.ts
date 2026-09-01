@@ -1,6 +1,8 @@
 import "dotenv/config";
 import { runGenieOperationWatchdog } from "./operationWatchdog";
 import { processNextOutlookInbound } from "../communications/outlookInboundQueue";
+import { startCompanyKnowledgeWorker } from "../companyKnowledgeJobs";
+import { startAutomaticCommissioningWorker } from "../crm/automaticCommissioning";
 
 const intervalMs = Number(
   process.env.CRM_HEALTH_INTERVAL_MS || 12 * 60 * 60 * 1000
@@ -61,6 +63,9 @@ setInterval(
   () => void processOutlook(),
   Math.max(2_000, Number(process.env.OUTLOOK_INBOUND_POLL_MS || 5_000))
 );
+
+startCompanyKnowledgeWorker();
+startAutomaticCommissioningWorker();
 
 process.on("SIGTERM", () => process.exit(0));
 process.on("SIGINT", () => process.exit(0));
