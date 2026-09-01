@@ -1,4 +1,5 @@
 import { useAuth } from "@/_core/hooks/useAuth";
+import MemberOnboardingGate from "@/components/MemberOnboardingGate";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { trpc } from "@/lib/trpc";
@@ -36,10 +37,56 @@ import TeamIntelligence from "./pages/TeamIntelligence";
 import TeamManagement from "./pages/TeamManagement";
 import Today from "./pages/Today";
 
+const workspacePrefixes = [
+  "/dashboard",
+  "/today",
+  "/assistant",
+  "/agents",
+  "/sell",
+  "/customers",
+  "/calls",
+  "/crm",
+  "/reviews",
+  "/team",
+  "/settings",
+  "/connections",
+  "/company-setup",
+  "/knowledge",
+  "/admin-controls",
+  "/reports",
+  "/workspace",
+  "/workflows",
+  "/automation",
+];
+
 function LegacyRedirect({ to }: { to: string }) {
   const [, navigate] = useLocation();
   useEffect(() => navigate(to, { replace: true }), [navigate, to]);
   return <DashboardLayoutSkeleton />;
+}
+
+function PersonalSetupBoundary() {
+  const [location] = useLocation();
+  const { user, loading } = useAuth();
+  const security = trpc.security.status.useQuery(undefined, {
+    enabled: Boolean(user),
+    retry: false,
+  });
+  const pathname = location.split(/[?#]/, 1)[0];
+  const workspace = workspacePrefixes.some(
+    prefix => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  );
+
+  if (
+    !workspace ||
+    loading ||
+    !user ||
+    security.isLoading ||
+    !security.data?.verified
+  )
+    return null;
+
+  return <MemberOnboardingGate />;
 }
 
 function ManagementOnly({
@@ -226,6 +273,7 @@ function App() {
       <ThemeProvider defaultTheme="light">
         <TooltipProvider>
           <Toaster />
+          <PersonalSetupBoundary />
           <Router />
         </TooltipProvider>
       </ThemeProvider>
