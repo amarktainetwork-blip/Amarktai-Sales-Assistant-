@@ -74,9 +74,9 @@ body:has(.z-\[250\]) { overflow: hidden !important; }
 .z-\[250\] button.bg-stone-900:hover { background: #2459c2 !important; }
 .z-\[250\] button:disabled { opacity: .55 !important; }
 .z-\[250\] [role="alert"] {
-  color: #8b1e2f !important;
+  color: #7f1d1d !important;
   background: #fff1f2 !important;
-  border-color: #fecdd3 !important;
+  border-color: #fca5a5 !important;
 }
 
 /* Guided company setup: never allow dark selected steps or workflow messages
@@ -102,8 +102,8 @@ body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [data-workfl
 }
 body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [data-workflow-feedback="error"] {
   background: #fff1f2 !important;
-  border-color: #fecdd3 !important;
-  color: #881337 !important;
+  border-color: #fca5a5 !important;
+  color: #7f1d1d !important;
 }
 body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [data-workflow-feedback] p,
 body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [data-workflow-feedback] span,
@@ -113,29 +113,57 @@ body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [data-workfl
   opacity: 1 !important;
 }
 
+/* Workspace errors must never disappear into a white or pastel card. */
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [role="alert"] {
+  background: #fff1f2 !important;
+  border-color: #fca5a5 !important;
+  color: #7f1d1d !important;
+  font-weight: 600 !important;
+}
+
+/* The old dashboard used marketing-scale hero blocks on every application
+ * screen. Keep hierarchy, but give the actual work the valuable screen space. */
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] main > div > header.rounded-3xl {
+  border-radius: 16px !important;
+  padding: 20px !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] main > div > header.rounded-3xl h1 {
+  font-size: clamp(28px, 3vw, 38px) !important;
+  line-height: 1.08 !important;
+  letter-spacing: -.04em !important;
+  margin-top: 4px !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] main > div > header.rounded-3xl p {
+  margin-top: 6px !important;
+}
+
 /* Make system/toast feedback legible regardless of inherited theme tokens. */
 .toaster [data-sonner-toast] {
   background: #ffffff !important;
   color: #203047 !important;
   border: 1px solid #d5dfeb !important;
-  box-shadow: 0 16px 40px rgba(32,48,71,.16) !important;
+  box-shadow: 0 16px 40px rgba(32,48,71,.18) !important;
 }
 .toaster [data-sonner-toast] [data-title],
 .toaster [data-sonner-toast] [data-description] { color: inherit !important; }
 .toaster [data-sonner-toast][data-type="success"] {
-  background: #ecfdf5 !important;
-  color: #065f46 !important;
-  border-color: #a7f3d0 !important;
+  background: #047857 !important;
+  color: #ffffff !important;
+  border-color: #065f46 !important;
 }
 .toaster [data-sonner-toast][data-type="error"] {
-  background: #fff1f2 !important;
-  color: #881337 !important;
-  border-color: #fecdd3 !important;
+  background: #991b1b !important;
+  color: #ffffff !important;
+  border-color: #7f1d1d !important;
 }
 .toaster [data-sonner-toast][data-type="warning"] {
   background: #fffbeb !important;
   color: #78350f !important;
-  border-color: #fde68a !important;
+  border-color: #f59e0b !important;
+}
+.toaster [data-sonner-toast][data-type="error"] button,
+.toaster [data-sonner-toast][data-type="success"] button {
+  color: #ffffff !important;
 }
 
 /* Compact registration so standard desktop screens do not need an avoidable
