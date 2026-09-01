@@ -17,23 +17,37 @@ describe("final dashboard information architecture", () => {
     expect(app).not.toContain('import "./dashboard-handover.css"');
   });
 
-  it("keeps the daily navigation focused and moves setup into Manage", () => {
+  it("keeps daily sales work simple and moves configuration into Settings", () => {
     const layout = readFileSync(
       path.resolve("client/src/components/DashboardLayout.tsx"),
       "utf8"
     );
-    for (const label of ["Today", "Customers", "Assistant", "Calls", "CRM"]) {
+    const settings = readFileSync(
+      path.resolve("client/src/pages/Settings.tsx"),
+      "utf8"
+    );
+    const app = readFileSync(path.resolve("client/src/App.tsx"), "utf8");
+
+    for (const label of ["Home", "Customers", "Calls", "Assistant"]) {
       expect(layout).toContain(`label: "${label}"`);
     }
+    expect(layout).toContain('label: "Settings"');
+    expect(layout).not.toContain('label: "CRM"');
+    expect(layout).not.toContain('label: "Connections"');
+    expect(layout).not.toContain('label: "Knowledge"');
+    expect(layout).not.toContain('label: "Company"');
     expect(layout).not.toContain('label: "Follow-ups"');
     expect(layout).not.toContain('label: "Automation"');
     expect(layout).not.toContain('label: "Reports"');
     expect(layout).not.toContain('label: "Approvals"');
-    expect(layout).toContain('label: "Knowledge"');
-    expect(layout).toContain('label: "Connections"');
-    expect(layout).toContain('label: "Company"');
-    expect(layout).toContain("Sales workspace");
-    expect(layout).toContain("Manage");
+
+    expect(app).toContain('<Route path="/dashboard" component={Today} />');
+    expect(app).toContain('<Route path="/settings">');
+
+    expect(settings).toContain('title="Company setup"');
+    expect(settings).toContain('title="CRM connection"');
+    expect(settings).toContain('title="Company knowledge"');
+    expect(settings).toContain('title="Team members"');
   });
 
   it("uses a light neutral workspace palette with explicit high-contrast status and selected states", () => {
@@ -43,6 +57,10 @@ describe("final dashboard information architecture", () => {
     );
     const readability = readFileSync(
       path.resolve("client/src/dashboard-client-readability.css"),
+      "utf8"
+    );
+    const finalRelease = readFileSync(
+      path.resolve("client/src/final-release.css"),
       "utf8"
     );
     const feedback = readFileSync(
@@ -65,5 +83,8 @@ describe("final dashboard information architecture", () => {
     expect(readability).toContain('[data-workflow-feedback="loading"]');
     expect(readability).toContain("nav .bg-stone-900");
     expect(readability).toContain("color: #ffffff !important");
+    expect(finalRelease).toContain('data-type="error"');
+    expect(finalRelease).toContain("background: #991b1b !important");
+    expect(finalRelease).toContain("color: #ffffff !important");
   });
 });

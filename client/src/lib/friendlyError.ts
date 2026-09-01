@@ -8,6 +8,19 @@ export function friendlyError(
   fallback = "That didn't work just now. Nothing was changed, so you can safely try again."
 ) {
   const raw = error instanceof Error ? error.message : String(error || "");
+
+  // These security states are intentionally returned as backend enums. Convert
+  // them before the generic technical-error filter so the customer gets the
+  // action they actually need instead of an opaque fallback.
+  if (
+    /MANAGEMENT_ELEVATION_(?:REQUIRED|EXPIRED)|management.*(?:password|elevation|access)|confirm management access/i.test(
+      raw
+    )
+  )
+    return "Confirm management access with your Amarktai password, then try again.";
+  if (/MANAGER_REQUIRED|required role|only organisation owners and managers/i.test(raw))
+    return "Only an organisation owner or manager can make that change.";
+
   if (
     !raw ||
     technicalError.test(raw) ||
@@ -17,8 +30,6 @@ export function friendlyError(
     return fallback;
   if (/full crm address|invalid.*url|url.*invalid|https required/i.test(raw))
     return "Enter the full CRM address, including https://";
-  if (/management password|elevation/i.test(raw))
-    return "Confirm your management password, then try again.";
   if (/sign.?in|authentication|session.*expired|verification/i.test(raw))
     return "Your session needs attention. Sign in again and continue.";
   if (/network|fetch|connection|timeout|socket|closed/i.test(raw))

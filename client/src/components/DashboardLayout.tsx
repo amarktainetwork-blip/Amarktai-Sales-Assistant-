@@ -1,5 +1,6 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { BrandMark } from "@/components/BrandMark";
+import ManagementElevation from "@/components/ManagementElevation";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,32 +22,27 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { startLogin } from "@/const";
-import { useIsMobile } from "@/hooks/useMobile";
-import { trpc } from "@/lib/trpc";
 import { friendlyError } from "@/lib/friendlyError";
+import { trpc } from "@/lib/trpc";
 import {
-  Bot,
   Building2,
-  Cable,
-  CalendarDays,
-  CheckCircle2,
   ContactRound,
   Headphones,
-  LayoutDashboard,
-  LibraryBig,
+  Home,
   LockKeyhole,
   LogOut,
   MailCheck,
-  MonitorUp,
+  MessageSquareText,
   Settings2,
   Users,
+  type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 
-type NavItem = { icon: typeof LayoutDashboard; label: string; path: string };
+type NavItem = { icon: LucideIcon; label: string; path: string };
 type CrmIdentity = {
   mapped: boolean;
   candidates: Array<{
@@ -58,23 +54,10 @@ type CrmIdentity = {
 };
 
 const dailyMenu: NavItem[] = [
-  { icon: Bot, label: "Assistant", path: "/assistant" },
-  { icon: CalendarDays, label: "Today", path: "/today" },
+  { icon: Home, label: "Home", path: "/today" },
   { icon: ContactRound, label: "Customers", path: "/customers" },
   { icon: Headphones, label: "Calls", path: "/calls" },
-  { icon: MonitorUp, label: "CRM", path: "/crm" },
-];
-
-const managerMenu: NavItem[] = [
-  { icon: Cable, label: "Connections", path: "/connections" },
-  { icon: LibraryBig, label: "Knowledge", path: "/knowledge" },
-  { icon: Settings2, label: "Company", path: "/company-setup" },
-];
-
-const teamManagerMenu: NavItem[] = [
-  { icon: LayoutDashboard, label: "Team", path: "/team" },
-  { icon: Users, label: "Team members", path: "/team/manage" },
-  ...managerMenu,
+  { icon: MessageSquareText, label: "Assistant", path: "/assistant" },
 ];
 
 export default function DashboardLayout({
@@ -99,6 +82,18 @@ export default function DashboardLayout({
     organisation.data?.role === "owner" ||
     organisation.data?.role === "manager" ||
     user?.role === "admin";
+  const companySetup = trpc.companySetup.get.useQuery(undefined, {
+    enabled: Boolean(user && security.data?.verified && canManage),
+    retry: false,
+  });
+  const organisationId = organisation.data?.organisationId;
+  const connectedSystems = trpc.connectedSystems.list.useQuery(
+    { organisationId: organisationId ?? 0 },
+    {
+      enabled: Boolean(user && security.data?.verified && canManage && organisationId),
+      retry: false,
+    }
+  );
   const utils = trpc.useUtils();
   const switchOrganisation = trpc.organisation.switch.useMutation({
     onSuccess: async () => {
@@ -123,10 +118,43 @@ export default function DashboardLayout({
       ? (settings.onboarding as { complete?: unknown })
       : null;
   const storedCompanyComplete = onboarding?.complete === true;
+  const profileConfirmed =
+    companySetup.data?.profile?.discoveryStatus === "confirmed";
+  const crmReady = Boolean(
+    connectedSystems.data?.some(
+      system =>
+        system.status === "ready" || system.status === "limited_permissions"
+    )
+  );
+  const setupComplete = canManage
+    ? Boolean(storedCompanyComplete && profileConfirmed && crmReady)
+    : storedCompanyComplete;
   const requiresSalespersonIdentity =
     organisation.data?.role === "salesperson" &&
     !canManage &&
     storedCompanyComplete;
+
+  // A real company profile is the source of truth for whether first-run setup
+  // exists. Durable organisation progress may survive a data repair/reset and
+  // must never strand a manager in an apparently-complete empty workspace.
+  useEffect(() => {
+    if (
+      !canManage ||
+      companySetup.isLoading ||
+      companySetup.isError ||
+      companySetup.data?.profile ||
+      location === "/company-setup"
+    )
+      return;
+    navigate("/company-setup", { replace: true });
+  }, [
+    canManage,
+    companySetup.data?.profile,
+    companySetup.isError,
+    companySetup.isLoading,
+    location,
+    navigate,
+  ]);
 
   useEffect(() => {
     if (!requiresSalespersonIdentity) return;
@@ -166,9 +194,14 @@ export default function DashboardLayout({
     }
   }
 
-  const secondaryMenu = useMemo(() => {
+  const secondaryMenu = useMemo<NavItem[]>(() => {
     if (!canManage) return [];
-    return workspaceMode === "team" ? teamManagerMenu : managerMenu;
+    return [
+      ...(workspaceMode === "team"
+        ? [{ icon: Users, label: "Team", path: "/team" } satisfies NavItem]
+        : []),
+      { icon: Settings2, label: "Settings", path: "/settings" },
+    ];
   }, [canManage, workspaceMode]);
 
   if (loading || security.isLoading) return <DashboardLayoutSkeleton />;
@@ -190,17 +223,13 @@ export default function DashboardLayout({
       <OrganisationSelectionGate
         organisations={organisations.data}
         pending={switchOrganisation.isPending}
-        onSelect={organisationId =>
-          switchOrganisation.mutate({ organisationId })
+        onSelect={organisationIdValue =>
+          switchOrganisation.mutate({ organisationId: organisationIdValue })
         }
       />
     );
 
-  // Team members inherit the company setup. Only block them while the shared
-  // company really has not completed setup; stale manager progress flags do not
-  // create another onboarding loop.
   if (!canManage && !storedCompanyComplete) return <WorkspaceSetupPending />;
-
   if (requiresSalespersonIdentity && !crmIdentity)
     return <DashboardLayoutSkeleton />;
   if (requiresSalespersonIdentity && crmIdentity && !crmIdentity.mapped)
@@ -212,13 +241,18 @@ export default function DashboardLayout({
       />
     );
 
+  const showManagementAccess =
+    canManage &&
+    (location === "/connections" ||
+      (location === "/company-setup" && profileConfirmed));
+
   return (
     <SidebarProvider>
       <Sidebar
         collapsible="icon"
         className="border-r border-[#52677F] bg-[#3A4D66] text-white"
       >
-        <SidebarHeader className="h-[88px] justify-center border-b border-white/15 px-5">
+        <SidebarHeader className="h-[76px] justify-center border-b border-white/15 px-5">
           <BrandMark inverse />
         </SidebarHeader>
         <SidebarContent className="px-3 py-4">
@@ -226,31 +260,23 @@ export default function DashboardLayout({
             currentName={organisation.data?.organisationName}
             organisations={organisations.data ?? []}
             pending={switchOrganisation.isPending}
-            onSelect={organisationId =>
-              switchOrganisation.mutate({ organisationId })
+            onSelect={organisationIdValue =>
+              switchOrganisation.mutate({ organisationId: organisationIdValue })
             }
           />
 
-          <p className="px-3 pb-2 pt-5 text-[9px] font-black uppercase tracking-[.15em] text-[#C4D0DD]">
-            Sales workspace
-          </p>
-          <SidebarMenu>
+          <SidebarMenu className="mt-5 gap-1">
             {dailyMenu.map(item => (
               <AppNavItem key={item.path} {...item} />
             ))}
           </SidebarMenu>
 
           {secondaryMenu.length ? (
-            <>
-              <p className="px-3 pb-2 pt-5 text-[9px] font-black uppercase tracking-[.15em] text-[#C4D0DD]">
-                Manage
-              </p>
-              <SidebarMenu>
-                {secondaryMenu.map(item => (
-                  <AppNavItem key={item.path} {...item} />
-                ))}
-              </SidebarMenu>
-            </>
+            <SidebarMenu className="mt-4 gap-1 border-t border-white/15 pt-4">
+              {secondaryMenu.map(item => (
+                <AppNavItem key={item.path} {...item} />
+              ))}
+            </SidebarMenu>
           ) : null}
         </SidebarContent>
         <SidebarFooter className="border-t border-white/15 p-3">
@@ -262,7 +288,7 @@ export default function DashboardLayout({
                     {user.name?.slice(0, 1).toUpperCase() ?? "A"}
                   </AvatarFallback>
                 </Avatar>
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
                   <p className="truncate text-sm font-bold text-white">
                     {user.name || "Amarktai user"}
                   </p>
@@ -286,23 +312,25 @@ export default function DashboardLayout({
       </Sidebar>
 
       <SidebarInset className="bg-[#F5F7FA]">
-        <AppTopbar onAssistant={() => navigate("/assistant")} />
-        <main className="min-h-[calc(100vh-66px)] p-4 sm:p-6 lg:p-8">
-          {canManage &&
-          !storedCompanyComplete &&
-          location !== "/company-setup" ? (
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#D5DFEB] bg-white px-4 py-3 text-sm text-[#33445B] shadow-sm">
+        <AppTopbar title={pageTitle(location)} />
+        <main className="min-h-[calc(100vh-58px)] p-4 sm:p-5 lg:p-6">
+          {canManage && !setupComplete && location !== "/company-setup" ? (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-950 shadow-sm">
               <span>
-                Finish the company setup so Amarktai can use your business and
-                CRM context.
+                Setup is not complete yet. Finish the business knowledge and CRM
+                connection before using the sales workspace.
               </span>
               <Button
                 size="sm"
-                variant="outline"
                 onClick={() => navigate("/company-setup")}
               >
                 Continue setup
               </Button>
+            </div>
+          ) : null}
+          {showManagementAccess ? (
+            <div className="mb-4">
+              <ManagementElevation />
             </div>
           ) : null}
           {children}
@@ -312,18 +340,28 @@ export default function DashboardLayout({
   );
 }
 
+function pageTitle(location: string) {
+  if (location.startsWith("/customers")) return "Customers";
+  if (location.startsWith("/calls")) return "Calls";
+  if (location.startsWith("/assistant")) return "Assistant";
+  if (location.startsWith("/team")) return "Team";
+  if (location.startsWith("/settings")) return "Settings";
+  if (location.startsWith("/company-setup")) return "Company setup";
+  if (location.startsWith("/connections")) return "CRM connection";
+  if (location.startsWith("/knowledge")) return "Company knowledge";
+  if (location.startsWith("/crm")) return "Secure CRM sign-in";
+  return "Home";
+}
+
 function WorkspaceSetupPending() {
   return (
     <div className="grid min-h-screen place-items-center bg-[#F5F7FA] p-5 text-[#26354A]">
-      <div className="w-full max-w-xl rounded-3xl border border-[#DCE2E9] bg-white p-8 shadow-sm sm:p-10">
+      <div className="w-full max-w-xl rounded-2xl border border-[#DCE2E9] bg-white p-7 shadow-sm">
         <BrandMark />
-        <div className="mt-10 grid size-12 place-items-center rounded-2xl bg-[#EDF3FF] text-[#315BB6]">
-          <Building2 size={23} />
-        </div>
-        <h1 className="mt-6 font-display text-4xl font-bold tracking-[-.06em]">
+        <h1 className="mt-8 text-3xl font-bold tracking-[-.04em]">
           Your company workspace is being prepared.
         </h1>
-        <p className="mt-4 text-sm leading-6 text-[#6C798B]">
+        <p className="mt-3 text-sm leading-6 text-[#6C798B]">
           Your manager is connecting the shared business knowledge and CRM. You
           won’t need to repeat that setup when it’s ready.
         </p>
@@ -343,20 +381,17 @@ function SalespersonIdentityGate({
 }) {
   return (
     <div className="grid min-h-screen place-items-center bg-[#F5F7FA] p-5 text-[#26354A]">
-      <div className="w-full max-w-xl rounded-3xl border border-[#DCE2E9] bg-white p-8 shadow-sm sm:p-10">
+      <div className="w-full max-w-xl rounded-2xl border border-[#DCE2E9] bg-white p-7 shadow-sm">
         <BrandMark />
-        <div className="mt-10 grid size-12 place-items-center rounded-2xl bg-[#EDF3FF] text-[#315BB6]">
-          <ContactRound size={23} />
-        </div>
-        <h1 className="mt-6 font-display text-4xl font-bold tracking-[-.06em]">
+        <h1 className="mt-8 text-3xl font-bold tracking-[-.04em]">
           Which CRM salesperson are you?
         </h1>
-        <p className="mt-4 text-sm leading-6 text-[#6C798B]">
-          Confirm your match once so your customers and tasks stay tied to the
-          right person.
+        <p className="mt-3 text-sm leading-6 text-[#6C798B]">
+          Confirm your match once so customers and tasks stay tied to the right
+          person.
         </p>
         {candidates.length ? (
-          <div className="mt-6 grid gap-3">
+          <div className="mt-5 grid gap-3">
             {candidates.map(candidate => (
               <button
                 key={candidate.id}
@@ -375,7 +410,7 @@ function SalespersonIdentityGate({
             ))}
           </div>
         ) : (
-          <p className="mt-6 rounded-xl border border-[#E8D5A8] bg-[#FBF3DF] p-4 text-sm leading-6 text-[#7B5A22]">
+          <p className="mt-5 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
             We couldn’t find an exact match yet. Ask your manager to link your
             CRM salesperson record to your Amarktai account.
           </p>
@@ -388,20 +423,17 @@ function SalespersonIdentityGate({
 function SignedOut() {
   return (
     <div className="grid min-h-screen place-items-center bg-[#F5F7FA] p-5 text-[#26354A]">
-      <div className="w-full max-w-md rounded-3xl border border-[#DCE2E9] bg-white p-8 shadow-sm">
+      <div className="w-full max-w-md rounded-2xl border border-[#DCE2E9] bg-white p-7 shadow-sm">
         <BrandMark />
-        <div className="mb-5 mt-10 grid size-12 place-items-center rounded-2xl bg-[#EDF3FF] text-[#315BB6]">
-          <Bot size={23} />
-        </div>
-        <h1 className="font-display text-4xl font-bold tracking-[-.06em]">
-          Your sales assistant is ready when you are.
+        <h1 className="mt-8 text-3xl font-bold tracking-[-.04em]">
+          Sign in to your sales workspace.
         </h1>
-        <p className="mt-4 leading-6 text-[#6C798B]">
-          Sign in to work with your customers, calls, priorities and CRM.
+        <p className="mt-3 leading-6 text-[#6C798B]">
+          Work with customers, calls, priorities and your connected CRM.
         </p>
         <Button
           onClick={() => startLogin()}
-          className="mt-7 h-12 w-full rounded-xl bg-[#3F70D8] font-bold text-white hover:bg-[#315BB6]"
+          className="mt-6 h-12 w-full rounded-xl bg-[#3F70D8] font-bold text-white hover:bg-[#315BB6]"
         >
           Sign in
         </Button>
@@ -443,82 +475,73 @@ function SecondFactorGate({
 
   return (
     <div className="grid min-h-screen place-items-center bg-[#F5F7FA] p-5 text-[#26354A]">
-      <div className="grid w-full max-w-4xl overflow-hidden rounded-3xl border border-[#DCE2E9] bg-white shadow-sm lg:grid-cols-[.9fr_1.1fr]">
-        <section className="bg-[#EEF4FB] p-8 sm:p-10">
-          <BrandMark />
-          <div className="mt-14 grid size-12 place-items-center rounded-2xl bg-[#DDE9FB] text-[#315BB6]">
-            <LockKeyhole size={21} />
-          </div>
-          <h1 className="mt-6 font-display text-5xl font-bold leading-[.9] tracking-[-.07em]">
-            One quick security check.
-          </h1>
-          <p className="mt-5 text-sm leading-6 text-[#6C798B]">
-            Verify your email before opening customer and company information.
-          </p>
-        </section>
-        <section className="p-8 sm:p-10">
-          <div className="grid size-11 place-items-center rounded-2xl bg-[#EDF3FF] text-[#315BB6]">
-            <MailCheck size={20} />
-          </div>
-          <h2 className="mt-6 font-display text-4xl font-bold tracking-[-.06em]">
-            Confirm access
-          </h2>
-          {feedback ? (
-            <p
-              role="alert"
-              className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"
-            >
-              {feedback}
+      <div className="w-full max-w-lg rounded-2xl border border-[#DCE2E9] bg-white p-7 shadow-sm sm:p-8">
+        <BrandMark />
+        <div className="mt-8 flex items-center gap-3">
+          <span className="grid size-10 place-items-center rounded-xl bg-[#EDF3FF] text-[#315BB6]">
+            <LockKeyhole size={19} />
+          </span>
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[.12em] text-[#6C798B]">
+              Security check
             </p>
-          ) : null}
-          {!hasEmail ? (
-            <Notice text="This account needs an email address before access can be verified." />
-          ) : !smtpReady ? (
-            <Notice text="Email verification is not available yet. Ask the administrator to finish email setup." />
-          ) : !requested ? (
-            <>
-              <p className="mt-4 text-sm leading-6 text-[#6C798B]">
-                We’ll send a six-digit code to your account email.
-              </p>
-              <Button
-                onClick={() => requestCode.mutate()}
-                disabled={requestCode.isPending}
-                className="mt-7 h-12 w-full"
-              >
-                {requestCode.isPending ? "Sending…" : "Send code"}
-              </Button>
-            </>
-          ) : (
-            <>
-              <p className="mt-4 text-sm leading-6 text-[#6C798B]">
-                Enter the six-digit code.
-              </p>
-              <input
-                inputMode="numeric"
-                maxLength={6}
-                value={code}
-                onChange={event =>
-                  setCode(event.target.value.replace(/\D/g, ""))
-                }
-                placeholder="000000"
-                className="mt-6 h-14 w-full rounded-xl border-2 border-[#D5DDE7] text-center font-display text-3xl font-bold tracking-[.32em] outline-none focus:border-[#6F91E2]"
-              />
-              <Button
-                onClick={() => verifyCode.mutate({ code })}
-                disabled={code.length !== 6 || verifyCode.isPending}
-                className="mt-4 h-12 w-full"
-              >
-                {verifyCode.isPending ? "Checking…" : "Continue"}
-              </Button>
-              <button
-                onClick={() => requestCode.mutate()}
-                className="mt-4 w-full text-sm font-bold text-[#3F70D8]"
-              >
-                Send a new code
-              </button>
-            </>
-          )}
-        </section>
+            <h1 className="text-2xl font-bold">Confirm access</h1>
+          </div>
+        </div>
+        {feedback ? (
+          <p
+            role="alert"
+            className="mt-5 rounded-xl border border-red-300 bg-red-50 p-4 text-sm font-semibold text-red-900"
+          >
+            {feedback}
+          </p>
+        ) : null}
+        {!hasEmail ? (
+          <Notice text="This account needs an email address before access can be verified." />
+        ) : !smtpReady ? (
+          <Notice text="Email verification is not available yet. Ask the administrator to finish email setup." />
+        ) : !requested ? (
+          <>
+            <p className="mt-4 text-sm leading-6 text-[#6C798B]">
+              We’ll send a six-digit code to your account email.
+            </p>
+            <Button
+              onClick={() => requestCode.mutate()}
+              disabled={requestCode.isPending}
+              className="mt-5 h-12 w-full"
+            >
+              <MailCheck className="mr-2 h-4 w-4" />
+              {requestCode.isPending ? "Sending…" : "Send code"}
+            </Button>
+          </>
+        ) : (
+          <>
+            <p className="mt-4 text-sm leading-6 text-[#6C798B]">
+              Enter the six-digit code.
+            </p>
+            <input
+              inputMode="numeric"
+              maxLength={6}
+              value={code}
+              onChange={event => setCode(event.target.value.replace(/\D/g, ""))}
+              placeholder="000000"
+              className="mt-5 h-14 w-full rounded-xl border-2 border-[#D5DDE7] text-center text-2xl font-bold tracking-[.3em] outline-none focus:border-[#6F91E2]"
+            />
+            <Button
+              onClick={() => verifyCode.mutate({ code })}
+              disabled={code.length !== 6 || verifyCode.isPending}
+              className="mt-4 h-12 w-full"
+            >
+              {verifyCode.isPending ? "Checking…" : "Continue"}
+            </Button>
+            <button
+              onClick={() => requestCode.mutate()}
+              className="mt-4 w-full text-sm font-bold text-[#3F70D8]"
+            >
+              Send a new code
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -594,12 +617,12 @@ function OrganisationSelectionGate({
 }) {
   return (
     <div className="grid min-h-screen place-items-center bg-[#F5F7FA] p-5 text-[#26354A]">
-      <div className="w-full max-w-xl rounded-3xl border border-[#DCE2E9] bg-white p-8 shadow-sm sm:p-10">
+      <div className="w-full max-w-xl rounded-2xl border border-[#DCE2E9] bg-white p-7 shadow-sm">
         <BrandMark />
-        <h1 className="mt-10 font-display text-4xl font-bold tracking-[-.06em]">
+        <h1 className="mt-8 text-3xl font-bold tracking-[-.04em]">
           Which workspace are you using?
         </h1>
-        <div className="mt-6 grid gap-3">
+        <div className="mt-5 grid gap-3">
           {organisations.map(item => (
             <button
               key={item.organisationId}
@@ -619,8 +642,7 @@ function OrganisationSelectionGate({
 
 function AppNavItem({ icon: Icon, label, path }: NavItem) {
   const [location, setLocation] = useLocation();
-  const active =
-    location === path || (path === "/crm" && location.startsWith("/crm/"));
+  const active = location === path;
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
@@ -643,34 +665,11 @@ function AppNavItem({ icon: Icon, label, path }: NavItem) {
   );
 }
 
-function AppTopbar({ onAssistant }: { onAssistant: () => void }) {
-  const isMobile = useIsMobile();
-  if (!isMobile)
-    return (
-      <header className="flex h-[66px] items-center justify-between border-b border-[#DCE2E9] bg-white/95 px-8 backdrop-blur">
-        <p className="text-sm font-bold text-[#526277]">Sales workspace</p>
-        <button
-          onClick={onAssistant}
-          className="flex items-center gap-2 rounded-full border border-[#D5DFEB] bg-[#F3F6FA] px-3 py-1.5 text-xs font-bold text-[#526277] transition hover:border-[#9CB8E8] hover:bg-[#EDF3FF]"
-        >
-          <Bot className="h-3.5 w-3.5 text-[#3F70D8]" />
-          Ask Amarktai
-        </button>
-      </header>
-    );
+function AppTopbar({ title }: { title: string }) {
   return (
-    <header className="flex h-14 items-center justify-between border-b border-[#DCE2E9] bg-white px-2">
-      <div className="flex items-center">
-        <SidebarTrigger className="rounded-lg text-[#26354A] hover:bg-[#EEF2F5]" />
-        <span className="ml-2 text-sm font-bold text-[#26354A]">Amarktai</span>
-      </div>
-      <button
-        onClick={onAssistant}
-        aria-label="Ask Amarktai"
-        className="mr-2 text-[#3F70D8]"
-      >
-        <Bot className="h-5 w-5" />
-      </button>
+    <header className="flex h-[58px] items-center gap-3 border-b border-[#DCE2E9] bg-white px-3 sm:px-5">
+      <SidebarTrigger className="rounded-lg text-[#26354A] hover:bg-[#EEF2F5]" />
+      <p className="text-sm font-bold text-[#33445B]">{title}</p>
     </header>
   );
 }

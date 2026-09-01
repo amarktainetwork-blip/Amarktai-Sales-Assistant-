@@ -33,6 +33,7 @@ import Knowledge from "./pages/Knowledge";
 import LiveCalls from "./pages/LiveCalls";
 import Pricing from "./pages/Pricing";
 import Reviews from "./pages/Reviews";
+import Settings from "./pages/Settings";
 import TeamIntelligence from "./pages/TeamIntelligence";
 import TeamManagement from "./pages/TeamManagement";
 import Today from "./pages/Today";
@@ -112,10 +113,10 @@ function Router() {
         <Route path="/integrations" component={IntegrationsPage} />
         <Route path="/auth" component={Auth} />
 
-        <Route path="/dashboard" component={Assistant} />
+        <Route path="/dashboard" component={Today} />
+        <Route path="/today" component={Today} />
         <Route path="/assistant" component={Assistant} />
         <Route path="/agents">{() => <LegacyRedirect to="/assistant" />}</Route>
-        <Route path="/today" component={Today} />
         <Route path="/sell">{() => <LegacyRedirect to="/today" />}</Route>
         <Route path="/customers" component={Customers} />
         <Route path="/calls" component={LiveCalls} />
@@ -134,6 +135,13 @@ function Router() {
           {() => (
             <ManagementOnly>
               <TeamManagement />
+            </ManagementOnly>
+          )}
+        </Route>
+        <Route path="/settings">
+          {() => (
+            <ManagementOnly>
+              <Settings />
             </ManagementOnly>
           )}
         </Route>
