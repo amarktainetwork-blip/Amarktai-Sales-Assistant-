@@ -252,6 +252,15 @@ export default function CompanySetup() {
     retry: false,
     refetchInterval: 3_000,
   });
+  const organisationId = organisation.data?.organisationId;
+  const systems = trpc.connectedSystems.list.useQuery(
+    { organisationId: organisationId ?? 0 },
+    {
+      enabled: Boolean(organisationId),
+      retry: false,
+      refetchInterval: 3_000,
+    }
+  );
 
   if (setup.isLoading || organisation.isLoading)
     return (
@@ -265,10 +274,6 @@ export default function CompanySetup() {
       </DashboardLayout>
     );
 
-  // The durable onboarding flag is progress metadata, not proof that setup
-  // still exists. A reset or repair can legitimately remove the company
-  // profile while leaving organisation settings intact. In that case the real
-  // first-run flow must always win over the stale completion flag.
   if (!setup.data?.profile) return <Onboarding />;
   if (setup.data.currentDiscovery) return <CompanyKnowledgeReview />;
 
@@ -279,9 +284,20 @@ export default function CompanySetup() {
       !Array.isArray(onboarding) &&
       (onboarding as { complete?: unknown }).complete === true
   );
+  const crmReady = Boolean(
+    systems.data?.some(
+      system =>
+        system.status === "ready" || system.status === "limited_permissions"
+    )
+  );
+
+  // Completion is only presentation state. The real setup contract is a
+  // confirmed business profile plus a backend-verified CRM. Never let a stale
+  // organisation flag skip the CRM sign-in/commissioning step.
   if (
     markedComplete &&
-    setup.data.profile.discoveryStatus === "confirmed"
+    setup.data.profile.discoveryStatus === "confirmed" &&
+    crmReady
   )
     return <Knowledge />;
 
