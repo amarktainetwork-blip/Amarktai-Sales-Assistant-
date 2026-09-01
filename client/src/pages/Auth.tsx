@@ -300,7 +300,7 @@ function LocalLoginForm({ initialEmail = "" }: { initialEmail?: string }) {
   const [, navigate] = useLocation();
   const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState("");
-  const login = trpc.auth.login.useMutation({
+  const login = trpc.auth.localLogin.useMutation({
     onSuccess: () => navigate("/dashboard"),
     onError: error =>
       toast.error(
