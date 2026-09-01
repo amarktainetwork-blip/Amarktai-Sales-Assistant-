@@ -9,7 +9,6 @@ import { trpc } from "@/lib/trpc";
 import {
   ArrowLeft,
   ArrowRight,
-  Bot,
   ChevronLeft,
   Globe2,
   Loader2,
@@ -17,6 +16,7 @@ import {
   MousePointer2,
   RefreshCw,
   ShieldCheck,
+  Sparkles,
   X,
 } from "lucide-react";
 import {
@@ -818,7 +818,7 @@ function LiveWorkspace({
           className="h-8"
           onClick={() => setAssistantOpen(open => !open)}
         >
-          <Bot className="mr-1.5 h-4 w-4" />
+          <Sparkles className="mr-1.5 h-4 w-4" />
           Assistant
         </Button>
       </header>
@@ -856,17 +856,6 @@ function LiveWorkspace({
               </div>
             )}
 
-            {!authReady && image ? (
-              <div className="pointer-events-none absolute left-3 top-3 rounded-lg border border-white/80 bg-white/92 px-3 py-2 shadow-md backdrop-blur">
-                <p className="text-xs font-bold text-[#26354A]">
-                  Sign in directly to {crmName}
-                </p>
-                <p className="mt-0.5 text-[11px] text-[#6C798B]">
-                  Move into the CRM to take control automatically.
-                </p>
-              </div>
-            ) : null}
-
             <div className="pointer-events-none absolute bottom-3 left-3 flex items-center gap-2 rounded-full border border-white/60 bg-[#26354A]/90 px-3 py-1.5 text-[11px] font-bold text-white shadow-md backdrop-blur">
               <MousePointer2 className="h-3.5 w-3.5" />
               {control === "HUMAN_CONTROL"
@@ -882,7 +871,7 @@ function LiveWorkspace({
           <aside className="absolute inset-y-0 right-0 z-30 flex w-[min(390px,94vw)] flex-col border-l border-[#D7E0EA] bg-white shadow-[-18px_0_45px_rgba(38,53,74,.12)] lg:relative lg:z-auto lg:w-[370px] lg:shadow-none">
             <div className="flex h-12 shrink-0 items-center justify-between border-b border-[#D7E0EA] px-4">
               <div className="flex items-center gap-2">
-                <Bot className="h-4 w-4 text-[#3F70D8]" />
+                <Sparkles className="h-4 w-4 text-[#3F70D8]" />
                 <div>
                   <p className="text-sm font-bold text-[#26354A]">
                     Amarktai Assistant

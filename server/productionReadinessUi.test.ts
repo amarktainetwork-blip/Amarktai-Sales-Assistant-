@@ -10,7 +10,9 @@ describe("commercial Sales Assistant product boundaries", () => {
     const assistant = read("../client/src/pages/Assistant.tsx");
     expect(app).toContain('<Route path="/assistant" component={Assistant} />');
     expect(app).toContain('<LegacyRedirect to="/assistant" />');
-    expect(assistant).toContain("I choose the right sales tool automatically.");
+    expect(assistant).toContain("data-assistant-workspace");
+    expect(assistant).toContain("Amarktai AI");
+    expect(assistant).toContain("Good ");
     expect(assistant).toContain("async function retry()");
     expect(assistant).not.toContain("agentKey");
   });
@@ -94,7 +96,8 @@ describe("commercial Sales Assistant product boundaries", () => {
     expect(reviews).toContain("Approve change");
     expect(reviews).toContain("Apply approved change");
     expect(reviews).toContain("executeApprovedCrmAction");
-    expect(reviews).not.toContain("actionType");
+    expect(reviews).not.toContain(">actionType<");
+    expect(reviews).not.toContain("Operation contract");
     expect(reviews).not.toContain("Workflow Studio");
   });
 

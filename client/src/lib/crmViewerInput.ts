@@ -8,12 +8,9 @@ export function normalizeCrmWheelDelta(
   return Math.max(-1_500, Math.min(1_500, pixels));
 }
 
-export function crmDesktopViewport(input: {
-  width: number;
-  height: number;
-}) {
+export function crmDesktopViewport(input: { width: number; height: number }) {
   return {
-    width: Math.max(1_024, Math.round(input.width)),
-    height: Math.max(640, Math.round(input.height)),
+    width: Math.max(320, Math.round(input.width)),
+    height: Math.max(360, Math.round(input.height)),
   };
 }

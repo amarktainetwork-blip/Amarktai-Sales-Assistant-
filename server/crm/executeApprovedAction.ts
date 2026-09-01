@@ -1,5 +1,10 @@
 import { and, eq } from "drizzle-orm";
-import { auditEntries, connectedSystems, type ActionProposal } from "../../drizzle/schema";
+import {
+  auditEntries,
+  connectedSystems,
+  inboundMessages,
+  type ActionProposal,
+} from "../../drizzle/schema";
 import { getDb, recordAudit } from "../db";
 import { getCrmAdapter } from "./adapterRegistry";
 import {
@@ -21,6 +26,7 @@ import {
   validateAssistantCrmBatchPlan,
 } from "./assistantBatchExecution";
 import { runGenxAgent } from "../genx";
+import { sendDelegatedOutlookMail } from "../delegatedMailbox";
 
 function explicitExternalId(
   payload: Record<string, unknown>,
@@ -94,9 +100,13 @@ async function connectionSecret(
         secretKind: "oauth",
       });
   if (!secret && browser)
-    throw new Error("Your CRM needs you to sign in again before this approved change can be applied.");
+    throw new Error(
+      "Your CRM needs you to sign in again before this approved change can be applied."
+    );
   if (!secret)
-    throw new Error("The CRM connection needs attention before this approved change can be applied.");
+    throw new Error(
+      "The CRM connection needs attention before this approved change can be applied."
+    );
   return secret;
 }
 
@@ -178,29 +188,103 @@ async function verifyApprovedCrmPostcondition(input: {
   payload: Record<string, unknown>;
   evidence: { providerResult?: Record<string, unknown> };
 }) {
-  const id = explicitExternalId(input.payload, "externalId", "contactExternalId", "opportunityExternalId", "taskExternalId");
+  const id = explicitExternalId(
+    input.payload,
+    "externalId",
+    "contactExternalId",
+    "opportunityExternalId",
+    "taskExternalId"
+  );
   const patch = fields(input.payload);
   if (input.actionType === "update_contact") {
-    if (!id) return { verified: false, detail: "Contact update has no stable external ID for readback." };
-    const contact = await input.adapter.getContact({ connection: input.connection, secret: input.secret, externalId: id });
-    const matches = contact && Object.entries(patch).every(([key, value]) => String(contact.raw[key] ?? "") === String(value));
-    return { verified: Boolean(matches), detail: matches ? "Contact fields were read back from the CRM." : "Contact readback did not prove the requested update." };
+    if (!id)
+      return {
+        verified: false,
+        detail: "Contact update has no stable external ID for readback.",
+      };
+    const contact = await input.adapter.getContact({
+      connection: input.connection,
+      secret: input.secret,
+      externalId: id,
+    });
+    const matches =
+      contact &&
+      Object.entries(patch).every(
+        ([key, value]) => String(contact.raw[key] ?? "") === String(value)
+      );
+    return {
+      verified: Boolean(matches),
+      detail: matches
+        ? "Contact fields were read back from the CRM."
+        : "Contact readback did not prove the requested update.",
+    };
   }
   if (input.actionType === "update_opportunity") {
-    if (!id) return { verified: false, detail: "Opportunity update has no stable external ID for readback." };
-    const opportunity = await input.adapter.getOpportunity({ connection: input.connection, secret: input.secret, externalId: id });
-    const matches = opportunity && Object.entries(patch).every(([key, value]) => String(opportunity.raw[key] ?? "") === String(value));
-    return { verified: Boolean(matches), detail: matches ? "Opportunity fields were read back from the CRM." : "Opportunity readback did not prove the requested update." };
+    if (!id)
+      return {
+        verified: false,
+        detail: "Opportunity update has no stable external ID for readback.",
+      };
+    const opportunity = await input.adapter.getOpportunity({
+      connection: input.connection,
+      secret: input.secret,
+      externalId: id,
+    });
+    const matches =
+      opportunity &&
+      Object.entries(patch).every(
+        ([key, value]) => String(opportunity.raw[key] ?? "") === String(value)
+      );
+    return {
+      verified: Boolean(matches),
+      detail: matches
+        ? "Opportunity fields were read back from the CRM."
+        : "Opportunity readback did not prove the requested update.",
+    };
   }
-  if (input.actionType === "schedule_callback" || input.actionType === "complete_active_task") {
-    const tasks = (await input.adapter.syncTasks({ connection: input.connection, secret: input.secret })).records;
-    const dueAt = typeof input.payload.dueAt === "string" ? input.payload.dueAt : undefined;
-    const task = tasks.find(item => (id && item.externalId === id) || (!id && item.title.toLowerCase().includes(input.proposal.targetLabel.toLowerCase())));
-    const complete = input.actionType === "complete_active_task" ? Boolean(task && /complete|closed|done/i.test(task.status)) : Boolean(task && (!dueAt || task.dueAt?.toISOString() === dueAt));
-    return { verified: complete, detail: complete ? "Task postcondition was read back from the CRM." : "Task readback did not prove the requested postcondition." };
+  if (
+    input.actionType === "schedule_callback" ||
+    input.actionType === "complete_active_task"
+  ) {
+    const tasks = (
+      await input.adapter.syncTasks({
+        connection: input.connection,
+        secret: input.secret,
+      })
+    ).records;
+    const dueAt =
+      typeof input.payload.dueAt === "string" ? input.payload.dueAt : undefined;
+    const task = tasks.find(
+      item =>
+        (id && item.externalId === id) ||
+        (!id &&
+          item.title
+            .toLowerCase()
+            .includes(input.proposal.targetLabel.toLowerCase()))
+    );
+    const complete =
+      input.actionType === "complete_active_task"
+        ? Boolean(task && /complete|closed|done/i.test(task.status))
+        : Boolean(task && (!dueAt || task.dueAt?.toISOString() === dueAt));
+    return {
+      verified: complete,
+      detail: complete
+        ? "Task postcondition was read back from the CRM."
+        : "Task readback did not prove the requested postcondition.",
+    };
   }
-  const browserReadback = (input.evidence.providerResult as { data?: { readbackVerified?: boolean } } | undefined)?.data?.readbackVerified === true;
-  return { verified: browserReadback, detail: browserReadback ? "The adapter supplied explicit deterministic readback evidence." : "This write has no deterministic CRM readback evidence." };
+  const browserReadback =
+    (
+      input.evidence.providerResult as
+        | { data?: { readbackVerified?: boolean } }
+        | undefined
+    )?.data?.readbackVerified === true;
+  return {
+    verified: browserReadback,
+    detail: browserReadback
+      ? "The adapter supplied explicit deterministic readback evidence."
+      : "This write has no deterministic CRM readback evidence.",
+  };
 }
 
 export async function executeApprovedCrmAction(input: {
@@ -218,6 +302,49 @@ export async function executeApprovedCrmAction(input: {
     | undefined;
   if (!route?.routable || !route.provider)
     throw new Error("This proposal has no verified execution route.");
+
+  if (
+    route.provider === "microsoft_delegated" &&
+    (input.proposal.actionType === "send_email" ||
+      input.proposal.actionType === "send_email_template")
+  ) {
+    const result = await sendDelegatedOutlookMail({
+      userId: input.proposal.userId,
+      organisationId: input.organisationId,
+      to: String(payload.to ?? payload.email ?? ""),
+      subject: String(payload.subject ?? input.proposal.title),
+      body: String(payload.body ?? payload.message ?? ""),
+      reviewReference: input.correlationId,
+      contactExternalId:
+        typeof payload.contactExternalId === "string"
+          ? payload.contactExternalId
+          : undefined,
+    });
+    const inboundMessageId = Number(payload.inboundMessageId);
+    if (Number.isInteger(inboundMessageId) && inboundMessageId > 0) {
+      const db = await getDb();
+      if (db)
+        await db
+          .update(inboundMessages)
+          .set({ needsAction: false, status: "archived" })
+          .where(
+            and(
+              eq(inboundMessages.id, inboundMessageId),
+              eq(inboundMessages.organisationId, input.organisationId),
+              eq(inboundMessages.mailboxUserId, input.proposal.userId)
+            )
+          );
+    }
+    return {
+      success: true,
+      detail: "Approved email sent from your connected Microsoft mailbox.",
+      provider: "microsoft_delegated",
+      correlationId: input.correlationId,
+      completedAt: new Date().toISOString(),
+      providerResult: result,
+      retryable: false,
+    };
+  }
 
   if (input.proposal.actionType === "create_calendar_event") {
     if (route.provider !== "outlook" || !getOutlookReadiness().ready)
@@ -262,10 +389,12 @@ export async function executeApprovedCrmAction(input: {
     };
   }
 
-  const batchPlan = input.proposal.actionType === "deterministic_crm_batch"
-    ? validateAssistantCrmBatchPlan(payload.batchPlan)
-    : undefined;
-  const effectiveActionType = batchPlan?.actionType || input.proposal.actionType;
+  const batchPlan =
+    input.proposal.actionType === "deterministic_crm_batch"
+      ? validateAssistantCrmBatchPlan(payload.batchPlan)
+      : undefined;
+  const effectiveActionType =
+    batchPlan?.actionType || input.proposal.actionType;
   const system = await verifiedSystem(
     input.organisationId,
     route.provider,
@@ -280,24 +409,32 @@ export async function executeApprovedCrmAction(input: {
     system
   );
   if (batchPlan) {
-    const instruction = typeof payload.instruction === "string"
-      ? payload.instruction
-      : input.proposal.title;
+    const instruction =
+      typeof payload.instruction === "string"
+        ? payload.instruction
+        : input.proposal.title;
     const db = await getDb();
     if (!db) throw new Error("Database connection is unavailable.");
-    const priorCompletions = await db.select({ metadata: auditEntries.metadata })
+    const priorCompletions = await db
+      .select({ metadata: auditEntries.metadata })
       .from(auditEntries)
-      .where(and(
-        eq(auditEntries.organisationId, input.organisationId),
-        eq(auditEntries.eventType, "assistant_crm_batch_record_completed"),
-        eq(auditEntries.entityType, "action_proposal"),
-        eq(auditEntries.entityId, String(input.proposal.id))
-      ));
-    const completedKeys = new Set(priorCompletions.map(entry =>
-      typeof entry.metadata.idempotencyKey === "string"
-        ? entry.metadata.idempotencyKey
-        : ""
-    ).filter(Boolean));
+      .where(
+        and(
+          eq(auditEntries.organisationId, input.organisationId),
+          eq(auditEntries.eventType, "assistant_crm_batch_record_completed"),
+          eq(auditEntries.entityType, "action_proposal"),
+          eq(auditEntries.entityId, String(input.proposal.id))
+        )
+      );
+    const completedKeys = new Set(
+      priorCompletions
+        .map(entry =>
+          typeof entry.metadata.idempotencyKey === "string"
+            ? entry.metadata.idempotencyKey
+            : ""
+        )
+        .filter(Boolean)
+    );
     return executeAssistantCrmBatch({
       organisationId: input.organisationId,
       proposalId: input.proposal.id,
@@ -317,7 +454,8 @@ export async function executeApprovedCrmAction(input: {
           eventType: "assistant_crm_batch_record_completed",
           entityType: "action_proposal",
           entityId: String(input.proposal.id),
-          summary: "One approved CRM batch record completed deterministic readback.",
+          summary:
+            "One approved CRM batch record completed deterministic readback.",
           metadata: {
             correlationId: input.correlationId,
             connectedSystemId: system.id,
@@ -336,10 +474,12 @@ export async function executeApprovedCrmAction(input: {
             feature: "assistant_batch_ambiguity",
             reference: `proposal:${input.proposal.id}:record:${record.externalId}`,
           },
-          messages: [{
-            role: "user",
-            content: `The approved batch predicate is '${batchPlan.structuredPredicate}'. Determine whether this one ambiguous CRM record qualifies. Return only YES or NO.\n${JSON.stringify({ externalId: record.externalId, raw: record.raw }).slice(0, 8_000)}`,
-          }],
+          messages: [
+            {
+              role: "user",
+              content: `The approved batch predicate is '${batchPlan.structuredPredicate}'. Determine whether this one ambiguous CRM record qualifies. Return only YES or NO.\n${JSON.stringify({ externalId: record.externalId, raw: record.raw }).slice(0, 8_000)}`,
+            },
+          ],
         });
         if (result.provider !== "genx")
           throw new Error(
@@ -743,9 +883,27 @@ export async function executeApprovedCrmAction(input: {
     (evidence.providerResult as { data?: { shadowMode?: string } } | undefined)
       ?.data?.shadowMode === "true";
   if (!shadowMode) {
-    const postcondition = await verifyApprovedCrmPostcondition({ actionType: input.proposal.actionType, adapter, connection, secret, proposal: input.proposal, payload, evidence });
+    const postcondition = await verifyApprovedCrmPostcondition({
+      actionType: input.proposal.actionType,
+      adapter,
+      connection,
+      secret,
+      proposal: input.proposal,
+      payload,
+      evidence,
+    });
     if (!postcondition.verified)
-      return { success: false, detail: postcondition.detail, provider: system.provider, connectionId: system.id, correlationId: input.correlationId, completedAt: evidence.completedAt, providerResult: evidence.providerResult, screenshotPath: evidence.screenshotPath, retryable: false };
+      return {
+        success: false,
+        detail: postcondition.detail,
+        provider: system.provider,
+        connectionId: system.id,
+        correlationId: input.correlationId,
+        completedAt: evidence.completedAt,
+        providerResult: evidence.providerResult,
+        screenshotPath: evidence.screenshotPath,
+        retryable: false,
+      };
   }
   return {
     success: true,

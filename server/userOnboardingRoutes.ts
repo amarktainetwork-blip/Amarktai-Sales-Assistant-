@@ -1,11 +1,10 @@
 import type { Express, Response } from "express";
 import { and, eq } from "drizzle-orm";
 import { companyProfiles, externalUserMappings } from "../drizzle/schema";
-import {
-  listConnectedSystemsForUser,
-} from "./connectedSystems";
+import { listConnectedSystemsForUser } from "./connectedSystems";
 import { getDb, getUserById, recordAudit } from "./db";
 import { requireLocalHttpContext } from "./httpAuth";
+import { getDelegatedMailboxStatus } from "./delegatedMailbox";
 import {
   canManageOrganisation,
   updateMemberOnboardingState,
@@ -21,7 +20,10 @@ function sendError(res: Response, error: unknown) {
       .status(403)
       .json({ error: "Second-factor verification is required." });
   console.error(
-    JSON.stringify({ event: "user_onboarding_error", detail: detail.slice(0, 300) })
+    JSON.stringify({
+      event: "user_onboarding_error",
+      detail: detail.slice(0, 300),
+    })
   );
   return res.status(400).json({
     error:
@@ -115,9 +117,7 @@ async function confirmedCompanyProfile(organisationId: number) {
       .where(eq(companyProfiles.organisationId, organisationId))
       .limit(1)
   )[0];
-  return Boolean(
-    row && row.discoveryStatus === "confirmed" && row.confirmedAt
-  );
+  return Boolean(row && row.discoveryStatus === "confirmed" && row.confirmedAt);
 }
 
 async function snapshotWithMembership(input: {
@@ -161,6 +161,10 @@ async function snapshotWithMembership(input: {
   );
   const effectiveCompanyComplete =
     storedCompany.complete || (companyKnowledgeReady && crmConnected);
+  const mailbox = await getDelegatedMailboxStatus({
+    userId: input.userId,
+    organisationId: input.membership.organisationId,
+  });
 
   return {
     member: input.membership.memberOnboarding,
@@ -171,7 +175,9 @@ async function snapshotWithMembership(input: {
     company: {
       complete: effectiveCompanyComplete,
       storedComplete: storedCompany.complete,
-      step: effectiveCompanyComplete ? Math.max(4, storedCompany.step) : storedCompany.step,
+      step: effectiveCompanyComplete
+        ? Math.max(4, storedCompany.step)
+        : storedCompany.step,
       workspaceMode:
         input.membership.settings.workspaceMode === "team"
           ? "team"
@@ -186,6 +192,7 @@ async function snapshotWithMembership(input: {
       userId: input.userId,
       organisationId: input.membership.organisationId,
     }),
+    mailbox,
   };
 }
 
@@ -218,6 +225,10 @@ export function registerUserOnboardingRoutes(app: Express) {
           typeof req.body?.primaryGoal === "string"
             ? req.body.primaryGoal
             : undefined,
+        preferredName:
+          typeof req.body?.preferredName === "string"
+            ? req.body.preferredName
+            : undefined,
         workingStyle:
           typeof req.body?.workingStyle === "string"
             ? req.body.workingStyle
@@ -238,6 +249,14 @@ export function registerUserOnboardingRoutes(app: Express) {
       if (!current.member.primaryGoal?.trim())
         throw new Error(
           "Add your main sales goal before completing onboarding."
+        );
+      if (!current.member.preferredName?.trim())
+        throw new Error(
+          "Add your preferred first name before completing onboarding."
+        );
+      if (current.mailbox.configured && !current.mailbox.connected)
+        throw new Error(
+          "Connect your personal Microsoft mailbox before completing onboarding."
         );
 
       // Company setup is shared. New team members inherit it; they do not repeat

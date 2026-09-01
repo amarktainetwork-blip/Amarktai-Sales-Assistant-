@@ -128,4 +128,28 @@ describe("final dashboard information architecture", () => {
     expect(readability).toContain("nav .bg-stone-900");
     expect(readability).toContain("color: #ffffff !important");
   });
+
+  it("keeps the call workflow while removing its near-black customer surface", () => {
+    const calls = readFileSync(
+      path.resolve("client/src/pages/LiveCalls.tsx"),
+      "utf8"
+    );
+    const finalRelease = readFileSync(
+      path.resolve("client/src/final-release.css"),
+      "utf8"
+    );
+    expect(calls).toContain("data-call-workflow");
+    expect(finalRelease).toContain(
+      '[data-call-workflow] [class~="bg-[#0E2142]"]'
+    );
+    expect(finalRelease).toContain("background: #ffffff !important");
+    for (const step of [
+      "PRE-CALL BRIEF",
+      "CALL AUDIO",
+      "LIVE TRANSCRIPT",
+      "CALL OUTCOME",
+      "FOLLOW-UP",
+    ])
+      expect(calls).toContain(step);
+  });
 });

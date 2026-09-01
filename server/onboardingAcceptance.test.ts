@@ -153,7 +153,9 @@ describe("new-user Genie commissioning journey contract", () => {
     const database = read("./db.ts");
     expect(companySetup).toContain("buildBusinessBasicsApproval");
     expect(companySetup).toContain("setCorrections");
-    expect(companySetup).toContain("View website source");
+    expect(companySetup).toContain("Sources");
+    expect(companySetup).toContain("discovery.sourceUrl");
+    expect(companySetup).toContain('target="_blank"');
     expect(companySetup).toContain("knowledgeIndexes: basics.map");
     expect(onboarding).toMatch(/before anything becomes\s+trusted knowledge/);
     expect(database).toContain('completeness?.status === "incomplete"');

@@ -27,6 +27,7 @@ export type MemberOnboardingState = {
     | "salesperson"
     | "auditor";
   primaryGoal?: string;
+  preferredName?: string;
   workingStyle?: string;
   crmIdentityConfirmed?: boolean;
   crmCredentialsSaved?: boolean;
@@ -106,6 +107,9 @@ export function memberOnboardingFor(
       : {}),
     ...(typeof row.primaryGoal === "string"
       ? { primaryGoal: row.primaryGoal }
+      : {}),
+    ...(typeof row.preferredName === "string"
+      ? { preferredName: row.preferredName }
       : {}),
     ...(typeof row.workingStyle === "string"
       ? { workingStyle: row.workingStyle }
@@ -336,6 +340,7 @@ export async function updateMemberOnboardingState(input: {
   complete?: boolean;
   persona?: MemberOnboardingState["persona"];
   primaryGoal?: string;
+  preferredName?: string;
   workingStyle?: string;
   crmIdentityConfirmed?: boolean;
   crmCredentialsSaved?: boolean;
@@ -361,6 +366,9 @@ export async function updateMemberOnboardingState(input: {
     ...(input.persona ? { persona: input.persona } : {}),
     ...(input.primaryGoal !== undefined
       ? { primaryGoal: input.primaryGoal.trim().slice(0, 500) }
+      : {}),
+    ...(input.preferredName !== undefined
+      ? { preferredName: input.preferredName.trim().slice(0, 80) }
       : {}),
     ...(input.workingStyle !== undefined
       ? { workingStyle: input.workingStyle.trim().slice(0, 500) }

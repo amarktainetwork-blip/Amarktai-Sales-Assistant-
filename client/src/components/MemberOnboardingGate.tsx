@@ -24,6 +24,7 @@ type MemberState = {
   step: number;
   complete: boolean;
   persona?: Persona;
+  preferredName?: string;
   primaryGoal?: string;
   workingStyle?: string;
   crmIdentityConfirmed?: boolean;
@@ -65,6 +66,15 @@ type Snapshot = {
     mapped: boolean;
     current: IdentityCandidate[];
     candidates: IdentityCandidate[];
+  };
+  mailbox: {
+    configured: boolean;
+    connected: boolean;
+    mailbox: null | {
+      email: string;
+      displayName: string | null;
+      status: string;
+    };
   };
 };
 
@@ -111,6 +121,7 @@ export default function MemberOnboardingGate() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [persona, setPersona] = useState<Persona | null>(null);
+  const [preferredName, setPreferredName] = useState("");
   const [primaryGoal, setPrimaryGoal] = useState("");
   const [workingStyle, setWorkingStyle] = useState("");
 
@@ -123,6 +134,7 @@ export default function MemberOnboardingGate() {
           personaForRole(next.role, next.company.workspaceMode)
       );
       setPrimaryGoal(next.member.primaryGoal || "");
+      setPreferredName(next.member.preferredName || "");
       setWorkingStyle(next.member.workingStyle || "");
       setError("");
     } catch (cause) {
@@ -147,6 +159,11 @@ export default function MemberOnboardingGate() {
       snapshot.identity.mappingsExist &&
       !snapshot.identity.mapped
   );
+  const needsMailbox = Boolean(
+    snapshot?.company.complete &&
+      snapshot.mailbox.configured &&
+      !snapshot.mailbox.connected
+  );
   const pathname =
     typeof window === "undefined" ? "" : window.location.pathname;
   const companySetupAllowed = pathname === "/company-setup";
@@ -161,7 +178,10 @@ export default function MemberOnboardingGate() {
       !companySetupAllowed
     )
       return true;
-    if (snapshot.company.complete && (needsPersonalCrm || needsIdentity))
+    if (
+      snapshot.company.complete &&
+      (needsPersonalCrm || needsIdentity || needsMailbox)
+    )
       return true;
     return false;
   }, [
@@ -171,12 +191,14 @@ export default function MemberOnboardingGate() {
     companySetupAllowed,
     needsPersonalCrm,
     needsIdentity,
+    needsMailbox,
   ]);
 
   if (!shouldBlock) return null;
 
   async function saveProfile() {
-    if (!snapshot || !persona || !primaryGoal.trim()) return;
+    if (!snapshot || !persona || !preferredName.trim() || !primaryGoal.trim())
+      return;
     try {
       setSaving(true);
       setError("");
@@ -185,6 +207,7 @@ export default function MemberOnboardingGate() {
         body: JSON.stringify({
           step: 2,
           persona,
+          preferredName: preferredName.trim(),
           primaryGoal: primaryGoal.trim(),
           workingStyle: workingStyle.trim(),
         }),
@@ -271,7 +294,9 @@ export default function MemberOnboardingGate() {
     );
 
   const personalProfileReady = Boolean(
-    snapshot.member.persona && snapshot.member.primaryGoal?.trim()
+    snapshot.member.persona &&
+      snapshot.member.preferredName?.trim() &&
+      snapshot.member.primaryGoal?.trim()
   );
 
   return (
@@ -373,6 +398,16 @@ export default function MemberOnboardingGate() {
                   ))}
                 </div>
                 <label className="mt-6 block text-xs font-bold text-stone-700">
+                  What should Amarktai call you?
+                  <Input
+                    value={preferredName}
+                    onChange={event => setPreferredName(event.target.value)}
+                    placeholder="Your preferred first name"
+                    autoComplete="given-name"
+                    className="mt-2 border-stone-300 bg-white text-[#171719]"
+                  />
+                </label>
+                <label className="mt-6 block text-xs font-bold text-stone-700">
                   What is the main result you want from Amarktai?
                   <Input
                     value={primaryGoal}
@@ -391,7 +426,12 @@ export default function MemberOnboardingGate() {
                   />
                 </label>
                 <Button
-                  disabled={!persona || !primaryGoal.trim() || saving}
+                  disabled={
+                    !persona ||
+                    !preferredName.trim() ||
+                    !primaryGoal.trim() ||
+                    saving
+                  }
                   onClick={() => void saveProfile()}
                   className="mt-6 h-11 bg-[#171719] text-white hover:bg-black"
                 >
@@ -407,7 +447,7 @@ export default function MemberOnboardingGate() {
                   <UserRound size={19} />
                 </div>
                 <p className="mt-6 text-[10px] font-black uppercase tracking-[.14em] text-[#2466cc]">
-                  03 / CRM identity
+                  02 / CRM identity
                 </p>
                 <h2 className="mt-2 font-display text-3xl font-bold tracking-[-.055em]">
                   Confirm who you are in the CRM.
@@ -447,13 +487,50 @@ export default function MemberOnboardingGate() {
                   )}
                 </div>
               </>
+            ) : needsMailbox ? (
+              <>
+                <div className="grid size-11 place-items-center rounded-full bg-[#2466cc] text-white">
+                  <KeyRound size={19} />
+                </div>
+                <p className="mt-6 text-[10px] font-black uppercase tracking-[.14em] text-[#2466cc]">
+                  03 / Mailbox
+                </p>
+                <h2 className="mt-2 font-display text-3xl font-bold tracking-[-.055em]">
+                  Connect your own Microsoft mailbox.
+                </h2>
+                <p className="mt-4 text-sm leading-6 text-stone-600">
+                  Microsoft will ask you to authorise Amarktai. We never ask for
+                  your Outlook password. Your mailbox stays tied to your user,
+                  not to another salesperson or a shared sender account.
+                </p>
+                <Button
+                  className="mt-6 h-11 bg-[#2466cc] text-white hover:bg-[#1f56ad]"
+                  onClick={() =>
+                    window.location.assign("/api/mailbox/microsoft/start")
+                  }
+                >
+                  Connect Microsoft mailbox{" "}
+                  <ArrowRight className="ml-2 size-4" />
+                </Button>
+                <div className="mt-7 border-t border-stone-200 pt-6">
+                  <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#2466cc]">
+                    04 / How Amarktai may work for you
+                  </p>
+                  <h3 className="mt-2 text-lg font-bold">Start with review.</h3>
+                  <p className="mt-2 text-sm leading-6 text-stone-600">
+                    Every customer-facing action will wait for your
+                    confirmation. You can give Amarktai more freedom later in
+                    Settings as you become comfortable with how it works.
+                  </p>
+                </div>
+              </>
             ) : (
               <>
                 <div className="grid size-11 place-items-center rounded-full bg-stone-900 text-white">
                   <Check size={20} />
                 </div>
                 <p className="mt-6 text-[10px] font-black uppercase tracking-[.14em] text-[#2466cc]">
-                  Ready
+                  05 / Ready
                 </p>
                 <h2 className="mt-2 font-display text-3xl font-bold tracking-[-.055em]">
                   Your personal workspace is ready.
@@ -461,7 +538,7 @@ export default function MemberOnboardingGate() {
                 <p className="mt-4 text-sm leading-6 text-stone-600">
                   {snapshot.canManage && !snapshot.company.complete
                     ? "Next, complete the company setup once so approved knowledge and the CRM can be inherited by the team."
-                    : `You are joining ${snapshot.organisationName} with your own private Amarktai workspace and user-specific CRM identity.`}
+                    : `You are joining ${snapshot.organisationName} with your own private Amarktai workspace, user-specific CRM identity and Review everything as your safe starting point.`}
                 </p>
                 <Button
                   disabled={saving}

@@ -2,11 +2,29 @@ import { randomUUID } from "node:crypto";
 import type { ActionProposal } from "../drizzle/schema";
 import { mayAutoExecute, type AutomationPolicy } from "./automationPolicy";
 import { executeApprovedCrmAction } from "./crm/executeApprovedAction";
+import { getUserAutonomy } from "./autonomy";
+import {
+  autonomyDecision,
+  type AutonomyPermission,
+} from "../shared/autonomyPolicy";
 import {
   claimApprovedActionProposal,
   recordActionExecution,
   reviewActionProposal,
 } from "./db";
+
+function autonomyPermissionForAction(actionType: string): AutonomyPermission {
+  if (/^send_email_template$/.test(actionType)) return "email_replies";
+  if (/^send_email$/.test(actionType)) return "new_emails";
+  if (/sms/.test(actionType)) return "sms";
+  if (/whatsapp/.test(actionType)) return "whatsapp";
+  if (/note|activity/.test(actionType)) return "crm_notes";
+  if (/callback|task/.test(actionType)) return "tasks_callbacks";
+  if (/contact/.test(actionType)) return "contact_updates";
+  if (/opportunity|stage/.test(actionType)) return "opportunity_updates";
+  if (/calendar|appointment/.test(actionType)) return "calendar_invites";
+  return "sequences_followups";
+}
 
 /** Reuses the existing review, claim, execution, evidence, and idempotency path. */
 export async function executeAutoPreapprovedActions(input: {
@@ -17,14 +35,31 @@ export async function executeAutoPreapprovedActions(input: {
 }) {
   const executions: Array<Record<string, unknown>> = [];
   if (input.policy.mode !== "auto_preapproved") return executions;
+  const autonomy = await getUserAutonomy({
+    userId: input.userId,
+    organisationId: input.organisationId,
+  });
   for (const proposal of input.proposals) {
     const route = (proposal.payload as Record<string, unknown>).crmRoute as
       | { routable?: boolean; shadowMode?: boolean }
       | undefined;
+    const organisationAllowsAction = mayAutoExecute(
+      input.policy,
+      proposal.actionType
+    );
+    const autonomyResult = autonomyDecision({
+      user: autonomy.user,
+      organisationCeiling: autonomy.organisationCeiling,
+      permission: autonomyPermissionForAction(proposal.actionType),
+      organisationAllowsAction,
+      capabilityVerified: route?.routable === true && !route.shadowMode,
+    });
     if (
       !route?.routable ||
       route.shadowMode ||
-      !mayAutoExecute(input.policy, proposal.actionType)
+      !organisationAllowsAction ||
+      !autonomyResult.allowed ||
+      autonomyResult.reviewRequired
     )
       continue;
     await reviewActionProposal(
