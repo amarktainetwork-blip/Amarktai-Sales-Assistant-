@@ -4,12 +4,6 @@ import ManagementElevation from "@/components/ManagementElevation";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
@@ -26,6 +20,7 @@ import { friendlyError } from "@/lib/friendlyError";
 import { trpc } from "@/lib/trpc";
 import {
   Building2,
+  Cable,
   ContactRound,
   Headphones,
   Home,
@@ -90,7 +85,9 @@ export default function DashboardLayout({
   const connectedSystems = trpc.connectedSystems.list.useQuery(
     { organisationId: organisationId ?? 0 },
     {
-      enabled: Boolean(user && security.data?.verified && canManage && organisationId),
+      enabled: Boolean(
+        user && security.data?.verified && canManage && organisationId
+      ),
       retry: false,
     }
   );
@@ -134,9 +131,6 @@ export default function DashboardLayout({
     !canManage &&
     storedCompanyComplete;
 
-  // A real company profile is the source of truth for whether first-run setup
-  // exists. Durable organisation progress may survive a data repair/reset and
-  // must never strand a manager in an apparently-complete empty workspace.
   useEffect(() => {
     if (
       !canManage ||
@@ -200,6 +194,7 @@ export default function DashboardLayout({
       ...(workspaceMode === "team"
         ? [{ icon: Users, label: "Team", path: "/team" } satisfies NavItem]
         : []),
+      { icon: Cable, label: "CRM", path: "/connections" },
       { icon: Settings2, label: "Settings", path: "/settings" },
     ];
   }, [canManage, workspaceMode]);
@@ -250,9 +245,9 @@ export default function DashboardLayout({
     <SidebarProvider>
       <Sidebar
         collapsible="icon"
-        className="border-r border-[#52677F] bg-[#3A4D66] text-white"
+        className="border-r border-[#1B2B44] bg-[#0B1B36] text-white"
       >
-        <SidebarHeader className="h-[76px] justify-center border-b border-white/15 px-5">
+        <SidebarHeader className="h-[76px] justify-center border-b border-white/10 px-5">
           <BrandMark inverse />
         </SidebarHeader>
         <SidebarContent className="px-3 py-4">
@@ -272,46 +267,43 @@ export default function DashboardLayout({
           </SidebarMenu>
 
           {secondaryMenu.length ? (
-            <SidebarMenu className="mt-4 gap-1 border-t border-white/15 pt-4">
+            <SidebarMenu className="mt-4 gap-1 border-t border-white/10 pt-4">
               {secondaryMenu.map(item => (
                 <AppNavItem key={item.path} {...item} />
               ))}
             </SidebarMenu>
           ) : null}
         </SidebarContent>
-        <SidebarFooter className="border-t border-white/15 p-3">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="flex w-full items-center gap-3 rounded-lg p-2 text-left transition hover:bg-white/10">
-                <Avatar className="size-9 border border-white/20 bg-[#58708D]">
-                  <AvatarFallback className="bg-[#58708D] text-xs font-bold text-white">
-                    {user.name?.slice(0, 1).toUpperCase() ?? "A"}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
-                  <p className="truncate text-sm font-bold text-white">
-                    {user.name || "Amarktai user"}
-                  </p>
-                  <p className="truncate text-xs text-[#CFD8E3]">
-                    {user.email || "Sales workspace"}
-                  </p>
-                </div>
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-52">
-              <DropdownMenuItem
-                onClick={logout}
-                className="cursor-pointer text-destructive focus:text-destructive"
-              >
-                <LogOut className="mr-2 size-4" />
-                Sign out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+
+        <SidebarFooter className="border-t border-white/10 p-3">
+          <div className="flex items-center gap-2 rounded-xl bg-white/[.06] p-2">
+            <Avatar className="size-9 shrink-0 border border-white/15 bg-[#17335E] group-data-[collapsible=icon]:hidden">
+              <AvatarFallback className="bg-[#17335E] text-xs font-bold text-white">
+                {user.name?.slice(0, 1).toUpperCase() ?? "A"}
+              </AvatarFallback>
+            </Avatar>
+            <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
+              <p className="truncate text-sm font-bold text-white">
+                {user.name || "Amarktai user"}
+              </p>
+              <p className="truncate text-[11px] text-[#AFC0D7]">
+                {user.email || "Sales workspace"}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={logout}
+              aria-label="Sign out"
+              title="Sign out"
+              className="grid size-9 shrink-0 place-items-center rounded-lg text-[#B8C7DB] transition hover:bg-white/10 hover:text-white"
+            >
+              <LogOut className="size-4" />
+            </button>
+          </div>
         </SidebarFooter>
       </Sidebar>
 
-      <SidebarInset className="bg-[#F5F7FA]">
+      <SidebarInset className="bg-[#F3F6FB]">
         <AppTopbar title={pageTitle(location)} />
         <main className="min-h-[calc(100vh-58px)] p-4 sm:p-5 lg:p-6">
           {canManage && !setupComplete && location !== "/company-setup" ? (
@@ -320,10 +312,7 @@ export default function DashboardLayout({
                 Setup is not complete yet. Finish the business knowledge and CRM
                 connection before using the sales workspace.
               </span>
-              <Button
-                size="sm"
-                onClick={() => navigate("/company-setup")}
-              >
+              <Button size="sm" onClick={() => navigate("/company-setup")}>
                 Continue setup
               </Button>
             </div>
@@ -568,14 +557,14 @@ function OrganisationSwitcher({
 }) {
   if (organisations.length < 2)
     return (
-      <div className="rounded-lg border border-white/15 bg-white/10 px-3 py-2">
+      <div className="rounded-lg border border-white/15 bg-white/[.06] px-3 py-2">
         <p className="truncate text-xs font-bold text-white">
           {currentName || "Sales workspace"}
         </p>
       </div>
     );
   return (
-    <label className="block rounded-lg border border-white/15 bg-white/10 px-3 py-2">
+    <label className="block rounded-lg border border-white/15 bg-white/[.06] px-3 py-2">
       <span className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[.12em] text-[#D7E0EA]">
         <Building2 size={13} /> Workspace
       </span>
@@ -596,7 +585,7 @@ function OrganisationSwitcher({
           <option
             key={item.organisationId}
             value={item.organisationId}
-            className="bg-[#3A4D66]"
+            className="bg-[#0B1B36]"
           >
             {item.organisationName}
           </option>
@@ -650,10 +639,10 @@ function AppNavItem({ icon: Icon, label, path }: NavItem) {
         onClick={() => setLocation(path)}
         tooltip={label}
         aria-label={label}
-        className={`h-11 rounded-lg px-3 transition-all hover:bg-[#465C77] hover:text-white ${
+        className={`h-11 rounded-lg px-3 transition-all hover:bg-white/10 hover:text-white ${
           active
-            ? "bg-[#F7F9FB] text-[#26354A] hover:bg-[#F7F9FB]"
-            : "text-[#E1E7EE]"
+            ? "bg-[#2F6FED] text-white hover:bg-[#2F6FED]"
+            : "text-[#D7E2F0]"
         }`}
       >
         <Icon className="size-[18px]" />
