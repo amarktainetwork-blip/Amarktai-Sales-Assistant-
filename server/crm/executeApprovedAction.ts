@@ -322,18 +322,38 @@ export async function executeApprovedCrmAction(input: {
     });
     const inboundMessageId = Number(payload.inboundMessageId);
     if (Number.isInteger(inboundMessageId) && inboundMessageId > 0) {
-      const db = await getDb();
-      if (db)
-        await db
-          .update(inboundMessages)
-          .set({ needsAction: false, status: "archived" })
-          .where(
-            and(
-              eq(inboundMessages.id, inboundMessageId),
-              eq(inboundMessages.organisationId, input.organisationId),
-              eq(inboundMessages.mailboxUserId, input.proposal.userId)
-            )
-          );
+      try {
+        const db = await getDb();
+        if (db)
+          await db
+            .update(inboundMessages)
+            .set({ needsAction: false, status: "archived" })
+            .where(
+              and(
+                eq(inboundMessages.id, inboundMessageId),
+                eq(inboundMessages.organisationId, input.organisationId),
+                eq(inboundMessages.mailboxUserId, input.proposal.userId)
+              )
+            );
+      } catch (error) {
+        await recordAudit({
+          userId: input.proposal.userId,
+          organisationId: input.organisationId,
+          eventType: "delegated_email_post_send_reconciliation_failed",
+          entityType: "action_proposal",
+          entityId: String(input.proposal.id),
+          summary:
+            "Microsoft accepted the approved email, but local inbound-message bookkeeping needs reconciliation. The send must not be retried.",
+          metadata: {
+            correlationId: input.correlationId,
+            inboundMessageId,
+            detail:
+              error instanceof Error
+                ? error.message.slice(0, 300)
+                : String(error).slice(0, 300),
+          },
+        }).catch(() => undefined);
+      }
     }
     return {
       success: true,
