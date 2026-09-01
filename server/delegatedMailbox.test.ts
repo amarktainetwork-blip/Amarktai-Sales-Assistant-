@@ -90,4 +90,19 @@ describe("per-user delegated Microsoft mailbox", () => {
       "path is invalid"
     );
   });
+
+  it("does not turn a Microsoft-accepted send into a retryable duplicate", () => {
+    expect(execution).toContain(
+      'eventType: "delegated_email_post_send_reconciliation_failed"'
+    );
+    expect(execution).toContain(
+      "The send must not be retried."
+    );
+    expect(execution).toContain("}).catch(() => undefined);");
+    const delegatedBranch = execution.slice(
+      execution.indexOf('route.provider === "microsoft_delegated"'),
+      execution.indexOf('if (input.proposal.actionType === "create_calendar_event")')
+    );
+    expect(delegatedBranch).toContain("retryable: false");
+  });
 });
