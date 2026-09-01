@@ -62,7 +62,9 @@ describe("AI agent commissioning", () => {
     ]) {
       expect(agentRuntimeStatus(key, noGenx)).toBe("READY");
     }
-    expect(agentRuntimeStatus("promise_tracker", noGenx)).toBe("NEEDS_CONNECTION");
+    expect(agentRuntimeStatus("promise_tracker", noGenx)).toBe(
+      "NEEDS_CONNECTION"
+    );
   });
 
   it("allows text coaching agents to run when GenX is live without coupling them to transport status", () => {
@@ -70,12 +72,21 @@ describe("AI agent commissioning", () => {
     expect(agentRuntimeStatus("notes_agent", base)).toBe("READY");
   });
 
-  it("live integration verification executes every model-backed catalogue agent through GenX", () => {
-    const source = readFileSync(path.resolve("server/verifyIntegrations.ts"), "utf8");
+  it("live integration verification probes model agents without bypassing workspace evidence guards", () => {
+    const source = readFileSync(
+      path.resolve("server/verifyIntegrations.ts"),
+      "utf8"
+    );
+    const evaluator = readFileSync(
+      path.resolve("server/productionAgentProbe.ts"),
+      "utf8"
+    );
     expect(source).toContain("for (const agent of AGENT_CATALOG)");
     expect(source).toContain("if (!agent.requiresModel)");
     expect(source).toContain("const response = await runGenxAgent({");
-    expect(source).toContain('status: "GENX_LIVE_PROVEN"');
+    expect(source).toContain("evaluateProductionAgentProbe({");
+    expect(evaluator).toContain('status: "GENX_LIVE_PROVEN"');
+    expect(evaluator).toContain('provider !== "workspace_evidence_blocked"');
     expect(source).toContain("if (agentVerification.failed) failed = true");
   });
 });

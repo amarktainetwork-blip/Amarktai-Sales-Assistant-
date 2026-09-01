@@ -4,6 +4,7 @@ import { GenxCompanyLearningClient } from "./genxCompanyLearning";
 import { runGenxAgent, verifyGenxConnection } from "./genx";
 import { createOutlookApplicationToken, getOutlookReadiness } from "./outlook";
 import { getSmtpReadiness, verifySmtpConnection } from "./smtp";
+import { evaluateProductionAgentProbe } from "./productionAgentProbe";
 import { verifyVoiceAcceptance } from "./voice/acceptance";
 import { getSttConfiguration } from "./voice/stt";
 import { getTtsConfiguration } from "./voice/tts";
@@ -33,17 +34,11 @@ async function verifyAgentExecutions() {
           },
         ],
       });
-      if (response.provider !== "genx")
-        throw new Error(
-          `Agent used provider ${response.provider} instead of the configured production intelligence service.`
-        );
-      if (!response.content?.trim())
-        throw new Error("Agent returned no content.");
-      agents[agent.key] = {
-        status: "GENX_LIVE_PROVEN",
+      agents[agent.key] = evaluateProductionAgentProbe({
+        agentKey: agent.key,
         provider: response.provider,
-        responseCharacters: response.content.trim().length,
-      };
+        content: response.content || "",
+      });
     } catch (error) {
       failed = true;
       agents[agent.key] = {
