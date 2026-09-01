@@ -291,12 +291,16 @@ describe("canonical connected-system capability router", () => {
     });
   });
 
-  it("routes calendar creation only when the installation-level calendar boundary is configured", () => {
+  it("routes calendar creation only when delegated Microsoft connection is configured", () => {
     const keys = [
+      "OUTLOOK_DELEGATED_TENANT_ID",
+      "OUTLOOK_DELEGATED_CLIENT_ID",
+      "OUTLOOK_DELEGATED_CLIENT_SECRET",
+      "OUTLOOK_DELEGATED_REDIRECT_URI",
+      "PUBLIC_APP_URL",
       "OUTLOOK_TENANT_ID",
       "OUTLOOK_CLIENT_ID",
       "OUTLOOK_CLIENT_SECRET",
-      "OUTLOOK_SENDER_EMAIL",
     ] as const;
     const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
     try {
@@ -307,19 +311,23 @@ describe("canonical connected-system capability router", () => {
       );
       expect(blocked.payload.crmRoute).toMatchObject({
         routable: false,
-        requiredCapability: "calendar.create",
+        requiredCapability: "Calendars.ReadWrite",
       });
-      process.env.OUTLOOK_TENANT_ID = "tenant";
-      process.env.OUTLOOK_CLIENT_ID = "client";
-      process.env.OUTLOOK_CLIENT_SECRET = "secret";
-      process.env.OUTLOOK_SENDER_EMAIL = "sales@example.test";
+
+      process.env.OUTLOOK_DELEGATED_TENANT_ID = "common";
+      process.env.OUTLOOK_DELEGATED_CLIENT_ID = "client";
+      process.env.OUTLOOK_DELEGATED_CLIENT_SECRET = "secret";
+      process.env.OUTLOOK_DELEGATED_REDIRECT_URI =
+        "https://sales.example.test/api/mailbox/microsoft/callback";
       const [ready] = routeConnectedSystemActions(
         [{ actionType: "create_calendar_event", payload: {} }],
         []
       );
       expect(ready.payload.crmRoute).toMatchObject({
         routable: true,
-        connectionMode: "microsoft_graph",
+        provider: "microsoft_delegated",
+        connectionMode: "delegated_oauth",
+        requiredCapability: "Calendars.ReadWrite",
       });
     } finally {
       for (const key of keys) {
