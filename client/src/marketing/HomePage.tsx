@@ -133,7 +133,7 @@ export default function HomePage() {
           <div>
             <p>That combination is what makes Sales Assistant useful. It is not trying to become the company's new database. It is the working layer that helps a salesperson understand what matters, have a better conversation and leave the customer record in a better state afterwards.</p>
             <p>Important CRM changes are designed to stay visible and reviewable. Where a supported connection can verify the result, Amarktai checks the record before presenting the work as complete.</p>
-            <p className="amk-trust__systems">Genie · HubSpot · Salesforce · Pipedrive · Zoho · authorised browser-based CRM connections</p>
+            <p className="amk-trust__systems">CRM compatibility is proven connection by connection. Ask us about the CRM your team uses today.</p>
           </div>
         </div>
       </section>
