@@ -77,14 +77,15 @@ export default function ContactPage() {
 
   return (
     <MarketingLayout>
-      <section className="amk-contact">
+      <section className="amk-contact" style={{ paddingTop: "clamp(96px, 9vw, 132px)" }}>
         <div className="amk-shell amk-contact__grid">
           <div className="amk-contact__intro">
-            <p className="amk-eyebrow">CONTACT AMARKTAI NETWORK</p>
-            <h1>Tell us what your sales team needs.</h1>
-            <p>Ask about Amarktai Sales Assistant, a demonstration, individual or team setup, CRM compatibility, onboarding or support. Give us enough context to understand the problem and we will respond to the enquiry.</p>
+            <p className="amk-eyebrow">TALK TO AMARKTAI NETWORK</p>
+            <h1>Show us how your team sells today.</h1>
+            <p>Tell us which CRM you use, how many people sell, and where the day currently breaks down — missed follow-ups, too much admin, poor call preparation, scattered customer context, inconsistent CRM updates or something else. We will show you where Sales Assistant fits around the operation you already have.</p>
             <div className="amk-contact__details">
-              <p><strong>Please do not send passwords, OTPs or CRM connection secrets through this form.</strong></p>
+              <p><strong>Want a useful demo?</strong> Include your CRM name and the part of the sales day you most want to improve.</p>
+              <p><strong>For your security:</strong> never send CRM passwords, one-time codes or connection secrets through this form.</p>
             </div>
           </div>
 
@@ -94,17 +95,17 @@ export default function ContactPage() {
               <Field label="Email" name="email" value={form.email} error={errors.email} maxLength={254} type="email" autoComplete="email" onChange={update}/>
               <Field label="Company" name="company" value={form.company} error={errors.company} maxLength={120} autoComplete="organization" onChange={update}/>
               <Field label={<>Phone <span>(optional)</span></>} name="phone" value={form.phone} error={errors.phone} maxLength={40} type="tel" autoComplete="tel" onChange={update}/>
-              <Field label={<>Team size <span>(optional)</span></>} name="teamSize" value={form.teamSize} error={errors.teamSize} maxLength={40} onChange={update}/>
+              <Field label={<>Sales team size <span>(optional)</span></>} name="teamSize" value={form.teamSize} error={errors.teamSize} maxLength={40} onChange={update}/>
               <div className="amk-field">
-                <label htmlFor="contact-reason">Reason for contacting us</label>
+                <label htmlFor="contact-reason">How can we help?</label>
                 <select id="contact-reason" name="reason" value={form.reason} onChange={event => update("reason", event.target.value)} aria-invalid={Boolean(errors.reason)} aria-describedby={errors.reason ? "contact-reason-error" : undefined}>
-                  <option value="">Choose a reason</option>
+                  <option value="">Choose one</option>
                   {contactReasons.map(reason => <option key={reason}>{reason}</option>)}
                 </select>
                 {errors.reason ? <p id="contact-reason-error" className="amk-field__error">{errors.reason}</p> : null}
               </div>
               <div className="amk-field amk-field--wide">
-                <label htmlFor="contact-message">Message</label>
+                <label htmlFor="contact-message">What would you like to improve?</label>
                 <textarea id="contact-message" name="message" value={form.message} maxLength={2000} onChange={event => update("message", event.target.value)} aria-invalid={Boolean(errors.message)} aria-describedby={errors.message ? "contact-message-error" : undefined}/>
                 {errors.message ? <p id="contact-message-error" className="amk-field__error">{errors.message}</p> : null}
               </div>
@@ -117,7 +118,7 @@ export default function ContactPage() {
               {status === "sending" ? "Sending…" : <>Send enquiry <ArrowRight size={17}/></>}
             </button>
             <div aria-live="polite" aria-atomic="true">
-              {status === "success" ? <p className="amk-form-status amk-form-status--success">Thank you. We received your message.</p> : null}
+              {status === "success" ? <p className="amk-form-status amk-form-status--success">Thank you. We received your message and have the context you shared.</p> : null}
               {status === "error" ? <p className="amk-form-status amk-form-status--error">We couldn't send your message. Check the highlighted fields and try again.</p> : null}
             </div>
           </form>
