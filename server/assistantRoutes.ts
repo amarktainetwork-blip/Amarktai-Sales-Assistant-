@@ -2,6 +2,7 @@ import type { Express, Response } from "express";
 import {
   createWorkflowRun,
   getAssistantOperationalContext,
+  getUserById,
   recordAudit,
   searchApprovedKnowledge,
 } from "./db";
@@ -13,6 +14,14 @@ import { runGenxAgent, type ChatMessage } from "./genx";
 import { listConnectedSystemsForUser } from "./connectedSystems";
 import { planAssistantCrmBatchInstruction } from "./crm/assistantBatchExecution";
 import { routeConnectedSystemActions } from "./crmRouter";
+import {
+  listAssistantMemories,
+  rememberAssistantConversation,
+} from "./memory";
+import {
+  firstNameFromDisplayName,
+  selectAssistantMemoryContext,
+} from "./assistantMemoryContext";
 
 const MAX_MESSAGES = 18;
 const MAX_MESSAGE_CHARS = 12_000;
@@ -43,6 +52,10 @@ function cleanMessages(value: unknown): ChatMessage[] {
     });
   if (!messages.length) throw new Error("ASSISTANT_MESSAGES_REQUIRED");
   return messages;
+}
+
+function currentUserQuery(messages: ChatMessage[]) {
+  return [...messages].reverse().find(message => message.role === "user")?.content.trim() || "";
 }
 
 function customerMessage(error: unknown) {
@@ -184,6 +197,39 @@ function compactPriority(item: {
   };
 }
 
+function personaliseFirstReply(
+  response: PublicAssistantResponse,
+  firstName: string,
+  messages: ChatMessage[]
+): PublicAssistantResponse {
+  if (!firstName || messages.some(message => message.role === "assistant")) return response;
+  return { ...response, content: `${firstName}, ${response.content}` };
+}
+
+async function retainConversation(input: {
+  userId: number;
+  organisationId: number;
+  query: string;
+  response: PublicAssistantResponse;
+}) {
+  try {
+    await rememberAssistantConversation({
+      userId: input.userId,
+      organisationId: input.organisationId,
+      userMessage: input.query,
+      assistantMessage: input.response.content,
+      occurredAt: new Date(),
+    });
+  } catch (error) {
+    console.warn(
+      JSON.stringify({
+        event: "assistant_memory_retention_failed",
+        detail: error instanceof Error ? error.message.slice(0, 180) : String(error).slice(0, 180),
+      })
+    );
+  }
+}
+
 export function registerAssistantRoutes(app: Express) {
   app.post("/api/assistant", async (req, res: Response) => {
     try {
@@ -193,12 +239,10 @@ export function registerAssistantRoutes(app: Express) {
         Number.isInteger(req.body?.contactId) && Number(req.body.contactId) > 0
           ? Number(req.body.contactId)
           : undefined;
-      const query = messages
-        .filter(message => message.role === "user")
-        .map(message => message.content)
-        .join("\n")
-        .trim();
+      const query = currentUserQuery(messages);
       if (!query) throw new Error("ASSISTANT_MESSAGE_EMPTY");
+      const account = await getUserById(userId);
+      const firstName = firstNameFromDisplayName(account?.name);
 
       const today = await getTodayWork({
         userId,
@@ -207,6 +251,7 @@ export function registerAssistantRoutes(app: Express) {
 
       const direct = directAssistantAction(query) || deterministicTodayAnswer(query, today);
       if (direct) {
+        const response = personaliseFirstReply(direct, firstName, messages);
         await recordAudit({
           userId,
           organisationId: membership.organisationId,
@@ -214,9 +259,10 @@ export function registerAssistantRoutes(app: Express) {
           entityType: "assistant",
           entityId: String(userId),
           summary: "The Sales Assistant answered from current workspace context.",
-          metadata: { responseMode: "workspace_truth", contentRetained: false },
+          metadata: { responseMode: "workspace_truth", contentRetained: true },
         });
-        return res.json(direct);
+        await retainConversation({ userId, organisationId: membership.organisationId, query, response });
+        return res.json(response);
       }
 
       const batchAction = planAssistantCrmBatchInstruction(query);
@@ -240,23 +286,24 @@ export function registerAssistantRoutes(app: Express) {
           (routed[0]?.payload.crmRoute as { routable?: boolean } | undefined)
             ?.routable
         );
-        return res.json(
-          routable
-            ? {
-                content:
-                  "I prepared that CRM change for review. Nothing has been changed yet. Check the proposed action, then approve it when you're happy.",
-                suggestedAction: { label: "Review proposed change", path: "/reviews" },
-                reviewRequired: true,
-              }
-            : {
-                content:
-                  "I understand the change you want, but that CRM action isn't available on the current connection yet. I haven't changed anything.",
-              }
-        );
+        const planned: PublicAssistantResponse = routable
+          ? {
+              content:
+                "I prepared that CRM change for review. Nothing has been changed yet. Check the proposed action, then approve it when you're happy.",
+              suggestedAction: { label: "Review proposed change", path: "/reviews" },
+              reviewRequired: true,
+            }
+          : {
+              content:
+                "I understand the change you want, but that CRM action isn't available on the current connection yet. I haven't changed anything.",
+            };
+        const response = personaliseFirstReply(planned, firstName, messages);
+        await retainConversation({ userId, organisationId: membership.organisationId, query, response });
+        return res.json(response);
       }
 
       const route = routeSalesCommand(query);
-      const [sources, contactContext, operationalContext] = await Promise.all([
+      const [sources, contactContext, operationalContext, memories] = await Promise.all([
         searchApprovedKnowledge(userId, membership.organisationId, query),
         contactId
           ? getWorkingContextForContact({
@@ -265,6 +312,11 @@ export function registerAssistantRoutes(app: Express) {
             })
           : Promise.resolve(undefined),
         getAssistantOperationalContext(userId, membership.organisationId),
+        listAssistantMemories({
+          userId,
+          organisationId: membership.organisationId,
+          maximum: 180,
+        }),
       ]);
       const approvedKnowledge = sources.length
         ? sources
@@ -274,7 +326,15 @@ export function registerAssistantRoutes(app: Express) {
             )
             .join("\n\n---\n\n")
         : undefined;
+      const now = new Date();
+      const durableMemory = selectAssistantMemoryContext(query, memories, now);
       const workingContext = JSON.stringify({
+        assistantPersonalisation: {
+          userDisplayName: account?.name ?? null,
+          userFirstName: firstName || null,
+          currentTimeUtc: now.toISOString(),
+          durableMemory,
+        },
         selectedCustomer: contactContext ?? null,
         today: {
           generatedAt: today.generatedAt,
@@ -321,20 +381,31 @@ export function registerAssistantRoutes(app: Express) {
         metadata: {
           route: route.intent,
           specialist: route.agentKey,
-          contentRetained: false,
+          memoryItemsUsed: durableMemory.length,
+          contentRetained: true,
         },
       });
-      const result: PublicAssistantResponse = {
-        content: response.content,
-        ...(route.suggestedPath && route.suggestedLabel
-          ? {
-              suggestedAction: {
-                label: route.suggestedLabel,
-                path: route.suggestedPath,
-              },
-            }
-          : {}),
-      };
+      const result: PublicAssistantResponse = personaliseFirstReply(
+        {
+          content: response.content,
+          ...(route.suggestedPath && route.suggestedLabel
+            ? {
+                suggestedAction: {
+                  label: route.suggestedLabel,
+                  path: route.suggestedPath,
+                },
+              }
+            : {}),
+        },
+        firstName,
+        messages
+      );
+      await retainConversation({
+        userId,
+        organisationId: membership.organisationId,
+        query,
+        response: result,
+      });
       return res.json(result);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
