@@ -13,7 +13,7 @@ const assistantRoute = readFileSync(
 describe("client-handover Assistant contract", () => {
   it("uses one full-page conversation and one integrated composer", () => {
     expect(assistantPage).toContain("data-assistant-workspace");
-    expect(assistantPage).toContain("What would make today easier?");
+    expect(assistantPage).toContain("I’m ready when you are.");
     expect(assistantPage).not.toContain("Try asking me");
     expect(assistantPage).not.toContain("<Bot");
     expect(assistantPage.match(/<Textarea/g)).toHaveLength(1);
