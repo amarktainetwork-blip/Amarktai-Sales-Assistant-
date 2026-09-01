@@ -85,6 +85,22 @@ export default function HomePage() {
         </div>
       </section>
 
+      <section className="amk-cta">
+        <div className="amk-shell amk-cta__inner">
+          <div>
+            <p className="amk-eyebrow">AMARKTAI NETWORK</p>
+            <h2>Give the sales day one dependable place to start.</h2>
+          </div>
+          <div>
+            <p>Start with one salesperson or set up the company once and give every seller a personal workspace.</p>
+            <div className="amk-actions">
+              <Link href="/pricing" className="amk-button amk-button--light">See pricing</Link>
+              <Link href="/contact" className="amk-text-link amk-text-link--light">Talk to us <ArrowRight size={16}/></Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section className="amk-story amk-story--warm">
         <div className="amk-shell amk-story__grid amk-story__grid--reverse">
           <div className="amk-story__copy">
@@ -114,22 +130,6 @@ export default function HomePage() {
           <div>
             <p>Sales Assistant is an operating layer around the CRM, not a replacement CRM. Important actions stay governed and auditable, and deterministic writes are checked before the user is told that the work succeeded.</p>
             <p className="amk-trust__systems">Genie · HubSpot · Salesforce · Pipedrive · Zoho · authorised browser CRMs</p>
-          </div>
-        </div>
-      </section>
-
-      <section className="amk-cta">
-        <div className="amk-shell amk-cta__inner">
-          <div>
-            <p className="amk-eyebrow">AMARKTAI NETWORK</p>
-            <h2>Give the sales day one dependable place to start.</h2>
-          </div>
-          <div>
-            <p>Start with one salesperson or set up the company once and give every seller a personal workspace.</p>
-            <div className="amk-actions">
-              <Link href="/pricing" className="amk-button amk-button--light">See pricing</Link>
-              <Link href="/contact" className="amk-text-link amk-text-link--light">Talk to us <ArrowRight size={16}/></Link>
-            </div>
           </div>
         </div>
       </section>
