@@ -455,6 +455,64 @@ export async function listActionProposals(
     .limit(40);
 }
 
+/** Edits only the body of the current user's still-pending delegated email draft. */
+export async function updateDelegatedEmailDraft(input: {
+  userId: number;
+  organisationId: number;
+  proposalId: number;
+  body: string;
+}) {
+  const db = await requireDb();
+  const proposal = (
+    await db
+      .select()
+      .from(actionProposals)
+      .where(
+        and(
+          eq(actionProposals.id, input.proposalId),
+          eq(actionProposals.userId, input.userId),
+          eq(actionProposals.organisationId, input.organisationId),
+          eq(actionProposals.state, "review_required")
+        )
+      )
+      .limit(1)
+  )[0];
+  const route = proposal?.payload?.crmRoute as
+    | { provider?: string }
+    | undefined;
+  if (
+    !proposal ||
+    !["send_email", "send_email_template"].includes(proposal.actionType) ||
+    route?.provider !== "microsoft_delegated"
+  )
+    throw new Error(
+      "This personal mailbox draft is no longer available to edit."
+    );
+  const body = input.body.trim().slice(0, 20_000);
+  if (!body) throw new Error("Write a reply before sending this email.");
+  await db
+    .update(actionProposals)
+    .set({ payload: { ...proposal.payload, body } })
+    .where(
+      and(
+        eq(actionProposals.id, proposal.id),
+        eq(actionProposals.userId, input.userId),
+        eq(actionProposals.organisationId, input.organisationId),
+        eq(actionProposals.state, "review_required")
+      )
+    );
+  await recordAudit({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    eventType: "personal_mailbox_draft_edited",
+    entityType: "action_proposal",
+    entityId: String(proposal.id),
+    summary: "The salesperson edited a review-only personal mailbox draft.",
+    metadata: { contentRetained: false },
+  });
+  return { ...proposal, payload: { ...proposal.payload, body } };
+}
+
 export async function listWorkspaceSavedItems(
   userId: number,
   organisationId: number
@@ -763,6 +821,43 @@ export async function recordActionExecution(input: {
       ? "Approved CRM action was verified by its connector."
       : "Approved CRM action failed and was blocked.",
     metadata: normalizedResult,
+  });
+}
+
+export async function returnClaimedActionForReview(input: {
+  userId: number;
+  organisationId: number;
+  proposalId: number;
+  correlationId: string;
+  reason: string;
+}) {
+  const db = await requireDb();
+  await db
+    .update(actionProposals)
+    .set({
+      state: "review_required",
+      reviewedAt: null,
+      executionClaimId: null,
+      executionClaimedAt: null,
+    })
+    .where(
+      and(
+        eq(actionProposals.id, input.proposalId),
+        eq(actionProposals.userId, input.userId),
+        eq(actionProposals.organisationId, input.organisationId),
+        eq(actionProposals.state, "approved"),
+        eq(actionProposals.executionClaimId, input.correlationId)
+      )
+    );
+  await recordAudit({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    eventType: "personal_mailbox_send_not_completed",
+    entityType: "action_proposal",
+    entityId: String(input.proposalId),
+    summary:
+      "The approved personal mailbox email was not sent and returned for review.",
+    metadata: { reason: input.reason.slice(0, 240) },
   });
 }
 

@@ -94,8 +94,8 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
         <div className="amk-shell amk-footer__top">
           <div>
             <BrandMark large inverse />
-            <p className="amk-footer__statement">Amarktai Sales Assistant is part of the Amarktai Network.</p>
-            <p className="amk-footer__copy">AI products designed to remove operational friction and help people do better work.</p>
+            <p className="amk-footer__statement">Keep your CRM. Give your salespeople a better sales day.</p>
+            <p className="amk-footer__copy">Amarktai Sales Assistant brings business knowledge, customer context, conversation help and follow-through into one personal sales workspace. Part of the Amarktai Network.</p>
           </div>
           <nav className="amk-footer__nav" aria-label="Footer navigation">
             <Link href="/about">About</Link>
@@ -107,7 +107,7 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
         </div>
         <div className="amk-shell amk-footer__base">
           <p>© {new Date().getFullYear()} Amarktai Sales Assistant. Part of the Amarktai Network.</p>
-          <p>Amarktai Sales Assistant · South Africa</p>
+          <p>Built for sales teams that want less admin and better follow-through.</p>
         </div>
       </footer>
     </div>

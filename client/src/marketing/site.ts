@@ -1,5 +1,6 @@
 export const marketingNavigation = [
   { label: "How It Works", href: "/how-it-works" },
+  { label: "Why Amarktai", href: "/about" },
   { label: "Pricing", href: "/pricing" },
   { label: "Contact", href: "/contact" },
 ] as const;
@@ -14,48 +15,48 @@ export const publicPageMetadata: Record<
   { title: string; description: string }
 > = {
   "/": {
-    title: "Amarktai Network Sales Assistant | A better sales day around your CRM",
+    title: "Amarktai Sales Assistant | Keep your CRM. Build a better sales day.",
     description:
-      "Amarktai Network Sales Assistant learns the business, works beside the CRM and helps salespeople prepare, call, follow through and keep customer records accurate.",
+      "Amarktai learns your business, works with the customer context in your CRM, supports sales conversations and carries confirmed next steps into follow-through.",
   },
   "/how-it-works": {
-    title: "How It Works | Amarktai Network Sales Assistant",
+    title: "How Amarktai Sales Assistant Works | Keep Your CRM",
     description:
-      "See how Amarktai Network learns approved business context, connects each salesperson to the CRM and turns it into a focused daily sales workflow.",
+      "See how Amarktai combines approved company knowledge, CRM customer context, sales conversations and follow-through in one personal sales workspace.",
   },
   "/pricing": {
-    title: "Pricing in ZAR | Amarktai Network Sales Assistant",
+    title: "Amarktai Sales Assistant Pricing | South African Rand",
     description:
-      "South African Rand pricing for individual salespeople and teams, including AI credits and optional top-ups.",
+      "Simple ZAR pricing for individual salespeople and teams, with included AI credits and optional top-ups when deeper AI work is needed.",
   },
   "/about": {
-    title: "About | Amarktai Network Sales Assistant",
+    title: "Why Amarktai | Sales Assistant Around the CRM You Already Use",
     description:
-      "Why Amarktai Network built Sales Assistant and how it helps sales teams work better without replacing the CRM.",
+      "Learn why Amarktai Sales Assistant is built around the CRM you already use and the real work salespeople do before, during and after customer conversations.",
   },
   "/contact": {
-    title: "Contact | Amarktai Network Sales Assistant",
+    title: "Talk to Amarktai | Sales Assistant Demo and CRM Fit",
     description:
-      "Talk to Amarktai Network about Sales Assistant, CRM compatibility, onboarding, demos or support.",
+      "Tell Amarktai how your sales team works today, which CRM you use and where the sales day needs to improve.",
   },
   "/product": {
-    title: "Amarktai Network Sales Assistant",
-    description: "Explore the Amarktai Network Sales Assistant product.",
+    title: "Amarktai Sales Assistant | The Working Layer Around Your CRM",
+    description: "Understand the business, the customer, the conversation and the next action in one sales workspace.",
   },
   "/individuals": {
-    title: "Amarktai Network Sales Assistant for Individuals",
-    description: "Sales Assistant for individual salespeople and business owners.",
+    title: "Amarktai Sales Assistant for Individual Salespeople",
+    description: "A personal sales workspace for customer context, preparation, conversations and follow-through around the CRM you already use.",
   },
   "/teams": {
-    title: "Amarktai Network Sales Assistant for Teams",
-    description: "Sales Assistant for teams with shared business knowledge and personal workspaces.",
+    title: "Amarktai Sales Assistant for Sales Teams",
+    description: "Share approved company knowledge while every salesperson keeps a personal workspace, CRM identity and customer context.",
   },
   "/integrations": {
-    title: "CRM Connections | Amarktai Network Sales Assistant",
-    description: "Connect Sales Assistant to the CRM your business already uses.",
+    title: "CRM Connections | Amarktai Sales Assistant",
+    description: "Keep the CRM your business already trusts and add Amarktai as the working layer around the sales day.",
   },
   "/404": {
     title: "Page Not Found | Amarktai Network",
-    description: "Return to the Amarktai Network Sales Assistant website.",
+    description: "Return to the Amarktai Sales Assistant website.",
   },
 };

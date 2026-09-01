@@ -4,12 +4,27 @@
  * relying on third-party font/style origins. */
 .amk-site {
   background:
-    radial-gradient(circle at 8% 18%, rgba(47, 111, 237, .10), transparent 24rem),
-    radial-gradient(circle at 92% 34%, rgba(91, 188, 173, .10), transparent 23rem),
-    radial-gradient(circle at 22% 82%, rgba(240, 177, 112, .11), transparent 26rem),
+    radial-gradient(
+      circle at 8% 18%,
+      rgba(47, 111, 237, 0.1),
+      transparent 24rem
+    ),
+    radial-gradient(
+      circle at 92% 34%,
+      rgba(91, 188, 173, 0.1),
+      transparent 23rem
+    ),
+    radial-gradient(
+      circle at 22% 82%,
+      rgba(240, 177, 112, 0.11),
+      transparent 26rem
+    ),
     #ffffff;
 }
-.amk-site main { position: relative; isolation: isolate; }
+.amk-site main {
+  position: relative;
+  isolation: isolate;
+}
 .amk-site main::before,
 .amk-site main::after {
   content: "";
@@ -24,34 +39,62 @@
   height: 26rem;
   left: -10rem;
   top: 22vh;
-  background: radial-gradient(circle, rgba(47,111,237,.13), rgba(47,111,237,0) 70%);
+  background: radial-gradient(
+    circle,
+    rgba(47, 111, 237, 0.13),
+    rgba(47, 111, 237, 0) 70%
+  );
 }
 .amk-site main::after {
   width: 30rem;
   height: 30rem;
   right: -12rem;
   bottom: 8vh;
-  background: radial-gradient(circle, rgba(81,178,153,.12), rgba(81,178,153,0) 70%);
+  background: radial-gradient(
+    circle,
+    rgba(81, 178, 153, 0.12),
+    rgba(81, 178, 153, 0) 70%
+  );
 }
 .amk-intro,
 .amk-flow,
 .amk-about,
-.amk-contact { background: rgba(255,255,255,.93) !important; }
+.amk-contact {
+  background: rgba(255, 255, 255, 0.93) !important;
+}
 .amk-page-hero,
-.amk-pricing { background-color: rgba(250,252,255,.94) !important; }
+.amk-pricing {
+  background-color: rgba(250, 252, 255, 0.94) !important;
+}
 .amk-story--soft,
-.amk-page-section--soft { background-color: rgba(244,247,250,.95) !important; }
+.amk-page-section--soft {
+  background-color: rgba(244, 247, 250, 0.95) !important;
+}
 .amk-story--warm,
-.amk-page-section--warm { background-color: rgba(249,245,239,.95) !important; }
+.amk-page-section--warm {
+  background-color: rgba(249, 245, 239, 0.95) !important;
+}
 
 /* The full-screen first-time setup is the only scroll surface. This removes
  * the underlying document scrollbar that previously created a double scroll. */
-body:has(.z-\[250\]) { overflow: hidden !important; }
-.z-\[250\] { scrollbar-gutter: stable; }
+body:has(.z-\[250\]) {
+  overflow: hidden !important;
+}
+.z-\[250\] {
+  scrollbar-gutter: stable;
+}
 .z-\[250\].bg-\[\#f4f1e9\] {
   background:
-    radial-gradient(circle at 8% 18%, rgba(47,111,237,.11), transparent 24rem),
-    radial-gradient(circle at 94% 86%, rgba(85,184,160,.11), transparent 25rem),
+    radial-gradient(
+      circle at 8% 18%,
+      rgba(47, 111, 237, 0.11),
+      transparent 24rem
+    ),
+    radial-gradient(
+      circle at 94% 86%,
+      rgba(85, 184, 160, 0.11),
+      transparent 25rem
+    ),
     #f6f8fb !important;
   color: #203047 !important;
 }
@@ -59,20 +102,45 @@ body:has(.z-\[250\]) { overflow: hidden !important; }
   background: #ffffff !important;
   border-color: #d5dfeb !important;
   border-radius: 18px !important;
-  box-shadow: 0 22px 60px rgba(32,48,71,.10);
+  box-shadow: 0 22px 60px rgba(32, 48, 71, 0.1);
 }
-.z-\[250\] .border-stone-300 { border-color: #d5dfeb !important; }
-.z-\[250\] .text-stone-500 { color: #6d7d90 !important; }
-.z-\[250\] .text-stone-600 { color: #607086 !important; }
-.z-\[250\] .text-stone-700 { color: #40536b !important; }
-.z-\[250\] .text-\[\#171719\] { color: #203047 !important; }
-.z-\[250\] .text-\[\#2466cc\] { color: #2f6fed !important; }
-.z-\[250\] .bg-\[\#eef4ff\] { background: #edf3ff !important; }
-.z-\[250\] .border-\[\#2466cc\] { border-color: #2f6fed !important; }
-.z-\[250\] .bg-stone-900 { background: #2f6fed !important; }
-.z-\[250\] button.bg-stone-900 { background: #2f6fed !important; color: #fff !important; }
-.z-\[250\] button.bg-stone-900:hover { background: #2459c2 !important; }
-.z-\[250\] button:disabled { opacity: .55 !important; }
+.z-\[250\] .border-stone-300 {
+  border-color: #d5dfeb !important;
+}
+.z-\[250\] .text-stone-500 {
+  color: #6d7d90 !important;
+}
+.z-\[250\] .text-stone-600 {
+  color: #607086 !important;
+}
+.z-\[250\] .text-stone-700 {
+  color: #40536b !important;
+}
+.z-\[250\] .text-\[\#171719\] {
+  color: #203047 !important;
+}
+.z-\[250\] .text-\[\#2466cc\] {
+  color: #2f6fed !important;
+}
+.z-\[250\] .bg-\[\#eef4ff\] {
+  background: #edf3ff !important;
+}
+.z-\[250\] .border-\[\#2466cc\] {
+  border-color: #2f6fed !important;
+}
+.z-\[250\] .bg-stone-900 {
+  background: #2f6fed !important;
+}
+.z-\[250\] button.bg-stone-900 {
+  background: #2f6fed !important;
+  color: #fff !important;
+}
+.z-\[250\] button.bg-stone-900:hover {
+  background: #2459c2 !important;
+}
+.z-\[250\] button:disabled {
+  opacity: 0.55 !important;
+}
 .z-\[250\] [role="alert"] {
   color: #7f1d1d !important;
   background: #fff1f2 !important;
@@ -81,40 +149,71 @@ body:has(.z-\[250\]) { overflow: hidden !important; }
 
 /* Guided company setup: never allow dark selected steps or workflow messages
  * to inherit the light-workspace text rewrite. */
-body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] nav button.bg-stone-900,
-body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] nav button.bg-stone-900 * {
+body:has([data-slot="sidebar-wrapper"])
+  [data-slot="sidebar-inset"]
+  nav
+  button.bg-stone-900,
+body:has([data-slot="sidebar-wrapper"])
+  [data-slot="sidebar-inset"]
+  nav
+  button.bg-stone-900
+  * {
   background-color: #2f6fed !important;
   border-color: #2f6fed !important;
   color: #ffffff !important;
 }
-body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] nav button.bg-stone-900 span {
+body:has([data-slot="sidebar-wrapper"])
+  [data-slot="sidebar-inset"]
+  nav
+  button.bg-stone-900
+  span {
   color: #ffffff !important;
 }
-body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [data-workflow-feedback="loading"] {
+body:has([data-slot="sidebar-wrapper"])
+  [data-slot="sidebar-inset"]
+  [data-workflow-feedback="loading"] {
   background: #eaf2ff !important;
   border-color: #9fc0ff !important;
   color: #183b74 !important;
 }
-body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [data-workflow-feedback="success"] {
+body:has([data-slot="sidebar-wrapper"])
+  [data-slot="sidebar-inset"]
+  [data-workflow-feedback="success"] {
   background: #ecfdf5 !important;
   border-color: #a7f3d0 !important;
   color: #065f46 !important;
 }
-body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [data-workflow-feedback="error"] {
+body:has([data-slot="sidebar-wrapper"])
+  [data-slot="sidebar-inset"]
+  [data-workflow-feedback="error"] {
   background: #fff1f2 !important;
   border-color: #fca5a5 !important;
   color: #7f1d1d !important;
 }
-body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [data-workflow-feedback] p,
-body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [data-workflow-feedback] span,
-body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [data-workflow-feedback] strong,
-body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [data-workflow-feedback] svg {
+body:has([data-slot="sidebar-wrapper"])
+  [data-slot="sidebar-inset"]
+  [data-workflow-feedback]
+  p,
+body:has([data-slot="sidebar-wrapper"])
+  [data-slot="sidebar-inset"]
+  [data-workflow-feedback]
+  span,
+body:has([data-slot="sidebar-wrapper"])
+  [data-slot="sidebar-inset"]
+  [data-workflow-feedback]
+  strong,
+body:has([data-slot="sidebar-wrapper"])
+  [data-slot="sidebar-inset"]
+  [data-workflow-feedback]
+  svg {
   color: inherit !important;
   opacity: 1 !important;
 }
 
 /* Workspace errors must never disappear into a white or pastel card. */
-body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [role="alert"] {
+body:has([data-slot="sidebar-wrapper"])
+  [data-slot="sidebar-inset"]
+  [role="alert"] {
   background: #fff1f2 !important;
   border-color: #fca5a5 !important;
   color: #7f1d1d !important;
@@ -123,17 +222,31 @@ body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [role="alert
 
 /* The old dashboard used marketing-scale hero blocks on every application
  * screen. Keep hierarchy, but give the actual work the valuable screen space. */
-body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] main > div > header.rounded-3xl {
+body:has([data-slot="sidebar-wrapper"])
+  [data-slot="sidebar-inset"]
+  main
+  > div
+  > header.rounded-3xl {
   border-radius: 16px !important;
   padding: 20px !important;
 }
-body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] main > div > header.rounded-3xl h1 {
+body:has([data-slot="sidebar-wrapper"])
+  [data-slot="sidebar-inset"]
+  main
+  > div
+  > header.rounded-3xl
+  h1 {
   font-size: clamp(28px, 3vw, 38px) !important;
   line-height: 1.08 !important;
-  letter-spacing: -.04em !important;
+  letter-spacing: -0.04em !important;
   margin-top: 4px !important;
 }
-body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] main > div > header.rounded-3xl p {
+body:has([data-slot="sidebar-wrapper"])
+  [data-slot="sidebar-inset"]
+  main
+  > div
+  > header.rounded-3xl
+  p {
   margin-top: 6px !important;
 }
 
@@ -142,10 +255,12 @@ body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] main > div >
   background: #ffffff !important;
   color: #203047 !important;
   border: 1px solid #d5dfeb !important;
-  box-shadow: 0 16px 40px rgba(32,48,71,.18) !important;
+  box-shadow: 0 16px 40px rgba(32, 48, 71, 0.18) !important;
 }
 .toaster [data-sonner-toast] [data-title],
-.toaster [data-sonner-toast] [data-description] { color: inherit !important; }
+.toaster [data-sonner-toast] [data-description] {
+  color: inherit !important;
+}
 .toaster [data-sonner-toast][data-type="success"] {
   background: #047857 !important;
   color: #ffffff !important;
@@ -168,15 +283,28 @@ body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] main > div >
 
 /* Compact registration so standard desktop screens do not need an avoidable
  * vertical scroll. */
-.amk-auth--register .amk-auth__form-side { padding-block: 28px !important; }
-.amk-auth--register .amk-auth-form { margin-top: 22px !important; gap: 14px !important; }
-.amk-auth--register .amk-auth__form-wrap h2 { font-size: clamp(38px, 3.5vw, 50px) !important; }
-.amk-auth--register .amk-auth__muted { margin-top: 14px !important; }
-.amk-auth--register .amk-auth__fineprint { margin-top: 10px !important; }
+.amk-auth--register .amk-auth__form-side {
+  padding-block: 28px !important;
+}
+.amk-auth--register .amk-auth-form {
+  margin-top: 22px !important;
+  gap: 14px !important;
+}
+.amk-auth--register .amk-auth__form-wrap h2 {
+  font-size: clamp(38px, 3.5vw, 50px) !important;
+}
+.amk-auth--register .amk-auth__muted {
+  margin-top: 14px !important;
+}
+.amk-auth--register .amk-auth__fineprint {
+  margin-top: 10px !important;
+}
 
 @media (max-width: 780px) {
   .amk-site main::before,
-  .amk-site main::after { opacity: .65; }
+  .amk-site main::after {
+    opacity: 0.65;
+  }
 }
 
 /* Authenticated client-day brand correction.
@@ -197,36 +325,47 @@ body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-container"] {
 }
 body:has([data-slot="sidebar-wrapper"]) [data-sidebar="header"],
 body:has([data-slot="sidebar-wrapper"]) [data-sidebar="footer"] {
-  border-color: rgba(255,255,255,.10) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
 }
 body:has([data-slot="sidebar-wrapper"]) [data-sidebar="header"] {
   min-height: 76px !important;
 }
 body:has([data-slot="sidebar-wrapper"]) [data-sidebar="header"] .text-white,
-body:has([data-slot="sidebar-wrapper"]) [data-sidebar="header"] [class*="text-white/"] {
+body:has([data-slot="sidebar-wrapper"])
+  [data-sidebar="header"]
+  [class*="text-white/"] {
   color: #ffffff !important;
 }
 body:has([data-slot="sidebar-wrapper"]) [data-sidebar="menu-button"] {
   color: #d7e2f0 !important;
 }
 body:has([data-slot="sidebar-wrapper"]) [data-sidebar="menu-button"]:hover {
-  background: rgba(255,255,255,.08) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
   color: #ffffff !important;
 }
-body:has([data-slot="sidebar-wrapper"]) [data-sidebar="menu-button"][data-active="true"] {
+body:has([data-slot="sidebar-wrapper"])
+  [data-sidebar="menu-button"][data-active="true"] {
   background: #2f6fed !important;
   color: #ffffff !important;
   box-shadow: inset 3px 0 0 #9fc2ff !important;
 }
-body:has([data-slot="sidebar-wrapper"]) [data-sidebar="content"] > div[class*="border-white"],
-body:has([data-slot="sidebar-wrapper"]) [data-sidebar="content"] > label[class*="border-white"] {
-  background: rgba(255,255,255,.06) !important;
+body:has([data-slot="sidebar-wrapper"])
+  [data-sidebar="content"]
+  > div[class*="border-white"],
+body:has([data-slot="sidebar-wrapper"])
+  [data-sidebar="content"]
+  > label[class*="border-white"] {
+  background: rgba(255, 255, 255, 0.06) !important;
   color: #ffffff !important;
-  border-color: rgba(255,255,255,.14) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
 }
 body:has([data-slot="sidebar-wrapper"]) [data-sidebar="content"] .text-white,
-body:has([data-slot="sidebar-wrapper"]) [data-sidebar="content"] [class*="text-[#D7E0EA]"],
-body:has([data-slot="sidebar-wrapper"]) [data-sidebar="content"] [class*="text-[#CFD8E3]"] {
+body:has([data-slot="sidebar-wrapper"])
+  [data-sidebar="content"]
+  [class*="text-[#D7E0EA]"],
+body:has([data-slot="sidebar-wrapper"])
+  [data-sidebar="content"]
+  [class*="text-[#CFD8E3]"] {
   color: #ffffff !important;
 }
 body:has([data-slot="sidebar-wrapper"]) [data-sidebar="content"] select {
@@ -238,26 +377,69 @@ body:has([data-slot="sidebar-wrapper"]) [data-sidebar="content"] option {
   background: #ffffff !important;
 }
 body:has([data-slot="sidebar-wrapper"]) [data-sidebar="footer"] > div {
-  background: rgba(255,255,255,.06) !important;
-  border: 1px solid rgba(255,255,255,.08) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
 }
 body:has([data-slot="sidebar-wrapper"]) [data-sidebar="footer"] button,
 body:has([data-slot="sidebar-wrapper"]) [data-sidebar="footer"] .text-white {
   color: #ffffff !important;
 }
-body:has([data-slot="sidebar-wrapper"]) [data-sidebar="footer"] [class*="text-[#AFC0D7]"] {
+body:has([data-slot="sidebar-wrapper"])
+  [data-sidebar="footer"]
+  [class*="text-[#AFC0D7]"] {
   color: #afc0d7 !important;
 }
-body:has([data-slot="sidebar-wrapper"]) [data-sidebar="footer"] [class*="bg-[#17335E]"] {
+body:has([data-slot="sidebar-wrapper"])
+  [data-sidebar="footer"]
+  [class*="bg-[#17335E]"] {
   background: #17335e !important;
   color: #ffffff !important;
-  border-color: rgba(255,255,255,.14) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
 }
 body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"],
 body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] > main {
   background: #f3f6fb !important;
 }
-body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] input::placeholder,
-body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] textarea::placeholder {
+body:has([data-slot="sidebar-wrapper"])
+  [data-slot="sidebar-inset"]
+  input::placeholder,
+body:has([data-slot="sidebar-wrapper"])
+  [data-slot="sidebar-inset"]
+  textarea::placeholder {
   color: #75849a !important;
+}
+
+/* Keep the proven call workflow while bringing it into the client-facing
+   navy, blue and light-surface system used by the rest of the application. */
+[data-call-workflow] {
+  color: #26354a;
+}
+[data-call-workflow] header {
+  border-color: #dce4ee !important;
+}
+[data-call-workflow] [class~="bg-[#0E2142]"],
+[data-call-workflow] [class~="bg-[#0B1B37]"],
+[data-call-workflow] [class~="bg-[#08172F]"],
+[data-call-workflow] [class~="bg-[#071326]"] {
+  background: #ffffff !important;
+  border-color: #dce4ee !important;
+}
+[data-call-workflow] [class~="bg-[#153B7A]"],
+[data-call-workflow] [class~="bg-[#153B7A]/45"] {
+  background: #edf3ff !important;
+  border-color: #9cb8e8 !important;
+}
+[data-call-workflow] [class~="text-white"],
+[data-call-workflow] [class~="text-[#DCE6F6]"],
+[data-call-workflow] [class~="text-[#DCE7F8]"],
+[data-call-workflow] [class~="text-[#D9E5F7]"],
+[data-call-workflow] [class~="text-[#C4D3E9]"],
+[data-call-workflow] [class~="text-[#B7CAE7]"] {
+  color: #26354a !important;
+}
+[data-call-workflow] [class~="text-[#A9BFDF]"],
+[data-call-workflow] [class~="text-[#9EB6DB]"],
+[data-call-workflow] [class~="text-[#AFC3E2]"],
+[data-call-workflow] [class~="text-[#7896C1]"] {
+  color: #66758a !important;
 }

@@ -72,7 +72,9 @@ export default function Today() {
   const startCall = trpc.calls.startFromToday.useMutation({
     onSuccess: result => navigate(`/calls?sessionId=${result.callSessionId}`),
     onError: error => {
-      const callingUnavailable = /GENIE_DIALLER|calling|dialler/i.test(error.message);
+      const callingUnavailable = /GENIE_DIALLER|calling|dialler/i.test(
+        error.message
+      );
       toast.error(
         callingUnavailable
           ? "CRM calling isn't available yet. You can still use your phone and keep Amarktai beside the call."
@@ -85,8 +87,37 @@ export default function Today() {
   const current = priority[selected];
 
   useEffect(() => {
-    setSelected(index => (priority.length ? Math.min(index, priority.length - 1) : 0));
+    setSelected(index =>
+      priority.length ? Math.min(index, priority.length - 1) : 0
+    );
   }, [priority.length]);
+
+  useEffect(() => {
+    if (!organisationId) return;
+    let active = true;
+    void (async () => {
+      try {
+        const statusResponse = await fetch("/api/mailbox", {
+          credentials: "include",
+        });
+        if (!statusResponse.ok) return;
+        const status = (await statusResponse.json()) as { connected?: boolean };
+        if (!status.connected) return;
+        const response = await fetch("/api/mailbox/sync", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        });
+        if (active && response.ok) await utils.sales.today.invalidate();
+      } catch {
+        // Home remains usable with the last safe mailbox state when refresh fails.
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [organisationId]);
 
   const ask = (prompt: string) =>
     navigate(`/assistant?prompt=${encodeURIComponent(prompt)}`);
@@ -136,8 +167,8 @@ export default function Today() {
                 Focus on what needs you now.
               </h1>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-[#66758A]">
-                Your priorities, follow-ups and customer replies in one place. Ask
-                Amarktai whenever you want help deciding what to do next.
+                Your priorities, follow-ups and customer replies in one place.
+                Ask Amarktai whenever you want help deciding what to do next.
               </p>
             </div>
             <div className="flex gap-2">
@@ -153,8 +184,11 @@ export default function Today() {
 
         {today.data?.requiresOwnerMapping ? (
           <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
-            <strong>Your CRM account still needs to be matched to your Amarktai user.</strong>{" "}
-            Ask your manager to link your salesperson record so this page can show only your own customers and tasks.
+            <strong>
+              Your CRM account still needs to be matched to your Amarktai user.
+            </strong>{" "}
+            Ask your manager to link your salesperson record so this page can
+            show only your own customers and tasks.
           </div>
         ) : null}
 
@@ -244,10 +278,16 @@ export default function Today() {
                   >
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
-                        <p className="font-bold text-[#26354A]">{record.name}</p>
+                        <p className="font-bold text-[#26354A]">
+                          {record.name}
+                        </p>
                         <p className="mt-1 text-xs text-[#718096]">
-                          {[record.pipeline, record.stage].filter(Boolean).join(" · ") || "Customer opportunity"}
-                          {record.valueMinor != null ? ` · ${money(record.valueMinor, record.currency)}` : ""}
+                          {[record.pipeline, record.stage]
+                            .filter(Boolean)
+                            .join(" · ") || "Customer opportunity"}
+                          {record.valueMinor != null
+                            ? ` · ${money(record.valueMinor, record.currency)}`
+                            : ""}
                         </p>
                       </div>
                       <ArrowRight className="h-4 w-4 text-[#8290A3]" />
@@ -274,10 +314,14 @@ export default function Today() {
                 </h2>
                 <p className="mt-2 text-sm text-[#66758A]">
                   {current.stage || "Current opportunity"}
-                  {current.valueMinor != null ? ` · ${money(current.valueMinor, current.currency)}` : ""}
+                  {current.valueMinor != null
+                    ? ` · ${money(current.valueMinor, current.currency)}`
+                    : ""}
                 </p>
                 <div className="mt-5 rounded-2xl bg-[#F7F9FC] p-4">
-                  <p className="text-xs font-bold text-[#8290A3]">Why this matters now</p>
+                  <p className="text-xs font-bold text-[#8290A3]">
+                    Why this matters now
+                  </p>
                   <ul className="mt-2 space-y-2 text-sm leading-5 text-[#526277]">
                     {current.reasons.map(reason => (
                       <li key={reason}>• {reason}</li>
@@ -285,7 +329,11 @@ export default function Today() {
                   </ul>
                 </div>
                 <div className="mt-5 grid gap-2">
-                  <Button onClick={() => ask(`Prepare me for my next call with ${current.name}.`)}>
+                  <Button
+                    onClick={() =>
+                      ask(`Prepare me for my next call with ${current.name}.`)
+                    }
+                  >
                     <Bot className="mr-2 h-4 w-4" /> Prepare with Amarktai
                   </Button>
                   <Button
@@ -322,8 +370,16 @@ export default function Today() {
         </div>
 
         <section className="mt-6 grid gap-6 lg:grid-cols-2">
-          <TaskPanel title="Overdue tasks" items={today.data?.queues.overdueTasks ?? []} empty="No overdue tasks." />
-          <TaskPanel title="Due today" items={today.data?.queues.dueToday ?? []} empty="No CRM tasks due today." />
+          <TaskPanel
+            title="Overdue tasks"
+            items={today.data?.queues.overdueTasks ?? []}
+            empty="No overdue tasks."
+          />
+          <TaskPanel
+            title="Due today"
+            items={today.data?.queues.dueToday ?? []}
+            empty="No CRM tasks due today."
+          />
         </section>
 
         <section className="mt-6 grid gap-6 lg:grid-cols-2">
@@ -335,7 +391,9 @@ export default function Today() {
               detail: dueLabel(item.dueAt),
             }))}
             empty="No reminders due."
-            onComplete={id => updateReminder.mutate({ reminderId: id, status: "completed" })}
+            onComplete={id =>
+              updateReminder.mutate({ reminderId: id, status: "completed" })
+            }
           />
           <SimpleList
             title="Callbacks"
@@ -363,13 +421,20 @@ export default function Today() {
               disabled={reminder.trim().length < 8 || saveReminder.isPending}
               onClick={() => saveReminder.mutate({ command: reminder })}
             >
-              {saveReminder.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
+              {saveReminder.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Check className="mr-2 h-4 w-4" />
+              )}
               Save reminder
             </Button>
           </div>
         </section>
 
-        <InboundPanel items={today.data?.queues.inbound ?? []} onAsk={() => ask("Which customers are waiting for a reply?")} />
+        <InboundPanel
+          items={today.data?.queues.inbound ?? []}
+          onAsk={() => ask("Which customers are waiting for a reply?")}
+        />
       </div>
     </DashboardLayout>
   );
@@ -407,18 +472,30 @@ function TaskPanel({
   empty,
 }: {
   title: string;
-  items: Array<{ id: number; title: string; dueAt: Date | null; status: string }>;
+  items: Array<{
+    id: number;
+    title: string;
+    dueAt: Date | null;
+    status: string;
+  }>;
   empty: string;
 }) {
   return (
     <article className="rounded-3xl border border-[#DCE4EE] bg-white p-5 shadow-sm sm:p-6">
-      <h2 className="font-display text-2xl font-bold tracking-[-.04em]">{title}</h2>
+      <h2 className="font-display text-2xl font-bold tracking-[-.04em]">
+        {title}
+      </h2>
       <div className="mt-4 space-y-2">
         {items.length ? (
           items.map(item => (
-            <div key={item.id} className="flex items-center justify-between gap-4 rounded-2xl bg-[#F7F9FC] p-4">
+            <div
+              key={item.id}
+              className="flex items-center justify-between gap-4 rounded-2xl bg-[#F7F9FC] p-4"
+            >
               <p className="font-semibold text-[#33445B]">{item.title}</p>
-              <span className="shrink-0 text-xs text-[#718096]">{dueLabel(item.dueAt)}</span>
+              <span className="shrink-0 text-xs text-[#718096]">
+                {dueLabel(item.dueAt)}
+              </span>
             </div>
           ))
         ) : (
@@ -442,11 +519,16 @@ function SimpleList({
 }) {
   return (
     <article className="rounded-3xl border border-[#DCE4EE] bg-white p-5 shadow-sm sm:p-6">
-      <h2 className="font-display text-2xl font-bold tracking-[-.04em]">{title}</h2>
+      <h2 className="font-display text-2xl font-bold tracking-[-.04em]">
+        {title}
+      </h2>
       <div className="mt-4 space-y-2">
         {items.length ? (
           items.map(item => (
-            <div key={item.id} className="flex items-center justify-between gap-4 rounded-2xl bg-[#F7F9FC] p-4">
+            <div
+              key={item.id}
+              className="flex items-center justify-between gap-4 rounded-2xl bg-[#F7F9FC] p-4"
+            >
               <div>
                 <p className="font-semibold text-[#33445B]">{item.title}</p>
                 <p className="mt-1 text-xs text-[#718096]">{item.detail}</p>
@@ -490,8 +572,12 @@ function InboundPanel({
         <div className="flex items-center gap-3">
           <MessageCircle className="h-5 w-5 text-[#3F70D8]" />
           <div>
-            <h2 className="font-display text-2xl font-bold tracking-[-.04em]">Customer replies</h2>
-            <p className="mt-1 text-sm text-[#718096]">Messages that may need your attention.</p>
+            <h2 className="font-display text-2xl font-bold tracking-[-.04em]">
+              Customer replies
+            </h2>
+            <p className="mt-1 text-sm text-[#718096]">
+              Messages that may need your attention.
+            </p>
           </div>
         </div>
         <Button variant="outline" size="sm" onClick={onAsk}>
@@ -503,15 +589,25 @@ function InboundPanel({
           items.map(item => (
             <div key={item.id} className="rounded-2xl bg-[#F7F9FC] p-4">
               <div className="flex items-center justify-between gap-3">
-                <p className="font-semibold text-[#33445B]">{item.senderReference}</p>
-                <span className="text-[10px] font-bold uppercase text-[#8290A3]">{item.channel}</span>
+                <p className="font-semibold text-[#33445B]">
+                  {item.senderReference}
+                </p>
+                <span className="text-[10px] font-bold uppercase text-[#8290A3]">
+                  {item.channel}
+                </span>
               </div>
-              <p className="mt-2 text-sm text-[#66758A]">{item.subject || "Customer reply"}</p>
-              <p className="mt-2 text-xs text-[#8290A3]">{new Date(item.receivedAt).toLocaleString()}</p>
+              <p className="mt-2 text-sm text-[#66758A]">
+                {item.subject || "Customer reply"}
+              </p>
+              <p className="mt-2 text-xs text-[#8290A3]">
+                {new Date(item.receivedAt).toLocaleString()}
+              </p>
             </div>
           ))
         ) : (
-          <div className="md:col-span-2"><Empty text="No customer replies need attention right now." /></div>
+          <div className="md:col-span-2">
+            <Empty text="No customer replies need attention right now." />
+          </div>
         )}
       </div>
     </article>

@@ -2086,6 +2086,10 @@ export const inboundMessages = mysqlTable(
     organisationId: int("organisationId")
       .notNull()
       .references(() => organisations.id, { onDelete: "cascade" }),
+    /** Owner when the message came from a salesperson's delegated mailbox. */
+    mailboxUserId: int("mailboxUserId").references(() => users.id, {
+      onDelete: "cascade",
+    }),
     connectedSystemId: int("connectedSystemId").references(
       () => connectedSystems.id,
       { onDelete: "set null" }
@@ -2126,6 +2130,11 @@ export const inboundMessages = mysqlTable(
       table.needsAction,
       table.receivedAt
     ),
+    index("inbound_messages_mailbox_user_action_idx").on(
+      table.organisationId,
+      table.mailboxUserId,
+      table.needsAction
+    ),
   ]
 );
 
@@ -2163,6 +2172,73 @@ export const outlookInboundQueue = mysqlTable(
     index("outlook_inbound_queue_status_due_idx").on(
       table.status,
       table.nextAttemptAt
+    ),
+  ]
+);
+
+/** Per-user delegated Microsoft mailbox. OAuth material is encrypted at rest. */
+export const userMailboxConnections = mysqlTable(
+  "userMailboxConnections",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    organisationId: int("organisationId")
+      .notNull()
+      .references(() => organisations.id, { onDelete: "cascade" }),
+    userId: int("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    provider: mysqlEnum("provider", ["microsoft"]).notNull(),
+    email: varchar("email", { length: 320 }).notNull(),
+    displayName: varchar("displayName", { length: 220 }),
+    tenantId: varchar("tenantId", { length: 180 }),
+    status: mysqlEnum("status", [
+      "ready",
+      "reauthorise",
+      "disconnected",
+      "error",
+    ])
+      .notNull()
+      .default("ready"),
+    scopes: json("scopes").$type<string[]>().notNull(),
+    keyVersion: varchar("keyVersion", { length: 64 }).notNull(),
+    iv: varchar("iv", { length: 128 }).notNull(),
+    authTag: varchar("authTag", { length: 128 }).notNull(),
+    ciphertext: longtext("ciphertext").notNull(),
+    expiresAt: timestamp("expiresAt"),
+    lastSyncedAt: timestamp("lastSyncedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    uniqueIndex("user_mailbox_org_user_provider_unique").on(
+      table.organisationId,
+      table.userId,
+      table.provider
+    ),
+    index("user_mailbox_org_status_idx").on(table.organisationId, table.status),
+  ]
+);
+
+export const userMailboxOAuthStates = mysqlTable(
+  "userMailboxOAuthStates",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    organisationId: int("organisationId")
+      .notNull()
+      .references(() => organisations.id, { onDelete: "cascade" }),
+    userId: int("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    nonce: varchar("nonce", { length: 128 }).notNull().unique(),
+    redirectUri: varchar("redirectUri", { length: 1024 }).notNull(),
+    expiresAt: timestamp("expiresAt").notNull(),
+    consumedAt: timestamp("consumedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    index("user_mailbox_oauth_user_expiry_idx").on(
+      table.userId,
+      table.expiresAt
     ),
   ]
 );

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildBusinessBasicsApproval,
+  buildSalesFocusSuggestions,
   businessBasicsCounts,
   containsCommercialKnowledge,
   websiteKnowledgePassesCommercialApprovalPolicy,
@@ -33,6 +34,43 @@ describe("company knowledge business-basics approval policy", () => {
       },
     ]);
     expect(containsCommercialKnowledge(items[0].content)).toBe(false);
+  });
+
+  it("preserves sourced non-commercial company and offering descriptions", () => {
+    const items = buildBusinessBasicsApproval([
+      {
+        title: "Example Co",
+        content: "Example Co helps growing businesses train new managers.",
+        category: "company",
+      },
+      {
+        title: "Leadership Programme",
+        content: "£499 with monthly finance.",
+        category: "products_services",
+        priceFacts: [{ value: "£499" }],
+        offering: {
+          name: "Leadership Programme",
+          type: "service",
+          description: "A structured programme for first-time managers.",
+          targetCustomer: "New and aspiring managers",
+          outcomes: ["Build practical leadership confidence"],
+        },
+      },
+    ]);
+
+    expect(items[0].content).toBe(
+      "Example Co helps growing businesses train new managers."
+    );
+    expect(items[1].content).toContain(
+      "A structured programme for first-time managers."
+    );
+    expect(items[1].content).toContain(
+      "Best suited to: New and aspiring managers"
+    );
+    expect(items[1].content).toContain(
+      "Outcomes: Build practical leadership confidence"
+    );
+    expect(containsCommercialKnowledge(items[1].content)).toBe(false);
   });
 
   it("does not include pricing or finance candidates in business basics", () => {
@@ -96,6 +134,43 @@ describe("company knowledge business-basics approval policy", () => {
       credentials: 1,
       contact: 1,
     });
+  });
+
+  it("ranks sales focus by generic evidence richness rather than company-specific names", () => {
+    const suggestions = buildSalesFocusSuggestions([
+      {
+        title: "Simple Service",
+        content: "A simple service.",
+        category: "products_services",
+        sourcePageIds: ["PAGE_0001"],
+        offering: {
+          name: "Simple Service",
+          type: "service",
+          description: "A simple service.",
+          sourcePageIds: ["PAGE_0001"],
+        },
+      },
+      {
+        title: "Professional Programme",
+        content: "A detailed programme.",
+        category: "products_services",
+        sourcePageIds: ["PAGE_0002", "PAGE_0003", "PAGE_0004"],
+        offering: {
+          name: "Professional Programme",
+          type: "package",
+          description: "A detailed professional development programme.",
+          targetCustomer: "Career changers",
+          outcomes: ["Job-ready skills", "Recognised certification"],
+          support: ["Tutor support"],
+          includedCourses: ["Foundation", "Advanced"],
+          sourcePageIds: ["PAGE_0002", "PAGE_0003", "PAGE_0004"],
+        },
+      },
+    ]);
+
+    expect(suggestions[0].title).toBe("Professional Programme");
+    expect(suggestions[0].reason).toContain("3 website sources");
+    expect(suggestions[0].score).toBeGreaterThan(suggestions[1].score);
   });
 
   it("blocks a commercial website candidate unless a correction removes the commercial claim", () => {

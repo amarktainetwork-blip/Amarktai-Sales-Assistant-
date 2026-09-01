@@ -14,7 +14,10 @@ import {
   classifyInboundMessage,
   type InboundClassification,
 } from "./inboundReview";
-import { parseDeterministicReminder, persistConfirmedCommitment } from "../memory";
+import {
+  parseDeterministicReminder,
+  persistConfirmedCommitment,
+} from "../memory";
 
 export type InboundEnvelope = {
   externalMessageId: string;
@@ -68,11 +71,13 @@ export function parseInboundWebhookEnvelope(
 export function inboundIdempotencyKey(
   organisationId: number,
   channel: InboundEnvelope["channel"],
-  externalMessageId: string
+  externalMessageId: string,
+  mailboxUserId?: number
 ) {
-  return createHash("sha256")
-    .update(`${organisationId}\0${channel}\0${externalMessageId.trim()}`)
-    .digest("hex");
+  const material = mailboxUserId
+    ? `${organisationId}\0mailbox:${mailboxUserId}\0${channel}\0${externalMessageId.trim()}`
+    : `${organisationId}\0${channel}\0${externalMessageId.trim()}`;
+  return createHash("sha256").update(material).digest("hex");
 }
 
 function normalizedSender(channel: InboundEnvelope["channel"], value: string) {
@@ -124,6 +129,7 @@ export async function matchInboundContact(
 /** Idempotent, tenant-scoped deterministic message ingestion and opt-out handling. */
 export async function ingestInboundMessage(input: {
   organisationId: number;
+  mailboxUserId?: number | null;
   connectedSystemId?: number | null;
   envelope: InboundEnvelope;
 }) {
@@ -152,7 +158,8 @@ export async function ingestInboundMessage(input: {
   const idempotencyKey = inboundIdempotencyKey(
     input.organisationId,
     input.envelope.channel,
-    externalMessageId
+    externalMessageId,
+    input.mailboxUserId ?? undefined
   );
   const existing = (
     await db
@@ -165,6 +172,7 @@ export async function ingestInboundMessage(input: {
     .insert(inboundMessages)
     .values({
       organisationId: input.organisationId,
+      mailboxUserId: input.mailboxUserId ?? null,
       connectedSystemId:
         input.connectedSystemId ?? contact?.connectedSystemId ?? null,
       externalMessageId,
@@ -187,6 +195,7 @@ export async function ingestInboundMessage(input: {
     .onDuplicateKeyUpdate({
       set: {
         idempotencyKey,
+        mailboxUserId: input.mailboxUserId ?? null,
         connectedSystemId:
           input.connectedSystemId ?? contact?.connectedSystemId ?? null,
         senderReference,
@@ -231,28 +240,54 @@ export async function ingestInboundMessage(input: {
           sourceMessageId: message.id,
         },
       });
-  if (classification.category === "meeting_request" && contact?.ownerExternalId && contact.connectedSystemId) {
-    const owner = (await db.select({ userId: externalUserMappings.userId }).from(externalUserMappings).where(and(
-      eq(externalUserMappings.organisationId, input.organisationId),
-      eq(externalUserMappings.connectedSystemId, contact.connectedSystemId),
-      eq(externalUserMappings.externalUserId, contact.ownerExternalId),
-      eq(externalUserMappings.isActive, true)
-    )).limit(1))[0];
+  if (
+    classification.category === "meeting_request" &&
+    contact?.ownerExternalId &&
+    contact.connectedSystemId
+  ) {
+    const owner = (
+      await db
+        .select({ userId: externalUserMappings.userId })
+        .from(externalUserMappings)
+        .where(
+          and(
+            eq(externalUserMappings.organisationId, input.organisationId),
+            eq(
+              externalUserMappings.connectedSystemId,
+              contact.connectedSystemId
+            ),
+            eq(externalUserMappings.externalUserId, contact.ownerExternalId),
+            eq(externalUserMappings.isActive, true)
+          )
+        )
+        .limit(1)
+    )[0];
     if (owner?.userId != null) {
-      const organisation = (await db.select({ timezone: organisations.timezone }).from(organisations).where(eq(organisations.id, input.organisationId)).limit(1))[0];
+      const organisation = (
+        await db
+          .select({ timezone: organisations.timezone })
+          .from(organisations)
+          .where(eq(organisations.id, input.organisationId))
+          .limit(1)
+      )[0];
       const timezone = organisation?.timezone || "UTC";
       try {
-        const parsed = parseDeterministicReminder(`Remind me ${input.envelope.body}`, input.envelope.receivedAt, timezone);
-        if (parsed) await persistConfirmedCommitment({
-          userId: owner.userId,
-          organisationId: input.organisationId,
-          title: parsed.title,
-          dueAt: parsed.dueAt,
-          timezone,
-          source: "inbound",
-          sourceReference: `inbound:${message.id}:commitment`,
-          contactExternalId: contact.externalId,
-        });
+        const parsed = parseDeterministicReminder(
+          `Remind me ${input.envelope.body}`,
+          input.envelope.receivedAt,
+          timezone
+        );
+        if (parsed)
+          await persistConfirmedCommitment({
+            userId: owner.userId,
+            organisationId: input.organisationId,
+            title: parsed.title,
+            dueAt: parsed.dueAt,
+            timezone,
+            source: "inbound",
+            sourceReference: `inbound:${message.id}:commitment`,
+            contactExternalId: contact.externalId,
+          });
       } catch {
         // Ambiguous inbound dates remain reviewable messages; no inferred schedule is stored.
       }

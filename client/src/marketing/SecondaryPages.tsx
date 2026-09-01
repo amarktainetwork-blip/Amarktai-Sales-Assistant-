@@ -3,33 +3,133 @@ import { Link } from "wouter";
 import { MarketingLayout } from "./MarketingLayout";
 import { accountLinks } from "./site";
 
-const TEAM_PHOTO = "https://images.pexels.com/photos/8068833/pexels-photo-8068833.jpeg?cs=srgb&dl=pexels-edmond-dantes-8068833.jpg&fm=jpg";
-const CALL_PHOTO = "https://images.pexels.com/photos/14596539/pexels-photo-14596539.jpeg?cs=srgb&dl=pexels-karen-slack-3606218-14596539.jpg&fm=jpg";
+const TEAM_PHOTO =
+  "https://images.pexels.com/photos/8000530/pexels-photo-8000530.jpeg?cs=srgb&dl=pexels-pavel-danilyuk-8000530.jpg&fm=jpg";
+const CALL_PHOTO =
+  "https://images.pexels.com/photos/14596539/pexels-photo-14596539.jpeg?cs=srgb&dl=pexels-karen-slack-3606218-14596539.jpg&fm=jpg";
 
 const setup = [
-  ["01", "Create the workspace", "Every person has their own Amarktai Network login. A company does not share one Sales Assistant account across the team."],
-  ["02", "Teach Amarktai the business", "The authorised website and company information are analysed, grounded against retained evidence and reviewed before becoming trusted sales context."],
-  ["03", "Connect the CRM", "The company connects the system of record. Native connectors use OAuth; browser-connected CRM users sign in directly on the real CRM page without giving Amarktai their password."],
-  ["04", "Prove what the CRM can do", "Reads, writes, tasks, notes, pipeline actions and other functions are tested against the real connected CRM instead of being assumed."],
-  ["05", "Start from the sales day", "Today, Customers, Assistant, Calls and CRM become the core workspace. Shared company context stays shared; personal selling work stays personal."],
+  [
+    "01",
+    "Create your personal workspace",
+    "Every salesperson signs in with their own account. Team members can share approved company knowledge without sharing one Assistant identity or one set of CRM credentials.",
+  ],
+  [
+    "02",
+    "Teach Amarktai the business",
+    "Give Amarktai the authorised company website and basic business details. It organises useful sales knowledge and asks a manager to review what the team should trust.",
+  ],
+  [
+    "03",
+    "Connect the CRM you already use",
+    "Keep the CRM that already holds your customer records. Where a direct connection is available, connect it securely. For supported browser-based CRMs, the user signs in on the real CRM page instead of pasting a password into Amarktai.",
+  ],
+  [
+    "04",
+    "Let Amarktai learn the safe working flow",
+    "Before relying on CRM actions, Sales Assistant checks what the connected system can actually read and do. That lets the workspace adapt to the real CRM instead of assuming every system behaves the same way.",
+  ],
+  [
+    "05",
+    "Start each day with the work that matters",
+    "Today highlights attention points. Customers brings the relationship together. Assistant helps you think and prepare. Calls supports the conversation. The confirmed outcome becomes the follow-through.",
+  ],
+] as const;
+
+const contextLayers = [
+  [
+    "01",
+    "Your business",
+    "Approved products, services, customer fit, credentials, policies and useful company knowledge give the Assistant the language and context of the organisation.",
+  ],
+  [
+    "02",
+    "Your customer",
+    "CRM history, ownership, opportunities, tasks, notes and recent activity help the salesperson understand the relationship without reconstructing it from scratch.",
+  ],
+  [
+    "03",
+    "The conversation",
+    "Preparation, consented live transcription and call assistance help the salesperson stay present while useful details are carried into the closeout.",
+  ],
+  [
+    "04",
+    "The next commitment",
+    "Amarktai turns the confirmed outcome into visible next steps such as notes, callbacks, tasks or customer updates, with review around important changes.",
+  ],
+] as const;
+
+const workspaceFeatures = [
+  [
+    "01",
+    "Today",
+    "A focused starting point for the day: overdue work, customers waiting for attention, callbacks, tasks and the opportunities that deserve a closer look.",
+  ],
+  [
+    "02",
+    "Customers",
+    "A working relationship view that brings customer details, recent activity, notes, tasks and opportunities together so the salesperson can understand the story quickly.",
+  ],
+  [
+    "03",
+    "Assistant",
+    "Ask natural questions about the business or customer context, prepare a conversation, work through an objection, draft a follow-up or decide what the next useful action should be.",
+  ],
+  [
+    "04",
+    "Calls",
+    "Prepare before a call, use consented live transcription and assistance during the conversation, then close out the outcome while it is still fresh.",
+  ],
+  [
+    "05",
+    "Follow-through",
+    "Turn what was agreed into visible notes, callbacks, tasks or CRM updates. Important changes stay reviewable and supported connections can check the result afterwards.",
+  ],
+  [
+    "06",
+    "Team view",
+    "Managers can share trusted company context, invite team members and see the sales picture without turning every salesperson's private Assistant work into one shared conversation.",
+  ],
 ] as const;
 
 export function HowItWorksPage() {
   return (
     <MarketingLayout>
-      <section className="amk-page-hero">
+      <section
+        className="amk-page-hero"
+        style={{ paddingTop: "clamp(96px, 9vw, 132px)" }}
+      >
         <div className="amk-shell amk-page-hero__grid">
           <div>
-            <p className="amk-eyebrow">HOW IT WORKS</p>
-            <h1>Set up the business once.<br/>Give every salesperson a clearer day.</h1>
-            <p>Sales Assistant separates the things a company should share — approved business knowledge, policy and CRM definition — from the things that belong to each salesperson, including their login, CRM identity and private working context.</p>
+            <p className="amk-eyebrow">HOW AMARKTAI WORKS</p>
+            <h1>
+              Keep your CRM.
+              <br />
+              Connect the rest of the sales day.
+            </h1>
+            <p>
+              Sales Assistant is built for the work that normally happens around
+              the CRM: learning the business, deciding who needs attention,
+              understanding the customer, preparing the conversation, helping
+              through the call and completing the follow-through.
+            </p>
             <div className="amk-actions">
-              <Link href={accountLinks.getStarted} className="amk-button amk-button--primary">Start free <ArrowRight size={16}/></Link>
-              <Link href="/contact" className="amk-text-link">Talk to us <ArrowRight size={16}/></Link>
+              <Link
+                href={accountLinks.getStarted}
+                className="amk-button amk-button--primary"
+              >
+                Start free <ArrowRight size={16} />
+              </Link>
+              <Link href="/contact" className="amk-text-link">
+                Talk to us <ArrowRight size={16} />
+              </Link>
             </div>
           </div>
           <figure className="amk-page-photo">
-            <img src={TEAM_PHOTO} alt="Sales team collaborating around a table in a modern office" />
+            <img
+              src={TEAM_PHOTO}
+              alt="Sales team collaborating around a table in a modern office"
+            />
           </figure>
         </div>
       </section>
@@ -38,18 +138,89 @@ export function HowItWorksPage() {
         <div className="amk-shell">
           <div className="amk-page-section__grid">
             <div>
-              <p className="amk-eyebrow">FROM ZERO TO USEFUL</p>
-              <h2>A guided setup with clear boundaries.</h2>
+              <p className="amk-eyebrow">FROM SETUP TO USEFUL</p>
+              <h2>Five steps. No CRM replacement project.</h2>
             </div>
             <div className="amk-page-section__copy">
-              <p>Amarktai Network Sales Assistant is designed to become useful without asking the company to rebuild its sales operation around a new CRM.</p>
-              <p>The CRM stays the system of record. Sales Assistant learns enough about the business and the connected customer context to help the salesperson decide, prepare, communicate and follow through.</p>
+              <p>
+                Amarktai starts with the sales operation you already have. The
+                company teaches it the shared business context once, each
+                salesperson keeps a personal workspace, and the existing CRM
+                remains the customer record.
+              </p>
+              <p>
+                The goal is simple: reduce the amount of remembering, searching,
+                copying and catching up that sits between a salesperson and the
+                next useful customer conversation.
+              </p>
             </div>
           </div>
           <div className="amk-page-lines">
             {setup.map(([number, title, copy]) => (
               <div className="amk-page-line" key={number}>
-                <span>{number}</span><h3>{title}</h3><p>{copy}</p>
+                <span>{number}</span>
+                <h3>{title}</h3>
+                <p>{copy}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="amk-page-section amk-page-section--soft">
+        <div className="amk-shell">
+          <div className="amk-page-section__grid">
+            <div>
+              <p className="amk-eyebrow">WHAT MAKES IT DIFFERENT</p>
+              <h2>Four kinds of context become one customer story.</h2>
+            </div>
+            <div className="amk-page-section__copy">
+              <p>
+                A chat assistant that only knows the CRM can still miss what the
+                company sells. A call tool can understand the conversation
+                without owning the follow-through. A knowledge tool can know the
+                business without knowing this customer.
+              </p>
+              <p>
+                Amarktai is designed to connect all four: business knowledge,
+                CRM context, the live conversation and the confirmed next
+                action.
+              </p>
+            </div>
+          </div>
+          <div className="amk-page-lines">
+            {contextLayers.map(([number, title, copy]) => (
+              <div className="amk-page-line" key={number}>
+                <span>{number}</span>
+                <h3>{title}</h3>
+                <p>{copy}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="amk-page-section">
+        <div className="amk-shell">
+          <div className="amk-page-section__grid">
+            <div>
+              <p className="amk-eyebrow">WHAT YOU ACTUALLY USE</p>
+              <h2>A small workspace for the whole sales loop.</h2>
+            </div>
+            <div className="amk-page-section__copy">
+              <p>
+                The product is deliberately organised around the salesperson's
+                day rather than a long menu of AI tools. The useful intelligence
+                appears where the work is happening.
+              </p>
+            </div>
+          </div>
+          <div className="amk-page-lines">
+            {workspaceFeatures.map(([number, title, copy]) => (
+              <div className="amk-page-line" key={number}>
+                <span>{number}</span>
+                <h3>{title}</h3>
+                <p>{copy}</p>
               </div>
             ))}
           </div>
@@ -63,9 +234,21 @@ export function HowItWorksPage() {
             <h2>Share company truth. Keep personal selling personal.</h2>
           </div>
           <div className="amk-page-section__copy">
-            <p><strong>Individual salesperson:</strong> complete personal onboarding, add business context where needed, connect your own CRM access and work from your own sales workspace.</p>
-            <p><strong>Company or team:</strong> the first owner or manager completes the shared company setup and approves company knowledge. Later team members inherit that approved context, complete their own onboarding and use the organisation's governed CRM connection.</p>
-            <p>Private Assistant conversations, reminders and personal sales work are not treated as a shared company chat.</p>
+            <p>
+              <strong>For one salesperson:</strong> set up your business
+              context, connect your CRM access and work from one personal sales
+              workspace.
+            </p>
+            <p>
+              <strong>For a team:</strong> a manager approves the shared company
+              knowledge once. Each salesperson then gets their own login, CRM
+              identity and working context while the team stays aligned on the
+              same business information.
+            </p>
+            <p>
+              Personal Assistant conversations and day-to-day customer work are
+              not treated as one shared team chat.
+            </p>
           </div>
         </div>
       </section>
@@ -73,29 +256,64 @@ export function HowItWorksPage() {
       <section className="amk-page-section amk-page-section--warm">
         <div className="amk-shell amk-story__grid amk-story__grid--reverse">
           <div className="amk-story__copy">
-            <p className="amk-eyebrow">THE DAILY WORKSPACE</p>
-            <h2>Today → Customer → Conversation → Follow-through.</h2>
-            <p>Sales Assistant keeps the daily experience deliberately small. Today shows what needs attention. Customers hold the working context. Assistant handles natural-language help. Calls support the conversation. CRM keeps the underlying record true.</p>
-            <p>Deeper management and setup functions remain available when they are needed, but they do not have to dominate the salesperson's normal day.</p>
+            <p className="amk-eyebrow">THE CUSTOMER CONVERSATION</p>
+            <h2>Prepare well. Stay present. Finish what was agreed.</h2>
+            <p>
+              The customer should never feel like the salesperson is fighting
+              the software. Sales Assistant is designed to move the useful
+              context into the conversation and then carry the confirmed outcome
+              back into the work that follows.
+            </p>
+            <p>
+              That is the loop Amarktai is built to close: from “what matters
+              today?” to a better conversation to a completed next step.
+            </p>
           </div>
           <figure className="amk-photo amk-photo--story">
-            <img src={CALL_PHOTO} alt="Sales professional on a customer phone call with a laptop" loading="lazy" />
+            <img
+              src={CALL_PHOTO}
+              alt="Sales professional on a customer phone call with a laptop"
+              loading="lazy"
+            />
           </figure>
         </div>
       </section>
 
       <section className="amk-cta">
         <div className="amk-shell amk-cta__inner">
-          <div><p className="amk-eyebrow">READY WHEN YOU ARE</p><h2>Connect the CRM you already trust.</h2></div>
-          <div><p>Tell us which CRM you use and whether you are setting up one salesperson or a team.</p><div className="amk-actions"><Link href="/contact" className="amk-button amk-button--light">Contact Amarktai Network</Link></div></div>
+          <div>
+            <p className="amk-eyebrow">YOUR CRM STAYS YOUR CRM</p>
+            <h2>
+              Add the working layer your salespeople actually feel every day.
+            </h2>
+          </div>
+          <div>
+            <p>
+              Tell us which CRM you use and whether you are setting up one
+              salesperson or a team. We will show you where Amarktai fits.
+            </p>
+            <div className="amk-actions">
+              <Link href="/contact" className="amk-button amk-button--light">
+                Talk to Amarktai Network
+              </Link>
+            </div>
+          </div>
         </div>
       </section>
     </MarketingLayout>
   );
 }
 
-// Legacy public URLs resolve to the single maintained explanation page.
-export function ProductPage() { return <HowItWorksPage />; }
-export function IndividualsPage() { return <HowItWorksPage />; }
-export function TeamsPage() { return <HowItWorksPage />; }
-export function IntegrationsPage() { return <HowItWorksPage />; }
+// Legacy public URLs resolve to the maintained product explanation page.
+export function ProductPage() {
+  return <HowItWorksPage />;
+}
+export function IndividualsPage() {
+  return <HowItWorksPage />;
+}
+export function TeamsPage() {
+  return <HowItWorksPage />;
+}
+export function IntegrationsPage() {
+  return <HowItWorksPage />;
+}

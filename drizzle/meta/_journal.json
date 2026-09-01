@@ -218,6 +218,13 @@
       "when": 1788004670970,
       "tag": "0030_bizarre_zemo",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "5",
+      "when": 1788272199252,
+      "tag": "0031_burly_morlocks",
+      "breakpoints": true
     }
   ]
 }

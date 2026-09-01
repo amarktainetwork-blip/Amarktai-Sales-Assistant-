@@ -1,6 +1,7 @@
 import type { Express, Response } from "express";
 import {
   createWorkflowRun,
+  getUserById,
   getAssistantOperationalContext,
   recordAudit,
   searchApprovedKnowledge,
@@ -13,6 +14,12 @@ import { runGenxAgent, type ChatMessage } from "./genx";
 import { listConnectedSystemsForUser } from "./connectedSystems";
 import { planAssistantCrmBatchInstruction } from "./crm/assistantBatchExecution";
 import { routeConnectedSystemActions } from "./crmRouter";
+import {
+  createAssistantMemory,
+  isSafeAssistantMemory,
+  listRelevantAssistantMemories,
+  parseRememberCommand,
+} from "./memory";
 
 const MAX_MESSAGES = 18;
 const MAX_MESSAGE_CHARS = 12_000;
@@ -30,17 +37,17 @@ type PublicAssistantResponse = {
 
 function cleanMessages(value: unknown): ChatMessage[] {
   if (!Array.isArray(value)) throw new Error("ASSISTANT_MESSAGES_REQUIRED");
-  const messages = value
-    .slice(-MAX_MESSAGES)
-    .map(item => {
-      if (!item || typeof item !== "object" || Array.isArray(item))
-        throw new Error("ASSISTANT_MESSAGE_INVALID");
-      const candidate = item as Record<string, unknown>;
-      const role = candidate.role === "assistant" ? "assistant" : "user";
-      const content = String(candidate.content || "").trim().slice(0, MAX_MESSAGE_CHARS);
-      if (!content) throw new Error("ASSISTANT_MESSAGE_EMPTY");
-      return { role, content } as ChatMessage;
-    });
+  const messages = value.slice(-MAX_MESSAGES).map(item => {
+    if (!item || typeof item !== "object" || Array.isArray(item))
+      throw new Error("ASSISTANT_MESSAGE_INVALID");
+    const candidate = item as Record<string, unknown>;
+    const role = candidate.role === "assistant" ? "assistant" : "user";
+    const content = String(candidate.content || "")
+      .trim()
+      .slice(0, MAX_MESSAGE_CHARS);
+    if (!content) throw new Error("ASSISTANT_MESSAGE_EMPTY");
+    return { role, content } as ChatMessage;
+  });
   if (!messages.length) throw new Error("ASSISTANT_MESSAGES_REQUIRED");
   return messages;
 }
@@ -103,7 +110,10 @@ function deterministicTodayAnswer(
     };
   }
 
-  if (/callback|call back|callbacks/.test(normalized) && !/prepare|notes?|coach/.test(normalized)) {
+  if (
+    /callback|call back|callbacks/.test(normalized) &&
+    !/prepare|notes?|coach/.test(normalized)
+  ) {
     const items = today.queues.callbacks;
     return {
       content: items.length
@@ -123,7 +133,11 @@ function deterministicTodayAnswer(
     };
   }
 
-  if (/who should i (?:contact|call|follow up with) (?:next|first)|what should i do (?:next|first|today)|next best action|who needs attention|prioriti[sz]e my/.test(normalized)) {
+  if (
+    /who should i (?:contact|call|follow up with) (?:next|first)|what should i do (?:next|first|today)|next best action|who needs attention|prioriti[sz]e my/.test(
+      normalized
+    )
+  ) {
     const items = today.queues.priority;
     return {
       content: items.length
@@ -133,7 +147,11 @@ function deterministicTodayAnswer(
     };
   }
 
-  if (/waiting for us|needs.*reply|waiting for.*reply|unanswered|inbound|repl(?:y|ies)/.test(normalized)) {
+  if (
+    /waiting for us|needs.*reply|waiting for.*reply|unanswered|inbound|repl(?:y|ies)/.test(
+      normalized
+    )
+  ) {
     const items = today.queues.inbound;
     return {
       content: items.length
@@ -146,9 +164,15 @@ function deterministicTodayAnswer(
   return undefined;
 }
 
-function directAssistantAction(query: string): PublicAssistantResponse | undefined {
+function directAssistantAction(
+  query: string
+): PublicAssistantResponse | undefined {
   const normalized = query.toLowerCase();
-  if (/(?:take|keep|write|capture).*(?:notes?|minutes?)|(?:notes?|summary).*(?:next|this|my).*(?:call|conversation)/.test(normalized))
+  if (
+    /(?:take|keep|write|capture).*(?:notes?|minutes?)|(?:notes?|summary).*(?:next|this|my).*(?:call|conversation)/.test(
+      normalized
+    )
+  )
     return {
       content:
         "Yes. Open the call companion before the call. I can keep the customer context alongside the conversation, help capture factual notes, identify objections and turn the outcome into clear next steps.",
@@ -162,7 +186,11 @@ function directAssistantAction(query: string): PublicAssistantResponse | undefin
   return undefined;
 }
 
-function compactTask(item: { title: string; dueAt: Date | null; status: string }) {
+function compactTask(item: {
+  title: string;
+  dueAt: Date | null;
+  status: string;
+}) {
   return { title: item.title, dueAt: item.dueAt, status: item.status };
 }
 
@@ -200,12 +228,40 @@ export function registerAssistantRoutes(app: Express) {
         .trim();
       if (!query) throw new Error("ASSISTANT_MESSAGE_EMPTY");
 
+      const latestUserMessage =
+        [...messages].reverse().find(message => message.role === "user")
+          ?.content ?? query;
+      const requestedMemory = parseRememberCommand(latestUserMessage);
+      if (requestedMemory) {
+        if (
+          !isSafeAssistantMemory(
+            `${requestedMemory.subject}\n${requestedMemory.content}`
+          )
+        )
+          return res.json({
+            content:
+              "I won't save passwords, verification codes, tokens or other sign-in secrets. Keep those only in the service's secure sign-in page.",
+          });
+        await createAssistantMemory({
+          userId,
+          organisationId: membership.organisationId,
+          ...requestedMemory,
+          provenance: "user_asserted",
+          sourceReference: `assistant:${Date.now()}`,
+          occurredAt: new Date(),
+        });
+        return res.json({
+          content: `I'll remember that ${requestedMemory.subject} ${requestedMemory.content}.`,
+        });
+      }
+
       const today = await getTodayWork({
         userId,
         organisationId: membership.organisationId,
       });
 
-      const direct = directAssistantAction(query) || deterministicTodayAnswer(query, today);
+      const direct =
+        directAssistantAction(query) || deterministicTodayAnswer(query, today);
       if (direct) {
         await recordAudit({
           userId,
@@ -213,7 +269,8 @@ export function registerAssistantRoutes(app: Express) {
           eventType: "assistant_request_routed",
           entityType: "assistant",
           entityId: String(userId),
-          summary: "The Sales Assistant answered from current workspace context.",
+          summary:
+            "The Sales Assistant answered from current workspace context.",
           metadata: { responseMode: "workspace_truth", contentRetained: false },
         });
         return res.json(direct);
@@ -245,7 +302,10 @@ export function registerAssistantRoutes(app: Express) {
             ? {
                 content:
                   "I prepared that CRM change for review. Nothing has been changed yet. Check the proposed action, then approve it when you're happy.",
-                suggestedAction: { label: "Review proposed change", path: "/reviews" },
+                suggestedAction: {
+                  label: "Review proposed change",
+                  path: "/reviews",
+                },
                 reviewRequired: true,
               }
             : {
@@ -256,16 +316,24 @@ export function registerAssistantRoutes(app: Express) {
       }
 
       const route = routeSalesCommand(query);
-      const [sources, contactContext, operationalContext] = await Promise.all([
-        searchApprovedKnowledge(userId, membership.organisationId, query),
-        contactId
-          ? getWorkingContextForContact({
-              organisationId: membership.organisationId,
-              contactId,
-            })
-          : Promise.resolve(undefined),
-        getAssistantOperationalContext(userId, membership.organisationId),
-      ]);
+      const contactContext = contactId
+        ? await getWorkingContextForContact({
+            organisationId: membership.organisationId,
+            contactId,
+          })
+        : undefined;
+      const [sources, operationalContext, relevantMemory, user] =
+        await Promise.all([
+          searchApprovedKnowledge(userId, membership.organisationId, query),
+          getAssistantOperationalContext(userId, membership.organisationId),
+          listRelevantAssistantMemories({
+            userId,
+            organisationId: membership.organisationId,
+            query,
+            contactExternalId: contactContext?.contactExternalId,
+          }),
+          getUserById(userId),
+        ]);
       const approvedKnowledge = sources.length
         ? sources
             .map(
@@ -275,7 +343,24 @@ export function registerAssistantRoutes(app: Express) {
             .join("\n\n---\n\n")
         : undefined;
       const workingContext = JSON.stringify({
+        user: {
+          firstName:
+            membership.memberOnboarding.preferredName ||
+            user?.name?.trim().split(/\s+/)[0] ||
+            null,
+          role: membership.role,
+          personalSalesGoal: membership.memberOnboarding.primaryGoal || null,
+          workingStyle: membership.memberOnboarding.workingStyle || null,
+        },
         selectedCustomer: contactContext ?? null,
+        relevantMemory: relevantMemory.map(memory => ({
+          type: memory.memoryType,
+          subject: memory.subject,
+          content: memory.content,
+          trust: memory.trust,
+          occurredAt: memory.occurredAt ?? memory.createdAt,
+          contactExternalId: memory.contactExternalId,
+        })),
         today: {
           generatedAt: today.generatedAt,
           metrics: today.metrics,
@@ -321,6 +406,7 @@ export function registerAssistantRoutes(app: Express) {
         metadata: {
           route: route.intent,
           specialist: route.agentKey,
+          memoryCount: relevantMemory.length,
           contentRetained: false,
         },
       });

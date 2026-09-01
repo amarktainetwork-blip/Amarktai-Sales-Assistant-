@@ -11,6 +11,7 @@ import {
   Loader2,
   Pencil,
   Plus,
+  RefreshCw,
   Save,
   X,
 } from "lucide-react";
@@ -54,6 +55,22 @@ export default function Knowledge() {
   const sources = trpc.knowledge.list.useQuery(undefined, { retry: false });
   const management = trpc.managementElevation.status.useQuery(undefined, {
     retry: false,
+  });
+  const company = trpc.companySetup.get.useQuery(undefined, { retry: false });
+  const refreshWebsite = trpc.companySetup.discoverWebsite.useMutation({
+    onSuccess: () => {
+      toast.success(
+        "Website refresh started. New findings will wait for review."
+      );
+      window.location.assign("/company-setup");
+    },
+    onError: error =>
+      setError(
+        friendlyError(
+          error,
+          "The website refresh could not start. Existing trusted knowledge was not changed."
+        )
+      ),
   });
   const add = trpc.knowledge.add.useMutation();
   const update = trpc.knowledge.update.useMutation();
@@ -139,14 +156,32 @@ export default function Knowledge() {
                 useful.
               </p>
             </div>
-            <Button onClick={() => setAdding(value => !value)}>
-              {adding ? (
-                <X className="mr-2 h-4 w-4" />
-              ) : (
-                <Plus className="mr-2 h-4 w-4" />
-              )}
-              {adding ? "Close" : "Add knowledge"}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                disabled={
+                  !company.data?.profile?.websiteUrl ||
+                  !management.data?.elevated ||
+                  refreshWebsite.isPending
+                }
+                onClick={() => refreshWebsite.mutate()}
+              >
+                {refreshWebsite.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                )}
+                Refresh website knowledge
+              </Button>
+              <Button onClick={() => setAdding(value => !value)}>
+                {adding ? (
+                  <X className="mr-2 h-4 w-4" />
+                ) : (
+                  <Plus className="mr-2 h-4 w-4" />
+                )}
+                {adding ? "Close" : "Add knowledge"}
+              </Button>
+            </div>
           </div>
         </header>
 

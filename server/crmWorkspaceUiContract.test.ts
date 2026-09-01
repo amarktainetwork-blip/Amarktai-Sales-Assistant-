@@ -31,6 +31,21 @@ describe("CRM workspace customer interaction contract", () => {
     expect(source).toContain("deviceScaleFactor: 1");
   });
 
+  it("uses the available responsive viewport without a duplicate sign-in overlay", () => {
+    const input = readFileSync(
+      new URL("../client/src/lib/crmViewerInput.ts", import.meta.url),
+      "utf8"
+    );
+    expect(input).not.toContain("Math.max(1_024");
+    expect(source).not.toContain(
+      "Move into the CRM to take control automatically."
+    );
+    expect(source).not.toContain("Sign in directly to {crmName}");
+    expect(source).toContain(
+      'className="pointer-events-none h-full w-full select-none object-contain"'
+    );
+  });
+
   it("keeps keyboard and bounded paste input inside the managed CRM", () => {
     expect(source).toContain("onKeyDown");
     expect(source).toContain("onKeyUp");

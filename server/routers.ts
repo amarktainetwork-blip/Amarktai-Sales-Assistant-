@@ -44,6 +44,8 @@ import {
   completeLiveCallSession,
   recordAudit,
   listCrmCustomers,
+  updateDelegatedEmailDraft,
+  returnClaimedActionForReview,
 } from "./db";
 import { getGenxReadiness, runGenxAgent } from "./genx";
 import { getOrganisationGenieReadiness } from "./genie/organisationReadiness";
@@ -836,6 +838,87 @@ export const appRouter = router({
           input.state
         );
         return { success: true };
+      }),
+    editEmailDraft: secondFactorProcedure
+      .input(
+        z.object({
+          proposalId: z.number().int().positive(),
+          body: z.string().trim().min(1).max(20_000),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        if (!ctx.activeOrganisation)
+          throw new Error("Choose an organisation before editing this email.");
+        await updateDelegatedEmailDraft({
+          userId: ctx.user.id,
+          organisationId: ctx.activeOrganisation.organisationId,
+          ...input,
+        });
+        return { success: true };
+      }),
+    sendReviewedEmail: secondFactorProcedure
+      .input(
+        z.object({
+          proposalId: z.number().int().positive(),
+          body: z.string().trim().min(1).max(20_000),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const organisation = ctx.activeOrganisation;
+        if (!organisation)
+          throw new Error("Choose an organisation before sending this email.");
+        await updateDelegatedEmailDraft({
+          userId: ctx.user.id,
+          organisationId: organisation.organisationId,
+          ...input,
+        });
+        await reviewActionProposal(
+          ctx.user.id,
+          organisation.organisationId,
+          input.proposalId,
+          "approved"
+        );
+        const correlationId = randomUUID();
+        const proposal = await claimApprovedActionProposal({
+          userId: ctx.user.id,
+          organisationId: organisation.organisationId,
+          proposalId: input.proposalId,
+          correlationId,
+        });
+        if (!proposal)
+          throw new Error("This email is no longer waiting for your approval.");
+        let result;
+        try {
+          result = await executeApprovedCrmAction({
+            organisationId: organisation.organisationId,
+            proposal,
+            correlationId,
+          });
+        } catch (error) {
+          await returnClaimedActionForReview({
+            userId: ctx.user.id,
+            organisationId: organisation.organisationId,
+            proposalId: proposal.id,
+            correlationId,
+            reason: error instanceof Error ? error.message : String(error),
+          });
+          throw new Error(
+            "The email was not sent. Check your Microsoft mailbox connection and try again."
+          );
+        }
+        await recordActionExecution({
+          userId: ctx.user.id,
+          organisationId: organisation.organisationId,
+          proposalId: proposal.id,
+          correlationId,
+          success: result.success,
+          result,
+        });
+        if (!result.success)
+          throw new Error(
+            "The email was not sent. Check your mailbox connection and try again."
+          );
+        return result;
       }),
     proposalAudit: secondFactorProcedure
       .input(z.object({ proposalId: z.number().int().positive() }))

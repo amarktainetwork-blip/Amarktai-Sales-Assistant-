@@ -12,6 +12,8 @@ import { registerManagementSettingsRoutes } from "../managementSettingsRoutes";
 import { registerConnectedSystemAdminRoutes } from "../connectedSystemAdminRoutes";
 import { registerConnectedSystemLifecycleRoutes } from "../connectedSystemLifecycleRoutes";
 import { registerAssistantRoutes } from "../assistantRoutes";
+import { registerAutonomyRoutes } from "../autonomyRoutes";
+import { registerDelegatedMailboxRoutes } from "../delegatedMailboxRoutes";
 import { registerSalesAutomationRoutes } from "../salesAutomationRoutes";
 import { registerSalesTargetsRoutes } from "../salesTargetsRoutes";
 import { registerAiCreditsRoutes } from "../aiCreditsRoutes";
@@ -122,6 +124,19 @@ async function startServer() {
   );
   registerConnectedSystemAdminRoutes(app);
   registerConnectedSystemLifecycleRoutes(app);
+  app.use(
+    "/api/mailbox",
+    rateLimit({ limit: 30, windowMs: 60_000 }),
+    (req, res, next) =>
+      req.method === "GET" ? next() : enforceAppOrigin(req, res, next)
+  );
+  registerDelegatedMailboxRoutes(app);
+  app.use(
+    "/api/autonomy",
+    rateLimit({ limit: 30, windowMs: 60_000 }),
+    enforceAppOrigin
+  );
+  registerAutonomyRoutes(app);
   app.use(
     "/api/assistant",
     rateLimit({ limit: 60, windowMs: 60_000 }),

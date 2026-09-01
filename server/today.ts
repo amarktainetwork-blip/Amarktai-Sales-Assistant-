@@ -36,64 +36,85 @@ export async function getTodayWork(input: {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
   const now = new Date();
-  const [mappings, tasks, opportunities, inboundRows, reminders, callbacks] = await Promise.all([
-    db
-      .select()
-      .from(externalUserMappings)
-      .where(
-        and(
-          eq(externalUserMappings.organisationId, input.organisationId),
-          eq(externalUserMappings.userId, input.userId),
-          eq(externalUserMappings.isActive, true)
+  const [mappings, tasks, opportunities, inboundRows, reminders, callbacks] =
+    await Promise.all([
+      db
+        .select()
+        .from(externalUserMappings)
+        .where(
+          and(
+            eq(externalUserMappings.organisationId, input.organisationId),
+            eq(externalUserMappings.userId, input.userId),
+            eq(externalUserMappings.isActive, true)
+          )
+        ),
+      db
+        .select()
+        .from(crmTasks)
+        .where(eq(crmTasks.organisationId, input.organisationId))
+        .orderBy(desc(crmTasks.dueAt))
+        .limit(600),
+      db
+        .select()
+        .from(crmOpportunities)
+        .where(eq(crmOpportunities.organisationId, input.organisationId))
+        .orderBy(desc(crmOpportunities.updatedAt))
+        .limit(600),
+      db
+        .select({
+          message: inboundMessages,
+          contactOwnerExternalId: crmContacts.ownerExternalId,
+        })
+        .from(inboundMessages)
+        .leftJoin(
+          crmContacts,
+          and(
+            eq(crmContacts.organisationId, inboundMessages.organisationId),
+            eq(
+              crmContacts.connectedSystemId,
+              inboundMessages.connectedSystemId
+            ),
+            eq(crmContacts.externalId, inboundMessages.contactExternalId)
+          )
         )
-      ),
-    db
-      .select()
-      .from(crmTasks)
-      .where(eq(crmTasks.organisationId, input.organisationId))
-      .orderBy(desc(crmTasks.dueAt))
-      .limit(600),
-    db
-      .select()
-      .from(crmOpportunities)
-      .where(eq(crmOpportunities.organisationId, input.organisationId))
-      .orderBy(desc(crmOpportunities.updatedAt))
-      .limit(600),
-    db
-      .select({
-        message: inboundMessages,
-        contactOwnerExternalId: crmContacts.ownerExternalId,
-      })
-      .from(inboundMessages)
-      .leftJoin(
-        crmContacts,
-        and(
-          eq(crmContacts.organisationId, inboundMessages.organisationId),
-          eq(crmContacts.connectedSystemId, inboundMessages.connectedSystemId),
-          eq(crmContacts.externalId, inboundMessages.contactExternalId)
+        .where(
+          and(
+            eq(inboundMessages.organisationId, input.organisationId),
+            eq(inboundMessages.needsAction, true)
+          )
         )
-      )
-      .where(
-        and(
-          eq(inboundMessages.organisationId, input.organisationId),
-          eq(inboundMessages.needsAction, true)
+        .orderBy(desc(inboundMessages.receivedAt))
+        .limit(100),
+      db
+        .select()
+        .from(assistantReminders)
+        .where(
+          and(
+            eq(assistantReminders.organisationId, input.organisationId),
+            eq(assistantReminders.userId, input.userId),
+            or(
+              eq(assistantReminders.status, "open"),
+              eq(assistantReminders.status, "snoozed")
+            ),
+            lte(assistantReminders.dueAt, dayEnd(now))
+          )
         )
-      )
-      .orderBy(desc(inboundMessages.receivedAt))
-      .limit(100),
-    db.select().from(assistantReminders).where(and(
-      eq(assistantReminders.organisationId, input.organisationId),
-      eq(assistantReminders.userId, input.userId),
-      or(eq(assistantReminders.status, "open"), eq(assistantReminders.status, "snoozed")),
-      lte(assistantReminders.dueAt, dayEnd(now))
-    )).orderBy(desc(assistantReminders.dueAt)).limit(100),
-    db.select().from(callbackTasks).where(and(
-      eq(callbackTasks.organisationId, input.organisationId),
-      eq(callbackTasks.userId, input.userId),
-      eq(callbackTasks.state, "open"),
-      lte(callbackTasks.dueAt, dayEnd(now))
-    )).orderBy(desc(callbackTasks.dueAt)).limit(100),
-  ]);
+        .orderBy(desc(assistantReminders.dueAt))
+        .limit(100),
+      db
+        .select()
+        .from(callbackTasks)
+        .where(
+          and(
+            eq(callbackTasks.organisationId, input.organisationId),
+            eq(callbackTasks.userId, input.userId),
+            eq(callbackTasks.state, "open"),
+            lte(callbackTasks.dueAt, dayEnd(now))
+          )
+        )
+        .orderBy(desc(callbackTasks.dueAt))
+        .limit(100),
+    ]);
   const ownerIds = new Set(mappings.map(mapping => mapping.externalUserId));
   const unrestricted = canViewTeamData(membership.role);
   const belongsToUser = (ownerExternalId: string | null) =>
@@ -116,6 +137,8 @@ export async function getTodayWork(input: {
   );
   const actionableInbound = inboundRows
     .filter(row => {
+      if (row.message.mailboxUserId != null)
+        return row.message.mailboxUserId === input.userId;
       if (unrestricted) return true;
       return belongsToUser(row.contactOwnerExternalId);
     })
