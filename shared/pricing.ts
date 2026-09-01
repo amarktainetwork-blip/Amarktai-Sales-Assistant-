@@ -35,7 +35,7 @@ export const PRICING_PLANS: readonly PricingPlan[] = [
       "One CRM connection",
       "Today workspace and Assistant",
       "50 AI credits",
-      "Review-first actions",
+      "Review important customer updates before they are made",
     ],
   },
   {
@@ -50,10 +50,10 @@ export const PRICING_PLANS: readonly PricingPlan[] = [
     features: [
       "One salesperson",
       "One CRM connection",
-      "Today workspace, Assistant and Calls",
+      "Today, Assistant and Calls",
       "500 AI credits each month",
-      "CRM sync and deterministic automation",
-      "Audit and execution evidence",
+      "CRM sync and approved follow-through",
+      "Visible action history and CRM readback",
     ],
   },
   {
@@ -67,11 +67,11 @@ export const PRICING_PLANS: readonly PricingPlan[] = [
     managementIntelligence: false,
     features: [
       "Up to three users",
-      "Available launch CRM connectors",
+      "Supported CRM connections",
       "2,000 AI credits each month",
-      "Conversation assistance and post-call closeout",
-      "Pipeline intelligence",
-      "Advanced playbooks and Revenue Recovery",
+      "Conversation assistance and post-call follow-through",
+      "Pipeline priorities and deal-risk signals",
+      "Advanced sales playbooks and missed-opportunity recovery",
     ],
   },
   {
@@ -85,32 +85,32 @@ export const PRICING_PLANS: readonly PricingPlan[] = [
     managementIntelligence: true,
     features: [
       "Up to ten users",
-      "Available launch CRM connectors",
+      "Supported CRM connections",
       "5,000 AI credits each month",
-      "Team and Management Intelligence",
-      "Targets, exception reporting and team playbooks",
-      "Manager analytics and controls",
+      "Team coaching and manager insight",
+      "Targets, exception alerts and team playbooks",
+      "Manager reporting and controls",
     ],
   },
 ] as const;
 
 export const ZERO_AI_CREDIT_FEATURES = [
   "CRM synchronisation",
-  "deterministic CRM reads and approved writes",
-  "Today prioritisation rules",
+  "CRM reads and approved updates",
+  "Today priorities",
   "overdue and stale-work detection",
-  "Revenue Recovery rules",
-  "standard analytics and KPI arithmetic",
-  "audit and evidence capture",
+  "missed-opportunity recovery",
+  "standard reporting calculations",
+  "action history and CRM readback",
   "connection health checks",
 ] as const;
 
 export const AI_CREDIT_FEATURES = [
-  "website understanding and re-analysis",
+  "website learning and re-analysis",
   "personalised message drafting",
-  "conversation and transcript reasoning",
+  "conversation and transcript understanding",
   "objection coaching",
   "complex deal guidance",
-  "unstructured information extraction",
-  "management narrative summaries",
+  "information extraction from unstructured content",
+  "manager summaries",
 ] as const;
