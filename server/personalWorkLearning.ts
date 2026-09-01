@@ -138,7 +138,9 @@ function protectedDraftLiterals(value: string) {
   const matches = value.match(
     /(?:https?:\/\/\S+|\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b|(?:R|\$|£|€)\s?\d[\d.,]*|\b\d{1,4}[/-]\d{1,2}[/-]\d{1,4}\b|\b\d+(?:[.,]\d+)?%\b|\b\d{4,}\b)/gi
   );
-  return new Set((matches || []).map(item => item.toLowerCase().replace(/[),.;]+$/, "")));
+  return new Set(
+    (matches || []).map(item => item.toLowerCase().replace(/[),.;]+$/, ""))
+  );
 }
 
 /** A style-only rewrite may not remove or introduce protected factual literals. */
@@ -146,8 +148,7 @@ export function rewritePreservesProtectedLiterals(original: string, rewrite: str
   const before = protectedDraftLiterals(original);
   const after = protectedDraftLiterals(rewrite);
   if (before.size !== after.size) return false;
-  for (const value of before) if (!after.has(value)) return false;
-  return true;
+  return Array.from(before).every(value => after.has(value));
 }
 
 async function microsoftTokenRequest(body: URLSearchParams) {
@@ -195,7 +196,9 @@ async function accessTokenForLearning(
     new URLSearchParams({
       grant_type: "refresh_token",
       refresh_token: tokens.refreshToken,
-      scope: tokens.scope || "openid profile email offline_access User.Read Mail.Read Mail.Send",
+      scope:
+        tokens.scope ||
+        "openid profile email offline_access User.Read Mail.Read Mail.Send",
     })
   );
   const db = await dbOrThrow();
@@ -231,7 +234,9 @@ async function graphGet<T>(accessToken: string, pathOrUrl: string) {
     signal: AbortSignal.timeout(15_000),
   });
   if (!response.ok)
-    throw new Error(`Microsoft mailbox learning request failed (${response.status}).`);
+    throw new Error(
+      `Microsoft mailbox learning request failed (${response.status}).`
+    );
   return (await response.json()) as T;
 }
 
@@ -245,7 +250,8 @@ async function recentSentMessages(accessToken: string) {
   let next: string | undefined = `/me/mailFolders/sentitems/messages?${query.toString()}`;
   const messages: GraphSentMessage[] = [];
   while (next && messages.length < MAX_SENT_MESSAGES) {
-    const page = await graphGet<GraphPage<GraphSentMessage>>(accessToken, next);
+    const page: GraphPage<GraphSentMessage> =
+      await graphGet<GraphPage<GraphSentMessage>>(accessToken, next);
     messages.push(...(page.value || []));
     next = page["@odata.nextLink"];
   }
@@ -285,7 +291,10 @@ export async function learnPersonalEmailStyle(input: {
     .filter((item): item is NonNullable<typeof item> => Boolean(item))
     .sort((left, right) => right.sentAt.valueOf() - left.sentAt.valueOf());
   if (evidence.length < MIN_STYLE_MESSAGES)
-    return { learned: false as const, reason: "not_enough_user_sent_mail" as const };
+    return {
+      learned: false as const,
+      reason: "not_enough_user_sent_mail" as const,
+    };
 
   const previous = await currentStyleMemory(input.userId, input.organisationId);
   const newestSentAt = evidence[0].sentAt;
@@ -306,12 +315,18 @@ export async function learnPersonalEmailStyle(input: {
     characters += sample.length;
   }
   if (samples.length < MIN_STYLE_MESSAGES)
-    return { learned: false as const, reason: "not_enough_bounded_evidence" as const };
+    return {
+      learned: false as const,
+      reason: "not_enough_bounded_evidence" as const,
+    };
 
   const response = await runGenxAgent({
     agentKey: "communications",
     messages: [
-      { role: "user", content: buildPersonalEmailStyleLearningPrompt(samples) },
+      {
+        role: "user",
+        content: buildPersonalEmailStyleLearningPrompt(samples),
+      },
     ],
     workingContext:
       "This is private, user-scoped preference learning from the salesperson's own confirmed Sent Items. The result is an inferred style preference, never company policy and never permission to send anything.",
@@ -330,7 +345,10 @@ export async function learnPersonalEmailStyle(input: {
     /intelligence is not connected|cannot run safely/i.test(content) ||
     !isSafeAssistantMemory(content)
   )
-    return { learned: false as const, reason: "style_summary_unavailable" as const };
+    return {
+      learned: false as const,
+      reason: "style_summary_unavailable" as const,
+    };
 
   await createAssistantMemory({
     userId: input.userId,
@@ -516,7 +534,9 @@ export function startPersonalWorkLearningWorker(
     try {
       const result = await runPersonalWorkLearning();
       if (result.learned || result.styled || result.failed)
-        console.log(JSON.stringify({ event: "personal_work_learning", ...result }));
+        console.log(
+          JSON.stringify({ event: "personal_work_learning", ...result })
+        );
     } finally {
       running = false;
     }
