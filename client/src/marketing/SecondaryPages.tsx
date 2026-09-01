@@ -21,6 +21,15 @@ const contextLayers = [
   ["04", "The next commitment", "Amarktai turns the confirmed outcome into visible next steps such as notes, callbacks, tasks or customer updates, with review around important changes."],
 ] as const;
 
+const workspaceFeatures = [
+  ["01", "Today", "A focused starting point for the day: overdue work, customers waiting for attention, callbacks, tasks and the opportunities that deserve a closer look."],
+  ["02", "Customers", "A working relationship view that brings customer details, recent activity, notes, tasks and opportunities together so the salesperson can understand the story quickly."],
+  ["03", "Assistant", "Ask natural questions about the business or customer context, prepare a conversation, work through an objection, draft a follow-up or decide what the next useful action should be."],
+  ["04", "Calls", "Prepare before a call, use consented live transcription and assistance during the conversation, then close out the outcome while it is still fresh."],
+  ["05", "Follow-through", "Turn what was agreed into visible notes, callbacks, tasks or CRM updates. Important changes stay reviewable and supported connections can check the result afterwards."],
+  ["06", "Team view", "Managers can share trusted company context, invite team members and see the sales picture without turning every salesperson's private Assistant work into one shared conversation."],
+] as const;
+
 export function HowItWorksPage() {
   return (
     <MarketingLayout>
@@ -89,6 +98,27 @@ export function HowItWorksPage() {
       </section>
 
       <section className="amk-page-section">
+        <div className="amk-shell">
+          <div className="amk-page-section__grid">
+            <div>
+              <p className="amk-eyebrow">WHAT YOU ACTUALLY USE</p>
+              <h2>A small workspace for the whole sales loop.</h2>
+            </div>
+            <div className="amk-page-section__copy">
+              <p>The product is deliberately organised around the salesperson's day rather than a long menu of AI tools. The useful intelligence appears where the work is happening.</p>
+            </div>
+          </div>
+          <div className="amk-page-lines">
+            {workspaceFeatures.map(([number, title, copy]) => (
+              <div className="amk-page-line" key={number}>
+                <span>{number}</span><h3>{title}</h3><p>{copy}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="amk-page-section amk-page-section--soft">
         <div className="amk-shell amk-page-section__grid">
           <div>
             <p className="amk-eyebrow">INDIVIDUALS AND TEAMS</p>
@@ -105,10 +135,10 @@ export function HowItWorksPage() {
       <section className="amk-page-section amk-page-section--warm">
         <div className="amk-shell amk-story__grid amk-story__grid--reverse">
           <div className="amk-story__copy">
-            <p className="amk-eyebrow">THE DAILY WORKSPACE</p>
-            <h2>Know what matters. Know the customer. Have the conversation. Finish the job.</h2>
-            <p>Sales Assistant keeps the daily experience deliberately small. Today gives the salesperson a starting point. Customers holds the relationship context. Assistant helps with questions, preparation and follow-through. Calls supports consented customer conversations.</p>
-            <p>Setup, team management and deeper controls stay available when they are needed without taking over the salesperson's normal day.</p>
+            <p className="amk-eyebrow">THE CUSTOMER CONVERSATION</p>
+            <h2>Prepare well. Stay present. Finish what was agreed.</h2>
+            <p>The customer should never feel like the salesperson is fighting the software. Sales Assistant is designed to move the useful context into the conversation and then carry the confirmed outcome back into the work that follows.</p>
+            <p>That is the loop Amarktai is built to close: from “what matters today?” to a better conversation to a completed next step.</p>
           </div>
           <figure className="amk-photo amk-photo--story">
             <img src={CALL_PHOTO} alt="Sales professional on a customer phone call with a laptop" loading="lazy" />
