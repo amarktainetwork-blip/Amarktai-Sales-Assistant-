@@ -20,7 +20,7 @@ export type WebsiteKnowledgeCorrection = {
 };
 
 export type BusinessBasicsApprovalItem = WebsiteKnowledgeCorrection & {
-  group: "company" | "offerings" | "credentials" | "contact";
+  group: "company" | "offerings" | "credentials" | "contact" | "sales";
   sourceUrl?: string;
 };
 
@@ -43,13 +43,31 @@ const offeringCategories = new Set([
   "career_programmes",
   "individual_courses",
   "products_services",
+  "programmes",
+  "courses",
+  "products",
+  "services",
+  "solutions",
+  "subscriptions",
+  "packages",
+  "plans",
   "offering",
+  "offerings",
   "company_offering",
 ]);
 
 const credentialCategories = new Set([
   "certifications",
   "company_certification",
+  "accreditation",
+  "credentials",
+]);
+
+const salesKnowledgeCategories = new Set([
+  "support_outcomes",
+  "sales_facts",
+  "faqs",
+  "policies",
 ]);
 
 const commercialTextPattern =
@@ -181,6 +199,10 @@ export function buildBusinessBasicsApproval(
       const fact = safeKnowledgeFact(candidate);
       if (!fact) return;
       item = { ...fact, group: "contact" };
+    } else if (salesKnowledgeCategories.has(category)) {
+      const fact = safeKnowledgeFact(candidate);
+      if (!fact) return;
+      item = { ...fact, group: "sales" };
     }
 
     if (!item?.title || !item.content) return;
@@ -199,6 +221,6 @@ export function businessBasicsCounts(items: BusinessBasicsApprovalItem[]) {
       counts[item.group] += 1;
       return counts;
     },
-    { company: 0, offerings: 0, credentials: 0, contact: 0 }
+    { company: 0, offerings: 0, credentials: 0, contact: 0, sales: 0 }
   );
 }
