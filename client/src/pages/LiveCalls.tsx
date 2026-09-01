@@ -513,14 +513,14 @@ export default function LiveCalls() {
   return (
     <DashboardLayout>
       <div data-call-workflow className="text-[#26354A]">
-        <header className="border-b border-white/10 pb-6">
-          <p className="text-[10px] font-black uppercase tracking-[.16em] text-[#83AEFF]">
+        <header className="border-b border-[#DCE4EE] pb-6">
+          <p className="text-[10px] font-black uppercase tracking-[.16em] text-[#2F6FED]">
             AMARKTAI / LIVE CALL COMPANION
           </p>
-          <h1 className="mt-3 font-display text-4xl font-bold tracking-[-.06em] text-white sm:text-5xl">
+          <h1 className="mt-3 font-display text-4xl font-bold tracking-[-.06em] text-[#203047] sm:text-5xl">
             Listen less to the admin. Listen more to the customer.
           </h1>
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-[#A9BFDF]">
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-[#66758A]">
             With your permission, Amarktai can transcribe the call, notice
             important questions and commitments, and offer coaching when it is
             useful. You stay in control of what is saved or sent.
@@ -530,22 +530,22 @@ export default function LiveCalls() {
         {workflowError ? (
           <section
             role="alert"
-            className="mt-6 rounded-2xl border border-rose-300/25 bg-rose-400/10 p-5 text-rose-50"
+            className="mt-6 rounded-2xl border border-rose-200 bg-rose-50 p-5 text-rose-900"
           >
             <p className="font-bold">The current call step needs attention.</p>
-            <p className="mt-2 text-sm leading-6 text-rose-100/85">
+            <p className="mt-2 text-sm leading-6 text-rose-700">
               {workflowError}
             </p>
             <div className="mt-4 flex gap-2">
               {retryAction ? (
-                <Button onClick={retryAction} className="bg-[#1B64F2]">
+                <Button onClick={retryAction} className="bg-[#2F6FED] hover:bg-[#2459C2]">
                   Retry
                 </Button>
               ) : null}
               <Button
                 variant="outline"
                 onClick={() => setWorkflowError("")}
-                className="border-white/15 bg-white/5 text-white"
+                className="border-[#D7E0EA] bg-white text-[#52647A] hover:bg-[#F5F8FC]"
               >
                 Dismiss
               </Button>
@@ -554,8 +554,8 @@ export default function LiveCalls() {
         ) : null}
 
         {callContext.data?.context && (
-          <section className="mt-6 rounded-[1.5rem] border border-[#3D69AD]/40 bg-[#0E2142] p-6">
-            <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#7FAAF8]">
+          <section className="mt-6 rounded-[1.5rem] border border-[#DCE4EE] bg-white p-6">
+            <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#2F6FED]">
               PRE-CALL BRIEF
             </p>
             <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
@@ -583,11 +583,11 @@ export default function LiveCalls() {
                   `${callContext.data.context.reasons.join(" · ") || "Selected customer"}\n${callContext.data.context.objective || "Confirm the next factual step"}`,
                 ],
               ].map(([label, value]) => (
-                <div key={label} className="rounded-xl bg-[#08172F] p-4">
-                  <p className="text-[10px] font-black uppercase text-[#7896C1]">
+                <div key={label} className="rounded-xl border border-[#E5EAF0] bg-[#F8FAFC] p-4">
+                  <p className="text-[10px] font-black uppercase text-[#728197]">
                     {label}
                   </p>
-                  <p className="mt-2 whitespace-pre-line text-sm leading-6 text-[#DCE6F6]">
+                  <p className="mt-2 whitespace-pre-line text-sm leading-6 text-[#33445B]">
                     {value}
                   </p>
                 </div>
@@ -597,23 +597,23 @@ export default function LiveCalls() {
         )}
 
         <div className="mt-6 grid gap-6 xl:grid-cols-[1.05fr_.95fr]">
-          <section className="rounded-[1.5rem] border border-white/10 bg-[#0E2142] p-6">
+          <section className="rounded-[1.5rem] border border-[#DCE4EE] bg-white p-6">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3">
-                <span className="grid size-10 place-items-center rounded-xl bg-[#153B7A] text-[#94B9FF]">
+                <span className="grid size-10 place-items-center rounded-xl bg-[#EAF1FF] text-[#2F6FED]">
                   <Headphones size={19} />
                 </span>
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#7FAAF8]">
+                  <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#2F6FED]">
                     CALL AUDIO
                   </p>
-                  <h2 className="font-display text-2xl font-bold tracking-[-.05em] text-white">
+                  <h2 className="font-display text-2xl font-bold tracking-[-.05em] text-[#26354A]">
                     Live session
                   </h2>
                 </div>
               </div>
               <span
-                className={`rounded-full px-3 py-1 text-xs font-bold ${sttReady ? "bg-emerald-400/10 text-emerald-200" : "bg-amber-400/10 text-amber-100"}`}
+                className={`rounded-full px-3 py-1 text-xs font-bold ${sttReady ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}
               >
                 {sttReady === null
                   ? "Checking transcription…"
@@ -623,7 +623,7 @@ export default function LiveCalls() {
               </span>
             </div>
 
-            <label className="mt-6 block text-xs font-black uppercase tracking-[.12em] text-[#9EB6DB]">
+            <label className="mt-6 block text-xs font-black uppercase tracking-[.12em] text-[#66758A]">
               Customer / contact
             </label>
             <Input
@@ -635,12 +635,12 @@ export default function LiveCalls() {
                 setSelectedContactId(undefined);
               }}
               placeholder="Jane Smith, email, or phone"
-              className="mt-2 border-white/15 bg-[#08172F] text-white placeholder:text-[#607EA8]"
+              className="mt-2 border-[#CBD5E0] bg-white text-[#26354A] placeholder:text-[#95A2B2]"
             />
 
             {!sessionId && !!contactMatches.data?.length && (
-              <div className="mt-2 space-y-1 rounded-xl border border-white/10 bg-[#071326] p-2">
-                <p className="px-2 py-1 text-[10px] font-black uppercase text-[#7896C1]">
+              <div className="mt-2 space-y-1 rounded-xl border border-[#DCE4EE] bg-white p-2 shadow-sm">
+                <p className="px-2 py-1 text-[10px] font-black uppercase text-[#728197]">
                   Choose the customer
                 </p>
                 {contactMatches.data.map(contact => (
@@ -651,10 +651,10 @@ export default function LiveCalls() {
                       setSelectedContactId(contact.id);
                       setLeadLabel(contact.name);
                     }}
-                    className={`block w-full rounded-lg px-3 py-2 text-left text-xs ${selectedContactId === contact.id ? "bg-[#153B7A] text-white" : "text-[#B7CAE7] hover:bg-white/5"}`}
+                    className={`block w-full rounded-lg px-3 py-2 text-left text-xs ${selectedContactId === contact.id ? "bg-[#EAF1FF] text-[#2459C2]" : "text-[#52647A] hover:bg-[#F2F5F8]"}`}
                   >
                     <b>{contact.name}</b>
-                    <span className="ml-2 text-[#8FA9CE]">
+                    <span className="ml-2 text-[#7B8798]">
                       {contact.email || contact.phone || "CRM customer"}
                     </span>
                   </button>
@@ -666,13 +666,13 @@ export default function LiveCalls() {
               <button
                 disabled={recording}
                 onClick={() => setCaptureMode("mixed")}
-                className={`rounded-xl border p-4 text-left ${captureMode === "mixed" ? "border-[#4E8BFF] bg-[#153B7A]" : "border-white/10 bg-[#0B1B37]"}`}
+                className={`rounded-xl border p-4 text-left transition ${captureMode === "mixed" ? "border-[#2F6FED] bg-[#EAF1FF]" : "border-[#DCE4EE] bg-[#F8FAFC] hover:border-[#B9C7D8]"}`}
               >
-                <MonitorUp className="size-5 text-[#8BB4FF]" />
-                <p className="mt-3 font-bold text-white">
+                <MonitorUp className="size-5 text-[#2F6FED]" />
+                <p className="mt-3 font-bold text-[#26354A]">
                   Call audio + microphone
                 </p>
-                <p className="mt-1 text-xs leading-5 text-[#9EB6DB]">
+                <p className="mt-1 text-xs leading-5 text-[#66758A]">
                   Best for browser calls. Select the call tab and share its
                   audio; Amarktai combines it with your microphone.
                 </p>
@@ -680,18 +680,18 @@ export default function LiveCalls() {
               <button
                 disabled={recording}
                 onClick={() => setCaptureMode("microphone")}
-                className={`rounded-xl border p-4 text-left ${captureMode === "microphone" ? "border-[#4E8BFF] bg-[#153B7A]" : "border-white/10 bg-[#0B1B37]"}`}
+                className={`rounded-xl border p-4 text-left transition ${captureMode === "microphone" ? "border-[#2F6FED] bg-[#EAF1FF]" : "border-[#DCE4EE] bg-[#F8FAFC] hover:border-[#B9C7D8]"}`}
               >
-                <Mic className="size-5 text-[#8BB4FF]" />
-                <p className="mt-3 font-bold text-white">Microphone only</p>
-                <p className="mt-1 text-xs leading-5 text-[#9EB6DB]">
+                <Mic className="size-5 text-[#2F6FED]" />
+                <p className="mt-3 font-bold text-[#26354A]">Microphone only</p>
+                <p className="mt-1 text-xs leading-5 text-[#66758A]">
                   Use this for speakerphone or headset calls where your
                   microphone can capture the authorised conversation.
                 </p>
               </button>
             </div>
 
-            <label className="mt-5 flex cursor-pointer gap-3 rounded-xl border border-white/10 bg-[#08172F] p-4 text-sm leading-6 text-[#C4D3E9]">
+            <label className="mt-5 flex cursor-pointer gap-3 rounded-xl border border-[#DCE4EE] bg-[#F8FAFC] p-4 text-sm leading-6 text-[#52647A]">
               <input
                 type="checkbox"
                 checked={consent}
@@ -720,7 +720,7 @@ export default function LiveCalls() {
                     completing
                   }
                   onClick={() => void begin()}
-                  className="h-12 bg-[#1B64F2] hover:bg-[#2B76FF]"
+                  className="h-12 bg-[#2F6FED] hover:bg-[#2459C2]"
                 >
                   <Waves className="mr-2 size-4" />
                   Start Live Companion
@@ -745,49 +745,49 @@ export default function LiveCalls() {
                       !selectedContactId)
                   }
                   onClick={() => void recordAttemptWithoutAudio()}
-                  className="h-12 border-white/15 bg-white/5 text-white hover:bg-white/10"
+                  className="h-12 border-[#D7E0EA] bg-white text-[#52647A] hover:bg-[#F5F8FC]"
                 >
                   Record no-answer / voicemail
                 </Button>
               )}
               {recording && (
-                <span className="inline-flex items-center gap-2 rounded-xl bg-emerald-400/10 px-4 text-sm font-bold text-emerald-200">
-                  <span className="size-2 animate-pulse rounded-full bg-emerald-300" />
+                <span className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 px-4 text-sm font-bold text-emerald-700">
+                  <span className="size-2 animate-pulse rounded-full bg-emerald-500" />
                   Listening
                 </span>
               )}
               {completing && (
-                <span className="inline-flex items-center rounded-xl bg-white/10 px-4 text-sm font-bold text-[#DCE6F6]">
+                <span className="inline-flex items-center rounded-xl bg-[#F2F5F8] px-4 text-sm font-bold text-[#52647A]">
                   Preparing follow-up…
                 </span>
               )}
             </div>
 
-            <div className="mt-6 min-h-48 rounded-xl border border-white/10 bg-[#08172F] p-4">
-              <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#7FAAF8]">
+            <div className="mt-6 min-h-48 rounded-xl border border-[#DCE4EE] bg-[#F8FAFC] p-4">
+              <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#2F6FED]">
                 LIVE TRANSCRIPT
               </p>
-              <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-[#DCE6F6]">
+              <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-[#33445B]">
                 {transcript ||
                   "Call notes will appear here while the conversation is running."}
               </p>
             </div>
 
             {awaitingCloseout && (
-              <section className="mt-5 rounded-xl border border-[#4E8BFF]/40 bg-[#0B1B37] p-5">
-                <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#7FAAF8]">
+              <section className="mt-5 rounded-xl border border-[#DCE4EE] bg-[#F8FAFC] p-5">
+                <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#2F6FED]">
                   CALL OUTCOME
                 </p>
-                <h3 className="mt-2 font-display text-2xl font-bold text-white">
+                <h3 className="mt-2 font-display text-2xl font-bold text-[#26354A]">
                   Confirm what happened and prepare the next step.
                 </h3>
                 <div className="mt-4 grid gap-3 md:grid-cols-2">
-                  <label className="grid gap-2 text-xs font-bold text-[#AFC3E2]">
+                  <label className="grid gap-2 text-xs font-bold text-[#66758A]">
                     Outcome
                     <select
                       value={outcome}
                       onChange={event => setOutcome(event.target.value)}
-                      className="h-10 rounded-xl border border-white/15 bg-[#071326] px-3 text-white"
+                      className="h-10 rounded-xl border border-[#CBD5E0] bg-white px-3 text-[#26354A]"
                     >
                       <option value="interested">Interested</option>
                       <option value="information_requested">
@@ -806,32 +806,32 @@ export default function LiveCalls() {
                       <option value="other">Other</option>
                     </select>
                   </label>
-                  <label className="grid gap-2 text-xs font-bold text-[#AFC3E2]">
+                  <label className="grid gap-2 text-xs font-bold text-[#66758A]">
                     Callback date/time
                     <Input
                       type="datetime-local"
                       value={callbackAt}
                       onChange={event => setCallbackAt(event.target.value)}
-                      className="border-white/15 bg-[#071326] text-white"
+                      className="border-[#CBD5E0] bg-white text-[#26354A]"
                     />
                   </label>
-                  <label className="grid gap-2 text-xs font-bold text-[#AFC3E2] md:col-span-2">
+                  <label className="grid gap-2 text-xs font-bold text-[#66758A] md:col-span-2">
                     Next step
                     <Input
                       value={nextStep}
                       onChange={event => setNextStep(event.target.value)}
                       placeholder="Send product information"
-                      className="border-white/15 bg-[#071326] text-white"
+                      className="border-[#CBD5E0] bg-white text-[#26354A]"
                     />
                   </label>
-                  <label className="grid gap-2 text-xs font-bold text-[#AFC3E2]">
+                  <label className="grid gap-2 text-xs font-bold text-[#66758A]">
                     Follow-up
                     <select
                       value={communicationChannel}
                       onChange={event =>
                         setCommunicationChannel(event.target.value)
                       }
-                      className="h-10 rounded-xl border border-white/15 bg-[#071326] px-3 text-white"
+                      className="h-10 rounded-xl border border-[#CBD5E0] bg-white px-3 text-[#26354A]"
                     >
                       <option value="">None</option>
                       <option value="email">Email template</option>
@@ -839,18 +839,18 @@ export default function LiveCalls() {
                       <option value="whatsapp">WhatsApp template</option>
                     </select>
                   </label>
-                  <label className="grid gap-2 text-xs font-bold text-[#AFC3E2]">
+                  <label className="grid gap-2 text-xs font-bold text-[#66758A]">
                     Template name
                     <Input
                       disabled={!communicationChannel}
                       value={templateName}
                       onChange={event => setTemplateName(event.target.value)}
                       placeholder="Product brochure"
-                      className="border-white/15 bg-[#071326] text-white"
+                      className="border-[#CBD5E0] bg-white text-[#26354A]"
                     />
                   </label>
                 </div>
-                <div className="mt-4 rounded-xl bg-[#153B7A]/45 p-3 text-xs leading-5 text-[#DCE7F8]">
+                <div className="mt-4 rounded-xl bg-[#EAF1FF] p-3 text-xs leading-5 text-[#35547A]">
                   {callContext.data?.context
                     ? "This call is linked to the selected customer. "
                     : "Choose a customer before preparing CRM changes. "}
@@ -865,7 +865,7 @@ export default function LiveCalls() {
                 <Button
                   disabled={completing}
                   onClick={() => void completeCloseout()}
-                  className="mt-4 bg-[#1B64F2] hover:bg-[#2B76FF]"
+                  className="mt-4 bg-[#2F6FED] hover:bg-[#2459C2]"
                 >
                   {completing
                     ? "Preparing follow-up…"
@@ -875,20 +875,20 @@ export default function LiveCalls() {
             )}
 
             {!!closeoutActions?.length && (
-              <section className="mt-5 rounded-xl border border-emerald-300/20 bg-emerald-400/[.05] p-5">
-                <p className="text-[10px] font-black uppercase tracking-[.13em] text-emerald-200">
+              <section className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-5">
+                <p className="text-[10px] font-black uppercase tracking-[.13em] text-emerald-700">
                   FOLLOW-UP
                 </p>
                 <div className="mt-3 space-y-2">
                   {closeoutActions.map(action => (
                     <div
                       key={action.id}
-                      className="flex items-center justify-between gap-3 rounded-lg bg-[#08172F] p-3"
+                      className="flex items-center justify-between gap-3 rounded-lg border border-emerald-100 bg-white p-3"
                     >
-                      <span className="text-sm font-semibold text-white">
+                      <span className="text-sm font-semibold text-[#26354A]">
                         {action.title}
                       </span>
-                      <span className="text-[10px] font-black uppercase text-[#A9C7FF]">
+                      <span className="text-[10px] font-black uppercase text-emerald-700">
                         {actionStatus(action.state)}
                       </span>
                     </div>
@@ -899,10 +899,10 @@ export default function LiveCalls() {
           </section>
 
           <div className="grid gap-6">
-            <section className="rounded-[1.5rem] border border-white/10 bg-[#0E2142] p-6">
+            <section className="rounded-[1.5rem] border border-[#DCE4EE] bg-white p-6">
               <div className="flex items-center gap-3">
-                <AlertTriangle className="size-5 text-[#83AEFF]" />
-                <h2 className="font-display text-2xl font-bold tracking-[-.05em] text-white">
+                <AlertTriangle className="size-5 text-[#2F6FED]" />
+                <h2 className="font-display text-2xl font-bold tracking-[-.05em] text-[#26354A]">
                   Live signals
                 </h2>
               </div>
@@ -911,18 +911,18 @@ export default function LiveCalls() {
                   signals.map((signal, index) => (
                     <article
                       key={`${signal.type}-${index}`}
-                      className={`rounded-xl border p-4 ${signal.priority === "important" ? "border-[#4E8BFF]/50 bg-[#153B7A]" : "border-white/10 bg-[#0B1B37]"}`}
+                      className={`rounded-xl border p-4 ${signal.priority === "important" ? "border-[#B7CCF7] bg-[#EAF1FF]" : "border-[#DCE4EE] bg-[#F8FAFC]"}`}
                     >
-                      <p className="text-xs font-black uppercase tracking-[.1em] text-[#8FB7FF]">
+                      <p className="text-xs font-black uppercase tracking-[.1em] text-[#2F6FED]">
                         {signal.label}
                       </p>
-                      <p className="mt-2 text-sm leading-6 text-[#D9E5F7]">
+                      <p className="mt-2 text-sm leading-6 text-[#33445B]">
                         {signal.evidence}
                       </p>
                     </article>
                   ))
                 ) : (
-                  <p className="text-sm leading-6 text-[#9EB6DB]">
+                  <p className="text-sm leading-6 text-[#66758A]">
                     Questions, objections, commitments, callback requests and
                     buying signals noticed during the call will appear here.
                   </p>
@@ -930,14 +930,14 @@ export default function LiveCalls() {
               </div>
             </section>
 
-            <section className="rounded-[1.5rem] border border-white/10 bg-[#0E2142] p-6">
+            <section className="rounded-[1.5rem] border border-[#DCE4EE] bg-white p-6">
               <div className="flex items-center gap-3">
-                <CheckCircle2 className="size-5 text-[#83AEFF]" />
-                <h2 className="font-display text-2xl font-bold tracking-[-.05em] text-white">
+                <CheckCircle2 className="size-5 text-[#2F6FED]" />
+                <h2 className="font-display text-2xl font-bold tracking-[-.05em] text-[#26354A]">
                   Current coaching
                 </h2>
               </div>
-              <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-[#D9E5F7]">
+              <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-[#33445B]">
                 {tip ||
                   "Coaching appears when an important question or signal needs help. Routine transcription stays focused on accurate notes."}
               </p>
