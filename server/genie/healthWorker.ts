@@ -3,6 +3,7 @@ import { runGenieOperationWatchdog } from "./operationWatchdog";
 import { processNextOutlookInbound } from "../communications/outlookInboundQueue";
 import { startCompanyKnowledgeWorker } from "../companyKnowledgeJobs";
 import { startAutomaticCommissioningWorker } from "../crm/automaticCommissioning";
+import { startPersonalWorkLearningWorker } from "../personalWorkLearning";
 
 const intervalMs = Number(
   process.env.CRM_HEALTH_INTERVAL_MS || 12 * 60 * 60 * 1000
@@ -66,6 +67,7 @@ setInterval(
 
 startCompanyKnowledgeWorker();
 startAutomaticCommissioningWorker();
+startPersonalWorkLearningWorker();
 
 process.on("SIGTERM", () => process.exit(0));
 process.on("SIGINT", () => process.exit(0));
