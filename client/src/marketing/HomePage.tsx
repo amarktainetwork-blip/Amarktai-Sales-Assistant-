@@ -3,9 +3,9 @@ import { Link } from "wouter";
 import { MarketingLayout } from "./MarketingLayout";
 import { accountLinks } from "./site";
 
-const HERO_PHOTO = "https://images.pexels.com/photos/8485714/pexels-photo-8485714.jpeg?auto=compress&cs=tinysrgb&w=1800";
-const CALL_PHOTO = "https://images.pexels.com/photos/8837498/pexels-photo-8837498.jpeg?auto=compress&cs=tinysrgb&w=1800";
-const TEAM_PHOTO = "https://images.pexels.com/photos/8297352/pexels-photo-8297352.jpeg?auto=compress&cs=tinysrgb&w=1800";
+const HERO_PHOTO = "https://images.pexels.com/photos/19795928/pexels-photo-19795928.jpeg?auto=compress&cs=tinysrgb&w=1800";
+const CALL_PHOTO = "https://images.pexels.com/photos/14596539/pexels-photo-14596539.jpeg?auto=compress&cs=tinysrgb&w=1800";
+const TEAM_PHOTO = "https://images.pexels.com/photos/12899159/pexels-photo-12899159.jpeg?auto=compress&cs=tinysrgb&w=1800";
 
 const amarktaiDifference = [
   ["01", "It learns your business", "Amarktai starts with approved company knowledge so the Assistant understands what you sell, who it is for and the context your team should use."],
