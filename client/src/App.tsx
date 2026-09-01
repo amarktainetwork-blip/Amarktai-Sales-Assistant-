@@ -10,8 +10,6 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { DashboardLayoutSkeleton } from "./components/DashboardLayoutSkeleton";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import "./dashboard-final.css";
-import "./dashboard-client-readability.css";
-import "./final-release.css";
 import AboutPage from "./marketing/AboutPage";
 import ContactPage from "./marketing/ContactPage";
 import {
