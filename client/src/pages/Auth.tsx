@@ -15,7 +15,7 @@ import { Link, useLocation } from "wouter";
 import "./final-auth.css";
 
 const AUTH_PHOTO =
-  "https://images.pexels.com/photos/7679563/pexels-photo-7679563.jpeg?cs=srgb&dl=pexels-mikhail-nilov-7679563.jpg&fm=jpg";
+  "https://images.pexels.com/photos/8485714/pexels-photo-8485714.jpeg?auto=compress&cs=tinysrgb&w=1800";
 
 export default function Auth() {
   const mode = trpc.auth.mode.useQuery();
@@ -56,7 +56,7 @@ export default function Auth() {
       <section className="amk-auth__visual">
         <img
           src={AUTH_PHOTO}
-          alt="Sales professionals collaborating with technology in a bright office"
+          alt="Professional saleswoman working in a bright modern office"
         />
         <div className="amk-auth__shade" />
         <div className="amk-auth__visual-inner">
@@ -259,14 +259,14 @@ function LocalRegistrationForm() {
       </p>
       <Field
         name="register-name"
-        label="Name"
+        label="Your name"
         value={name}
         onChange={setName}
         autoComplete="name"
       />
       <Field
         name="register-email"
-        label="Email"
+        label="Work email"
         value={email}
         onChange={setEmail}
         type="email"
@@ -280,17 +280,74 @@ function LocalRegistrationForm() {
         type="password"
         autoComplete="new-password"
       />
-      <button disabled={register.isPending} className="amk-auth__primary">
-        {register.isPending ? "Creating…" : "Create account"}{" "}
+      <button
+        type="submit"
+        disabled={register.isPending}
+        className="amk-auth__primary"
+      >
+        {register.isPending ? "Creating account…" : "Create account"}
         <ArrowRight size={17} />
       </button>
+      <p className="amk-auth__switch">
+        Already have an account? <Link href="/auth">Sign in</Link>
+      </p>
+      <Fineprint />
+    </form>
+  );
+}
+
+function LocalLoginForm({ initialEmail = "" }: { initialEmail?: string }) {
+  const [, navigate] = useLocation();
+  const [email, setEmail] = useState(initialEmail);
+  const [password, setPassword] = useState("");
+  const login = trpc.auth.login.useMutation({
+    onSuccess: () => navigate("/dashboard"),
+    onError: error =>
+      toast.error(
+        friendlyError(
+          error,
+          "Sign in was not accepted. Check your email and password and try again."
+        )
+      ),
+  });
+
+  return (
+    <form
+      onSubmit={event => {
+        event.preventDefault();
+        login.mutate({ email, password });
+      }}
+      className="amk-auth-form"
+    >
+      <Field
+        name="login-email"
+        label="Email address"
+        value={email}
+        onChange={setEmail}
+        type="email"
+        autoComplete="email"
+      />
+      <Field
+        name="login-password"
+        label="Password"
+        value={password}
+        onChange={setPassword}
+        type="password"
+        autoComplete="current-password"
+      />
+      <div className="amk-auth__forgot-row">
+        <Link href="/auth?mode=forgot">Forgot password?</Link>
+      </div>
       <button
-        type="button"
-        onClick={() => navigate("/auth")}
-        className="amk-auth__link"
+        type="submit"
+        disabled={login.isPending}
+        className="amk-auth__primary"
       >
-        Already have an account? Sign in
+        {login.isPending ? "Signing in…" : "Sign in"} <ArrowRight size={17} />
       </button>
+      <p className="amk-auth__switch">
+        New to Amarktai? <Link href="/auth?mode=register">Create an account</Link>
+      </p>
       <Fineprint />
     </form>
   );
@@ -299,52 +356,64 @@ function LocalRegistrationForm() {
 function PasswordRecoveryForm() {
   const [, navigate] = useLocation();
   const [email, setEmail] = useState("");
-  const request = trpc.auth.requestPasswordReset.useMutation({
-    onSuccess: () => {
-      toast.success(
-        "If that account is eligible, a recovery link has been sent."
-      );
-      navigate("/auth");
-    },
-    onError: () => {
-      toast.success(
-        "If that account is eligible, a recovery link has been sent."
-      );
-      navigate("/auth");
-    },
+  const [sent, setSent] = useState(false);
+  const recovery = trpc.auth.requestPasswordReset.useMutation({
+    onSuccess: () => setSent(true),
+    onError: error =>
+      toast.error(
+        friendlyError(
+          error,
+          "The recovery request could not be completed. Try again shortly."
+        )
+      ),
   });
+
+  if (sent)
+    return (
+      <>
+        <p className="amk-auth__muted">
+          If that address belongs to an Amarktai account, a recovery link has
+          been sent. Check your inbox and spam folder.
+        </p>
+        <button
+          className="amk-auth__secondary"
+          onClick={() => navigate("/auth")}
+        >
+          Back to sign in
+        </button>
+      </>
+    );
 
   return (
     <form
       onSubmit={event => {
         event.preventDefault();
-        request.mutate({ email });
+        recovery.mutate({ email });
       }}
       className="amk-auth-form"
     >
       <p className="amk-auth__muted">
-        Enter your email. If the account is eligible, a short-lived recovery
-        link will be sent.
+        Enter your account email. If it matches an account, we’ll send a
+        short-lived reset link.
       </p>
       <Field
         name="recovery-email"
-        label="Email"
+        label="Account email"
         value={email}
         onChange={setEmail}
         type="email"
         autoComplete="email"
       />
-      <button disabled={request.isPending} className="amk-auth__primary">
-        {request.isPending ? "Requesting…" : "Send recovery link"}{" "}
-        <ArrowRight size={17} />
-      </button>
       <button
-        type="button"
-        onClick={() => navigate("/auth")}
-        className="amk-auth__link"
+        type="submit"
+        disabled={recovery.isPending}
+        className="amk-auth__primary"
       >
-        Back to sign in
+        {recovery.isPending ? "Sending…" : "Send recovery link"}
       </button>
+      <p className="amk-auth__switch">
+        <Link href="/auth">Back to sign in</Link>
+      </p>
       <Fineprint />
     </form>
   );
@@ -356,14 +425,15 @@ function ResetPasswordForm({ token }: { token: string }) {
   const [confirm, setConfirm] = useState("");
   const reset = trpc.auth.resetPassword.useMutation({
     onSuccess: () => {
-      toast.success("Password reset. Complete access verification to continue.");
-      navigate("/dashboard");
+      toast.success("Password updated. Sign in with your new password.");
+      window.history.replaceState({}, "", "/auth");
+      navigate("/auth");
     },
     onError: error =>
       toast.error(
         friendlyError(
           error,
-          "Your password could not be reset. The recovery link may have expired; request a new one and try again."
+          "That reset link could not be used. Request a fresh recovery link and try again."
         )
       ),
   });
@@ -378,10 +448,6 @@ function ResetPasswordForm({ token }: { token: string }) {
       }}
       className="amk-auth-form"
     >
-      <p className="amk-auth__muted">
-        Choose a new password. This recovery link expires after 30 minutes and
-        becomes invalid once used.
-      </p>
       <Field
         name="reset-password"
         label="New password"
@@ -398,81 +464,13 @@ function ResetPasswordForm({ token }: { token: string }) {
         type="password"
         autoComplete="new-password"
       />
-      <button disabled={reset.isPending} className="amk-auth__primary">
-        {reset.isPending ? "Resetting…" : "Reset password"}{" "}
-        <ArrowRight size={17} />
-      </button>
-      <Fineprint />
-    </form>
-  );
-}
-
-function LocalLoginForm({ initialEmail = "" }: { initialEmail?: string }) {
-  const [, navigate] = useLocation();
-  const [email, setEmail] = useState(initialEmail);
-  const [password, setPassword] = useState("");
-  const login = trpc.auth.localLogin.useMutation({
-    onSuccess: () => {
-      toast.success("Signed in. Complete access verification to continue.");
-      navigate("/dashboard");
-    },
-    onError: error =>
-      toast.error(
-        friendlyError(
-          error,
-          "Sign-in was not successful. Check your email and password and try again."
-        )
-      ),
-  });
-
-  return (
-    <form
-      onSubmit={event => {
-        event.preventDefault();
-        login.mutate({ email, password });
-      }}
-      className="amk-auth-form"
-    >
-      <Field
-        name="login-email"
-        label="Email"
-        value={email}
-        onChange={setEmail}
-        type="email"
-        autoComplete="email"
-      />
-      <Field
-        name="login-password"
-        label="Password"
-        value={password}
-        onChange={setPassword}
-        type="password"
-        autoComplete="current-password"
-      />
       <button
         type="submit"
-        disabled={login.isPending}
+        disabled={reset.isPending}
         className="amk-auth__primary"
       >
-        {login.isPending ? "Signing in…" : "Open Amarktai Sales Assistant"}{" "}
-        <ArrowRight size={17} />
+        {reset.isPending ? "Updating…" : "Update password"}
       </button>
-      <div className="amk-auth__links">
-        <button
-          type="button"
-          onClick={() => navigate("/auth?mode=forgot")}
-          className="amk-auth__link"
-        >
-          Forgot password?
-        </button>
-        <button
-          type="button"
-          onClick={() => navigate("/auth?mode=register")}
-          className="amk-auth__link"
-        >
-          Create account
-        </button>
-      </div>
       <Fineprint />
     </form>
   );
@@ -493,19 +491,17 @@ function Field({
   type?: string;
   autoComplete?: string;
 }) {
-  const id = `auth-${name}`;
   return (
-    <label className="amk-auth-field" htmlFor={id}>
+    <label className="amk-auth-field" htmlFor={name}>
       <span>{label}</span>
       <input
-        id={id}
+        id={name}
         name={name}
         type={type}
-        autoComplete={autoComplete}
-        required
-        minLength={type === "password" ? 12 : undefined}
         value={value}
         onChange={event => onChange(event.target.value)}
+        autoComplete={autoComplete}
+        required
       />
     </label>
   );
@@ -514,7 +510,7 @@ function Field({
 function Fineprint() {
   return (
     <p className="amk-auth__fineprint">
-      Your Amarktai account is protected separately from any CRM sign-in.
+      By continuing, you agree to the Amarktai Network Terms and Privacy Policy.
     </p>
   );
 }
