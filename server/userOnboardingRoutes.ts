@@ -256,7 +256,7 @@ export function registerUserOnboardingRoutes(app: Express) {
         );
       if (current.mailbox.configured && !current.mailbox.connected)
         throw new Error(
-          "Connect your personal Microsoft mailbox before completing onboarding."
+          "Connect your personal mailbox before completing onboarding."
         );
 
       // Company setup is shared. New team members inherit it; they do not repeat
