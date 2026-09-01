@@ -178,3 +178,86 @@ body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] main > div >
   .amk-site main::before,
   .amk-site main::after { opacity: .65; }
 }
+
+/* Authenticated client-day brand correction.
+ * dashboard-final.css deliberately normalised the old dark dashboard to a light
+ * shell, but that also erased the Amarktai navigation hierarchy. This final
+ * layer restores one unmistakable branded sidebar while keeping the work area
+ * calm and readable. */
+body:has([data-slot="sidebar-wrapper"]) {
+  --dash-canvas: #f3f6fb;
+  --dash-blue: #2f6fed;
+  --dash-blue-dark: #2459c2;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="sidebar"],
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-container"] {
+  background: #0b1b36 !important;
+  color: #ffffff !important;
+  border-color: #1b2b44 !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="header"],
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="footer"] {
+  border-color: rgba(255,255,255,.10) !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="header"] {
+  min-height: 76px !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="header"] .text-white,
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="header"] [class*="text-white/"] {
+  color: #ffffff !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="menu-button"] {
+  color: #d7e2f0 !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="menu-button"]:hover {
+  background: rgba(255,255,255,.08) !important;
+  color: #ffffff !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="menu-button"][data-active="true"] {
+  background: #2f6fed !important;
+  color: #ffffff !important;
+  box-shadow: inset 3px 0 0 #9fc2ff !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="content"] > div[class*="border-white"],
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="content"] > label[class*="border-white"] {
+  background: rgba(255,255,255,.06) !important;
+  color: #ffffff !important;
+  border-color: rgba(255,255,255,.14) !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="content"] .text-white,
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="content"] [class*="text-[#D7E0EA]"],
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="content"] [class*="text-[#CFD8E3]"] {
+  color: #ffffff !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="content"] select {
+  color: #ffffff !important;
+  background: transparent !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="content"] option {
+  color: #203047 !important;
+  background: #ffffff !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="footer"] > div {
+  background: rgba(255,255,255,.06) !important;
+  border: 1px solid rgba(255,255,255,.08) !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="footer"] button,
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="footer"] .text-white {
+  color: #ffffff !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="footer"] [class*="text-[#AFC0D7]"] {
+  color: #afc0d7 !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="footer"] [class*="bg-[#17335E]"] {
+  background: #17335e !important;
+  color: #ffffff !important;
+  border-color: rgba(255,255,255,.14) !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"],
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] > main {
+  background: #f3f6fb !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] input::placeholder,
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] textarea::placeholder {
+  color: #75849a !important;
+}

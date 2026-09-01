@@ -17,7 +17,7 @@ describe("final dashboard information architecture", () => {
     expect(app).not.toContain('import "./dashboard-handover.css"');
   });
 
-  it("keeps daily sales work simple and moves configuration into Settings", () => {
+  it("keeps daily sales work simple while keeping manager CRM access visible", () => {
     const layout = readFileSync(
       path.resolve("client/src/components/DashboardLayout.tsx"),
       "utf8"
@@ -31,8 +31,9 @@ describe("final dashboard information architecture", () => {
     for (const label of ["Home", "Customers", "Calls", "Assistant"]) {
       expect(layout).toContain(`label: "${label}"`);
     }
+    expect(layout).toContain('label: "CRM"');
+    expect(layout).toContain('path: "/connections"');
     expect(layout).toContain('label: "Settings"');
-    expect(layout).not.toContain('label: "CRM"');
     expect(layout).not.toContain('label: "Connections"');
     expect(layout).not.toContain('label: "Knowledge"');
     expect(layout).not.toContain('label: "Company"');
@@ -40,6 +41,8 @@ describe("final dashboard information architecture", () => {
     expect(layout).not.toContain('label: "Automation"');
     expect(layout).not.toContain('label: "Reports"');
     expect(layout).not.toContain('label: "Approvals"');
+    expect(layout).not.toContain("DropdownMenuContent");
+    expect(layout).toContain('aria-label="Sign out"');
 
     expect(app).toContain('<Route path="/dashboard" component={Today} />');
     expect(app).toContain('<Route path="/settings">');
@@ -50,7 +53,7 @@ describe("final dashboard information architecture", () => {
     expect(settings).toContain('title="Team members"');
   });
 
-  it("uses a light neutral workspace palette with explicit high-contrast status and selected states", () => {
+  it("uses branded navigation with explicit high-contrast status and error states", () => {
     const css = readFileSync(
       path.resolve("client/src/dashboard-final.css"),
       "utf8"
@@ -72,9 +75,14 @@ describe("final dashboard information architecture", () => {
     expect(css).toContain("--dash-paper: #ffffff");
     expect(css).toContain("--dash-ink: #203047");
     expect(css).toContain("--dash-blue: #2f6fed");
-    expect(css).toContain("background: #fbfcfd !important");
     expect(css).toContain('[class*="whitespace-pre-wrap"]');
     expect(css).toContain("input::placeholder");
+
+    expect(finalRelease).toContain("background: #0b1b36 !important");
+    expect(finalRelease).toContain("background: #2f6fed !important");
+    expect(finalRelease).toContain("color: #ffffff !important");
+    expect(finalRelease).toContain('data-type="error"');
+    expect(finalRelease).toContain("background: #991b1b !important");
 
     expect(feedback).toContain("data-workflow-feedback={state.kind}");
     expect(feedback).toContain("bg-blue-50 text-blue-950");
@@ -83,8 +91,5 @@ describe("final dashboard information architecture", () => {
     expect(readability).toContain('[data-workflow-feedback="loading"]');
     expect(readability).toContain("nav .bg-stone-900");
     expect(readability).toContain("color: #ffffff !important");
-    expect(finalRelease).toContain('data-type="error"');
-    expect(finalRelease).toContain("background: #991b1b !important");
-    expect(finalRelease).toContain("color: #ffffff !important");
   });
 });
