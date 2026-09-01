@@ -10,14 +10,25 @@ describe("CRM viewer input normalization", () => {
     expect(normalizeCrmWheelDelta(-100, 2, 700)).toBe(-1500);
   });
 
-  it("keeps the remote CRM in a usable desktop viewport without shrinking large screens", () => {
+  it("matches ordinary CRM panels instead of forcing a wider minimum desktop", () => {
     expect(crmDesktopViewport({ width: 720, height: 500 })).toEqual({
-      width: 1024,
-      height: 640,
+      width: 720,
+      height: 520,
     });
     expect(crmDesktopViewport({ width: 1440, height: 900 })).toEqual({
       width: 1440,
       height: 900,
+    });
+  });
+
+  it("bounds extreme sizes to a stable remote browser envelope", () => {
+    expect(crmDesktopViewport({ width: 320, height: 300 })).toEqual({
+      width: 640,
+      height: 520,
+    });
+    expect(crmDesktopViewport({ width: 2400, height: 1800 })).toEqual({
+      width: 1600,
+      height: 1000,
     });
   });
 });
