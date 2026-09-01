@@ -17,7 +17,10 @@ const setup = [
 export function HowItWorksPage() {
   return (
     <MarketingLayout>
-      <section className="amk-page-hero">
+      <section
+        className="amk-page-hero"
+        style={{ paddingTop: "clamp(118px, 10vw, 154px)" }}
+      >
         <div className="amk-shell amk-page-hero__grid">
           <div>
             <p className="amk-eyebrow">HOW IT WORKS</p>
