@@ -21,12 +21,13 @@ describe("authenticated CRM commissioning recovery", () => {
     ).toBe("resume");
   });
 
-  it("may recover a needs-attention job only while it is still read-only", () => {
+  it("may recover a needs-attention job while it is read-only or after terminal core-readiness failure", () => {
     for (const state of [
       "AUTHENTICATE",
       "DISCOVER_NAVIGATION",
       "DISCOVER_CAPABILITIES",
       "TEST_SAFE_READS",
+      "READY",
     ] as const) {
       expect(
         commissioningRecoveryAction({ status: "needs_attention", state })
@@ -34,13 +35,12 @@ describe("authenticated CRM commissioning recovery", () => {
     }
   });
 
-  it("never restarts approval, controlled writes, readback, publication or ready state from browser reopen", () => {
+  it("never restarts approval, controlled writes, readback or publication from browser reopen", () => {
     for (const state of [
       "AWAIT_SAFE_TEST_RECORD",
       "TEST_CONTROLLED_WRITES",
       "VERIFY_READBACK",
       "PUBLISH_PROVEN_OPERATIONS",
-      "READY",
     ] as const) {
       expect(
         commissioningRecoveryAction({ status: "needs_attention", state })
