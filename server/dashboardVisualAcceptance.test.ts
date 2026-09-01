@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 describe("final dashboard information architecture", () => {
@@ -13,6 +13,13 @@ describe("final dashboard information architecture", () => {
     expect(app).not.toContain('import "./dashboard-v2.css"');
     expect(app).not.toContain('import "./dashboard-v3.css"');
     expect(app).not.toContain('import "./dashboard-handover.css"');
+    for (const obsolete of [
+      "dashboard-v2.css",
+      "dashboard-v3.css",
+      "dashboard-v6.css",
+      "dashboard-handover.css",
+    ])
+      expect(existsSync(path.resolve("client/src", obsolete))).toBe(false);
   });
 
   it("keeps daily sales work simple while keeping manager CRM access visible", () => {
@@ -109,9 +116,11 @@ describe("final dashboard information architecture", () => {
     expect(css).toContain('[class*="whitespace-pre-wrap"]');
     expect(css).toContain("input::placeholder");
 
-    expect(layout).toContain('bg-white text-[#26354A]');
-    expect(layout).toContain('bg-[#EAF1FF] text-[#2459C2]');
-    expect(layout).not.toContain('className="border-r border-[#1B2B44] bg-[#0B1B36] text-white"');
+    expect(layout).toContain("bg-white text-[#26354A]");
+    expect(layout).toContain("bg-[#EAF1FF] text-[#2459C2]");
+    expect(layout).not.toContain(
+      'className="border-r border-[#1B2B44] bg-[#0B1B36] text-white"'
+    );
     expect(layout).not.toContain("bg-white/[.06]");
 
     expect(feedback).toContain("data-workflow-feedback={state.kind}");

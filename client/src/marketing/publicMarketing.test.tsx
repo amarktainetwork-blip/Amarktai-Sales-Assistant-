@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import React from "react";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { Router } from "wouter";
@@ -210,6 +210,15 @@ describe("final public website", () => {
     expect(css).toContain("min-width: 320px");
     expect(css).toContain("overflow: clip");
     expect(css).toContain("prefers-reduced-motion: reduce");
+    expect(css).toContain(".amk-auth");
+    expect(
+      existsSync(path.resolve(process.cwd(), "client/src/pages/final-auth.css"))
+    ).toBe(false);
+    expect(
+      existsSync(
+        path.resolve(process.cwd(), "client/src/marketing/visual-handover.css")
+      )
+    ).toBe(false);
 
     const app = readFileSync(
       path.resolve(process.cwd(), "client/src/App.tsx"),

@@ -87,7 +87,7 @@ Supported native OAuth adapters: **HubSpot, Salesforce, Pipedrive and Zoho CRM**
 
 **Genie** and **Other CRM** use the deterministic browser connector. Every browser CRM must have an authorised hostname/path and a calibrated reviewed profile before it is marked ready.
 
-Microsoft 365 / Outlook is optional. Configure `OUTLOOK_TENANT_ID`, `OUTLOOK_CLIENT_ID`, `OUTLOOK_CLIENT_SECRET` and `OUTLOOK_SENDER_EMAIL`; `OUTBOUND_EMAIL_PROVIDER=auto` prefers Outlook for reviewed outbound sales email once configured. Approved calendar actions use Microsoft Graph.
+Personal mailbox/calendar support is optional. Microsoft 365 is the first adapter and uses per-user delegated OAuth. Register `https://YOUR_DOMAIN/api/mailbox/microsoft/callback`, then configure all of `OUTLOOK_DELEGATED_TENANT_ID`, `OUTLOOK_DELEGATED_CLIENT_ID`, `OUTLOOK_DELEGATED_CLIENT_SECRET` and `OUTLOOK_DELEGATED_REDIRECT_URI`. There is no shared sender mailbox or application-permission mail path. SMTP remains platform mail only.
 
 STT, SMS and WhatsApp can be commissioned after the core application is healthy. Their absence does not prevent the core Sales Assistant from starting; they remain visibly unavailable until configured and verified.
 
@@ -133,9 +133,9 @@ The installer creates `deploy/webdock/config/genie-scripts.json` from the generi
 
 Browser navigation is restricted to the connection's authorised domain/path and private/local network destinations are blocked. Evidence is retained under `deploy/webdock/files/connector-evidence/`.
 
-## 9. Outlook
+## 9. Personal Microsoft mailbox
 
-After Graph credentials are entered, the integration verifier obtains a real Microsoft token. Commission with a controlled test mailbox/account, then verify one reviewed email and one reviewed calendar event. Do not call Outlook live merely because the four environment fields are populated.
+After delegated OAuth is configured, each user connects and consents to their own Microsoft account in Amarktai. Verify that the stored connection belongs to the exact user and organisation, then use a controlled account to accept one reviewed email and one reviewed calendar event. Configuration is only adapter availability; do not call the mailbox live until user consent, safe inbox sync and both reviewed actions are evidenced.
 
 ## 10. Live Call Companion
 
@@ -222,4 +222,4 @@ Minimum handover proof:
 - management/report email delivered;
 - backup created and checksum verified.
 
-Optional Outlook/STT/SMS/WhatsApp require their own authorised acceptance before they are labelled live.
+Optional delegated mailbox/STT/SMS/WhatsApp capabilities require their own authorised acceptance before they are labelled live.

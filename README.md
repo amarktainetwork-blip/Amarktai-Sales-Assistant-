@@ -1,12 +1,20 @@
 # Amarktai Sales Assistant
 
-Amarktai Sales Assistant is a self-hosted, multi-tenant sales operating layer for Webdock. It combines approved company knowledge, CRM context, review-first automation, sales/team intelligence, live-call support and audited external actions without giving AI an unreviewed path to customer systems.
+Amarktai Sales Assistant is a self-hosted, multi-tenant sales operating layer for Webdock. It combines approved company knowledge, CRM context, conversation history and a confirmed next action so each sales workflow has one grounded source of truth. External writes remain review-controlled, idempotent and auditable.
+
+## Source-of-truth rules
+
+- This repository is the only source for application code, migrations, deployment automation and operator documentation. Do not maintain parallel release folders or copy production code out of Git.
+- `main` is deployable only at an exact SHA whose CI and Connection-Scoped Browser Sessions workflow are green. Production runs that SHA from `/opt/amarktai-sales` with `deploy/webdock/docker-compose.yml`.
+- Approved organisation knowledge is the business-context source; normalized CRM records are customer/pipeline truth; conversation history records what happened; a confirmed next action records what should happen next.
+- `connectedSystems` and backend capability verification are connection truth. A configured environment variable, an OAuth redirect or a customer confirmation alone is never proof that a provider is live.
+- Generated drafts and recommendations are proposals. Only accepted, correlation-bound actions may execute, and their evidence remains in the audit trail.
 
 ## Supported connections
 
 Native OAuth adapters are included for **HubSpot, Salesforce, Pipedrive and Zoho CRM**. **Genie** and other authorised web CRMs use the deterministic browser connector. The **Other CRM** path is designed for a company CRM that has a usable web interface but no dedicated Amarktai API adapter; selectors and operations must be calibrated and verified before the connection can become ready.
 
-Microsoft 365 / Outlook is optional. When the approved tenant/application is configured, reviewed sales email can use Microsoft Graph and approved `create_calendar_event` actions can create Outlook calendar events. SMTP remains mandatory for login second factor, password recovery, invitations and reports.
+Personal mailbox/calendar support is optional. Microsoft 365 is the first adapter and uses per-user delegated OAuth: every user connects and consents to their own account. There is no deployment-level shared sender or application-permission mailbox path. Reviewed email and calendar actions keep the same approval, ownership and evidence boundary. SMTP is reserved for platform mail: login second factor, password recovery, invitations and reports.
 
 No CRM, mailbox, calendar, SMS, WhatsApp or speech provider is represented as live merely because environment variables exist. Backend verification/capability results are the readiness source of truth.
 
@@ -20,7 +28,7 @@ No CRM, mailbox, calendar, SMS, WhatsApp or speech provider is represented as li
 - GenX-backed specialist sales agents grounded in confirmed company knowledge.
 - Today workspace, pipeline/team intelligence, targets, management reporting and protected exports.
 - Live Call Companion with explicit microphone/consent flow and optional OpenAI-compatible STT.
-- Approved email/SMS/WhatsApp proposals, Microsoft 365 mail/calendar support and CRM logging.
+- Approved email/SMS/WhatsApp proposals, delegated personal mailbox/calendar support and CRM logging.
 - AI-credit accounting with concurrency-safe debits and monthly allowance grants.
 - Self-hosted Webdock package with Caddy, MariaDB, Valkey and internal Chromium/CDP.
 
@@ -63,7 +71,9 @@ The guided installer:
 - runs the internal smoke test automatically;
 - prints the exact public production-verifier command for the chosen domain.
 
-Optional HubSpot/Salesforce/Pipedrive/Zoho, Outlook, STT, SMS and WhatsApp credentials can be added after the core installation without rebuilding the product.
+Optional HubSpot/Salesforce/Pipedrive/Zoho, delegated Microsoft mailbox, STT, SMS and WhatsApp configuration can be added after the core installation without rebuilding the product.
+
+For delegated Microsoft mailbox/calendar support, register `${APP_PUBLIC_URL}/api/mailbox/microsoft/callback` and configure all four values together: `OUTLOOK_DELEGATED_TENANT_ID`, `OUTLOOK_DELEGATED_CLIENT_ID`, `OUTLOOK_DELEGATED_CLIENT_SECRET` and `OUTLOOK_DELEGATED_REDIRECT_URI`. Each user must then connect their own account in Amarktai; configuration alone is not consent or readiness. Provider expansion belongs behind the same personal-mailbox contract (tracked in Issue #89), not in another shared authentication or sender system.
 
 For a smaller pilot using an authorised external Playwright-compatible CDP endpoint:
 
@@ -105,6 +115,8 @@ sh deploy/webdock/verify-client-acceptance.sh
 ```
 
 A client handover requires the customer to authenticate directly in the Secure CRM Browser and, after live commissioning, `CLIENT_ACCEPTANCE=PASS`. A platform-ready deployment is not a claim that client acceptance is complete.
+
+Company learning runs as a governed organisation background job or explicit manager action. Discovered material is source-linked and remains unapproved until a manager confirms it; the system must never silently replace approved knowledge. Secure CRM Browser state is scoped to organisation, connection and user. Customers enter passwords, SSO and MFA only on the provider page; Amarktai does not collect those credentials.
 
 To probe fresh public-website discovery without storing or approving knowledge, run the operator-only diagnostic inside the deployed app image:
 
@@ -160,5 +172,9 @@ pnpm audit --prod --audit-level=high
 ```
 
 CI additionally validates migration-generation cleanliness, all deployment shell scripts, full/pilot Compose definitions, production Docker builds/runtime contents, removal of hosted preview/runtime dependencies and Git diff sanity.
+
+Before every deployment, record the current production SHA, create and checksum a backup, fast-forward to the exact green `main` SHA, rebuild with the same Compose profile, migrate, smoke-test and run the production verifier. Roll back only with the prior verified SHA and its matching pre-update database backup.
+
+The post-handover roadmap is intentionally additive: more personal-mailbox adapters behind the delegated user-owned contract, more CRM presets behind the existing connection truth model, and richer governed sales workflows. It must not introduce parallel authentication, shared customer mailboxes, duplicate dashboards or another deployment source.
 
 See [`docs/webdock-vps-install.md`](docs/webdock-vps-install.md) for operator details and [`docs/implementation-status.md`](docs/implementation-status.md) for the evidence boundary between repository-complete and live-provider commissioned behavior.

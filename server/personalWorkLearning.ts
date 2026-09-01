@@ -5,19 +5,12 @@ import {
   userMailboxConnections,
 } from "../drizzle/schema";
 import { getDb, recordAudit } from "./db";
-import { delegatedMailboxReadiness } from "./delegatedMailbox";
+import {
+  delegatedMicrosoftGraphRequest,
+  getDelegatedMailboxAccess,
+} from "./delegatedMailbox";
 import { runGenxAgent } from "./genx";
 import { createAssistantMemory, isSafeAssistantMemory } from "./memory";
-import {
-  decryptConnectionSecret,
-  encryptConnectionSecret,
-} from "./security/connectionSecrets";
-
-type StoredMailboxTokens = {
-  accessToken: string;
-  refreshToken: string;
-  scope: string;
-};
 
 type GraphSentMessage = {
   id?: string;
@@ -91,7 +84,10 @@ export function redactStyleEvidence(value: string) {
     .replace(/https?:\/\/\S+/gi, "[link]")
     .replace(/\b(?:\+?\d[\d .()/-]{7,}\d)\b/g, "[number]")
     .replace(/\b\d{5,}\b/g, "[number]")
-    .replace(/\b(?:password|passcode|pin|otp|mfa code|verification code|access token|refresh token|api key|client secret)\s*[:=-]?\s*\S+/gi, "[redacted]")
+    .replace(
+      /\b(?:password|passcode|pin|otp|mfa code|verification code|access token|refresh token|api key|client secret)\s*[:=-]?\s*\S+/gi,
+      "[redacted]"
+    )
     .trim();
 }
 
@@ -144,114 +140,46 @@ function protectedDraftLiterals(value: string) {
 }
 
 /** A style-only rewrite may not remove or introduce protected factual literals. */
-export function rewritePreservesProtectedLiterals(original: string, rewrite: string) {
+export function rewritePreservesProtectedLiterals(
+  original: string,
+  rewrite: string
+) {
   const before = protectedDraftLiterals(original);
   const after = protectedDraftLiterals(rewrite);
   if (before.size !== after.size) return false;
   return Array.from(before).every(value => after.has(value));
 }
 
-async function microsoftTokenRequest(body: URLSearchParams) {
-  const config = delegatedMailboxReadiness();
-  if (
-    !config.ready ||
-    !config.tenantId ||
-    !config.clientId ||
-    !config.clientSecret
-  )
-    throw new Error("Personal Microsoft mailbox connection is not configured.");
-  body.set("client_id", config.clientId);
-  body.set("client_secret", config.clientSecret);
-  const response = await fetch(
-    `https://login.microsoftonline.com/${encodeURIComponent(config.tenantId)}/oauth2/v2.0/token`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body,
-      signal: AbortSignal.timeout(15_000),
-    }
-  );
-  if (!response.ok)
-    throw new Error("Microsoft did not refresh delegated mailbox access.");
-  const result = (await response.json().catch(() => ({}))) as {
-    access_token?: string;
-    refresh_token?: string;
-    expires_in?: number;
-    scope?: string;
-  };
-  if (!result.access_token)
-    throw new Error("Microsoft did not return delegated mailbox access.");
-  return result;
-}
-
 async function accessTokenForLearning(
   mailbox: typeof userMailboxConnections.$inferSelect
 ) {
-  const tokens = decryptConnectionSecret<StoredMailboxTokens>(mailbox);
-  if (mailbox.expiresAt && mailbox.expiresAt.valueOf() > Date.now() + 60_000)
-    return tokens.accessToken;
-  if (!tokens.refreshToken)
-    throw new Error("The Microsoft mailbox needs to be reconnected.");
-  const token = await microsoftTokenRequest(
-    new URLSearchParams({
-      grant_type: "refresh_token",
-      refresh_token: tokens.refreshToken,
-      scope:
-        tokens.scope ||
-        "openid profile email offline_access User.Read Mail.Read Mail.Send",
+  return (
+    await getDelegatedMailboxAccess({
+      userId: mailbox.userId,
+      organisationId: mailbox.organisationId,
     })
-  );
-  const db = await dbOrThrow();
-  await db
-    .update(userMailboxConnections)
-    .set({
-      ...encryptConnectionSecret({
-        accessToken: token.access_token,
-        refreshToken: token.refresh_token || tokens.refreshToken,
-        scope: token.scope || tokens.scope,
-      }),
-      expiresAt: new Date(
-        Date.now() + Math.max(60, token.expires_in || 3600) * 1000
-      ),
-      status: "ready",
-    })
-    .where(eq(userMailboxConnections.id, mailbox.id));
-  return token.access_token!;
+  ).accessToken;
 }
 
 async function graphGet<T>(accessToken: string, pathOrUrl: string) {
-  const url = /^https:\/\//i.test(pathOrUrl)
-    ? pathOrUrl
-    : `https://graph.microsoft.com/v1.0${pathOrUrl}`;
-  if (!url.startsWith("https://graph.microsoft.com/"))
-    throw new Error("Microsoft paging returned an unexpected host.");
-  const response = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      Accept: "application/json",
-      Prefer: 'outlook.body-content-type="text"',
-    },
-    signal: AbortSignal.timeout(15_000),
+  return delegatedMicrosoftGraphRequest<T>(accessToken, pathOrUrl, {
+    headers: { Prefer: 'outlook.body-content-type="text"' },
   });
-  if (!response.ok)
-    throw new Error(
-      `Microsoft mailbox learning request failed (${response.status}).`
-    );
-  return (await response.json()) as T;
 }
 
 async function recentSentMessages(accessToken: string) {
   const query = new URLSearchParams({
     $top: "25",
     $orderby: "sentDateTime desc",
-    $select:
-      "id,subject,bodyPreview,body,sentDateTime,internetMessageHeaders",
+    $select: "id,subject,bodyPreview,body,sentDateTime,internetMessageHeaders",
   });
-  let next: string | undefined = `/me/mailFolders/sentitems/messages?${query.toString()}`;
+  let next: string | undefined =
+    `/me/mailFolders/sentitems/messages?${query.toString()}`;
   const messages: GraphSentMessage[] = [];
   while (next && messages.length < MAX_SENT_MESSAGES) {
-    const page: GraphPage<GraphSentMessage> =
-      await graphGet<GraphPage<GraphSentMessage>>(accessToken, next);
+    const page: GraphPage<GraphSentMessage> = await graphGet<
+      GraphPage<GraphSentMessage>
+    >(accessToken, next);
     messages.push(...(page.value || []));
     next = page["@odata.nextLink"];
   }
@@ -302,7 +230,10 @@ export async function learnPersonalEmailStyle(input: {
     previous?.occurredAt &&
     previous.occurredAt.valueOf() >= newestSentAt.valueOf()
   )
-    return { learned: false as const, reason: "no_new_user_sent_mail" as const };
+    return {
+      learned: false as const,
+      reason: "no_new_user_sent_mail" as const,
+    };
 
   const samples: string[] = [];
   let characters = 0;

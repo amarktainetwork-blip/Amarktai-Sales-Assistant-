@@ -2139,6 +2139,8 @@ export const inboundMessages = mysqlTable(
 );
 
 /** Durable, idempotent Microsoft Graph notification intake queue. */
+// Legacy table retained solely for forward migration/data compatibility. The
+// current runtime has no readers or writers; personal mailbox sync is per-user.
 export const outlookInboundQueue = mysqlTable(
   "outlookInboundQueue",
   {

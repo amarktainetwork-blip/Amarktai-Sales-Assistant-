@@ -40,16 +40,12 @@ type DelegatedTokens = {
 };
 
 export function delegatedMailboxReadiness() {
-  const tenantId =
-    process.env.OUTLOOK_DELEGATED_TENANT_ID?.trim() ||
-    process.env.OUTLOOK_TENANT_ID?.trim();
-  const clientId =
-    process.env.OUTLOOK_DELEGATED_CLIENT_ID?.trim() ||
-    process.env.OUTLOOK_CLIENT_ID?.trim();
-  const clientSecret =
-    process.env.OUTLOOK_DELEGATED_CLIENT_SECRET?.trim() ||
-    process.env.OUTLOOK_CLIENT_SECRET?.trim();
-  const appUrl = process.env.PUBLIC_APP_URL?.trim()?.replace(/\/$/, "");
+  const tenantId = process.env.OUTLOOK_DELEGATED_TENANT_ID?.trim();
+  const clientId = process.env.OUTLOOK_DELEGATED_CLIENT_ID?.trim();
+  const clientSecret = process.env.OUTLOOK_DELEGATED_CLIENT_SECRET?.trim();
+  const appUrl = (
+    process.env.APP_PUBLIC_URL?.trim() || process.env.PUBLIC_APP_URL?.trim()
+  )?.replace(/\/$/, "");
   const redirectUri =
     process.env.OUTLOOK_DELEGATED_REDIRECT_URI?.trim() ||
     (appUrl ? `${appUrl}/api/mailbox/microsoft/callback` : undefined);
@@ -182,7 +178,7 @@ export function microsoftGraphUrl(pathOrUrl: string) {
   return `https://graph.microsoft.com/v1.0${pathOrUrl}`;
 }
 
-async function graph<T>(
+export async function delegatedMicrosoftGraphRequest<T>(
   accessToken: string,
   pathOrUrl: string,
   init?: RequestInit
@@ -220,7 +216,7 @@ export async function completeDelegatedMailboxAuthorization(input: {
       scope: delegatedScopes.join(" "),
     })
   );
-  const me = await graph<{
+  const me = await delegatedMicrosoftGraphRequest<{
     mail?: string;
     userPrincipalName?: string;
     displayName?: string;
@@ -305,7 +301,7 @@ export async function getDelegatedMailboxStatus(input: {
   };
 }
 
-async function delegatedAccessToken(input: {
+export async function getDelegatedMailboxAccess(input: {
   userId: number;
   organisationId: number;
 }) {
@@ -325,7 +321,9 @@ async function delegatedAccessToken(input: {
       .limit(1)
   )[0];
   if (!row)
-    throw new Error("Connect your Microsoft mailbox before using email or calendar.");
+    throw new Error(
+      "Connect your Microsoft mailbox before using email or calendar."
+    );
   const tokens = decryptConnectionSecret<DelegatedTokens>(row);
   if (row.expiresAt && row.expiresAt.valueOf() > Date.now() + 60_000)
     return {
@@ -424,26 +422,30 @@ export async function sendDelegatedOutlookMail(input: {
     input.to.trim(),
     input.contactExternalId
   );
-  const mailbox = await delegatedAccessToken(input);
-  await graph<void>(mailbox.accessToken, "/me/sendMail", {
-    method: "POST",
-    body: JSON.stringify({
-      message: {
-        subject: input.subject.trim(),
-        body: { contentType: "HTML", content: input.body },
-        toRecipients: [
-          { emailAddress: { address: input.to.trim().toLowerCase() } },
-        ],
-        internetMessageHeaders: [
-          {
-            name: "X-Amarktai-Review-Reference",
-            value: input.reviewReference.trim().slice(0, 180),
-          },
-        ],
-      },
-      saveToSentItems: true,
-    }),
-  });
+  const mailbox = await getDelegatedMailboxAccess(input);
+  await delegatedMicrosoftGraphRequest<void>(
+    mailbox.accessToken,
+    "/me/sendMail",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        message: {
+          subject: input.subject.trim(),
+          body: { contentType: "HTML", content: input.body },
+          toRecipients: [
+            { emailAddress: { address: input.to.trim().toLowerCase() } },
+          ],
+          internetMessageHeaders: [
+            {
+              name: "X-Amarktai-Review-Reference",
+              value: input.reviewReference.trim().slice(0, 180),
+            },
+          ],
+        },
+        saveToSentItems: true,
+      }),
+    }
+  );
   return {
     sent: true as const,
     provider: "microsoft_delegated" as const,
@@ -467,8 +469,7 @@ export async function createDelegatedOutlookCalendarEvent(input: {
     throw new Error(
       "An approved review reference is required before creating a calendar invite."
     );
-  if (!input.subject.trim())
-    throw new Error("A calendar subject is required.");
+  if (!input.subject.trim()) throw new Error("A calendar subject is required.");
   const start = new Date(input.startIso);
   const end = new Date(input.endIso);
   if (
@@ -487,8 +488,8 @@ export async function createDelegatedOutlookCalendarEvent(input: {
   if (!attendees.length)
     throw new Error("At least one valid calendar attendee is required.");
 
-  const mailbox = await delegatedAccessToken(input);
-  const result = await graph<{
+  const mailbox = await getDelegatedMailboxAccess(input);
+  const result = await delegatedMicrosoftGraphRequest<{
     id?: string;
     webLink?: string;
     iCalUId?: string;
@@ -522,7 +523,8 @@ export async function createDelegatedOutlookCalendarEvent(input: {
     eventType: "delegated_calendar_event_created",
     entityType: "user_mailbox",
     entityId: String(input.userId),
-    summary: "An approved calendar invitation was created from the salesperson's connected Microsoft account.",
+    summary:
+      "An approved calendar invitation was created from the salesperson's connected Microsoft account.",
     metadata: {
       provider: "microsoft",
       eventId: result.id,
@@ -584,7 +586,7 @@ export async function syncDelegatedMailbox(input: {
 }) {
   await requireOrganisationMembership(input.userId, input.organisationId);
   const syncStartedAt = new Date();
-  const mailbox = await delegatedAccessToken(input);
+  const mailbox = await getDelegatedMailboxAccess(input);
   const db = await dbOrThrow();
   const connection = (
     await db
@@ -606,11 +608,12 @@ export async function syncDelegatedMailbox(input: {
     `/me/mailFolders/inbox/messages?${query.toString()}`;
   const inboxMessages: GraphInboxMessage[] = [];
   while (next && inboxMessages.length < MAX_INBOX_SYNC_MESSAGES) {
-    const page: GraphInboxPage = await graph<GraphInboxPage>(
-      mailbox.accessToken,
-      next,
-      { headers: { Prefer: 'outlook.body-content-type="text"' } }
-    );
+    const page: GraphInboxPage =
+      await delegatedMicrosoftGraphRequest<GraphInboxPage>(
+        mailbox.accessToken,
+        next,
+        { headers: { Prefer: 'outlook.body-content-type="text"' } }
+      );
     inboxMessages.push(...(page.value || []));
     next = page["@odata.nextLink"];
   }

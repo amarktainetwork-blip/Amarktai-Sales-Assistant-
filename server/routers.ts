@@ -83,7 +83,10 @@ import {
 import { routeSalesCommand } from "./supervisor";
 import { prepareGovernedAssistantRequest } from "./governedAssistant";
 import { prepareLiveCoachingTip, preparePostCallSummary } from "./liveCoach";
-import { getOutlookReadiness, validateEmailPreview } from "./outlook";
+import {
+  getPersonalMailboxReadiness,
+  validatePersonalMailboxEmailPreview,
+} from "./personalMailbox";
 import {
   getLatestCompanyKnowledgeJob,
   retryCompanyKnowledgeJob,
@@ -165,7 +168,7 @@ const workflowInput = z.object({
 
 const publicConnectionLabels = {
   genie: "CRM workspace bridge",
-  outlook: "Messaging and calendar link",
+  outlook: "Personal mailbox",
   genx: "Amarktai intelligence service",
 } as const;
 
@@ -230,7 +233,7 @@ async function enforcePublicAuthRateLimit(input: {
 export const appRouter = router({
   system: systemRouter,
   auth: router({
-    me: publicProcedure.query(opts => opts.ctx.user),
+    me: publicProcedure.query(opts => opts.ctx.user ?? null),
     mode: publicProcedure.query(() => ({ local: isLocalAuthMode() })),
     localLogin: publicProcedure
       .input(
@@ -533,7 +536,7 @@ export const appRouter = router({
         ...dashboard,
         connectionReadiness: {
           crmBrowserBridge: genieReadiness.ready,
-          microsoftConnection: getOutlookReadiness().ready,
+          personalMailbox: getPersonalMailboxReadiness().ready,
           intelligenceService: getGenxReadiness().ready,
           emailDelivery: getSmtpReadiness().ready,
         },
@@ -1633,7 +1636,7 @@ export const appRouter = router({
           )
         ).map(presentConnectionProfile),
         genx: getGenxReadiness(),
-        outlook: getOutlookReadiness(),
+        personalMailbox: getPersonalMailboxReadiness(),
         genie: await getOrganisationGenieReadiness(
           ctx.activeOrganisation.organisationId,
           systems
@@ -2112,8 +2115,8 @@ export const appRouter = router({
         );
       }),
   }),
-  outlook: router({
-    readiness: secondFactorProcedure.query(() => getOutlookReadiness()),
+  personalMailbox: router({
+    readiness: secondFactorProcedure.query(() => getPersonalMailboxReadiness()),
     previewEmail: secondFactorProcedure
       .input(
         z.object({
@@ -2123,7 +2126,7 @@ export const appRouter = router({
           templateName: z.string().max(200).optional(),
         })
       )
-      .mutation(({ input }) => validateEmailPreview(input)),
+      .mutation(({ input }) => validatePersonalMailboxEmailPreview(input)),
   }),
   reports: router({
     list: secondFactorProcedure.query(({ ctx }) => {

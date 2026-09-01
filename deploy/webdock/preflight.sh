@@ -60,10 +60,10 @@ SMTP_SECURE="$(env_get SMTP_SECURE)"
 SMTP_USER="$(env_get SMTP_USER)"
 SMTP_PASSWORD="$(env_get SMTP_PASSWORD)"
 SMTP_FROM="$(env_get SMTP_FROM)"
-OUTLOOK_TENANT_ID="$(env_get OUTLOOK_TENANT_ID)"
-OUTLOOK_CLIENT_ID="$(env_get OUTLOOK_CLIENT_ID)"
-OUTLOOK_CLIENT_SECRET="$(env_get OUTLOOK_CLIENT_SECRET)"
-OUTLOOK_SENDER_EMAIL="$(env_get OUTLOOK_SENDER_EMAIL)"
+OUTLOOK_DELEGATED_TENANT_ID="$(env_get OUTLOOK_DELEGATED_TENANT_ID)"
+OUTLOOK_DELEGATED_CLIENT_ID="$(env_get OUTLOOK_DELEGATED_CLIENT_ID)"
+OUTLOOK_DELEGATED_CLIENT_SECRET="$(env_get OUTLOOK_DELEGATED_CLIENT_SECRET)"
+OUTLOOK_DELEGATED_REDIRECT_URI="$(env_get OUTLOOK_DELEGATED_REDIRECT_URI)"
 
 case "$APP_PUBLIC_URL" in
   https://*) : ;;
@@ -131,10 +131,20 @@ else
   info "Text-to-speech configuration is present; the verifier will require a playable audio artifact."
 fi
 
-if is_placeholder "$OUTLOOK_TENANT_ID" || is_placeholder "$OUTLOOK_CLIENT_ID" || is_placeholder "$OUTLOOK_CLIENT_SECRET" || is_placeholder "$OUTLOOK_SENDER_EMAIL"; then
-  warn "Microsoft Graph mail/calendar is not configured; review-first Outlook actions will remain unavailable."
+MAILBOX_CONFIGURED=0
+for value in "$OUTLOOK_DELEGATED_TENANT_ID" "$OUTLOOK_DELEGATED_CLIENT_ID" "$OUTLOOK_DELEGATED_CLIENT_SECRET" "$OUTLOOK_DELEGATED_REDIRECT_URI"; do
+  if ! is_placeholder "$value"; then MAILBOX_CONFIGURED=$((MAILBOX_CONFIGURED + 1)); fi
+done
+if [ "$MAILBOX_CONFIGURED" -eq 0 ]; then
+  warn "Personal Microsoft mailbox delegated OAuth is not configured; mailbox and calendar actions remain unavailable."
+elif [ "$MAILBOX_CONFIGURED" -ne 4 ]; then
+  fail "Personal Microsoft mailbox delegated OAuth is only partially configured; supply all OUTLOOK_DELEGATED_* values or leave all blank."
 else
-  info "Microsoft Graph configuration is present; run an authorised provider verification before enabling production mail/calendar actions."
+  case "$OUTLOOK_DELEGATED_REDIRECT_URI" in
+    https://*/api/mailbox/microsoft/callback) : ;;
+    *) fail "OUTLOOK_DELEGATED_REDIRECT_URI must use HTTPS and end with /api/mailbox/microsoft/callback." ;;
+  esac
+  info "Personal Microsoft mailbox delegated OAuth configuration is present; each user must still complete consent and live acceptance."
 fi
 
 info "Mandatory GenX configuration is present; run the live model/inference verifier before handover."

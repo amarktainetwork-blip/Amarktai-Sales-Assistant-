@@ -12,8 +12,6 @@ import {
 import { useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation } from "wouter";
-import "./final-auth.css";
-
 const AUTH_PHOTO =
   "https://images.pexels.com/photos/8485714/pexels-photo-8485714.jpeg?auto=compress&cs=tinysrgb&w=1800";
 
@@ -87,7 +85,8 @@ export default function Auth() {
                 <CheckCircle2 size={16} /> Second-factor verification
               </span>
               <span>
-                <CheckCircle2 size={16} /> CRM sign-in stays between you and your CRM
+                <CheckCircle2 size={16} />
+                {"CRM sign-in stays between you and your CRM"}
               </span>
             </div>
           </div>
@@ -200,7 +199,8 @@ function InviteAcceptForm({ token }: { token: string }) {
           autoComplete="new-password"
         />
         <button type="submit" disabled={pending} className="amk-auth__primary">
-          {pending ? "Activating…" : "Activate account"} <ArrowRight size={17} />
+          {pending ? "Activating…" : "Activate account"}{" "}
+          <ArrowRight size={17} />
         </button>
       </form>
       <Fineprint />
@@ -233,7 +233,9 @@ function LocalRegistrationForm() {
   const [password, setPassword] = useState("");
   const register = trpc.auth.register.useMutation({
     onSuccess: () => {
-      toast.success("Account created. Complete email verification to continue.");
+      toast.success(
+        "Account created. Complete email verification to continue."
+      );
       navigate("/dashboard");
     },
     onError: error =>
@@ -346,7 +348,8 @@ function LocalLoginForm({ initialEmail = "" }: { initialEmail?: string }) {
         {login.isPending ? "Signing in…" : "Sign in"} <ArrowRight size={17} />
       </button>
       <p className="amk-auth__switch">
-        New to Amarktai? <Link href="/auth?mode=register">Create an account</Link>
+        New to Amarktai?{" "}
+        <Link href="/auth?mode=register">Create an account</Link>
       </p>
       <Fineprint />
     </form>

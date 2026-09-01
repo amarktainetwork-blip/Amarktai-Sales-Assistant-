@@ -1,10 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { userMailboxConnections } from "../drizzle/schema";
-import {
-  mailboxOwnershipMatches,
-  microsoftGraphUrl,
-} from "./delegatedMailbox";
+import { mailboxOwnershipMatches, microsoftGraphUrl } from "./delegatedMailbox";
 
 const source = readFileSync(
   new URL("./delegatedMailbox.ts", import.meta.url),
@@ -46,7 +43,8 @@ describe("per-user delegated Microsoft mailbox", () => {
     );
     expect(source).toContain("contactCommunicationSuppressions");
     expect(source).toContain("OUTBOUND_SUPPRESSED");
-    expect(source).toContain('graph<void>(mailbox.accessToken, "/me/sendMail"');
+    expect(source).toContain("delegatedMicrosoftGraphRequest<void>(");
+    expect(source).toContain('"/me/sendMail"');
   });
 
   it("creates calendar invitations from the same delegated user account", () => {
@@ -54,9 +52,7 @@ describe("per-user delegated Microsoft mailbox", () => {
     expect(source).toContain('mailbox.accessToken, "/me/events"');
     expect(source).toContain("transactionId: input.reviewReference");
     expect(execution).toContain("createDelegatedOutlookCalendarEvent");
-    expect(execution).toContain(
-      'route.provider !== "microsoft_delegated"'
-    );
+    expect(execution).toContain('route.provider !== "microsoft_delegated"');
     expect(execution).not.toContain("createOutlookCalendarEvent");
     expect(execution).not.toContain("getOutlookReadiness");
   });
@@ -95,13 +91,22 @@ describe("per-user delegated Microsoft mailbox", () => {
       microsoftGraphUrl(
         "https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages?$skiptoken=abc"
       )
-    ).toContain("https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages");
+    ).toContain(
+      "https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages"
+    );
     expect(() =>
       microsoftGraphUrl("https://example.com/v1.0/me/messages")
     ).toThrow("unexpected host");
     expect(() => microsoftGraphUrl("relative-without-leading-slash")).toThrow(
       "path is invalid"
     );
+  });
+
+  it("cannot be activated by legacy shared-mailbox variables", () => {
+    expect(source).not.toContain("process.env.OUTLOOK_TENANT_ID");
+    expect(source).not.toContain("process.env.OUTLOOK_CLIENT_ID");
+    expect(source).not.toContain("process.env.OUTLOOK_CLIENT_SECRET");
+    expect(source).not.toContain("OUTLOOK_SENDER_EMAIL");
   });
 
   it("does not turn a Microsoft-accepted send into a retryable duplicate", () => {
@@ -112,7 +117,9 @@ describe("per-user delegated Microsoft mailbox", () => {
     expect(execution).toContain("}).catch(() => undefined);");
     const delegatedBranch = execution.slice(
       execution.indexOf('route.provider === "microsoft_delegated"'),
-      execution.indexOf('if (input.proposal.actionType === "create_calendar_event")')
+      execution.indexOf(
+        'if (input.proposal.actionType === "create_calendar_event")'
+      )
     );
     expect(delegatedBranch).toContain("retryable: false");
   });
