@@ -18,7 +18,7 @@ const pages = [
   ["/", HomePage, "Give them a better sales day."],
   ["/how-it-works", HowItWorksPage, "Keep your CRM."],
   ["/pricing", Pricing, "PRICING IN SOUTH AFRICAN RAND"],
-  ["/about", AboutPage, "ABOUT AMARKTAI NETWORK"],
+  ["/about", AboutPage, "WHY AMARKTAI"],
   ["/contact", ContactPage, "TALK TO AMARKTAI NETWORK"],
 ] as const;
 
@@ -70,8 +70,8 @@ describe("final public website", () => {
 
   it("uses the approved replacement photography and removes rejected illustration assets", () => {
     const html = render("/", HomePage);
-    expect(html).toContain("images.pexels.com/photos/7679563");
-    expect(html).toContain("images.pexels.com/photos/8000530");
+    expect(html).toContain("images.pexels.com/photos/19795928");
+    expect(html).toContain("images.pexels.com/photos/12899159");
     expect(html).toContain("images.pexels.com/photos/14596539");
     expect(html).not.toContain("images.pexels.com/photos/8837770");
     expect(html).not.toContain("images.pexels.com/photos/8068833");
@@ -79,9 +79,10 @@ describe("final public website", () => {
     expect(html).not.toContain("/images/site-intelligence.svg");
     expect(html).not.toContain("/images/site-calls.svg");
     expect(html).not.toContain("/images/site-team.svg");
+
     const howItWorks = render("/how-it-works", HowItWorksPage);
-    expect(howItWorks).toContain("images.pexels.com/photos/8000530");
-    expect(howItWorks).toContain("images.pexels.com/photos/14596539");
+    expect(howItWorks).toContain("images.pexels.com/photos/26692093");
+    expect(howItWorks).toContain("images.pexels.com/photos/8837498");
     expect(howItWorks).not.toContain("images.pexels.com/photos/8068833");
   });
 
@@ -190,7 +191,7 @@ describe("final public website", () => {
     expect(combined).not.toContain("javascript:void");
   });
 
-  it("uses one public visual system and final launch safeguards", () => {
+  it("uses one public and one logged-in visual system with launch safeguards", () => {
     const layout = readFileSync(
       path.resolve(process.cwd(), "client/src/marketing/MarketingLayout.tsx"),
       "utf8"
@@ -199,6 +200,7 @@ describe("final public website", () => {
     expect(layout).not.toContain("public-v6.css");
     expect(layout).not.toContain("marketing-v2.css");
     expect(layout).not.toContain("launch-v3.css");
+
     const css = readFileSync(
       path.resolve(process.cwd(), "client/src/marketing/final-site.css"),
       "utf8"
@@ -208,17 +210,21 @@ describe("final public website", () => {
     expect(css).toContain("min-width: 320px");
     expect(css).toContain("overflow: clip");
     expect(css).toContain("prefers-reduced-motion: reduce");
+
     const app = readFileSync(
       path.resolve(process.cwd(), "client/src/App.tsx"),
       "utf8"
     );
-    expect(app).toContain('import "./final-release.css"');
-    const finalRelease = readFileSync(
-      path.resolve(process.cwd(), "client/src/final-release.css"),
+    expect(app).toContain('import "./dashboard-final.css"');
+    expect(app).not.toContain("dashboard-client-readability.css");
+    expect(app).not.toContain("final-release.css");
+
+    const dashboardCss = readFileSync(
+      path.resolve(process.cwd(), "client/src/dashboard-final.css"),
       "utf8"
     );
-    expect(finalRelease).toContain("body:has(.z-\\[250\\])");
-    expect(finalRelease).toContain("[data-sonner-toast]");
-    expect(finalRelease).toContain("radial-gradient");
+    expect(dashboardCss).toContain("One logged-in visual system");
+    expect(dashboardCss).toContain('body:has([data-slot="sidebar-wrapper"])');
+    expect(dashboardCss).toContain("--dash-blue: #2f6fed");
   });
 });
