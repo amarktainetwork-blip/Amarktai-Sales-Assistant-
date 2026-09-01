@@ -13,15 +13,26 @@ import {
 } from "lucide-react";
 import { useLocation } from "wouter";
 
-function money(valueMinor: number) {
+function money(
+  valueMinor: number,
+  currency: string | null | undefined,
+  mixedCurrencies = false
+) {
+  if (mixedCurrencies) return "Multiple currencies";
+  if (!currency)
+    return new Intl.NumberFormat(undefined, {
+      maximumFractionDigits: 0,
+    }).format(valueMinor / 100);
   try {
     return new Intl.NumberFormat(undefined, {
       style: "currency",
-      currency: "USD",
+      currency,
       maximumFractionDigits: 0,
     }).format(valueMinor / 100);
   } catch {
-    return String(valueMinor / 100);
+    return `${currency} ${new Intl.NumberFormat(undefined, {
+      maximumFractionDigits: 0,
+    }).format(valueMinor / 100)}`;
   }
 }
 
@@ -37,7 +48,7 @@ export default function TeamIntelligence() {
     return (
       <DashboardLayout>
         <div className="grid min-h-[55vh] place-items-center text-sm text-[#66758A]">
-          <Loader2 className="mr-2 inline h-5 w-5 animate-spin" />
+          <Loader2 className="mr-2 inline h-5 w-5 animate-spin text-[#3F70D8]" />
           Loading team priorities…
         </div>
       </DashboardLayout>
@@ -124,8 +135,16 @@ export default function TeamIntelligence() {
           <Metric
             icon={BarChart3}
             label="Pipeline at risk"
-            value={money(data?.summary.pipelineAtRiskMinor ?? 0)}
-            detail="Value on stale opportunities"
+            value={money(
+              data?.summary.pipelineAtRiskMinor ?? 0,
+              data?.summary.pipelineCurrency,
+              data?.summary.pipelineHasMixedCurrencies
+            )}
+            detail={
+              data?.summary.pipelineHasMixedCurrencies
+                ? "Multiple CRM currencies — review per salesperson"
+                : `Value on stale opportunities${data?.summary.pipelineCurrency ? ` · ${data.summary.pipelineCurrency}` : ""}`
+            }
             alert
           />
         </section>
@@ -174,7 +193,11 @@ export default function TeamIntelligence() {
                         {person.noNextStep}
                       </td>
                       <td className="p-4 text-right font-semibold">
-                        {money(person.pipelineAtRiskMinor)}
+                        {money(
+                          person.pipelineAtRiskMinor,
+                          person.pipelineCurrency,
+                          person.pipelineHasMixedCurrencies
+                        )}
                       </td>
                     </tr>
                   ))

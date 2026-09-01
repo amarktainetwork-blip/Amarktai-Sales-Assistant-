@@ -53,6 +53,42 @@ describe("final dashboard information architecture", () => {
     expect(settings).toContain('title="Team members"');
   });
 
+  it("keeps client exports accessible without adding another primary navigation area", () => {
+    const settings = readFileSync(
+      path.resolve("client/src/pages/Settings.tsx"),
+      "utf8"
+    );
+    const layout = readFileSync(
+      path.resolve("client/src/components/DashboardLayout.tsx"),
+      "utf8"
+    );
+
+    expect(settings).toContain("Reports & exports");
+    expect(settings).toContain('kind: "operational_report", format: "csv"');
+    expect(settings).toContain('kind: "conversation_log", format: "pdf"');
+    expect(settings).toContain("Download sales activity CSV");
+    expect(settings).toContain("Download call log PDF");
+    expect(layout).not.toContain('label: "Reports"');
+  });
+
+  it("uses CRM-derived pipeline currency instead of inventing USD", () => {
+    const teamPage = readFileSync(
+      path.resolve("client/src/pages/TeamIntelligence.tsx"),
+      "utf8"
+    );
+    const teamService = readFileSync(
+      path.resolve("server/teamIntelligence.ts"),
+      "utf8"
+    );
+
+    expect(teamPage).not.toContain('currency: "USD"');
+    expect(teamPage).toContain("pipelineCurrency");
+    expect(teamPage).toContain("pipelineHasMixedCurrencies");
+    expect(teamService).toContain("currencyCode(opportunity.currency)");
+    expect(teamService).toContain("pipelineCurrenciesByPerson");
+    expect(teamService).toContain("pipelineHasMixedCurrencies");
+  });
+
   it("uses branded navigation with explicit high-contrast status and error states", () => {
     const css = readFileSync(
       path.resolve("client/src/dashboard-final.css"),

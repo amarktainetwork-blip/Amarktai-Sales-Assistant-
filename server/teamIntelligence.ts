@@ -7,6 +7,10 @@ import { getSalesTargets } from "./salesTargets";
 function open(status: string) { return !/completed|closed|done|cancelled/i.test(status); }
 function stale(lastActivityAt: Date | null, now: Date) { return !lastActivityAt || now.valueOf() - lastActivityAt.valueOf() >= 7 * 86_400_000; }
 function won(stage: string | null) { return Boolean(stage && /(^|\b)(closed[ _-]?won|won|sale[ _-]?complete|successful)(\b|$)/i.test(stage)); }
+function currencyCode(value: string | null) {
+  const code = value?.trim().toUpperCase() ?? "";
+  return /^[A-Z]{3}$/.test(code) ? code : null;
+}
 
 function zonedParts(date: Date, timezone: string) {
   const parts = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23" }).formatToParts(date);
@@ -35,6 +39,8 @@ export async function getTeamIntelligence(input: { userId: number; organisationI
   ]);
   const stageCategoryBySystemAndStage = new Map(stageMappings.map(mapping => [`${mapping.connectedSystemId}:${mapping.externalStageId}`, mapping.category]));
   const targetByUser = new Map(targets.map(target => [target.userId, target]));
+  const pipelineCurrencies = new Set<string>();
+  const pipelineCurrenciesByPerson = new Map<string, Set<string>>();
   const people = new Map(mappings.map(mapping => [mapping.externalUserId, {
     externalUserId: mapping.externalUserId, name: mapping.displayName, userId: mapping.userId,
     overdueTasks: 0, staleOpportunities: 0, noNextStep: 0, pipelineAtRiskMinor: 0,
@@ -51,7 +57,17 @@ export async function getTeamIntelligence(input: { userId: number; organisationI
     const isWon = mappedCategory === "won" || (!mappedCategory && won(opportunity.stage));
     const isClosed = isWon || mappedCategory === "lost";
     const isStale = stale(opportunity.lastActivityAt, now);
-    if (isStale && !isClosed) { person.staleOpportunities += 1; person.pipelineAtRiskMinor += opportunity.valueMinor ?? 0; }
+    if (isStale && !isClosed) {
+      person.staleOpportunities += 1;
+      person.pipelineAtRiskMinor += opportunity.valueMinor ?? 0;
+      const currency = currencyCode(opportunity.currency);
+      if (currency && opportunity.valueMinor != null) {
+        pipelineCurrencies.add(currency);
+        const personCurrencies = pipelineCurrenciesByPerson.get(opportunity.ownerExternalId) ?? new Set<string>();
+        personCurrencies.add(currency);
+        pipelineCurrenciesByPerson.set(opportunity.ownerExternalId, personCurrencies);
+      }
+    }
     if (!opportunity.nextStepAt && !isClosed) person.noNextStep += 1;
     if (isWon && monthKey(opportunity.closeAt ?? opportunity.sourceUpdatedAt, membership.timezone) === nowParts.monthKey) person.wonValueThisMonthMinor += opportunity.valueMinor ?? 0;
   }
@@ -69,7 +85,16 @@ export async function getTeamIntelligence(input: { userId: number; organisationI
     const dailyAtRisk = dailyProgress !== null && nowParts.hour >= 15 && dailyProgress < 0.8;
     const targetStatus = overdueBreach ? "needs_attention" : monthlyAtRisk || dailyAtRisk ? "at_risk" : (monthlyProgress !== null && monthlyProgress >= 1) || (dailyProgress !== null && dailyProgress >= 1) ? "strong" : "on_track";
     const exceptionScore = person.overdueTasks * 12 + person.staleOpportunities * 8 + person.noNextStep * 6 + (targetStatus === "needs_attention" ? 40 : targetStatus === "at_risk" ? 24 : 0);
-    return { ...person, target: target ?? null, targetProgress: { dailyActivity: dailyProgress, monthlyWonValue: monthlyProgress, expectedMonthlyPace }, targetStatus, exceptionScore };
+    const personCurrencies = pipelineCurrenciesByPerson.get(person.externalUserId) ?? new Set<string>();
+    return {
+      ...person,
+      pipelineCurrency: personCurrencies.size === 1 ? Array.from(personCurrencies)[0] : null,
+      pipelineHasMixedCurrencies: personCurrencies.size > 1,
+      target: target ?? null,
+      targetProgress: { dailyActivity: dailyProgress, monthlyWonValue: monthlyProgress, expectedMonthlyPace },
+      targetStatus,
+      exceptionScore,
+    };
   }).sort((a, b) => b.exceptionScore - a.exceptionScore || b.pipelineAtRiskMinor - a.pipelineAtRiskMinor);
 
   const needsAttention = team.filter(person => person.exceptionScore > 0);
@@ -83,6 +108,8 @@ export async function getTeamIntelligence(input: { userId: number; organisationI
       overdueTasks: team.reduce((sum, person) => sum + person.overdueTasks, 0),
       staleOpportunities: team.reduce((sum, person) => sum + person.staleOpportunities, 0),
       pipelineAtRiskMinor: team.reduce((sum, person) => sum + person.pipelineAtRiskMinor, 0),
+      pipelineCurrency: pipelineCurrencies.size === 1 ? Array.from(pipelineCurrencies)[0] : null,
+      pipelineHasMixedCurrencies: pipelineCurrencies.size > 1,
       wonValueThisMonthMinor: team.reduce((sum, person) => sum + person.wonValueThisMonthMinor, 0),
     },
     people: team.slice(0, 100),

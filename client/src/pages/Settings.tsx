@@ -1,16 +1,37 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import ManagementElevation from "@/components/ManagementElevation";
 import { Button } from "@/components/ui/button";
+import { friendlyError } from "@/lib/friendlyError";
 import { trpc } from "@/lib/trpc";
 import {
   BookOpenCheck,
   Building2,
   Cable,
   ChevronRight,
+  Download,
   ShieldCheck,
   Users,
 } from "lucide-react";
+import { toast } from "sonner";
 import { useLocation } from "wouter";
+
+function downloadExport(file: {
+  base64: string;
+  contentType: string;
+  filename: string;
+}) {
+  const bytes = Uint8Array.from(atob(file.base64), character =>
+    character.charCodeAt(0)
+  );
+  const url = URL.createObjectURL(new Blob([bytes], { type: file.contentType }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = file.filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
 
 export default function Settings() {
   const [, navigate] = useLocation();
@@ -23,6 +44,16 @@ export default function Settings() {
     { organisationId: organisationId ?? 0 },
     { enabled: Boolean(organisationId), retry: false }
   );
+  const exportData = trpc.assistant.exportWorkspaceData.useMutation({
+    onSuccess: file => {
+      downloadExport(file);
+      toast.success(`${file.filename} is ready.`);
+    },
+    onError: error =>
+      toast.error(
+        friendlyError(error, "That export could not be created. Try again.")
+      ),
+  });
 
   const profile = company.data?.profile;
   const crmCount = systems.data?.length ?? 0;
@@ -90,6 +121,43 @@ export default function Settings() {
               action="Security is active"
             />
           )}
+        </section>
+
+        <section className="rounded-2xl border border-[#DCE4EE] bg-white p-5 shadow-sm sm:p-6">
+          <div className="flex items-start gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#EEF3F8] text-[#405B7A]">
+              <Download className="h-5 w-5" />
+            </span>
+            <div>
+              <h2 className="text-lg font-bold">Reports & exports</h2>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-[#66758A]">
+                Download a portable record of sales activity or the call and
+                conversation history for this workspace.
+              </p>
+            </div>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              disabled={exportData.isPending}
+              onClick={() =>
+                exportData.mutate({ kind: "operational_report", format: "csv" })
+              }
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Download sales activity CSV
+            </Button>
+            <Button
+              variant="outline"
+              disabled={exportData.isPending}
+              onClick={() =>
+                exportData.mutate({ kind: "conversation_log", format: "pdf" })
+              }
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Download call log PDF
+            </Button>
+          </div>
         </section>
       </div>
     </DashboardLayout>
