@@ -4,9 +4,9 @@ import { MarketingLayout } from "./MarketingLayout";
 import { accountLinks } from "./site";
 
 const TEAM_PHOTO =
-  "https://images.pexels.com/photos/8000530/pexels-photo-8000530.jpeg?cs=srgb&dl=pexels-pavel-danilyuk-8000530.jpg&fm=jpg";
+  "https://images.pexels.com/photos/26692093/pexels-photo-26692093.jpeg?auto=compress&cs=tinysrgb&w=1800";
 const CALL_PHOTO =
-  "https://images.pexels.com/photos/14596539/pexels-photo-14596539.jpeg?cs=srgb&dl=pexels-karen-slack-3606218-14596539.jpg&fm=jpg";
+  "https://images.pexels.com/photos/8837498/pexels-photo-8837498.jpeg?auto=compress&cs=tinysrgb&w=1800";
 
 const setup = [
   [
@@ -128,7 +128,7 @@ export function HowItWorksPage() {
           <figure className="amk-page-photo">
             <img
               src={TEAM_PHOTO}
-              alt="Sales team collaborating around a table in a modern office"
+              alt="Professional saleswoman working in a modern office"
             />
           </figure>
         </div>
@@ -272,7 +272,7 @@ export function HowItWorksPage() {
           <figure className="amk-photo amk-photo--story">
             <img
               src={CALL_PHOTO}
-              alt="Sales professional on a customer phone call with a laptop"
+              alt="Professional saleswoman using her phone beside a laptop"
               loading="lazy"
             />
           </figure>
