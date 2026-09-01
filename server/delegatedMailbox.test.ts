@@ -34,6 +34,7 @@ describe("per-user delegated Microsoft mailbox", () => {
     expect(source).toContain('"offline_access"');
     expect(source).toContain('"Mail.Read"');
     expect(source).toContain('"Mail.Send"');
+    expect(source).toContain('"Calendars.ReadWrite"');
     expect(source).not.toMatch(/outlookPassword|mailboxPassword/);
     expect(source).toContain("encryptConnectionSecret");
     expect(source).not.toContain("console.log");
@@ -46,6 +47,18 @@ describe("per-user delegated Microsoft mailbox", () => {
     expect(source).toContain("contactCommunicationSuppressions");
     expect(source).toContain("OUTBOUND_SUPPRESSED");
     expect(source).toContain('graph<void>(mailbox.accessToken, "/me/sendMail"');
+  });
+
+  it("creates calendar invitations from the same delegated user account", () => {
+    expect(source).toContain("createDelegatedOutlookCalendarEvent");
+    expect(source).toContain('mailbox.accessToken, "/me/events"');
+    expect(source).toContain("transactionId: input.reviewReference");
+    expect(execution).toContain("createDelegatedOutlookCalendarEvent");
+    expect(execution).toContain(
+      'route.provider !== "microsoft_delegated"'
+    );
+    expect(execution).not.toContain("createOutlookCalendarEvent");
+    expect(execution).not.toContain("getOutlookReadiness");
   });
 
   it("uses the existing review queue for editable inbound reply drafts", () => {
@@ -95,9 +108,7 @@ describe("per-user delegated Microsoft mailbox", () => {
     expect(execution).toContain(
       'eventType: "delegated_email_post_send_reconciliation_failed"'
     );
-    expect(execution).toContain(
-      "The send must not be retried."
-    );
+    expect(execution).toContain("The send must not be retried.");
     expect(execution).toContain("}).catch(() => undefined);");
     const delegatedBranch = execution.slice(
       execution.indexOf('route.provider === "microsoft_delegated"'),
