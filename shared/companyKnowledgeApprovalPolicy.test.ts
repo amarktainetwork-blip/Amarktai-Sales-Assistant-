@@ -7,14 +7,16 @@ import {
 } from "./companyKnowledgeApprovalPolicy";
 
 describe("company knowledge business-basics approval policy", () => {
-  it("keeps offering identity while stripping website-derived prices", () => {
+  it("keeps useful offering description while stripping website-derived commercial claims", () => {
     const items = buildBusinessBasicsApproval([
       {
         title: "CompTIA A+ (Core 1 & 2) Course & Certification",
-        content: "Full current price: £529. Finance available.",
+        content:
+          "Prepare for the CompTIA A+ Core 1 and Core 2 certification exams with guided technology training. Full current price: £529. Finance available.",
         category: "individual_courses",
         reviewState: "review_required",
         trustEligible: true,
+        sourceUrl: "https://example.test/comptia-a-plus",
         offering: {
           name: "CompTIA A+ (Core 1 & 2) Course & Certification",
           type: "individual_course",
@@ -29,7 +31,8 @@ describe("company knowledge business-basics approval policy", () => {
         group: "offerings",
         title: "CompTIA A+ (Core 1 & 2) Course & Certification",
         content:
-          "CompTIA A+ (Core 1 & 2) Course & Certification is a individual course offered by the business.",
+          "Prepare for the CompTIA A+ Core 1 and Core 2 certification exams with guided technology training.",
+        sourceUrl: "https://example.test/comptia-a-plus",
       },
     ]);
     expect(containsCommercialKnowledge(items[0].content)).toBe(false);
@@ -71,7 +74,7 @@ describe("company knowledge business-basics approval policy", () => {
     expect(items).toEqual([]);
   });
 
-  it("keeps safe company, credential and contact facts", () => {
+  it("preserves safe descriptive company, credential and contact facts", () => {
     const items = buildBusinessBasicsApproval([
       {
         title: "Course2Career",
@@ -90,12 +93,34 @@ describe("company knowledge business-basics approval policy", () => {
       },
     ]);
 
+    expect(items[0].content).toBe(
+      "Course2Career provides technology and project management training."
+    );
+    expect(items[1].content).toBe(
+      "The website identifies Course2Career as a CompTIA Training Partner."
+    );
+    expect(items[2].content).toContain("support@example.test");
     expect(businessBasicsCounts(items)).toEqual({
       company: 1,
       offerings: 0,
       credentials: 1,
       contact: 1,
     });
+  });
+
+  it("falls back to a neutral offering identity only when no safe description remains", () => {
+    const items = buildBusinessBasicsApproval([
+      {
+        title: "Course A",
+        content: "Course A costs £229. Finance is available.",
+        category: "individual_courses",
+        offering: { name: "Course A", type: "individual_course" },
+        priceFacts: [{ value: "£229" }],
+      },
+    ]);
+    expect(items[0].content).toBe(
+      "Course A is an individual course offered by the business."
+    );
   });
 
   it("blocks a commercial website candidate unless a correction removes the commercial claim", () => {
