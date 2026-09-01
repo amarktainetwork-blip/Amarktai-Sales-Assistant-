@@ -3,13 +3,11 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 describe("final dashboard information architecture", () => {
-  it("uses the final dashboard system without restoring legacy visual generations", () => {
+  it("uses one logged-in stylesheet without restoring legacy visual generations", () => {
     const app = readFileSync(path.resolve("client/src/App.tsx"), "utf8");
     expect(app).toContain('import "./dashboard-final.css"');
-    expect(app).toContain('import "./dashboard-client-readability.css"');
-    expect(
-      app.indexOf('import "./dashboard-client-readability.css"')
-    ).toBeGreaterThan(app.indexOf('import "./dashboard-final.css"'));
+    expect(app).not.toContain('import "./dashboard-client-readability.css"');
+    expect(app).not.toContain('import "./final-release.css"');
     expect(app).not.toContain('import "./app-final.css"');
     expect(app).not.toContain('import "./dashboard-v6.css"');
     expect(app).not.toContain('import "./dashboard-v2.css"');
@@ -28,9 +26,8 @@ describe("final dashboard information architecture", () => {
     );
     const app = readFileSync(path.resolve("client/src/App.tsx"), "utf8");
 
-    for (const label of ["Home", "Customers", "Calls", "Assistant"]) {
+    for (const label of ["Home", "Customers", "Calls", "Assistant"])
       expect(layout).toContain(`label: "${label}"`);
-    }
     expect(layout).toContain('label: "CRM"');
     expect(layout).toContain('path: "/connections"');
     expect(layout).toContain('label: "Settings"');
@@ -43,9 +40,11 @@ describe("final dashboard information architecture", () => {
     expect(layout).not.toContain('label: "Approvals"');
     expect(layout).not.toContain("DropdownMenuContent");
     expect(layout).toContain('aria-label="Sign out"');
+    expect(layout).toContain(">Sign out</span>");
 
     expect(app).toContain('<Route path="/dashboard" component={Today} />');
     expect(app).toContain('<Route path="/settings">');
+    expect(app).toContain("<PersonalSetupBoundary />");
 
     expect(settings).toContain('title="Company setup"');
     expect(settings).toContain('title="CRM connection"');
@@ -89,17 +88,13 @@ describe("final dashboard information architecture", () => {
     expect(teamService).toContain("pipelineHasMixedCurrencies");
   });
 
-  it("uses branded navigation with explicit high-contrast status and error states", () => {
+  it("uses a light navy-blue dashboard and readable workflow feedback", () => {
     const css = readFileSync(
       path.resolve("client/src/dashboard-final.css"),
       "utf8"
     );
-    const readability = readFileSync(
-      path.resolve("client/src/dashboard-client-readability.css"),
-      "utf8"
-    );
-    const finalRelease = readFileSync(
-      path.resolve("client/src/final-release.css"),
+    const layout = readFileSync(
+      path.resolve("client/src/components/DashboardLayout.tsx"),
       "utf8"
     );
     const feedback = readFileSync(
@@ -114,35 +109,29 @@ describe("final dashboard information architecture", () => {
     expect(css).toContain('[class*="whitespace-pre-wrap"]');
     expect(css).toContain("input::placeholder");
 
-    expect(finalRelease).toContain("background: #0b1b36 !important");
-    expect(finalRelease).toContain("background: #2f6fed !important");
-    expect(finalRelease).toContain("color: #ffffff !important");
-    expect(finalRelease).toContain('data-type="error"');
-    expect(finalRelease).toContain("background: #991b1b !important");
+    expect(layout).toContain('bg-white text-[#26354A]');
+    expect(layout).toContain('bg-[#EAF1FF] text-[#2459C2]');
+    expect(layout).not.toContain('className="border-r border-[#1B2B44] bg-[#0B1B36] text-white"');
+    expect(layout).not.toContain("bg-white/[.06]");
 
     expect(feedback).toContain("data-workflow-feedback={state.kind}");
     expect(feedback).toContain("bg-blue-50 text-blue-950");
     expect(feedback).toContain("bg-emerald-50 text-emerald-950");
     expect(feedback).toContain("bg-rose-50 text-rose-950");
-    expect(readability).toContain('[data-workflow-feedback="loading"]');
-    expect(readability).toContain("nav .bg-stone-900");
-    expect(readability).toContain("color: #ffffff !important");
   });
 
-  it("keeps the call workflow while removing its near-black customer surface", () => {
+  it("keeps the call workflow and does not rely on a deleted override layer", () => {
     const calls = readFileSync(
       path.resolve("client/src/pages/LiveCalls.tsx"),
       "utf8"
     );
-    const finalRelease = readFileSync(
-      path.resolve("client/src/final-release.css"),
+    const css = readFileSync(
+      path.resolve("client/src/dashboard-final.css"),
       "utf8"
     );
     expect(calls).toContain("data-call-workflow");
-    expect(finalRelease).toContain(
-      '[data-call-workflow] [class~="bg-[#0E2142]"]'
-    );
-    expect(finalRelease).toContain("background: #ffffff !important");
+    expect(css).toContain('[class*="bg-[#0E2142]"]');
+    expect(css).toContain("background: var(--dash-paper) !important");
     for (const step of [
       "PRE-CALL BRIEF",
       "CALL AUDIO",
