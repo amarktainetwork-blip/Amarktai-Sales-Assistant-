@@ -2,6 +2,7 @@ export type WebsiteKnowledgeApprovalCandidate = {
   title: string;
   content: string;
   category?: string;
+  sourceUrl?: string;
   reviewState?: string;
   trustEligible?: boolean;
   offering?: {
@@ -20,6 +21,7 @@ export type WebsiteKnowledgeCorrection = {
 
 export type BusinessBasicsApprovalItem = WebsiteKnowledgeCorrection & {
   group: "company" | "offerings" | "credentials" | "contact";
+  sourceUrl?: string;
 };
 
 const permanentlyCommercialCategories = new Set([
@@ -95,17 +97,39 @@ function safeIdentityTitle(value: string) {
   return title.slice(0, 220);
 }
 
+/**
+ * Keep useful descriptive website content while dropping sentences that contain
+ * prices, finance, guarantees or other commercial claims. The client can still
+ * deliberately confirm commercial details elsewhere; this review never trusts
+ * them silently.
+ */
+function safeDescriptiveContent(value: string) {
+  const segments = value
+    .replace(/\r/g, "")
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map(compactText)
+    .filter(Boolean)
+    .filter(segment => !containsCommercialKnowledge(segment));
+  const content = compactText(segments.join(" "));
+  return content ? content.slice(0, 40_000) : null;
+}
+
+function offeringFallback(candidate: WebsiteKnowledgeApprovalCandidate, name: string) {
+  const rawType = compactText(candidate.offering?.type || "");
+  const type = rawType && !containsCommercialKnowledge(rawType) ? rawType : "offering";
+  const readableType = type.replaceAll("_", " ");
+  const article = /^[aeiou]/i.test(readableType) ? "an" : "a";
+  return `${name} is ${article} ${readableType} offered by the business.`;
+}
+
 function safeOfferingIdentity(candidate: WebsiteKnowledgeApprovalCandidate) {
   const name = safeIdentityTitle(candidate.offering?.name || candidate.title);
   if (!name) return null;
-  const rawType = compactText(candidate.offering?.type || "");
-  const type = rawType && !containsCommercialKnowledge(rawType) ? rawType : "offering";
   return {
     title: name,
-    content: `${name} is a ${type.replaceAll("_", " ")} offered by the business.`.slice(
-      0,
-      40_000
-    ),
+    content:
+      safeDescriptiveContent(candidate.content) || offeringFallback(candidate, name),
+    sourceUrl: candidate.sourceUrl,
   };
 }
 
@@ -114,8 +138,18 @@ function safeCompanyIdentity(candidate: WebsiteKnowledgeApprovalCandidate) {
   if (!name) return null;
   return {
     title: name,
-    content: `${name} is part of the organisation identity confirmed during company setup.`,
+    content:
+      safeDescriptiveContent(candidate.content) ||
+      `${name} is part of the organisation identity confirmed during company setup.`,
+    sourceUrl: candidate.sourceUrl,
   };
+}
+
+function safeKnowledgeFact(candidate: WebsiteKnowledgeApprovalCandidate) {
+  const title = safeIdentityTitle(candidate.title);
+  const content = safeDescriptiveContent(candidate.content);
+  if (!title || !content) return null;
+  return { title, content, sourceUrl: candidate.sourceUrl };
 }
 
 export function buildBusinessBasicsApproval(
@@ -129,9 +163,7 @@ export function buildBusinessBasicsApproval(
     if (["conflict", "ambiguous"].includes(candidate.reviewState || "")) return;
 
     const category = candidate.category || "";
-    let item:
-      | Omit<BusinessBasicsApprovalItem, "index">
-      | null = null;
+    let item: Omit<BusinessBasicsApprovalItem, "index"> | null = null;
 
     if (offeringCategories.has(category)) {
       const identity = safeOfferingIdentity(candidate);
@@ -142,19 +174,13 @@ export function buildBusinessBasicsApproval(
       if (!identity) return;
       item = { ...identity, group: "company" };
     } else if (credentialCategories.has(category)) {
-      if (containsCommercialKnowledge(`${candidate.title}\n${candidate.content}`)) return;
-      item = {
-        title: compactText(candidate.title).slice(0, 220),
-        content: compactText(candidate.content).slice(0, 40_000),
-        group: "credentials",
-      };
+      const fact = safeKnowledgeFact(candidate);
+      if (!fact) return;
+      item = { ...fact, group: "credentials" };
     } else if (category === "contact") {
-      if (containsCommercialKnowledge(`${candidate.title}\n${candidate.content}`)) return;
-      item = {
-        title: compactText(candidate.title).slice(0, 220),
-        content: compactText(candidate.content).slice(0, 40_000),
-        group: "contact",
-      };
+      const fact = safeKnowledgeFact(candidate);
+      if (!fact) return;
+      item = { ...fact, group: "contact" };
     }
 
     if (!item?.title || !item.content) return;
