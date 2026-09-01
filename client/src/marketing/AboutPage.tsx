@@ -2,7 +2,7 @@ import { ArrowRight } from "lucide-react";
 import { Link } from "wouter";
 import { MarketingLayout } from "./MarketingLayout";
 
-const TEAM_PHOTO = "https://images.pexels.com/photos/8000530/pexels-photo-8000530.jpeg?cs=srgb&dl=pexels-pavel-danilyuk-8000530.jpg&fm=jpg";
+const TEAM_PHOTO = "https://images.pexels.com/photos/29648637/pexels-photo-29648637.jpeg?auto=compress&cs=tinysrgb&w=1800";
 
 export default function AboutPage() {
   return (
@@ -15,7 +15,7 @@ export default function AboutPage() {
         </div>
 
         <figure className="amk-shell amk-page-photo">
-          <img src={TEAM_PHOTO} alt="Two sales professionals collaborating at a desk" />
+          <img src={TEAM_PHOTO} alt="Professional saleswoman in a bright modern office" />
         </figure>
 
         <section className="amk-about__statement">
