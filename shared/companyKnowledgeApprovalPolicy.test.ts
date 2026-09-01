@@ -105,7 +105,53 @@ describe("company knowledge business-basics approval policy", () => {
       offerings: 0,
       credentials: 1,
       contact: 1,
+      sales: 0,
     });
+  });
+
+  it("retains useful non-commercial sales, support, FAQ and policy knowledge", () => {
+    const items = buildBusinessBasicsApproval([
+      {
+        title: "Learner support",
+        content: "Learners receive tutor support throughout their studies.",
+        category: "support_outcomes",
+      },
+      {
+        title: "Who are programmes for?",
+        content: "Programmes are designed for people building career-ready skills.",
+        category: "faqs",
+      },
+      {
+        title: "Sales guidance",
+        content: "Career programmes combine guided learning with certification preparation.",
+        category: "sales_facts",
+      },
+      {
+        title: "Study access",
+        content: "Online learning resources can be accessed through the learner portal. Refund fees are described separately.",
+        category: "policies",
+      },
+    ]);
+
+    expect(items).toHaveLength(4);
+    expect(items.every(item => item.group === "sales")).toBe(true);
+    expect(items[3].content).toBe(
+      "Online learning resources can be accessed through the learner portal."
+    );
+    expect(businessBasicsCounts(items).sales).toBe(4);
+  });
+
+  it("supports generic offering categories without company-specific hard coding", () => {
+    const categories = ["programmes", "courses", "products", "services", "solutions", "subscriptions", "packages", "plans", "offerings"];
+    const items = buildBusinessBasicsApproval(
+      categories.map((category, index) => ({
+        title: `Offering ${index + 1}`,
+        content: `Offering ${index + 1} helps a customer solve a defined need.`,
+        category,
+      }))
+    );
+    expect(items).toHaveLength(categories.length);
+    expect(items.every(item => item.group === "offerings")).toBe(true);
   });
 
   it("falls back to a neutral offering identity only when no safe description remains", () => {
