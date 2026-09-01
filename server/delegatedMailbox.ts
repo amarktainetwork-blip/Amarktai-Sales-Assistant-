@@ -28,6 +28,7 @@ const delegatedScopes = [
   "User.Read",
   "Mail.Read",
   "Mail.Send",
+  "Calendars.ReadWrite",
 ];
 
 const MAX_INBOX_SYNC_MESSAGES = 100;
@@ -324,7 +325,7 @@ async function delegatedAccessToken(input: {
       .limit(1)
   )[0];
   if (!row)
-    throw new Error("Connect your Microsoft mailbox before using email.");
+    throw new Error("Connect your Microsoft mailbox before using email or calendar.");
   const tokens = decryptConnectionSecret<DelegatedTokens>(row);
   if (row.expiresAt && row.expiresAt.valueOf() > Date.now() + 60_000)
     return {
@@ -447,6 +448,95 @@ export async function sendDelegatedOutlookMail(input: {
     sent: true as const,
     provider: "microsoft_delegated" as const,
     from: mailbox.email,
+  };
+}
+
+/** Creates an approved calendar invitation from the same user-owned Microsoft connection. */
+export async function createDelegatedOutlookCalendarEvent(input: {
+  userId: number;
+  organisationId: number;
+  subject: string;
+  body: string;
+  startIso: string;
+  endIso: string;
+  attendees: string[];
+  timezone?: string;
+  reviewReference: string;
+}) {
+  if (!input.reviewReference.trim())
+    throw new Error(
+      "An approved review reference is required before creating a calendar invite."
+    );
+  if (!input.subject.trim())
+    throw new Error("A calendar subject is required.");
+  const start = new Date(input.startIso);
+  const end = new Date(input.endIso);
+  if (
+    Number.isNaN(start.valueOf()) ||
+    Number.isNaN(end.valueOf()) ||
+    end <= start
+  )
+    throw new Error("A valid calendar start and end time are required.");
+  const attendees = Array.from(
+    new Set(
+      input.attendees
+        .map(value => value.trim().toLowerCase())
+        .filter(value => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value))
+    )
+  );
+  if (!attendees.length)
+    throw new Error("At least one valid calendar attendee is required.");
+
+  const mailbox = await delegatedAccessToken(input);
+  const result = await graph<{
+    id?: string;
+    webLink?: string;
+    iCalUId?: string;
+  }>(mailbox.accessToken, "/me/events", {
+    method: "POST",
+    body: JSON.stringify({
+      subject: input.subject.trim(),
+      body: {
+        contentType: "HTML",
+        content: input.body.trim() || input.subject.trim(),
+      },
+      start: {
+        dateTime: start.toISOString(),
+        timeZone: input.timezone?.trim() || "UTC",
+      },
+      end: {
+        dateTime: end.toISOString(),
+        timeZone: input.timezone?.trim() || "UTC",
+      },
+      attendees: attendees.map(address => ({
+        emailAddress: { address },
+        type: "required",
+      })),
+      allowNewTimeProposals: true,
+      transactionId: input.reviewReference.trim().slice(0, 255),
+    }),
+  });
+  await recordAudit({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    eventType: "delegated_calendar_event_created",
+    entityType: "user_mailbox",
+    entityId: String(input.userId),
+    summary: "An approved calendar invitation was created from the salesperson's connected Microsoft account.",
+    metadata: {
+      provider: "microsoft",
+      eventId: result.id,
+      attendeeCount: attendees.length,
+      reviewReference: input.reviewReference.trim().slice(0, 180),
+    },
+  });
+  return {
+    created: true as const,
+    provider: "microsoft_delegated" as const,
+    from: mailbox.email,
+    eventId: result.id,
+    webLink: result.webLink,
+    iCalUId: result.iCalUId,
   };
 }
 
