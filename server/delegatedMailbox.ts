@@ -30,6 +30,8 @@ const delegatedScopes = [
   "Mail.Send",
 ];
 
+const MAX_INBOX_SYNC_MESSAGES = 100;
+
 type DelegatedTokens = {
   accessToken: string;
   refreshToken: string;
@@ -164,8 +166,27 @@ async function tokenRequest(body: URLSearchParams, requireRefresh = true) {
   return result;
 }
 
-async function graph<T>(accessToken: string, path: string, init?: RequestInit) {
-  const response = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
+export function microsoftGraphUrl(pathOrUrl: string) {
+  if (/^https:\/\//i.test(pathOrUrl)) {
+    const url = new URL(pathOrUrl);
+    if (
+      url.origin !== "https://graph.microsoft.com" ||
+      !url.pathname.startsWith("/v1.0/")
+    )
+      throw new Error("Microsoft paging returned an unexpected host.");
+    return url.toString();
+  }
+  if (!pathOrUrl.startsWith("/"))
+    throw new Error("Microsoft mailbox request path is invalid.");
+  return `https://graph.microsoft.com/v1.0${pathOrUrl}`;
+}
+
+async function graph<T>(
+  accessToken: string,
+  pathOrUrl: string,
+  init?: RequestInit
+) {
+  const response = await fetch(microsoftGraphUrl(pathOrUrl), {
     ...init,
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -438,6 +459,11 @@ type GraphInboxMessage = {
   from?: { emailAddress?: { address?: string; name?: string } };
 };
 
+type GraphInboxPage = {
+  value?: GraphInboxMessage[];
+  "@odata.nextLink"?: string;
+};
+
 function plainMessageBody(message: GraphInboxMessage) {
   const value = message.body?.content || message.bodyPreview || "";
   return value
@@ -467,6 +493,7 @@ export async function syncDelegatedMailbox(input: {
   organisationId: number;
 }) {
   await requireOrganisationMembership(input.userId, input.organisationId);
+  const syncStartedAt = new Date();
   const mailbox = await delegatedAccessToken(input);
   const db = await dbOrThrow();
   const connection = (
@@ -480,23 +507,36 @@ export async function syncDelegatedMailbox(input: {
     connection?.lastSyncedAt || new Date(Date.now() - 7 * 86_400_000);
   const query = new URLSearchParams({
     $top: "25",
-    $orderby: "receivedDateTime desc",
+    $orderby: "receivedDateTime asc",
     $select: "id,subject,bodyPreview,body,receivedDateTime,from",
     $filter: `receivedDateTime ge ${since.toISOString()}`,
   });
-  const inbox = await graph<{ value?: GraphInboxMessage[] }>(
-    mailbox.accessToken,
-    `/me/mailFolders/inbox/messages?${query.toString()}`,
-    { headers: { Prefer: 'outlook.body-content-type="text"' } }
-  );
+
+  let next: string | undefined =
+    `/me/mailFolders/inbox/messages?${query.toString()}`;
+  const inboxMessages: GraphInboxMessage[] = [];
+  while (next && inboxMessages.length < MAX_INBOX_SYNC_MESSAGES) {
+    const page: GraphInboxPage = await graph<GraphInboxPage>(
+      mailbox.accessToken,
+      next,
+      { headers: { Prefer: 'outlook.body-content-type="text"' } }
+    );
+    inboxMessages.push(...(page.value || []));
+    next = page["@odata.nextLink"];
+  }
+
+  const boundedMessages = inboxMessages.slice(0, MAX_INBOX_SYNC_MESSAGES);
   let received = 0;
   let draftsPrepared = 0;
-  for (const item of (inbox.value || []).slice(0, 25)) {
+  let newestProcessedAt: Date | undefined;
+  for (const item of boundedMessages) {
     const sender = item.from?.emailAddress?.address?.trim().toLowerCase() || "";
     const body = plainMessageBody(item);
     const receivedAt = new Date(item.receivedDateTime || Date.now());
     if (!item.id || !sender || !body || Number.isNaN(receivedAt.valueOf()))
       continue;
+    if (!newestProcessedAt || receivedAt > newestProcessedAt)
+      newestProcessedAt = receivedAt;
     const ingested = await ingestInboundMessage({
       organisationId: input.organisationId,
       mailboxUserId: input.userId,
@@ -605,9 +645,13 @@ export async function syncDelegatedMailbox(input: {
     });
     draftsPrepared += 1;
   }
+
+  const watermark = newestProcessedAt
+    ? new Date(Math.max(since.valueOf(), newestProcessedAt.valueOf() - 1_000))
+    : syncStartedAt;
   await db
     .update(userMailboxConnections)
-    .set({ lastSyncedAt: new Date() })
+    .set({ lastSyncedAt: watermark })
     .where(eq(userMailboxConnections.id, mailbox.connectionId));
   await recordAudit({
     userId: input.userId,
@@ -617,9 +661,15 @@ export async function syncDelegatedMailbox(input: {
     entityId: String(input.userId),
     summary:
       "The salesperson's delegated inbox was checked for replies needing attention.",
-    metadata: { received, draftsPrepared, messageLimit: 25 },
+    metadata: {
+      received,
+      draftsPrepared,
+      messageLimit: MAX_INBOX_SYNC_MESSAGES,
+      morePagesPending: Boolean(next),
+      watermark: watermark.toISOString(),
+    },
   });
-  return { received, draftsPrepared };
+  return { received, draftsPrepared, morePagesPending: Boolean(next) };
 }
 
 export async function disconnectDelegatedMailbox(input: {
