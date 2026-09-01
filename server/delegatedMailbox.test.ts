@@ -1,7 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { userMailboxConnections } from "../drizzle/schema";
-import { mailboxOwnershipMatches } from "./delegatedMailbox";
+import {
+  mailboxOwnershipMatches,
+  microsoftGraphUrl,
+} from "./delegatedMailbox";
 
 const source = readFileSync(
   new URL("./delegatedMailbox.ts", import.meta.url),
@@ -64,10 +67,27 @@ describe("per-user delegated Microsoft mailbox", () => {
       expect(reviews).toContain(label);
   });
 
-  it("bounds personal inbox reads and keeps them assigned to the mailbox owner", () => {
-    expect(source).toContain("(inbox.value || []).slice(0, 25)");
+  it("paginates bounded inbox reads without skipping a busy mailbox", () => {
+    expect(source).toContain("MAX_INBOX_SYNC_MESSAGES = 100");
+    expect(source).toContain('$orderby: "receivedDateTime asc"');
+    expect(source).toContain('page["@odata.nextLink"]');
+    expect(source).toContain("morePagesPending: Boolean(next)");
+    expect(source).toContain("newestProcessedAt.valueOf() - 1_000");
     expect(source).toContain("mailboxUserId: input.userId");
-    expect(source).toContain("lastSyncedAt: new Date()");
-    expect(source).not.toContain("console.log");
+    expect(source).not.toContain("(inbox.value || []).slice(0, 25)");
+  });
+
+  it("accepts only Microsoft Graph paging URLs", () => {
+    expect(
+      microsoftGraphUrl(
+        "https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages?$skiptoken=abc"
+      )
+    ).toContain("https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages");
+    expect(() =>
+      microsoftGraphUrl("https://example.com/v1.0/me/messages")
+    ).toThrow("unexpected host");
+    expect(() => microsoftGraphUrl("relative-without-leading-slash")).toThrow(
+      "path is invalid"
+    );
   });
 });
