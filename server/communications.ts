@@ -18,6 +18,8 @@ export type SalesMessage = {
   templateName?: string;
   contactExternalId?: string;
   opportunityExternalId?: string;
+  senderIdentity?: string;
+  idempotencyKey?: string;
 };
 
 function assertDestination(channel: SalesChannel, destination: string) {
@@ -40,7 +42,12 @@ export function validateSalesMessage<T extends SalesMessage>(message: T): T {
   const subject = message.subject?.trim();
   if (message.channel === "email" && !subject)
     throw new Error("Outbound sales email requires a subject.");
-  return { ...message, to, body, subject };
+  const senderIdentity = message.senderIdentity?.trim();
+  if (message.channel !== "email" && !senderIdentity)
+    throw new Error(
+      `SENDER_NOT_COMMISSIONED: an exact approved ${message.channel.toUpperCase()} sender identity is required.`
+    );
+  return { ...message, to, body, subject, senderIdentity };
 }
 
 function suppressionIdentity(message: SalesMessage, destination: string) {
@@ -57,7 +64,11 @@ export async function getOutboundSuppressionStatus(input: {
   organisationId: number;
   message: SalesMessage;
 }) {
-  const message = validateSalesMessage(input.message);
+  // Suppression verification is about the target. Sender commissioning is
+  // checked separately because drafts may need suppression truth before a
+  // sender is resolved.
+  const destination = assertDestination(input.message.channel, input.message.to);
+  const message = { ...input.message, to: destination };
   const db = await getDb();
   if (!db)
     throw new Error(
@@ -130,9 +141,7 @@ export async function sendSalesMessage(input: {
   await assertNotSuppressed(input.connection.organisationId, message);
 
   const native =
-    message.channel === "sms"
-      ? input.adapter.sendSms
-      : input.adapter.sendWhatsApp;
+    message.channel === "sms" ? input.adapter.sendSms : input.adapter.sendWhatsApp;
 
   if (!native)
     throw new Error(
@@ -148,6 +157,8 @@ export async function sendSalesMessage(input: {
     contactExternalId: message.contactExternalId,
     opportunityExternalId: message.opportunityExternalId,
     templateName: message.templateName,
+    senderIdentity: message.senderIdentity,
+    idempotencyKey: message.idempotencyKey,
     correlationId: input.correlationId,
   });
 }
@@ -158,6 +169,6 @@ export function getSalesCommunicationsReadiness() {
     crmMessagingMode: "crm_native_per_connection" as const,
     deploymentMessagingGatewayRequired: false,
     detail:
-      "Sales email executes through each salesperson's delegated Microsoft mailbox. SMS and WhatsApp remain exact capability truth on each connected CRM.",
+      "Sales email executes through each salesperson's delegated Microsoft mailbox. SMS and WhatsApp remain exact capability truth on each connected CRM, including the commissioned sender identity.",
   };
 }
