@@ -1,5 +1,6 @@
 import { Sparkles } from "lucide-react";
 import { Link } from "wouter";
+import { BrandName } from "@/components/BrandName";
 import { MarketingLayout } from "@/marketing/MarketingLayout";
 import { accountLinks } from "@/marketing/site";
 import { AI_CREDIT_ECONOMICS, PRICING_PLANS } from "@shared/pricing";
@@ -11,15 +12,15 @@ function money(cents: number) {
 export default function Pricing() {
   return (
     <MarketingLayout>
-      <section className="amk-pricing" style={{ paddingTop: "clamp(96px, 9vw, 132px)" }}>
+      <section className="amk-pricing">
         <div className="amk-shell">
           <div className="amk-pricing__head">
             <p className="amk-eyebrow">SIMPLE PRICING IN SOUTH AFRICAN RAND</p>
-            <h1>Pay for the workspace. Use AI credits when AI is doing real work.</h1>
-            <p>Your subscription covers the core Sales Assistant experience. AI credits are used when Amarktai needs deeper intelligence for work such as learning a website, drafting a message, understanding a conversation or helping with a complex sales question. Normal CRM syncing, priorities and everyday record handling should not quietly drain the AI balance.</p>
+            <h1>Pay for the sales workspace. Use AI credits only when AI is doing real work.</h1>
+            <p>The subscription covers the core Sales Assistant workspace. AI credits are used for deeper intelligence such as learning company information, drafting content, understanding a conversation or helping with a more complex sales question. Normal CRM syncing, reminders and ordinary record handling should not quietly drain the AI balance.</p>
           </div>
 
-          <div className="amk-price-table" role="table" aria-label="Amarktai Network Sales Assistant plans">
+          <div className="amk-price-table" role="table" aria-label="AmarktAI Network Sales Assistant plans">
             <div className="amk-price-row amk-price-row--head" role="row">
               <span>Plan</span><span>Price</span><span>Included</span><span>What you get</span><span></span>
             </div>
@@ -51,6 +52,7 @@ export default function Pricing() {
             </div>
             <div>
               <p>Top up when your team wants more AI-powered analysis, drafting or conversation help. Everyday CRM syncing, reminders, priorities, standard reporting and approved record updates are designed to keep working without charging an AI credit every time a normal sales task happens.</p>
+              <p><BrandName /> is designed so the expensive intelligence is visible rather than hidden inside ordinary workflow activity.</p>
               <Link href="/contact" className="amk-text-link">Need help choosing a plan? <Sparkles size={14}/></Link>
             </div>
           </section>
