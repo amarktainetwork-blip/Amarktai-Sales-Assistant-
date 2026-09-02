@@ -126,7 +126,7 @@ describe("per-user delegated Microsoft mailbox", () => {
       "The stable action reference prevents blind resend; reconcile before any retry."
     );
     expect(execution).toContain("duplicatePrevented: true");
-    expect(sentReadback).toContain("X-Amarktai-Review-Reference");
+    expect(sentReadback.toLowerCase()).toContain("x-amarktai-review-reference");
     expect(sentReadback).toContain("inspected < 100");
     const microsoftBranch = execution.slice(
       execution.indexOf("async function executeMicrosoft"),
