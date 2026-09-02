@@ -4,25 +4,37 @@ from pathlib import Path
 auth_path = Path("client/src/pages/Auth.tsx")
 auth = auth_path.read_text()
 
-if "const [location] = useLocation();" not in auth:
+if 'import { Link, useLocation, useSearch } from "wouter";' not in auth:
+    old_import = 'import { Link, useLocation } from "wouter";'
+    if old_import not in auth:
+        raise SystemExit("Auth wouter import could not be located safely")
+    auth = auth.replace(
+        old_import,
+        'import { Link, useLocation, useSearch } from "wouter";',
+        1,
+    )
+
+# Remove the first draft of this repair if a previous validator checkout applied it.
+auth = auth.replace("  const [location] = useLocation();\n", "", 1)
+
+if "const search = useSearch();" not in auth:
     marker = "export default function Auth() {\n"
     if marker not in auth:
         raise SystemExit("Auth component entry could not be located safely")
-    auth = auth.replace(
-        marker,
-        marker + "  const [location] = useLocation();\n",
-        1,
-    )
+    auth = auth.replace(marker, marker + "  const search = useSearch();\n", 1)
 
 old_query = '''  const query =
     typeof window !== "undefined"
       ? new URLSearchParams(window.location.search)
       : new URLSearchParams();'''
-new_query = '''  const query = new URLSearchParams(
+location_query = '''  const query = new URLSearchParams(
     location.includes("?") ? location.slice(location.indexOf("?") + 1) : ""
   );'''
+new_query = "  const query = new URLSearchParams(search);"
 if old_query in auth:
     auth = auth.replace(old_query, new_query, 1)
+elif location_query in auth:
+    auth = auth.replace(location_query, new_query, 1)
 elif new_query not in auth:
     raise SystemExit("Auth query-mode source could not be located safely")
 
@@ -55,8 +67,9 @@ describe("final account presentation", () => {
   });
 
   it("reacts to register, forgot-password and sign-in query links", () => {
-    expect(auth).toContain("const [location] = useLocation();");
-    expect(auth).toContain('location.includes("?") ? location.slice(location.indexOf("?") + 1) : ""');
+    expect(auth).toContain('import { Link, useLocation, useSearch } from "wouter";');
+    expect(auth).toContain("const search = useSearch();");
+    expect(auth).toContain("const query = new URLSearchParams(search);");
     expect(auth).not.toContain("window.location.search");
     expect(auth).toContain('href="/auth?mode=forgot"');
     expect(auth).toContain('href="/auth?mode=register"');
