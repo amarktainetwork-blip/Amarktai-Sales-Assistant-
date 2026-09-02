@@ -21,6 +21,7 @@ import { trpc } from "@/lib/trpc";
 import {
   Building2,
   Cable,
+  ClipboardCheck,
   ContactRound,
   Headphones,
   Home,
@@ -53,6 +54,7 @@ const dailyMenu: NavItem[] = [
   { icon: ContactRound, label: "Customers", path: "/customers" },
   { icon: Headphones, label: "Calls", path: "/calls" },
   { icon: MessageSquareText, label: "Assistant", path: "/assistant" },
+  { icon: ClipboardCheck, label: "Review", path: "/reviews" },
 ];
 
 export default function DashboardLayout({
@@ -334,6 +336,7 @@ function pageTitle(location: string) {
   if (location.startsWith("/customers")) return "Customers";
   if (location.startsWith("/calls")) return "Calls";
   if (location.startsWith("/assistant")) return "Assistant";
+  if (location.startsWith("/reviews")) return "Review";
   if (location.startsWith("/team")) return "Team";
   if (location.startsWith("/settings")) return "Settings";
   if (location.startsWith("/company-setup")) return "Company setup";
