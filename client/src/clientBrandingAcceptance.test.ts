@@ -41,4 +41,11 @@ describe("AmarktAI customer-facing branding boundary", () => {
     expect(mark).not.toContain(">ai</span>");
     expect(inline).toContain('Amarkt<span className="amk-brand-name__ai">AI</span>');
   });
+
+  it("keeps the static public HTML shell on canonical AmarktAI branding and homepage metadata", () => {
+    const shell = readFileSync(path.resolve(process.cwd(), "client/index.html"), "utf8");
+    expect(shell).toContain("<title>AmarktAI Sales Assistant | Keep your CRM. Make the sales day easier.</title>");
+    expect(shell).toContain('content="AmarktAI learns your business, works with the customer context in your CRM, helps before and during sales conversations and carries confirmed next steps into follow-through."');
+    expect(shell).not.toContain("Amarktai Sales Assistant");
+  });
 });
