@@ -29,6 +29,16 @@ export function findConfiguredTemplate(input: {
   );
 }
 
+function configuredSourceEvidence(template: ConfiguredTemplate) {
+  return {
+    ...(template.sourceReference
+      ? { sourceReference: template.sourceReference }
+      : {}),
+    ...(template.sourceVersion ? { sourceVersion: template.sourceVersion } : {}),
+    ...(template.commissionedAt ? { commissionedAt: template.commissionedAt } : {}),
+  };
+}
+
 /**
  * Resolves exact approved/template content independently from the transport
  * that will eventually execute it. A CRM-saved template is usable outside the
@@ -72,6 +82,7 @@ export async function materializeConfiguredCommunication(input: {
         templateName: input.template.templateName,
         approvalTemplateId: resolved.approvalTemplateId,
         approvalTemplateVersion: resolved.approvalTemplateVersion,
+        ...configuredSourceEvidence(input.template),
       },
     };
   }
@@ -104,6 +115,7 @@ export async function materializeConfiguredCommunication(input: {
           : ("client_configuration_template" as const),
       templateKey: input.template.key,
       templateName: input.template.templateName,
+      ...configuredSourceEvidence(input.template),
     },
   };
 }
