@@ -1,4 +1,3 @@
-import type { WorkflowKey } from "./agentCatalog";
 import {
   getClientActionConfiguration,
   type ClientActionConfiguration,
@@ -38,6 +37,10 @@ function safeKey(value: string) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .slice(0, 100);
+}
+
+function norm(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 function sequenceAction(
@@ -101,6 +104,76 @@ function actionsFromConfiguration(
   return configured;
 }
 
+function applyTaskProgression(input: {
+  request: WorkflowRequest;
+  workflow: WorkflowActionConfiguration;
+  customer: ResolvedAssistantCustomerContext;
+  actions: ProposedAction[];
+}) {
+  if (
+    input.request.workflowKey !== "first_contact" ||
+    !input.workflow.taskSequence.length
+  )
+    return input.actions;
+  const purposes = input.workflow.taskSequence;
+  const titles = purposes.map(purpose => {
+    const title = input.workflow.taskAliases[purpose];
+    if (!title)
+      throw new Error(
+        `WORKFLOW_TASK_ALIAS_REQUIRED: task sequence purpose '${purpose}' has no exact CRM task alias.`
+      );
+    return title;
+  });
+  const openTasks = input.customer.operationalRecordState.openTasks;
+  if (openTasks.length !== 1)
+    throw new Error(
+      openTasks.length
+        ? "FIRST_CONTACT_CURRENT_ATTEMPT_AMBIGUOUS: more than one open task exists, so Amarktai will not guess the current outreach attempt."
+        : "FIRST_CONTACT_CURRENT_ATTEMPT_MISSING: no single open task proves the current outreach attempt."
+    );
+  const current = openTasks[0];
+  const attemptIndex = titles.findIndex(title => norm(title) === norm(current.title));
+  if (attemptIndex < 0)
+    throw new Error(
+      `FIRST_CONTACT_TASK_NOT_CONFIGURED: current task '${current.title}' is not one of the configured outreach attempts.`
+    );
+  const finalAttempt = attemptIndex === titles.length - 1;
+  const nextPurpose = finalAttempt ? undefined : purposes[attemptIndex + 1];
+  const nextTitle = finalAttempt ? undefined : titles[attemptIndex + 1];
+  return input.actions
+    .filter(action => {
+      if (
+        attemptIndex > 0 &&
+        /^send_(?:email|sms|whatsapp)_template$/.test(action.actionType)
+      )
+        return false;
+      if (finalAttempt && action.actionType === "schedule_callback") return false;
+      return true;
+    })
+    .map(action => ({
+      ...action,
+      payload: {
+        ...action.payload,
+        workflowAttempt: {
+          current: attemptIndex + 1,
+          maximum: titles.length,
+          currentTaskExternalId: current.externalId,
+          currentTaskTitle: current.title,
+          finalAttempt,
+        },
+        ...(action.actionType === "schedule_callback" && nextPurpose && nextTitle
+          ? {
+              taskPurpose: nextPurpose,
+              taskTitle: nextTitle,
+              timingRule:
+                input.workflow.timingRules[nextPurpose] ||
+                input.workflow.timingRules.follow_up,
+            }
+          : {}),
+      },
+    }));
+}
+
 function uniqueStrings(...sets: string[][]) {
   return Array.from(
     new Set(sets.flat().map(item => item.trim()).filter(Boolean))
@@ -153,8 +226,8 @@ function configuredActionMetadata(input: {
       stopStatuses: input.workflow.stopStatuses,
       officeHours: input.configuration.officeHours || null,
     },
-    ...(taskTitle ? { taskTitle } : {}),
-    ...(timingRule ? { timingRule } : {}),
+    ...(taskTitle && !payload.taskTitle ? { taskTitle } : {}),
+    ...(timingRule && !payload.timingRule ? { timingRule } : {}),
     ...(opportunityStage
       ? {
           patch: {
@@ -282,11 +355,17 @@ export async function buildConfiguredWorkflowPlan(input: {
       `WORKFLOW_CONFIGURATION_REQUIRED: '${variantKey}' has not been commissioned for this organisation.`
     );
   const base = buildWorkflowPlan(input.request);
-  const source = actionsFromConfiguration(
+  const configuredSource = actionsFromConfiguration(
     base,
     workflow,
     input.customer.contactName
   );
+  const source = applyTaskProgression({
+    request: input.request,
+    workflow,
+    customer: input.customer,
+    actions: configuredSource,
+  });
   const actions: ProposedAction[] = [];
   for (const raw of source) {
     const metadata = configuredActionMetadata({
@@ -311,11 +390,12 @@ export async function buildConfiguredWorkflowPlan(input: {
   }
   return {
     verificationSummary:
-      `${base.verificationSummary} Client sequence, templates, task aliases, mappings, sender identities, timing, duplicate rules and postconditions were resolved from organisation configuration '${variantKey}'.`,
+      `${base.verificationSummary} Client sequence, templates, task aliases, task progression, mappings, sender identities, timing, duplicate rules and postconditions were resolved from organisation configuration '${variantKey}'.`,
     actions,
     configuration: {
       workflowKey: variantKey,
       sequence: workflow.sequence,
+      taskSequence: workflow.taskSequence,
       eligibilityStatuses: workflow.eligibilityStatuses,
       stopStatuses: workflow.stopStatuses,
     },
