@@ -1,5 +1,6 @@
 name: Public Site WIP
 
+# Exact-head validation marker: committed auth routing + public-site rebuild.
 on:
   push:
     branches: ["fix/complete-client-action-flow"]
