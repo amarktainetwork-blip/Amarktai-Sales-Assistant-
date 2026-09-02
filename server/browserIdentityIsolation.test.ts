@@ -41,12 +41,14 @@ describe("browser CRM identity isolation", () => {
   });
 
   it("uses the proposal owner's browser identity for reviewed CRM writes", () => {
-    const execute = read("./crm/executeApprovedAction.ts");
+    const compatibility = read("./crm/executeApprovedAction.ts");
+    const execute = read("./crm/canonicalActionExecution.ts");
 
+    expect(compatibility).toContain("executeCanonicalApprovedAction");
     expect(execute).toContain("loadUserConnectionSecret");
-    expect(execute).toContain("input.proposal.userId");
+    expect(execute).toContain("userId: input.proposal.userId");
     expect(execute).toContain(
-      "Your CRM needs you to sign in again before this approved change can be applied."
+      "Your private CRM session expired before execution. Sign in again; nothing was changed."
     );
   });
 
