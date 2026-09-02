@@ -145,3 +145,73 @@ text = replace_once(
     "Approved CRM execution boundary",
 )
 routers.write_text(text)
+
+reviews = Path("client/src/pages/Reviews.tsx")
+text = reviews.read_text()
+text = replace_once(
+    text,
+    '''              const sender = text(payload.senderIdentity);
+              const resultDetail = reviewResultDetail(item);''',
+    '''              const sender = text(payload.senderIdentity);
+              const why = text(payload.why);
+              const resultDetail = reviewResultDetail(item);''',
+    "const why = text(payload.why);",
+    "Inbound reply rationale",
+)
+text = replace_once(
+    text,
+    '''                      {mailboxDraft && lifecycle === "pending" ? (
+                        <div className="mt-4 rounded-2xl border border-[#DCE4EE] bg-[#F7F9FC] p-4">
+                          <label className="block text-xs font-bold text-[#526277]">
+                            Email body''',
+    '''                      {mailboxDraft && lifecycle === "pending" ? (
+                        <div className="mt-4 rounded-2xl border border-[#DCE4EE] bg-[#F7F9FC] p-4">
+                          {why ? (
+                            <div className="mb-3 rounded-xl border border-[#DCE4EE] bg-white p-3 text-xs leading-5 text-[#66758A]">
+                              <p className="font-bold text-[#40536B]">Why a reply is needed</p>
+                              <p className="mt-1">{why}</p>
+                            </div>
+                          ) : null}
+                          <label className="block text-xs font-bold text-[#526277]">
+                            Draft reply''',
+    "Why a reply is needed",
+    "Inbound reply review context",
+)
+text = replace_once(
+    text,
+    '''                            Skip
+                          </Button>
+                          <Button
+                            variant="outline"
+                            disabled={editEmail.isPending || !draftBody.trim()}''',
+    '''                            Dismiss
+                          </Button>
+                          <Button
+                            variant="outline"
+                            disabled={editEmail.isPending || !draftBody.trim()}''',
+    "                            Dismiss\n",
+    "Inbound email dismiss label",
+)
+text = replace_once(
+    text,
+    '''                            Approve
+                          </Button>
+                        </>
+                      ) : lifecycle === "approved" ? (''',
+    '''                            Approve change
+                          </Button>
+                        </>
+                      ) : lifecycle === "approved" ? (''',
+    "                            Approve change\n",
+    "Explicit review approval label",
+)
+text = replace_once(
+    text,
+    '''                          Apply approved action
+                        </Button>''',
+    '''                          Apply approved change
+                        </Button>''',
+    "                          Apply approved change\n",
+    "Explicit reviewed apply label",
+)
+reviews.write_text(text)
