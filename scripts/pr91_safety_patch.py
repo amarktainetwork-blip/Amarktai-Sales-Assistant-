@@ -102,3 +102,23 @@ text = text.replace('import { buildWorkflowPlan } from "./workflowRules";\n', ""
 # Canonical customer-facing product spelling in this public/router boundary.
 text = text.replace("Amarktai", "AmarktAI")
 path.write_text(text)
+
+workspace_path = Path("client/src/pages/Workspace.tsx")
+workspace = workspace_path.read_text()
+old_success = '''  const prepare = trpc.assistant.prepareWorkflow.useMutation({
+    onSuccess: result =>
+      toast.success(`${result.actionCount} proposals are ready for review.`),
+    onError: error =>
+      toast.error(`Workflow could not be prepared: ${error.message}`),
+  });'''
+new_success = '''  const prepare = trpc.assistant.prepareWorkflow.useMutation({
+    onSuccess: () =>
+      toast.success("Workflow preparation completed."),
+    onError: error =>
+      toast.error(`Workflow could not be prepared: ${error.message}`),
+  });'''
+if new_success not in workspace:
+    if old_success not in workspace:
+        raise SystemExit("Legacy Workspace workflow caller could not be located safely")
+    workspace = workspace.replace(old_success, new_success, 1)
+workspace_path.write_text(workspace)
