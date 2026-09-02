@@ -38,6 +38,12 @@ function assertDestination(channel: SalesChannel, destination: string) {
   return value;
 }
 
+/**
+ * Validates destination and content only. Sender commissioning belongs to the
+ * transport boundary: drafts/templates must be materializable before the
+ * organisation-approved SMS/WhatsApp sender is resolved, while execution must
+ * still fail closed if that exact sender cannot be proven.
+ */
 export function validateSalesMessage<T extends SalesMessage>(message: T): T {
   const to = assertDestination(message.channel, message.to);
   const body = message.body.trim();
@@ -49,10 +55,6 @@ export function validateSalesMessage<T extends SalesMessage>(message: T): T {
   if (message.channel === "email" && !subject)
     throw new Error("Outbound sales email requires a subject.");
   const senderIdentity = message.senderIdentity?.trim();
-  if (message.channel !== "email" && !senderIdentity)
-    throw new Error(
-      `SENDER_NOT_COMMISSIONED: an exact approved ${message.channel.toUpperCase()} sender identity is required.`
-    );
   return { ...message, to, body, subject, senderIdentity };
 }
 
@@ -70,9 +72,6 @@ export async function getOutboundSuppressionStatus(input: {
   organisationId: number;
   message: SalesMessage;
 }) {
-  // Suppression verification is about the target. Sender commissioning is
-  // checked separately because drafts may need suppression truth before a
-  // sender is resolved.
   const destination = assertDestination(input.message.channel, input.message.to);
   const message = { ...input.message, to: destination };
   const db = await getDb();
@@ -188,6 +187,10 @@ export async function sendSalesMessage(input: {
     input.connection.organisationId,
     input.message
   );
+  if (!senderIdentity)
+    throw new Error(
+      `SENDER_NOT_COMMISSIONED: an exact approved ${input.message.channel.toUpperCase()} sender identity is required before execution.`
+    );
   const message = validateSalesMessage({
     ...input.message,
     senderIdentity,
