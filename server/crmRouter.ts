@@ -100,6 +100,31 @@ function connectionCanRoute(status: string) {
   return status === "ready" || status === "limited_permissions";
 }
 
+function delegatedMicrosoftRoute(actionType: string) {
+  const microsoft = delegatedMailboxReadiness();
+  const email = actionType === "send_email" || actionType === "send_email_template";
+  const calendar = actionType === "create_calendar_event";
+  if (!email && !calendar) return undefined;
+  const requiredCapability = email ? "Mail.Send" : "Calendars.ReadWrite";
+  const displayName = email ? "Your Microsoft mailbox" : "Your Microsoft calendar";
+  const unavailable = email
+    ? "Personal Microsoft mailbox connection is not configured for this deployment."
+    : "Personal Microsoft calendar connection is not configured for this deployment.";
+  return microsoft.ready
+    ? {
+        routable: true as const,
+        provider: "microsoft_delegated",
+        displayName,
+        connectionMode: "delegated_oauth",
+        requiredCapability,
+      }
+    : {
+        routable: false as const,
+        reason: unavailable,
+        requiredCapability,
+      };
+}
+
 export function routeConnectedSystemActions<
   T extends { actionType: string; payload: Record<string, unknown> },
 >(actions: T[], systems: ConnectedSystemRoute[]) {
@@ -107,24 +132,12 @@ export function routeConnectedSystemActions<
   return actions.map(action => {
     const effectiveActionType = routedActionType(action);
     const effectivePayload = routedPayload(action);
-    if (action.actionType === "create_calendar_event") {
-      const microsoft = delegatedMailboxReadiness();
-      const crmRoute = microsoft.ready
-        ? {
-            routable: true as const,
-            provider: "microsoft_delegated",
-            displayName: "Your Microsoft calendar",
-            connectionMode: "delegated_oauth",
-            requiredCapability: "Calendars.ReadWrite",
-          }
-        : {
-            routable: false as const,
-            reason:
-              "Personal Microsoft calendar connection is not configured for this deployment. A CRM-native appointment/calendar function may instead be commissioned as a CRM-specific learned action.",
-            requiredCapability: "Calendars.ReadWrite",
-          };
-      return { ...action, payload: { ...action.payload, crmRoute } };
-    }
+    const microsoftRoute = delegatedMicrosoftRoute(effectiveActionType || action.actionType);
+    if (microsoftRoute)
+      return {
+        ...action,
+        payload: { ...action.payload, crmRoute: microsoftRoute },
+      };
 
     const customAction = effectiveActionType === "custom_crm_action";
     const customOperationKey =
