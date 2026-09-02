@@ -169,7 +169,7 @@ const workflowInput = z.object({
 const publicConnectionLabels = {
   genie: "CRM workspace bridge",
   outlook: "Personal mailbox",
-  genx: "Amarktai intelligence service",
+  genx: "AmarktAI intelligence service",
 } as const;
 
 function presentConnectionProfile<
@@ -183,7 +183,7 @@ function presentConnectionProfile<
   return {
     ...profile,
     displayName: productLabel,
-    scopeSummary: `Amarktai Network ${productLabel.toLowerCase()} profile. Technical configuration details remain server-side.`,
+    scopeSummary: `AmarktAI Network ${productLabel.toLowerCase()} profile. Technical configuration details remain server-side.`,
   };
 }
 
@@ -327,7 +327,7 @@ export const appRouter = router({
             url.searchParams.set("reset", token);
             await sendEmail({
               to: account.email,
-              subject: "Reset your Amarktai workspace password",
+              subject: "Reset your AmarktAI workspace password",
               text: `Use this one-time link within 30 minutes to reset your password: ${url.toString()}`,
               html: `<main style="font-family:Arial,sans-serif;max-width:560px;margin:auto"><h1>Reset your workspace password</h1><p>Use the link below within 30 minutes. If you did not request this, you can ignore this email.</p><p><a href="${url.toString()}">Reset password</a></p></main>`,
             });
@@ -674,8 +674,8 @@ export const appRouter = router({
         return createExportDownload({
           title:
             input.kind === "conversation_log"
-              ? "Amarktai factual conversation logs"
-              : "Amarktai operational report",
+              ? "AmarktAI factual conversation logs"
+              : "AmarktAI operational report",
           filenameStem: `${stem}-${organisation.organisationId}-${new Date().toISOString().slice(0, 10)}`,
           format: input.format,
           sections,
@@ -917,10 +917,22 @@ export const appRouter = router({
           success: result.success,
           result,
         });
-        if (!result.success)
+        if (!result.success) {
+          const executionEvidence = result as {
+            acceptedByProvider?: boolean;
+            retryable?: boolean;
+          };
+          if (
+            executionEvidence.acceptedByProvider ||
+            executionEvidence.retryable === false
+          )
+            throw new Error(
+              "Microsoft accepted this approved email, but delivery readback could not be verified. Review now marks it Failed. Do not resend it until the stable action reference is reconciled."
+            );
           throw new Error(
             "The email was not sent. Check your mailbox connection and try again."
           );
+        }
         return result;
       }),
     proposalAudit: secondFactorProcedure
@@ -2200,7 +2212,7 @@ export const appRouter = router({
             cron: input.cronExpression,
             path: "/api/scheduled/daily-report",
             payload: { reportId },
-            description: `Daily Amarktai workspace report for ${input.recipientEmail}`,
+            description: `Daily AmarktAI workspace report for ${input.recipientEmail}`,
           },
           sessionToken
         );
