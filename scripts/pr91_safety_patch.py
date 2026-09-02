@@ -87,11 +87,9 @@ old_workflow = '''    prepareWorkflow: secondFactorProcedure
 new_workflow = '''    prepareWorkflow: secondFactorProcedure
       .input(workflowInput)
       .mutation(() => {
-        throw new TRPCError({
-          code: "PRECONDITION_FAILED",
-          message:
-            "Legacy workflow preparation is disabled. Use the governed Assistant with an exact CRM customer context.",
-        });
+        throw new Error(
+          "Legacy workflow preparation is disabled. Use the governed Assistant with an exact CRM customer context."
+        );
       }),'''
 
 if new_workflow not in text:
