@@ -13,6 +13,7 @@ export const autonomyPermissions = [
 
 export type AutonomyPermission = (typeof autonomyPermissions)[number];
 export type AutonomyMode = "review_everything" | "custom" | "full";
+export type DuplicateActionState = "clear" | "unknown" | "already_completed";
 
 export type AutonomySettings = {
   mode: AutonomyMode;
@@ -78,14 +79,25 @@ export function applyOrganisationAutonomyCeiling(
   };
 }
 
+/**
+ * One decision for every execution surface. No layer grants permission by
+ * itself: user autonomy, the organisation ceiling, organisation allow-list,
+ * review policy, exact target/capability evidence, compliance, shadow mode and
+ * duplicate state all contribute to the effective result.
+ */
 export function autonomyDecision(input: {
   user: AutonomySettings;
   organisationCeiling?: AutonomySettings;
   permission: AutonomyPermission;
   optedOut?: boolean;
+  suppressionVerified?: boolean;
   recipientVerified?: boolean;
+  targetVerified?: boolean;
   capabilityVerified?: boolean;
   organisationAllowsAction?: boolean;
+  policyRequiresReview?: boolean;
+  shadowMode?: boolean;
+  duplicateState?: DuplicateActionState;
 }) {
   if (input.optedOut)
     return {
@@ -93,11 +105,23 @@ export function autonomyDecision(input: {
       reviewRequired: false,
       reason: "recipient_opted_out" as const,
     };
+  if (input.duplicateState === "already_completed")
+    return {
+      allowed: false,
+      reviewRequired: false,
+      reason: "duplicate_already_completed" as const,
+    };
   if (input.organisationAllowsAction === false)
     return {
       allowed: false,
       reviewRequired: false,
       reason: "organisation_blocked" as const,
+    };
+  if (input.suppressionVerified === false)
+    return {
+      allowed: false,
+      reviewRequired: true,
+      reason: "suppression_unverified" as const,
     };
   if (input.recipientVerified === false)
     return {
@@ -105,17 +129,41 @@ export function autonomyDecision(input: {
       reviewRequired: true,
       reason: "recipient_unverified" as const,
     };
+  if (input.targetVerified === false)
+    return {
+      allowed: false,
+      reviewRequired: true,
+      reason: "target_unverified" as const,
+    };
   if (input.capabilityVerified === false)
     return {
       allowed: false,
       reviewRequired: true,
       reason: "capability_unverified" as const,
     };
+  if (input.shadowMode)
+    return {
+      allowed: false,
+      reviewRequired: true,
+      reason: "shadow_mode" as const,
+    };
+  if (input.duplicateState === "unknown")
+    return {
+      allowed: true,
+      reviewRequired: true,
+      reason: "duplicate_verification_required" as const,
+    };
 
   const effective = applyOrganisationAutonomyCeiling(
     input.user,
     input.organisationCeiling
   );
+  if (input.policyRequiresReview)
+    return {
+      allowed: true,
+      reviewRequired: true,
+      reason: "organisation_review_required" as const,
+    };
   const mayProceedWithoutReview =
     effective.mode === "full" ||
     (effective.mode === "custom" && effective.permissions[input.permission]);
