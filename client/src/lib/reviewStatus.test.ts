@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   REVIEW_EXECUTION_CLAIM_TTL_MS,
+  REVIEW_LIFECYCLE_COPY,
   reviewLifecycle,
 } from "./reviewStatus";
 
@@ -53,5 +54,10 @@ describe("review lifecycle", () => {
         now
       )
     ).toBe("blocked");
+  });
+
+  it("uses the canonical AmarktAI spelling in visible lifecycle copy", () => {
+    expect(REVIEW_LIFECYCLE_COPY.executing.description).toContain("AmarktAI");
+    expect(REVIEW_LIFECYCLE_COPY.executing.description).not.toContain("Amarktai");
   });
 });
