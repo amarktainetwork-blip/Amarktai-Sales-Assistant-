@@ -1,0 +1,54 @@
+name: PR91 Safety WIP
+
+on:
+  push:
+    branches: ["fix/complete-client-action-flow"]
+
+permissions:
+  contents: write
+
+jobs:
+  safety:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.15.0
+          cache: pnpm
+      - name: Apply narrow reviewed-email safety fix
+        run: python scripts/pr91_safety_patch.py
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Unit tests
+        run: pnpm test
+      - name: TypeScript
+        run: pnpm check
+      - name: Production build
+        run: pnpm build
+      - name: Safety proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F 'executionEvidence.acceptedByProvider' server/routers.ts
+          grep -F 'Do not resend it until the stable action reference is reconciled.' server/routers.ts
+          grep -F 'AmarktAI intelligence service' server/routers.ts
+          ! grep -F 'Reset your Amarktai workspace password' server/routers.ts
+          git diff --check
+      - name: Commit validated safety fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- server/routers.ts; then
+            echo "Safety fix already committed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add server/routers.ts
+          git commit -m "Prevent blind resend after unverified Microsoft email"
+          git push origin HEAD:fix/complete-client-action-flow
