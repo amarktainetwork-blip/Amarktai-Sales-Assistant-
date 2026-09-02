@@ -40,15 +40,18 @@ jobs:
           grep -F 'unverifiedFailure: true' server/routers.ts
           grep -F 'Approved / executing' client/src/pages/Reviews.tsx
           grep -F 'Evidence, safeguards and history' client/src/pages/Reviews.tsx
+          grep -F 'Why a reply is needed' client/src/pages/Reviews.tsx
+          grep -F 'Approve change' client/src/pages/Reviews.tsx
+          grep -F 'Apply approved change' client/src/pages/Reviews.tsx
           git diff --check
 
       - name: Commit validated Gate 2 wiring
         shell: bash
         run: |
           set -euo pipefail
-          files=(client/src/pages/CrmWorkspace.tsx server/routers.ts)
+          files=(client/src/pages/CrmWorkspace.tsx client/src/pages/Reviews.tsx server/routers.ts)
           if git diff --quiet -- "${files[@]}"; then
-            echo "Gate 2 inline Review wiring is already committed."
+            echo "Gate 2 Review wiring is already committed."
             exit 0
           fi
           git config user.name "github-actions[bot]"
