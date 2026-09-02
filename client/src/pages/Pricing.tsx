@@ -1,4 +1,4 @@
-import { Sparkles } from "lucide-react";
+import { ArrowRight, CheckCircle2, Sparkles } from "lucide-react";
 import { Link } from "wouter";
 import { BrandName } from "@/components/BrandName";
 import { MarketingLayout } from "@/marketing/MarketingLayout";
@@ -12,50 +12,72 @@ function money(cents: number) {
 export default function Pricing() {
   return (
     <MarketingLayout>
-      <section className="amk-pricing">
+      <section className="amk-pricing-hero">
+        <div className="amk-shell amk-pricing-hero__inner">
+          <p className="amk-eyebrow">SIMPLE PRICING IN SOUTH AFRICAN RAND</p>
+          <h1>Start small. Add more intelligence when your sales team needs it.</h1>
+          <p className="amk-lead">The subscription pays for the Sales Assistant workspace. Included AI credits cover the intelligence-heavy work. Normal CRM syncing, reminders and ordinary record handling are designed not to quietly burn through your AI balance.</p>
+        </div>
+      </section>
+
+      <section className="amk-pricing-section">
         <div className="amk-shell">
-          <div className="amk-pricing__head">
-            <p className="amk-eyebrow">SIMPLE PRICING IN SOUTH AFRICAN RAND</p>
-            <h1>Pay for the sales workspace. Use AI credits only when AI is doing real work.</h1>
-            <p>The subscription covers the core Sales Assistant workspace. AI credits are used for deeper intelligence such as learning company information, drafting content, understanding a conversation or helping with a more complex sales question. Normal CRM syncing, reminders and ordinary record handling should not quietly drain the AI balance.</p>
+          <div className="amk-plan-grid">
+            {PRICING_PLANS.map(plan => {
+              const featured = plan.key === "professional";
+              return (
+                <article className={`amk-plan-card${featured ? " is-featured" : ""}`} key={plan.key}>
+                  {featured ? <div className="amk-plan-card__badge">Most popular</div> : null}
+                  <div className="amk-plan-card__top">
+                    <div>
+                      <h2>{plan.name}</h2>
+                      <p>{plan.features[0] ?? "AmarktAI Sales Assistant workspace"}</p>
+                    </div>
+                    <div className="amk-plan-card__price">
+                      <strong>{money(plan.monthlyZarCents)}</strong>
+                      {plan.monthlyZarCents ? <span>/month</span> : <span>to start</span>}
+                    </div>
+                  </div>
+                  <div className="amk-plan-card__meta">
+                    <span>{plan.includedUsers === 1 ? "1 user" : `Up to ${plan.includedUsers} users`}</span>
+                    <span>{plan.includedAiCredits.toLocaleString("en-ZA")} AI credits included</span>
+                  </div>
+                  <ul className="amk-plan-card__features">
+                    {plan.features.map(feature => <li key={feature}><CheckCircle2 size={17} /> {feature}</li>)}
+                  </ul>
+                  <Link href={plan.key === "team" ? "/contact" : accountLinks.getStarted} className={featured ? "amk-button amk-button--primary amk-plan-card__cta" : "amk-button amk-button--secondary amk-plan-card__cta"}>
+                    {plan.key === "trial" ? "Start free" : plan.key === "team" ? "Talk to us" : "Get started"} <ArrowRight size={16} />
+                  </Link>
+                </article>
+              );
+            })}
           </div>
 
-          <div className="amk-price-table" role="table" aria-label="AmarktAI Network Sales Assistant plans">
-            <div className="amk-price-row amk-price-row--head" role="row">
-              <span>Plan</span><span>Price</span><span>Included</span><span>What you get</span><span></span>
-            </div>
-            {PRICING_PLANS.map(plan => (
-              <div className="amk-price-row" role="row" key={plan.key}>
-                <div className="amk-price-name">
-                  <strong>{plan.name}</strong>
-                  <span>{plan.features.slice(0, 2).join(" · ")}</span>
-                </div>
-                <div className="amk-price-value">
-                  {money(plan.monthlyZarCents)}{plan.monthlyZarCents ? <small>/mo</small> : null}
-                </div>
-                <div className="amk-price-meta">
-                  {plan.includedUsers === 1 ? "1 user" : `Up to ${plan.includedUsers} users`}<br/>
-                  {plan.includedAiCredits.toLocaleString("en-ZA")} AI credits
-                </div>
-                <div className="amk-price-features">{plan.features.slice(2).join(" · ") || plan.features.join(" · ")}</div>
-                <Link href={plan.key === "team" ? "/contact" : accountLinks.getStarted} className={plan.key === "professional" ? "amk-button amk-button--primary" : "amk-button amk-button--secondary"}>
-                  {plan.key === "trial" ? "Start trial" : plan.key === "team" ? "Talk to us" : "Get started"}
-                </Link>
-              </div>
-            ))}
-          </div>
-
-          <section className="amk-price-credit">
+          <section className="amk-credit-panel">
             <div>
-              <p className="amk-eyebrow"><Sparkles size={14}/> OPTIONAL AI CREDIT TOP-UPS</p>
+              <p className="amk-eyebrow"><Sparkles size={14} /> OPTIONAL AI CREDIT TOP-UPS</p>
               <h2>1,000 AI credits · {money(AI_CREDIT_ECONOMICS.retailPackZarCents)}</h2>
+              <p>Top up only when your team needs more AI-powered analysis, drafting, conversation help or deeper company learning.</p>
             </div>
-            <div>
-              <p>Top up when your team wants more AI-powered analysis, drafting or conversation help. Everyday CRM syncing, reminders, priorities, standard reporting and approved record updates are designed to keep working without charging an AI credit every time a normal sales task happens.</p>
-              <p><BrandName /> is designed so the expensive intelligence is visible rather than hidden inside ordinary workflow activity.</p>
-              <Link href="/contact" className="amk-text-link">Need help choosing a plan? <Sparkles size={14}/></Link>
+            <div className="amk-credit-panel__notes">
+              <div><CheckCircle2 size={18} /><span><strong>Core sales workflow stays usable</strong><small>Ordinary CRM syncing, reminders, standard reporting and approved record handling are not meant to charge an AI credit every time.</small></span></div>
+              <div><CheckCircle2 size={18} /><span><strong>Intelligence use stays visible</strong><small><BrandName /> is designed so expensive AI work is separate from normal workflow activity.</small></span></div>
             </div>
           </section>
+        </div>
+      </section>
+
+      <section className="amk-final-cta">
+        <div className="amk-shell amk-final-cta__inner">
+          <div>
+            <p className="amk-eyebrow amk-eyebrow--light">NOT SURE WHICH PLAN FITS?</p>
+            <h2>Tell us your team size and CRM.</h2>
+            <p>We will help you choose the simplest starting point without overselling you.</p>
+          </div>
+          <div className="amk-actions">
+            <Link href="/contact" className="amk-button amk-button--light">Talk to us</Link>
+            <Link href={accountLinks.getStarted} className="amk-button amk-button--outline-light">Start free</Link>
+          </div>
         </div>
       </section>
     </MarketingLayout>

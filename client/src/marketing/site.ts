@@ -10,54 +10,42 @@ export const accountLinks = {
   getStarted: "/auth?mode=register",
 } as const;
 
-export const publicPageMetadata: Record<
-  string,
-  { title: string; description: string }
-> = {
+export const publicPageMetadata: Record<string, { title: string; description: string }> = {
   "/": {
-    title: "AmarktAI Sales Assistant | Keep your CRM. Make the sales day easier.",
-    description:
-      "AmarktAI learns your business, works with the customer context in your CRM, helps before and during sales conversations and carries confirmed next steps into follow-through.",
+    title: "AmarktAI Sales Assistant | Sell with more confidence. Follow up without the scramble.",
+    description: "AmarktAI helps salespeople prepare for customers, handle conversations and finish the follow-up around the CRM they already use.",
   },
   "/how-it-works": {
     title: "How AmarktAI Sales Assistant Works | Keep Your CRM",
-    description:
-      "See how AmarktAI connects approved company knowledge, CRM customer context, sales conversations, Review and follow-through in one personal sales workspace.",
+    description: "See how AmarktAI brings company knowledge, CRM customer context, conversation help, Review and follow-through into one sales workflow.",
   },
   "/pricing": {
-    title: "AmarktAI Sales Assistant Pricing | South African Rand",
-    description:
-      "Simple ZAR pricing for individual salespeople and teams, with included AI credits and optional top-ups for deeper AI work.",
+    title: "AmarktAI Sales Assistant Pricing | Simple ZAR Plans",
+    description: "Simple South African pricing for individual salespeople and teams, with included AI credits and optional top-ups when more intelligence is needed.",
   },
   "/about": {
-    title: "Why AmarktAI | The Sales Assistant Around Your Existing CRM",
-    description:
-      "See why AmarktAI is built around the real work salespeople do before, during and after customer conversations instead of replacing the CRM.",
+    title: "Why AmarktAI | A Better Way to Work Around Your CRM",
+    description: "AmarktAI helps salespeople use the customer, company and conversation context they already have instead of copying everything into another system.",
   },
   "/contact": {
-    title: "Talk to AmarktAI | Sales Assistant Demo and CRM Fit",
-    description:
-      "Tell us how your sales team works today, which CRM you use and where the sales day needs to improve.",
+    title: "Book an AmarktAI Sales Assistant Demo | CRM and Sales Workflow Fit",
+    description: "Tell us which CRM your team uses and where the sales day gets stuck. We will show you how AmarktAI fits around the way you already sell.",
   },
   "/product": {
     title: "AmarktAI Sales Assistant | The Working Layer Around Your CRM",
-    description:
-      "Understand the business, the customer, the conversation and the next action in one sales workspace.",
+    description: "Prepare, sell and follow through with the customer and company context your salespeople need.",
   },
   "/individuals": {
     title: "AmarktAI Sales Assistant for Individual Salespeople",
-    description:
-      "A personal sales workspace for customer context, preparation, conversations and follow-through around the CRM you already use.",
+    description: "A personal sales workspace for preparation, customer context, conversations and follow-through around the CRM you already use.",
   },
   "/teams": {
     title: "AmarktAI Sales Assistant for Sales Teams",
-    description:
-      "Share approved company knowledge while every salesperson keeps a personal workspace, CRM identity and customer context.",
+    description: "Share approved company knowledge while every salesperson keeps a personal workspace, CRM identity and customer context.",
   },
   "/integrations": {
     title: "CRM Connections | AmarktAI Sales Assistant",
-    description:
-      "Keep the CRM your business already trusts and add AmarktAI as the working assistant around the sales day.",
+    description: "Keep the CRM your business already trusts and add AmarktAI as the working assistant around the sales day.",
   },
   "/404": {
     title: "Page Not Found | AmarktAI Network",

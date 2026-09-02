@@ -29,23 +29,17 @@ describe("AmarktAI customer-facing branding boundary", () => {
   });
 
   it("keeps the shared visible wordmark as AmarktAI with AI in the brand-blue span", () => {
-    const mark = readFileSync(
-      path.resolve(process.cwd(), "client/src/components/BrandMark.tsx"),
-      "utf8"
-    );
-    const inline = readFileSync(
-      path.resolve(process.cwd(), "client/src/components/BrandName.tsx"),
-      "utf8"
-    );
+    const mark = readFileSync(path.resolve(process.cwd(), "client/src/components/BrandMark.tsx"), "utf8");
+    const inline = readFileSync(path.resolve(process.cwd(), "client/src/components/BrandName.tsx"), "utf8");
     expect(mark).toContain('Amarkt<span className="text-[#2F6FED]">AI</span>');
     expect(mark).not.toContain(">ai</span>");
     expect(inline).toContain('Amarkt<span className="amk-brand-name__ai">AI</span>');
   });
 
-  it("keeps the static public HTML shell on canonical AmarktAI branding and homepage metadata", () => {
+  it("keeps the static public HTML shell on canonical AmarktAI branding and current homepage metadata", () => {
     const shell = readFileSync(path.resolve(process.cwd(), "client/index.html"), "utf8");
-    expect(shell).toContain("<title>AmarktAI Sales Assistant | Keep your CRM. Make the sales day easier.</title>");
-    expect(shell).toContain('content="AmarktAI learns your business, works with the customer context in your CRM, helps before and during sales conversations and carries confirmed next steps into follow-through."');
+    expect(shell).toContain("<title>AmarktAI Sales Assistant | Sell with more confidence. Follow up without the scramble.</title>");
+    expect(shell).toContain('content="AmarktAI helps salespeople prepare for customers, handle conversations and finish the follow-up around the CRM they already use."');
     expect(shell).not.toContain("Amarktai Sales Assistant");
   });
 });
