@@ -8,7 +8,9 @@ import {
   coreBrowserCommissioningReady,
   inferBrowserOperationCandidates,
   nextCommissioningState,
+  operationEligibleForCommissioningTest,
   resolveSafeTestContext,
+  safeReadCommissioningPassed,
 } from "./automaticCommissioning";
 import { runDeterministicCrmBatch } from "./deterministicBatch";
 import {
@@ -63,6 +65,29 @@ const snapshot = {
 };
 
 describe("automatic CRM commissioning product contract", () => {
+  it("requires at least one real safe read and retests previously proven reads", () => {
+    expect(
+      operationEligibleForCommissioningTest({
+        status: "LIVE_PROVEN",
+        definitionMode: "read",
+        requestedMode: "read",
+      })
+    ).toBe(true);
+    expect(
+      operationEligibleForCommissioningTest({
+        status: "LIVE_PROVEN",
+        definitionMode: "write",
+        requestedMode: "write",
+      })
+    ).toBe(false);
+    expect(safeReadCommissioningPassed({ attempted: 0, proven: [] })).toBe(
+      false
+    );
+    expect(
+      safeReadCommissioningPassed({ attempted: 1, proven: ["contact.read"] })
+    ).toBe(true);
+  });
+
   it("creates bounded Other CRM candidates without making a CRM write", () => {
     const candidates = inferBrowserOperationCandidates(snapshot);
     expect(candidates.map(item => item.operationKey)).toEqual(

@@ -28,7 +28,10 @@ const delegatedScopes = [
   "User.Read",
   "Mail.Read",
   "Mail.Send",
+  "Calendars.ReadWrite",
 ];
+
+const MAX_INBOX_SYNC_MESSAGES = 100;
 
 type DelegatedTokens = {
   accessToken: string;
@@ -37,16 +40,12 @@ type DelegatedTokens = {
 };
 
 export function delegatedMailboxReadiness() {
-  const tenantId =
-    process.env.OUTLOOK_DELEGATED_TENANT_ID?.trim() ||
-    process.env.OUTLOOK_TENANT_ID?.trim();
-  const clientId =
-    process.env.OUTLOOK_DELEGATED_CLIENT_ID?.trim() ||
-    process.env.OUTLOOK_CLIENT_ID?.trim();
-  const clientSecret =
-    process.env.OUTLOOK_DELEGATED_CLIENT_SECRET?.trim() ||
-    process.env.OUTLOOK_CLIENT_SECRET?.trim();
-  const appUrl = process.env.PUBLIC_APP_URL?.trim()?.replace(/\/$/, "");
+  const tenantId = process.env.OUTLOOK_DELEGATED_TENANT_ID?.trim();
+  const clientId = process.env.OUTLOOK_DELEGATED_CLIENT_ID?.trim();
+  const clientSecret = process.env.OUTLOOK_DELEGATED_CLIENT_SECRET?.trim();
+  const appUrl = (
+    process.env.APP_PUBLIC_URL?.trim() || process.env.PUBLIC_APP_URL?.trim()
+  )?.replace(/\/$/, "");
   const redirectUri =
     process.env.OUTLOOK_DELEGATED_REDIRECT_URI?.trim() ||
     (appUrl ? `${appUrl}/api/mailbox/microsoft/callback` : undefined);
@@ -164,8 +163,27 @@ async function tokenRequest(body: URLSearchParams, requireRefresh = true) {
   return result;
 }
 
-async function graph<T>(accessToken: string, path: string, init?: RequestInit) {
-  const response = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
+export function microsoftGraphUrl(pathOrUrl: string) {
+  if (/^https:\/\//i.test(pathOrUrl)) {
+    const url = new URL(pathOrUrl);
+    if (
+      url.origin !== "https://graph.microsoft.com" ||
+      !url.pathname.startsWith("/v1.0/")
+    )
+      throw new Error("Microsoft paging returned an unexpected host.");
+    return url.toString();
+  }
+  if (!pathOrUrl.startsWith("/"))
+    throw new Error("Microsoft mailbox request path is invalid.");
+  return `https://graph.microsoft.com/v1.0${pathOrUrl}`;
+}
+
+export async function delegatedMicrosoftGraphRequest<T>(
+  accessToken: string,
+  pathOrUrl: string,
+  init?: RequestInit
+) {
+  const response = await fetch(microsoftGraphUrl(pathOrUrl), {
     ...init,
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -198,7 +216,7 @@ export async function completeDelegatedMailboxAuthorization(input: {
       scope: delegatedScopes.join(" "),
     })
   );
-  const me = await graph<{
+  const me = await delegatedMicrosoftGraphRequest<{
     mail?: string;
     userPrincipalName?: string;
     displayName?: string;
@@ -283,7 +301,7 @@ export async function getDelegatedMailboxStatus(input: {
   };
 }
 
-async function delegatedAccessToken(input: {
+export async function getDelegatedMailboxAccess(input: {
   userId: number;
   organisationId: number;
 }) {
@@ -303,7 +321,9 @@ async function delegatedAccessToken(input: {
       .limit(1)
   )[0];
   if (!row)
-    throw new Error("Connect your Microsoft mailbox before using email.");
+    throw new Error(
+      "Connect your Microsoft mailbox before using email or calendar."
+    );
   const tokens = decryptConnectionSecret<DelegatedTokens>(row);
   if (row.expiresAt && row.expiresAt.valueOf() > Date.now() + 60_000)
     return {
@@ -402,30 +422,123 @@ export async function sendDelegatedOutlookMail(input: {
     input.to.trim(),
     input.contactExternalId
   );
-  const mailbox = await delegatedAccessToken(input);
-  await graph<void>(mailbox.accessToken, "/me/sendMail", {
-    method: "POST",
-    body: JSON.stringify({
-      message: {
-        subject: input.subject.trim(),
-        body: { contentType: "HTML", content: input.body },
-        toRecipients: [
-          { emailAddress: { address: input.to.trim().toLowerCase() } },
-        ],
-        internetMessageHeaders: [
-          {
-            name: "X-Amarktai-Review-Reference",
-            value: input.reviewReference.trim().slice(0, 180),
-          },
-        ],
-      },
-      saveToSentItems: true,
-    }),
-  });
+  const mailbox = await getDelegatedMailboxAccess(input);
+  await delegatedMicrosoftGraphRequest<void>(
+    mailbox.accessToken,
+    "/me/sendMail",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        message: {
+          subject: input.subject.trim(),
+          body: { contentType: "HTML", content: input.body },
+          toRecipients: [
+            { emailAddress: { address: input.to.trim().toLowerCase() } },
+          ],
+          internetMessageHeaders: [
+            {
+              name: "X-Amarktai-Review-Reference",
+              value: input.reviewReference.trim().slice(0, 180),
+            },
+          ],
+        },
+        saveToSentItems: true,
+      }),
+    }
+  );
   return {
     sent: true as const,
     provider: "microsoft_delegated" as const,
     from: mailbox.email,
+  };
+}
+
+/** Creates an approved calendar invitation from the same user-owned Microsoft connection. */
+export async function createDelegatedOutlookCalendarEvent(input: {
+  userId: number;
+  organisationId: number;
+  subject: string;
+  body: string;
+  startIso: string;
+  endIso: string;
+  attendees: string[];
+  timezone?: string;
+  reviewReference: string;
+}) {
+  if (!input.reviewReference.trim())
+    throw new Error(
+      "An approved review reference is required before creating a calendar invite."
+    );
+  if (!input.subject.trim()) throw new Error("A calendar subject is required.");
+  const start = new Date(input.startIso);
+  const end = new Date(input.endIso);
+  if (
+    Number.isNaN(start.valueOf()) ||
+    Number.isNaN(end.valueOf()) ||
+    end <= start
+  )
+    throw new Error("A valid calendar start and end time are required.");
+  const attendees = Array.from(
+    new Set(
+      input.attendees
+        .map(value => value.trim().toLowerCase())
+        .filter(value => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value))
+    )
+  );
+  if (!attendees.length)
+    throw new Error("At least one valid calendar attendee is required.");
+
+  const mailbox = await getDelegatedMailboxAccess(input);
+  const result = await delegatedMicrosoftGraphRequest<{
+    id?: string;
+    webLink?: string;
+    iCalUId?: string;
+  }>(mailbox.accessToken, "/me/events", {
+    method: "POST",
+    body: JSON.stringify({
+      subject: input.subject.trim(),
+      body: {
+        contentType: "HTML",
+        content: input.body.trim() || input.subject.trim(),
+      },
+      start: {
+        dateTime: start.toISOString(),
+        timeZone: input.timezone?.trim() || "UTC",
+      },
+      end: {
+        dateTime: end.toISOString(),
+        timeZone: input.timezone?.trim() || "UTC",
+      },
+      attendees: attendees.map(address => ({
+        emailAddress: { address },
+        type: "required",
+      })),
+      allowNewTimeProposals: true,
+      transactionId: input.reviewReference.trim().slice(0, 255),
+    }),
+  });
+  await recordAudit({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    eventType: "delegated_calendar_event_created",
+    entityType: "user_mailbox",
+    entityId: String(input.userId),
+    summary:
+      "An approved calendar invitation was created from the salesperson's connected Microsoft account.",
+    metadata: {
+      provider: "microsoft",
+      eventId: result.id,
+      attendeeCount: attendees.length,
+      reviewReference: input.reviewReference.trim().slice(0, 180),
+    },
+  });
+  return {
+    created: true as const,
+    provider: "microsoft_delegated" as const,
+    from: mailbox.email,
+    eventId: result.id,
+    webLink: result.webLink,
+    iCalUId: result.iCalUId,
   };
 }
 
@@ -436,6 +549,11 @@ type GraphInboxMessage = {
   body?: { content?: string };
   receivedDateTime?: string;
   from?: { emailAddress?: { address?: string; name?: string } };
+};
+
+type GraphInboxPage = {
+  value?: GraphInboxMessage[];
+  "@odata.nextLink"?: string;
 };
 
 function plainMessageBody(message: GraphInboxMessage) {
@@ -467,7 +585,8 @@ export async function syncDelegatedMailbox(input: {
   organisationId: number;
 }) {
   await requireOrganisationMembership(input.userId, input.organisationId);
-  const mailbox = await delegatedAccessToken(input);
+  const syncStartedAt = new Date();
+  const mailbox = await getDelegatedMailboxAccess(input);
   const db = await dbOrThrow();
   const connection = (
     await db
@@ -480,23 +599,37 @@ export async function syncDelegatedMailbox(input: {
     connection?.lastSyncedAt || new Date(Date.now() - 7 * 86_400_000);
   const query = new URLSearchParams({
     $top: "25",
-    $orderby: "receivedDateTime desc",
+    $orderby: "receivedDateTime asc",
     $select: "id,subject,bodyPreview,body,receivedDateTime,from",
     $filter: `receivedDateTime ge ${since.toISOString()}`,
   });
-  const inbox = await graph<{ value?: GraphInboxMessage[] }>(
-    mailbox.accessToken,
-    `/me/mailFolders/inbox/messages?${query.toString()}`,
-    { headers: { Prefer: 'outlook.body-content-type="text"' } }
-  );
+
+  let next: string | undefined =
+    `/me/mailFolders/inbox/messages?${query.toString()}`;
+  const inboxMessages: GraphInboxMessage[] = [];
+  while (next && inboxMessages.length < MAX_INBOX_SYNC_MESSAGES) {
+    const page: GraphInboxPage =
+      await delegatedMicrosoftGraphRequest<GraphInboxPage>(
+        mailbox.accessToken,
+        next,
+        { headers: { Prefer: 'outlook.body-content-type="text"' } }
+      );
+    inboxMessages.push(...(page.value || []));
+    next = page["@odata.nextLink"];
+  }
+
+  const boundedMessages = inboxMessages.slice(0, MAX_INBOX_SYNC_MESSAGES);
   let received = 0;
   let draftsPrepared = 0;
-  for (const item of (inbox.value || []).slice(0, 25)) {
+  let newestProcessedAt: Date | undefined;
+  for (const item of boundedMessages) {
     const sender = item.from?.emailAddress?.address?.trim().toLowerCase() || "";
     const body = plainMessageBody(item);
     const receivedAt = new Date(item.receivedDateTime || Date.now());
     if (!item.id || !sender || !body || Number.isNaN(receivedAt.valueOf()))
       continue;
+    if (!newestProcessedAt || receivedAt > newestProcessedAt)
+      newestProcessedAt = receivedAt;
     const ingested = await ingestInboundMessage({
       organisationId: input.organisationId,
       mailboxUserId: input.userId,
@@ -605,9 +738,13 @@ export async function syncDelegatedMailbox(input: {
     });
     draftsPrepared += 1;
   }
+
+  const watermark = newestProcessedAt
+    ? new Date(Math.max(since.valueOf(), newestProcessedAt.valueOf() - 1_000))
+    : syncStartedAt;
   await db
     .update(userMailboxConnections)
-    .set({ lastSyncedAt: new Date() })
+    .set({ lastSyncedAt: watermark })
     .where(eq(userMailboxConnections.id, mailbox.connectionId));
   await recordAudit({
     userId: input.userId,
@@ -617,9 +754,15 @@ export async function syncDelegatedMailbox(input: {
     entityId: String(input.userId),
     summary:
       "The salesperson's delegated inbox was checked for replies needing attention.",
-    metadata: { received, draftsPrepared, messageLimit: 25 },
+    metadata: {
+      received,
+      draftsPrepared,
+      messageLimit: MAX_INBOX_SYNC_MESSAGES,
+      morePagesPending: Boolean(next),
+      watermark: watermark.toISOString(),
+    },
   });
-  return { received, draftsPrepared };
+  return { received, draftsPrepared, morePagesPending: Boolean(next) };
 }
 
 export async function disconnectDelegatedMailbox(input: {

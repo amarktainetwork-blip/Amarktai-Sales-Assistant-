@@ -20,7 +20,6 @@ import { registerAiCreditsRoutes } from "../aiCreditsRoutes";
 import { registerCompanyIntelligenceRoutes } from "../companyIntelligenceRoutes";
 import { registerUserOnboardingRoutes } from "../userOnboardingRoutes";
 import { registerConnectorWebhookRoutes } from "../connectors/webhookRoutes";
-import { registerOutlookInboundRoutes } from "../communications/outlookInboundRoutes";
 import { registerVoiceRoutes } from "../voice/routes";
 import {
   contactRateLimit,
@@ -72,8 +71,6 @@ async function startServer() {
   // decoded chunk limit safely below the parser boundary while remaining bounded.
   app.use(express.json({ limit: "2mb" }));
   app.use(express.urlencoded({ limit: "64kb", extended: true }));
-  app.use("/api/outlook/inbound", rateLimit({ limit: 120, windowMs: 60_000 }));
-  registerOutlookInboundRoutes(app);
   app.get("/healthz", (_req, res) =>
     res.status(200).json({ status: "ok", service: "amarktai-sales" })
   );

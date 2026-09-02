@@ -14,7 +14,6 @@ import {
 } from "../connectedSystems";
 import { sendSalesMessage } from "../communications";
 import { connectedSystemSupportsAction } from "../crmRouter";
-import { createOutlookCalendarEvent, getOutlookReadiness } from "../outlook";
 import type {
   AdapterConnection,
   ConnectionSecretPayload,
@@ -26,7 +25,10 @@ import {
   validateAssistantCrmBatchPlan,
 } from "./assistantBatchExecution";
 import { runGenxAgent } from "../genx";
-import { sendDelegatedOutlookMail } from "../delegatedMailbox";
+import {
+  createDelegatedOutlookCalendarEvent,
+  sendDelegatedOutlookMail,
+} from "../delegatedMailbox";
 
 function explicitExternalId(
   payload: Record<string, unknown>,
@@ -322,18 +324,38 @@ export async function executeApprovedCrmAction(input: {
     });
     const inboundMessageId = Number(payload.inboundMessageId);
     if (Number.isInteger(inboundMessageId) && inboundMessageId > 0) {
-      const db = await getDb();
-      if (db)
-        await db
-          .update(inboundMessages)
-          .set({ needsAction: false, status: "archived" })
-          .where(
-            and(
-              eq(inboundMessages.id, inboundMessageId),
-              eq(inboundMessages.organisationId, input.organisationId),
-              eq(inboundMessages.mailboxUserId, input.proposal.userId)
-            )
-          );
+      try {
+        const db = await getDb();
+        if (db)
+          await db
+            .update(inboundMessages)
+            .set({ needsAction: false, status: "archived" })
+            .where(
+              and(
+                eq(inboundMessages.id, inboundMessageId),
+                eq(inboundMessages.organisationId, input.organisationId),
+                eq(inboundMessages.mailboxUserId, input.proposal.userId)
+              )
+            );
+      } catch (error) {
+        await recordAudit({
+          userId: input.proposal.userId,
+          organisationId: input.organisationId,
+          eventType: "delegated_email_post_send_reconciliation_failed",
+          entityType: "action_proposal",
+          entityId: String(input.proposal.id),
+          summary:
+            "Microsoft accepted the approved email, but local inbound-message bookkeeping needs reconciliation. The send must not be retried.",
+          metadata: {
+            correlationId: input.correlationId,
+            inboundMessageId,
+            detail:
+              error instanceof Error
+                ? error.message.slice(0, 300)
+                : String(error).slice(0, 300),
+          },
+        }).catch(() => undefined);
+      }
     }
     return {
       success: true,
@@ -347,9 +369,9 @@ export async function executeApprovedCrmAction(input: {
   }
 
   if (input.proposal.actionType === "create_calendar_event") {
-    if (route.provider !== "outlook" || !getOutlookReadiness().ready)
+    if (route.provider !== "microsoft_delegated")
       throw new Error(
-        "Microsoft Outlook calendar is not configured for this approved action."
+        "Connect your personal Microsoft account before creating this approved calendar invitation."
       );
     const startIso =
       typeof payload.startIso === "string"
@@ -363,7 +385,9 @@ export async function executeApprovedCrmAction(input: {
         : typeof payload.end === "string"
           ? payload.end
           : "";
-    const result = await createOutlookCalendarEvent({
+    const result = await createDelegatedOutlookCalendarEvent({
+      userId: input.proposal.userId,
+      organisationId: input.organisationId,
       subject: String(payload.subject ?? payload.title ?? input.proposal.title),
       body: String(
         payload.body ??
@@ -380,8 +404,8 @@ export async function executeApprovedCrmAction(input: {
     });
     return {
       success: true,
-      detail: "Approved Microsoft Outlook calendar event created.",
-      provider: "outlook",
+      detail: "Approved calendar invitation created from your connected Microsoft account.",
+      provider: "microsoft_delegated",
       correlationId: input.correlationId,
       completedAt: new Date().toISOString(),
       providerResult: result,

@@ -302,11 +302,12 @@ export default function Settings() {
                 <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#3F70D8]">
                   Your mailbox
                 </p>
-                <h2 className="mt-1 text-lg font-bold">Microsoft Outlook</h2>
+                <h2 className="mt-1 text-lg font-bold">Personal mailbox</h2>
                 <p className="mt-1 max-w-2xl text-sm leading-6 text-[#66758A]">
-                  Connect your own Microsoft account securely. Amarktai never
-                  asks for your Outlook password. Drafts wait for your review
-                  unless your approved autonomy settings allow otherwise.
+                  Connect your own Microsoft account through the Microsoft 365
+                  adapter. Amarktai never asks for your mailbox password. Drafts
+                  wait for your review unless your approved autonomy settings
+                  allow otherwise.
                 </p>
                 {mailbox?.connected ? (
                   <p className="mt-3 text-sm font-semibold text-emerald-700">

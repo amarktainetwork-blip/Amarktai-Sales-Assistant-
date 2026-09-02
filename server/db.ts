@@ -42,7 +42,7 @@ let _db: ReturnType<typeof drizzle> | null = null;
 
 const publicConnectionLabels = {
   genie: "CRM workspace bridge",
-  outlook: "Messaging and calendar link",
+  outlook: "Personal mailbox",
   genx: "Amarktai intelligence service",
 } as const;
 

@@ -1,6 +1,6 @@
 # Amarktai Sales Assistant — Implementation Status
 
-**Updated:** 22 August 2026
+**Updated:** 1 September 2026
 
 This document separates repository-complete behavior from target-environment commissioning. The exact final release SHA and gate results are recorded in `docs/final-release-validation-20260822.md` after the release branch is reconciled with `main`; do not rely on a hard-coded SHA in this status page.
 
@@ -21,7 +21,7 @@ The production source has no executable Manus/Forge hosted-preview dependency. L
 - **Genie** and **Other CRM** deterministic browser adapters with direct customer sign-in through the Secure CRM Browser, encrypted connection-scoped session packages, reviewed saved scripts, screenshot evidence and authorised-domain/private-network controls.
 - CRM synchronization, normalized contacts/companies/opportunities/tasks/activities, pipeline reads and verified-capability routing.
 - Review-first sales email/SMS/WhatsApp actions. CRM-native delivery is preferred where supported; generic SMTP/webhook delivery can log the completed communication back to CRM.
-- Microsoft 365 / Outlook Graph support for reviewed outbound sales mail and approved calendar-event creation when the installation tenant is configured and commissioned.
+- Per-user delegated personal mailbox support, with Microsoft 365 as the first adapter, for reviewed sales mail and approved calendar events after each user connects and consents.
 - Live Call Companion with organisation isolation, explicit consent/media boundary, factual transcript storage, coaching, post-call proposals and optional OpenAI-compatible STT.
 - Team administration, owner mappings, QA rubrics, compliance/retention dry-run records, connector webhook intake, observability and worker records.
 - Webdock full/pilot packaging, runtime migration executable, preflight, install/update, backup, guarded restore, smoke test and production verifier.
@@ -43,9 +43,9 @@ The user-facing connection choices intentionally expose only executable paths:
 
 A company with another browser-accessible CRM can use **Other CRM** after its authorised hostname and reviewed operation profile are calibrated. The customer signs in on the real CRM page; Amarktai does not collect browser-CRM credentials. The product does not pretend to have a native API adapter for every CRM.
 
-## Microsoft 365 / communications
+## Personal mailbox / communications
 
-SMTP is mandatory for account second factor, password recovery, invitations and reports. Reviewed sales email uses a CRM-native sender when the verified CRM provides one; otherwise `OUTBOUND_EMAIL_PROVIDER=auto` prefers configured Outlook Graph and falls back to SMTP. Approved `create_calendar_event` proposals route through Outlook Graph and retain the same approval/correlation evidence boundary as CRM writes.
+SMTP is mandatory only for platform account second factor, password recovery, invitations and reports. Reviewed sales email uses a verified CRM-native sender or the user's connected personal mailbox; it never falls back to a deployment-level shared sender. Microsoft 365 uses delegated OAuth scoped to the exact user and organisation. Approved `create_calendar_event` proposals retain the same approval/correlation evidence boundary as CRM writes.
 
 SMS/WhatsApp require either a verified CRM/browser-native channel or an explicitly configured idempotent webhook bridge. They are not called live until target acceptance succeeds.
 
@@ -68,7 +68,7 @@ These actions cannot truthfully be proven by repository code alone:
 - Real GenX model/API response.
 - OAuth authorisation for native connectors or direct customer sign-in for browser connectors, followed by capability verification for the client's chosen CRM.
 - Operation-profile calibration for Genie/Other CRM.
-- Microsoft Graph token/mail/calendar acceptance if Outlook is used.
+- Per-user Microsoft delegated consent, safe inbox sync, reviewed mail and reviewed calendar acceptance if that adapter is used.
 - Real STT audio acceptance if Live Call Companion transcription is enabled.
 - SMS/WhatsApp sender acceptance if those channels are enabled.
 - One real authorised CRM read and one safe reviewed external write.

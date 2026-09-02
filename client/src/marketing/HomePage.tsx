@@ -3,9 +3,9 @@ import { Link } from "wouter";
 import { MarketingLayout } from "./MarketingLayout";
 import { accountLinks } from "./site";
 
-const HERO_PHOTO = "https://images.pexels.com/photos/7679563/pexels-photo-7679563.jpeg?cs=srgb&dl=pexels-mikhail-nilov-7679563.jpg&fm=jpg";
-const CALL_PHOTO = "https://images.pexels.com/photos/14596539/pexels-photo-14596539.jpeg?cs=srgb&dl=pexels-karen-slack-3606218-14596539.jpg&fm=jpg";
-const TEAM_PHOTO = "https://images.pexels.com/photos/8000530/pexels-photo-8000530.jpeg?cs=srgb&dl=pexels-pavel-danilyuk-8000530.jpg&fm=jpg";
+const HERO_PHOTO = "https://images.pexels.com/photos/19795928/pexels-photo-19795928.jpeg?auto=compress&cs=tinysrgb&w=1800";
+const CALL_PHOTO = "https://images.pexels.com/photos/14596539/pexels-photo-14596539.jpeg?auto=compress&cs=tinysrgb&w=1800";
+const TEAM_PHOTO = "https://images.pexels.com/photos/12899159/pexels-photo-12899159.jpeg?auto=compress&cs=tinysrgb&w=1800";
 
 const amarktaiDifference = [
   ["01", "It learns your business", "Amarktai starts with approved company knowledge so the Assistant understands what you sell, who it is for and the context your team should use."],
@@ -38,7 +38,7 @@ export default function HomePage() {
             </div>
           </div>
           <figure className="amk-photo amk-photo--hero">
-            <img src={HERO_PHOTO} alt="Sales professionals collaborating with technology in a bright office" />
+            <img src={HERO_PHOTO} alt="Professional saleswoman working on a laptop in a bright modern office" />
           </figure>
         </div>
       </section>
@@ -57,7 +57,7 @@ export default function HomePage() {
       <section className="amk-story amk-story--soft">
         <div className="amk-shell amk-story__grid">
           <figure className="amk-photo amk-photo--story">
-            <img src={TEAM_PHOTO} alt="Two sales professionals collaborating at a desk" loading="lazy" />
+            <img src={TEAM_PHOTO} alt="Professional saleswoman working in a bright office" loading="lazy" />
           </figure>
           <div className="amk-story__copy">
             <p className="amk-eyebrow">BUSINESS-AWARE FROM THE START</p>
@@ -119,7 +119,7 @@ export default function HomePage() {
             </div>
           </div>
           <figure className="amk-photo amk-photo--story">
-            <img src={CALL_PHOTO} alt="Sales professional speaking with a customer by phone while working on a laptop" loading="lazy" />
+            <img src={CALL_PHOTO} alt="Professional saleswoman using her phone beside her laptop" loading="lazy" />
           </figure>
         </div>
       </section>

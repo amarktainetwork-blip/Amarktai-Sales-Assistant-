@@ -84,16 +84,15 @@ ZOHO_ACCOUNTS_URL=https://accounts.zoho.com
 # Secure CRM Browser. Customers authenticate directly in the managed session.
 GENIE_LOGIN_URL=https://your-genie-login-url.example
 
-# Microsoft 365 / Outlook Graph (optional).
-# Used only when explicitly commissioned for Microsoft 365 mail/calendar workflows.
-OUTLOOK_TENANT_ID=
-OUTLOOK_CLIENT_ID=
-OUTLOOK_CLIENT_SECRET=
-OUTLOOK_SENDER_EMAIL=
-OUTLOOK_WEBHOOK_CLIENT_STATE=
-OUTLOOK_INBOUND_ORGANISATION_ID=
-OUTLOOK_INBOUND_POLL_MS=5000
-OUTBOUND_EMAIL_PROVIDER=auto
+# Personal mailbox (optional; Microsoft delegated OAuth is the first adapter).
+# Every user connects their own mailbox. Never configure a shared sender account.
+# Register exactly ${APP_PUBLIC_URL}/api/mailbox/microsoft/callback in Entra ID.
+OUTLOOK_DELEGATED_TENANT_ID=
+OUTLOOK_DELEGATED_CLIENT_ID=
+OUTLOOK_DELEGATED_CLIENT_SECRET=
+OUTLOOK_DELEGATED_REDIRECT_URI=https://assistant.example.com/api/mailbox/microsoft/callback
+PERSONAL_MAILBOX_SYNC_INTERVAL_MS=60000
+PERSONAL_WORK_LEARNING_INTERVAL_MS=1800000
 
 # SMTP is mandatory for Amarktai login second factor, password recovery,
 # invitations and reports. Client sales communication is performed through

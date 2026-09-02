@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { callSessions } from "../../drizzle/schema";
 import { getDb, recordAudit } from "../db";
+import { createAssistantMemory, isSafeAssistantMemory } from "../memory";
 
 async function dbOrThrow() {
   const db = await getDb();
@@ -40,17 +41,18 @@ export async function completeLiveCallExact(input: {
   structuredOutcome: Record<string, unknown>;
 }) {
   const db = await dbOrThrow();
-  await requireLiveCallOwner(
+  const session = await requireLiveCallOwner(
     input.userId,
     input.organisationId,
     input.callSessionId
   );
   const transcript = input.transcript.trim().slice(-40_000);
+  const summary = input.summary.trim().slice(0, 20_000);
   await db
     .update(callSessions)
     .set({
       transcript,
-      summary: input.summary.slice(0, 20_000),
+      summary,
       structuredOutcome: input.structuredOutcome,
       status: "ready_for_review",
     })
@@ -61,6 +63,23 @@ export async function completeLiveCallExact(input: {
         eq(callSessions.organisationId, input.organisationId)
       )
     );
+
+  const memorySubject = session.leadLabel?.trim() || `Call ${input.callSessionId}`;
+  const outcome = JSON.stringify(input.structuredOutcome).slice(0, 4_000);
+  const memoryContent = `${summary}${outcome && outcome !== "{}" ? `\nConfirmed outcome: ${outcome}` : ""}`.trim();
+  if (memoryContent && isSafeAssistantMemory(`${memorySubject}\n${memoryContent}`))
+    await createAssistantMemory({
+      userId: input.userId,
+      organisationId: input.organisationId,
+      memoryType: "conversation_reference",
+      subject: memorySubject,
+      content: memoryContent,
+      provenance: "call",
+      trust: "inferred",
+      sourceReference: `call:${input.callSessionId}:summary`,
+      occurredAt: new Date(),
+    });
+
   await recordAudit({
     userId: input.userId,
     organisationId: input.organisationId,
@@ -69,6 +88,13 @@ export async function completeLiveCallExact(input: {
     entityId: String(input.callSessionId),
     summary:
       "Live Call Companion completed and prepared a reviewable post-call summary.",
-    metadata: { transcriptChars: transcript.length, rawAudioRetained: false },
+    metadata: {
+      transcriptChars: transcript.length,
+      rawAudioRetained: false,
+      safeAssistantMemoryRetained: Boolean(
+        memoryContent &&
+          isSafeAssistantMemory(`${memorySubject}\n${memoryContent}`)
+      ),
+    },
   });
 }

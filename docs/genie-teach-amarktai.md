@@ -13,7 +13,7 @@ Common CRM work uses normalized capability names so the rest of Amarktai can wor
 
 A custom write remains fail-closed until target identity and postcondition checks succeed in a controlled replay. Routing to a browser CRM never makes a custom action safe by itself: the exact learned operation must be `LIVE_PROVEN` at execution time.
 
-SMTP remains a deployment requirement only for Amarktai account security and system mail such as second factor, recovery, invitations and reports. Optional Microsoft 365 Graph configuration is used only for workflows explicitly commissioned to use Microsoft 365.
+SMTP remains a deployment requirement only for Amarktai account security and system mail such as second factor, recovery, invitations and reports. Optional personal Microsoft mailbox support uses per-user delegated OAuth and only participates in workflows explicitly commissioned by that user.
 
 ## Truth model
 
@@ -109,9 +109,9 @@ The manager API accepts a versioned definition with:
 
 The accompanying postcondition is `{ "actualKey": "notes", "expectedInput": "noteBody", "comparator": "contains" }`. This is illustrative only; never copy guessed selectors into a client profile.
 
-## Inbound Outlook commissioning
+## Personal mailbox commissioning
 
-When Microsoft 365 is intentionally commissioned, outbound Graph variables remain unchanged. To accept Graph change notifications, also configure a random 24+ character `OUTLOOK_WEBHOOK_CLIENT_STATE` and the intended `OUTLOOK_INBOUND_ORGANISATION_ID`, grant the required application mail-read permission, and register `/api/outlook/inbound` as the notification URL. Notifications are client-state checked, fetched from Graph, deduplicated, matched to normalized contacts, classified, surfaced in Today, and converted to a fail-closed suppression on unsubscribe. Draft replies remain review-controlled.
+When Microsoft 365 is intentionally commissioned, configure the delegated OAuth adapter and let each user consent to their own account. The user-owned background worker performs bounded, paginated inbox sync through delegated Graph access; messages are deduplicated, matched to normalized contacts, classified, surfaced in Today, and converted to a fail-closed suppression on unsubscribe. Draft replies remain review-controlled. No shared sender, application permission or public inbound-mail webhook is part of this runtime.
 
 ## External acceptance
 

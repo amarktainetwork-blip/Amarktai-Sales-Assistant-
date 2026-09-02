@@ -172,6 +172,14 @@ export function canAcceptBrowserInput(control: BrowserControlState) {
   return control === "HUMAN_CONTROL";
 }
 
+export function shouldReuseLiveCrmViewerSession(input: {
+  forceReconnect: boolean;
+  expiresAt: number;
+  now: number;
+}) {
+  return !input.forceReconnect && input.expiresAt > input.now;
+}
+
 function assertInput(event: ViewerInputEvent) {
   if (!event || typeof event !== "object" || !("kind" in event))
     throw new Error("CRM_VIEWER_INPUT_INVALID");
@@ -238,9 +246,7 @@ function retireViewerSession(
   session.sockets.forEach(socket =>
     socket.close(
       reason === "disconnected" ? 4002 : 4001,
-      reason === "disconnected"
-        ? "CRM disconnected"
-        : "Viewer session expired"
+      reason === "disconnected" ? "CRM disconnected" : "Viewer session expired"
     )
   );
   sessions.delete(session.id);
@@ -252,7 +258,9 @@ function retireViewerSession(
     userId: session.userId,
     organisationId: session.organisationId,
     eventType:
-      reason === "disconnected" ? "crm_viewer_disconnected" : "crm_viewer_expired",
+      reason === "disconnected"
+        ? "crm_viewer_disconnected"
+        : "crm_viewer_expired",
     entityType: "connected_system",
     entityId: String(session.connectedSystemId),
     summary:
@@ -417,15 +425,31 @@ export async function createLiveCrmViewerSession(input: {
   userId: number;
   organisationId: number;
   connectedSystemId: number;
+  forceReconnect?: boolean;
 }) {
   pruneExpiredSessions();
   const existingId = scopeIndex.get(
     scopeKey(input.organisationId, input.connectedSystemId, input.userId)
   );
   const existing = existingId ? sessions.get(existingId) : undefined;
-  if (existing && existing.expiresAt > Date.now()) {
+  if (
+    existing &&
+    shouldReuseLiveCrmViewerSession({
+      forceReconnect: input.forceReconnect === true,
+      expiresAt: existing.expiresAt,
+      now: Date.now(),
+    })
+  ) {
     touchViewerSession(existing);
     return viewerDescriptor(existing);
+  }
+  if (existing && input.forceReconnect === true) {
+    retireViewerSession(existing, "reset");
+    await managedCrmBrowserSessionManager.teardown(
+      input.organisationId,
+      input.connectedSystemId,
+      input.userId
+    );
   }
 
   const connection = await getConnectedSystemForUser(

@@ -2,7 +2,7 @@ import "dotenv/config";
 import { AGENT_CATALOG } from "./agentCatalog";
 import { GenxCompanyLearningClient } from "./genxCompanyLearning";
 import { runGenxAgent, verifyGenxConnection } from "./genx";
-import { createOutlookApplicationToken, getOutlookReadiness } from "./outlook";
+import { getPersonalMailboxReadiness } from "./personalMailbox";
 import { getSmtpReadiness, verifySmtpConnection } from "./smtp";
 import { evaluateProductionAgentProbe } from "./productionAgentProbe";
 import { verifyVoiceAcceptance } from "./voice/acceptance";
@@ -136,27 +136,15 @@ async function main() {
     };
   }
 
-  const outlook = getOutlookReadiness();
-  if (!outlook.ready) results.outlook = { status: "NOT_CONFIGURED" };
-  else {
-    try {
-      const token = await createOutlookApplicationToken();
-      results.outlook = {
-        status: token ? "TOKEN_VERIFIED" : "FAILED",
-        senderConfigured: outlook.senderConfigured,
-      };
-      if (!token) failed = true;
-    } catch (error) {
-      results.outlook = {
-        status: "FAILED",
-        reason:
-          error instanceof Error
-            ? error.message.slice(0, 240)
-            : "verification_failed",
-      };
-      failed = true;
-    }
-  }
+  const personalMailbox = getPersonalMailboxReadiness();
+  results.personalMailbox = personalMailbox.ready
+    ? {
+        status: "DELEGATED_OAUTH_CONFIGURED",
+        provider: personalMailbox.provider,
+        connectionModel: personalMailbox.connectionModel,
+        requiresUserConsent: true,
+      }
+    : { status: "NOT_CONFIGURED" };
 
   const stt = getSttConfiguration();
   const tts = getTtsConfiguration();

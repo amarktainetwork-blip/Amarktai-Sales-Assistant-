@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   authenticationStateFromEvidence,
   resolvedAuthenticationState,
+  shouldReuseManagedCrmBrowserSession,
   type BrowserAuthenticationEvidence,
 } from "./managedCrmBrowserSessionManager";
 
@@ -99,5 +100,29 @@ describe("conservative CRM authentication proof", () => {
     expect(resolvedAuthenticationState(login, true)).toBe(
       "REAUTHENTICATION_REQUIRED"
     );
+  });
+});
+
+describe("managed CRM browser recovery", () => {
+  it("does not reuse an about:blank session after navigation failed", () => {
+    expect(
+      shouldReuseManagedCrmBrowserSession({
+        pageClosed: false,
+        browserConnected: true,
+        currentUrl: "about:blank",
+        connectionHealth: "needs_attention",
+      })
+    ).toBe(false);
+  });
+
+  it("keeps a live login page available for the customer", () => {
+    expect(
+      shouldReuseManagedCrmBrowserSession({
+        pageClosed: false,
+        browserConnected: true,
+        currentUrl: "https://genie.entrepreneurscircle.org/login",
+        connectionHealth: "connecting",
+      })
+    ).toBe(true);
   });
 });

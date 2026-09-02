@@ -907,7 +907,10 @@ export async function installKnownGeniePack(
         connectedSystemId: job.connectedSystemId,
         operationKey,
       });
-      if (existing && existing.status !== "NOT_LEARNED") continue;
+      if (existing && existing.status !== "NOT_LEARNED") {
+        installed.push(operationKey);
+        continue;
+      }
       await saveLearnedBrowserOperation({
         userId: job.requestedByUserId!,
         organisationId: job.organisationId,
@@ -942,14 +945,15 @@ export async function installKnownGeniePack(
       needsDiscovery.push(operationKey);
       continue;
     }
-    if (
-      await latestBrowserOperation({
-        organisationId: job.organisationId,
-        connectedSystemId: job.connectedSystemId,
-        operationKey,
-      })
-    )
+    const existing = await latestBrowserOperation({
+      organisationId: job.organisationId,
+      connectedSystemId: job.connectedSystemId,
+      operationKey,
+    });
+    if (existing && existing.status !== "NOT_LEARNED") {
+      installed.push(operationKey);
       continue;
+    }
     await saveLearnedBrowserOperation({
       userId: job.requestedByUserId!,
       organisationId: job.organisationId,
@@ -1107,9 +1111,12 @@ async function testOperations(input: {
   for (const row of rows)
     if (!latest.has(row.operationKey)) latest.set(row.operationKey, row);
   const selected = Array.from(latest.values()).filter(row => {
-    if (row.status !== "TEST_READY") return false;
     const definition = row.definition as Record<string, unknown>;
-    return definition.mode === input.mode;
+    return operationEligibleForCommissioningTest({
+      status: row.status,
+      definitionMode: definition.mode,
+      requestedMode: input.mode,
+    });
   });
   const failures = { ...(input.job.optionalFailures || {}) };
   const proven: string[] = [];
@@ -1176,6 +1183,24 @@ async function testOperations(input: {
     }
   }
   return { proven, failures, attempted: selected.length };
+}
+
+export function operationEligibleForCommissioningTest(input: {
+  status: string;
+  definitionMode: unknown;
+  requestedMode: BrowserOperationMode;
+}) {
+  if (input.definitionMode !== input.requestedMode) return false;
+  return input.requestedMode === "read"
+    ? ["TEST_READY", "LIVE_PROVEN"].includes(input.status)
+    : input.status === "TEST_READY";
+}
+
+export function safeReadCommissioningPassed(input: {
+  attempted: number;
+  proven: string[];
+}) {
+  return input.attempted > 0 && input.proven.length > 0;
 }
 
 const activeJobs = new Set<number>();
@@ -1610,6 +1635,10 @@ export async function advanceAutomaticCommissioning(jobId: number) {
         mode: "read",
         secret: commissioningSecret,
       });
+      if (!safeReadCommissioningPassed(result))
+        throw new Error(
+          "No deterministic CRM safe-read operation passed commissioning."
+        );
       failures = result.failures;
       progress.safeReads = {
         status: "Ready",

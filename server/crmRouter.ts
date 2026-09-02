@@ -1,4 +1,4 @@
-import { getOutlookReadiness } from "./outlook";
+import { delegatedMailboxReadiness } from "./delegatedMailbox";
 import {
   isCustomOperationKey,
   productionOperationAvailable,
@@ -108,20 +108,20 @@ export function routeConnectedSystemActions<
     const effectiveActionType = routedActionType(action);
     const effectivePayload = routedPayload(action);
     if (action.actionType === "create_calendar_event") {
-      const outlook = getOutlookReadiness();
-      const crmRoute = outlook.ready
+      const microsoft = delegatedMailboxReadiness();
+      const crmRoute = microsoft.ready
         ? {
             routable: true as const,
-            provider: "outlook",
-            displayName: "Microsoft Outlook",
-            connectionMode: "microsoft_graph",
-            requiredCapability: "calendar.create",
+            provider: "microsoft_delegated",
+            displayName: "Your Microsoft calendar",
+            connectionMode: "delegated_oauth",
+            requiredCapability: "Calendars.ReadWrite",
           }
         : {
             routable: false as const,
             reason:
-              "The calendar connection is not configured and verified for this deployment. A CRM-native appointment/calendar function may instead be commissioned as a CRM-specific learned action.",
-            requiredCapability: "calendar.create",
+              "Personal Microsoft calendar connection is not configured for this deployment. A CRM-native appointment/calendar function may instead be commissioned as a CRM-specific learned action.",
+            requiredCapability: "Calendars.ReadWrite",
           };
       return { ...action, payload: { ...action.payload, crmRoute } };
     }

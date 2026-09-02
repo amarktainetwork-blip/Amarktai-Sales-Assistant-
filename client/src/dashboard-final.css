@@ -63,11 +63,29 @@ body:has([data-slot="sidebar-wrapper"]) [data-sidebar="menu-button"][data-active
   color: var(--dash-blue-dark) !important;
   box-shadow: inset 3px 0 0 var(--dash-blue) !important;
 }
-body:has([data-slot="sidebar-wrapper"]) [data-sidebar="footer"] button { color: var(--dash-ink) !important; }
-body:has([data-slot="sidebar-wrapper"]) [data-sidebar="footer"] button:hover { background: #f0f3f7 !important; }
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="footer"] > div {
+  background: #ffffff !important;
+  border: 1px solid var(--dash-line) !important;
+  box-shadow: none !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="footer"] button {
+  color: var(--dash-blue) !important;
+  background: #eef4ff !important;
+  border: 1px solid #d8e5fb !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="footer"] button:hover {
+  background: #e3edff !important;
+  color: var(--dash-blue-dark) !important;
+}
 body:has([data-slot="sidebar-wrapper"]) [data-sidebar="footer"] .text-white { color: var(--dash-ink) !important; }
-body:has([data-slot="sidebar-wrapper"]) [data-sidebar="footer"] [class*="text-[#CFD8E3]"] { color: var(--dash-muted) !important; }
-body:has([data-slot="sidebar-wrapper"]) [data-sidebar="footer"] [class*="bg-[#58708D]"] { background: #e2e8f0 !important; color: var(--dash-ink) !important; border-color: #d3dce6 !important; }
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="footer"] [class*="text-[#CFD8E3]"],
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="footer"] [class*="text-[#AFC0D7]"] { color: var(--dash-muted) !important; }
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="footer"] [class*="bg-[#58708D]"],
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="footer"] [class*="bg-[#17335E]"] {
+  background: #eaf1ff !important;
+  color: var(--dash-blue-dark) !important;
+  border-color: #d3def2 !important;
+}
 
 /* Organisation selector in the light sidebar. */
 body:has([data-slot="sidebar-wrapper"]) [data-sidebar="content"] > div[class*="border-white"],
@@ -219,6 +237,32 @@ body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [class*="tex
 body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [class*="text-rose"],
 body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] [class*="text-red"] { color: var(--dash-danger) !important; }
 
+/* CRM is a browser workspace, so do not squeeze it inside the normal app shell. */
+body:has([data-crm-workspace-root]) {
+  overflow: hidden !important;
+}
+body:has([data-crm-workspace-root]) [data-slot="sidebar-container"],
+body:has([data-crm-workspace-root]) [data-slot="sidebar-inset"] > header {
+  display: none !important;
+}
+body:has([data-crm-workspace-root]) [data-slot="sidebar-inset"] {
+  margin-left: 0 !important;
+  width: 100vw !important;
+  min-width: 100vw !important;
+}
+body:has([data-crm-workspace-root]) [data-slot="sidebar-inset"] > main {
+  width: 100vw !important;
+  height: 100vh !important;
+  min-height: 100vh !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+body:has([data-crm-workspace-root]) [data-crm-workspace-root] {
+  width: 100vw !important;
+  height: 100vh !important;
+}
+
 @media (max-width: 767px) {
   body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] > main { padding: 20px 14px 32px !important; }
+  body:has([data-crm-workspace-root]) [data-slot="sidebar-inset"] > main { padding: 0 !important; }
 }
