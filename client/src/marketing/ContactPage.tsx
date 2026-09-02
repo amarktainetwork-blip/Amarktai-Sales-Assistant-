@@ -1,5 +1,6 @@
 import { ArrowRight } from "lucide-react";
 import { useState } from "react";
+import { BrandName } from "@/components/BrandName";
 import { MarketingLayout } from "./MarketingLayout";
 
 export const contactReasons = [
@@ -77,12 +78,13 @@ export default function ContactPage() {
 
   return (
     <MarketingLayout>
-      <section className="amk-contact" style={{ paddingTop: "clamp(96px, 9vw, 132px)" }}>
+      <section className="amk-contact">
         <div className="amk-shell amk-contact__grid">
           <div className="amk-contact__intro">
-            <p className="amk-eyebrow">TALK TO AMARKTAI NETWORK</p>
+            <p className="amk-eyebrow">TALK TO US</p>
             <h1>Show us how your team sells today.</h1>
-            <p>Tell us which CRM you use, how many people sell, and where the day currently breaks down — missed follow-ups, too much admin, poor call preparation, scattered customer context, inconsistent CRM updates or something else. We will show you where Sales Assistant fits around the operation you already have.</p>
+            <p><BrandName /> is designed to fit around the CRM and sales process you already have. Tell us which CRM you use, how many people sell and where work keeps getting missed, repeated or copied by hand.</p>
+            <p>That might be poor call preparation, scattered customer context, missed follow-ups, inconsistent CRM updates or too much sales admin. We will show you where the Assistant is meant to help.</p>
             <div className="amk-contact__details">
               <p><strong>Want a useful demo?</strong> Include your CRM name and the part of the sales day you most want to improve.</p>
               <p><strong>For your security:</strong> never send CRM passwords, one-time codes or connection secrets through this form.</p>
@@ -118,7 +120,7 @@ export default function ContactPage() {
               {status === "sending" ? "Sending…" : <>Send enquiry <ArrowRight size={17}/></>}
             </button>
             <div aria-live="polite" aria-atomic="true">
-              {status === "success" ? <p className="amk-form-status amk-form-status--success">Thank you. We received your message and have the context you shared.</p> : null}
+              {status === "success" ? <p className="amk-form-status amk-form-status--success">Thank you. We received your message and the context you shared.</p> : null}
               {status === "error" ? <p className="amk-form-status amk-form-status--error">We couldn't send your message. Check the highlighted fields and try again.</p> : null}
             </div>
           </form>
