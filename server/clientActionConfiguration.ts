@@ -16,11 +16,16 @@ export type ConfiguredTemplate = {
   body?: string;
   requiredSubject?: string;
   senderIdentity?: string;
+  sourceReference?: string;
+  sourceVersion?: string;
+  commissionedAt?: string;
 };
 
 export type WorkflowActionConfiguration = {
   /** Semantic task purpose -> exact client CRM task title/alias. */
   taskAliases: Record<string, string>;
+  /** Ordered semantic task purposes for attempt/follow-up progression. */
+  taskSequence: string[];
   /** Ordered action tokens, e.g. send_sms_template:first_contact. */
   sequence: string[];
   eligibilityStatuses: string[];
@@ -60,6 +65,7 @@ export type ClientActionConfiguration = {
 
 const EMPTY_WORKFLOW: WorkflowActionConfiguration = {
   taskAliases: {},
+  taskSequence: [],
   sequence: [],
   eligibilityStatuses: [],
   stopStatuses: [],
@@ -115,6 +121,7 @@ function workflow(value: unknown): WorkflowActionConfiguration {
   return {
     ...EMPTY_WORKFLOW,
     taskAliases: stringMap(source.taskAliases),
+    taskSequence: strings(source.taskSequence),
     sequence: strings(source.sequence),
     eligibilityStatuses: strings(source.eligibilityStatuses),
     stopStatuses: strings(source.stopStatuses),
@@ -125,6 +132,13 @@ function workflow(value: unknown): WorkflowActionConfiguration {
     duplicateRules: strings(source.duplicateRules),
     requiredPostconditions: strings(source.requiredPostconditions),
   };
+}
+
+function optionalString(source: Record<string, unknown>, key: string, max: number) {
+  const value = source[key];
+  return typeof value === "string" && value.trim()
+    ? value.trim().slice(0, max)
+    : undefined;
 }
 
 function template(value: unknown, fallbackKey: string): ConfiguredTemplate | null {
@@ -153,14 +167,11 @@ function template(value: unknown, fallbackKey: string): ConfiguredTemplate | nul
       typeof source.body === "string" && source.body.trim()
         ? source.body.trim().slice(0, 30_000)
         : undefined,
-    requiredSubject:
-      typeof source.requiredSubject === "string" && source.requiredSubject.trim()
-        ? source.requiredSubject.trim().slice(0, 240)
-        : undefined,
-    senderIdentity:
-      typeof source.senderIdentity === "string" && source.senderIdentity.trim()
-        ? source.senderIdentity.trim().slice(0, 240)
-        : undefined,
+    requiredSubject: optionalString(source, "requiredSubject", 240),
+    senderIdentity: optionalString(source, "senderIdentity", 240),
+    sourceReference: optionalString(source, "sourceReference", 500),
+    sourceVersion: optionalString(source, "sourceVersion", 160),
+    commissionedAt: optionalString(source, "commissionedAt", 80),
   };
 }
 
