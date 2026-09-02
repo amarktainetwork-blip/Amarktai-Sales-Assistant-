@@ -61,7 +61,6 @@ import {
   secondFactorProcedure,
   managementProcedure,
 } from "./_core/trpc";
-import { buildWorkflowPlan } from "./workflowRules";
 import {
   compareVerificationCode,
   createVerificationChallenge,
@@ -789,40 +788,10 @@ export const appRouter = router({
     }),
     prepareWorkflow: secondFactorProcedure
       .input(workflowInput)
-      .mutation(async ({ ctx, input }) => {
-        const plan = buildWorkflowPlan(input);
-        const organisation = ctx.activeOrganisation;
-        if (!organisation)
-          throw new Error(
-            "Choose an organisation before preparing workflow actions."
-          );
-        const systems = await listConnectedSystemsForUser(
-          ctx.user.id,
-          organisation.organisationId
+      .mutation(() => {
+        throw new Error(
+          "Legacy workflow preparation is disabled. Use the governed Assistant with an exact CRM customer context."
         );
-        const routedActions = routeConnectedSystemActions(
-          plan.actions,
-          systems
-        );
-        const workflowRunId = await createWorkflowRun({
-          userId: ctx.user.id,
-          organisationId: organisation.organisationId,
-          workflowKey: input.workflowKey,
-          leadLabel: input.leadLabel,
-          payload: input,
-          verificationSummary: plan.verificationSummary,
-          actions: routedActions,
-        });
-        return {
-          workflowRunId,
-          verificationSummary: plan.verificationSummary,
-          actionCount: routedActions.length,
-          blockedActionCount: routedActions.filter(
-            action =>
-              (action.payload.crmRoute as { routable?: boolean } | undefined)
-                ?.routable === false
-          ).length,
-        };
       }),
     reviewAction: secondFactorProcedure
       .input(

@@ -355,8 +355,8 @@ export function WorkflowStudio() {
   >("no_answer");
   const [notes, setNotes] = useState("");
   const prepare = trpc.assistant.prepareWorkflow.useMutation({
-    onSuccess: result =>
-      toast.success(`${result.actionCount} proposals are ready for review.`),
+    onSuccess: () =>
+      toast.success("Workflow preparation completed."),
     onError: error =>
       toast.error(`Workflow could not be prepared: ${error.message}`),
   });
