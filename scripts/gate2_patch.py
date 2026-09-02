@@ -2,10 +2,10 @@ from pathlib import Path
 
 
 def replace_once(text: str, old: str, new: str, already: str, label: str) -> str:
-    if old in text:
-        return text.replace(old, new, 1)
     if already in text:
         return text
+    if old in text:
+        return text.replace(old, new, 1)
     raise SystemExit(f"{label} could not be located safely")
 
 
