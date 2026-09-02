@@ -1,11 +1,18 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import {
+  evaluateStructuredBatchRecord,
   executeAssistantCrmBatch,
+  parseMappedStageInstruction,
   planAssistantCrmBatchInstruction,
   validateAssistantCrmBatchPlan,
 } from "./assistantBatchExecution";
-import type { CrmAdapter, NormalizedContact, NormalizedTask } from "./types";
+import type {
+  CrmAdapter,
+  NormalizedContact,
+  NormalizedOpportunity,
+  NormalizedTask,
+} from "./types";
 
 const connection = {
   id: 91,
@@ -21,7 +28,10 @@ const connection = {
   configuration: {},
 };
 
-function fixtureAdapter(records: NormalizedContact[], options?: { permanentFailure?: string }) {
+function fixtureAdapter(
+  records: NormalizedContact[],
+  options?: { permanentFailure?: string }
+) {
   const tasks: NormalizedTask[] = [];
   let active = 0;
   let maximumActive = 0;
@@ -32,25 +42,34 @@ function fixtureAdapter(records: NormalizedContact[], options?: { permanentFailu
       const start = cursor ? Number(cursor) : 0;
       const page = records.slice(start, start + 125);
       const next = start + page.length;
-      return { records: page, cursor: next < records.length ? String(next) : undefined };
+      return {
+        records: page,
+        cursor: next < records.length ? String(next) : undefined,
+      };
     }),
-    createTask: vi.fn(async ({ contactExternalId, title }: { contactExternalId?: string; title: string }) => {
-      active += 1;
-      maximumActive = Math.max(maximumActive, active);
-      writes += 1;
-      await Promise.resolve();
-      active -= 1;
-      if (contactExternalId === options?.permanentFailure)
-        throw new Error("provider rate limit remained exhausted");
-      tasks.push({
-        externalId: `task-${contactExternalId}`,
-        contactExternalId,
-        title,
-        status: "open",
-        raw: {},
-      });
-      return { operation: "create_task", completedAt: new Date().toISOString(), correlationId: "test" };
-    }),
+    createTask: vi.fn(
+      async ({ contactExternalId, title }: { contactExternalId?: string; title: string }) => {
+        active += 1;
+        maximumActive = Math.max(maximumActive, active);
+        writes += 1;
+        await Promise.resolve();
+        active -= 1;
+        if (contactExternalId === options?.permanentFailure)
+          throw new Error("provider rate limit remained exhausted");
+        tasks.push({
+          externalId: `task-${contactExternalId}`,
+          contactExternalId,
+          title,
+          status: "open",
+          raw: {},
+        });
+        return {
+          operation: "create_task",
+          completedAt: new Date().toISOString(),
+          correlationId: "test",
+        };
+      }
+    ),
     syncTasks: vi.fn(async () => {
       readbacks += 1;
       return { records: tasks };
@@ -77,8 +96,58 @@ describe("real assistant deterministic CRM batch path", () => {
         },
       },
     });
-    expect(validateAssistantCrmBatchPlan(proposal!.payload.batchPlan))
-      .toMatchObject({ source: "contacts", structuredPredicate: "overdue_without_next_action" });
+    expect(validateAssistantCrmBatchPlan(proposal!.payload.batchPlan)).toMatchObject({
+      source: "contacts",
+      structuredPredicate: "overdue_without_next_action",
+    });
+  });
+
+  it("never hard-codes a client stage name and requires the requested source status and target stage", () => {
+    expect(
+      parseMappedStageInstruction(
+        "Move every opportunity with status Qualified into stage Consultation Booked."
+      )
+    ).toEqual({
+      sourceStatus: "Qualified",
+      targetStage: "Consultation Booked",
+    });
+
+    const proposal = planAssistantCrmBatchInstruction(
+      "Move every opportunity with status Qualified into stage Consultation Booked."
+    );
+    expect(proposal?.payload.batchPlan).toMatchObject({
+      structuredPredicate: "mapped_status_wrong_stage",
+      sourceStatus: "Qualified",
+      targetStage: "Consultation Booked",
+      patch: { stage: "Consultation Booked" },
+    });
+
+    expect(
+      planAssistantCrmBatchInstruction(
+        "Make sure every accepted opportunity is in the right stage."
+      )
+    ).toBeUndefined();
+
+    const plan = validateAssistantCrmBatchPlan(proposal!.payload.batchPlan);
+    const wrongStage = {
+      externalId: "opp-1",
+      name: "Example",
+      stage: "Lead",
+      raw: { status: "Qualified" },
+    } satisfies NormalizedOpportunity;
+    const correctStage = {
+      ...wrongStage,
+      externalId: "opp-2",
+      stage: "Consultation Booked",
+    } satisfies NormalizedOpportunity;
+    const wrongStatus = {
+      ...wrongStage,
+      externalId: "opp-3",
+      raw: { status: "Lost" },
+    } satisfies NormalizedOpportunity;
+    expect(evaluateStructuredBatchRecord(wrongStage, plan)).toBe(true);
+    expect(evaluateStructuredBatchRecord(correctStage, plan)).toBe(false);
+    expect(evaluateStructuredBatchRecord(wrongStatus, plan)).toBe(false);
   });
 
   it("processes 1,000 structured records through the production assistant wrapper with bounded AI and concurrency", async () => {
@@ -113,7 +182,12 @@ describe("real assistant deterministic CRM batch path", () => {
     });
     expect(result.success).toBe(true);
     expect(result.providerResult).toMatchObject({
-      progress: { discovered: 1_000, completed: 1_000, skipped: 0, failed: 0 },
+      progress: {
+        discovered: 1_000,
+        completed: 1_000,
+        skipped: 0,
+        failed: 0,
+      },
       aiCalls: { planning: 0, ambiguity: 0 },
       crmOperations: 1_000,
       deterministicReadbacks: 1_000,
@@ -140,7 +214,12 @@ describe("real assistant deterministic CRM batch path", () => {
       concurrency: 8,
     });
     expect(retry.providerResult).toMatchObject({
-      progress: { discovered: 1_000, completed: 0, skipped: 1_000, failed: 0 },
+      progress: {
+        discovered: 1_000,
+        completed: 0,
+        skipped: 1_000,
+        failed: 0,
+      },
       crmOperations: 0,
       deterministicReadbacks: 0,
     });
@@ -207,7 +286,10 @@ describe("real assistant deterministic CRM batch path", () => {
 
   it("is called by the existing assistant proposal and execution runtime", () => {
     const routers = readFileSync(new URL("../routers.ts", import.meta.url), "utf8");
-    const execution = readFileSync(new URL("./executeApprovedAction.ts", import.meta.url), "utf8");
+    const execution = readFileSync(
+      new URL("./executeApprovedAction.ts", import.meta.url),
+      "utf8"
+    );
     expect(routers).toContain("planAssistantCrmBatchInstruction(query)");
     expect(routers).toContain("createWorkflowRun");
     expect(execution).toContain("executeAssistantCrmBatch");
