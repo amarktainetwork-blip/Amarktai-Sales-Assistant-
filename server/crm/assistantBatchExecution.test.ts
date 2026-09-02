@@ -284,14 +284,19 @@ describe("real assistant deterministic CRM batch path", () => {
     });
   });
 
-  it("is called by the existing assistant proposal and execution runtime", () => {
+  it("is called by the existing assistant proposal and canonical execution runtime", () => {
     const routers = readFileSync(new URL("../routers.ts", import.meta.url), "utf8");
-    const execution = readFileSync(
+    const compatibility = readFileSync(
       new URL("./executeApprovedAction.ts", import.meta.url),
+      "utf8"
+    );
+    const execution = readFileSync(
+      new URL("./canonicalActionExecution.ts", import.meta.url),
       "utf8"
     );
     expect(routers).toContain("planAssistantCrmBatchInstruction(query)");
     expect(routers).toContain("createWorkflowRun");
+    expect(compatibility).toContain("executeCanonicalApprovedAction");
     expect(execution).toContain("executeAssistantCrmBatch");
     expect(execution).toContain("payload.reviewRequired !== true");
   });
