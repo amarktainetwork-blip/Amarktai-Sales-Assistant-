@@ -8,6 +8,7 @@ import {
   materializeConfiguredCommunication,
   resolveConfiguredSender,
 } from "./communicationContent";
+import { getOutboundSuppressionStatus } from "./communications";
 import type { ResolvedAssistantCustomerContext } from "./assistantCustomerContext";
 import {
   buildWorkflowPlan,
@@ -132,7 +133,9 @@ function applyTaskProgression(input: {
         : "FIRST_CONTACT_CURRENT_ATTEMPT_MISSING: no single open task proves the current outreach attempt."
     );
   const current = openTasks[0];
-  const attemptIndex = titles.findIndex(title => norm(title) === norm(current.title));
+  const attemptIndex = titles.findIndex(
+    title => norm(title) === norm(current.title)
+  );
   if (attemptIndex < 0)
     throw new Error(
       `FIRST_CONTACT_TASK_NOT_CONFIGURED: current task '${current.title}' is not one of the configured outreach attempts.`
@@ -303,6 +306,22 @@ async function materializeTemplateAction(input: {
     channel,
     template,
   });
+  const suppression = await getOutboundSuppressionStatus({
+    organisationId: input.organisationId,
+    message: {
+      channel,
+      to: materialized.to,
+      subject: materialized.subject,
+      body: materialized.body,
+      templateName: materialized.templateName,
+      contactExternalId: input.customer.contactExternalId,
+      opportunityExternalId: input.customer.opportunityExternalId,
+    },
+  });
+  if (suppression.suppressed)
+    throw new Error(
+      `OUTBOUND_SUPPRESSED: the exact customer is opted out or suppressed for ${channel}. Nothing was prepared.`
+    );
   return {
     ...input.action,
     payload: {
@@ -320,6 +339,16 @@ async function materializeTemplateAction(input: {
         ...((input.action.payload.actionVerification as Record<string, unknown>) || {}),
         recipientVerified: true,
         senderVerified: channel === "email" ? true : Boolean(senderIdentity),
+      },
+      compliance: {
+        ...((input.action.payload.compliance as Record<string, unknown>) || {}),
+        suppressionVerified: suppression.verified,
+        optedOut: false,
+      },
+      duplicateVerification: {
+        state: "unknown",
+        rule:
+          "Canonical execution must re-read external activity or Microsoft Sent Items immediately before the irreversible send.",
       },
     },
   };
