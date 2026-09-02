@@ -43,21 +43,27 @@ export function validateSalesMessage<T extends SalesMessage>(message: T): T {
   return { ...message, to, body, subject };
 }
 
-async function assertNotSuppressed(
-  organisationId: number,
-  message: SalesMessage,
-  destination: string
-) {
-  const db = await getDb();
-  if (!db)
-    throw new Error(
-      "Database connection is unavailable; outbound suppression cannot be verified."
-    );
+function suppressionIdentity(message: SalesMessage, destination: string) {
   const channel = message.channel === "whatsapp" ? "chat" : message.channel;
   const senderReference =
     message.channel === "email"
       ? destination.toLowerCase()
       : destination.replace(/[^0-9+]/g, "").replace(/^00/, "+");
+  return { channel, senderReference };
+}
+
+/** Fail closed when suppression/opt-out state cannot be checked. */
+export async function getOutboundSuppressionStatus(input: {
+  organisationId: number;
+  message: SalesMessage;
+}) {
+  const message = validateSalesMessage(input.message);
+  const db = await getDb();
+  if (!db)
+    throw new Error(
+      "Database connection is unavailable; outbound suppression cannot be verified."
+    );
+  const { channel, senderReference } = suppressionIdentity(message, message.to);
   const identity = message.contactExternalId
     ? or(
         eq(contactCommunicationSuppressions.senderReference, senderReference),
@@ -73,24 +79,41 @@ async function assertNotSuppressed(
       .from(contactCommunicationSuppressions)
       .where(
         and(
-          eq(contactCommunicationSuppressions.organisationId, organisationId),
+          eq(contactCommunicationSuppressions.organisationId, input.organisationId),
           eq(contactCommunicationSuppressions.channel, channel),
           identity
         )
       )
       .limit(1)
   )[0];
-  if (suppressed)
+  return {
+    verified: true as const,
+    suppressed: Boolean(suppressed),
+    channel: message.channel,
+    destination: message.to,
+    contactExternalId: message.contactExternalId,
+  };
+}
+
+async function assertNotSuppressed(
+  organisationId: number,
+  message: SalesMessage
+) {
+  const status = await getOutboundSuppressionStatus({
+    organisationId,
+    message,
+  });
+  if (status.suppressed)
     throw new Error(
       "OUTBOUND_SUPPRESSED: this contact or destination has an active inbound opt-out."
     );
 }
 
 /**
- * Client-facing communication always executes through the connected CRM.
- * Amarktai does not maintain a second SMS, WhatsApp or sales-email transport.
- * A channel is usable only when that CRM adapter exposes the action and, for
- * browser CRMs, the connection-specific operation is LIVE_PROVEN.
+ * SMS and WhatsApp execute only through the exact commissioned CRM capability.
+ * Sales email has a different execution owner: it must use the salesperson's
+ * personally connected delegated Microsoft mailbox and is deliberately rejected
+ * here so an old/incorrect CRM route can never silently send it.
  */
 export async function sendSalesMessage(input: {
   adapter: CrmAdapter;
@@ -100,18 +123,16 @@ export async function sendSalesMessage(input: {
   correlationId: string;
 }): Promise<AdapterEvidence> {
   const message = validateSalesMessage(input.message);
-  await assertNotSuppressed(
-    input.connection.organisationId,
-    message,
-    message.to
-  );
+  if (message.channel === "email")
+    throw new Error(
+      "EMAIL_EXECUTION_OWNER_INVALID: salesperson email must execute through the user's delegated Microsoft mailbox."
+    );
+  await assertNotSuppressed(input.connection.organisationId, message);
 
   const native =
-    message.channel === "email"
-      ? input.adapter.sendEmail
-      : message.channel === "sms"
-        ? input.adapter.sendSms
-        : input.adapter.sendWhatsApp;
+    message.channel === "sms"
+      ? input.adapter.sendSms
+      : input.adapter.sendWhatsApp;
 
   if (!native)
     throw new Error(
@@ -133,9 +154,10 @@ export async function sendSalesMessage(input: {
 
 export function getSalesCommunicationsReadiness() {
   return {
-    mode: "crm_native_per_connection" as const,
+    emailMode: "personal_microsoft_delegated" as const,
+    crmMessagingMode: "crm_native_per_connection" as const,
     deploymentMessagingGatewayRequired: false,
     detail:
-      "Client email, SMS, WhatsApp and other communication actions are capability truth on each connected CRM, not deployment-level integrations.",
+      "Sales email executes through each salesperson's delegated Microsoft mailbox. SMS and WhatsApp remain exact capability truth on each connected CRM.",
   };
 }
