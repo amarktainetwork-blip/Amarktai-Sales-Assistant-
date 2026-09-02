@@ -19,12 +19,15 @@ export type ConfiguredTemplate = {
 };
 
 export type WorkflowActionConfiguration = {
-  taskAliases: string[];
+  /** Semantic task purpose -> exact client CRM task title/alias. */
+  taskAliases: Record<string, string>;
+  /** Ordered action tokens, e.g. send_sms_template:first_contact. */
   sequence: string[];
   eligibilityStatuses: string[];
   stopStatuses: string[];
   opportunityMappings: Record<string, string>;
   statusMappings: Record<string, string>;
+  /** Semantic template purpose -> configured template key. */
   templates: Record<string, string>;
   timingRules: Record<string, string>;
   duplicateRules: string[];
@@ -56,7 +59,7 @@ export type ClientActionConfiguration = {
 };
 
 const EMPTY_WORKFLOW: WorkflowActionConfiguration = {
-  taskAliases: [],
+  taskAliases: {},
   sequence: [],
   eligibilityStatuses: [],
   stopStatuses: [],
@@ -111,7 +114,7 @@ function workflow(value: unknown): WorkflowActionConfiguration {
   const source = object(value);
   return {
     ...EMPTY_WORKFLOW,
-    taskAliases: strings(source.taskAliases),
+    taskAliases: stringMap(source.taskAliases),
     sequence: strings(source.sequence),
     eligibilityStatuses: strings(source.eligibilityStatuses),
     stopStatuses: strings(source.stopStatuses),
@@ -196,7 +199,10 @@ function officeHours(value: unknown): ClientActionConfiguration["officeHours"] {
   const source = object(value);
   const start = typeof source.start === "string" ? source.start.trim() : "";
   const end = typeof source.end === "string" ? source.end.trim() : "";
-  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(start) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(end))
+  if (
+    !/^([01]\d|2[0-3]):[0-5]\d$/.test(start) ||
+    !/^([01]\d|2[0-3]):[0-5]\d$/.test(end)
+  )
     return undefined;
   const days = Array.isArray(source.days)
     ? Array.from(
