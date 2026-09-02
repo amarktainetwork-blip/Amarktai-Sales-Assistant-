@@ -1,4 +1,5 @@
 import { BrandMark } from "@/components/BrandMark";
+import { BrandName } from "@/components/BrandName";
 import { ArrowRight, Menu, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
@@ -95,19 +96,19 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
           <div>
             <BrandMark large inverse />
             <p className="amk-footer__statement">Keep your CRM. Give your salespeople a better sales day.</p>
-            <p className="amk-footer__copy">Amarktai Sales Assistant brings business knowledge, customer context, conversation help and follow-through into one personal sales workspace. Part of the Amarktai Network.</p>
+            <p className="amk-footer__copy"><BrandName /> Sales Assistant brings business knowledge, customer context, conversation help, Review and follow-through into one personal sales workspace.</p>
           </div>
           <nav className="amk-footer__nav" aria-label="Footer navigation">
-            <Link href="/about">About</Link>
-            <Link href="/how-it-works">How it works</Link>
+            <Link href="/about">Why AmarktAI</Link>
+            <Link href="/how-it-works">How It Works</Link>
             <Link href="/pricing">Pricing</Link>
             <Link href="/contact">Contact</Link>
-            <Link href={accountLinks.signIn}>Sign in</Link>
+            <Link href={accountLinks.signIn}>Sign In</Link>
           </nav>
         </div>
         <div className="amk-shell amk-footer__base">
-          <p>© {new Date().getFullYear()} Amarktai Sales Assistant. Part of the Amarktai Network.</p>
-          <p>Built for sales teams that want less admin and better follow-through.</p>
+          <p>© {new Date().getFullYear()} <BrandName /> Sales Assistant · AmarktAI Network</p>
+          <p>Built to work around the sales systems you already use.</p>
         </div>
       </footer>
     </div>

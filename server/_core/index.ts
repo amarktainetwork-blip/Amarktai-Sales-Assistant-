@@ -12,6 +12,7 @@ import { registerManagementSettingsRoutes } from "../managementSettingsRoutes";
 import { registerConnectedSystemAdminRoutes } from "../connectedSystemAdminRoutes";
 import { registerConnectedSystemLifecycleRoutes } from "../connectedSystemLifecycleRoutes";
 import { registerAssistantRoutes } from "../assistantRoutes";
+import { registerAssistantActionRoute } from "../assistantActionRoute";
 import { registerAutonomyRoutes } from "../autonomyRoutes";
 import { registerDelegatedMailboxRoutes } from "../delegatedMailboxRoutes";
 import { registerSalesAutomationRoutes } from "../salesAutomationRoutes";
@@ -140,6 +141,7 @@ async function startServer() {
     enforceAppOrigin,
     withAiRequestIdentity
   );
+  registerAssistantActionRoute(app);
   registerAssistantRoutes(app);
   app.use(
     "/api/company-intelligence",

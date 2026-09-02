@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type {
   AdapterConnection,
   AdapterEvidence,
@@ -7,6 +8,11 @@ import type {
 import { and, eq, or } from "drizzle-orm";
 import { contactCommunicationSuppressions } from "../drizzle/schema";
 import { getDb } from "./db";
+import { getClientActionConfiguration } from "./clientActionConfiguration";
+import {
+  findConfiguredTemplate,
+  resolveConfiguredSender,
+} from "./communicationContent";
 
 export type SalesChannel = "email" | "sms" | "whatsapp";
 
@@ -18,6 +24,8 @@ export type SalesMessage = {
   templateName?: string;
   contactExternalId?: string;
   opportunityExternalId?: string;
+  senderIdentity?: string;
+  idempotencyKey?: string;
 };
 
 function assertDestination(channel: SalesChannel, destination: string) {
@@ -30,6 +38,12 @@ function assertDestination(channel: SalesChannel, destination: string) {
   return value;
 }
 
+/**
+ * Validates destination and content only. Sender commissioning belongs to the
+ * transport boundary: drafts/templates must be materializable before the
+ * organisation-approved SMS/WhatsApp sender is resolved, while execution must
+ * still fail closed if that exact sender cannot be proven.
+ */
 export function validateSalesMessage<T extends SalesMessage>(message: T): T {
   const to = assertDestination(message.channel, message.to);
   const body = message.body.trim();
@@ -40,24 +54,33 @@ export function validateSalesMessage<T extends SalesMessage>(message: T): T {
   const subject = message.subject?.trim();
   if (message.channel === "email" && !subject)
     throw new Error("Outbound sales email requires a subject.");
-  return { ...message, to, body, subject };
+  const senderIdentity = message.senderIdentity?.trim();
+  return { ...message, to, body, subject, senderIdentity };
 }
 
-async function assertNotSuppressed(
-  organisationId: number,
-  message: SalesMessage,
-  destination: string
-) {
+function suppressionIdentity(message: SalesMessage, destination: string) {
+  const channel: "email" | "sms" | "chat" =
+    message.channel === "whatsapp" ? "chat" : message.channel;
+  const senderReference =
+    message.channel === "email"
+      ? destination.toLowerCase()
+      : destination.replace(/[^0-9+]/g, "").replace(/^00/, "+");
+  return { channel, senderReference };
+}
+
+/** Fail closed when suppression/opt-out state cannot be checked. */
+export async function getOutboundSuppressionStatus(input: {
+  organisationId: number;
+  message: SalesMessage;
+}) {
+  const destination = assertDestination(input.message.channel, input.message.to);
+  const message = { ...input.message, to: destination };
   const db = await getDb();
   if (!db)
     throw new Error(
       "Database connection is unavailable; outbound suppression cannot be verified."
     );
-  const channel = message.channel === "whatsapp" ? "chat" : message.channel;
-  const senderReference =
-    message.channel === "email"
-      ? destination.toLowerCase()
-      : destination.replace(/[^0-9+]/g, "").replace(/^00/, "+");
+  const { channel, senderReference } = suppressionIdentity(message, message.to);
   const identity = message.contactExternalId
     ? or(
         eq(contactCommunicationSuppressions.senderReference, senderReference),
@@ -73,24 +96,82 @@ async function assertNotSuppressed(
       .from(contactCommunicationSuppressions)
       .where(
         and(
-          eq(contactCommunicationSuppressions.organisationId, organisationId),
+          eq(contactCommunicationSuppressions.organisationId, input.organisationId),
           eq(contactCommunicationSuppressions.channel, channel),
           identity
         )
       )
       .limit(1)
   )[0];
-  if (suppressed)
+  return {
+    verified: true as const,
+    suppressed: Boolean(suppressed),
+    channel: message.channel,
+    destination: message.to,
+    contactExternalId: message.contactExternalId,
+  };
+}
+
+async function assertNotSuppressed(
+  organisationId: number,
+  message: SalesMessage
+) {
+  const status = await getOutboundSuppressionStatus({
+    organisationId,
+    message,
+  });
+  if (status.suppressed)
     throw new Error(
       "OUTBOUND_SUPPRESSED: this contact or destination has an active inbound opt-out."
     );
 }
 
+function stableOutboundKey(message: SalesMessage) {
+  return `crm-message:${createHash("sha256")
+    .update(
+      [
+        message.channel,
+        message.to.trim().toLowerCase(),
+        message.templateName || "custom",
+        message.subject || "",
+        message.body.trim(),
+      ].join("\0")
+    )
+    .digest("hex")
+    .slice(0, 36)}`;
+}
+
+async function resolveExecutionSender(
+  organisationId: number,
+  message: SalesMessage
+) {
+  if (message.channel === "email" || message.senderIdentity?.trim())
+    return message.senderIdentity?.trim();
+  const configuration = await getClientActionConfiguration({ organisationId });
+  const template = message.templateName
+    ? findConfiguredTemplate({
+        configuration,
+        channel: message.channel,
+        templateKey: message.templateName,
+      }) ||
+      Object.values(configuration.templates).find(
+        item =>
+          item.channel === message.channel &&
+          item.templateName.toLowerCase() === message.templateName!.toLowerCase()
+      )
+    : undefined;
+  return resolveConfiguredSender({
+    configuration,
+    channel: message.channel,
+    template,
+  });
+}
+
 /**
- * Client-facing communication always executes through the connected CRM.
- * Amarktai does not maintain a second SMS, WhatsApp or sales-email transport.
- * A channel is usable only when that CRM adapter exposes the action and, for
- * browser CRMs, the connection-specific operation is LIVE_PROVEN.
+ * SMS and WhatsApp execute only through the exact commissioned CRM capability.
+ * Sales email has a different execution owner: it must use the salesperson's
+ * personally connected delegated Microsoft mailbox and is deliberately rejected
+ * here so an old/incorrect CRM route can never silently send it.
  */
 export async function sendSalesMessage(input: {
   adapter: CrmAdapter;
@@ -99,19 +180,27 @@ export async function sendSalesMessage(input: {
   message: SalesMessage;
   correlationId: string;
 }): Promise<AdapterEvidence> {
-  const message = validateSalesMessage(input.message);
-  await assertNotSuppressed(
+  if (input.message.channel === "email")
+    throw new Error(
+      "EMAIL_EXECUTION_OWNER_INVALID: salesperson email must execute through the user's delegated Microsoft mailbox."
+    );
+  const senderIdentity = await resolveExecutionSender(
     input.connection.organisationId,
-    message,
-    message.to
+    input.message
   );
+  if (!senderIdentity)
+    throw new Error(
+      `SENDER_NOT_COMMISSIONED: an exact approved ${input.message.channel.toUpperCase()} sender identity is required before execution.`
+    );
+  const message = validateSalesMessage({
+    ...input.message,
+    senderIdentity,
+    idempotencyKey: input.message.idempotencyKey || stableOutboundKey(input.message),
+  });
+  await assertNotSuppressed(input.connection.organisationId, message);
 
   const native =
-    message.channel === "email"
-      ? input.adapter.sendEmail
-      : message.channel === "sms"
-        ? input.adapter.sendSms
-        : input.adapter.sendWhatsApp;
+    message.channel === "sms" ? input.adapter.sendSms : input.adapter.sendWhatsApp;
 
   if (!native)
     throw new Error(
@@ -127,15 +216,18 @@ export async function sendSalesMessage(input: {
     contactExternalId: message.contactExternalId,
     opportunityExternalId: message.opportunityExternalId,
     templateName: message.templateName,
+    senderIdentity: message.senderIdentity,
+    idempotencyKey: message.idempotencyKey,
     correlationId: input.correlationId,
   });
 }
 
 export function getSalesCommunicationsReadiness() {
   return {
-    mode: "crm_native_per_connection" as const,
+    emailMode: "personal_microsoft_delegated" as const,
+    crmMessagingMode: "crm_native_per_connection" as const,
     deploymentMessagingGatewayRequired: false,
     detail:
-      "Client email, SMS, WhatsApp and other communication actions are capability truth on each connected CRM, not deployment-level integrations.",
+      "Sales email executes through each salesperson's delegated Microsoft mailbox. SMS and WhatsApp remain exact capability truth on each connected CRM, including the commissioned sender identity and a stable outbound idempotency key.",
   };
 }

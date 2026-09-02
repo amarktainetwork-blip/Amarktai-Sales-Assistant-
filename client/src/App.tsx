@@ -245,12 +245,12 @@ function PageMetadata() {
       publicPageMetadata[pathname] ??
       (pathname === "/auth"
         ? {
-            title: "Secure Access | Amarktai Network Sales Assistant",
+            title: "Secure Access | AmarktAI Network Sales Assistant",
             description:
-              "Sign in to the protected Amarktai Network Sales Assistant workspace.",
+              "Sign in to the protected AmarktAI Network Sales Assistant workspace.",
           }
         : {
-            title: "Amarktai Network Sales Assistant",
+            title: "AmarktAI Network Sales Assistant",
             description: "Open the protected Sales Assistant workspace.",
           });
     document.title = metadata.title;

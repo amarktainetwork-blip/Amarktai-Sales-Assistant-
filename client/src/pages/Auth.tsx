@@ -11,16 +11,14 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 const AUTH_PHOTO =
   "https://images.pexels.com/photos/8485714/pexels-photo-8485714.jpeg?auto=compress&cs=tinysrgb&w=1800";
 
 export default function Auth() {
+  const search = useSearch();
   const mode = trpc.auth.mode.useQuery();
-  const query =
-    typeof window !== "undefined"
-      ? new URLSearchParams(window.location.search)
-      : new URLSearchParams();
+  const query = new URLSearchParams(search);
   const invite = query.get("invite");
   const reset = query.get("reset");
   const authView = query.get("mode");
@@ -39,7 +37,7 @@ export default function Auth() {
   const title = reset
     ? "Choose a new password."
     : isRegister
-      ? "Create your Amarktai account."
+      ? "Create your AmarktAI account."
       : authView === "forgot"
         ? "Recover your account."
         : "Welcome back.";
@@ -66,7 +64,7 @@ export default function Auth() {
           </div>
           <div className="amk-auth__message">
             <p className="amk-auth__eyebrow">
-              <ShieldCheck size={15} /> AMARKTAI NETWORK · SALES ASSISTANT
+              <ShieldCheck size={15} /> SECURE PERSONAL SALES WORKSPACE
             </p>
             <h1>
               Your customer context.
@@ -146,7 +144,7 @@ function InviteAcceptForm({ token }: { token: string }) {
       window.history.replaceState({}, "", "/auth");
       setAcceptedEmail(body.email ?? "");
       toast.success(
-        "Your Amarktai Network account is ready. Sign in to continue."
+        "Your AmarktAI Network account is ready. Sign in to continue."
       );
     } catch (error) {
       toast.error(
@@ -213,13 +211,13 @@ function ManagedSignIn() {
     <>
       <p className="amk-auth__muted">
         Continue through your organisation's secure identity flow to open
-        Amarktai Sales Assistant.
+        AmarktAI Sales Assistant.
       </p>
       <button
         onClick={() => startLogin()}
         className="amk-auth__primary amk-auth__primary--spaced"
       >
-        Open Amarktai Sales Assistant <ArrowRight size={17} />
+        Open AmarktAI Sales Assistant <ArrowRight size={17} />
       </button>
       <Fineprint />
     </>
@@ -256,7 +254,7 @@ function LocalRegistrationForm() {
       className="amk-auth-form"
     >
       <p className="amk-auth__muted">
-        Create your personal Amarktai Network account. Company or team setup
+        Create your personal AmarktAI Network account. Company or team setup
         happens after secure access is verified.
       </p>
       <Field
@@ -348,7 +346,7 @@ function LocalLoginForm({ initialEmail = "" }: { initialEmail?: string }) {
         {login.isPending ? "Signing in…" : "Sign in"} <ArrowRight size={17} />
       </button>
       <p className="amk-auth__switch">
-        New to Amarktai?{" "}
+        New to AmarktAI?{" "}
         <Link href="/auth?mode=register">Create an account</Link>
       </p>
       <Fineprint />
@@ -375,7 +373,7 @@ function PasswordRecoveryForm() {
     return (
       <>
         <p className="amk-auth__muted">
-          If that address belongs to an Amarktai account, a recovery link has
+          If that address belongs to an AmarktAI account, a recovery link has
           been sent. Check your inbox and spam folder.
         </p>
         <button
@@ -513,7 +511,7 @@ function Field({
 function Fineprint() {
   return (
     <p className="amk-auth__fineprint">
-      By continuing, you agree to the Amarktai Network Terms and Privacy Policy.
+      By continuing, you agree to the AmarktAI Network Terms and Privacy Policy.
     </p>
   );
 }

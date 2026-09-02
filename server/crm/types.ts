@@ -87,6 +87,10 @@ export type OutboundMessageInput = {
   contactExternalId?: string;
   opportunityExternalId?: string;
   templateName?: string;
+  /** Exact organisation-approved sending number/identity where the CRM supports it. */
+  senderIdentity?: string;
+  /** Stable proposal-level key, distinct from the execution attempt correlation id. */
+  idempotencyKey?: string;
   correlationId: string;
 };
 

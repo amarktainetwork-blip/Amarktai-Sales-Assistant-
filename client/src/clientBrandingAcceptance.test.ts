@@ -11,7 +11,7 @@ function clientFiles(root: string): string[] {
   });
 }
 
-describe("Amarktai customer-facing branding boundary", () => {
+describe("AmarktAI customer-facing branding boundary", () => {
   it("does not expose upstream intelligence provider or model branding anywhere in the client", () => {
     const root = path.resolve(process.cwd(), "client");
     const combined = clientFiles(root)
@@ -26,5 +26,19 @@ describe("Amarktai customer-facing branding boundary", () => {
     expect(combined).not.toMatch(/gpt-5\.6-terra/i);
     expect(combined).not.toMatch(/\bwhisper(?:\.cpp)?\b/i);
     expect(combined).not.toMatch(/\bPiper\b/i);
+  });
+
+  it("keeps the shared visible wordmark as AmarktAI with AI in the brand-blue span", () => {
+    const mark = readFileSync(
+      path.resolve(process.cwd(), "client/src/components/BrandMark.tsx"),
+      "utf8"
+    );
+    const inline = readFileSync(
+      path.resolve(process.cwd(), "client/src/components/BrandName.tsx"),
+      "utf8"
+    );
+    expect(mark).toContain('Amarkt<span className="text-[#2F6FED]">AI</span>');
+    expect(mark).not.toContain(">ai</span>");
+    expect(inline).toContain('Amarkt<span className="amk-brand-name__ai">AI</span>');
   });
 });

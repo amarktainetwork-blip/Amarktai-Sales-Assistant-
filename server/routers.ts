@@ -61,7 +61,6 @@ import {
   secondFactorProcedure,
   managementProcedure,
 } from "./_core/trpc";
-import { buildWorkflowPlan } from "./workflowRules";
 import {
   compareVerificationCode,
   createVerificationChallenge,
@@ -81,7 +80,7 @@ import {
   resetLocalPassword,
 } from "./localAuth";
 import { routeSalesCommand } from "./supervisor";
-import { prepareGovernedAssistantRequest } from "./governedAssistant";
+import { prepareGovernedAssistantRequest } from "./governedAssistantEntry";
 import { prepareLiveCoachingTip, preparePostCallSummary } from "./liveCoach";
 import {
   getPersonalMailboxReadiness,
@@ -169,7 +168,7 @@ const workflowInput = z.object({
 const publicConnectionLabels = {
   genie: "CRM workspace bridge",
   outlook: "Personal mailbox",
-  genx: "Amarktai intelligence service",
+  genx: "AmarktAI intelligence service",
 } as const;
 
 function presentConnectionProfile<
@@ -183,7 +182,7 @@ function presentConnectionProfile<
   return {
     ...profile,
     displayName: productLabel,
-    scopeSummary: `Amarktai Network ${productLabel.toLowerCase()} profile. Technical configuration details remain server-side.`,
+    scopeSummary: `AmarktAI Network ${productLabel.toLowerCase()} profile. Technical configuration details remain server-side.`,
   };
 }
 
@@ -327,7 +326,7 @@ export const appRouter = router({
             url.searchParams.set("reset", token);
             await sendEmail({
               to: account.email,
-              subject: "Reset your Amarktai workspace password",
+              subject: "Reset your AmarktAI workspace password",
               text: `Use this one-time link within 30 minutes to reset your password: ${url.toString()}`,
               html: `<main style="font-family:Arial,sans-serif;max-width:560px;margin:auto"><h1>Reset your workspace password</h1><p>Use the link below within 30 minutes. If you did not request this, you can ignore this email.</p><p><a href="${url.toString()}">Reset password</a></p></main>`,
             });
@@ -674,8 +673,8 @@ export const appRouter = router({
         return createExportDownload({
           title:
             input.kind === "conversation_log"
-              ? "Amarktai factual conversation logs"
-              : "Amarktai operational report",
+              ? "AmarktAI factual conversation logs"
+              : "AmarktAI operational report",
           filenameStem: `${stem}-${organisation.organisationId}-${new Date().toISOString().slice(0, 10)}`,
           format: input.format,
           sections,
@@ -789,40 +788,10 @@ export const appRouter = router({
     }),
     prepareWorkflow: secondFactorProcedure
       .input(workflowInput)
-      .mutation(async ({ ctx, input }) => {
-        const plan = buildWorkflowPlan(input);
-        const organisation = ctx.activeOrganisation;
-        if (!organisation)
-          throw new Error(
-            "Choose an organisation before preparing workflow actions."
-          );
-        const systems = await listConnectedSystemsForUser(
-          ctx.user.id,
-          organisation.organisationId
+      .mutation(() => {
+        throw new Error(
+          "Legacy workflow preparation is disabled. Use the governed Assistant with an exact CRM customer context."
         );
-        const routedActions = routeConnectedSystemActions(
-          plan.actions,
-          systems
-        );
-        const workflowRunId = await createWorkflowRun({
-          userId: ctx.user.id,
-          organisationId: organisation.organisationId,
-          workflowKey: input.workflowKey,
-          leadLabel: input.leadLabel,
-          payload: input,
-          verificationSummary: plan.verificationSummary,
-          actions: routedActions,
-        });
-        return {
-          workflowRunId,
-          verificationSummary: plan.verificationSummary,
-          actionCount: routedActions.length,
-          blockedActionCount: routedActions.filter(
-            action =>
-              (action.payload.crmRoute as { routable?: boolean } | undefined)
-                ?.routable === false
-          ).length,
-        };
       }),
     reviewAction: secondFactorProcedure
       .input(
@@ -917,10 +886,22 @@ export const appRouter = router({
           success: result.success,
           result,
         });
-        if (!result.success)
+        if (!result.success) {
+          const executionEvidence = result as {
+            acceptedByProvider?: boolean;
+            retryable?: boolean;
+          };
+          if (
+            executionEvidence.acceptedByProvider ||
+            executionEvidence.retryable === false
+          )
+            throw new Error(
+              "Microsoft accepted this approved email, but delivery readback could not be verified. Review now marks it Failed. Do not resend it until the stable action reference is reconciled."
+            );
           throw new Error(
             "The email was not sent. Check your mailbox connection and try again."
           );
+        }
         return result;
       }),
     proposalAudit: secondFactorProcedure
@@ -955,11 +936,36 @@ export const appRouter = router({
           throw new Error(
             "Only an approved action proposal may be executed, and it must be owned by your workspace."
           );
-        const result = await executeApprovedCrmAction({
-          organisationId: organisation.organisationId,
-          proposal,
-          correlationId,
-        });
+        let result;
+        try {
+          result = await executeApprovedCrmAction({
+            organisationId: organisation.organisationId,
+            proposal,
+            correlationId,
+          });
+        } catch (error) {
+          const failure = {
+            success: false,
+            detail:
+              error instanceof Error
+                ? error.message
+                : "The approved CRM action failed before verified readback.",
+            correlationId,
+            retryable: false,
+            unverifiedFailure: true,
+          };
+          await recordActionExecution({
+            userId: ctx.user.id,
+            organisationId: organisation.organisationId,
+            proposalId: proposal.id,
+            correlationId,
+            success: false,
+            result: failure,
+          });
+          throw new Error(
+            "The approved action could not be verified. It is marked Failed in Review; do not retry it blindly."
+          );
+        }
         await recordActionExecution({
           userId: ctx.user.id,
           organisationId: organisation.organisationId,
@@ -2175,7 +2181,7 @@ export const appRouter = router({
             cron: input.cronExpression,
             path: "/api/scheduled/daily-report",
             payload: { reportId },
-            description: `Daily Amarktai workspace report for ${input.recipientEmail}`,
+            description: `Daily AmarktAI workspace report for ${input.recipientEmail}`,
           },
           sessionToken
         );

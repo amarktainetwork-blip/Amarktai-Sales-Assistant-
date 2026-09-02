@@ -15,11 +15,11 @@ import NotFound from "@/pages/NotFound";
 import { AI_CREDIT_ECONOMICS, PRICING_PLANS } from "@shared/pricing";
 
 const pages = [
-  ["/", HomePage, "Give them a better sales day."],
-  ["/how-it-works", HowItWorksPage, "Keep your CRM."],
-  ["/pricing", Pricing, "PRICING IN SOUTH AFRICAN RAND"],
-  ["/about", AboutPage, "WHY AMARKTAI"],
-  ["/contact", ContactPage, "TALK TO AMARKTAI NETWORK"],
+  ["/", HomePage, "Your salespeople still need help doing the work."],
+  ["/how-it-works", HowItWorksPage, "Keep your CRM. Make the work around it easier."],
+  ["/pricing", Pricing, "SIMPLE PRICING IN SOUTH AFRICAN RAND"],
+  ["/about", AboutPage, "WHY THIS PRODUCT EXISTS"],
+  ["/contact", ContactPage, "TALK TO US"],
 ] as const;
 
 function render(pathname: string, Component: React.ComponentType) {
@@ -55,8 +55,10 @@ describe("final public website", () => {
       const html = render(pathname, Component);
       expect(html).toContain(expected);
       expect(html).toContain("Main navigation");
-      expect(html).toContain("Amarktai Network");
-      expect(html).toContain("Sales Assistant");
+      expect(html).toContain("Amarkt");
+      expect(html).toContain(">AI<");
+      expect(html).toContain("Network");
+      expect(html).toContain("SALES ASSISTANT");
     }
   );
 
@@ -68,31 +70,35 @@ describe("final public website", () => {
     expect(combined).not.toMatch(/\bGenX\b/i);
   });
 
-  it("uses the approved replacement photography and removes rejected illustration assets", () => {
-    const html = render("/", HomePage);
-    expect(html).toContain("images.pexels.com/photos/19795928");
-    expect(html).toContain("images.pexels.com/photos/12899159");
-    expect(html).toContain("images.pexels.com/photos/14596539");
-    expect(html).not.toContain("images.pexels.com/photos/8837770");
-    expect(html).not.toContain("images.pexels.com/photos/8068833");
-    expect(html).not.toContain("/images/site-hero.svg");
-    expect(html).not.toContain("/images/site-intelligence.svg");
-    expect(html).not.toContain("/images/site-calls.svg");
-    expect(html).not.toContain("/images/site-team.svg");
-
-    const howItWorks = render("/how-it-works", HowItWorksPage);
-    expect(howItWorks).toContain("images.pexels.com/photos/26692093");
-    expect(howItWorks).toContain("images.pexels.com/photos/8837498");
-    expect(howItWorks).not.toContain("images.pexels.com/photos/8068833");
+  it("uses product workflow visuals instead of generic public stock photography", () => {
+    for (const [pathname, Component] of [
+      ["/", HomePage],
+      ["/how-it-works", HowItWorksPage],
+      ["/about", AboutPage],
+    ] as const) {
+      const html = render(pathname, Component);
+      expect(html).toContain("amk-product-visual");
+      expect(html).not.toContain("images.pexels.com");
+    }
   });
 
-  it("uses the requested public navigation order", () => {
+  it("puts the main CTA above the one-assistant product-flow section", () => {
+    const html = render("/", HomePage);
+    const cta = html.indexOf("START WITH WHAT YOU ALREADY HAVE");
+    const flow = html.indexOf("ONE ASSISTANT ACROSS THE SALES LOOP");
+    expect(cta).toBeGreaterThan(-1);
+    expect(flow).toBeGreaterThan(-1);
+    expect(cta).toBeLessThan(flow);
+  });
+
+  it("uses the requested public navigation order and canonical brand spelling", () => {
     expect(marketingNavigation.map(item => item.href)).toEqual([
       "/how-it-works",
       "/about",
       "/pricing",
       "/contact",
     ]);
+    expect(marketingNavigation[1]?.label).toBe("Why AmarktAI");
     const html = render("/", HomePage);
     for (const item of marketingNavigation)
       expect(html).toContain(`href="${item.href}"`);
@@ -103,12 +109,7 @@ describe("final public website", () => {
     expect(html).toContain(">How It Works<");
     expect(html).toContain(">Sign In<");
     expect(html).toContain("Start Free");
-    expect(html).toContain(
-      "Amarktai Sales Assistant brings business knowledge, customer context, conversation help and follow-through into one personal sales workspace."
-    );
-    expect(html).toContain(
-      `© ${new Date().getFullYear()} Amarktai Sales Assistant. Part of the Amarktai Network.`
-    );
+    expect(html).not.toContain("Amarktai");
   });
 
   it("restores scroll on public route transitions without touching dashboard routes", () => {
@@ -174,7 +175,7 @@ describe("final public website", () => {
     expect(html).toContain('href="/"');
   });
 
-  it("registers the maintained public and account routes without placeholder links", () => {
+  it("registers every maintained public/account link without placeholder hrefs", () => {
     const root = path.resolve(process.cwd(), "client/src");
     const app = readFileSync(path.join(root, "App.tsx"), "utf8");
     for (const pathname of [
@@ -211,6 +212,7 @@ describe("final public website", () => {
     expect(css).toContain("overflow: clip");
     expect(css).toContain("prefers-reduced-motion: reduce");
     expect(css).toContain(".amk-auth");
+    expect(css).toContain(".amk-product-visual");
     expect(
       existsSync(path.resolve(process.cwd(), "client/src/pages/final-auth.css"))
     ).toBe(false);

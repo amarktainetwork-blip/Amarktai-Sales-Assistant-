@@ -62,10 +62,28 @@ export async function saveAutomationPolicy(input: { userId: number; organisation
 const COMMUNICATION_ACTIONS = new Set(["send_email", "send_email_template", "send_sms", "send_sms_template", "send_whatsapp", "send_whatsapp_template"]);
 const STAGE_ACTIONS = new Set(["update_current_opportunity", "update_opportunity", "update_contact_status"]);
 
+export function automationPolicyDecision(policy: AutomationPolicy, actionType: string) {
+  const autoMode = policy.mode === "auto_preapproved";
+  const allowListed = policy.autoActionTypes.includes(actionType);
+  const policyRequiresReview =
+    (policy.requireReviewForCommunications && COMMUNICATION_ACTIONS.has(actionType)) ||
+    (policy.requireReviewForStageChanges && STAGE_ACTIONS.has(actionType));
+  return {
+    autoMode,
+    allowListed,
+    policyRequiresReview,
+    organisationAllowsAction: autoMode && allowListed,
+    mayAutoExecute: autoMode && allowListed && !policyRequiresReview,
+    blockingReason: !autoMode
+      ? "organisation_mode_requires_review"
+      : !allowListed
+        ? "action_not_in_organisation_auto_allow_list"
+        : policyRequiresReview
+          ? "organisation_action_review_required"
+          : null,
+  } as const;
+}
+
 export function mayAutoExecute(policy: AutomationPolicy, actionType: string) {
-  if (policy.mode !== "auto_preapproved") return false;
-  if (!policy.autoActionTypes.includes(actionType)) return false;
-  if (policy.requireReviewForCommunications && COMMUNICATION_ACTIONS.has(actionType)) return false;
-  if (policy.requireReviewForStageChanges && STAGE_ACTIONS.has(actionType)) return false;
-  return true;
+  return automationPolicyDecision(policy, actionType).mayAutoExecute;
 }

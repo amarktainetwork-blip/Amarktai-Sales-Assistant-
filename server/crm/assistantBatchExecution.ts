@@ -30,12 +30,49 @@ export type AssistantCrmBatchPlan = {
   structuredPredicate:
     | "overdue_without_next_action"
     | "callback_requested_yesterday"
-    | "accepted_wrong_stage"
+    | "mapped_status_wrong_stage"
     | "stale_superseded_task";
   title?: string;
   dueAt?: string;
   patch?: Record<string, unknown>;
+  sourceStatus?: string;
+  targetStage?: string;
 };
+
+function cleanMappingValue(value: string | undefined) {
+  return value
+    ?.trim()
+    .replace(/^the\s+/i, "")
+    .replace(/[.!?]+$/, "")
+    .trim()
+    .slice(0, 80);
+}
+
+/**
+ * Stage changes are planned only when the instruction itself supplies both the
+ * source status and destination stage. Client-specific names are never baked
+ * into the generic action engine.
+ */
+export function parseMappedStageInstruction(instruction: string) {
+  const explicitStatus = instruction.match(
+    /\b(?:all|every)\b.*?\b(?:deal|opportunit)\w*\b.*?\b(?:with\s+)?status\s+(?:of\s+)?["']?([a-z0-9][a-z0-9 _-]{0,60}?)["']?\s+(?:to|into|should\s+be\s+in)\s+(?:the\s+)?(?:stage\s+)?["']?([a-z0-9][a-z0-9 _-]{0,60}?)["']?(?:[.!?]|$)/i
+  );
+  if (explicitStatus) {
+    const sourceStatus = cleanMappingValue(explicitStatus[1]);
+    const targetStage = cleanMappingValue(explicitStatus[2]);
+    if (sourceStatus && targetStage) return { sourceStatus, targetStage };
+  }
+
+  const prefixedStatus = instruction.match(
+    /\b(?:all|every)\s+["']?([a-z0-9][a-z0-9 _-]{0,40}?)["']?\s+(?:deal|opportunit)\w*\b.*?\b(?:to|into|move\s+to|set\s+to)\s+(?:the\s+)?(?:stage\s+)?["']?([a-z0-9][a-z0-9 _-]{0,60}?)["']?(?:[.!?]|$)/i
+  );
+  if (prefixedStatus) {
+    const sourceStatus = cleanMappingValue(prefixedStatus[1]);
+    const targetStage = cleanMappingValue(prefixedStatus[2]);
+    if (sourceStatus && targetStage) return { sourceStatus, targetStage };
+  }
+  return undefined;
+}
 
 export function validateAssistantCrmBatchPlan(
   value: unknown
@@ -49,13 +86,15 @@ export function validateAssistantCrmBatchPlan(
   const predicates = [
     "overdue_without_next_action",
     "callback_requested_yesterday",
-    "accepted_wrong_stage",
+    "mapped_status_wrong_stage",
     "stale_superseded_task",
   ];
-  if (!sources.includes(String(plan.source)) ||
-      !actions.includes(String(plan.actionType)) ||
-      !operations.includes(String(plan.operationKey)) ||
-      !predicates.includes(String(plan.structuredPredicate)))
+  if (
+    !sources.includes(String(plan.source)) ||
+    !actions.includes(String(plan.actionType)) ||
+    !operations.includes(String(plan.operationKey)) ||
+    !predicates.includes(String(plan.structuredPredicate))
+  )
     throw new Error("ASSISTANT_BATCH_PLAN_INVALID");
   const expectedOperation = {
     schedule_callback: "task.create_callback",
@@ -64,16 +103,39 @@ export function validateAssistantCrmBatchPlan(
   }[String(plan.actionType)];
   if (expectedOperation !== plan.operationKey)
     throw new Error("ASSISTANT_BATCH_CAPABILITY_MISMATCH");
+
+  const sourceStatus =
+    typeof plan.sourceStatus === "string"
+      ? cleanMappingValue(plan.sourceStatus)
+      : undefined;
+  const targetStage =
+    typeof plan.targetStage === "string"
+      ? cleanMappingValue(plan.targetStage)
+      : undefined;
+  const patch =
+    plan.patch && typeof plan.patch === "object" && !Array.isArray(plan.patch)
+      ? (plan.patch as Record<string, unknown>)
+      : undefined;
+  if (plan.structuredPredicate === "mapped_status_wrong_stage") {
+    if (!sourceStatus || !targetStage)
+      throw new Error("ASSISTANT_BATCH_STAGE_MAPPING_REQUIRED");
+    if (String(patch?.stage ?? "").trim() !== targetStage)
+      throw new Error("ASSISTANT_BATCH_STAGE_MAPPING_MISMATCH");
+  }
+
   return {
     source: plan.source as AssistantCrmBatchPlan["source"],
     actionType: plan.actionType as AssistantCrmBatchPlan["actionType"],
     operationKey: plan.operationKey as AssistantCrmBatchPlan["operationKey"],
-    structuredPredicate: plan.structuredPredicate as AssistantCrmBatchPlan["structuredPredicate"],
-    title: typeof plan.title === "string" ? plan.title.slice(0, 300) : undefined,
-    dueAt: typeof plan.dueAt === "string" ? plan.dueAt.slice(0, 100) : undefined,
-    patch: plan.patch && typeof plan.patch === "object" && !Array.isArray(plan.patch)
-      ? plan.patch as Record<string, unknown>
-      : undefined,
+    structuredPredicate:
+      plan.structuredPredicate as AssistantCrmBatchPlan["structuredPredicate"],
+    title:
+      typeof plan.title === "string" ? plan.title.slice(0, 300) : undefined,
+    dueAt:
+      typeof plan.dueAt === "string" ? plan.dueAt.slice(0, 100) : undefined,
+    patch,
+    sourceStatus,
+    targetStage,
   };
 }
 
@@ -94,7 +156,11 @@ export function planAssistantCrmBatchInstruction(
     idempotencyKey: `assistant-batch:${stableInstructionKey(instruction)}`,
   };
   let plan: AssistantCrmBatchPlan | undefined;
-  if (/\b(all|every)\b.*\boverdue\b.*\b(next action|follow.?up|callback)\b/.test(normalized))
+  if (
+    /\b(all|every)\b.*\boverdue\b.*\b(next action|follow.?up|callback)\b/.test(
+      normalized
+    )
+  )
     plan = {
       source: "contacts",
       actionType: "schedule_callback",
@@ -102,7 +168,11 @@ export function planAssistantCrmBatchInstruction(
       structuredPredicate: "overdue_without_next_action",
       title: "Amarktai overdue lead next action",
     };
-  else if (/\b(everyone|all)\b.*\b(yesterday)\b.*\b(call again|callback)\b/.test(normalized))
+  else if (
+    /\b(everyone|all)\b.*\b(yesterday)\b.*\b(call again|callback)\b/.test(
+      normalized
+    )
+  )
     plan = {
       source: "activities",
       actionType: "schedule_callback",
@@ -110,21 +180,30 @@ export function planAssistantCrmBatchInstruction(
       structuredPredicate: "callback_requested_yesterday",
       title: "Requested callback",
     };
-  else if (/\b(all|every)\b.*\b(deal|opportunit)\w*\b.*\baccepted\b.*\bstage\b/.test(normalized))
-    plan = {
-      source: "opportunities",
-      actionType: "update_opportunity",
-      operationKey: "opportunity.update",
-      structuredPredicate: "accepted_wrong_stage",
-      patch: { stage: "accepted" },
-    };
-  else if (/\b(all|every)\b.*\b(stale|overdue)\b.*\b(task|follow.?up)\w*\b.*\b(superseded|replaced)\b/.test(normalized))
-    plan = {
-      source: "tasks",
-      actionType: "complete_active_task",
-      operationKey: "task.complete",
-      structuredPredicate: "stale_superseded_task",
-    };
+  else {
+    const stageMapping = parseMappedStageInstruction(instruction);
+    if (stageMapping)
+      plan = {
+        source: "opportunities",
+        actionType: "update_opportunity",
+        operationKey: "opportunity.update",
+        structuredPredicate: "mapped_status_wrong_stage",
+        sourceStatus: stageMapping.sourceStatus,
+        targetStage: stageMapping.targetStage,
+        patch: { stage: stageMapping.targetStage },
+      };
+    else if (
+      /\b(all|every)\b.*\b(stale|overdue)\b.*\b(task|follow.?up)\w*\b.*\b(superseded|replaced)\b/.test(
+        normalized
+      )
+    )
+      plan = {
+        source: "tasks",
+        actionType: "complete_active_task",
+        operationKey: "task.complete",
+        structuredPredicate: "stale_superseded_task",
+      };
+  }
   if (!plan) return undefined;
   return {
     ...common,
@@ -145,8 +224,11 @@ function raw(record: AssistantCrmBatchRecord) {
   return record.raw || {};
 }
 function truthy(value: unknown) {
-  return value === true || value === 1 ||
-    (typeof value === "string" && /^(?:true|yes|1)$/i.test(value.trim()));
+  return (
+    value === true ||
+    value === 1 ||
+    (typeof value === "string" && /^(?:true|yes|1)$/i.test(value.trim()))
+  );
 }
 function text(value: unknown) {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -160,9 +242,14 @@ export function evaluateStructuredBatchRecord(
   const source = raw(record);
   if (plan.structuredPredicate === "overdue_without_next_action") {
     const due = source.dueAt || source.nextStepDueAt || source.followUpDueAt;
-    const overdue = truthy(source.overdue) ||
-      (typeof due === "string" && !Number.isNaN(Date.parse(due)) && Date.parse(due) < now.valueOf());
-    const hasNext = Boolean(source.nextAction || source.nextStepAt || source.nextTaskId);
+    const overdue =
+      truthy(source.overdue) ||
+      (typeof due === "string" &&
+        !Number.isNaN(Date.parse(due)) &&
+        Date.parse(due) < now.valueOf());
+    const hasNext = Boolean(
+      source.nextAction || source.nextStepAt || source.nextTaskId
+    );
     if (!overdue && due === undefined && source.overdue === undefined)
       return "ambiguous";
     return overdue && !hasNext;
@@ -171,24 +258,31 @@ export function evaluateStructuredBatchRecord(
     const activity = record as NormalizedActivity;
     const yesterday = new Date(now);
     yesterday.setUTCDate(yesterday.getUTCDate() - 1);
-    const sameDay = activity.occurredAt.toISOString().slice(0, 10) ===
+    const sameDay =
+      activity.occurredAt.toISOString().slice(0, 10) ===
       yesterday.toISOString().slice(0, 10);
-    const requested = truthy(source.callbackRequested) ||
+    const requested =
+      truthy(source.callbackRequested) ||
       /call (?:me |us )?again|callback/.test(text(activity.body));
     return sameDay && requested;
   }
-  if (plan.structuredPredicate === "accepted_wrong_stage") {
+  if (plan.structuredPredicate === "mapped_status_wrong_stage") {
     const opportunity = record as NormalizedOpportunity;
-    const accepted = text(opportunity.stage) === "accepted" ||
-      text(source.status) === "accepted" || truthy(source.accepted);
-    const correct = truthy(source.correctStage) || text(source.targetStage) === text(opportunity.stage);
-    if (!opportunity.stage && source.status === undefined && source.accepted === undefined)
-      return "ambiguous";
-    return accepted && !correct;
+    const sourceStatus = text(plan.sourceStatus);
+    const targetStage = text(plan.targetStage);
+    if (!sourceStatus || !targetStage) return "ambiguous";
+    const actualStatus =
+      text(source.status) || text(source.opportunityStatus) || text(source.state);
+    const actualStage = text(opportunity.stage) || text(source.stage);
+    if (!actualStatus || !actualStage) return "ambiguous";
+    return actualStatus === sourceStatus && actualStage !== targetStage;
   }
   const task = record as NormalizedTask;
-  const stale = task.dueAt ? task.dueAt.valueOf() < now.valueOf() : truthy(source.stale);
-  const superseded = truthy(source.superseded) || Boolean(source.supersededByTaskId);
+  const stale = task.dueAt
+    ? task.dueAt.valueOf() < now.valueOf()
+    : truthy(source.stale);
+  const superseded =
+    truthy(source.superseded) || Boolean(source.supersededByTaskId);
   if (!task.dueAt && source.stale === undefined) return "ambiguous";
   return stale && superseded && !/complete|closed/i.test(task.status);
 }
@@ -235,16 +329,20 @@ export async function executeAssistantCrmBatch(input: {
       secret: input.secret,
       cursor,
     };
-    const page = input.plan.source === "contacts"
-      ? await input.adapter.syncContacts(common)
-      : input.plan.source === "opportunities"
-        ? await input.adapter.syncOpportunities(common)
-        : input.plan.source === "tasks"
-          ? await input.adapter.syncTasks(common)
-          : await input.adapter.syncActivities(common);
+    const page =
+      input.plan.source === "contacts"
+        ? await input.adapter.syncContacts(common)
+        : input.plan.source === "opportunities"
+          ? await input.adapter.syncOpportunities(common)
+          : input.plan.source === "tasks"
+            ? await input.adapter.syncTasks(common)
+            : await input.adapter.syncActivities(common);
     return { records: page.records, nextCursor: page.cursor };
   };
-  const result = await runDeterministicCrmBatch<AssistantCrmBatchRecord, AssistantCrmBatchPlan>({
+  const result = await runDeterministicCrmBatch<
+    AssistantCrmBatchRecord,
+    AssistantCrmBatchPlan
+  >({
     jobId: `proposal-${input.proposalId}`,
     instruction: input.instruction,
     interpretInstruction: async () => input.plan,
@@ -260,11 +358,11 @@ export async function executeAssistantCrmBatch(input: {
     execute: async (record, plan, idempotencyKey) => {
       crmOperations += 1;
       if (plan.actionType === "schedule_callback") {
-        const contactExternalId = plan.source === "activities"
-          ? (record as NormalizedActivity).contactExternalId
-          : record.externalId;
-        if (!contactExternalId)
-          throw new Error("BATCH_CONTACT_ID_REQUIRED");
+        const contactExternalId =
+          plan.source === "activities"
+            ? (record as NormalizedActivity).contactExternalId
+            : record.externalId;
+        if (!contactExternalId) throw new Error("BATCH_CONTACT_ID_REQUIRED");
         await input.adapter.createTask({
           connection: input.connection,
           secret: input.secret,
@@ -300,9 +398,15 @@ export async function executeAssistantCrmBatch(input: {
           secret: input.secret,
           externalId: record.externalId,
         });
-        return Boolean(current) && Object.entries(plan.patch || {}).every(
-          ([key, value]) => String((current!.raw as Record<string, unknown>)[key] ??
-            (key === "stage" ? current!.stage : "")) === String(value)
+        return (
+          Boolean(current) &&
+          Object.entries(plan.patch || {}).every(
+            ([key, value]) =>
+              String(
+                (current!.raw as Record<string, unknown>)[key] ??
+                  (key === "stage" ? current!.stage : "")
+              ) === String(value)
+          )
         );
       }
       const tasks = await input.adapter.syncTasks({
@@ -310,15 +414,19 @@ export async function executeAssistantCrmBatch(input: {
         secret: input.secret,
       });
       if (plan.actionType === "complete_active_task")
-        return tasks.records.some(task =>
-          task.externalId === record.externalId && /complete|closed/i.test(task.status)
+        return tasks.records.some(
+          task =>
+            task.externalId === record.externalId &&
+            /complete|closed/i.test(task.status)
         );
-      const contactExternalId = plan.source === "activities"
-        ? (record as NormalizedActivity).contactExternalId
-        : record.externalId;
-      return tasks.records.some(task =>
-        task.contactExternalId === contactExternalId &&
-        task.title === (plan.title || "Amarktai next action")
+      const contactExternalId =
+        plan.source === "activities"
+          ? (record as NormalizedActivity).contactExternalId
+          : record.externalId;
+      return tasks.records.some(
+        task =>
+          task.contactExternalId === contactExternalId &&
+          task.title === (plan.title || "Amarktai next action")
       );
     },
     alreadyCompleted: input.alreadyCompleted,
@@ -342,7 +450,9 @@ export async function executeAssistantCrmBatch(input: {
       connectedSystemId: input.connection.id,
       operationKey: input.plan.operationKey,
       progress: result.progress,
-      failedRecords: result.results.filter(item => item.status === "failed").slice(0, 200),
+      failedRecords: result.results
+        .filter(item => item.status === "failed")
+        .slice(0, 200),
       aiCalls: { planning: 0, ambiguity: ambiguityCalls },
       crmOperations,
       deterministicReadbacks: readbacks,
