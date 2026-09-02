@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type {
   AdapterConnection,
   AdapterEvidence,
@@ -7,6 +8,11 @@ import type {
 import { and, eq, or } from "drizzle-orm";
 import { contactCommunicationSuppressions } from "../drizzle/schema";
 import { getDb } from "./db";
+import { getClientActionConfiguration } from "./clientActionConfiguration";
+import {
+  findConfiguredTemplate,
+  resolveConfiguredSender,
+} from "./communicationContent";
 
 export type SalesChannel = "email" | "sms" | "whatsapp";
 
@@ -120,6 +126,47 @@ async function assertNotSuppressed(
     );
 }
 
+function stableOutboundKey(message: SalesMessage) {
+  return `crm-message:${createHash("sha256")
+    .update(
+      [
+        message.channel,
+        message.to.trim().toLowerCase(),
+        message.templateName || "custom",
+        message.subject || "",
+        message.body.trim(),
+      ].join("\0")
+    )
+    .digest("hex")
+    .slice(0, 36)}`;
+}
+
+async function resolveExecutionSender(
+  organisationId: number,
+  message: SalesMessage
+) {
+  if (message.channel === "email" || message.senderIdentity?.trim())
+    return message.senderIdentity?.trim();
+  const configuration = await getClientActionConfiguration({ organisationId });
+  const template = message.templateName
+    ? findConfiguredTemplate({
+        configuration,
+        channel: message.channel,
+        templateKey: message.templateName,
+      }) ||
+      Object.values(configuration.templates).find(
+        item =>
+          item.channel === message.channel &&
+          item.templateName.toLowerCase() === message.templateName!.toLowerCase()
+      )
+    : undefined;
+  return resolveConfiguredSender({
+    configuration,
+    channel: message.channel,
+    template,
+  });
+}
+
 /**
  * SMS and WhatsApp execute only through the exact commissioned CRM capability.
  * Sales email has a different execution owner: it must use the salesperson's
@@ -133,11 +180,19 @@ export async function sendSalesMessage(input: {
   message: SalesMessage;
   correlationId: string;
 }): Promise<AdapterEvidence> {
-  const message = validateSalesMessage(input.message);
-  if (message.channel === "email")
+  if (input.message.channel === "email")
     throw new Error(
       "EMAIL_EXECUTION_OWNER_INVALID: salesperson email must execute through the user's delegated Microsoft mailbox."
     );
+  const senderIdentity = await resolveExecutionSender(
+    input.connection.organisationId,
+    input.message
+  );
+  const message = validateSalesMessage({
+    ...input.message,
+    senderIdentity,
+    idempotencyKey: input.message.idempotencyKey || stableOutboundKey(input.message),
+  });
   await assertNotSuppressed(input.connection.organisationId, message);
 
   const native =
@@ -169,6 +224,6 @@ export function getSalesCommunicationsReadiness() {
     crmMessagingMode: "crm_native_per_connection" as const,
     deploymentMessagingGatewayRequired: false,
     detail:
-      "Sales email executes through each salesperson's delegated Microsoft mailbox. SMS and WhatsApp remain exact capability truth on each connected CRM, including the commissioned sender identity.",
+      "Sales email executes through each salesperson's delegated Microsoft mailbox. SMS and WhatsApp remain exact capability truth on each connected CRM, including the commissioned sender identity and a stable outbound idempotency key.",
   };
 }
