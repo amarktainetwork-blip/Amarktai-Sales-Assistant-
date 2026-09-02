@@ -1,4 +1,5 @@
 name: Gate 1 WIP
+# Exact-head validation trigger after persisted Gate 1 action wiring.
 
 on:
   push:
