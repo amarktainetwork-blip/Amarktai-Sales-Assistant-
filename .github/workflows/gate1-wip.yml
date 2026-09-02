@@ -1,0 +1,80 @@
+name: Gate 1 WIP
+
+on:
+  push:
+    branches: ["fix/complete-client-action-flow"]
+
+permissions:
+  contents: write
+
+jobs:
+  gate1:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.15.0
+          cache: pnpm
+
+      - name: Wire CRM-side Assistant to canonical governed entry
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("server/routers.ts")
+          text = path.read_text()
+          old = 'import { prepareGovernedAssistantRequest } from "./governedAssistant";'
+          new = 'import { prepareGovernedAssistantRequest } from "./governedAssistantEntry";'
+          if old in text:
+              path.write_text(text.replace(old, new, 1))
+          elif new not in text:
+              raise SystemExit("CRM-side Assistant import could not be located safely")
+          PY
+          grep -F 'from "./governedAssistantEntry"' server/routers.ts
+          grep -F 'from "./governedAssistantEntry"' server/assistantActionRoute.ts
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Gate 1 unit tests
+        run: pnpm test
+      - name: Gate 1 TypeScript
+        run: pnpm check
+      - name: Gate 1 production build
+        run: pnpm build
+      - name: Guard generic engine against client acceptance constants
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            server/clientActionConfiguration.ts
+            server/configuredWorkflow.ts
+            server/governedAssistantEntry.ts
+            server/crm/actionExecutionPreconditions.ts
+            server/crm/guardedActionExecution.ts
+          )
+          if grep -nEi 'Course2Career|Yes/No Cyber|Last Try Cyber|Discovery Completed|Failed Follow-up Cyber|tried_to_email|\+447428000560' "${files[@]}"; then
+            echo "Client-specific acceptance constants leaked into the generic Gate 1 engine." >&2
+            exit 1
+          fi
+      - name: Diff sanity
+        run: git diff --check
+
+      - name: Commit canonical CRM-side wiring after green validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- server/routers.ts; then
+            echo "CRM-side canonical wiring already committed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add server/routers.ts
+          git commit -m "Route CRM-side Assistant through canonical governed entry"
+          git push origin HEAD:fix/complete-client-action-flow
