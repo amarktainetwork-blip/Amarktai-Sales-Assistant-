@@ -1,0 +1,201 @@
+name: Gate 2 WIP
+
+on:
+  push:
+    branches: ["fix/complete-client-action-flow"]
+
+permissions:
+  contents: write
+
+jobs:
+  gate2:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.15.0
+          cache: pnpm
+
+      - name: Wire inline CRM Review and terminal failure recording
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          crm = Path("client/src/pages/CrmWorkspace.tsx")
+          text = crm.read_text()
+
+          old = 'import DashboardLayout from "@/components/DashboardLayout";'
+          new = 'import DashboardLayout from "@/components/DashboardLayout";\nimport InlineCrmReview from "@/components/InlineCrmReview";'
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif 'InlineCrmReview from "@/components/InlineCrmReview"' not in text:
+              raise SystemExit("Inline Review import could not be located safely")
+
+          old = '  const [assistantResult, setAssistantResult] = useState<string | null>(null);'
+          new = '  const [assistantResult, setAssistantResult] = useState<string | null>(null);\n  const [assistantWorkflowRunId, setAssistantWorkflowRunId] = useState<number | null>(null);'
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif 'assistantWorkflowRunId' not in text:
+              raise SystemExit("Assistant workflow state could not be located safely")
+
+          old = '''      const result = await askAssistant.mutateAsync({
+        viewerSessionId: session.viewerSessionId,
+        command: assistantPrompt.trim(),
+      });
+      setAssistantResult(result.summary);
+      setAssistantPrompt("");
+    } catch (error) {
+      setAssistantResult(
+        friendlyError(error, "Amarktai could not complete that request.")
+      );
+    }'''
+          new = '''      setAssistantWorkflowRunId(null);
+      const result = await askAssistant.mutateAsync({
+        viewerSessionId: session.viewerSessionId,
+        command: assistantPrompt.trim(),
+      });
+      setAssistantResult(result.summary);
+      setAssistantWorkflowRunId(
+        typeof result.workflowRunId === "number" ? result.workflowRunId : null
+      );
+      setAssistantPrompt("");
+    } catch (error) {
+      setAssistantWorkflowRunId(null);
+      setAssistantResult(
+        friendlyError(error, "Amarktai could not complete that request.")
+      );
+    }'''
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif 'typeof result.workflowRunId === "number"' not in text:
+              raise SystemExit("Assistant result workflow handoff could not be located safely")
+
+          old = '''              {assistantResult ? (
+                <div className="mt-3 rounded-xl border border-[#D7E0EA] bg-white p-3 text-sm leading-6 text-[#33445B]">
+                  {assistantResult}
+                </div>
+              ) : null}
+
+              <details className="mt-4 rounded-xl border border-[#D7E0EA] bg-white">'''
+          new = '''              {assistantResult ? (
+                <div className="mt-3 rounded-xl border border-[#D7E0EA] bg-white p-3 text-sm leading-6 text-[#33445B]">
+                  {assistantResult}
+                </div>
+              ) : null}
+
+              <InlineCrmReview workflowRunId={assistantWorkflowRunId} />
+
+              <details className="mt-4 rounded-xl border border-[#D7E0EA] bg-white">'''
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif '<InlineCrmReview workflowRunId={assistantWorkflowRunId} />' not in text:
+              raise SystemExit("Inline Review render point could not be located safely")
+
+          crm.write_text(text)
+
+          routers = Path("server/routers.ts")
+          text = routers.read_text()
+          old = '''        const result = await executeApprovedCrmAction({
+          organisationId: organisation.organisationId,
+          proposal,
+          correlationId,
+        });
+        await recordActionExecution({
+          userId: ctx.user.id,
+          organisationId: organisation.organisationId,
+          proposalId: proposal.id,
+          correlationId,
+          success: result.success,
+          result,
+        });
+        if (!result.success)
+          throw new Error(`CRM action failed: ${result.detail}`);
+        return result;'''
+          new = '''        let result;
+        try {
+          result = await executeApprovedCrmAction({
+            organisationId: organisation.organisationId,
+            proposal,
+            correlationId,
+          });
+        } catch (error) {
+          const failure = {
+            success: false,
+            detail:
+              error instanceof Error
+                ? error.message
+                : "The approved CRM action failed before verified readback.",
+            correlationId,
+            retryable: false,
+            unverifiedFailure: true,
+          };
+          await recordActionExecution({
+            userId: ctx.user.id,
+            organisationId: organisation.organisationId,
+            proposalId: proposal.id,
+            correlationId,
+            success: false,
+            result: failure,
+          });
+          throw new Error(
+            "The approved action could not be verified. It is marked Failed in Review; do not retry it blindly."
+          );
+        }
+        await recordActionExecution({
+          userId: ctx.user.id,
+          organisationId: organisation.organisationId,
+          proposalId: proposal.id,
+          correlationId,
+          success: result.success,
+          result,
+        });
+        if (!result.success)
+          throw new Error(`CRM action failed: ${result.detail}`);
+        return result;'''
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif 'unverifiedFailure: true' not in text:
+              raise SystemExit("Approved CRM execution boundary could not be located safely")
+          routers.write_text(text)
+          PY
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Gate 2 unit tests
+        run: pnpm test
+      - name: Gate 2 TypeScript
+        run: pnpm check
+      - name: Gate 2 production build
+        run: pnpm build
+      - name: Review wiring proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F 'InlineCrmReview from "@/components/InlineCrmReview"' client/src/pages/CrmWorkspace.tsx
+          grep -F '<InlineCrmReview workflowRunId={assistantWorkflowRunId} />' client/src/pages/CrmWorkspace.tsx
+          grep -F 'unverifiedFailure: true' server/routers.ts
+          grep -F 'Approved / executing' client/src/pages/Reviews.tsx
+          grep -F 'Evidence, safeguards and history' client/src/pages/Reviews.tsx
+          git diff --check
+
+      - name: Commit validated Gate 2 wiring
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(client/src/pages/CrmWorkspace.tsx server/routers.ts)
+          if git diff --quiet -- "${files[@]}"; then
+            echo "Gate 2 inline Review wiring is already committed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "${files[@]}"
+          git commit -m "Complete inline CRM Review action lifecycle"
+          git push origin HEAD:fix/complete-client-action-flow
