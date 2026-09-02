@@ -4,7 +4,7 @@ import {
   automationPolicyDecision,
   type AutomationPolicy,
 } from "./automationPolicy";
-import { executeApprovedCrmAction } from "./crm/executeApprovedAction";
+import { executeGuardedApprovedCrmAction } from "./crm/guardedActionExecution";
 import { getUserAutonomy } from "./autonomy";
 import {
   autonomyDecision,
@@ -123,7 +123,7 @@ export function evaluateEffectiveAutoExecution(input: {
   } as const;
 }
 
-/** Reuses the existing review, claim, execution, evidence, and idempotency path. */
+/** Reuses the existing review, claim, guarded execution, evidence, and idempotency path. */
 export async function executeAutoPreapprovedActions(input: {
   userId: number;
   organisationId: number;
@@ -175,7 +175,7 @@ export async function executeAutoPreapprovedActions(input: {
       continue;
     }
     try {
-      const result = await executeApprovedCrmAction({
+      const result = await executeGuardedApprovedCrmAction({
         organisationId: input.organisationId,
         proposal: approved,
         correlationId,
