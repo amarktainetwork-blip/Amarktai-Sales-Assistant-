@@ -3,7 +3,7 @@ from pathlib import Path
 path = Path("server/routers.ts")
 text = path.read_text()
 
-old = '''        await recordActionExecution({
+old_email = '''        await recordActionExecution({
           userId: ctx.user.id,
           organisationId: organisation.organisationId,
           proposalId: proposal.id,
@@ -16,7 +16,7 @@ old = '''        await recordActionExecution({
             "The email was not sent. Check your mailbox connection and try again."
           );
         return result;'''
-new = '''        await recordActionExecution({
+new_email = '''        await recordActionExecution({
           userId: ctx.user.id,
           organisationId: organisation.organisationId,
           proposalId: proposal.id,
@@ -42,10 +42,64 @@ new = '''        await recordActionExecution({
         }
         return result;'''
 
-if new not in text:
-    if old not in text:
+if new_email not in text:
+    if old_email not in text:
         raise SystemExit("Reviewed-email result boundary could not be located safely")
-    text = text.replace(old, new, 1)
+    text = text.replace(old_email, new_email, 1)
+
+old_workflow = '''    prepareWorkflow: secondFactorProcedure
+      .input(workflowInput)
+      .mutation(async ({ ctx, input }) => {
+        const plan = buildWorkflowPlan(input);
+        const organisation = ctx.activeOrganisation;
+        if (!organisation)
+          throw new Error(
+            "Choose an organisation before preparing workflow actions."
+          );
+        const systems = await listConnectedSystemsForUser(
+          ctx.user.id,
+          organisation.organisationId
+        );
+        const routedActions = routeConnectedSystemActions(
+          plan.actions,
+          systems
+        );
+        const workflowRunId = await createWorkflowRun({
+          userId: ctx.user.id,
+          organisationId: organisation.organisationId,
+          workflowKey: input.workflowKey,
+          leadLabel: input.leadLabel,
+          payload: input,
+          verificationSummary: plan.verificationSummary,
+          actions: routedActions,
+        });
+        return {
+          workflowRunId,
+          verificationSummary: plan.verificationSummary,
+          actionCount: routedActions.length,
+          blockedActionCount: routedActions.filter(
+            action =>
+              (action.payload.crmRoute as { routable?: boolean } | undefined)
+                ?.routable === false
+          ).length,
+        };
+      }),'''
+new_workflow = '''    prepareWorkflow: secondFactorProcedure
+      .input(workflowInput)
+      .mutation(() => {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message:
+            "Legacy workflow preparation is disabled. Use the governed Assistant with an exact CRM customer context.",
+        });
+      }),'''
+
+if new_workflow not in text:
+    if old_workflow not in text:
+        raise SystemExit("Legacy prepareWorkflow boundary could not be located safely")
+    text = text.replace(old_workflow, new_workflow, 1)
+
+text = text.replace('import { buildWorkflowPlan } from "./workflowRules";\n', "")
 
 # Canonical customer-facing product spelling in this public/router boundary.
 text = text.replace("Amarktai", "AmarktAI")
