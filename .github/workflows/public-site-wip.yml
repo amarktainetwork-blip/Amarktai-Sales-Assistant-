@@ -1,0 +1,66 @@
+name: Public Site WIP
+
+on:
+  push:
+    branches: ["fix/complete-client-action-flow"]
+
+permissions:
+  contents: write
+
+jobs:
+  public-site:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.15.0
+          cache: pnpm
+
+      - name: Apply auth link and branding repair
+        run: python scripts/public_site_auth_patch.py
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Public-site and regression tests
+        run: pnpm test
+
+      - name: TypeScript
+        run: pnpm check
+
+      - name: Production build
+        run: pnpm build
+
+      - name: Public-site acceptance proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -R "images.pexels.com" client/src/marketing/HomePage.tsx client/src/marketing/AboutPage.tsx client/src/marketing/SecondaryPages.tsx
+          grep -F 'Amarkt<span className="text-[#2F6FED]">AI</span>' client/src/components/BrandMark.tsx
+          grep -F 'Amarkt<span className="amk-brand-name__ai">AI</span>' client/src/components/BrandName.tsx
+          grep -F 'START WITH WHAT YOU ALREADY HAVE' client/src/marketing/HomePage.tsx
+          grep -F 'ONE ASSISTANT ACROSS THE SALES LOOP' client/src/marketing/HomePage.tsx
+          grep -F 'const [location] = useLocation();' client/src/pages/Auth.tsx
+          ! grep -F 'window.location.search' client/src/pages/Auth.tsx
+          ! grep -F 'Amarktai' client/src/pages/Auth.tsx
+          git diff --check
+
+      - name: Commit validated auth repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(client/src/pages/Auth.tsx client/src/pages/finalAuthAcceptance.test.ts)
+          if git diff --quiet -- "${files[@]}"; then
+            echo "Public-site auth repair is already committed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "${files[@]}"
+          git commit -m "Fix public account mode links and AmarktAI casing"
+          git push origin HEAD:fix/complete-client-action-flow
