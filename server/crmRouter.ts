@@ -22,26 +22,36 @@ export type PersonalMicrosoftRouteContext = {
   mailbox?: string;
 };
 
+/**
+ * A mutable action is production-routable only when the same connector can
+ * both perform the write and read enough external state to verify target,
+ * duplicate/precondition state, or the requested postcondition. This keeps a
+ * green write capability from becoming an apparently executable route that
+ * cannot be governed safely at execution time.
+ */
 export const ACTION_CONNECTED_CAPABILITIES: Record<string, string[][]> = {
   verify_contact_context: [["contacts.read"]],
-  append_contact_note: [["notes.write"], ["activities.write"]],
-  schedule_callback: [["tasks.write"]],
-  complete_active_task: [["tasks.write"]],
-  update_contact_status: [["contacts.write"]],
-  update_contact: [["contacts.write"]],
+  append_contact_note: [
+    ["notes.read", "notes.write"],
+    ["activities.read", "activities.write"],
+  ],
+  schedule_callback: [["tasks.read", "tasks.write"]],
+  complete_active_task: [["tasks.read", "tasks.write"]],
+  update_contact_status: [["contacts.read", "contacts.write"]],
+  update_contact: [["contacts.read", "contacts.write"]],
   create_contact: [["contacts.write"]],
   create_company: [["companies.write"]],
-  update_current_opportunity: [["opportunities.write"]],
-  update_opportunity: [["opportunities.write"]],
+  update_current_opportunity: [["opportunities.read", "opportunities.write"]],
+  update_opportunity: [["opportunities.read", "opportunities.write"]],
   create_opportunity: [["opportunities.write"]],
   create_activity: [["activities.write"]],
   send_email_template: [["email.send"]],
   send_email: [["email.send"]],
-  send_sms_template: [["sms.send"]],
-  send_sms: [["sms.send"]],
-  send_whatsapp_template: [["whatsapp.send"]],
-  send_whatsapp: [["whatsapp.send"]],
-  apply_sequence: [["sequences.apply"]],
+  send_sms_template: [["activities.read", "sms.send"]],
+  send_sms: [["activities.read", "sms.send"]],
+  send_whatsapp_template: [["activities.read", "whatsapp.send"]],
+  send_whatsapp: [["activities.read", "whatsapp.send"]],
+  apply_sequence: [["activities.read", "sequences.apply"]],
 };
 
 function isBrowserConnection(system: ConnectedSystemRoute) {
@@ -113,7 +123,10 @@ function delegatedMicrosoftRoute(
   const email = actionType === "send_email" || actionType === "send_email_template";
   const calendar = actionType === "create_calendar_event";
   if (!email && !calendar) return undefined;
-  const requiredCapability = email ? "Mail.Send" : "Calendars.ReadWrite";
+  const requiredCapabilities = email
+    ? ["Mail.Read", "Mail.Send"]
+    : ["Calendars.ReadWrite"];
+  const requiredCapability = requiredCapabilities.join(" + ");
   const displayName = email ? "Your Microsoft mailbox" : "Your Microsoft calendar";
   const connectMessage = email
     ? "Connect your Microsoft mailbox before preparing an executable email action."
@@ -123,14 +136,19 @@ function delegatedMicrosoftRoute(
       routable: false as const,
       reason: connectMessage,
       requiredCapability,
+      requiredCapabilities,
       connectionMode: "per_user_delegated_oauth" as const,
     };
   const scopes = new Set(personalMicrosoft.scopes.map(scope => scope.toLowerCase()));
-  if (!scopes.has(requiredCapability.toLowerCase()))
+  const missing = requiredCapabilities.filter(
+    capability => !scopes.has(capability.toLowerCase())
+  );
+  if (missing.length)
     return {
       routable: false as const,
-      reason: `${displayName} is connected but is missing the required ${requiredCapability} permission. Reconnect it before using this action.`,
+      reason: `${displayName} is connected but is missing the required ${missing.join(" + ")} permission${missing.length === 1 ? "" : "s"}. Reconnect it before using this action.`,
       requiredCapability,
+      requiredCapabilities,
       connectionMode: "per_user_delegated_oauth" as const,
     };
   return {
@@ -139,6 +157,7 @@ function delegatedMicrosoftRoute(
     displayName,
     connectionMode: "per_user_delegated_oauth" as const,
     requiredCapability,
+    requiredCapabilities,
     mailbox: personalMicrosoft.mailbox,
   };
 }
@@ -217,7 +236,7 @@ export function routeConnectedSystemActions<
             ? customOperationKey
               ? `No connected CRM has the exact '${customOperationKey}' function commissioned as LIVE_PROVEN for production execution.`
               : "Choose a commissioned CRM-specific function before preparing this action."
-            : `No backend-verified organisation CRM connection can perform '${effectiveActionType || action.actionType}' (${requiredCapability}).`,
+            : `No backend-verified organisation CRM connection can perform '${effectiveActionType || action.actionType}' with the required execution/readback capability (${requiredCapability}).`,
           requiredCapability,
         };
     return { ...action, payload: { ...action.payload, crmRoute } };
