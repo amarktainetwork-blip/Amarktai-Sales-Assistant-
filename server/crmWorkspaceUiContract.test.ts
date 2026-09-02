@@ -62,4 +62,12 @@ describe("CRM workspace customer interaction contract", () => {
     expect(source).not.toContain("CRM functions ·");
     expect(source).not.toContain("readyCapabilities.map");
   });
+
+  it("forces a fresh isolated session when the customer reconnects", () => {
+    expect(source).toContain(
+      "const openViewer = async (forceReconnect = false)"
+    );
+    expect(source).toContain("forceReconnect,");
+    expect(source).toContain("openViewer(true)");
+  });
 });

@@ -1665,7 +1665,12 @@ export const appRouter = router({
   }),
   crmViewer: router({
     open: secondFactorProcedure
-      .input(z.object({ connectedSystemId: z.number().int().positive() }))
+      .input(
+        z.object({
+          connectedSystemId: z.number().int().positive(),
+          forceReconnect: z.boolean().optional(),
+        })
+      )
       .mutation(async ({ ctx, input }) => {
         if (!ctx.activeOrganisation)
           throw new Error("Choose a company before opening its CRM workspace.");
@@ -1673,6 +1678,7 @@ export const appRouter = router({
           userId: ctx.user.id,
           organisationId: ctx.activeOrganisation.organisationId,
           connectedSystemId: input.connectedSystemId,
+          forceReconnect: input.forceReconnect,
         });
       }),
     acquireAssistantControl: secondFactorProcedure

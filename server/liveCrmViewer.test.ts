@@ -3,6 +3,7 @@ import {
   canAcceptBrowserInput,
   isLiveCrmViewerAccessAllowed,
   shouldForwardScreencastFrame,
+  shouldReuseLiveCrmViewerSession,
 } from "./liveCrmViewer";
 
 const viewerToken = Buffer.from("viewer-token-for-test").toString("base64url");
@@ -80,5 +81,24 @@ describe("live CRM stream bounds", () => {
     expect(shouldForwardScreencastFrame({ ...base, socketCount: 0 })).toBe(
       false
     );
+  });
+});
+
+describe("live CRM viewer reconnect", () => {
+  it("replaces a cached viewer only when reconnect is explicit", () => {
+    expect(
+      shouldReuseLiveCrmViewerSession({
+        forceReconnect: false,
+        expiresAt: 2_000,
+        now: 1_000,
+      })
+    ).toBe(true);
+    expect(
+      shouldReuseLiveCrmViewerSession({
+        forceReconnect: true,
+        expiresAt: 2_000,
+        now: 1_000,
+      })
+    ).toBe(false);
   });
 });

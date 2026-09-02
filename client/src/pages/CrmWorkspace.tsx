@@ -296,7 +296,7 @@ function LiveWorkspace({
     return true;
   };
 
-  const openViewer = async () => {
+  const openViewer = async (forceReconnect = false) => {
     try {
       socketRef.current?.close(1000, "Replacing CRM viewer session");
       socketRef.current = null;
@@ -308,7 +308,10 @@ function LiveWorkspace({
       setImage("");
       setFrameMetadata(null);
       setStatus("Opening your CRM…");
-      const next = await open.mutateAsync({ connectedSystemId });
+      const next = await open.mutateAsync({
+        connectedSystemId,
+        forceReconnect,
+      });
       setSession(next);
       setControl(next.control);
       controlRef.current = next.control;
@@ -951,7 +954,7 @@ function LiveWorkspace({
                     variant="ghost"
                     size="sm"
                     className="w-full justify-start"
-                    onClick={() => void openViewer()}
+                    onClick={() => void openViewer(true)}
                     disabled={open.isPending}
                   >
                     <RefreshCw

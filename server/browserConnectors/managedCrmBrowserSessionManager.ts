@@ -189,7 +189,13 @@ async function visible(page: Page, selectors: string[]) {
     const locator = page.locator(selector);
     const count = Math.min(await locator.count().catch(() => 0), 16);
     for (let index = 0; index < count; index++)
-      if (await locator.nth(index).isVisible().catch(() => false)) return true;
+      if (
+        await locator
+          .nth(index)
+          .isVisible()
+          .catch(() => false)
+      )
+        return true;
   }
   return false;
 }
@@ -524,6 +530,20 @@ function armIdle(session: ManagedCrmBrowserSession) {
   );
 }
 
+export function shouldReuseManagedCrmBrowserSession(input: {
+  pageClosed: boolean;
+  browserConnected: boolean;
+  currentUrl: string;
+  connectionHealth: CrmBrowserSessionSnapshot["connectionHealth"];
+}) {
+  return (
+    !input.pageClosed &&
+    input.browserConnected &&
+    input.currentUrl !== "about:blank" &&
+    input.connectionHealth !== "disconnected"
+  );
+}
+
 export const managedCrmBrowserSessionManager = {
   async open(input: { connection: AdapterConnection; userId: number }) {
     const key = sessionKey(
@@ -534,11 +554,20 @@ export const managedCrmBrowserSessionManager = {
     const existing = activeSessions.get(key);
     if (
       existing &&
-      !existing.page.isClosed() &&
-      existing.browser.isConnected()
+      shouldReuseManagedCrmBrowserSession({
+        pageClosed: existing.page.isClosed(),
+        browserConnected: existing.browser.isConnected(),
+        currentUrl: existing.page.url(),
+        connectionHealth: existing.snapshot.connectionHealth,
+      })
     ) {
       armIdle(existing);
       return existing;
+    }
+    if (existing) {
+      activeSessions.delete(key);
+      if (existing.idleTimer) clearTimeout(existing.idleTimer);
+      await existing.context.close().catch(() => undefined);
     }
 
     const membership = await requireOrganisationMembership(
@@ -565,7 +594,9 @@ export const managedCrmBrowserSessionManager = {
         connectedSystemId: input.connection.id,
         secretKind: "browser",
       })) || {};
-    const personalSession = isBrowserSessionPackage(personalSecret.browserSession)
+    const personalSession = isBrowserSessionPackage(
+      personalSecret.browserSession
+    )
       ? personalSecret.browserSession
       : undefined;
 
@@ -573,7 +604,9 @@ export const managedCrmBrowserSessionManager = {
     // commissioning snapshot is never attached to another user's browser.
     const restored = personalSession;
 
-    const browser = await connectManagedCrmBrowser(endpointFor(input.connection));
+    const browser = await connectManagedCrmBrowser(
+      endpointFor(input.connection)
+    );
     const context = await createContextWithBrowserSession({
       browser,
       browserSession: restored,
@@ -632,13 +665,26 @@ export const managedCrmBrowserSessionManager = {
         });
     });
     armIdle(session);
+    const restoredUrl = restored?.authenticatedUrl;
     try {
-      await page.goto(restored?.authenticatedUrl || startUrl, {
+      await page.goto(restoredUrl || startUrl, {
         waitUntil: "domcontentloaded",
         timeout: 45_000,
       });
       await evaluate(session);
     } catch (error) {
+      if (restoredUrl && restoredUrl !== startUrl) {
+        try {
+          await page.goto(startUrl, {
+            waitUntil: "domcontentloaded",
+            timeout: 45_000,
+          });
+          await evaluate(session);
+          return session;
+        } catch {
+          // Preserve the original restoration failure as the useful diagnosis.
+        }
+      }
       emit(session, {
         authenticationState: restored ? "REAUTHENTICATION_REQUIRED" : "ERROR",
         connectionHealth: "needs_attention",
