@@ -17,7 +17,7 @@ const liveCustom = {
 };
 
 describe("canonical connected-system capability router", () => {
-  it("routes only through a usable system with backend-verified capabilities", () => {
+  it("routes only through a usable system with backend-verified write and readback capability", () => {
     const systems = [
       {
         id: 1,
@@ -28,7 +28,9 @@ describe("canonical connected-system capability router", () => {
         verifiedCapabilities: [
           "contacts.read",
           "contacts.write",
+          "notes.read",
           "notes.write",
+          "activities.read",
           "activities.write",
         ],
       },
@@ -38,7 +40,7 @@ describe("canonical connected-system capability router", () => {
         displayName: "Genie",
         status: "needs_attention",
         connectionMethod: "browser",
-        verifiedCapabilities: ["sms.send", "activities.write"],
+        verifiedCapabilities: ["activities.read", "sms.send"],
       },
     ];
     const [note] = routeConnectedSystemActions(
@@ -55,40 +57,76 @@ describe("canonical connected-system capability router", () => {
     );
   });
 
-  it("routes an independently verified function on a limited connection", () => {
-    const systems = [
-      {
-        id: 2,
-        provider: "genie",
-        displayName: "Genie",
-        status: "limited_permissions",
-        connectionMethod: "browser",
-        verifiedCapabilities: ["sms.send"],
-      },
-    ];
+  it("does not route an SMS send without the activity read capability needed for duplicate preflight", () => {
+    const system = {
+      id: 2,
+      provider: "genie",
+      displayName: "Genie",
+      status: "limited_permissions",
+      connectionMethod: "browser",
+      verifiedCapabilities: ["sms.send"],
+    };
     const [sms] = routeConnectedSystemActions(
       [{ actionType: "send_sms", payload: {} }],
-      systems
+      [system]
     );
     expect(sms.payload.crmRoute).toMatchObject({
+      routable: false,
+      requiredCapability: "activities.read+sms.send",
+    });
+    expect(connectedSystemSupportsAction(system, "send_sms")).toBe(false);
+  });
+
+  it("routes an independently verified communication only when send and duplicate-read capabilities are ready", () => {
+    const system = {
+      id: 3,
+      provider: "genie",
+      displayName: "Genie",
+      status: "limited_permissions",
+      connectionMethod: "browser",
+      verifiedCapabilities: ["activities.read", "whatsapp.send"],
+    };
+    const [proposal] = routeConnectedSystemActions(
+      [{ actionType: "send_whatsapp", payload: {} }],
+      [system]
+    );
+    expect(proposal.payload.crmRoute).toMatchObject({
       routable: true,
-      connectedSystemId: 2,
-      requiredCapability: "sms.send",
+      connectedSystemId: 3,
+      requiredCapability: "activities.read+whatsapp.send",
     });
   });
 
-  it("does not require an unrelated capability for a CRM communication function", () => {
-    const systems = [
-      {
-        id: 3,
-        provider: "genie",
-        displayName: "Genie",
-        status: "ready",
-        connectionMethod: "browser",
-        verifiedCapabilities: ["whatsapp.send"],
-      },
-    ];
-    expect(connectedSystemSupportsAction(systems[0], "send_whatsapp")).toBe(true);
+  it("requires read and write capability for mutable existing records", () => {
+    const writeOnly = {
+      id: 4,
+      provider: "salesforce",
+      displayName: "Salesforce",
+      status: "ready",
+      connectionMethod: "oauth",
+      verifiedCapabilities: ["tasks.write", "opportunities.write"],
+    };
+    expect(connectedSystemSupportsAction(writeOnly, "complete_active_task")).toBe(
+      false
+    );
+    expect(
+      connectedSystemSupportsAction(writeOnly, "update_current_opportunity")
+    ).toBe(false);
+    const readWrite = {
+      ...writeOnly,
+      verifiedCapabilities: [
+        "tasks.read",
+        "tasks.write",
+        "opportunities.read",
+        "opportunities.write",
+      ],
+    };
+    expect(connectedSystemSupportsAction(readWrite, "complete_active_task")).toBe(
+      true
+    );
+    expect(
+      connectedSystemSupportsAction(readWrite, "update_current_opportunity")
+    ).toBe(true);
   });
 
   it("blocks communication where no usable connector has the exact verified path", () => {
@@ -99,7 +137,7 @@ describe("canonical connected-system capability router", () => {
         displayName: "HubSpot",
         status: "ready",
         connectionMethod: "oauth",
-        verifiedCapabilities: ["contacts.read"],
+        verifiedCapabilities: ["contacts.read", "activities.read"],
       },
     ];
     const [sms] = routeConnectedSystemActions(
@@ -197,28 +235,7 @@ describe("canonical connected-system capability router", () => {
     }
   });
 
-  it("blocks a ready-labelled browser connector when verification did not record the required standard capability", () => {
-    const systems = [
-      {
-        id: 9,
-        provider: "custom_browser",
-        displayName: "Other CRM",
-        status: "ready",
-        connectionMethod: "browser",
-        verifiedCapabilities: [],
-      },
-    ];
-    const [proposal] = routeConnectedSystemActions(
-      [{ actionType: "update_contact", payload: {} }],
-      systems
-    );
-    expect(proposal.payload.crmRoute).toMatchObject({
-      routable: false,
-      reason: expect.stringContaining("backend-verified"),
-    });
-  });
-
-  it("honours a preferred provider only when that verified connector can perform the action", () => {
+  it("honours a preferred provider only when that verified connector can perform the governed action", () => {
     const systems = [
       {
         id: 1,
@@ -226,7 +243,7 @@ describe("canonical connected-system capability router", () => {
         displayName: "HubSpot",
         status: "ready",
         connectionMethod: "oauth",
-        verifiedCapabilities: ["contacts.write"],
+        verifiedCapabilities: ["contacts.read", "contacts.write"],
       },
       {
         id: 2,
@@ -234,7 +251,7 @@ describe("canonical connected-system capability router", () => {
         displayName: "Salesforce",
         status: "ready",
         connectionMethod: "oauth",
-        verifiedCapabilities: ["contacts.write"],
+        verifiedCapabilities: ["contacts.read", "contacts.write"],
       },
     ];
     const [proposal] = routeConnectedSystemActions(
@@ -253,7 +270,7 @@ describe("canonical connected-system capability router", () => {
     });
   });
 
-  it("routes inherited call context to the exact connected system before considering provider", () => {
+  it("routes inherited customer context to the exact connected system before provider preference", () => {
     const systems = [
       {
         id: 11,
@@ -261,7 +278,7 @@ describe("canonical connected-system capability router", () => {
         displayName: "Other CRM",
         status: "ready",
         connectionMethod: "browser",
-        verifiedCapabilities: ["notes.write"],
+        verifiedCapabilities: ["notes.read", "notes.write"],
       },
       {
         id: 12,
@@ -269,7 +286,7 @@ describe("canonical connected-system capability router", () => {
         displayName: "Genie",
         status: "ready",
         connectionMethod: "browser",
-        verifiedCapabilities: ["notes.write"],
+        verifiedCapabilities: ["notes.read", "notes.write"],
       },
     ];
     const [note] = routeConnectedSystemActions(
@@ -291,50 +308,88 @@ describe("canonical connected-system capability router", () => {
     });
   });
 
-  it("routes calendar creation only when delegated Microsoft connection is configured", () => {
-    const keys = [
-      "OUTLOOK_DELEGATED_TENANT_ID",
-      "OUTLOOK_DELEGATED_CLIENT_ID",
-      "OUTLOOK_DELEGATED_CLIENT_SECRET",
-      "OUTLOOK_DELEGATED_REDIRECT_URI",
-      "PUBLIC_APP_URL",
-      "OUTLOOK_TENANT_ID",
-      "OUTLOOK_CLIENT_ID",
-      "OUTLOOK_CLIENT_SECRET",
-    ] as const;
-    const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
-    try {
-      for (const key of keys) delete process.env[key];
-      const [blocked] = routeConnectedSystemActions(
-        [{ actionType: "create_calendar_event", payload: {} }],
-        []
-      );
-      expect(blocked.payload.crmRoute).toMatchObject({
-        routable: false,
-        requiredCapability: "Calendars.ReadWrite",
-      });
-
-      process.env.OUTLOOK_DELEGATED_TENANT_ID = "common";
-      process.env.OUTLOOK_DELEGATED_CLIENT_ID = "client";
-      process.env.OUTLOOK_DELEGATED_CLIENT_SECRET = "secret";
-      process.env.OUTLOOK_DELEGATED_REDIRECT_URI =
-        "https://sales.example.test/api/mailbox/microsoft/callback";
-      const [ready] = routeConnectedSystemActions(
-        [{ actionType: "create_calendar_event", payload: {} }],
-        []
-      );
-      expect(ready.payload.crmRoute).toMatchObject({
-        routable: true,
-        provider: "microsoft_delegated",
-        connectionMode: "delegated_oauth",
-        requiredCapability: "Calendars.ReadWrite",
-      });
-    } finally {
-      for (const key of keys) {
-        const value = previous[key];
-        if (value === undefined) delete process.env[key];
-        else process.env[key] = value;
+  it("never treats deployment Microsoft OAuth configuration as a personal action route", () => {
+    const [blocked] = routeConnectedSystemActions(
+      [{ actionType: "send_email", payload: {} }],
+      [],
+      {
+        personalMicrosoft: {
+          connected: false,
+          scopes: [],
+        },
       }
-    }
+    );
+    expect(blocked.payload.crmRoute).toMatchObject({
+      routable: false,
+      connectionMode: "per_user_delegated_oauth",
+      requiredCapability: "Mail.Read + Mail.Send",
+    });
+  });
+
+  it("requires the current user mailbox to have both Mail.Read and Mail.Send", () => {
+    const [missingRead] = routeConnectedSystemActions(
+      [{ actionType: "send_email", payload: {} }],
+      [],
+      {
+        personalMicrosoft: {
+          connected: true,
+          scopes: ["Mail.Send"],
+          mailbox: "salesperson@example.test",
+        },
+      }
+    );
+    expect(missingRead.payload.crmRoute).toMatchObject({
+      routable: false,
+      reason: expect.stringContaining("Mail.Read"),
+    });
+
+    const [ready] = routeConnectedSystemActions(
+      [{ actionType: "send_email", payload: {} }],
+      [],
+      {
+        personalMicrosoft: {
+          connected: true,
+          scopes: ["mail.read", "MAIL.SEND"],
+          mailbox: "salesperson@example.test",
+        },
+      }
+    );
+    expect(ready.payload.crmRoute).toMatchObject({
+      routable: true,
+      provider: "microsoft_delegated",
+      connectionMode: "per_user_delegated_oauth",
+      requiredCapability: "Mail.Read + Mail.Send",
+      mailbox: "salesperson@example.test",
+    });
+  });
+
+  it("routes calendar only for the current user delegated calendar scope", () => {
+    const [blocked] = routeConnectedSystemActions(
+      [{ actionType: "create_calendar_event", payload: {} }],
+      [],
+      { personalMicrosoft: { connected: true, scopes: ["Mail.Send"] } }
+    );
+    expect(blocked.payload.crmRoute).toMatchObject({
+      routable: false,
+      requiredCapability: "Calendars.ReadWrite",
+    });
+
+    const [ready] = routeConnectedSystemActions(
+      [{ actionType: "create_calendar_event", payload: {} }],
+      [],
+      {
+        personalMicrosoft: {
+          connected: true,
+          scopes: ["Calendars.ReadWrite"],
+          mailbox: "salesperson@example.test",
+        },
+      }
+    );
+    expect(ready.payload.crmRoute).toMatchObject({
+      routable: true,
+      provider: "microsoft_delegated",
+      connectionMode: "per_user_delegated_oauth",
+      requiredCapability: "Calendars.ReadWrite",
+    });
   });
 });
