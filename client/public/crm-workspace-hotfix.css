@@ -1,0 +1,85 @@
+/* Production CRM workspace containment hotfix.
+ * Scoped to the live CRM route so the rest of the dashboard is unchanged.
+ */
+
+body:has([data-crm-workspace-root]) [data-slot="sidebar-wrapper"] {
+  min-width: 0 !important;
+  overflow-x: hidden !important;
+}
+
+body:has([data-crm-workspace-root]) [data-slot="sidebar-inset"] {
+  min-width: 0 !important;
+  overflow-x: hidden !important;
+}
+
+body:has([data-crm-workspace-root]) [data-slot="sidebar-inset"] > header {
+  display: flex !important;
+  position: relative !important;
+  z-index: 30 !important;
+  flex: 0 0 58px !important;
+}
+
+body:has([data-crm-workspace-root]) [data-slot="sidebar-inset"] > main:has(> [data-crm-workspace-root]) {
+  display: flex !important;
+  height: calc(100dvh - 58px) !important;
+  min-height: 0 !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  padding: 12px !important;
+}
+
+body:has([data-crm-workspace-root]) [data-crm-workspace-root] {
+  flex: 1 1 auto !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+  border: 1px solid #d7e0ea !important;
+  border-radius: 12px !important;
+  box-shadow: 0 1px 2px rgba(38, 53, 74, 0.06) !important;
+}
+
+body:has([data-crm-workspace-root]) [data-crm-workspace-root] > div {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+}
+
+body:has([data-crm-workspace-root]) [data-crm-workspace-root] > div > header {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+}
+
+body:has([data-crm-workspace-root]) [data-crm-workspace-root] > div > header > * {
+  min-width: 0;
+}
+
+body:has([data-crm-workspace-root]) [data-crm-workspace-root] > div > header > button:last-child {
+  display: inline-flex !important;
+  flex: 0 0 auto !important;
+  position: relative !important;
+  z-index: 10 !important;
+}
+
+body:has([data-crm-workspace-root]) [data-crm-workspace-root] section {
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+
+@media (min-width: 768px) {
+  body:has([data-crm-workspace-root]) [data-slot="sidebar"] {
+    display: block !important;
+  }
+
+  body:has([data-crm-workspace-root]) [data-slot="sidebar-gap"] {
+    display: block !important;
+  }
+
+  body:has([data-crm-workspace-root]) [data-slot="sidebar-container"] {
+    display: flex !important;
+    z-index: 60 !important;
+  }
+}
