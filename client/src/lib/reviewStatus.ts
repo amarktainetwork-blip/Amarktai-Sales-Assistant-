@@ -61,7 +61,7 @@ export const REVIEW_LIFECYCLE_COPY: Record<
   },
   executing: {
     label: "Executing",
-    description: "Amarktai is applying the approved action and verifying readback.",
+    description: "AmarktAI is applying the approved action and verifying readback.",
   },
   completed: {
     label: "Completed",
