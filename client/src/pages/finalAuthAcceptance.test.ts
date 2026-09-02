@@ -18,8 +18,9 @@ describe("final account presentation", () => {
   });
 
   it("reacts to register, forgot-password and sign-in query links", () => {
-    expect(auth).toContain("const [location] = useLocation();");
-    expect(auth).toContain('location.includes("?") ? location.slice(location.indexOf("?") + 1) : ""');
+    expect(auth).toContain('import { Link, useLocation, useSearch } from "wouter";');
+    expect(auth).toContain("const search = useSearch();");
+    expect(auth).toContain("const query = new URLSearchParams(search);");
     expect(auth).not.toContain("window.location.search");
     expect(auth).toContain('href="/auth?mode=forgot"');
     expect(auth).toContain('href="/auth?mode=register"');

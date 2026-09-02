@@ -11,16 +11,14 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 const AUTH_PHOTO =
   "https://images.pexels.com/photos/8485714/pexels-photo-8485714.jpeg?auto=compress&cs=tinysrgb&w=1800";
 
 export default function Auth() {
-  const [location] = useLocation();
+  const search = useSearch();
   const mode = trpc.auth.mode.useQuery();
-  const query = new URLSearchParams(
-    location.includes("?") ? location.slice(location.indexOf("?") + 1) : ""
-  );
+  const query = new URLSearchParams(search);
   const invite = query.get("invite");
   const reset = query.get("reset");
   const authView = query.get("mode");
