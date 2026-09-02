@@ -1,6 +1,6 @@
 import type { Express, NextFunction, Request, Response } from "express";
 import { requireLocalHttpContext } from "./httpAuth";
-import { prepareGovernedAssistantRequest } from "./governedAssistant";
+import { prepareGovernedAssistantRequest } from "./governedAssistantEntry";
 import { routeSalesCommand } from "./supervisor";
 
 function latestUserCommand(value: unknown) {
@@ -27,9 +27,9 @@ export function isGovernedAssistantActionRequest(command: string) {
 
 /**
  * Intercepts only external-action intents. Everything else continues to the
- * conversational Assistant route. CRM-side Assistant calls the same governed
- * planner directly, so both surfaces share customer resolution, routing,
- * policy, review and execution preparation.
+ * conversational Assistant route. CRM-side Assistant calls the same canonical
+ * governed entry, so both surfaces share customer resolution, configuration,
+ * routing, policy, review and execution preparation.
  */
 export function registerAssistantActionRoute(app: Express) {
   app.post(
