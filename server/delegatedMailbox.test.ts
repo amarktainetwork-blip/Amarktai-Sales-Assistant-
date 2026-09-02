@@ -7,8 +7,16 @@ const source = readFileSync(
   new URL("./delegatedMailbox.ts", import.meta.url),
   "utf8"
 );
-const execution = readFileSync(
+const executionAlias = readFileSync(
   new URL("./crm/executeApprovedAction.ts", import.meta.url),
+  "utf8"
+);
+const execution = readFileSync(
+  new URL("./crm/canonicalActionExecution.ts", import.meta.url),
+  "utf8"
+);
+const sentReadback = readFileSync(
+  new URL("./delegatedMailboxReadback.ts", import.meta.url),
   "utf8"
 );
 const reviews = readFileSync(
@@ -51,8 +59,10 @@ describe("per-user delegated Microsoft mailbox", () => {
     expect(source).toContain("createDelegatedOutlookCalendarEvent");
     expect(source).toContain('mailbox.accessToken, "/me/events"');
     expect(source).toContain("transactionId: input.reviewReference");
+    expect(executionAlias).toContain("executeCanonicalApprovedAction");
     expect(execution).toContain("createDelegatedOutlookCalendarEvent");
-    expect(execution).toContain('route.provider !== "microsoft_delegated"');
+    expect(execution).toContain('route.provider === "microsoft_delegated"');
+    expect(execution).toContain("stableMicrosoftReference");
     expect(execution).not.toContain("createOutlookCalendarEvent");
     expect(execution).not.toContain("getOutlookReadiness");
   });
@@ -109,18 +119,19 @@ describe("per-user delegated Microsoft mailbox", () => {
     expect(source).not.toContain("OUTLOOK_SENDER_EMAIL");
   });
 
-  it("does not turn a Microsoft-accepted send into a retryable duplicate", () => {
+  it("prevents blind duplicate retry after Microsoft accepts a send", () => {
+    expect(execution).toContain("findDelegatedSentMailByReference");
+    expect(execution).toContain("waitForDelegatedSentMailReadback");
     expect(execution).toContain(
-      'eventType: "delegated_email_post_send_reconciliation_failed"'
+      "The stable action reference prevents blind resend; reconcile before any retry."
     );
-    expect(execution).toContain("The send must not be retried.");
-    expect(execution).toContain("}).catch(() => undefined);");
-    const delegatedBranch = execution.slice(
-      execution.indexOf('route.provider === "microsoft_delegated"'),
-      execution.indexOf(
-        'if (input.proposal.actionType === "create_calendar_event")'
-      )
+    expect(execution).toContain("duplicatePrevented: true");
+    expect(sentReadback).toContain("X-Amarktai-Review-Reference");
+    expect(sentReadback).toContain("inspected < 100");
+    const microsoftBranch = execution.slice(
+      execution.indexOf("async function executeMicrosoft"),
+      execution.indexOf("async function verifyCrmPostcondition")
     );
-    expect(delegatedBranch).toContain("retryable: false");
+    expect(microsoftBranch).toContain("retryable: false");
   });
 });
