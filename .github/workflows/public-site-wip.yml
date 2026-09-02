@@ -45,7 +45,8 @@ jobs:
           grep -F 'Amarkt<span className="amk-brand-name__ai">AI</span>' client/src/components/BrandName.tsx
           grep -F 'START WITH WHAT YOU ALREADY HAVE' client/src/marketing/HomePage.tsx
           grep -F 'ONE ASSISTANT ACROSS THE SALES LOOP' client/src/marketing/HomePage.tsx
-          grep -F 'const [location] = useLocation();' client/src/pages/Auth.tsx
+          grep -F 'const search = useSearch();' client/src/pages/Auth.tsx
+          grep -F 'const query = new URLSearchParams(search);' client/src/pages/Auth.tsx
           ! grep -F 'window.location.search' client/src/pages/Auth.tsx
           ! grep -F 'Amarktai' client/src/pages/Auth.tsx
           git diff --check
