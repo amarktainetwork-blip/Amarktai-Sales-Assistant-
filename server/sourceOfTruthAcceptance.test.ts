@@ -28,6 +28,22 @@ describe("repository source of truth", () => {
     expect(readme).toContain("Issue #89");
     expect(readme).not.toContain("OUTLOOK_SENDER_EMAIL");
     expect(readme).not.toContain("/api/outlook/inbound");
+
+    const activeOperatorDocs = [
+      read("docs/webdock-vps-install.md"),
+      read("docs/genie-teach-amarktai.md"),
+      read("docs/integration-research.md"),
+      read("docs/implementation-status.md"),
+    ].join("\n");
+    expect(activeOperatorDocs).not.toContain(
+      "encrypted per-connection username/password"
+    );
+    expect(activeOperatorDocs).not.toContain(
+      "installation-time login configuration"
+    );
+    expect(activeOperatorDocs).not.toContain(
+      "publicly reachable notification endpoint"
+    );
   });
 
   it("returns one explicit unauthenticated truth to browser clients", () => {
