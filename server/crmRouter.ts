@@ -1,4 +1,4 @@
-import { delegatedMailboxReadiness } from "./delegatedMailbox";
+import { getDelegatedMailboxStatus } from "./delegatedMailbox";
 import {
   isCustomOperationKey,
   productionOperationAvailable,
@@ -14,6 +14,12 @@ export type ConnectedSystemRoute = {
   verifiedCapabilities: string[];
   learnedOperations?: RuntimeLearnedOperation[];
   configuration?: Record<string, unknown>;
+};
+
+export type PersonalMicrosoftRouteContext = {
+  connected: boolean;
+  scopes: string[];
+  mailbox?: string;
 };
 
 export const ACTION_CONNECTED_CAPABILITIES: Record<string, string[][]> = {
@@ -100,39 +106,58 @@ function connectionCanRoute(status: string) {
   return status === "ready" || status === "limited_permissions";
 }
 
-function delegatedMicrosoftRoute(actionType: string) {
-  const microsoft = delegatedMailboxReadiness();
+function delegatedMicrosoftRoute(
+  actionType: string,
+  personalMicrosoft?: PersonalMicrosoftRouteContext
+) {
   const email = actionType === "send_email" || actionType === "send_email_template";
   const calendar = actionType === "create_calendar_event";
   if (!email && !calendar) return undefined;
   const requiredCapability = email ? "Mail.Send" : "Calendars.ReadWrite";
   const displayName = email ? "Your Microsoft mailbox" : "Your Microsoft calendar";
-  const unavailable = email
-    ? "Personal Microsoft mailbox connection is not configured for this deployment."
-    : "Personal Microsoft calendar connection is not configured for this deployment.";
-  return microsoft.ready
-    ? {
-        routable: true as const,
-        provider: "microsoft_delegated",
-        displayName,
-        connectionMode: "delegated_oauth",
-        requiredCapability,
-      }
-    : {
-        routable: false as const,
-        reason: unavailable,
-        requiredCapability,
-      };
+  const connectMessage = email
+    ? "Connect your Microsoft mailbox before preparing an executable email action."
+    : "Connect your Microsoft calendar before preparing an executable calendar action.";
+  if (!personalMicrosoft?.connected)
+    return {
+      routable: false as const,
+      reason: connectMessage,
+      requiredCapability,
+      connectionMode: "per_user_delegated_oauth" as const,
+    };
+  const scopes = new Set(personalMicrosoft.scopes.map(scope => scope.toLowerCase()));
+  if (!scopes.has(requiredCapability.toLowerCase()))
+    return {
+      routable: false as const,
+      reason: `${displayName} is connected but is missing the required ${requiredCapability} permission. Reconnect it before using this action.`,
+      requiredCapability,
+      connectionMode: "per_user_delegated_oauth" as const,
+    };
+  return {
+    routable: true as const,
+    provider: "microsoft_delegated",
+    displayName,
+    connectionMode: "per_user_delegated_oauth" as const,
+    requiredCapability,
+    mailbox: personalMicrosoft.mailbox,
+  };
 }
 
 export function routeConnectedSystemActions<
   T extends { actionType: string; payload: Record<string, unknown> },
->(actions: T[], systems: ConnectedSystemRoute[]) {
+>(
+  actions: T[],
+  systems: ConnectedSystemRoute[],
+  options?: { personalMicrosoft?: PersonalMicrosoftRouteContext }
+) {
   const eligibleSystems = systems.filter(system => connectionCanRoute(system.status));
   return actions.map(action => {
     const effectiveActionType = routedActionType(action);
     const effectivePayload = routedPayload(action);
-    const microsoftRoute = delegatedMicrosoftRoute(effectiveActionType || action.actionType);
+    const microsoftRoute = delegatedMicrosoftRoute(
+      effectiveActionType || action.actionType,
+      options?.personalMicrosoft
+    );
     if (microsoftRoute)
       return {
         ...action,
@@ -196,5 +221,40 @@ export function routeConnectedSystemActions<
           requiredCapability,
         };
     return { ...action, payload: { ...action.payload, crmRoute } };
+  });
+}
+
+export async function routeConnectedSystemActionsForUser<
+  T extends { actionType: string; payload: Record<string, unknown> },
+>(input: {
+  userId: number;
+  organisationId: number;
+  actions: T[];
+  systems: ConnectedSystemRoute[];
+}) {
+  const requiresMicrosoft = input.actions.some(action => {
+    const actionType = routedActionType(action) || action.actionType;
+    return (
+      actionType === "send_email" ||
+      actionType === "send_email_template" ||
+      actionType === "create_calendar_event"
+    );
+  });
+  if (!requiresMicrosoft)
+    return routeConnectedSystemActions(input.actions, input.systems);
+  const status = await getDelegatedMailboxStatus({
+    userId: input.userId,
+    organisationId: input.organisationId,
+  });
+  return routeConnectedSystemActions(input.actions, input.systems, {
+    personalMicrosoft: {
+      connected: status.connected,
+      scopes: Array.isArray(status.mailbox?.scopes)
+        ? status.mailbox.scopes.filter(
+            (scope): scope is string => typeof scope === "string"
+          )
+        : [],
+      mailbox: status.mailbox?.email || undefined,
+    },
   });
 }
