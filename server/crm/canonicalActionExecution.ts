@@ -334,7 +334,7 @@ async function verifyCrmPostcondition(input: {
     const patch = fields(input.payload);
     if (!Object.keys(patch).length && input.payload.status !== undefined)
       patch.status = input.payload.status;
-    const current = contact
+    const current: Record<string, unknown> = contact
       ? {
           ...contact.raw,
           status: contact.raw.status || contact.lifecycleStage,
@@ -370,7 +370,7 @@ async function verifyCrmPostcondition(input: {
       secret: input.secret,
       externalId: opportunityExternalId,
     });
-    const current = opportunity
+    const current: Record<string, unknown> = opportunity
       ? {
           ...opportunity.raw,
           stage: opportunity.stage,

@@ -59,7 +59,8 @@ export function validateSalesMessage<T extends SalesMessage>(message: T): T {
 }
 
 function suppressionIdentity(message: SalesMessage, destination: string) {
-  const channel = message.channel === "whatsapp" ? "chat" : message.channel;
+  const channel: "email" | "sms" | "chat" =
+    message.channel === "whatsapp" ? "chat" : message.channel;
   const senderReference =
     message.channel === "email"
       ? destination.toLowerCase()

@@ -47,11 +47,11 @@ export async function findDelegatedSentMailByReference(input: {
     `/me/mailFolders/sentitems/messages?${query.toString()}`;
   let inspected = 0;
   while (next && inspected < 100) {
-    const page = await delegatedMicrosoftGraphRequest<SentPage>(
+    const page: SentPage = await delegatedMicrosoftGraphRequest<SentPage>(
       mailbox.accessToken,
       next
     );
-    const rows = page.value || [];
+    const rows: SentMessage[] = page.value || [];
     for (const message of rows) {
       inspected += 1;
       if (matchingReference(message, reference))

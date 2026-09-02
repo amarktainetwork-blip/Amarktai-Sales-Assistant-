@@ -81,7 +81,7 @@ import {
   resetLocalPassword,
 } from "./localAuth";
 import { routeSalesCommand } from "./supervisor";
-import { prepareGovernedAssistantRequest } from "./governedAssistant";
+import { prepareGovernedAssistantRequest } from "./governedAssistantEntry";
 import { prepareLiveCoachingTip, preparePostCallSummary } from "./liveCoach";
 import {
   getPersonalMailboxReadiness,
