@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getClientActionConfiguration: vi.fn(),
+  getOutboundSuppressionStatus: vi.fn(),
 }));
 
 vi.mock("./clientActionConfiguration", async () => {
@@ -11,6 +12,16 @@ vi.mock("./clientActionConfiguration", async () => {
   return {
     ...actual,
     getClientActionConfiguration: mocks.getClientActionConfiguration,
+  };
+});
+
+vi.mock("./communications", async () => {
+  const actual = await vi.importActual<typeof import("./communications")>(
+    "./communications"
+  );
+  return {
+    ...actual,
+    getOutboundSuppressionStatus: mocks.getOutboundSuppressionStatus,
   };
 });
 
@@ -122,6 +133,14 @@ function firstContactConfiguration() {
 
 beforeEach(() => {
   mocks.getClientActionConfiguration.mockReset();
+  mocks.getOutboundSuppressionStatus.mockReset();
+  mocks.getOutboundSuppressionStatus.mockResolvedValue({
+    verified: true,
+    suppressed: false,
+    channel: "sms",
+    destination: "+447700900123",
+    contactExternalId: "contact-1",
+  });
 });
 
 describe("configured workflow materialization", () => {
@@ -137,6 +156,13 @@ describe("configured workflow materialization", () => {
     expect(attemptOne.actions.map(action => action.actionType)).toContain(
       "send_sms_template"
     );
+    expect(
+      attemptOne.actions.find(action => action.actionType === "send_sms_template")
+        ?.payload
+    ).toMatchObject({
+      senderIdentity: "+447700900999",
+      compliance: { suppressionVerified: true, optedOut: false },
+    });
     expect(
       attemptOne.actions.find(action => action.actionType === "schedule_callback")
         ?.payload
