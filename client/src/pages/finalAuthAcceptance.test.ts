@@ -7,6 +7,10 @@ describe("final account presentation", () => {
     path.resolve(process.cwd(), "client/src/pages/Auth.tsx"),
     "utf8"
   );
+  const app = readFileSync(
+    path.resolve(process.cwd(), "client/src/App.tsx"),
+    "utf8"
+  );
 
   it("uses account language and the canonical AmarktAI spelling", () => {
     expect(auth).toContain("CREATE ACCOUNT");
@@ -15,6 +19,9 @@ describe("final account presentation", () => {
     expect(auth).not.toContain("Create your Amarktai account.");
     expect(auth).not.toContain("CREATE WORKSPACE");
     expect(auth).not.toContain("Create your Sales Assistant workspace.");
+    expect(app).toContain("Secure Access | AmarktAI Network Sales Assistant");
+    expect(app).toContain("AmarktAI Network Sales Assistant");
+    expect(app).not.toContain("Amarktai Network Sales Assistant");
   });
 
   it("reacts to register, forgot-password and sign-in query links", () => {
