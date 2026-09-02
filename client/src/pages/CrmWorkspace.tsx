@@ -1,4 +1,5 @@
 import DashboardLayout from "@/components/DashboardLayout";
+import InlineCrmReview from "@/components/InlineCrmReview";
 import { Button } from "@/components/ui/button";
 import {
   crmDesktopViewport,
@@ -273,6 +274,7 @@ function LiveWorkspace({
   const [authenticationState, setAuthenticationState] = useState("STARTING");
   const [assistantPrompt, setAssistantPrompt] = useState("");
   const [assistantResult, setAssistantResult] = useState<string | null>(null);
+  const [assistantWorkflowRunId, setAssistantWorkflowRunId] = useState<number | null>(null);
   const [activity, setActivity] = useState<string[]>([
     "Secure CRM workspace opened",
   ]);
@@ -714,13 +716,18 @@ function LiveWorkspace({
   const submitAssistant = async () => {
     if (!session || !assistantPrompt.trim()) return;
     try {
+      setAssistantWorkflowRunId(null);
       const result = await askAssistant.mutateAsync({
         viewerSessionId: session.viewerSessionId,
         command: assistantPrompt.trim(),
       });
       setAssistantResult(result.summary);
+      setAssistantWorkflowRunId(
+        typeof result.workflowRunId === "number" ? result.workflowRunId : null
+      );
       setAssistantPrompt("");
     } catch (error) {
+      setAssistantWorkflowRunId(null);
       setAssistantResult(
         friendlyError(error, "Amarktai could not complete that request.")
       );
@@ -910,6 +917,8 @@ function LiveWorkspace({
                   {assistantResult}
                 </div>
               ) : null}
+
+              <InlineCrmReview workflowRunId={assistantWorkflowRunId} />
 
               <details className="mt-4 rounded-xl border border-[#D7E0EA] bg-white">
                 <summary className="cursor-pointer list-none px-3 py-2.5 text-xs font-bold text-[#33445B]">

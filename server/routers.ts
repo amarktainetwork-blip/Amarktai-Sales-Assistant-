@@ -955,11 +955,36 @@ export const appRouter = router({
           throw new Error(
             "Only an approved action proposal may be executed, and it must be owned by your workspace."
           );
-        const result = await executeApprovedCrmAction({
-          organisationId: organisation.organisationId,
-          proposal,
-          correlationId,
-        });
+        let result;
+        try {
+          result = await executeApprovedCrmAction({
+            organisationId: organisation.organisationId,
+            proposal,
+            correlationId,
+          });
+        } catch (error) {
+          const failure = {
+            success: false,
+            detail:
+              error instanceof Error
+                ? error.message
+                : "The approved CRM action failed before verified readback.",
+            correlationId,
+            retryable: false,
+            unverifiedFailure: true,
+          };
+          await recordActionExecution({
+            userId: ctx.user.id,
+            organisationId: organisation.organisationId,
+            proposalId: proposal.id,
+            correlationId,
+            success: false,
+            result: failure,
+          });
+          throw new Error(
+            "The approved action could not be verified. It is marked Failed in Review; do not retry it blindly."
+          );
+        }
         await recordActionExecution({
           userId: ctx.user.id,
           organisationId: organisation.organisationId,

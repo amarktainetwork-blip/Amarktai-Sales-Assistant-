@@ -417,6 +417,7 @@ export default function Reviews() {
                 text(payload.to) || text(payload.email) || text(payload.phone);
               const subject = text(payload.subject);
               const sender = text(payload.senderIdentity);
+              const why = text(payload.why);
               const resultDetail = reviewResultDetail(item);
               const statusCopy = REVIEW_LIFECYCLE_COPY[lifecycle];
 
@@ -489,8 +490,14 @@ export default function Reviews() {
 
                       {mailboxDraft && lifecycle === "pending" ? (
                         <div className="mt-4 rounded-2xl border border-[#DCE4EE] bg-[#F7F9FC] p-4">
+                          {why ? (
+                            <div className="mb-3 rounded-xl border border-[#DCE4EE] bg-white p-3 text-xs leading-5 text-[#66758A]">
+                              <p className="font-bold text-[#40536B]">Why a reply is needed</p>
+                              <p className="mt-1">{why}</p>
+                            </div>
+                          ) : null}
                           <label className="block text-xs font-bold text-[#526277]">
-                            Email body
+                            Draft reply
                             <Textarea
                               value={draftBody}
                               onChange={event =>
@@ -526,7 +533,7 @@ export default function Reviews() {
                             }
                           >
                             <X className="mr-2 h-4 w-4" />
-                            Skip
+                            Dismiss
                           </Button>
                           <Button
                             variant="outline"
@@ -587,7 +594,7 @@ export default function Reviews() {
                             ) : (
                               <Check className="mr-2 h-4 w-4" />
                             )}
-                            Approve
+                            Approve change
                           </Button>
                         </>
                       ) : lifecycle === "approved" ? (
@@ -600,7 +607,7 @@ export default function Reviews() {
                           ) : (
                             <Check className="mr-2 h-4 w-4" />
                           )}
-                          Apply approved action
+                          Apply approved change
                         </Button>
                       ) : lifecycle === "executing" ? (
                         <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold leading-5 text-blue-800">
