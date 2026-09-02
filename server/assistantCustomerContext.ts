@@ -1,5 +1,5 @@
-import { and, eq } from "drizzle-orm";
-import { crmContacts } from "../drizzle/schema";
+import { and, desc, eq } from "drizzle-orm";
+import { crmContacts, crmOpportunities, crmTasks } from "../drizzle/schema";
 import { getDb } from "./db";
 import {
   getWorkingContextForContact,
@@ -19,6 +19,24 @@ export type AssistantCrmSurfaceContext = {
   currentContactExternalId?: string;
 };
 
+export type AssistantOperationalRecordState = {
+  openTasks: Array<{
+    externalId: string;
+    title: string;
+    status: string;
+    dueAt?: string;
+  }>;
+  currentActiveTaskExternalId?: string;
+  openOpportunities: Array<{
+    externalId: string;
+    name: string;
+    stage?: string;
+  }>;
+  currentActiveOpportunityExternalId?: string;
+  historicalCompletedTaskCount: number;
+  historicalClosedOpportunityCount: number;
+};
+
 export type ResolvedAssistantCustomerContext = LiveCallCrmContext & {
   targetVerification: {
     verified: true;
@@ -29,7 +47,108 @@ export type ResolvedAssistantCustomerContext = LiveCallCrmContext & {
     connectedSystemId: number;
     contactExternalId: string;
   };
+  operationalRecordState: AssistantOperationalRecordState;
 };
+
+function completedTask(status: string) {
+  return /complete|closed|done|cancelled/i.test(status);
+}
+
+function closedOpportunity(input: { stage?: string | null; raw?: unknown }) {
+  const raw =
+    input.raw && typeof input.raw === "object" && !Array.isArray(input.raw)
+      ? (input.raw as Record<string, unknown>)
+      : {};
+  return /closed|lost|won|rejected|not.?interested/i.test(
+    `${input.stage || ""} ${String(raw.status || "")}`
+  );
+}
+
+async function operationalRecordState(input: {
+  organisationId: number;
+  connectedSystemId: number;
+  contactExternalId: string;
+}): Promise<AssistantOperationalRecordState> {
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const [tasks, opportunities] = await Promise.all([
+    db
+      .select()
+      .from(crmTasks)
+      .where(
+        and(
+          eq(crmTasks.organisationId, input.organisationId),
+          eq(crmTasks.connectedSystemId, input.connectedSystemId),
+          eq(crmTasks.contactExternalId, input.contactExternalId)
+        )
+      )
+      .orderBy(desc(crmTasks.updatedAt))
+      .limit(120),
+    db
+      .select()
+      .from(crmOpportunities)
+      .where(
+        and(
+          eq(crmOpportunities.organisationId, input.organisationId),
+          eq(crmOpportunities.connectedSystemId, input.connectedSystemId),
+          eq(crmOpportunities.contactExternalId, input.contactExternalId)
+        )
+      )
+      .orderBy(desc(crmOpportunities.updatedAt))
+      .limit(120),
+  ]);
+  const openTasks = tasks
+    .filter(task => !completedTask(task.status))
+    .map(task => ({
+      externalId: task.externalId,
+      title: task.title,
+      status: task.status,
+      dueAt: task.dueAt?.toISOString(),
+    }));
+  const openOpportunities = opportunities
+    .filter(opportunity => !closedOpportunity(opportunity))
+    .map(opportunity => ({
+      externalId: opportunity.externalId,
+      name: opportunity.name,
+      stage: opportunity.stage || undefined,
+    }));
+  return {
+    openTasks,
+    currentActiveTaskExternalId:
+      openTasks.length === 1 ? openTasks[0].externalId : undefined,
+    openOpportunities,
+    currentActiveOpportunityExternalId:
+      openOpportunities.length === 1
+        ? openOpportunities[0].externalId
+        : undefined,
+    historicalCompletedTaskCount: tasks.filter(task => completedTask(task.status))
+      .length,
+    historicalClosedOpportunityCount: opportunities.filter(closedOpportunity)
+      .length,
+  };
+}
+
+async function decorateContext(input: {
+  organisationId: number;
+  context: LiveCallCrmContext;
+  source: ResolvedAssistantCustomerContext["targetVerification"]["source"];
+}): Promise<ResolvedAssistantCustomerContext> {
+  const operational = await operationalRecordState({
+    organisationId: input.organisationId,
+    connectedSystemId: input.context.connectedSystemId,
+    contactExternalId: input.context.contactExternalId,
+  });
+  return {
+    ...input.context,
+    targetVerification: {
+      verified: true,
+      source: input.source,
+      connectedSystemId: input.context.connectedSystemId,
+      contactExternalId: input.context.contactExternalId,
+    },
+    operationalRecordState: operational,
+  };
+}
 
 async function contextFromExternalId(input: {
   organisationId: number;
@@ -60,15 +179,11 @@ async function contextFromExternalId(input: {
     organisationId: input.organisationId,
     contactId: rows[0].id,
   });
-  return {
-    ...context,
-    targetVerification: {
-      verified: true as const,
-      source: input.source,
-      connectedSystemId: context.connectedSystemId,
-      contactExternalId: context.contactExternalId,
-    },
-  };
+  return decorateContext({
+    organisationId: input.organisationId,
+    context,
+    source: input.source,
+  });
 }
 
 /**
@@ -87,15 +202,11 @@ export async function resolveAssistantCustomerContext(input: {
       organisationId: input.organisationId,
       contactId: input.contactId,
     });
-    return {
-      ...context,
-      targetVerification: {
-        verified: true,
-        source: "assistant_customer_selector",
-        connectedSystemId: context.connectedSystemId,
-        contactExternalId: context.contactExternalId,
-      },
-    };
+    return decorateContext({
+      organisationId: input.organisationId,
+      context,
+      source: "assistant_customer_selector",
+    });
   }
 
   const crmContext = input.crmContext;
