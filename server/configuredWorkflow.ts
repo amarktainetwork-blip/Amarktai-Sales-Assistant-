@@ -33,7 +33,11 @@ const SEQUENCE_ACTIONS = new Set([
 ]);
 
 function safeKey(value: string) {
-  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 100);
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .slice(0, 100);
 }
 
 function sequenceAction(
@@ -56,7 +60,10 @@ function sequenceAction(
   };
   if (/^send_(?:email|sms|whatsapp)_template$/.test(actionType))
     payload.templatePurpose = purpose;
-  if (actionType === "schedule_callback" || actionType === "complete_active_task")
+  if (
+    actionType === "schedule_callback" ||
+    actionType === "complete_active_task"
+  )
     payload.taskPurpose = purpose;
   if (actionType === "update_contact_status") payload.statusIntent = purpose;
   if (
@@ -83,7 +90,11 @@ function actionsFromConfiguration(
   const configured = workflow.sequence.map((token, index) =>
     sequenceAction(token, leadLabel, index)
   );
-  if (!configured.some(action => action.actionType === "verify_contact_context"))
+  if (
+    !configured.some(
+      action => action.actionType === "verify_contact_context"
+    )
+  )
     configured.unshift(
       sequenceAction("verify_contact_context:current_customer", leadLabel, -1)
     );
@@ -91,14 +102,16 @@ function actionsFromConfiguration(
 }
 
 function uniqueStrings(...sets: string[][]) {
-  return Array.from(new Set(sets.flat().map(item => item.trim()).filter(Boolean)));
+  return Array.from(
+    new Set(sets.flat().map(item => item.trim()).filter(Boolean))
+  );
 }
 
 function configuredActionMetadata(input: {
   action: ProposedAction;
   configuration: ClientActionConfiguration;
   workflow: WorkflowActionConfiguration;
-  workflowKey: WorkflowKey;
+  workflowKey: string;
 }) {
   const payload = input.action.payload;
   const taskPurpose =
@@ -114,7 +127,9 @@ function configuredActionMetadata(input: {
       ? payload.transitionIntent
       : undefined;
   const statusIntent =
-    typeof payload.statusIntent === "string" ? payload.statusIntent : undefined;
+    typeof payload.statusIntent === "string"
+      ? payload.statusIntent
+      : undefined;
   const opportunityStage = transitionIntent
     ? input.workflow.opportunityMappings[transitionIntent]
     : undefined;
@@ -141,10 +156,21 @@ function configuredActionMetadata(input: {
     ...(taskTitle ? { taskTitle } : {}),
     ...(timingRule ? { timingRule } : {}),
     ...(opportunityStage
-      ? { patch: { ...(payload.patch as Record<string, unknown> | undefined), stage: opportunityStage } }
+      ? {
+          patch: {
+            ...(payload.patch as Record<string, unknown> | undefined),
+            stage: opportunityStage,
+          },
+        }
       : {}),
     ...(contactStatus
-      ? { fields: { ...(payload.fields as Record<string, unknown> | undefined), status: contactStatus }, status: contactStatus }
+      ? {
+          fields: {
+            ...(payload.fields as Record<string, unknown> | undefined),
+            status: contactStatus,
+          },
+          status: contactStatus,
+        }
       : {}),
     duplicateRules,
     requiredPostconditions,
@@ -172,7 +198,9 @@ async function materializeTemplateAction(input: {
       : typeof input.action.payload.workflowPurpose === "string"
         ? input.action.payload.workflowPurpose
         : "";
-  const templateKey = purpose ? input.workflow.templates[purpose] : undefined;
+  const templateKey = purpose
+    ? input.workflow.templates[purpose]
+    : undefined;
   if (!templateKey)
     throw new Error(
       `WORKFLOW_TEMPLATE_REQUIRED: configure the '${purpose || input.action.actionType}' ${channel.toUpperCase()} template for this workflow before it can be prepared.`
@@ -224,10 +252,18 @@ async function materializeTemplateAction(input: {
   };
 }
 
+function workflowConfigurationKey(request: WorkflowRequest) {
+  return request.callOutcome
+    ? `${request.workflowKey}:${request.callOutcome}`
+    : request.workflowKey;
+}
+
 /**
  * Minimal generic workflow materializer. Client-specific subjects, stages,
  * task names, senders, timing and sequence order are data, never engine
- * constants. The base workflow supplies only reusable semantic purposes.
+ * constants. Outcome-specific variants can be commissioned with keys such as
+ * 'post_consultation_follow_up:answered' without teaching the engine client
+ * names or statuses.
  */
 export async function buildConfiguredWorkflowPlan(input: {
   organisationId: number;
@@ -237,10 +273,13 @@ export async function buildConfiguredWorkflowPlan(input: {
   const configuration = await getClientActionConfiguration({
     organisationId: input.organisationId,
   });
-  const workflow = configuration.workflows[input.request.workflowKey];
+  const variantKey = workflowConfigurationKey(input.request);
+  const workflow =
+    configuration.workflows[variantKey] ||
+    configuration.workflows[input.request.workflowKey];
   if (!workflow)
     throw new Error(
-      `WORKFLOW_CONFIGURATION_REQUIRED: '${input.request.workflowKey}' has not been commissioned for this organisation.`
+      `WORKFLOW_CONFIGURATION_REQUIRED: '${variantKey}' has not been commissioned for this organisation.`
     );
   const base = buildWorkflowPlan(input.request);
   const source = actionsFromConfiguration(
@@ -254,7 +293,7 @@ export async function buildConfiguredWorkflowPlan(input: {
       action: raw,
       configuration,
       workflow,
-      workflowKey: input.request.workflowKey,
+      workflowKey: variantKey,
     });
     const configured: ProposedAction = {
       ...raw,
@@ -272,10 +311,10 @@ export async function buildConfiguredWorkflowPlan(input: {
   }
   return {
     verificationSummary:
-      `${base.verificationSummary} Client sequence, templates, task aliases, mappings, sender identities, timing, duplicate rules and postconditions were resolved from organisation configuration.`,
+      `${base.verificationSummary} Client sequence, templates, task aliases, mappings, sender identities, timing, duplicate rules and postconditions were resolved from organisation configuration '${variantKey}'.`,
     actions,
     configuration: {
-      workflowKey: input.request.workflowKey,
+      workflowKey: variantKey,
       sequence: workflow.sequence,
       eligibilityStatuses: workflow.eligibilityStatuses,
       stopStatuses: workflow.stopStatuses,
