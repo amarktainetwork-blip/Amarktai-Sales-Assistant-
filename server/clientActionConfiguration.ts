@@ -13,6 +13,7 @@ export type ConfiguredTemplate = {
   channel: CommunicationChannel;
   source: TemplateSourceKind;
   templateName: string;
+  body?: string;
   requiredSubject?: string;
   senderIdentity?: string;
 };
@@ -145,6 +146,10 @@ function template(value: unknown, fallbackKey: string): ConfiguredTemplate | nul
     channel: channel as CommunicationChannel,
     source: sourceKind as TemplateSourceKind,
     templateName: templateName.slice(0, 200),
+    body:
+      typeof source.body === "string" && source.body.trim()
+        ? source.body.trim().slice(0, 30_000)
+        : undefined,
     requiredSubject:
       typeof source.requiredSubject === "string" && source.requiredSubject.trim()
         ? source.requiredSubject.trim().slice(0, 240)
@@ -224,12 +229,11 @@ export function normalizeClientActionConfiguration(
       .slice(0, 80)
       .map(([key, item]) => [key.slice(0, 120), workflow(item)])
   );
-  const templates = Object.fromEntries(
-    Object.entries(templateSource)
-      .map(([key, item]) => [key, template(item, key)] as const)
-      .filter((entry): entry is [string, ConfiguredTemplate] => Boolean(entry[1]))
-      .slice(0, 160)
-  );
+  const templates: Record<string, ConfiguredTemplate> = {};
+  for (const [key, item] of Object.entries(templateSource).slice(0, 160)) {
+    const parsed = template(item, key);
+    if (parsed) templates[key.slice(0, 120)] = parsed;
+  }
   const senderSource = object(source.approvedSenders);
   const requiredPostconditions = Object.fromEntries(
     Object.entries(object(source.requiredPostconditions))
