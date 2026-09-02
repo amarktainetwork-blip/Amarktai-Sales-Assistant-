@@ -20,7 +20,7 @@ jobs:
         with:
           node-version: 22.15.0
           cache: pnpm
-      - name: Apply narrow reviewed-email safety fix
+      - name: Apply narrow final safety fix
         run: python scripts/pr91_safety_patch.py
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
@@ -36,6 +36,9 @@ jobs:
           set -euo pipefail
           grep -F 'executionEvidence.acceptedByProvider' server/routers.ts
           grep -F 'Do not resend it until the stable action reference is reconciled.' server/routers.ts
+          grep -F 'Legacy workflow preparation is disabled.' server/routers.ts
+          ! grep -F 'buildWorkflowPlan(input)' server/routers.ts
+          ! grep -F 'result.actionCount' client/src/pages/Workspace.tsx
           grep -F 'AmarktAI intelligence service' server/routers.ts
           ! grep -F 'Reset your Amarktai workspace password' server/routers.ts
           git diff --check
@@ -43,12 +46,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet -- server/routers.ts; then
+          if git diff --quiet -- server/routers.ts client/src/pages/Workspace.tsx; then
             echo "Safety fix already committed."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add server/routers.ts
-          git commit -m "Prevent blind resend after unverified Microsoft email"
+          git add server/routers.ts client/src/pages/Workspace.tsx
+          git commit -m "Close legacy workflow preparation bypass"
           git push origin HEAD:fix/complete-client-action-flow
