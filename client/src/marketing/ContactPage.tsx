@@ -1,7 +1,8 @@
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, CheckCircle2, Mail, MessageSquareMore, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { BrandName } from "@/components/BrandName";
 import { MarketingLayout } from "./MarketingLayout";
+import { marketingImagery } from "./imagery";
 
 export const contactReasons = [
   "Request a demo",
@@ -78,17 +79,35 @@ export default function ContactPage() {
 
   return (
     <MarketingLayout>
-      <section className="amk-contact">
-        <div className="amk-shell amk-contact__grid">
-          <div className="amk-contact__intro">
+      <section className="amk-contact-hero">
+        <div className="amk-shell amk-contact-hero__grid">
+          <div>
             <p className="amk-eyebrow">TALK TO US</p>
-            <h1>Show us how your team sells today.</h1>
-            <p><BrandName /> is designed to fit around the CRM and sales process you already have. Tell us which CRM you use, how many people sell and where work keeps getting missed, repeated or copied by hand.</p>
-            <p>That might be poor call preparation, scattered customer context, missed follow-ups, inconsistent CRM updates or too much sales admin. We will show you where the Assistant is meant to help.</p>
-            <div className="amk-contact__details">
-              <p><strong>Want a useful demo?</strong> Include your CRM name and the part of the sales day you most want to improve.</p>
-              <p><strong>For your security:</strong> never send CRM passwords, one-time codes or connection secrets through this form.</p>
+            <h1>Show us how your sales team works today.</h1>
+            <p className="amk-lead"><BrandName /> is designed to fit around the CRM and sales process you already have. Tell us what you use and where the day gets harder than it should be.</p>
+            <div className="amk-contact-points">
+              <div><MessageSquareMore size={20} /><span><strong>Want a useful demo?</strong><small>Tell us your CRM and the part of the sales day you most want to improve.</small></span></div>
+              <div><Mail size={20} /><span><strong>Setting up a team?</strong><small>Include your team size and the communication tools your salespeople use.</small></span></div>
+              <div><ShieldCheck size={20} /><span><strong>Keep secrets out of the form</strong><small>Never send passwords, one-time codes or connection secrets here.</small></span></div>
             </div>
+          </div>
+          <figure className="amk-photo-frame amk-photo-frame--contact">
+            <img src={marketingImagery.contact.src} alt={marketingImagery.contact.alt} />
+          </figure>
+        </div>
+      </section>
+
+      <section className="amk-contact-section">
+        <div className="amk-shell amk-contact-section__grid">
+          <div className="amk-contact-section__intro">
+            <p className="amk-eyebrow">LET'S MAKE THE DEMO RELEVANT</p>
+            <h2>Tell us what is getting missed, repeated or copied by hand.</h2>
+            <p>That might be poor call preparation, scattered customer context, missed follow-ups, inconsistent CRM updates or too much admin after the conversation.</p>
+            <ul className="amk-check-list">
+              <li><CheckCircle2 size={18} /> CRM compatibility</li>
+              <li><CheckCircle2 size={18} /> Individual or team setup</li>
+              <li><CheckCircle2 size={18} /> Sales workflow fit</li>
+            </ul>
           </div>
 
           <form className="amk-contact-form" action="/api/public/contact" method="post" onSubmit={submit} noValidate>

@@ -43,9 +43,7 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
       <a className="amk-skip" href="#main-content">Skip to content</a>
       <header className="amk-header">
         <div className="amk-shell amk-header__inner">
-          <div className="amk-brand">
-            <BrandMark large />
-          </div>
+          <div className="amk-brand"><BrandMark large /></div>
           <nav className="amk-nav" aria-label="Main navigation">
             {marketingNavigation.map(item => (
               <Link
@@ -79,9 +77,7 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
         {menuOpen ? (
           <nav id="amk-mobile-navigation" className="amk-mobile-nav" aria-label="Mobile navigation">
             <div className="amk-shell amk-mobile-nav__inner">
-              {marketingNavigation.map(item => (
-                <Link key={item.href} href={item.href}>{item.label}</Link>
-              ))}
+              {marketingNavigation.map(item => <Link key={item.href} href={item.href}>{item.label}</Link>)}
               <Link href={accountLinks.signIn}>Sign In</Link>
               <Link href={accountLinks.getStarted} className="amk-button amk-button--primary">Start Free</Link>
             </div>
@@ -93,22 +89,29 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
 
       <footer className="amk-footer">
         <div className="amk-shell amk-footer__top">
-          <div>
+          <div className="amk-footer__brand">
             <BrandMark large inverse />
-            <p className="amk-footer__statement">Keep your CRM. Give your salespeople a better sales day.</p>
-            <p className="amk-footer__copy"><BrandName /> Sales Assistant brings business knowledge, customer context, conversation help, Review and follow-through into one personal sales workspace.</p>
+            <h2>Give your salespeople a better way to work around the CRM they already use.</h2>
+            <p><BrandName /> Sales Assistant helps with preparation, customer context, conversations and follow-through — while important actions stay visible and reviewable.</p>
           </div>
-          <nav className="amk-footer__nav" aria-label="Footer navigation">
-            <Link href="/about">Why AmarktAI</Link>
-            <Link href="/how-it-works">How It Works</Link>
-            <Link href="/pricing">Pricing</Link>
-            <Link href="/contact">Contact</Link>
-            <Link href={accountLinks.signIn}>Sign In</Link>
-          </nav>
+          <div className="amk-footer__links">
+            <div>
+              <span>Product</span>
+              <Link href="/how-it-works">How It Works</Link>
+              <Link href="/about">Why AmarktAI</Link>
+              <Link href="/pricing">Pricing</Link>
+            </div>
+            <div>
+              <span>Get started</span>
+              <Link href={accountLinks.getStarted}>Start Free</Link>
+              <Link href="/contact">Book a Demo</Link>
+              <Link href={accountLinks.signIn}>Sign In</Link>
+            </div>
+          </div>
         </div>
         <div className="amk-shell amk-footer__base">
           <p>© {new Date().getFullYear()} <BrandName /> Sales Assistant · AmarktAI Network</p>
-          <p>Built to work around the sales systems you already use.</p>
+          <p>Keep your CRM. Make the sales day easier.</p>
         </div>
       </footer>
     </div>
