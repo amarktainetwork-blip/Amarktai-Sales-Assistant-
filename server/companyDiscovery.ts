@@ -168,6 +168,22 @@ function isPrivateAddress(address: string) {
   return true;
 }
 
+function isAuthorisedWebsiteHostname(
+  hostname: string,
+  approvedHostname: string
+) {
+  const candidate = hostname.toLowerCase().replace(/\.$/, "");
+  const approved = approvedHostname.toLowerCase().replace(/\.$/, "");
+  if (candidate === approved) return true;
+  if (net.isIP(candidate) || net.isIP(approved)) return false;
+  const candidateHasWww = candidate.startsWith("www.");
+  const approvedHasWww = approved.startsWith("www.");
+  if (candidateHasWww === approvedHasWww) return false;
+  const candidateBase = candidateHasWww ? candidate.slice(4) : candidate;
+  const approvedBase = approvedHasWww ? approved.slice(4) : approved;
+  return Boolean(candidateBase) && candidateBase === approvedBase;
+}
+
 async function assertPublicUrl(raw: string, approvedHostname?: string) {
   const url = new URL(raw);
   if (!/^https?:$/.test(url.protocol))
@@ -177,7 +193,10 @@ async function assertPublicUrl(raw: string, approvedHostname?: string) {
       "Website discovery URLs may not contain embedded credentials."
     );
   const hostname = url.hostname.toLowerCase();
-  if (approvedHostname && hostname !== approvedHostname)
+  if (
+    approvedHostname &&
+    !isAuthorisedWebsiteHostname(hostname, approvedHostname)
+  )
     throw new Error(
       "Website discovery remained outside the authorised hostname."
     );
@@ -522,7 +541,7 @@ function parseHtml(html: string, url: URL, rendered: boolean): ParsedPage {
       try {
         const candidate = canonicalize(new URL(href, url));
         return /^https?:$/.test(candidate.protocol) &&
-          candidate.hostname.toLowerCase() === url.hostname.toLowerCase()
+          isAuthorisedWebsiteHostname(candidate.hostname, url.hostname)
           ? [candidate]
           : [];
       } catch {
@@ -566,6 +585,21 @@ async function safely(action) {
   }
 }
 
+function isAuthorisedHostname(hostname, approvedHostname) {
+  const candidate = String(hostname || "").toLowerCase().replace(/\.$/, "");
+  const approved = String(approvedHostname || "").toLowerCase().replace(/\.$/, "");
+  if (candidate === approved) return true;
+  const looksLikeIp = value =>
+    value.includes(":") || /^\d{1,3}(?:\.\d{1,3}){3}$/.test(value);
+  if (looksLikeIp(candidate) || looksLikeIp(approved)) return false;
+  const candidateHasWww = candidate.startsWith("www.");
+  const approvedHasWww = approved.startsWith("www.");
+  if (candidateHasWww === approvedHasWww) return false;
+  const candidateBase = candidateHasWww ? candidate.slice(4) : candidate;
+  const approvedBase = approvedHasWww ? approved.slice(4) : approved;
+  return Boolean(candidateBase) && candidateBase === approvedBase;
+}
+
 async function handleRoute(route) {
   try {
     const request = route.request();
@@ -573,7 +607,7 @@ async function handleRoute(route) {
     if (
       closing ||
       !/^https?:$/.test(requestUrl.protocol) ||
-      requestUrl.hostname.toLowerCase() !== workerData.approvedHostname ||
+      !isAuthorisedHostname(requestUrl.hostname, workerData.approvedHostname) ||
       ["image", "media", "font"].includes(request.resourceType())
     ) {
       await safely(() => route.abort("blockedbyclient"));
