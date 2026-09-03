@@ -91,6 +91,25 @@ export function resolvedAuthenticationState(
     : observed;
 }
 
+export function providerAuthenticatedUrlMarker(
+  provider: CrmProvider,
+  rawUrl: string
+) {
+  try {
+    const url = new URL(rawUrl);
+    if (provider === "genie")
+      return (
+        url.hostname.toLowerCase() === "genie.entrepreneurscircle.org" &&
+        /^\/v2\/location\/[^/]+\/(?:dashboard|contacts?|candidates?|tasks?|opportunities?)(?:\/|$)/i.test(
+          url.pathname
+        )
+      );
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 type ManagedCrmBrowserSession = {
   key: string;
   connection: AdapterConnection;
@@ -211,7 +230,7 @@ async function inspectAuthentication(
   const [
     loginVisible,
     verificationVisible,
-    strongAuthenticatedMarker,
+    selectorAuthenticatedMarker,
     structureCount,
   ] = await Promise.all([
     visible(session.page, session.preset.loginHints),
@@ -230,7 +249,9 @@ async function inspectAuthentication(
     authorisedUrl,
     loginVisible,
     verificationVisible,
-    strongAuthenticatedMarker,
+    strongAuthenticatedMarker:
+      selectorAuthenticatedMarker ||
+      providerAuthenticatedUrlMarker(session.connection.provider, before),
     meaningfulApplicationStructure: structureCount >= 4,
     stablePage,
     safeReadInspectionPassed: authorisedUrl && structureCount >= 4,
@@ -375,6 +396,17 @@ async function persistAuthenticatedSession(
       });
     } catch (error) {
       session.authenticatedPersisted = false;
+      console.warn(
+        JSON.stringify({
+          event: "crm_browser_session_persist_failed",
+          connectedSystemId: session.connection.id,
+          provider: session.connection.provider,
+          detail:
+            error instanceof Error
+              ? error.message.slice(0, 220)
+              : String(error).slice(0, 220),
+        })
+      );
       emit(session, {
         authenticationState: "ERROR",
         connectionHealth: "needs_attention",

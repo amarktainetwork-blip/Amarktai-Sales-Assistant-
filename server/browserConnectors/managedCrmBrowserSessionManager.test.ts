@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   authenticationStateFromEvidence,
+  providerAuthenticatedUrlMarker,
   resolvedAuthenticationState,
   shouldReuseManagedCrmBrowserSession,
   type BrowserAuthenticationEvidence,
@@ -129,6 +130,27 @@ describe("conservative CRM authentication proof", () => {
     expect(resolvedAuthenticationState(login, true)).toBe(
       "REAUTHENTICATION_REQUIRED"
     );
+  });
+
+  it("recognises the authorised Genie application dashboard URL as a provider marker", () => {
+    expect(
+      providerAuthenticatedUrlMarker(
+        "genie",
+        "https://genie.entrepreneurscircle.org/v2/location/X46Nx9EI6aUOJFPFK1XT/dashboard"
+      )
+    ).toBe(true);
+    expect(
+      providerAuthenticatedUrlMarker(
+        "genie",
+        "https://genie.entrepreneurscircle.org/login"
+      )
+    ).toBe(false);
+    expect(
+      providerAuthenticatedUrlMarker(
+        "custom_browser",
+        "https://genie.entrepreneurscircle.org/v2/location/X46Nx9EI6aUOJFPFK1XT/dashboard"
+      )
+    ).toBe(false);
   });
 });
 
