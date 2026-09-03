@@ -60,6 +60,27 @@ const connectionStatusRank: Record<ConnectedSystemRow["status"], number> = {
   error: 10,
 };
 
+/**
+ * A browser CRM has a deliberate commissioning state between being configured
+ * and being verified. Marking that state as disconnected caused onboarding to
+ * block the exact /crm/:id page required for sign-in, creating a setup loop.
+ * Manual disconnect remains disconnected; ready is still verification-only.
+ */
+export function connectionStatusWhenStarting(input: {
+  connectionMethod: ConnectionMethod;
+  currentStatus?: ConnectedSystemRow["status"];
+}): ConnectedSystemRow["status"] {
+  if (input.connectionMethod !== "browser")
+    return input.currentStatus ?? "disconnected";
+  if (
+    input.currentStatus &&
+    input.currentStatus !== "disconnected" &&
+    input.currentStatus !== "error"
+  )
+    return input.currentStatus;
+  return "connecting";
+}
+
 function configurationRecord(value: unknown) {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -282,6 +303,10 @@ export async function createConnectedSystem(input: {
       .update(connectedSystems)
       .set({
         displayName: input.displayName,
+        status: connectionStatusWhenStarting({
+          connectionMethod: input.connectionMethod,
+          currentStatus: active.status,
+        }),
         allowedReadCapabilities,
         allowedWriteCapabilities,
       })
@@ -320,7 +345,9 @@ export async function createConnectedSystem(input: {
         displayName: input.displayName,
         baseUrl: input.baseUrl ?? null,
         connectionMethod: input.connectionMethod,
-        status: "disconnected",
+        status: connectionStatusWhenStarting({
+          connectionMethod: input.connectionMethod,
+        }),
         allowedReadCapabilities: input.allowedReadCapabilities,
         allowedWriteCapabilities: input.allowedWriteCapabilities,
         verifiedCapabilities: [],
@@ -359,7 +386,9 @@ export async function createConnectedSystem(input: {
     displayName: input.displayName,
     baseUrl: input.baseUrl ?? null,
     connectionMethod: input.connectionMethod,
-    status: "disconnected",
+    status: connectionStatusWhenStarting({
+      connectionMethod: input.connectionMethod,
+    }),
     allowedReadCapabilities: input.allowedReadCapabilities,
     allowedWriteCapabilities: input.allowedWriteCapabilities,
     verifiedCapabilities: [],
