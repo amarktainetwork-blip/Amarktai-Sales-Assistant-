@@ -52,12 +52,31 @@ describe("conservative CRM authentication proof", () => {
     );
   });
 
-  it("does not let customer confirmation replace a known CRM marker", () => {
+  it("accepts explicit customer confirmation as a safe fallback when the known CRM shell changed", () => {
     expect(
       authenticationStateFromEvidence({
         ...authenticated,
         strongAuthenticatedMarker: false,
         customerConfirmed: true,
+      })
+    ).toBe("AUTHENTICATED");
+  });
+
+  it("requires structural proof even after customer confirmation", () => {
+    expect(
+      authenticationStateFromEvidence({
+        ...authenticated,
+        strongAuthenticatedMarker: false,
+        customerConfirmed: true,
+        meaningfulApplicationStructure: false,
+      })
+    ).toBe("CHECKING");
+    expect(
+      authenticationStateFromEvidence({
+        ...authenticated,
+        strongAuthenticatedMarker: false,
+        customerConfirmed: true,
+        stablePage: false,
       })
     ).toBe("CHECKING");
   });
@@ -87,11 +106,21 @@ describe("conservative CRM authentication proof", () => {
     expect(
       authenticationStateFromEvidence({
         ...authenticated,
-        knownProvider: false,
         customerConfirmed: true,
         loginVisible: true,
       })
     ).toBe("LOGIN_REQUIRED");
+  });
+
+  it("never lets customer confirmation override visible MFA controls", () => {
+    expect(
+      authenticationStateFromEvidence({
+        ...authenticated,
+        strongAuthenticatedMarker: false,
+        customerConfirmed: true,
+        verificationVisible: true,
+      })
+    ).toBe("MFA_OR_SSO");
   });
 
   it("reports sign-in-again when a restored session returns to login", () => {

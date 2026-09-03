@@ -74,13 +74,10 @@ export function authenticationStateFromEvidence(
     evidence.meaningfulApplicationStructure &&
     evidence.stablePage &&
     evidence.safeReadInspectionPassed;
-  if (
-    commonProof &&
-    (evidence.knownProvider
-      ? evidence.strongAuthenticatedMarker
-      : evidence.customerConfirmed)
-  )
-    return "AUTHENTICATED";
+  const providerProof = evidence.knownProvider
+    ? evidence.strongAuthenticatedMarker || evidence.customerConfirmed
+    : evidence.customerConfirmed;
+  if (commonProof && providerProof) return "AUTHENTICATED";
   return evidence.customerConfirmed ? "CHECKING" : "USER_AUTHENTICATING";
 }
 
