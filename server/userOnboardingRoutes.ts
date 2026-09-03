@@ -254,7 +254,11 @@ export function registerUserOnboardingRoutes(app: Express) {
         throw new Error(
           "Add your preferred first name before completing onboarding."
         );
-      if (current.mailbox.configured && !current.mailbox.connected)
+      if (
+        current.company.complete &&
+        current.mailbox.configured &&
+        !current.mailbox.connected
+      )
         throw new Error(
           "Connect your personal mailbox before completing onboarding."
         );
