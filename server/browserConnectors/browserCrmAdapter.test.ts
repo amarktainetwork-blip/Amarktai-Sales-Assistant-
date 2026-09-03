@@ -1,3 +1,6 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   normalizeBrowserActivityRow,
@@ -83,5 +86,48 @@ describe("browser profile", () => {
     );
     expect(profile?.login).toEqual({ url: "https://genie.customer.example/" });
     expect(JSON.stringify(profile)).not.toMatch(/credential|passcode|secret/i);
+  });
+
+  it("retains installed operation definitions for a fresh Genie baseUrl profile", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "amarktai-genie-profile-"));
+    const path = join(directory, "genie-scripts.json");
+    const previous = process.env.GENIE_SCRIPTS_CONFIG_PATH;
+    await writeFile(
+      path,
+      JSON.stringify({
+        scripts: {},
+        operationDefinitions: {
+          "contact.search": {
+            definition: { operationKey: "contact.search", mode: "read" },
+          },
+        },
+      })
+    );
+    process.env.GENIE_SCRIPTS_CONFIG_PATH = path;
+    try {
+      const profile = await resolveBrowserProfile(
+        {
+          id: 9,
+          organisationId: 7,
+          provider: "genie",
+          displayName: "Genie",
+          baseUrl: "https://genie.customer.example/",
+          connectionMethod: "browser",
+          allowedReadCapabilities: [],
+          allowedWriteCapabilities: [],
+          verifiedCapabilities: [],
+          scopes: [],
+          configuration: {},
+        },
+        "genie"
+      );
+      expect(profile?.operationDefinitions?.["contact.search"]).toMatchObject({
+        definition: { operationKey: "contact.search", mode: "read" },
+      });
+    } finally {
+      if (previous === undefined) delete process.env.GENIE_SCRIPTS_CONFIG_PATH;
+      else process.env.GENIE_SCRIPTS_CONFIG_PATH = previous;
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 });

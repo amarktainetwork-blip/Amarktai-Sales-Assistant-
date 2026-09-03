@@ -232,6 +232,7 @@ export async function resolveBrowserProfile(
         scripts: installed?.scripts || {},
         operationMap: installed?.operationMap || DEFAULT_GENIE_OPERATION_MAP,
         resultKeys: installed?.resultKeys,
+        operationDefinitions: installed?.operationDefinitions,
         artifactDirectory: installed?.artifactDirectory,
       } satisfies BrowserProfile;
     if (installed) return installed;
