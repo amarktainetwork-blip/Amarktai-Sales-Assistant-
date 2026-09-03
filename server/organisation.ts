@@ -2,11 +2,12 @@ import { and, eq } from "drizzle-orm";
 import {
   companyProfiles,
   connectedSystems,
-  crmCommissioningJobs,
   organisationMembers,
   organisations,
   users,
 } from "../drizzle/schema";
+import { browserOperationReadinessForSystem } from "./browserConnectors/learnedOperations";
+import { coreBrowserCommissioningReady } from "./crm/automaticCommissioning";
 import { getDb } from "./db";
 import {
   canManageOrganisation,
@@ -247,7 +248,7 @@ export async function updateOnboardingState(input: {
   if (!db) throw new Error("Database connection is unavailable.");
   if (input.complete === true) {
     const organisationId = input.membership.organisationId;
-    const [profiles, systems, jobs] = await Promise.all([
+    const [profiles, systems] = await Promise.all([
       db
         .select({ discoveryStatus: companyProfiles.discoveryStatus })
         .from(companyProfiles)
@@ -260,41 +261,38 @@ export async function updateOnboardingState(input: {
         })
         .from(connectedSystems)
         .where(eq(connectedSystems.organisationId, organisationId)),
-      db
-        .select({
-          connectedSystemId: crmCommissioningJobs.connectedSystemId,
-          progress: crmCommissioningJobs.progress,
-        })
-        .from(crmCommissioningJobs)
-        .where(eq(crmCommissioningJobs.organisationId, organisationId)),
     ]);
     if (!profiles.some(profile => profile.discoveryStatus === "confirmed"))
       throw new Error("Confirm the company knowledge before completing setup.");
-    const safeReadConnections = new Set(
-      jobs
-        .filter(job => {
-          const progress = job.progress as {
-            safeReads?: { status?: unknown };
-          } | null;
-          return progress?.safeReads?.status === "Ready";
-        })
-        .map(job => job.connectedSystemId)
-    );
-    const crmReady = systems.some(
+
+    const nativeReady = systems.some(
       system =>
-        ["ready", "limited_permissions"].includes(system.status) ||
-        (["browser", "sidecar"].includes(system.connectionMethod) &&
-          ![
-            "authentication_expired",
-            "paused",
-            "disconnected",
-            "error",
-          ].includes(system.status) &&
-          safeReadConnections.has(system.id))
+        !["browser", "sidecar"].includes(system.connectionMethod) &&
+        ["ready", "limited_permissions"].includes(system.status)
     );
-    if (!crmReady)
+    const browserCandidates = systems.filter(
+      system =>
+        ["browser", "sidecar"].includes(system.connectionMethod) &&
+        ["ready", "limited_permissions"].includes(system.status)
+    );
+    const browserMatrices = await Promise.all(
+      browserCandidates.map(system =>
+        browserOperationReadinessForSystem({
+          organisationId,
+          connectedSystemId: system.id,
+        })
+      )
+    );
+    const browserReady = browserMatrices.some(matrix => {
+      const statuses = new Map(
+        matrix.operations.map(operation => [operation.key, operation.status])
+      );
+      return coreBrowserCommissioningReady(statuses);
+    });
+
+    if (!nativeReady && !browserReady)
       throw new Error(
-        "Your CRM is still checking safe read access. Keep it open and try again shortly."
+        "Your CRM is connected, but its required sales operations are still being commissioned. Finish automatic commissioning or Teach Amarktai before completing setup."
       );
   }
   const row = (
