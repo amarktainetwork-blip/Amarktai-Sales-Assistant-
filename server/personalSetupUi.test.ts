@@ -9,6 +9,10 @@ const app = readFileSync(
   new URL("../client/src/App.tsx", import.meta.url),
   "utf8"
 );
+const onboardingRoutes = readFileSync(
+  new URL("./userOnboardingRoutes.ts", import.meta.url),
+  "utf8"
+);
 
 describe("personal setup after secure access", () => {
   it("is mounted across the authenticated workspace so identity cannot be skipped", () => {
@@ -34,5 +38,17 @@ describe("personal setup after secure access", () => {
     expect(setup).toContain("Start with review.");
     expect(setup).toContain("Assistant identity, memory, CRM context");
     expect(setup).not.toContain('type="password"');
+  });
+
+  it("does not require a personal mailbox before shared company setup is complete", () => {
+    expect(setup).toMatch(
+      /snapshot\?\.company\.complete\s*&&\s*snapshot\.mailbox\.configured\s*&&\s*!snapshot\.mailbox\.connected/
+    );
+    expect(onboardingRoutes).toMatch(
+      /current\.company\.complete\s*&&\s*current\.mailbox\.configured\s*&&\s*!current\.mailbox\.connected/
+    );
+    expect(onboardingRoutes).not.toContain(
+      "if (current.mailbox.configured && !current.mailbox.connected)"
+    );
   });
 });
