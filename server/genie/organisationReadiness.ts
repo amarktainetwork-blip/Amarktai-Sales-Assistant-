@@ -1,5 +1,5 @@
 import { browserOperationReadinessForSystem } from "../browserConnectors/learnedOperations";
-import { coreBrowserCommissioningReady } from "../crm/automaticCommissioning";
+import { coreBrowserCommissioningReady } from "../crm/commissioningReadiness";
 
 type OrganisationSystem = {
   id: number;
