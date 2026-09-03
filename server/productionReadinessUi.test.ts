@@ -47,7 +47,7 @@ describe("commercial Sales Assistant product boundaries", () => {
     expect(layout).toContain("if (!canManage) return []");
   });
 
-  it("completes onboarding only after confirmed knowledge, authentication and safe reads", () => {
+  it("keeps the current setup handoff but refuses server completion until CRM core operations are proven", () => {
     const crm = read("../client/src/pages/CrmWorkspace.tsx");
     const organisation = read("./organisation.ts");
     expect(crm).toContain('browserAuthenticationState !== "AUTHENTICATED"');
@@ -55,10 +55,9 @@ describe("commercial Sales Assistant product boundaries", () => {
     expect(crm).toContain('discoveryStatus !== "confirmed"');
     expect(crm).toContain("mutateAsync({ step: 4, complete: true })");
     expect(organisation).toContain('profile.discoveryStatus === "confirmed"');
-    expect(organisation).toContain("safeReadConnections.has(system.id)");
-    expect(organisation).toMatch(
-      /!\[\s*"authentication_expired",[\s\S]*?"error",?\s*\]\.includes\(system\.status\)/
-    );
+    expect(organisation).toContain("browserOperationReadinessForSystem");
+    expect(organisation).toContain("coreBrowserCommissioningReady(statuses)");
+    expect(organisation).not.toContain("safeReadConnections.has(system.id)");
   });
 
   it("keeps customer CRM surfaces free of capability and commissioning dumps", () => {
