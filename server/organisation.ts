@@ -7,7 +7,7 @@ import {
   users,
 } from "../drizzle/schema";
 import { browserOperationReadinessForSystem } from "./browserConnectors/learnedOperations";
-import { coreBrowserCommissioningReady } from "./crm/automaticCommissioning";
+import { coreBrowserCommissioningReady } from "./crm/commissioningReadiness";
 import { getDb } from "./db";
 import {
   canManageOrganisation,
