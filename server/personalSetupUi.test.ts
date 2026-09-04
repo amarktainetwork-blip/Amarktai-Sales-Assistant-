@@ -35,7 +35,10 @@ describe("personal setup after secure access", () => {
     expect(setup).toContain("main result you want from AmarktAI");
     expect(setup).toContain("how you prefer to work");
     expect(setup).toContain("Connect Outlook");
-    expect(setup).toContain("Start with review.");
+    expect(setup).toContain(
+      "Every customer-facing action waits for your confirmation at"
+    );
+    expect(setup).toContain("first. You can change that later in Settings.");
     expect(setup).toContain("Assistant identity, memory, CRM context");
     expect(setup).toContain('className="amk-auth fixed inset-0');
     expect(setup).not.toContain('type="password"');
