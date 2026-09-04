@@ -1,0 +1,39 @@
+name: Temporary PR101 unit test diagnostics 2
+
+on:
+  push:
+    branches: ["tmp/pr101-unit-test-diagnostics-2"]
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: tmp/pr101-unit-test-diagnostics-2
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Capture unit test output
+        shell: bash
+        run: |
+          set +e
+          pnpm test > .pr101-unit-test-output.txt 2>&1
+          status=$?
+          echo "TEST_EXIT_CODE=$status" >> .pr101-unit-test-output.txt
+          exit 0
+      - name: Commit diagnostic output
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .pr101-unit-test-output.txt
+          git commit -m "Capture PR101 unit test failure output 2"
+          git push origin HEAD:tmp/pr101-unit-test-diagnostics-2
