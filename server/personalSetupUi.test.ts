@@ -31,13 +31,13 @@ describe("personal setup after secure access", () => {
       "PERSONAL SETUP COMPLETE",
     ])
       expect(setup).toContain(step);
-    expect(setup).toContain("What should Amarktai call you?");
-    expect(setup).toContain("main result you want from Amarktai");
+    expect(setup).toContain("What should AmarktAI call you?");
+    expect(setup).toContain("main result you want from AmarktAI");
     expect(setup).toContain("how you prefer to work");
     expect(setup).toContain("Connect Outlook");
     expect(setup).toContain("Start with review.");
     expect(setup).toContain("Assistant identity, memory, CRM context");
-    expect(setup).toContain('className="amk-auth amk-auth--register"');
+    expect(setup).toContain('className="amk-auth fixed inset-0');
     expect(setup).not.toContain('type="password"');
   });
 
