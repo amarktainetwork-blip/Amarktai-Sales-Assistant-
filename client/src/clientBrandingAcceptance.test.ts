@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -48,6 +48,9 @@ describe("AmarktAI customer-facing branding boundary", () => {
     const localPhotos = [...css.matchAll(/\/images\/people\/[^\")]+\.(?:jpg|png)/g)].map(match => match[0]);
     expect(localPhotos).toHaveLength(12);
     expect(new Set(localPhotos).size).toBe(12);
+    for (const photo of localPhotos) {
+      expect(existsSync(path.resolve(process.cwd(), "client/public", photo.slice(1)))).toBe(true);
+    }
     expect(css).not.toMatch(/images\.pexels\.com/i);
     expect(css).not.toMatch(/images\.unsplash\.com/i);
     expect(css).toContain("Part of Amarktai Network");
