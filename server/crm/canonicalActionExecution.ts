@@ -22,13 +22,12 @@ import type {
 import { checkApprovedCrmExecutionPreconditions } from "./actionExecutionPreconditions";
 import { sendSalesMessage } from "../communications";
 import {
-  createDelegatedOutlookCalendarEvent,
-  sendDelegatedOutlookMail,
-} from "../delegatedMailbox";
-import {
-  findDelegatedSentMailByReference,
-  waitForDelegatedSentMailReadback,
-} from "../delegatedMailboxReadback";
+  createPersonalMailboxCalendarEvent,
+  findPersonalSentMailByReference,
+  sendPersonalMailboxMail,
+  waitForPersonalSentMailReadback,
+  type PersonalMailboxProvider,
+} from "../personalMailboxRuntime";
 import {
   executeAssistantCrmBatch,
   validateAssistantCrmBatchPlan,
@@ -177,42 +176,63 @@ function calendarAttendees(payload: Record<string, unknown>, fallback: string) {
   return Array.from(new Set(supplied));
 }
 
-function stableMicrosoftReference(proposal: ActionProposal) {
+function stableMailboxReference(proposal: ActionProposal) {
   return `proposal:${proposal.id}:${proposal.idempotencyKey}`.slice(0, 180);
 }
 
-async function executeMicrosoft(input: {
+async function executePersonalMailbox(input: {
   organisationId: number;
   proposal: ActionProposal;
   correlationId: string;
   payload: Record<string, unknown>;
 }) {
-  const reference = stableMicrosoftReference(input.proposal);
+  const route = object(input.payload.crmRoute);
+  const rawProvider =
+    route.provider === "microsoft_delegated" ? "microsoft" : route.mailboxProvider;
+  if (
+    rawProvider !== "microsoft" &&
+    rawProvider !== "google" &&
+    rawProvider !== "smtp"
+  )
+    throw new Error(
+      "The reviewed personal mailbox provider is no longer available. Re-review the action after reconnecting the mailbox."
+    );
+  const provider = rawProvider as PersonalMailboxProvider;
+  const reference = stableMailboxReference(input.proposal);
+
   if (
     input.proposal.actionType === "send_email" ||
     input.proposal.actionType === "send_email_template"
   ) {
-    const prior = await findDelegatedSentMailByReference({
+    if (provider !== "smtp") {
+      const prior = await findPersonalSentMailByReference({
+        userId: input.proposal.userId,
+        organisationId: input.organisationId,
+        provider,
+        reviewReference: reference,
+      });
+      if (prior.found)
+        return {
+          success: true,
+          skipped: true,
+          duplicatePrevented: true,
+          detail:
+            "Sent mail already contains this exact approved action reference, so the email was not sent twice.",
+          provider: `${provider}_personal`,
+          correlationId: input.correlationId,
+          completedAt:
+            "sentDateTime" in prior && typeof prior.sentDateTime === "string"
+              ? prior.sentDateTime
+              : new Date().toISOString(),
+          providerResult: prior,
+          retryable: false,
+        };
+    }
+
+    const sent = await sendPersonalMailboxMail({
       userId: input.proposal.userId,
       organisationId: input.organisationId,
-      reviewReference: reference,
-    });
-    if (prior.found)
-      return {
-        success: true,
-        skipped: true,
-        duplicatePrevented: true,
-        detail:
-          "Microsoft Sent Items already contains this exact approved action reference, so the email was not sent twice.",
-        provider: "microsoft_delegated",
-        correlationId: input.correlationId,
-        completedAt: prior.sentDateTime || new Date().toISOString(),
-        providerResult: prior,
-        retryable: false,
-      };
-    await sendDelegatedOutlookMail({
-      userId: input.proposal.userId,
-      organisationId: input.organisationId,
+      provider,
       to: String(input.payload.to ?? input.payload.email ?? ""),
       subject: String(input.payload.subject ?? input.proposal.title),
       body: String(input.payload.body ?? input.payload.message ?? ""),
@@ -222,9 +242,26 @@ async function executeMicrosoft(input: {
           ? input.payload.contactExternalId
           : undefined,
     });
-    const readback = await waitForDelegatedSentMailReadback({
+
+    if (provider === "smtp")
+      return {
+        success: Boolean(sent.sent),
+        acceptedByProvider: Boolean(sent.sent),
+        detail: sent.sent
+          ? "The verified SMTP server accepted the approved email. This connection has no sent-folder readback, so the stable Message-ID and review reference are retained and blind retry is disabled."
+          : "The SMTP server did not accept the approved email.",
+        provider: "smtp_personal",
+        correlationId: input.correlationId,
+        completedAt: new Date().toISOString(),
+        providerResult: sent,
+        sentReadbackSupported: false,
+        retryable: false,
+      };
+
+    const readback = await waitForPersonalSentMailReadback({
       userId: input.proposal.userId,
       organisationId: input.organisationId,
+      provider,
       reviewReference: reference,
     });
     if (!readback.found)
@@ -232,8 +269,8 @@ async function executeMicrosoft(input: {
         success: false,
         acceptedByProvider: true,
         detail:
-          "Microsoft accepted the approved email, but Sent Items readback was not visible in the bounded verification window. The stable action reference prevents blind resend; reconcile before any retry.",
-        provider: "microsoft_delegated",
+          "The mailbox provider accepted the approved email, but sent-mail readback was not visible in the bounded verification window. The stable action reference prevents blind resend; reconcile before any retry.",
+        provider: `${provider}_personal`,
         correlationId: input.correlationId,
         completedAt: new Date().toISOString(),
         providerResult: readback,
@@ -242,14 +279,18 @@ async function executeMicrosoft(input: {
     return {
       success: true,
       detail:
-        "Approved email was sent from the user's delegated Microsoft mailbox and read back from Sent Items using the stable action reference.",
-      provider: "microsoft_delegated",
+        "The approved email was sent from the salesperson's personal mailbox and read back using the stable action reference.",
+      provider: `${provider}_personal`,
       correlationId: input.correlationId,
-      completedAt: readback.sentDateTime || new Date().toISOString(),
+      completedAt:
+        "sentDateTime" in readback && typeof readback.sentDateTime === "string"
+          ? readback.sentDateTime
+          : new Date().toISOString(),
       providerResult: readback,
       retryable: false,
     };
   }
+
   if (input.proposal.actionType === "create_calendar_event") {
     const startIso =
       typeof input.payload.startIso === "string"
@@ -263,9 +304,10 @@ async function executeMicrosoft(input: {
         : typeof input.payload.end === "string"
           ? input.payload.end
           : "";
-    const result = await createDelegatedOutlookCalendarEvent({
+    const result = await createPersonalMailboxCalendarEvent({
       userId: input.proposal.userId,
       organisationId: input.organisationId,
+      provider,
       subject: String(
         input.payload.subject ?? input.payload.title ?? input.proposal.title
       ),
@@ -287,16 +329,16 @@ async function executeMicrosoft(input: {
     return {
       success: Boolean(result.eventId),
       detail: result.eventId
-        ? "Approved calendar invitation was created with a stable Microsoft transaction ID and returned an external event ID."
-        : "Microsoft did not return a calendar event ID. Do not retry until the stable transaction reference is reconciled.",
-      provider: "microsoft_delegated",
+        ? "The approved calendar invitation was created with a stable external reference and returned an event ID."
+        : "The mailbox calendar provider did not return an event ID. Do not retry until the stable action reference is reconciled.",
+      provider: `${provider}_personal`,
       correlationId: input.correlationId,
       completedAt: new Date().toISOString(),
       providerResult: result,
       retryable: false,
     };
   }
-  throw new Error("Unsupported delegated Microsoft action.");
+  throw new Error("Unsupported personal mailbox action.");
 }
 
 async function verifyCrmPostcondition(input: {
@@ -821,7 +863,7 @@ async function executeMutation(input: {
     case "send_email":
     case "send_email_template":
       throw new Error(
-        "EMAIL_EXECUTION_OWNER_INVALID: salesperson email must execute through the user's delegated Microsoft mailbox."
+        "EMAIL_EXECUTION_OWNER_INVALID: salesperson email must execute through the reviewed personal mailbox route."
       );
     case "send_sms":
     case "send_sms_template":
@@ -984,8 +1026,11 @@ export async function executeCanonicalApprovedAction(input: {
   };
   if (!route.routable || !route.provider)
     throw new Error("This proposal has no verified execution route.");
-  if (route.provider === "microsoft_delegated")
-    return executeMicrosoft({ ...input, payload });
+  if (
+    route.provider === "microsoft_delegated" ||
+    route.provider === "personal_mailbox"
+  )
+    return executePersonalMailbox({ ...input, payload });
 
   const batchPlan =
     input.proposal.actionType === "deterministic_crm_batch"
