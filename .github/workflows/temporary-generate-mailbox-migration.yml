@@ -1,0 +1,40 @@
+name: Temporary mailbox migration generator
+
+on:
+  push:
+    branches: ["fix/client-handover-mailbox-readiness-ui"]
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: fix/client-handover-mailbox-readiness-ui
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.15.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Generate Drizzle migration
+        env:
+          DATABASE_URL: mysql://migration:placeholder@127.0.0.1:3306/amarktai
+        run: pnpm exec drizzle-kit generate --name provider_neutral_personal_mailbox
+      - name: Commit generated migration metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- drizzle; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add drizzle
+          git commit -m "Generate provider-neutral mailbox migration"
+          git push origin HEAD:fix/client-handover-mailbox-readiness-ui
