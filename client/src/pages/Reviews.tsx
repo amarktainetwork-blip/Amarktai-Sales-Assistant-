@@ -347,7 +347,7 @@ export default function Reviews() {
             </div>
             <Button variant="outline" onClick={() => navigate("/assistant")}>
               <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Assistant
+              Back to AmarktAI
             </Button>
           </div>
         </header>

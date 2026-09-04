@@ -77,7 +77,7 @@ export default function Today() {
       );
       toast.error(
         callingUnavailable
-          ? "CRM calling isn't available yet. You can still use your phone and keep Amarktai beside the call."
+          ? "CRM calling isn't available yet. You can still use your phone and keep AmarktAI beside the call."
           : "The call companion could not open. Try again."
       );
     },
@@ -168,7 +168,7 @@ export default function Today() {
               </h1>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-[#66758A]">
                 Your priorities, follow-ups and customer replies in one place.
-                Ask Amarktai whenever you want help deciding what to do next.
+                Ask AmarktAI whenever you want help deciding what to do next.
               </p>
             </div>
             <div className="flex gap-2">
@@ -176,7 +176,7 @@ export default function Today() {
                 <RefreshCw className="mr-2 h-4 w-4" /> Refresh
               </Button>
               <Button onClick={() => navigate("/assistant")}>
-                <Bot className="mr-2 h-4 w-4" /> Ask Amarktai
+                <Bot className="mr-2 h-4 w-4" /> Ask AmarktAI
               </Button>
             </div>
           </div>
@@ -185,7 +185,7 @@ export default function Today() {
         {today.data?.requiresOwnerMapping ? (
           <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
             <strong>
-              Your CRM account still needs to be matched to your Amarktai user.
+              Your CRM account still needs to be matched to your AmarktAI user.
             </strong>{" "}
             Ask your manager to link your salesperson record so this page can
             show only your own customers and tasks.
@@ -334,7 +334,7 @@ export default function Today() {
                       ask(`Prepare me for my next call with ${current.name}.`)
                     }
                   >
-                    <Bot className="mr-2 h-4 w-4" /> Prepare with Amarktai
+                    <Bot className="mr-2 h-4 w-4" /> Prepare with AmarktAI
                   </Button>
                   <Button
                     variant="outline"
@@ -378,7 +378,7 @@ export default function Today() {
           <TaskPanel
             title="Due today"
             items={today.data?.queues.dueToday ?? []}
-            empty="No CRM tasks due today."
+            empty="No tasks due today."
           />
         </section>
 
@@ -581,7 +581,7 @@ function InboundPanel({
           </div>
         </div>
         <Button variant="outline" size="sm" onClick={onAsk}>
-          <Bot className="mr-2 h-4 w-4" /> Ask Amarktai
+          <Bot className="mr-2 h-4 w-4" /> Ask AmarktAI
         </Button>
       </div>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
