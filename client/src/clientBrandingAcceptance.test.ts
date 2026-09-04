@@ -56,6 +56,8 @@ describe("AmarktAI customer-facing branding boundary", () => {
     const auth = readFileSync(path.resolve(process.cwd(), "client/src/pages/Auth.tsx"), "utf8");
     expect(auth).toContain('/auth?step=verify');
     expect(auth).toContain("Verify your email.");
-    expect(auth).not.toContain('navigate("/dashboard")');
+    expect(auth).toContain('window.location.assign("/auth?step=verify")');
+    expect(auth).toContain("if (!user || !security.data?.verified || invite || reset) return;");
+    expect(auth).toContain('navigate("/dashboard", { replace: true });');
   });
 });
