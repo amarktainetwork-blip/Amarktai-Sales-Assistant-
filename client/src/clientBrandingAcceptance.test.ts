@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -43,13 +43,19 @@ describe("AmarktAI customer-facing branding boundary", () => {
     expect(shell).not.toContain("Amarktai Sales Assistant");
   });
 
-  it("uses curated professional photography once per placement and avoids generic Unsplash fallbacks", () => {
+  it("uses only the twelve client-selected local photographs for visible photography placements", () => {
     const css = readFileSync(path.resolve(process.cwd(), "client/src/index.css"), "utf8");
-    const photoIds = [...css.matchAll(/pexels-photo-(\d+)/g)].map(match => match[1]);
-    expect(photoIds.length).toBeGreaterThanOrEqual(10);
-    expect(new Set(photoIds).size).toBe(photoIds.length);
+    const localPhotos = [...css.matchAll(/\/images\/people\/[^\")]+\.(?:jpg|png)/g)].map(match => match[0]);
+    expect(localPhotos).toHaveLength(12);
+    expect(new Set(localPhotos).size).toBe(12);
+    for (const photo of localPhotos) {
+      expect(existsSync(path.resolve(process.cwd(), "client/public", photo.slice(1)))).toBe(true);
+    }
+    expect(css).not.toMatch(/images\.pexels\.com/i);
     expect(css).not.toMatch(/images\.unsplash\.com/i);
     expect(css).toContain("Part of Amarktai Network");
+    expect(css).toContain(".amk-auth__message h1");
+    expect(css).toContain("color: #ffffff !important");
   });
 
   it("keeps second-factor verification on the secure auth route before workspace entry", () => {

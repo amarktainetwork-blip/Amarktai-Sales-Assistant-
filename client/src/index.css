@@ -88,8 +88,28 @@ button, a { -webkit-tap-highlight-color: transparent; }
   opacity: 1;
   filter: none;
 }
-.amk-auth__visual--product .amk-auth__shade {
-  background: linear-gradient(120deg, rgba(12,30,52,.80), rgba(20,57,90,.58) 58%, rgba(16,76,88,.48));
+.amk-auth__visual--product .amk-auth__shade,
+.amk-auth__visual .amk-auth__shade {
+  background: linear-gradient(120deg, rgba(10,27,48,.84), rgba(19,53,84,.68) 58%, rgba(14,70,83,.58));
+}
+.amk-auth__visual-inner {
+  color: #ffffff !important;
+}
+.amk-auth__message h1 {
+  color: #ffffff !important;
+  text-shadow: 0 2px 22px rgba(0,0,0,.18);
+}
+.amk-auth__message > p:not(.amk-auth__eyebrow) {
+  color: #eef4fb !important;
+}
+.amk-auth__proof {
+  color: #f3f7fb !important;
+}
+.amk-auth__visual .amk-auth__topline > a > span:first-child {
+  color: #ffffff !important;
+}
+.amk-auth__visual .amk-auth__topline > a > span:last-child {
+  color: rgba(255,255,255,.82) !important;
 }
 .amk-auth__form-side--setup {
   place-items: start center !important;
@@ -100,42 +120,48 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .amk-auth__form-wrap--setup { width: min(100%, 620px) !important; }
 .amk-auth__form-wrap--wide { width: min(100%, 780px) !important; }
 
-/* Final client-facing photography: every placement uses a different verified professional image. */
+/* Client-selected photography. Every visible placement uses a different local file. */
 body:has(.amk-hero) .amk-hero .amk-photo-frame--hero img {
-  content: url("https://images.pexels.com/photos/7222903/pexels-photo-7222903.jpeg?auto=compress&cs=tinysrgb&w=1400");
+  content: url("/images/people/focuspurely-business-8779718_1920.png");
 }
 body:has(.amk-hero) .amk-section--ice .amk-photo-frame--story img {
-  content: url("https://images.pexels.com/photos/8297352/pexels-photo-8297352.jpeg?auto=compress&cs=tinysrgb&w=1400");
+  content: url("/images/people/pexels-gustavo-fring-5621969.jpg");
 }
 body:has(.amk-hero) .amk-section--warm .amk-photo-frame--story img {
-  content: url("https://images.pexels.com/photos/8871930/pexels-photo-8871930.jpeg?auto=compress&cs=tinysrgb&w=1400");
+  content: url("/images/people/homestation-office-8780133_1920.jpg");
 }
-body:has(.amk-hero) .amk-section--light .amk-photo-frame--story img {
-  content: url("https://images.pexels.com/photos/12899159/pexels-photo-12899159.jpeg?auto=compress&cs=tinysrgb&w=1400");
+body:has(.amk-hero) .amk-section--light .amk-split {
+  grid-template-columns: 1fr !important;
+}
+body:has(.amk-hero) .amk-section--light .amk-split__media {
+  display: none !important;
 }
 body:has(.amk-page-hero--photo) .amk-page-hero--photo .amk-photo-frame--page img {
-  content: url("https://images.pexels.com/photos/12903303/pexels-photo-12903303.jpeg?auto=compress&cs=tinysrgb&w=1400");
+  content: url("/images/people/pexels-mart-production-7709175.jpg");
 }
 body:has(.amk-page-hero--photo) .amk-section--ice .amk-photo-frame--story img {
-  content: url("https://images.pexels.com/photos/5717076/pexels-photo-5717076.jpeg?auto=compress&cs=tinysrgb&w=1400");
+  content: url("/images/people/pexels-pavel-danilyuk-7658351.jpg");
 }
 body:has(.amk-page-hero--photo) .amk-section--warm .amk-photo-frame--story img {
-  content: url("https://images.pexels.com/photos/8512447/pexels-photo-8512447.jpeg?auto=compress&cs=tinysrgb&w=1400");
+  content: url("/images/people/startupstockphotos-startup-849804_1920.jpg");
 }
 body:has(.amk-page-hero--about) .amk-page-hero--about .amk-photo-frame--page img {
-  content: url("https://images.pexels.com/photos/36713171/pexels-photo-36713171.jpeg?auto=compress&cs=tinysrgb&w=1400");
+  content: url("/images/people/sohag_hawlader-business-8788636_1920.jpg");
 }
 body:has(.amk-page-hero--about) .amk-section--ice .amk-photo-frame--story img {
-  content: url("https://images.pexels.com/photos/5673503/pexels-photo-5673503.jpeg?auto=compress&cs=tinysrgb&w=1400");
+  content: url("/images/people/startupstockphotos-student-849828_1920.jpg");
 }
-body:has(.amk-page-hero--about) .amk-section--warm .amk-photo-frame--story img {
-  content: url("https://images.pexels.com/photos/7223006/pexels-photo-7223006.jpeg?auto=compress&cs=tinysrgb&w=1400");
+body:has(.amk-page-hero--about) .amk-section--warm .amk-split {
+  grid-template-columns: 1fr !important;
+}
+body:has(.amk-page-hero--about) .amk-section--warm .amk-photo-frame--story {
+  display: none !important;
 }
 body:has(.amk-contact-hero) .amk-contact-hero .amk-photo-frame--contact img {
-  content: url("https://images.pexels.com/photos/12902988/pexels-photo-12902988.jpeg?auto=compress&cs=tinysrgb&w=1400");
+  content: url("/images/people/stocksnap-girl-2583442_1920.jpg");
 }
 main.amk-auth:not(.fixed):not(.amk-auth--setup) .amk-auth__visual > img {
-  content: url("https://images.pexels.com/photos/8133947/pexels-photo-8133947.jpeg?auto=compress&cs=tinysrgb&w=1400");
+  content: url("/images/people/thenikscape-ai-generated-9586971_1920.jpg");
   object-fit: cover !important;
   object-position: center !important;
   padding: 0 !important;
@@ -143,7 +169,7 @@ main.amk-auth:not(.fixed):not(.amk-auth--setup) .amk-auth__visual > img {
   filter: none !important;
 }
 main.amk-auth.fixed:not(.amk-auth--setup) .amk-auth__visual > img {
-  content: url("https://images.pexels.com/photos/27086215/pexels-photo-27086215.jpeg?auto=compress&cs=tinysrgb&w=1400");
+  content: url("/images/people/pexels-kampus-8204317.jpg");
   object-fit: cover !important;
   object-position: center !important;
   padding: 0 !important;
@@ -151,7 +177,7 @@ main.amk-auth.fixed:not(.amk-auth--setup) .amk-auth__visual > img {
   filter: none !important;
 }
 main.amk-auth.amk-auth--setup .amk-auth__visual > img {
-  content: url("https://images.pexels.com/photos/39219740/pexels-photo-39219740.jpeg?auto=compress&cs=tinysrgb&w=1400");
+  content: url("/images/people/thenikscape-ai-generated-9587004_1920.jpg");
   object-fit: cover !important;
   object-position: center !important;
   padding: 0 !important;
