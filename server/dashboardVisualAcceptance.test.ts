@@ -3,9 +3,10 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 describe("final dashboard information architecture", () => {
-  it("uses one logged-in stylesheet without restoring legacy visual generations", () => {
+  it("uses the canonical dashboard foundation plus the client-handover workspace layer without restoring legacy generations", () => {
     const app = readFileSync(path.resolve("client/src/App.tsx"), "utf8");
     expect(app).toContain('import "./dashboard-final.css"');
+    expect(app).toContain('import "./workspace-handover.css"');
     expect(app).not.toContain('import "./dashboard-client-readability.css"');
     expect(app).not.toContain('import "./final-release.css"');
     expect(app).not.toContain('import "./app-final.css"');
@@ -22,7 +23,7 @@ describe("final dashboard information architecture", () => {
       expect(existsSync(path.resolve("client/src", obsolete))).toBe(false);
   });
 
-  it("keeps daily sales work simple while keeping manager CRM access visible", () => {
+  it("keeps daily sales work simple while keeping manager CRM setup visible", () => {
     const layout = readFileSync(
       path.resolve("client/src/components/DashboardLayout.tsx"),
       "utf8"
@@ -33,9 +34,9 @@ describe("final dashboard information architecture", () => {
     );
     const app = readFileSync(path.resolve("client/src/App.tsx"), "utf8");
 
-    for (const label of ["Home", "Customers", "Calls", "Assistant"])
+    for (const label of ["Home", "Customers", "Calls", "AmarktAI", "Review"])
       expect(layout).toContain(`label: "${label}"`);
-    expect(layout).toContain('label: "CRM"');
+    expect(layout).toContain('label: "CRM setup"');
     expect(layout).toContain('path: "/connections"');
     expect(layout).toContain('label: "Settings"');
     expect(layout).not.toContain('label: "Connections"');
@@ -100,6 +101,10 @@ describe("final dashboard information architecture", () => {
       path.resolve("client/src/dashboard-final.css"),
       "utf8"
     );
+    const handoverCss = readFileSync(
+      path.resolve("client/src/workspace-handover.css"),
+      "utf8"
+    );
     const layout = readFileSync(
       path.resolve("client/src/components/DashboardLayout.tsx"),
       "utf8"
@@ -115,6 +120,8 @@ describe("final dashboard information architecture", () => {
     expect(css).toContain("--dash-blue: #2f6fed");
     expect(css).toContain('[class*="whitespace-pre-wrap"]');
     expect(css).toContain("input::placeholder");
+    expect(handoverCss).toContain("--handover-blue: #2f6fed");
+    expect(handoverCss).toContain("--handover-canvas: #f4f7fb");
 
     expect(layout).toContain("bg-white text-[#26354A]");
     expect(layout).toContain("bg-[#EAF1FF] text-[#2459C2]");
