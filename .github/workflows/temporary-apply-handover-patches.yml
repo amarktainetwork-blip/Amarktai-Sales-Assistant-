@@ -9,26 +9,27 @@ permissions:
 
 jobs:
   patch:
-    if: github.event.head_commit.message == 'Run canonical mailbox patch'
+    if: github.event.head_commit.message == 'Run handover truth patch'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
           ref: fix/client-handover-mailbox-readiness-ui
           fetch-depth: 0
-      - name: Patch canonical approved-action mailbox execution
-        run: python3 .github/scripts/temporary_patch_canonical.py
-      - name: Sanity-check mailbox seam
+      - name: Patch client handover readiness truth
+        run: python3 .github/scripts/temporary_patch_handover_truth.py
+      - name: Sanity-check handover truth
         run: |
-          grep -q 'executePersonalMailbox' server/crm/canonicalActionExecution.ts
-          grep -q 'route.provider === "personal_mailbox"' server/crm/canonicalActionExecution.ts
-          ! grep -q 'executeMicrosoft' server/crm/canonicalActionExecution.ts
+          grep -q 'state === "READY" && body.job?.status === "ready"' client/src/pages/CrmWorkspace.tsx
+          grep -q 'integrationReadiness.data?.genie.ready' client/src/components/DashboardLayout.tsx
+          grep -q 'getPersonalMailboxStatus' server/routers.ts
+          ! grep -q 'safeReadsReady' client/src/pages/CrmWorkspace.tsx
           git diff --check
-      - name: Commit canonical mailbox execution
+      - name: Commit handover readiness truth
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add server/crm/canonicalActionExecution.ts
-          git commit -m "Execute approved actions through the reviewed mailbox provider"
+          git add server/routers.ts client/src/pages/CrmWorkspace.tsx client/src/components/DashboardLayout.tsx
+          git commit -m "Use proven readiness across client handover surfaces"
           git push origin HEAD:fix/client-handover-mailbox-readiness-ui
