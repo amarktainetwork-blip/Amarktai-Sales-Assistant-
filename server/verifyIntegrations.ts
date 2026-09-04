@@ -137,14 +137,18 @@ async function main() {
   }
 
   const personalMailbox = getPersonalMailboxReadiness();
-  results.personalMailbox = personalMailbox.ready
-    ? {
-        status: "DELEGATED_OAUTH_CONFIGURED",
-        provider: personalMailbox.provider,
-        connectionModel: personalMailbox.connectionModel,
-        requiresUserConsent: true,
-      }
-    : { status: "NOT_CONFIGURED" };
+  results.personalMailbox = {
+    status: personalMailbox.ready
+      ? "PERSONAL_MAILBOX_CONNECTION_PATHS_AVAILABLE"
+      : "NOT_CONFIGURED",
+    providers: personalMailbox.providers.map(provider => ({
+      provider: provider.provider,
+      configured: provider.configured,
+      connectionModel: provider.connectionModel,
+      capabilities: provider.capabilities,
+    })),
+    requiresUserConsent: true,
+  };
 
   const stt = getSttConfiguration();
   const tts = getTtsConfiguration();
