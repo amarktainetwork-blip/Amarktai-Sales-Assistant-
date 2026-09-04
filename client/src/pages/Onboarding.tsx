@@ -1,9 +1,10 @@
+import { BrandMark } from "@/components/BrandMark";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { trpc } from "@/lib/trpc";
 import { friendlyError } from "@/lib/friendlyError";
+import { trpc } from "@/lib/trpc";
 import {
   ArrowRight,
   Bot,
@@ -14,6 +15,7 @@ import {
   Loader2,
   Network,
   RefreshCw,
+  ShieldCheck,
   Users,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -113,7 +115,7 @@ function StepDot({
           state === "done"
             ? "bg-emerald-100 text-emerald-700"
             : state === "current"
-              ? "bg-[#3F70D8] text-white"
+              ? "bg-[#2F6FED] text-white"
               : "bg-[#EEF2F7] text-[#8793A4]"
         }`}
       >
@@ -127,6 +129,74 @@ function StepDot({
         {label}
       </span>
     </div>
+  );
+}
+
+function SetupVisual() {
+  return (
+    <section className="amk-auth__visual amk-auth__visual--product">
+      <img
+        src="/images/site-intelligence.svg"
+        alt="AmarktAI sales workspace illustration"
+      />
+      <div className="amk-auth__shade" />
+      <div className="amk-auth__visual-inner">
+        <div className="amk-auth__topline">
+          <BrandMark inverse />
+        </div>
+        <div className="amk-auth__message">
+          <p className="amk-auth__eyebrow">
+            <ShieldCheck size={15} /> SECURE COMPANY SETUP
+          </p>
+          <h1>
+            Set it up once.
+            <br />
+            Work here every day.
+          </h1>
+          <p>
+            AmarktAI learns the approved business context, connects to the CRM
+            you already use and keeps important customer actions reviewable.
+          </p>
+          <div className="amk-auth__proof">
+            <span>
+              <CheckCircle2 size={16} /> CRM remains the system of record
+            </span>
+            <span>
+              <CheckCircle2 size={16} /> Company knowledge is approved first
+            </span>
+            <span>
+              <CheckCircle2 size={16} /> Daily sales work happens in AmarktAI
+            </span>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SetupShell({
+  children,
+  wide = false,
+}: {
+  children: React.ReactNode;
+  wide?: boolean;
+}) {
+  return (
+    <DashboardLayout>
+      <main className="amk-auth amk-auth--setup fixed inset-0 z-[240] overflow-y-auto">
+        <SetupVisual />
+        <section className="amk-auth__form-side amk-auth__form-side--setup">
+          <div className="amk-auth__mobile-brand">
+            <BrandMark />
+          </div>
+          <div
+            className={`amk-auth__form-wrap ${wide ? "amk-auth__form-wrap--wide" : "amk-auth__form-wrap--setup"}`}
+          >
+            {children}
+          </div>
+        </section>
+      </main>
+    </DashboardLayout>
   );
 }
 
@@ -262,7 +332,7 @@ export default function Onboarding() {
       setError(
         friendlyError(
           cause,
-          "Amarktai couldn't start learning from the website. Nothing was approved or changed."
+          "AmarktAI couldn't start learning from the website. Nothing was approved or changed."
         )
       );
     }
@@ -327,415 +397,379 @@ export default function Onboarding() {
 
   if (organisation.isLoading || setup.isLoading)
     return (
-      <DashboardLayout>
-        <div className="grid min-h-[55vh] place-items-center text-[#66758A]">
-          <div className="flex items-center gap-3 text-sm font-semibold">
-            <Loader2 className="h-5 w-5 animate-spin text-[#3F70D8]" />
-            Preparing your setup…
-          </div>
+      <SetupShell>
+        <div className="flex min-h-72 items-center justify-center gap-3 text-sm font-semibold text-[#66758A]">
+          <Loader2 className="h-5 w-5 animate-spin text-[#2F6FED]" />
+          Preparing your setup…
         </div>
-      </DashboardLayout>
+      </SetupShell>
     );
 
   if (organisation.data && !canManage)
     return (
-      <DashboardLayout>
-        <div className="mx-auto max-w-2xl rounded-3xl border border-[#DCE4EE] bg-white p-7 text-[#26354A] shadow-sm sm:p-9">
-          <Bot className="h-8 w-8 text-[#3F70D8]" />
-          <h1 className="mt-5 font-display text-4xl font-bold tracking-[-.06em]">
-            Your workspace is ready for you.
-          </h1>
-          <p className="mt-4 text-sm leading-6 text-[#66758A]">
-            Your company has already set up the shared business knowledge and
-            CRM. You only need your own Amarktai account and, when required,
-            your own CRM sign-in.
-          </p>
-          <Button className="mt-6" onClick={() => navigate("/assistant")}>
-            Open Assistant <ArrowRight className="ml-2 h-4 w-4" />
-          </Button>
-        </div>
-      </DashboardLayout>
+      <SetupShell>
+        <Bot className="h-8 w-8 text-[#2F6FED]" />
+        <p className="mt-6 text-[10px] font-black uppercase tracking-[.14em] text-[#2F6FED]">
+          YOUR PERSONAL WORKSPACE
+        </p>
+        <h2 className="mt-2 text-4xl font-bold tracking-[-.05em] text-[#203047]">
+          Your company setup is already handled.
+        </h2>
+        <p className="mt-4 text-sm leading-7 text-[#607086]">
+          Shared company knowledge and the CRM are managed once for the team.
+          Your own AmarktAI identity, CRM mapping and mailbox stay personal to
+          you.
+        </p>
+        <Button className="mt-7" onClick={() => navigate("/assistant")}>
+          Open AmarktAI <ArrowRight className="ml-2 h-4 w-4" />
+        </Button>
+      </SetupShell>
     );
 
-  const labels = ["Business", "Learn", "CRM", "Assistant"];
+  const labels = ["Business", "Learn", "CRM", "Ready"];
 
   return (
-    <DashboardLayout>
-      <div className="mx-auto max-w-5xl text-[#26354A]">
-        <header className="rounded-3xl border border-[#DCE4EE] bg-white p-6 shadow-sm sm:p-8">
-          <p className="text-[10px] font-black uppercase tracking-[.16em] text-[#3F70D8]">
-            Setup
-          </p>
-          <h1 className="mt-3 font-display text-4xl font-bold tracking-[-.06em] sm:text-5xl">
-            Get Amarktai ready for your sales team.
-          </h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-[#66758A]">
-            Four simple steps. Amarktai handles the technical checks in the
-            background so your team can focus on customers.
-          </p>
-          <div className="mt-6 grid gap-3 border-t border-[#EEF2F6] pt-5 sm:grid-cols-4">
-            {labels.map((label, index) => (
-              <StepDot
-                key={label}
-                number={index + 1}
-                label={label}
-                state={
-                  index + 1 < step
-                    ? "done"
-                    : index + 1 === step
-                      ? "current"
-                      : "next"
-                }
-              />
-            ))}
-          </div>
-        </header>
+    <SetupShell wide>
+      <div className="border-b border-[#E5EAF0] pb-5">
+        <p className="amk-auth__panel-eyebrow">COMPANY SETUP</p>
+        <h2 className="!text-[clamp(34px,3vw,46px)]">
+          Get AmarktAI ready for the sales day.
+        </h2>
+        <p className="amk-auth__muted !mt-3">
+          Complete the company setup once. Your CRM remains the system of record;
+          AmarktAI becomes the daily workspace for preparation, calls, follow-up
+          and review.
+        </p>
+        <div className="mt-5 grid gap-3 sm:grid-cols-4">
+          {labels.map((label, index) => (
+            <StepDot
+              key={label}
+              number={index + 1}
+              label={label}
+              state={
+                index + 1 < step
+                  ? "done"
+                  : index + 1 === step
+                    ? "current"
+                    : "next"
+              }
+            />
+          ))}
+        </div>
+      </div>
 
-        {error ? (
-          <div
-            role="alert"
-            className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
-          >
-            {error}
-          </div>
-        ) : null}
+      {error ? (
+        <div
+          role="alert"
+          className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+        >
+          {error}
+        </div>
+      ) : null}
 
-        {step === 1 ? (
-          <section className="mt-6 rounded-3xl border border-[#DCE4EE] bg-white p-6 shadow-sm sm:p-8">
-            {!workspaceMode ? (
-              <>
-                <div className="flex items-center gap-3">
-                  <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#EDF3FF] text-[#3F70D8]">
-                    <Users className="h-5 w-5" />
-                  </span>
-                  <div>
-                    <p className="text-xs font-black uppercase tracking-[.12em] text-[#8290A3]">
-                      First
-                    </p>
-                    <h2 className="font-display text-2xl font-bold">
-                      Who will use this workspace?
-                    </h2>
-                  </div>
-                </div>
-                <div className="mt-6 grid gap-4 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    disabled={updateOnboarding.isPending}
-                    onClick={() => void chooseMode("individual")}
-                    className="rounded-2xl border border-[#DCE4EE] bg-[#FAFCFF] p-5 text-left transition hover:border-[#9CB8E8]"
-                  >
-                    <Building2 className="h-5 w-5 text-[#3F70D8]" />
-                    <p className="mt-4 font-bold">Just me</p>
-                    <p className="mt-2 text-sm leading-6 text-[#718096]">
-                      A simple personal sales workspace.
-                    </p>
-                  </button>
-                  <button
-                    type="button"
-                    disabled={updateOnboarding.isPending}
-                    onClick={() => void chooseMode("team")}
-                    className="rounded-2xl border border-[#DCE4EE] bg-[#FAFCFF] p-5 text-left transition hover:border-[#9CB8E8]"
-                  >
-                    <Users className="h-5 w-5 text-[#3F70D8]" />
-                    <p className="mt-4 font-bold">My sales team</p>
-                    <p className="mt-2 text-sm leading-6 text-[#718096]">
-                      Shared company knowledge with private salesperson
-                      workspaces.
-                    </p>
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="flex items-center gap-3">
-                  <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#EDF3FF] text-[#3F70D8]">
-                    <Building2 className="h-5 w-5" />
-                  </span>
-                  <div>
-                    <p className="text-xs font-black uppercase tracking-[.12em] text-[#8290A3]">
-                      Step 1
-                    </p>
-                    <h2 className="font-display text-2xl font-bold">
-                      Tell me about your business.
-                    </h2>
-                  </div>
-                </div>
-                <p className="mt-4 max-w-2xl text-sm leading-6 text-[#66758A]">
-                  Start with the essentials. I’ll learn the public website in
-                  the next step and ask you to confirm what I found.
-                </p>
-                <div className="mt-6 grid gap-4 sm:grid-cols-2">
-                  <Input
-                    value={profile.companyName}
-                    onChange={event =>
-                      setProfile(current => ({
-                        ...current,
-                        companyName: event.target.value,
-                      }))
-                    }
-                    placeholder="Company name"
-                    aria-label="Company name"
-                  />
-                  <Input
-                    value={profile.websiteUrl}
-                    onChange={event =>
-                      setProfile(current => ({
-                        ...current,
-                        websiteUrl: event.target.value,
-                      }))
-                    }
-                    placeholder="https://yourcompany.com"
-                    aria-label="Company website"
-                  />
-                  <Input
-                    value={profile.industry}
-                    onChange={event =>
-                      setProfile(current => ({
-                        ...current,
-                        industry: event.target.value,
-                      }))
-                    }
-                    placeholder="Industry (optional)"
-                    aria-label="Industry"
-                  />
-                  <Input
-                    value={profile.primarySalesObjective}
-                    onChange={event =>
-                      setProfile(current => ({
-                        ...current,
-                        primarySalesObjective: event.target.value,
-                      }))
-                    }
-                    placeholder="Main sales goal (optional)"
-                    aria-label="Main sales goal"
-                  />
-                </div>
-                <Textarea
-                  value={profile.productsServices}
+      {step === 1 ? (
+        <section className="mt-7">
+          {!workspaceMode ? (
+            <>
+              <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#2F6FED]">
+                STEP 1 · WORKSPACE
+              </p>
+              <h3 className="mt-2 text-2xl font-bold tracking-[-.035em] text-[#203047]">
+                Who will use this workspace?
+              </h3>
+              <p className="mt-3 text-sm leading-6 text-[#607086]">
+                Choose the shape of the workspace. You can still add team members
+                later if you start with one salesperson.
+              </p>
+              <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                <button
+                  type="button"
+                  disabled={updateOnboarding.isPending}
+                  onClick={() => void chooseMode("individual")}
+                  className="rounded-2xl border border-[#DCE4EE] bg-[#FAFCFF] p-5 text-left transition hover:border-[#8EACEB] hover:bg-[#F3F7FF]"
+                >
+                  <Building2 className="h-5 w-5 text-[#2F6FED]" />
+                  <p className="mt-4 font-bold">Just me</p>
+                  <p className="mt-2 text-sm leading-6 text-[#718096]">
+                    One salesperson with a personal daily sales workspace.
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  disabled={updateOnboarding.isPending}
+                  onClick={() => void chooseMode("team")}
+                  className="rounded-2xl border border-[#DCE4EE] bg-[#FAFCFF] p-5 text-left transition hover:border-[#8EACEB] hover:bg-[#F3F7FF]"
+                >
+                  <Users className="h-5 w-5 text-[#2F6FED]" />
+                  <p className="mt-4 font-bold">My sales team</p>
+                  <p className="mt-2 text-sm leading-6 text-[#718096]">
+                    Shared approved company knowledge with private salesperson
+                    workspaces.
+                  </p>
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#2F6FED]">
+                STEP 1 · BUSINESS
+              </p>
+              <h3 className="mt-2 text-2xl font-bold tracking-[-.035em] text-[#203047]">
+                Tell AmarktAI which business it is working for.
+              </h3>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-[#607086]">
+                Start with the essentials. The next step reads the authorised
+                public website and shows you exactly what it learned before any
+                information becomes trusted knowledge.
+              </p>
+              <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                <Input
+                  value={profile.companyName}
                   onChange={event =>
                     setProfile(current => ({
                       ...current,
-                      productsServices: event.target.value,
+                      companyName: event.target.value,
                     }))
                   }
-                  placeholder="Anything important about what you sell? (optional)"
-                  className="mt-4 min-h-24"
+                  placeholder="Company name"
+                  aria-label="Company name"
                 />
-                <div className="mt-5 flex flex-wrap gap-3">
-                  <Button
-                    disabled={
-                      !profile.companyName.trim() || saveProfile.isPending
-                    }
-                    onClick={() => void saveBusiness()}
-                  >
-                    {saveProfile.isPending ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : null}
-                    Save and continue
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    onClick={() => setWorkspaceMode(null)}
-                  >
-                    Change workspace type
-                  </Button>
-                </div>
-              </>
-            )}
-          </section>
-        ) : null}
-
-        {step === 2 ? (
-          <section className="mt-6 rounded-3xl border border-[#DCE4EE] bg-white p-6 shadow-sm sm:p-8">
-            <div className="flex items-center gap-3">
-              <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#EDF3FF] text-[#3F70D8]">
-                <Globe2 className="h-5 w-5" />
-              </span>
-              <div>
-                <p className="text-xs font-black uppercase tracking-[.12em] text-[#8290A3]">
-                  Step 2
-                </p>
-                <h2 className="font-display text-2xl font-bold">
-                  Let me learn your business.
-                </h2>
+                <Input
+                  value={profile.websiteUrl}
+                  onChange={event =>
+                    setProfile(current => ({
+                      ...current,
+                      websiteUrl: event.target.value,
+                    }))
+                  }
+                  placeholder="https://yourcompany.com"
+                  aria-label="Company website"
+                />
+                <Input
+                  value={profile.industry}
+                  onChange={event =>
+                    setProfile(current => ({
+                      ...current,
+                      industry: event.target.value,
+                    }))
+                  }
+                  placeholder="Industry (optional)"
+                  aria-label="Industry"
+                />
+                <Input
+                  value={profile.primarySalesObjective}
+                  onChange={event =>
+                    setProfile(current => ({
+                      ...current,
+                      primarySalesObjective: event.target.value,
+                    }))
+                  }
+                  placeholder="Main sales goal (optional)"
+                  aria-label="Main sales goal"
+                />
               </div>
-            </div>
-            <p className="mt-4 max-w-2xl text-sm leading-6 text-[#66758A]">
-              I’ll read the public company website, organise the useful business
-              facts and then show you a short review before anything becomes
-              trusted knowledge.
-            </p>
-
-            {learningRunning ? (
-              <div className="mt-6 rounded-2xl border border-blue-100 bg-[#F4F8FF] p-5">
-                <div className="flex items-center gap-3">
-                  <Loader2 className="h-5 w-5 animate-spin text-[#3F70D8]" />
-                  <div>
-                    <p className="font-bold">
-                      {learning.data?.humanStatus || "Reading website"}
-                    </p>
-                    <p className="mt-1 text-sm text-[#718096]">
-                      You can leave this page. Progress is saved automatically.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ) : learningNeedsAttention ? (
-              <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5">
-                <p className="font-bold text-amber-900">
-                  Learning paused before it finished.
-                </p>
-                <p className="mt-2 text-sm leading-6 text-amber-800">
-                  Nothing new was trusted. Resume from the saved progress when
-                  you’re ready.
-                </p>
+              <Textarea
+                value={profile.productsServices}
+                onChange={event =>
+                  setProfile(current => ({
+                    ...current,
+                    productsServices: event.target.value,
+                  }))
+                }
+                placeholder="Anything important about what you sell? (optional)"
+                className="mt-4 min-h-24"
+              />
+              <div className="mt-5 flex flex-wrap gap-3">
                 <Button
-                  className="mt-4"
-                  variant="outline"
-                  onClick={() => void retryCompanyLearning()}
+                  disabled={!profile.companyName.trim() || saveProfile.isPending}
+                  onClick={() => void saveBusiness()}
                 >
-                  <RefreshCw className="mr-2 h-4 w-4" /> Resume
+                  {saveProfile.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : null}
+                  Save and continue
+                </Button>
+                <Button variant="ghost" onClick={() => setWorkspaceMode(null)}>
+                  Change workspace type
                 </Button>
               </div>
-            ) : (
-              <Button
-                className="mt-6"
-                disabled={!profile.websiteUrl.trim() || discover.isPending}
-                onClick={() => void startLearning()}
-              >
-                {discover.isPending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Globe2 className="mr-2 h-4 w-4" />
-                )}
-                Learn from website
-              </Button>
-            )}
-            {!profile.websiteUrl.trim() ? (
-              <p className="mt-3 text-xs text-amber-700">
-                Add the company website in the previous step before starting.
-              </p>
-            ) : null}
-          </section>
-        ) : null}
+            </>
+          )}
+        </section>
+      ) : null}
 
-        {step === 3 ? (
-          <section className="mt-6 rounded-3xl border border-[#DCE4EE] bg-white p-6 shadow-sm sm:p-8">
-            <div className="flex items-center gap-3">
-              <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#EDF3FF] text-[#3F70D8]">
-                <Network className="h-5 w-5" />
-              </span>
-              <div>
-                <p className="text-xs font-black uppercase tracking-[.12em] text-[#8290A3]">
-                  Step 3
-                </p>
-                <h2 className="font-display text-2xl font-bold">
-                  Connect your CRM.
-                </h2>
-              </div>
-            </div>
-            <p className="mt-4 max-w-2xl text-sm leading-6 text-[#66758A]">
-              Choose the CRM your team already uses. For browser-based CRMs, you
-              sign in directly inside your private CRM workspace.
-            </p>
-            <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {providers.map(option => (
-                <button
-                  key={option.provider}
-                  type="button"
-                  onClick={() => {
-                    setProvider(option);
-                    setError("");
-                  }}
-                  className={`rounded-2xl border p-4 text-left transition ${
-                    provider.provider === option.provider
-                      ? "border-[#3F70D8] bg-[#F3F7FF]"
-                      : "border-[#DCE4EE] bg-[#FAFCFF] hover:border-[#AFC3E8]"
-                  }`}
-                >
-                  <p className="font-bold">{option.label}</p>
-                  <p className="mt-1 text-xs text-[#718096]">
-                    {option.method === "browser"
-                      ? "Secure CRM workspace"
-                      : "Secure account connection"}
+      {step === 2 ? (
+        <section className="mt-7">
+          <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#2F6FED]">
+            STEP 2 · LEARN
+          </p>
+          <h3 className="mt-2 text-2xl font-bold tracking-[-.035em] text-[#203047]">
+            Let AmarktAI learn the public business context.
+          </h3>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-[#607086]">
+            AmarktAI reads the authorised public company website, organises the
+            useful facts and then gives you a review. Nothing becomes trusted
+            company knowledge until you confirm it.
+          </p>
+
+          {learningRunning ? (
+            <div className="mt-6 rounded-2xl border border-blue-100 bg-[#F4F8FF] p-5">
+              <div className="flex items-center gap-3">
+                <Loader2 className="h-5 w-5 animate-spin text-[#2F6FED]" />
+                <div>
+                  <p className="font-bold">
+                    {learning.data?.humanStatus || "Reading website"}
                   </p>
-                </button>
-              ))}
-            </div>
-            {provider.provider === "custom_browser" ? (
-              <Input
-                value={customUrl}
-                onChange={event => setCustomUrl(event.target.value)}
-                placeholder="https://crm.yourcompany.com"
-                aria-label="CRM address"
-                className="mt-4 max-w-xl"
-              />
-            ) : null}
-            <Button
-              className="mt-5"
-              disabled={
-                createConnection.isPending ||
-                beginOAuth.isPending ||
-                (provider.provider === "custom_browser" && !customUrl.trim())
-              }
-              onClick={() => void connectCrm()}
-            >
-              {createConnection.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Network className="mr-2 h-4 w-4" />
-              )}
-              Connect {provider.label}
-            </Button>
-          </section>
-        ) : null}
-
-        {step === 4 ? (
-          <section className="mt-6 rounded-3xl border border-emerald-200 bg-white p-6 shadow-sm sm:p-8">
-            <div className="flex items-center gap-3">
-              <span className="grid h-11 w-11 place-items-center rounded-2xl bg-emerald-50 text-emerald-700">
-                <CheckCircle2 className="h-5 w-5" />
-              </span>
-              <div>
-                <p className="text-xs font-black uppercase tracking-[.12em] text-emerald-700">
-                  Final step
-                </p>
-                <h2 className="font-display text-3xl font-bold">
-                  Sign in to your CRM.
-                </h2>
+                  <p className="mt-1 text-sm text-[#718096]">
+                    Progress is saved automatically. You can safely leave and
+                    return to this setup.
+                  </p>
+                </div>
               </div>
             </div>
-            <p className="mt-4 max-w-2xl text-sm leading-6 text-[#66758A]">
-              Open your private CRM workspace and sign in directly. Once
-              Amarktai confirms safe read access, setup completes automatically
-              and your Assistant opens.
-            </p>
-            <div className="mt-6 grid gap-3 sm:grid-cols-3">
-              {[
-                ["Business", "Understood"],
-                ["CRM", connectedSystems[0]?.displayName || "Connected"],
-                ["Assistant", "Ready after sign-in"],
-              ].map(([label, value]) => (
-                <div
-                  key={label}
-                  className="rounded-2xl border border-[#E1E7EF] bg-[#FAFCFF] p-4"
-                >
-                  <p className="text-xs font-bold text-[#8290A3]">{label}</p>
-                  <p className="mt-1 font-bold text-[#26354A]">{value}</p>
-                </div>
-              ))}
+          ) : learningNeedsAttention ? (
+            <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5">
+              <p className="font-bold text-amber-900">
+                Website learning paused before it finished.
+              </p>
+              <p className="mt-2 text-sm leading-6 text-amber-800">
+                Nothing new was trusted. Resume from the saved progress.
+              </p>
+              <Button
+                className="mt-4"
+                variant="outline"
+                onClick={() => void retryCompanyLearning()}
+              >
+                <RefreshCw className="mr-2 h-4 w-4" /> Resume
+              </Button>
             </div>
+          ) : (
             <Button
               className="mt-6"
-              onClick={() => navigate(`/crm/${connectedSystems[0]?.id}`)}
+              disabled={!profile.websiteUrl.trim() || discover.isPending}
+              onClick={() => void startLearning()}
             >
-              <Network className="mr-2 h-4 w-4" />
-              Open CRM and finish setup
-              <ArrowRight className="ml-2 h-4 w-4" />
+              {discover.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Globe2 className="mr-2 h-4 w-4" />
+              )}
+              Learn from website
             </Button>
-          </section>
-        ) : null}
-      </div>
-    </DashboardLayout>
+          )}
+          {!profile.websiteUrl.trim() ? (
+            <p className="mt-3 text-xs text-amber-700">
+              Add the company website in the previous step before starting.
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
+      {step === 3 ? (
+        <section className="mt-7">
+          <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#2F6FED]">
+            STEP 3 · CRM
+          </p>
+          <h3 className="mt-2 text-2xl font-bold tracking-[-.035em] text-[#203047]">
+            Connect the CRM your team already uses.
+          </h3>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-[#607086]">
+            The CRM stays your system of record. AmarktAI uses the authorised
+            connection to bring customers, tasks and opportunities into the
+            daily workspace. Browser-based CRM passwords are entered only inside
+            the private CRM session.
+          </p>
+          <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {providers.map(option => (
+              <button
+                key={option.provider}
+                type="button"
+                onClick={() => {
+                  setProvider(option);
+                  setError("");
+                }}
+                className={`rounded-2xl border p-4 text-left transition ${
+                  provider.provider === option.provider
+                    ? "border-[#2F6FED] bg-[#F3F7FF]"
+                    : "border-[#DCE4EE] bg-[#FAFCFF] hover:border-[#AFC3E8]"
+                }`}
+              >
+                <p className="font-bold">{option.label}</p>
+                <p className="mt-1 text-xs text-[#718096]">
+                  {option.method === "browser"
+                    ? "Secure CRM workspace"
+                    : "Secure account connection"}
+                </p>
+              </button>
+            ))}
+          </div>
+          {provider.provider === "custom_browser" ? (
+            <Input
+              value={customUrl}
+              onChange={event => setCustomUrl(event.target.value)}
+              placeholder="https://crm.yourcompany.com"
+              aria-label="CRM address"
+              className="mt-4 max-w-xl"
+            />
+          ) : null}
+          <Button
+            className="mt-5"
+            disabled={
+              createConnection.isPending ||
+              beginOAuth.isPending ||
+              (provider.provider === "custom_browser" && !customUrl.trim())
+            }
+            onClick={() => void connectCrm()}
+          >
+            {createConnection.isPending ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Network className="mr-2 h-4 w-4" />
+            )}
+            Connect {provider.label}
+          </Button>
+        </section>
+      ) : null}
+
+      {step === 4 ? (
+        <section className="mt-7">
+          <p className="text-[10px] font-black uppercase tracking-[.14em] text-emerald-700">
+            STEP 4 · PROVE THE CONNECTION
+          </p>
+          <h3 className="mt-2 text-3xl font-bold tracking-[-.04em] text-[#203047]">
+            Sign in to your CRM and let AmarktAI prove safe access.
+          </h3>
+          <p className="mt-4 max-w-2xl text-sm leading-6 text-[#607086]">
+            Open the private CRM workspace and sign in directly. Setup is not
+            complete just because authentication succeeds: AmarktAI must still
+            prove the required CRM reads and governed write operations before
+            the daily workspace is called ready.
+          </p>
+          <div className="mt-6 grid gap-3 sm:grid-cols-3">
+            {[
+              ["Business", "Approved"],
+              ["CRM", connectedSystems[0]?.displayName || "Connected"],
+              ["Daily workspace", "Ready after live proof"],
+            ].map(([label, value]) => (
+              <div
+                key={label}
+                className="rounded-2xl border border-[#E1E7EF] bg-[#FAFCFF] p-4"
+              >
+                <p className="text-xs font-bold text-[#8290A3]">{label}</p>
+                <p className="mt-1 font-bold text-[#26354A]">{value}</p>
+              </div>
+            ))}
+          </div>
+          <Button
+            className="mt-6"
+            onClick={() => navigate(`/crm/${connectedSystems[0]?.id}`)}
+          >
+            <Network className="mr-2 h-4 w-4" />
+            Open CRM and continue setup
+            <ArrowRight className="ml-2 h-4 w-4" />
+          </Button>
+        </section>
+      ) : null}
+    </SetupShell>
   );
 }

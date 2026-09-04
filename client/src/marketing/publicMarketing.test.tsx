@@ -65,16 +65,20 @@ describe("final public website", () => {
     expect(combined).not.toMatch(/\bGenX\b/i);
   });
 
-  it("uses real professional photography on the public marketing journey", () => {
+  it("uses first-party product and workflow visuals instead of remote stock photography", () => {
     const home = render("/", HomePage);
     const how = render("/how-it-works", HowItWorksPage);
     const about = render("/about", AboutPage);
-    for (const html of [home, how, about]) {
-      expect(html).toContain("images.pexels.com");
-      expect(html).toContain("amk-photo-frame");
+    const contact = render("/contact", ContactPage);
+    for (const html of [home, how, about, contact]) {
+      expect(html).not.toContain("images.pexels.com");
+      expect(html).not.toContain("images.unsplash.com");
     }
-    expect(home.match(/images\.pexels\.com/g)?.length ?? 0).toBeGreaterThanOrEqual(4);
-    expect(home).not.toContain("amk-product-visual");
+    expect(home).toContain("/images/site-hero.svg");
+    expect(home).toContain("/images/site-calls.svg");
+    expect(home).toContain("/images/site-intelligence.svg");
+    expect(home).toContain("/images/site-team.svg");
+    expect(home).toContain("amk-photo-frame");
   });
 
   it("leads with the conversion message and keeps the sales loop on the homepage", () => {
@@ -127,7 +131,8 @@ describe("final public website", () => {
     expect(contactReasons).toEqual(["Request a demo", "Sales", "Individual setup", "Team setup", "CRM compatibility", "Support"]);
     expect(html).toContain('aria-live="polite"');
     expect(html).toContain("/api/public/contact");
-    expect(html).toContain("images.pexels.com");
+    expect(html).toContain("/assets/amarktai-sales-trust.svg");
+    expect(html).not.toContain("images.pexels.com");
   });
 
   it("renders the public 404 with a valid home action", () => {

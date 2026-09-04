@@ -42,4 +42,22 @@ describe("AmarktAI customer-facing branding boundary", () => {
     expect(shell).toContain('content="AmarktAI helps salespeople prepare for customers, handle conversations and finish the follow-up around the CRM they already use."');
     expect(shell).not.toContain("Amarktai Sales Assistant");
   });
+
+  it("uses first-party product visuals instead of generic remote stock photography", () => {
+    const root = path.resolve(process.cwd(), "client");
+    const combined = clientFiles(root)
+      .map(file => readFileSync(file, "utf8"))
+      .join("\n");
+    expect(combined).not.toMatch(/images\.pexels\.com/i);
+    expect(combined).not.toMatch(/images\.unsplash\.com/i);
+  });
+
+  it("keeps second-factor verification on the secure auth route before workspace entry", () => {
+    const auth = readFileSync(path.resolve(process.cwd(), "client/src/pages/Auth.tsx"), "utf8");
+    expect(auth).toContain('/auth?step=verify');
+    expect(auth).toContain("Verify your email.");
+    expect(auth).toContain('window.location.assign("/auth?step=verify")');
+    expect(auth).toContain("if (!user || !security.data?.verified || invite || reset) return;");
+    expect(auth).toContain('navigate("/dashboard", { replace: true });');
+  });
 });

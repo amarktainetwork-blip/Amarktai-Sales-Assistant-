@@ -78,7 +78,7 @@ describe("final launch acceptance safeguards", () => {
       "utf8"
     );
     expect(source).toContain(
-      'const labels = ["Business", "Learn", "CRM", "Assistant"]'
+      'const labels = ["Business", "Learn", "CRM", "Ready"]'
     );
     expect(source).not.toContain("{false && (");
     expect(source).not.toContain("Choose the first safe automation rule");

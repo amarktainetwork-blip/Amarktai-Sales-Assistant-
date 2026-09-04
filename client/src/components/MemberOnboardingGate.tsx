@@ -6,8 +6,10 @@ import {
   ArrowRight,
   Building2,
   Check,
+  CheckCircle2,
   KeyRound,
   Loader2,
+  ShieldCheck,
   UserRound,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -122,6 +124,51 @@ function StepIcon({ children }: { children: React.ReactNode }) {
     <span className="grid size-11 place-items-center rounded-xl bg-[#EAF1FF] text-[#2F6FED]">
       {children}
     </span>
+  );
+}
+
+function SetupVisual() {
+  return (
+    <section className="amk-auth__visual">
+      <img
+        src="/images/site-intelligence.svg"
+        alt="AmarktAI sales intelligence workspace"
+      />
+      <div className="amk-auth__shade" />
+      <div className="amk-auth__visual-inner">
+        <div className="amk-auth__topline">
+          <span className="amk-auth__back">
+            <ShieldCheck size={16} /> Secure onboarding
+          </span>
+          <BrandMark inverse />
+        </div>
+        <div className="amk-auth__message">
+          <p className="amk-auth__eyebrow">
+            <ShieldCheck size={15} /> YOUR AMARKTAI WORKSPACE
+          </p>
+          <h1>
+            Set up once.
+            <br />
+            Sell from one place.
+          </h1>
+          <p>
+            Your personal identity stays yours. Company knowledge can be shared,
+            while CRM and mailbox access stay tied to the right user.
+          </p>
+          <div className="amk-auth__proof">
+            <span>
+              <CheckCircle2 size={16} /> Personal account and Assistant memory
+            </span>
+            <span>
+              <CheckCircle2 size={16} /> Manager-approved company knowledge
+            </span>
+            <span>
+              <CheckCircle2 size={16} /> Your CRM identity and Microsoft mailbox
+            </span>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -270,28 +317,42 @@ export default function MemberOnboardingGate() {
 
   if (loading)
     return (
-      <div className="fixed inset-0 z-[250] grid place-items-center bg-[#F4F7FA] text-[#26354A]">
-        <div className="flex items-center gap-3 text-sm font-bold">
-          <Loader2 className="size-5 animate-spin text-[#2F6FED]" /> Preparing
-          your workspace…
-        </div>
-      </div>
+      <main className="amk-auth fixed inset-0 z-[250] overflow-y-auto">
+        <SetupVisual />
+        <section className="amk-auth__form-side">
+          <div className="amk-auth__mobile-brand">
+            <BrandMark />
+          </div>
+          <div className="amk-auth__form-wrap">
+            <p className="amk-auth__panel-eyebrow">SECURE ONBOARDING</p>
+            <h2>Preparing your workspace…</h2>
+            <p className="amk-auth__muted flex items-center gap-3">
+              <Loader2 className="size-5 animate-spin text-[#2F6FED]" /> Loading
+              your saved setup.
+            </p>
+          </div>
+        </section>
+      </main>
     );
 
   if (!snapshot)
     return (
-      <div className="fixed inset-0 z-[250] grid place-items-center bg-[#F4F7FA] p-6 text-[#26354A]">
-        <div className="w-full max-w-lg rounded-2xl border border-[#DCE4EE] bg-white p-8 shadow-sm">
-          <BrandMark />
-          <h1 className="mt-8 font-display text-4xl font-bold tracking-[-.05em]">
-            Your workspace could not be prepared.
-          </h1>
-          <p className="mt-4 text-sm leading-6 text-[#66758A]">{error}</p>
-          <Button className={`mt-6 ${blueButton}`} onClick={() => void refresh()}>
-            Retry
-          </Button>
-        </div>
-      </div>
+      <main className="amk-auth fixed inset-0 z-[250] overflow-y-auto">
+        <SetupVisual />
+        <section className="amk-auth__form-side">
+          <div className="amk-auth__mobile-brand">
+            <BrandMark />
+          </div>
+          <div className="amk-auth__form-wrap">
+            <p className="amk-auth__panel-eyebrow">SETUP NEEDS ATTENTION</p>
+            <h2>Your workspace could not be prepared.</h2>
+            <p className="amk-auth__muted">{error}</p>
+            <Button className={`mt-6 ${blueButton}`} onClick={() => void refresh()}>
+              Retry
+            </Button>
+          </div>
+        </section>
+      </main>
     );
 
   const personalProfileReady = Boolean(
@@ -301,270 +362,217 @@ export default function MemberOnboardingGate() {
   );
 
   return (
-    <div className="fixed inset-0 z-[250] overflow-y-auto bg-[#F4F7FA] text-[#26354A]">
-      <div className="mx-auto min-h-screen w-full max-w-[1160px] px-5 py-8 sm:px-8 sm:py-10">
-        <header className="flex items-center justify-between border-b border-[#DCE4EE] pb-5">
+    <main className="amk-auth fixed inset-0 z-[250] overflow-y-auto">
+      <SetupVisual />
+      <section className="amk-auth__form-side">
+        <div className="amk-auth__mobile-brand">
           <BrandMark />
-          <span className="text-[10px] font-black uppercase tracking-[.15em] text-[#7A889A]">
-            Personal setup
-          </span>
-        </header>
-
-        <div className="grid gap-10 py-10 lg:grid-cols-[.72fr_1.28fr] lg:items-start lg:py-14">
-          <section className="lg:sticky lg:top-10">
-            <p className="text-[10px] font-black uppercase tracking-[.16em] text-[#2F6FED]">
-              Your Amarktai workspace
-            </p>
-            <h1 className="mt-4 max-w-xl font-display text-4xl font-bold leading-[.98] tracking-[-.055em] sm:text-5xl">
-              Set up the person behind the sales work.
-            </h1>
-            <p className="mt-5 max-w-xl text-sm leading-7 text-[#66758A]">
-              Company knowledge can be shared. Your name, sales goal, working
-              style, mailbox and Assistant memory belong to your own account.
-            </p>
-            <div className="mt-7 space-y-3 text-sm text-[#52647A]">
-              <p className="flex gap-3">
-                <Check className="mt-0.5 size-4 shrink-0 text-[#2F6FED]" /> Your
-                own Amarktai login and Assistant memory
+        </div>
+        <div className="amk-auth__form-wrap">
+          {snapshot.member.complete &&
+          snapshot.canManage &&
+          !snapshot.company.complete ? (
+            <>
+              <StepIcon>
+                <Building2 size={19} />
+              </StepIcon>
+              <p className="amk-auth__panel-eyebrow">PERSONAL SETUP COMPLETE</p>
+              <h2>Now set up the company once.</h2>
+              <p className="amk-auth__muted">
+                Add the company details, let AmarktAI learn the authorised public
+                website, approve the useful knowledge and connect the CRM. Future
+                team members inherit that company setup while keeping their own
+                personal workspace.
               </p>
-              <p className="flex gap-3">
-                <Check className="mt-0.5 size-4 shrink-0 text-[#2F6FED]" />
-                Shared, manager-approved company knowledge
+              <Button
+                className={`mt-7 ${blueButton}`}
+                onClick={() => window.location.assign("/company-setup")}
+              >
+                Continue company setup <ArrowRight className="ml-2 size-4" />
+              </Button>
+            </>
+          ) : !personalProfileReady ? (
+            <>
+              <StepIcon>
+                <UserRound size={19} />
+              </StepIcon>
+              <p className="amk-auth__panel-eyebrow">STEP 1 · ABOUT YOU</p>
+              <h2>Make AmarktAI yours.</h2>
+              <p className="amk-auth__muted">
+                These details help AmarktAI address you naturally and keep its
+                recommendations aligned with the way you actually sell.
               </p>
-              <p className="flex gap-3">
-                <Check className="mt-0.5 size-4 shrink-0 text-[#2F6FED]" /> Your
-                own CRM identity and Microsoft mailbox
-              </p>
-            </div>
-          </section>
-
-          <section className="rounded-3xl border border-[#DCE4EE] bg-white p-6 shadow-[0_18px_50px_rgba(38,53,74,.06)] sm:p-8">
-            {snapshot.member.complete &&
-            snapshot.canManage &&
-            !snapshot.company.complete ? (
-              <>
-                <StepIcon>
-                  <Building2 size={19} />
-                </StepIcon>
-                <p className="mt-6 text-[10px] font-black uppercase tracking-[.14em] text-[#2F6FED]">
-                  Personal setup complete
-                </p>
-                <h2 className="mt-2 font-display text-3xl font-bold tracking-[-.045em]">
-                  Now set up the company once.
-                </h2>
-                <p className="mt-4 text-sm leading-6 text-[#66758A]">
-                  Add the company details, let Amarktai learn the authorised
-                  public website, approve the useful knowledge and connect the
-                  CRM. Future team members inherit that company setup while
-                  keeping their own personal workspace.
-                </p>
-                <Button
-                  className={`mt-7 ${blueButton}`}
-                  onClick={() => window.location.assign("/company-setup")}
-                >
-                  Continue company setup <ArrowRight className="ml-2 size-4" />
-                </Button>
-              </>
-            ) : !personalProfileReady ? (
-              <>
-                <StepIcon>
-                  <UserRound size={19} />
-                </StepIcon>
-                <p className="mt-6 text-[10px] font-black uppercase tracking-[.14em] text-[#2F6FED]">
-                  01 / About you
-                </p>
-                <h2 className="mt-2 font-display text-3xl font-bold tracking-[-.045em]">
-                  Make the Assistant yours.
-                </h2>
-                <p className="mt-3 text-sm leading-6 text-[#66758A]">
-                  These details help Amarktai address you naturally and keep its
-                  recommendations aligned with the way you actually sell.
-                </p>
-                <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                  {(snapshot.role === "owner"
-                    ? (["individual", "company_owner"] as Persona[])
-                    : ([
-                        personaForRole(
-                          snapshot.role,
-                          snapshot.company.workspaceMode
-                        ),
-                      ] as Persona[])
-                  ).map(option => (
-                    <button
-                      key={option}
-                      onClick={() => setPersona(option)}
-                      className={`rounded-xl border p-4 text-left transition ${persona === option ? "border-[#7FA4E8] bg-[#EEF4FF] text-[#2459C2]" : "border-[#DCE4EE] bg-white text-[#40516A] hover:border-[#AFC3E8] hover:bg-[#F8FAFD]"}`}
-                    >
-                      <span className="text-sm font-bold">
-                        {personaLabel(option)}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-                <label className="mt-6 block text-xs font-bold text-[#40516A]">
-                  What should Amarktai call you?
+              <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                {(snapshot.role === "owner"
+                  ? (["individual", "company_owner"] as Persona[])
+                  : ([
+                      personaForRole(
+                        snapshot.role,
+                        snapshot.company.workspaceMode
+                      ),
+                    ] as Persona[])
+                ).map(option => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => setPersona(option)}
+                    className={`rounded-xl border p-4 text-left transition ${persona === option ? "border-[#7FA4E8] bg-[#EEF4FF] text-[#2459C2]" : "border-[#DCE4EE] bg-white text-[#40516A] hover:border-[#AFC3E8] hover:bg-[#F8FAFD]"}`}
+                  >
+                    <span className="text-sm font-bold">
+                      {personaLabel(option)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <div className="amk-auth-form">
+                <label className="amk-auth-field">
+                  <span>What should AmarktAI call you?</span>
                   <Input
                     value={preferredName}
                     onChange={event => setPreferredName(event.target.value)}
                     placeholder="Your preferred first name"
                     autoComplete="given-name"
-                    className="mt-2 rounded-xl border-[#CBD7E6] bg-white text-[#26354A]"
                   />
                 </label>
-                <label className="mt-5 block text-xs font-bold text-[#40516A]">
-                  What is the main result you want from Amarktai?
+                <label className="amk-auth-field">
+                  <span>What is the main result you want from AmarktAI?</span>
                   <Input
                     value={primaryGoal}
                     onChange={event => setPrimaryGoal(event.target.value)}
-                    placeholder="For example: never miss a follow-up and stay focused on the right customers"
-                    className="mt-2 rounded-xl border-[#CBD7E6] bg-white text-[#26354A]"
+                    placeholder="For example: never miss a follow-up"
                   />
                 </label>
-                <label className="mt-5 block text-xs font-bold text-[#40516A]">
-                  Anything important about how you prefer to work?
+                <label className="amk-auth-field">
+                  <span>Anything important about how you prefer to work?</span>
                   <Textarea
                     value={workingStyle}
                     onChange={event => setWorkingStyle(event.target.value)}
-                    placeholder="Optional — your working style, priorities or preferences"
-                    className="mt-2 min-h-24 rounded-xl border-[#CBD7E6] bg-white text-[#26354A]"
+                    placeholder="Optional — working style, priorities or preferences"
+                    className="min-h-24 rounded-xl border-[#CBD7E6] bg-white text-[#26354A]"
                   />
                 </label>
-                <Button
-                  disabled={
-                    !persona ||
-                    !preferredName.trim() ||
-                    !primaryGoal.trim() ||
-                    saving
-                  }
-                  onClick={() => void saveProfile()}
-                  className={`mt-6 ${blueButton}`}
-                >
-                  {saving ? (
-                    <Loader2 className="mr-2 size-4 animate-spin" />
-                  ) : null}
-                  Save and continue
-                </Button>
-              </>
-            ) : needsIdentity ? (
-              <>
-                <StepIcon>
-                  <UserRound size={19} />
-                </StepIcon>
-                <p className="mt-6 text-[10px] font-black uppercase tracking-[.14em] text-[#2F6FED]">
-                  02 / CRM identity
-                </p>
-                <h2 className="mt-2 font-display text-3xl font-bold tracking-[-.045em]">
-                  Confirm who you are in the CRM.
-                </h2>
-                <p className="mt-4 text-sm leading-6 text-[#66758A]">
-                  This keeps your customers, tasks, activity and reporting tied
-                  to the correct salesperson without exposing another user’s
-                  private workspace.
-                </p>
-                <div className="mt-6 grid gap-3">
-                  {snapshot.identity.candidates.length ? (
-                    snapshot.identity.candidates.map(candidate => (
-                      <button
-                        key={candidate.id}
-                        disabled={saving}
-                        onClick={() => void confirmIdentity(candidate.id)}
-                        className="flex items-center justify-between gap-4 rounded-xl border border-[#DCE4EE] bg-[#FAFCFF] p-4 text-left transition hover:border-[#8EACEB] hover:bg-[#F2F6FF]"
-                      >
-                        <span>
-                          <strong className="block text-sm text-[#26354A]">
-                            {candidate.displayName}
-                          </strong>
-                          <span className="mt-1 block text-xs text-[#718096]">
-                            {candidate.email || "CRM salesperson record"}
-                          </span>
-                        </span>
-                        <ArrowRight className="size-4 text-[#2F6FED]" />
-                      </button>
-                    ))
-                  ) : (
-                    <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
-                      Your CRM salesperson identity has not been mapped yet. Ask
-                      your manager to link your CRM owner record to your Amarktai
-                      account.
-                    </p>
-                  )}
-                </div>
-              </>
-            ) : needsMailbox ? (
-              <>
-                <StepIcon>
-                  <KeyRound size={19} />
-                </StepIcon>
-                <p className="mt-6 text-[10px] font-black uppercase tracking-[.14em] text-[#2F6FED]">
-                  03 / Your mailbox
-                </p>
-                <h2 className="mt-2 font-display text-3xl font-bold tracking-[-.045em]">
-                  Connect your Outlook mailbox.
-                </h2>
-                <p className="mt-4 text-sm leading-6 text-[#66758A]">
-                  Microsoft handles the sign-in and verification. Amarktai never
-                  asks for your Outlook password. Mailbox access remains tied to
-                  your own Amarktai user.
-                </p>
-                <Button
-                  className={`mt-6 ${blueButton}`}
-                  onClick={() =>
-                    window.location.assign("/api/mailbox/microsoft/start")
-                  }
-                >
-                  Connect Outlook <ArrowRight className="ml-2 size-4" />
-                </Button>
-                <div className="mt-7 border-t border-[#E5EAF0] pt-6">
-                  <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#2F6FED]">
-                    04 / Autonomy &amp; approvals
-                  </p>
-                  <h3 className="mt-2 text-lg font-bold">Start with review.</h3>
-                  <p className="mt-2 text-sm leading-6 text-[#66758A]">
-                    Every customer-facing action waits for your confirmation at
-                    first. You can give Amarktai more freedom later in Settings.
-                  </p>
-                </div>
-              </>
-            ) : (
-              <>
-                <StepIcon>
-                  <Check size={20} />
-                </StepIcon>
-                <p className="mt-6 text-[10px] font-black uppercase tracking-[.14em] text-[#2F6FED]">
-                  05 / Ready
-                </p>
-                <h2 className="mt-2 font-display text-3xl font-bold tracking-[-.045em]">
-                  Your personal workspace is ready.
-                </h2>
-                <p className="mt-4 text-sm leading-6 text-[#66758A]">
-                  {snapshot.canManage && !snapshot.company.complete
-                    ? "Next, complete the company setup once so approved knowledge and the CRM can be inherited by the team."
-                    : `You are joining ${snapshot.organisationName} with your own Assistant identity, memory, CRM context and Review everything as your safe starting point.`}
-                </p>
-                <Button
-                  disabled={saving}
-                  onClick={() => void complete()}
-                  className={`mt-7 ${blueButton}`}
-                >
-                  {saving ? (
-                    <Loader2 className="mr-2 size-4 animate-spin" />
-                  ) : null}
-                  Complete my setup <ArrowRight className="ml-2 size-4" />
-                </Button>
-              </>
-            )}
-
-            {error ? (
-              <p
-                role="alert"
-                className="mt-5 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800"
+              </div>
+              <Button
+                disabled={
+                  !persona ||
+                  !preferredName.trim() ||
+                  !primaryGoal.trim() ||
+                  saving
+                }
+                onClick={() => void saveProfile()}
+                className={`mt-6 ${blueButton}`}
               >
-                {error}
+                {saving ? (
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                ) : null}
+                Save and continue
+              </Button>
+            </>
+          ) : needsIdentity ? (
+            <>
+              <StepIcon>
+                <UserRound size={19} />
+              </StepIcon>
+              <p className="amk-auth__panel-eyebrow">STEP 2 · CRM IDENTITY</p>
+              <h2>Confirm who you are in the CRM.</h2>
+              <p className="amk-auth__muted">
+                This keeps customers, tasks, activity and reporting tied to the
+                correct salesperson without exposing another user’s workspace.
               </p>
-            ) : null}
-          </section>
+              <div className="mt-6 grid gap-3">
+                {snapshot.identity.candidates.length ? (
+                  snapshot.identity.candidates.map(candidate => (
+                    <button
+                      key={candidate.id}
+                      type="button"
+                      disabled={saving}
+                      onClick={() => void confirmIdentity(candidate.id)}
+                      className="flex items-center justify-between gap-4 rounded-xl border border-[#DCE4EE] bg-white p-4 text-left transition hover:border-[#8EACEB] hover:bg-[#F2F6FF]"
+                    >
+                      <span>
+                        <strong className="block text-sm text-[#26354A]">
+                          {candidate.displayName}
+                        </strong>
+                        <span className="mt-1 block text-xs text-[#718096]">
+                          {candidate.email || "CRM salesperson record"}
+                        </span>
+                      </span>
+                      <ArrowRight className="size-4 text-[#2F6FED]" />
+                    </button>
+                  ))
+                ) : (
+                  <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
+                    Your CRM salesperson identity has not been mapped yet. Ask
+                    your manager to link your CRM owner record to your AmarktAI
+                    account.
+                  </p>
+                )}
+              </div>
+            </>
+          ) : needsMailbox ? (
+            <>
+              <StepIcon>
+                <KeyRound size={19} />
+              </StepIcon>
+              <p className="amk-auth__panel-eyebrow">STEP 3 · YOUR MAILBOX</p>
+              <h2>Connect your Outlook mailbox.</h2>
+              <p className="amk-auth__muted">
+                Microsoft handles the sign-in and verification. AmarktAI never
+                asks for your Outlook password, and access remains tied to your
+                own user.
+              </p>
+              <Button
+                className={`mt-6 ${blueButton}`}
+                onClick={() =>
+                  window.location.assign("/api/mailbox/microsoft/start")
+                }
+              >
+                Connect Outlook <ArrowRight className="ml-2 size-4" />
+              </Button>
+              <div className="mt-7 border-t border-[#E5EAF0] pt-6">
+                <p className="amk-auth__panel-eyebrow">START WITH REVIEW</p>
+                <h3 className="mt-2 text-lg font-bold">You stay in control.</h3>
+                <p className="mt-2 text-sm leading-6 text-[#66758A]">
+                  Every customer-facing action waits for your confirmation at
+                  first. You can change that later in Settings.
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              <StepIcon>
+                <Check size={20} />
+              </StepIcon>
+              <p className="amk-auth__panel-eyebrow">PERSONAL SETUP COMPLETE</p>
+              <h2>Your workspace is ready for the next setup step.</h2>
+              <p className="amk-auth__muted">
+                {snapshot.canManage && !snapshot.company.complete
+                  ? "Next, complete the company setup once so approved knowledge and the CRM can be inherited by the team."
+                  : `You are joining ${snapshot.organisationName} with your own Assistant identity, memory, CRM context and Review Everything as your safe starting point.`}
+              </p>
+              <Button
+                disabled={saving}
+                onClick={() => void complete()}
+                className={`mt-7 ${blueButton}`}
+              >
+                {saving ? (
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                ) : null}
+                Continue <ArrowRight className="ml-2 size-4" />
+              </Button>
+            </>
+          )}
+
+          {error ? (
+            <p
+              role="alert"
+              className="mt-5 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800"
+            >
+              {error}
+            </p>
+          ) : null}
         </div>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 }
