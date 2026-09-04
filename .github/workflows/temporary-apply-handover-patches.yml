@@ -32,10 +32,14 @@ jobs:
           if text.count(old) != 1:
               raise SystemExit(f'provider enum count={text.count(old)}')
           text = text.replace(old, 'provider: mysqlEnum("provider", ["microsoft", "google", "smtp"]).notNull(),', 1)
-          old = '    redirectUri: varchar("redirectUri", { length: 1024 }).notNull(),\n    expiresAt: timestamp("expiresAt").notNull(),'
-          if text.count(old) != 1:
-              raise SystemExit(f'oauth marker count={text.count(old)}')
-          text = text.replace(old, '    redirectUri: varchar("redirectUri", { length: 1024 }).notNull(),\n    provider: mysqlEnum("provider", ["microsoft", "google"])\n      .notNull()\n      .default("microsoft"),\n    expiresAt: timestamp("expiresAt").notNull(),', 1)
+          start = text.index('export const userMailboxOAuthStates = mysqlTable(')
+          end = text.index('/** Fail-closed recipient suppression', start)
+          section = text[start:end]
+          marker = '    redirectUri: varchar("redirectUri", { length: 1024 }).notNull(),\n    expiresAt: timestamp("expiresAt").notNull(),'
+          if section.count(marker) != 1:
+              raise SystemExit(f'user mailbox oauth marker count={section.count(marker)}')
+          section = section.replace(marker, '    redirectUri: varchar("redirectUri", { length: 1024 }).notNull(),\n    provider: mysqlEnum("provider", ["microsoft", "google"])\n      .notNull()\n      .default("microsoft"),\n    expiresAt: timestamp("expiresAt").notNull(),', 1)
+          text = text[:start] + section + text[end:]
           p.write_text(text)
           PY
       - name: Bind Microsoft OAuth state and inbound route
