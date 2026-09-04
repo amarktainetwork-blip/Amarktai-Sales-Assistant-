@@ -124,7 +124,7 @@ describe("new-user browser CRM commissioning journey contract", () => {
 
   it("keeps technical commissioning out of the normal onboarding screen", () => {
     const onboarding = read("../client/src/pages/Onboarding.tsx");
-    expect(onboarding).toContain("Connect your CRM.");
+    expect(onboarding).toContain("Connect the CRM your team already uses.");
     expect(onboarding).toContain("Connect {provider.label}");
     expect(onboarding).toContain("Secure CRM workspace");
     for (const technicalTerm of [
@@ -141,7 +141,7 @@ describe("new-user browser CRM commissioning journey contract", () => {
 
   it("turns interrupted website responses into a safe customer message", () => {
     const onboarding = read("../client/src/pages/Onboarding.tsx");
-    expect(onboarding).toContain("Learning paused before it finished.");
+    expect(onboarding).toContain("Website learning paused before it finished.");
     expect(onboarding).toContain("Nothing new was trusted.");
     expect(onboarding).not.toContain("Failed to execute 'json' on 'Response'");
     expect(onboarding).not.toContain("Unexpected end of JSON input");
@@ -157,7 +157,10 @@ describe("new-user browser CRM commissioning journey contract", () => {
     expect(companySetup).toContain("discovery.sourceUrl");
     expect(companySetup).toContain('target="_blank"');
     expect(companySetup).toContain("knowledgeIndexes: basics.map");
-    expect(onboarding).toMatch(/before anything becomes\s+trusted knowledge/);
+    expect(onboarding).toMatch(/before any\s+information becomes trusted knowledge/);
+    expect(onboarding).toMatch(
+      /Nothing becomes trusted\s+company knowledge until you confirm it/
+    );
     expect(database).toContain('completeness?.status === "incomplete"');
     expect(database).toContain(
       "Retry company learning before approving any facts"
