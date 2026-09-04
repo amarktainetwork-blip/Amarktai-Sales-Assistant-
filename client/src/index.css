@@ -100,12 +100,12 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .amk-auth__form-wrap--setup { width: min(100%, 620px) !important; }
 .amk-auth__form-wrap--wide { width: min(100%, 780px) !important; }
 
-/* Final client-facing photography: every placement uses a different professional image. */
+/* Final client-facing photography: every placement uses a different verified professional image. */
 body:has(.amk-hero) .amk-hero .amk-photo-frame--hero img {
   content: url("https://images.pexels.com/photos/7222903/pexels-photo-7222903.jpeg?auto=compress&cs=tinysrgb&w=1400");
 }
 body:has(.amk-hero) .amk-section--ice .amk-photo-frame--story img {
-  content: url("https://images.pexels.com/photos/7516364/pexels-photo-7516364.jpeg?auto=compress&cs=tinysrgb&w=1400");
+  content: url("https://images.pexels.com/photos/8297352/pexels-photo-8297352.jpeg?auto=compress&cs=tinysrgb&w=1400");
 }
 body:has(.amk-hero) .amk-section--warm .amk-photo-frame--story img {
   content: url("https://images.pexels.com/photos/8871930/pexels-photo-8871930.jpeg?auto=compress&cs=tinysrgb&w=1400");
@@ -117,25 +117,25 @@ body:has(.amk-page-hero--photo) .amk-page-hero--photo .amk-photo-frame--page img
   content: url("https://images.pexels.com/photos/12903303/pexels-photo-12903303.jpeg?auto=compress&cs=tinysrgb&w=1400");
 }
 body:has(.amk-page-hero--photo) .amk-section--ice .amk-photo-frame--story img {
-  content: url("https://images.pexels.com/photos/7222985/pexels-photo-7222985.jpeg?auto=compress&cs=tinysrgb&w=1400");
+  content: url("https://images.pexels.com/photos/5717076/pexels-photo-5717076.jpeg?auto=compress&cs=tinysrgb&w=1400");
 }
 body:has(.amk-page-hero--photo) .amk-section--warm .amk-photo-frame--story img {
   content: url("https://images.pexels.com/photos/8512447/pexels-photo-8512447.jpeg?auto=compress&cs=tinysrgb&w=1400");
 }
 body:has(.amk-page-hero--about) .amk-page-hero--about .amk-photo-frame--page img {
-  content: url("https://images.pexels.com/photos/3874629/pexels-photo-3874629.jpeg?auto=compress&cs=tinysrgb&w=1400");
+  content: url("https://images.pexels.com/photos/36713171/pexels-photo-36713171.jpeg?auto=compress&cs=tinysrgb&w=1400");
 }
 body:has(.amk-page-hero--about) .amk-section--ice .amk-photo-frame--story img {
   content: url("https://images.pexels.com/photos/5673503/pexels-photo-5673503.jpeg?auto=compress&cs=tinysrgb&w=1400");
 }
 body:has(.amk-page-hero--about) .amk-section--warm .amk-photo-frame--story img {
-  content: url("https://images.pexels.com/photos/8871938/pexels-photo-8871938.jpeg?auto=compress&cs=tinysrgb&w=1400");
+  content: url("https://images.pexels.com/photos/7223006/pexels-photo-7223006.jpeg?auto=compress&cs=tinysrgb&w=1400");
 }
 body:has(.amk-contact-hero) .amk-contact-hero .amk-photo-frame--contact img {
   content: url("https://images.pexels.com/photos/12902988/pexels-photo-12902988.jpeg?auto=compress&cs=tinysrgb&w=1400");
 }
 main.amk-auth:not(.fixed):not(.amk-auth--setup) .amk-auth__visual > img {
-  content: url("https://images.pexels.com/photos/7959562/pexels-photo-7959562.jpeg?auto=compress&cs=tinysrgb&w=1400");
+  content: url("https://images.pexels.com/photos/8133947/pexels-photo-8133947.jpeg?auto=compress&cs=tinysrgb&w=1400");
   object-fit: cover !important;
   object-position: center !important;
   padding: 0 !important;
