@@ -18,26 +18,26 @@ import { accountLinks } from "./site";
 const benefits = [
   {
     icon: BriefcaseBusiness,
-    title: "Walk into every call prepared",
-    copy: "See the customer history, current task, opportunity and useful company context together before the conversation starts.",
+    title: "Know who needs attention next",
+    copy: "Bring the current task, opportunity, customer history and approved company context into one working view before the conversation starts.",
   },
   {
     icon: MessageSquareText,
     title: "Stay focused on the customer",
-    copy: "Use the Assistant for talking points, objection help and consented call support without bouncing between tabs and notes.",
+    copy: "Prepare talking points, handle objections and use consented call support without rebuilding the customer story from tabs, notes and memory.",
   },
   {
     icon: Clock3,
     title: "Finish the follow-up while it is fresh",
-    copy: "Turn the real outcome into notes, callbacks, messages and CRM updates instead of leaving good intentions in a notebook.",
+    copy: "Turn the confirmed outcome into notes, callbacks, reviewed messages and CRM updates before the next customer takes over the day.",
   },
 ] as const;
 
 const salesLoop = [
-  ["01", "Know the business", "Approved company knowledge gives the Assistant the products, services, customer fit and policies your team can rely on."],
-  ["02", "Know this customer", "Bring the useful CRM history into one working view so the salesperson understands what has happened and what matters now."],
-  ["03", "Have the conversation", "Prepare before the call and use consented live assistance when it helps, while the salesperson stays in control."],
-  ["04", "Finish what was agreed", "Prepare the exact next step, review important actions and update the right system through the salesperson's own connection."],
+  ["01", "Know the business", "Approved company knowledge gives AmarktAI the products, services, customer fit and policies the sales team is allowed to rely on."],
+  ["02", "Know this customer", "The CRM remains the system of record while AmarktAI brings the useful customer history, tasks and opportunity into the daily workspace."],
+  ["03", "Have the conversation", "Prepare before the call and use consented live assistance when it helps, while the salesperson stays in control of the conversation."],
+  ["04", "Finish what was agreed", "Capture the real outcome, review important actions and update the correct CRM or mailbox through the salesperson's own commissioned connection."],
 ] as const;
 
 export default function HomePage() {
@@ -46,13 +46,13 @@ export default function HomePage() {
       <section className="amk-hero">
         <div className="amk-shell amk-hero__grid">
           <div className="amk-hero__copy">
-            <p className="amk-eyebrow">THE SALES ASSISTANT FOR THE CRM YOU ALREADY USE</p>
+            <p className="amk-eyebrow">YOUR DAILY SALES WORKSPACE — AROUND THE CRM YOU ALREADY USE</p>
             <h1>
               Sell with more confidence.
-              <span>Follow up without the scramble.</span>
+              <span>Know the next move before follow-up slips.</span>
             </h1>
             <p className="amk-lead">
-              <BrandName /> gives every salesperson a working assistant around the CRM they already use — helping them prepare for customers, handle conversations and finish the follow-up afterwards.
+              <BrandName /> turns the CRM you already trust, approved company knowledge and real customer activity into one daily sales workspace — so each salesperson can see who needs attention, what happened, what to say and what should happen next.
             </p>
             <div className="amk-actions">
               <Link href={accountLinks.getStarted} className="amk-button amk-button--primary">
@@ -63,9 +63,9 @@ export default function HomePage() {
               </Link>
             </div>
             <div className="amk-proofline" aria-label="Product benefits">
-              <span><Check size={15} /> Keep your CRM</span>
-              <span><Check size={15} /> Personal salesperson workspace</span>
-              <span><Check size={15} /> Review important actions</span>
+              <span><Check size={15} /> CRM stays your system of record</span>
+              <span><Check size={15} /> AmarktAI becomes the daily workspace</span>
+              <span><Check size={15} /> Review important customer actions</span>
             </div>
           </div>
 
@@ -75,7 +75,7 @@ export default function HomePage() {
             </figure>
             <div className="amk-float-card amk-float-card--top">
               <Sparkles size={17} />
-              <div><strong>Ready for the next call</strong><span>Customer context + company knowledge</span></div>
+              <div><strong>Next customer is clear</strong><span>CRM context + approved company knowledge</span></div>
             </div>
             <div className="amk-float-card amk-float-card--bottom">
               <CheckCircle2 size={17} />
@@ -87,9 +87,9 @@ export default function HomePage() {
 
       <section className="amk-benefit-band">
         <div className="amk-shell amk-benefit-band__grid">
-          <div><strong>Keep the CRM you already trust</strong><span>No rip-and-replace project.</span></div>
-          <div><strong>Give every seller better context</strong><span>Business + customer + conversation.</span></div>
-          <div><strong>Close the follow-up gap</strong><span>Turn the outcome into the next action.</span></div>
+          <div><strong>Keep the CRM you already trust</strong><span>It remains the system of record.</span></div>
+          <div><strong>Work from AmarktAI every day</strong><span>Priority + customer + call + follow-up.</span></div>
+          <div><strong>Close the follow-up gap</strong><span>Turn the real outcome into the next action.</span></div>
         </div>
       </section>
 
@@ -97,8 +97,8 @@ export default function HomePage() {
         <div className="amk-shell">
           <div className="amk-section__head amk-section__head--center">
             <p className="amk-eyebrow">A BETTER SALES DAY</p>
-            <h2>Your salespeople should spend more time selling and less time reconstructing what happened.</h2>
-            <p>The information is usually already there. <BrandName /> helps bring the useful pieces together at the moment the salesperson needs them.</p>
+            <h2>The salesperson should know what matters now without reconstructing yesterday first.</h2>
+            <p>The useful information is usually already in the business and CRM. <BrandName /> brings the right pieces together when the salesperson needs to decide, call or follow up.</p>
           </div>
           <div className="amk-benefit-grid">
             {benefits.map(({ icon: Icon, title, copy }) => (
@@ -123,11 +123,11 @@ export default function HomePage() {
           <div className="amk-split__copy">
             <p className="amk-eyebrow">BE READY BEFORE THE PHONE RINGS</p>
             <h2>Walk into the conversation knowing the customer story.</h2>
-            <p>Instead of opening five screens, the salesperson can see the current task, opportunity, recent activity, useful notes and relevant company context together.</p>
+            <p>Instead of opening five screens, the salesperson can see the current task, opportunity, recent activity, useful notes and relevant approved company context together.</p>
             <ul className="amk-check-list">
               <li><CheckCircle2 size={18} /> Understand what happened last time</li>
               <li><CheckCircle2 size={18} /> See what needs attention now</li>
-              <li><CheckCircle2 size={18} /> Prepare talking points around the real customer</li>
+              <li><CheckCircle2 size={18} /> Prepare around the real customer, not invented context</li>
             </ul>
             <Link href="/how-it-works" className="amk-text-link">See the full sales flow <ArrowRight size={16} /></Link>
           </div>
@@ -141,7 +141,7 @@ export default function HomePage() {
               <p className="amk-eyebrow">ONE ASSISTANT ACROSS THE SALES LOOP</p>
               <h2>From company knowledge to customer follow-through.</h2>
             </div>
-            <p>The Assistant stays useful through the whole sales rhythm instead of becoming another isolated chat box.</p>
+            <p>AmarktAI stays with the salesperson from deciding who needs attention through the call, the outcome and the reviewed next action — instead of becoming another isolated chat box.</p>
           </div>
           <div className="amk-process-grid">
             {salesLoop.map(([number, title, copy]) => (
@@ -160,9 +160,9 @@ export default function HomePage() {
           <div className="amk-split__copy">
             <p className="amk-eyebrow">BEFORE, DURING AND AFTER THE CALL</p>
             <h2>Keep the salesperson in the conversation — not buried in admin.</h2>
-            <p>Prepare with the right context before the call. Use consented transcription and assistance when it helps. Then turn the confirmed outcome into the note, callback, message or CRM update that should happen next.</p>
+            <p>Prepare with the right context before the call. Use consented transcription and assistance when it helps. Then turn the confirmed outcome into the note, callback, reviewed message or CRM update that should happen next.</p>
             <div className="amk-chip-row">
-              <span>Customer brief</span><span>Talking points</span><span>Call support</span><span>Notes</span><span>Callbacks</span><span>CRM follow-through</span>
+              <span>Customer brief</span><span>Talking points</span><span>Call support</span><span>Outcome</span><span>Callbacks</span><span>CRM follow-through</span>
             </div>
           </div>
           <div className="amk-split__media">
@@ -178,7 +178,7 @@ export default function HomePage() {
           <div>
             <p className="amk-eyebrow amk-eyebrow--light">HELPFUL WITHOUT TAKING OVER</p>
             <h2>Important customer actions stay visible and reviewable.</h2>
-            <p><BrandName /> starts from Review Everything. The salesperson can see what is about to happen, which customer it affects and which system will be used.</p>
+            <p><BrandName /> starts from Review Everything. The salesperson can see the exact proposed action, which customer it affects and which commissioned system will be used before it runs.</p>
           </div>
           <div className="amk-control-card">
             <div><ShieldCheck size={24} /><span><strong>Review first</strong><small>See the exact action before it runs.</small></span></div>
@@ -198,7 +198,7 @@ export default function HomePage() {
           <div className="amk-split__copy">
             <p className="amk-eyebrow">FOR ONE SALESPERSON OR THE WHOLE TEAM</p>
             <h2>Teach the business once. Give every salesperson a personal workspace.</h2>
-            <p>Managers can approve shared company knowledge while each salesperson keeps their own login, customer work, CRM identity, mailbox and Assistant context.</p>
+            <p>Managers approve the shared company knowledge once. Each salesperson keeps their own login, CRM identity, mailbox, customer context and AmarktAI memory.</p>
             <Link href="/pricing" className="amk-text-link">See plans and pricing <ArrowRight size={16} /></Link>
           </div>
         </div>
@@ -208,7 +208,7 @@ export default function HomePage() {
         <div className="amk-shell amk-final-cta__inner">
           <div>
             <p className="amk-eyebrow amk-eyebrow--light">MAKE THE NEXT SALES DAY EASIER</p>
-            <h2>Keep your CRM. Add the Assistant your salespeople actually use.</h2>
+            <h2>Keep your CRM. Give the salesperson one place to run the sales day.</h2>
             <p>Start with one salesperson, or talk to us about your CRM and sales process.</p>
           </div>
           <div className="amk-actions">
