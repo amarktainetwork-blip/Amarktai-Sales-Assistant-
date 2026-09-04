@@ -65,7 +65,7 @@ describe("final public website", () => {
     expect(combined).not.toMatch(/\bGenX\b/i);
   });
 
-  it("uses first-party product and workflow visuals instead of remote stock photography", () => {
+  it("keeps semantic first-party visual fallbacks in markup while the final theme can supply curated photography", () => {
     const home = render("/", HomePage);
     const how = render("/how-it-works", HowItWorksPage);
     const about = render("/about", AboutPage);
@@ -90,7 +90,7 @@ describe("final public website", () => {
     expect(html).toContain("Book a demo");
   });
 
-  it("uses the requested public navigation order and canonical brand spelling", () => {
+  it("uses the requested public navigation order and separates product branding from company attribution", () => {
     expect(marketingNavigation.map(item => item.href)).toEqual(["/how-it-works", "/about", "/pricing", "/contact"]);
     expect(marketingNavigation[1]?.label).toBe("Why AmarktAI");
     const html = render("/", HomePage);
@@ -100,7 +100,8 @@ describe("final public website", () => {
     expect(html).toContain(">How It Works<");
     expect(html).toContain(">Sign In<");
     expect(html).toContain("Start Free");
-    expect(html).not.toContain("Amarktai");
+    expect(html).not.toContain("Amarktai Sales Assistant");
+    expect(html).toContain("Part of Amarktai Network");
   });
 
   it("restores scroll on public route transitions without touching dashboard routes", () => {

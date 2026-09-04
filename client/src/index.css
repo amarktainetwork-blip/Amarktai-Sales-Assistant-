@@ -6,12 +6,12 @@
 :root {
   --font-display: "Space Grotesk", sans-serif;
   --font-body: "DM Sans", sans-serif;
-  --color-bg: #f3f6fb;
+  --color-bg: #e8edf4;
   --color-surface: #ffffff;
   --color-surface-raised: #ffffff;
-  --color-border: #d7e0ea;
+  --color-border: #d0d9e4;
   --color-text: #24344a;
-  --color-text-muted: #6b7b90;
+  --color-text-muted: #66778d;
   --color-brand: #2f6fed;
   --color-brand-bright: #5d8df4;
   --color-info: #287fba;
@@ -63,7 +63,7 @@ button, a, input, textarea, select { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 :focus-visible { outline: 3px solid var(--color-focus); outline-offset: 3px; }
 
-/* First-party product illustrations are diagrams, not stock photographs. */
+/* First-party product illustrations remain valid fallbacks when photography is unavailable. */
 .amk-auth__visual > img[src$=".svg"] {
   object-fit: contain !important;
   object-position: center !important;
@@ -75,30 +75,115 @@ button, a { -webkit-tap-highlight-color: transparent; }
   object-fit: contain !important;
   object-position: center !important;
   padding: clamp(18px, 2.4vw, 34px);
-  background: linear-gradient(145deg, #eef4ff, #f4fbfb);
+  background: linear-gradient(145deg, #e9eef5, #edf2f6);
 }
 
 /* Secure access and onboarding share one visual language. */
-.amk-auth--setup { background: #f7f8fa; }
+.amk-auth--setup { background: #e8edf4; }
 .amk-auth__visual--product { background: linear-gradient(145deg, #10233d 0%, #173d67 58%, #1c5d72 100%); }
 .amk-auth__visual--product > img {
-  object-fit: contain !important;
+  object-fit: cover !important;
   object-position: center !important;
-  padding: clamp(72px, 8vw, 128px);
-  opacity: .42;
-  filter: saturate(.8) contrast(1.05);
+  padding: 0 !important;
+  opacity: 1;
+  filter: none;
 }
 .amk-auth__visual--product .amk-auth__shade {
-  background: linear-gradient(120deg, rgba(12,30,52,.94), rgba(20,57,90,.78) 58%, rgba(16,76,88,.68));
+  background: linear-gradient(120deg, rgba(12,30,52,.80), rgba(20,57,90,.58) 58%, rgba(16,76,88,.48));
 }
 .amk-auth__form-side--setup {
   place-items: start center !important;
   overflow-y: auto;
   padding-top: clamp(40px, 6vh, 72px) !important;
-  padding-bottom: clamp(40px, 7vh, 88px) !important;
+  padding-bottom: clamp(54px, 8vh, 96px) !important;
 }
 .amk-auth__form-wrap--setup { width: min(100%, 620px) !important; }
 .amk-auth__form-wrap--wide { width: min(100%, 780px) !important; }
+
+/* Final client-facing photography: every placement uses a different verified professional image. */
+body:has(.amk-hero) .amk-hero .amk-photo-frame--hero img {
+  content: url("https://images.pexels.com/photos/7222903/pexels-photo-7222903.jpeg?auto=compress&cs=tinysrgb&w=1400");
+}
+body:has(.amk-hero) .amk-section--ice .amk-photo-frame--story img {
+  content: url("https://images.pexels.com/photos/8297352/pexels-photo-8297352.jpeg?auto=compress&cs=tinysrgb&w=1400");
+}
+body:has(.amk-hero) .amk-section--warm .amk-photo-frame--story img {
+  content: url("https://images.pexels.com/photos/8871930/pexels-photo-8871930.jpeg?auto=compress&cs=tinysrgb&w=1400");
+}
+body:has(.amk-hero) .amk-section--light .amk-photo-frame--story img {
+  content: url("https://images.pexels.com/photos/12899159/pexels-photo-12899159.jpeg?auto=compress&cs=tinysrgb&w=1400");
+}
+body:has(.amk-page-hero--photo) .amk-page-hero--photo .amk-photo-frame--page img {
+  content: url("https://images.pexels.com/photos/12903303/pexels-photo-12903303.jpeg?auto=compress&cs=tinysrgb&w=1400");
+}
+body:has(.amk-page-hero--photo) .amk-section--ice .amk-photo-frame--story img {
+  content: url("https://images.pexels.com/photos/5717076/pexels-photo-5717076.jpeg?auto=compress&cs=tinysrgb&w=1400");
+}
+body:has(.amk-page-hero--photo) .amk-section--warm .amk-photo-frame--story img {
+  content: url("https://images.pexels.com/photos/8512447/pexels-photo-8512447.jpeg?auto=compress&cs=tinysrgb&w=1400");
+}
+body:has(.amk-page-hero--about) .amk-page-hero--about .amk-photo-frame--page img {
+  content: url("https://images.pexels.com/photos/36713171/pexels-photo-36713171.jpeg?auto=compress&cs=tinysrgb&w=1400");
+}
+body:has(.amk-page-hero--about) .amk-section--ice .amk-photo-frame--story img {
+  content: url("https://images.pexels.com/photos/5673503/pexels-photo-5673503.jpeg?auto=compress&cs=tinysrgb&w=1400");
+}
+body:has(.amk-page-hero--about) .amk-section--warm .amk-photo-frame--story img {
+  content: url("https://images.pexels.com/photos/7223006/pexels-photo-7223006.jpeg?auto=compress&cs=tinysrgb&w=1400");
+}
+body:has(.amk-contact-hero) .amk-contact-hero .amk-photo-frame--contact img {
+  content: url("https://images.pexels.com/photos/12902988/pexels-photo-12902988.jpeg?auto=compress&cs=tinysrgb&w=1400");
+}
+main.amk-auth:not(.fixed):not(.amk-auth--setup) .amk-auth__visual > img {
+  content: url("https://images.pexels.com/photos/8133947/pexels-photo-8133947.jpeg?auto=compress&cs=tinysrgb&w=1400");
+  object-fit: cover !important;
+  object-position: center !important;
+  padding: 0 !important;
+  opacity: 1 !important;
+  filter: none !important;
+}
+main.amk-auth.fixed:not(.amk-auth--setup) .amk-auth__visual > img {
+  content: url("https://images.pexels.com/photos/27086215/pexels-photo-27086215.jpeg?auto=compress&cs=tinysrgb&w=1400");
+  object-fit: cover !important;
+  object-position: center !important;
+  padding: 0 !important;
+  opacity: 1 !important;
+  filter: none !important;
+}
+main.amk-auth.amk-auth--setup .amk-auth__visual > img {
+  content: url("https://images.pexels.com/photos/39219740/pexels-photo-39219740.jpeg?auto=compress&cs=tinysrgb&w=1400");
+  object-fit: cover !important;
+  object-position: center !important;
+  padding: 0 !important;
+  opacity: 1 !important;
+  filter: none !important;
+}
+
+/* Slightly darker, cool-neutral surfaces across public, auth, setup and dashboard pages. */
+.amk-site {
+  --ice: #e5ebf2 !important;
+  --lavender: #e8edf5 !important;
+  --warm: #e8edf4 !important;
+  --light: #e8edf4 !important;
+  --white: #eef2f6 !important;
+  background: #e8edf4 !important;
+}
+.amk-header { background: rgba(238,242,246,.94) !important; }
+.amk-hero,
+.amk-page-hero,
+.amk-contact-hero,
+.amk-pricing-hero {
+  background: linear-gradient(128deg, #e5ebf2 0%, #e8eef5 54%, #e3ebf2 100%) !important;
+}
+.amk-section--white { background: #edf1f5 !important; }
+.amk-section--light { background: #e8edf4 !important; }
+.amk-section--ice { background: #e5ebf2 !important; }
+.amk-section--warm { background: #e8edf4 !important; }
+.amk-contact-section { background: #e8edf4 !important; }
+.amk-auth,
+.amk-auth__form-side,
+.amk-auth--setup { background: #e8edf4 !important; }
+[data-slot="sidebar-inset"] { background: #e8edf4 !important; }
 
 /* Business knowledge review is still onboarding, not the daily dashboard. */
 [data-company-knowledge-report] {
@@ -109,18 +194,49 @@ button, a { -webkit-tap-highlight-color: transparent; }
   overflow-y: auto;
   background:
     radial-gradient(circle at 8% 4%, rgba(47,111,237,.10), transparent 30%),
-    #f4f7fb;
+    #e8edf4;
   padding: clamp(28px, 4vw, 64px) max(24px, calc((100vw - 1180px) / 2));
 }
 [data-company-knowledge-report] > header {
-  border-color: #cfdbea !important;
-  box-shadow: 0 18px 55px rgba(38,53,74,.07) !important;
+  border-color: #c8d4e2 !important;
+  box-shadow: 0 18px 55px rgba(38,53,74,.09) !important;
+}
+
+/* Copyright is visible throughout public, secure setup and logged-in workspaces. */
+main.amk-auth::after,
+body:has(.amarktai-dashboard-sidebar)::after,
+body:has([data-company-knowledge-report])::after {
+  content: "© 2026 AmarktAI Sales Assistant · Part of Amarktai Network";
+  position: fixed;
+  right: 18px;
+  bottom: 10px;
+  z-index: 300;
+  color: #627287;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .025em;
+  pointer-events: none;
+}
+body:has(.amarktai-dashboard-sidebar)::after {
+  padding: 5px 9px;
+  border-radius: 8px;
+  background: rgba(232,237,244,.92);
 }
 
 @media (max-width: 980px) {
   .amk-auth__form-side--setup { padding-top: 34px !important; }
   .amk-auth__form-wrap--wide,
   .amk-auth__form-wrap--setup { width: min(100%, 760px) !important; }
+}
+
+@media (max-width: 640px) {
+  main.amk-auth::after,
+  body:has(.amarktai-dashboard-sidebar)::after,
+  body:has([data-company-knowledge-report])::after {
+    right: 10px;
+    bottom: 6px;
+    font-size: 9px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

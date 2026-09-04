@@ -43,13 +43,13 @@ describe("AmarktAI customer-facing branding boundary", () => {
     expect(shell).not.toContain("Amarktai Sales Assistant");
   });
 
-  it("uses first-party product visuals instead of generic remote stock photography", () => {
-    const root = path.resolve(process.cwd(), "client");
-    const combined = clientFiles(root)
-      .map(file => readFileSync(file, "utf8"))
-      .join("\n");
-    expect(combined).not.toMatch(/images\.pexels\.com/i);
-    expect(combined).not.toMatch(/images\.unsplash\.com/i);
+  it("uses curated professional photography once per placement and avoids generic Unsplash fallbacks", () => {
+    const css = readFileSync(path.resolve(process.cwd(), "client/src/index.css"), "utf8");
+    const photoIds = [...css.matchAll(/pexels-photo-(\d+)/g)].map(match => match[1]);
+    expect(photoIds.length).toBeGreaterThanOrEqual(10);
+    expect(new Set(photoIds).size).toBe(photoIds.length);
+    expect(css).not.toMatch(/images\.unsplash\.com/i);
+    expect(css).toContain("Part of Amarktai Network");
   });
 
   it("keeps second-factor verification on the secure auth route before workspace entry", () => {
