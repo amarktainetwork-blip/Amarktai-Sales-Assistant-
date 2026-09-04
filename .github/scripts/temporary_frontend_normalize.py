@@ -1,5 +1,6 @@
 from pathlib import Path
 
+# One-shot client handover wording normalizer. Removed after this run.
 replacements = {
     "client/src/pages/Today.tsx": [
         ("Amarktai", "AmarktAI"),
