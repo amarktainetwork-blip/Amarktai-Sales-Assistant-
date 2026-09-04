@@ -11,7 +11,7 @@ import {
 const read = (relative: string) =>
   readFileSync(new URL(relative, import.meta.url), "utf8");
 
-describe("new-user Genie commissioning journey contract", () => {
+describe("new-user browser CRM commissioning journey contract", () => {
   it("keeps registration, 2FA and guided per-connection setup connected without deployment credentials or raw JSON", () => {
     const routers = read("./routers.ts");
     const layout = read("../client/src/components/DashboardLayout.tsx");
@@ -41,7 +41,7 @@ describe("new-user Genie commissioning journey contract", () => {
     expect(onboarding).not.toContain("operationId");
   });
 
-  it("allows limited-permissions Genie selling when every core task alone is LIVE_PROVEN", () => {
+  it("allows limited-permissions browser CRM selling when every core task alone is LIVE_PROVEN", () => {
     const operations = [
       ...CORE_GENIE_TASKS.map(key => ({ key, status: "LIVE_PROVEN" })),
       { key: "quote.create", status: "NOT_LEARNED" },
@@ -128,7 +128,7 @@ describe("new-user Genie commissioning journey contract", () => {
     expect(onboarding).toContain("Connect {provider.label}");
     expect(onboarding).toContain("Secure CRM workspace");
     for (const technicalTerm of [
-      "Teach Amarktai",
+      "Teach AmarktAI",
       "LIVE_PROVEN",
       "TEST_READY",
       "GENIE_LOGIN_CALIBRATION_REQUIRED",
@@ -193,7 +193,7 @@ describe("new-user Genie commissioning journey contract", () => {
     expect(onboarding).toContain("sign in directly");
     expect(workspace).toContain("Check my sign-in");
     expect(workspace).toContain("Take control");
-    expect(workspace).toContain("Give control to Amarktai");
+    expect(workspace).toContain("Give control to AmarktAI");
   });
 
   it("keeps the standard CRM choice provider-neutral and capability selection automatic", () => {
@@ -215,9 +215,11 @@ describe("new-user Genie commissioning journey contract", () => {
   it("routes invited salespeople through identity confirmation without company onboarding", () => {
     const layout = read("../client/src/components/DashboardLayout.tsx");
     expect(layout).toContain("/api/team/crm-identity");
-    expect(layout).toContain("Which CRM salesperson are you?");
-    expect(layout).toContain("won’t need to repeat that setup");
-    expect(layout).toContain("Your company workspace is being prepared.");
+    expect(layout).toContain("Which salesperson record is yours?");
+    expect(layout).toContain(
+      "When setup is proven, your customers, tasks, opportunities and call context will be available here automatically."
+    );
+    expect(layout).toContain("Your AmarktAI workspace is being prepared.");
   });
 
   it("does not require installation-level CRM credentials", () => {
