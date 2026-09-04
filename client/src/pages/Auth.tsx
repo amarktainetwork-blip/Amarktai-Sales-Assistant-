@@ -1,3 +1,4 @@
+import { useAuth } from "@/_core/hooks/useAuth";
 import { BrandMark } from "@/components/BrandMark";
 import { startLogin } from "@/const";
 import { friendlyError } from "@/lib/friendlyError";
@@ -6,25 +7,50 @@ import {
   ArrowRight,
   CheckCircle2,
   ChevronLeft,
+  MailCheck,
   ShieldCheck,
   UserPlus,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation, useSearch } from "wouter";
-const AUTH_PHOTO =
-  "https://images.pexels.com/photos/8485714/pexels-photo-8485714.jpeg?auto=compress&cs=tinysrgb&w=1800";
+
+const AUTH_VISUAL = "/images/site-hero.svg";
 
 export default function Auth() {
   const search = useSearch();
+  const [, navigate] = useLocation();
+  const { user, loading: authLoading, logout } = useAuth();
   const mode = trpc.auth.mode.useQuery();
+  const security = trpc.security.status.useQuery(undefined, {
+    enabled: Boolean(user),
+    retry: false,
+  });
   const query = new URLSearchParams(search);
   const invite = query.get("invite");
   const reset = query.get("reset");
   const authView = query.get("mode");
   const isRegister = authView === "register";
+  const verifying = Boolean(
+    user && !security.isLoading && security.data && !security.data.verified
+  );
 
-  const localPanel = reset ? (
+  useEffect(() => {
+    if (!user || !security.data?.verified || invite || reset) return;
+    navigate("/dashboard", { replace: true });
+  }, [invite, navigate, reset, security.data?.verified, user]);
+
+  const localPanel = verifying ? (
+    <LocalSecondFactorForm
+      email={user?.email || "your account email"}
+      hasEmail={Boolean(security.data?.hasEmail)}
+      smtpReady={Boolean(security.data?.smtpReady)}
+      onUseDifferentAccount={async () => {
+        await logout();
+        window.location.assign("/auth");
+      }}
+    />
+  ) : reset ? (
     <ResetPasswordForm token={reset} />
   ) : isRegister ? (
     <LocalRegistrationForm />
@@ -34,25 +60,29 @@ export default function Auth() {
     <LocalLoginForm />
   );
 
-  const title = reset
-    ? "Choose a new password."
+  const title = verifying
+    ? "Verify your email."
+    : reset
+      ? "Choose a new password."
+      : isRegister
+        ? "Create your AmarktAI account."
+        : authView === "forgot"
+          ? "Recover your account."
+          : "Welcome back.";
+  const eyebrow = verifying
+    ? "STEP 2 OF 2 · SECURE ACCESS"
     : isRegister
-      ? "Create your AmarktAI account."
-      : authView === "forgot"
-        ? "Recover your account."
-        : "Welcome back.";
-  const eyebrow = isRegister
-    ? "CREATE ACCOUNT"
-    : authView === "forgot" || reset
-      ? "ACCOUNT RECOVERY"
-      : "SECURE SIGN IN";
+      ? "CREATE ACCOUNT"
+      : authView === "forgot" || reset
+        ? "ACCOUNT RECOVERY"
+        : "SECURE SIGN IN";
 
   return (
     <main className={`amk-auth${isRegister ? " amk-auth--register" : ""}`}>
       <section className="amk-auth__visual">
         <img
-          src={AUTH_PHOTO}
-          alt="Professional saleswoman working in a bright modern office"
+          src={AUTH_VISUAL}
+          alt="AmarktAI sales workspace showing customer context and guided follow-up"
         />
         <div className="amk-auth__shade" />
         <div className="amk-auth__visual-inner">
@@ -80,11 +110,10 @@ export default function Auth() {
                 <CheckCircle2 size={16} /> Personal user account
               </span>
               <span>
-                <CheckCircle2 size={16} /> Second-factor verification
+                <CheckCircle2 size={16} /> Verification stays on this secure page
               </span>
               <span>
-                <CheckCircle2 size={16} />
-                {"CRM sign-in stays between you and your CRM"}
+                <CheckCircle2 size={16} /> CRM sign-in stays between you and your CRM
               </span>
             </div>
           </div>
@@ -102,7 +131,9 @@ export default function Auth() {
             <>
               <p className="amk-auth__panel-eyebrow">{eyebrow}</p>
               <h2>{title}</h2>
-              {mode.isLoading ? (
+              {authLoading || (user && security.isLoading) ? (
+                <p className="amk-auth__muted">Loading secure access…</p>
+              ) : mode.isLoading ? (
                 <p className="amk-auth__muted">Loading secure access…</p>
               ) : mode.data?.local ? (
                 localPanel
@@ -114,6 +145,144 @@ export default function Auth() {
         </div>
       </section>
     </main>
+  );
+}
+
+function LocalSecondFactorForm({
+  email,
+  hasEmail,
+  smtpReady,
+  onUseDifferentAccount,
+}: {
+  email: string;
+  hasEmail: boolean;
+  smtpReady: boolean;
+  onUseDifferentAccount: () => Promise<void>;
+}) {
+  const [sent, setSent] = useState(false);
+  const [code, setCode] = useState("");
+  const requestCode = trpc.security.requestEmailCode.useMutation({
+    onSuccess: () => {
+      setSent(true);
+      setCode("");
+      toast.success("Verification code sent.");
+    },
+    onError: error =>
+      toast.error(
+        friendlyError(
+          error,
+          "The verification code could not be sent. Try again shortly."
+        )
+      ),
+  });
+  const verifyCode = trpc.security.verifyEmailCode.useMutation({
+    onSuccess: () => {
+      toast.success("Email verified. Opening your AmarktAI workspace.");
+      window.location.assign("/dashboard");
+    },
+    onError: error =>
+      toast.error(
+        friendlyError(
+          error,
+          "That code was not accepted. Check the six digits and try again."
+        )
+      ),
+  });
+
+  if (!hasEmail || !smtpReady)
+    return (
+      <div className="amk-auth-form">
+        <p className="amk-auth__muted">
+          Secure email verification is not available for this account yet. Your
+          workspace has not been opened.
+        </p>
+        <button
+          type="button"
+          className="amk-auth__secondary"
+          onClick={() => void onUseDifferentAccount()}
+        >
+          Use a different account
+        </button>
+      </div>
+    );
+
+  if (!sent)
+    return (
+      <div className="amk-auth-form">
+        <div className="amk-auth__icon">
+          <MailCheck size={20} />
+        </div>
+        <p className="amk-auth__muted">
+          You are signed in as <strong>{email}</strong>. We’ll send a six-digit
+          code to that address before opening any customer or company data.
+        </p>
+        <button
+          type="button"
+          disabled={requestCode.isPending}
+          className="amk-auth__primary"
+          onClick={() => requestCode.mutate()}
+        >
+          {requestCode.isPending ? "Sending…" : "Send verification code"}
+          <ArrowRight size={17} />
+        </button>
+        <button
+          type="button"
+          className="amk-auth__secondary"
+          onClick={() => void onUseDifferentAccount()}
+        >
+          Use a different account
+        </button>
+        <Fineprint />
+      </div>
+    );
+
+  return (
+    <form
+      className="amk-auth-form"
+      onSubmit={event => {
+        event.preventDefault();
+        verifyCode.mutate({ code });
+      }}
+    >
+      <p className="amk-auth__muted">
+        Enter the six-digit code sent to <strong>{email}</strong>. The code is
+        short-lived and can only be used once.
+      </p>
+      <label className="amk-auth-field" htmlFor="verification-code">
+        <span>Verification code</span>
+        <input
+          id="verification-code"
+          name="verification-code"
+          value={code}
+          onChange={event =>
+            setCode(event.target.value.replace(/\D/g, "").slice(0, 6))
+          }
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          pattern="[0-9]{6}"
+          maxLength={6}
+          placeholder="000000"
+          required
+        />
+      </label>
+      <button
+        type="submit"
+        disabled={code.length !== 6 || verifyCode.isPending}
+        className="amk-auth__primary"
+      >
+        {verifyCode.isPending ? "Checking…" : "Verify and continue"}
+        <ArrowRight size={17} />
+      </button>
+      <button
+        type="button"
+        disabled={requestCode.isPending}
+        className="amk-auth__secondary"
+        onClick={() => requestCode.mutate()}
+      >
+        {requestCode.isPending ? "Sending…" : "Send a new code"}
+      </button>
+      <Fineprint />
+    </form>
   );
 }
 
@@ -225,16 +394,15 @@ function ManagedSignIn() {
 }
 
 function LocalRegistrationForm() {
-  const [, navigate] = useLocation();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const register = trpc.auth.register.useMutation({
     onSuccess: () => {
       toast.success(
-        "Account created. Complete email verification to continue."
+        "Account created. Verify your email here before opening the workspace."
       );
-      navigate("/dashboard");
+      window.location.assign("/auth?step=verify");
     },
     onError: error =>
       toast.error(
@@ -254,8 +422,8 @@ function LocalRegistrationForm() {
       className="amk-auth-form"
     >
       <p className="amk-auth__muted">
-        Create your personal AmarktAI Network account. Company or team setup
-        happens after secure access is verified.
+        Create your personal AmarktAI Network account. Email verification stays
+        on this secure access page before any workspace or company setup opens.
       </p>
       <Field
         name="register-name"
@@ -297,11 +465,10 @@ function LocalRegistrationForm() {
 }
 
 function LocalLoginForm({ initialEmail = "" }: { initialEmail?: string }) {
-  const [, navigate] = useLocation();
   const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState("");
   const login = trpc.auth.localLogin.useMutation({
-    onSuccess: () => navigate("/dashboard"),
+    onSuccess: () => window.location.assign("/auth?step=verify"),
     onError: error =>
       toast.error(
         friendlyError(
@@ -421,14 +588,13 @@ function PasswordRecoveryForm() {
 }
 
 function ResetPasswordForm({ token }: { token: string }) {
-  const [, navigate] = useLocation();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const reset = trpc.auth.resetPassword.useMutation({
     onSuccess: () => {
-      toast.success("Password updated. Sign in with your new password.");
-      window.history.replaceState({}, "", "/auth");
-      navigate("/auth");
+      toast.success("Password updated. Verify your email to continue.");
+      window.history.replaceState({}, "", "/auth?step=verify");
+      window.location.assign("/auth?step=verify");
     },
     onError: error =>
       toast.error(
