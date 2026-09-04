@@ -1,4 +1,4 @@
-import { delegatedMailboxReadiness } from "./delegatedMailbox";
+import { personalMailboxProviderAvailability } from "./personalMailboxRuntime";
 
 export type PersonalMailboxEmailPreview = {
   to: string;
@@ -7,20 +7,30 @@ export type PersonalMailboxEmailPreview = {
   templateName?: string;
 };
 
-/** Safe deployment-level availability. A user is connected only after OAuth consent. */
+/** Deployment-level connection paths only. User connection truth comes from getPersonalMailboxStatus(). */
 export function getPersonalMailboxReadiness() {
-  const microsoft = delegatedMailboxReadiness();
+  const providers = personalMailboxProviderAvailability();
   return {
-    ready: microsoft.ready,
-    provider: "microsoft" as const,
-    connectionModel: "per_user_delegated_oauth" as const,
+    ready: providers.some(provider => provider.configured),
+    providers,
     requiresUserConsent: true,
-    requiredVariables: [
-      "OUTLOOK_DELEGATED_TENANT_ID",
-      "OUTLOOK_DELEGATED_CLIENT_ID",
-      "OUTLOOK_DELEGATED_CLIENT_SECRET",
-      "OUTLOOK_DELEGATED_REDIRECT_URI or APP_PUBLIC_URL",
-    ],
+    connectionModels: Array.from(
+      new Set(providers.map(provider => provider.connectionModel))
+    ),
+    requiredVariables: {
+      microsoft: [
+        "OUTLOOK_DELEGATED_TENANT_ID",
+        "OUTLOOK_DELEGATED_CLIENT_ID",
+        "OUTLOOK_DELEGATED_CLIENT_SECRET",
+        "OUTLOOK_DELEGATED_REDIRECT_URI or APP_PUBLIC_URL",
+      ],
+      google: [
+        "GOOGLE_MAILBOX_CLIENT_ID",
+        "GOOGLE_MAILBOX_CLIENT_SECRET",
+        "GOOGLE_MAILBOX_REDIRECT_URI or APP_PUBLIC_URL",
+      ],
+      smtp: ["configured by each salesperson and verified before storage"],
+    },
   };
 }
 
