@@ -8,7 +8,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 export default function ManagementElevation({
-  showBrowserCommissioning = false,
+  showBrowserCommissioning = true,
 }: {
   showBrowserCommissioning?: boolean;
 }) {
@@ -28,7 +28,7 @@ export default function ManagementElevation({
       toast.error(
         friendlyError(
           cause,
-          "Management access could not be confirmed. Check your Amarktai password and try again."
+          "Management access could not be confirmed. Check your AmarktAI password and try again."
         )
       ),
   });
@@ -59,8 +59,8 @@ export default function ManagementElevation({
             </div>
             <p className="mt-2 text-xs leading-5 text-[#66758A]">
               {status.data.elevated
-                ? "Management access is active for a short time so you can make company changes."
-                : "For sensitive company changes, confirm your Amarktai password. Your CRM sign-in is never requested here."}
+                ? "Management access is active for a short time so you can manage CRM setup and Teach AmarktAI safely."
+                : "Sensitive CRM and company changes need a short AmarktAI management confirmation. Your CRM credentials are never requested here."}
             </p>
           </div>
 
@@ -76,10 +76,10 @@ export default function ManagementElevation({
             <div className="flex flex-col gap-2 sm:flex-row">
               <Input
                 type="password"
-                aria-label="Amarktai password for management access"
+                aria-label="AmarktAI password for management access"
                 value={password}
                 onChange={event => setPassword(event.target.value)}
-                placeholder="Re-enter your Amarktai password"
+                placeholder="Re-enter your AmarktAI password"
                 autoComplete="current-password"
                 className="min-w-[230px]"
               />
