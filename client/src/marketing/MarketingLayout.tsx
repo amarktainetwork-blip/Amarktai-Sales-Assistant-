@@ -110,7 +110,7 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
         <div className="amk-shell amk-footer__base">
-          <p>© {new Date().getFullYear()} <BrandName /> Sales Assistant · AmarktAI Network</p>
+          <p>© {new Date().getFullYear()} <BrandName /> Sales Assistant · Part of Amarktai Network</p>
           <p>Keep your CRM. Make the sales day easier.</p>
         </div>
       </footer>
