@@ -22,13 +22,13 @@ describe("personal setup after secure access", () => {
     expect(app).toContain("<PersonalSetupBoundary />");
   });
 
-  it("guides the user through identity, CRM, Outlook and safe autonomy", () => {
+  it("guides the user through identity, CRM, Outlook and safe autonomy in the secure setup visual system", () => {
     for (const step of [
-      "01 / About you",
-      "02 / CRM identity",
-      "03 / Your mailbox",
-      "04 / Autonomy &",
-      "05 / Ready",
+      "STEP 1 · ABOUT YOU",
+      "STEP 2 · CRM IDENTITY",
+      "STEP 3 · YOUR MAILBOX",
+      "START WITH REVIEW",
+      "PERSONAL SETUP COMPLETE",
     ])
       expect(setup).toContain(step);
     expect(setup).toContain("What should Amarktai call you?");
@@ -37,6 +37,7 @@ describe("personal setup after secure access", () => {
     expect(setup).toContain("Connect Outlook");
     expect(setup).toContain("Start with review.");
     expect(setup).toContain("Assistant identity, memory, CRM context");
+    expect(setup).toContain('className="amk-auth amk-auth--register"');
     expect(setup).not.toContain('type="password"');
   });
 
