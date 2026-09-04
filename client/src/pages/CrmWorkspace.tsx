@@ -1,39 +1,44 @@
 import DashboardLayout from "@/components/DashboardLayout";
+import InlineCrmReview from "@/components/InlineCrmReview";
 import { Button } from "@/components/ui/button";
+import {
+  crmDesktopViewport,
+  normalizeCrmWheelDelta,
+} from "@/lib/crmViewerInput";
 import { friendlyError } from "@/lib/friendlyError";
 import { trpc } from "@/lib/trpc";
 import {
   ArrowLeft,
   ArrowRight,
-  Bot,
-  ChevronDown,
-  Circle,
-  ExternalLink,
-  Grip,
-  Home,
+  ChevronLeft,
+  Globe2,
   Loader2,
-  LockKeyhole,
-  LogIn,
-  Maximize2,
+  MonitorUp,
   MousePointer2,
   RefreshCw,
-  RotateCcw,
-  Send,
   ShieldCheck,
   Sparkles,
-  UserRound,
+  X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type KeyboardEvent,
+  type PointerEvent,
+  type WheelEvent,
+} from "react";
 import { toast } from "sonner";
 import { useLocation, useRoute } from "wouter";
 
 type ViewerReady = {
   viewerSessionId: string;
   viewerToken: string;
-  streamPath: string;
   expiresAt: string;
-  control: string;
   url: string;
+  control: string;
 };
 
 type FrameMetadata = {
@@ -179,7 +184,7 @@ export default function CrmWorkspace() {
       .mutateAsync({ step: 4, complete: true })
       .then(async () => {
         await utils.organisation.current.invalidate();
-        toast.success("Setup complete. Your AmarktAI workspace is ready.");
+        toast.success("Setup complete. Your Assistant is ready.");
         navigate("/assistant");
       })
       .catch(error => {
@@ -416,64 +421,287 @@ function LiveWorkspace({
       } else if (message.type === "control") {
         setControl(message.control);
         controlRef.current = message.control;
-        if (message.message) setStatus(message.message);
+
         if (message.control === "HUMAN_CONTROL") {
           humanControlRequestedRef.current = false;
-          flushPendingNavigation();
           flushPendingInput();
+          flushPendingNavigation();
+        } else if (message.control === "IDLE") {
+          humanControlRequestedRef.current = false;
+          if (pendingAiControlRef.current) void actuallyRequestAiControl();
+          else if (
+            pendingInputsRef.current.length ||
+            pendingNavigationRef.current
+          )
+            requestHumanControl();
+        } else if (message.control === "AGENT_CONTROL") {
+          humanControlRequestedRef.current = false;
+          pendingInputsRef.current = [];
+          pendingNavigationRef.current = null;
         }
-        if (message.control === "IDLE" && pendingAiControlRef.current)
-          void actuallyRequestAiControl();
+
+        setActivity(current =>
+          [
+            `${
+              message.control === "HUMAN_CONTROL"
+                ? "You took CRM control"
+                : message.control === "AGENT_CONTROL"
+                  ? "AmarktAI took CRM control"
+                  : "CRM control is idle"
+            } · ${new Date().toLocaleTimeString()}`,
+            ...current,
+          ].slice(0, 8)
+        );
       } else if (message.type === "ready") {
-        setCurrentUrl(message.url);
         setControl(message.control);
         controlRef.current = message.control;
-        setStatus("CRM ready");
-        sendSize();
+        setCurrentUrl(message.url);
       } else if (message.type === "navigation") {
         setCurrentUrl(message.url);
       } else if (message.type === "session") {
         setCurrentUrl(message.currentUrl);
         setAuthenticationState(message.authenticationState);
         onAuthenticationState(message.authenticationState);
-        if (message.errorMessage) setStatus(message.errorMessage);
-        else if (message.authenticationState === "AUTHENTICATED")
-          setStatus("Signed in — CRM ready");
-        else if (message.authenticationState === "LOGIN_REQUIRED")
-          setStatus("Sign in directly to your CRM");
-      } else if (message.type === "error") {
-        setStatus(message.message || "CRM session needs attention");
+        setStatus(
+          message.errorMessage ||
+            (message.authenticationState === "AUTHENTICATED"
+              ? "Connected"
+              : message.authenticationState === "CHECKING"
+                ? "Checking your sign-in…"
+                : message.authenticationState === "MFA_OR_SSO"
+                  ? "Complete verification in the CRM"
+                  : message.authenticationState === "REAUTHENTICATION_REQUIRED"
+                    ? "Sign in again"
+                    : "Sign in directly to your CRM")
+        );
+
+        if (message.authenticationState === "AUTHENTICATED")
+          setActivity(current =>
+            current[0]?.startsWith("CRM authenticated")
+              ? current
+              : [
+                  `CRM authenticated · ${new Date().toLocaleTimeString()}`,
+                  ...current,
+                ].slice(0, 8)
+          );
       } else if (message.type === "disconnected") {
-        setStatus(message.message);
+        setStatus("The CRM browser connection paused. Reopen it to continue.");
+      } else if (message.type === "error") {
+        const friendly = friendlyError(
+          message.message || message.code,
+          "That CRM action could not be completed."
+        );
+        setStatus(friendly);
+        toast.error(friendly);
       }
     };
 
-    socket.onerror = () => setStatus("CRM connection needs attention");
-    socket.onclose = () => {
-      if (socketRef.current === socket) socketRef.current = null;
+    socket.onclose = event => {
+      setStatus(
+        event.code === 4002
+          ? "This CRM was disconnected. Reconnect it from Connections to continue."
+          : "Connection paused. Reconnect to continue."
+      );
+      pendingInputsRef.current = [];
+      pendingNavigationRef.current = null;
+      humanControlRequestedRef.current = false;
     };
 
     const observer = new ResizeObserver(sendSize);
     if (viewerRef.current) observer.observe(viewerRef.current);
-    const ping = window.setInterval(() => send({ type: "ping" }), 15_000);
+    const heartbeat = window.setInterval(() => {
+      if (socket.readyState === WebSocket.OPEN && !document.hidden)
+        socket.send(JSON.stringify({ type: "ping" }));
+    }, 25_000);
+
     return () => {
+      window.clearInterval(heartbeat);
       observer.disconnect();
-      window.clearInterval(ping);
       socket.close();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.viewerSessionId]);
+  }, [session]);
 
   useEffect(() => {
-    if (control !== "HUMAN_CONTROL") return;
-    flushPendingNavigation();
-    flushPendingInput();
+    const onVisibility = () =>
+      send({ type: "visibility", visible: !document.hidden });
+    document.addEventListener("visibilitychange", onVisibility);
+    onVisibility();
+    return () => document.removeEventListener("visibilitychange", onVisibility);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [control]);
+  }, [session]);
+
+  const mapPointer = (clientX: number, clientY: number) => {
+    const rect = viewerRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+
+    const sourceWidth =
+      frameMetadata?.deviceWidth && frameMetadata.deviceWidth > 0
+        ? frameMetadata.deviceWidth
+        : rect.width;
+    const sourceHeight =
+      frameMetadata?.deviceHeight && frameMetadata.deviceHeight > 0
+        ? frameMetadata.deviceHeight
+        : rect.height;
+
+    const scale = Math.min(
+      rect.width / sourceWidth,
+      rect.height / sourceHeight
+    );
+    const renderedWidth = sourceWidth * scale;
+    const renderedHeight = sourceHeight * scale;
+    const offsetX = (rect.width - renderedWidth) / 2;
+    const offsetY = (rect.height - renderedHeight) / 2;
+    const localX = clientX - rect.left - offsetX;
+    const localY = clientY - rect.top - offsetY;
+
+    if (
+      localX < 0 ||
+      localY < 0 ||
+      localX > renderedWidth ||
+      localY > renderedHeight
+    )
+      return null;
+
+    return {
+      x: localX / scale,
+      y: localY / scale,
+    };
+  };
+
+  const forwardPointer = (
+    event: PointerEvent<HTMLDivElement>,
+    type: "mousePressed" | "mouseReleased" | "mouseMoved"
+  ) => {
+    if (type === "mouseMoved") {
+      if (controlRef.current === "AGENT_CONTROL") return;
+      const now = performance.now();
+      if (now - lastPointerMoveAtRef.current < 30) return;
+      lastPointerMoveAtRef.current = now;
+    }
+    const point = mapPointer(event.clientX, event.clientY);
+    if (!point) return;
+    if (type === "mousePressed")
+      viewerRef.current?.focus({ preventScroll: true });
+    queueOrSendInput({
+      kind: "mouse",
+      type,
+      ...point,
+      button:
+        event.button === 2
+          ? "right"
+          : event.button === 1
+            ? "middle"
+            : event.button === 0
+              ? "left"
+              : "none",
+      clickCount: Math.max(1, event.detail || 1),
+    });
+  };
+
+  const forwardWheel = (event: WheelEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const point = mapPointer(event.clientX, event.clientY);
+    const rect = viewerRef.current?.getBoundingClientRect();
+    if (!point || !rect) return;
+    queueOrSendInput({
+      kind: "mouse",
+      type: "mouseWheel",
+      ...point,
+      deltaX: normalizeCrmWheelDelta(event.deltaX, event.deltaMode, rect.width),
+      deltaY: normalizeCrmWheelDelta(
+        event.deltaY,
+        event.deltaMode,
+        rect.height
+      ),
+    });
+  };
+
+  const forwardKey = (
+    event: KeyboardEvent<HTMLDivElement>,
+    type: "keyDown" | "keyUp"
+  ) => {
+    const commandKey = event.metaKey || event.ctrlKey;
+    const key = event.key.toLowerCase();
+
+    // Keep browser/app-level shortcuts outside the remote page. Paste is the
+    // exception: allow the browser to emit the ClipboardEvent, which is then
+    // forwarded through the bounded Input.insertText path below.
+    if (commandKey && ["l", "r", "t", "n", "q", "w"].includes(key)) return;
+    if (commandKey && key === "v") return;
+
+    event.preventDefault();
+    const modifiers =
+      (event.altKey ? 1 : 0) |
+      (event.ctrlKey ? 2 : 0) |
+      (event.metaKey ? 4 : 0) |
+      (event.shiftKey ? 8 : 0);
+
+    queueOrSendInput({
+      kind: "key",
+      type,
+      key: event.key,
+      code: event.code,
+      text:
+        type === "keyDown" &&
+        event.key.length === 1 &&
+        !event.ctrlKey &&
+        !event.metaKey
+          ? event.key
+          : "",
+      modifiers,
+    });
+  };
+
+  const forwardPaste = (event: ClipboardEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const text = event.clipboardData.getData("text").slice(0, 4_000);
+    if (!text) return;
+    queueOrSendInput({
+      kind: "key",
+      type: "keyDown",
+      key: "",
+      code: "",
+      text,
+      modifiers: 0,
+    });
+  };
+
+  const takeControl = async () => {
+    try {
+      if (controlRef.current === "AGENT_CONTROL" && session) {
+        await releaseAi.mutateAsync({
+          viewerSessionId: session.viewerSessionId,
+        });
+        // The mutation has synchronously released the server arbitration lock.
+        // Do not wait on a websocket IDLE frame before asking for human control.
+        controlRef.current = "IDLE";
+        setControl("IDLE");
+        humanControlRequestedRef.current = false;
+      }
+      requestHumanControl();
+      viewerRef.current?.focus({ preventScroll: true });
+    } catch (error) {
+      toast.error(
+        friendlyError(error, "CRM control could not be returned to you.")
+      );
+    }
+  };
+
+  const requestAi = () => {
+    if (!session || controlRef.current === "AGENT_CONTROL") return;
+    pendingAiControlRef.current = true;
+    pendingNavigationRef.current = null;
+    if (controlRef.current === "HUMAN_CONTROL")
+      send({ type: "releaseHumanControl" });
+    else void actuallyRequestAiControl();
+  };
 
   const navigateBrowser = (action: BrowserNavigationAction) => {
     if (controlRef.current === "AGENT_CONTROL") {
-      toast.info("AmarktAI is working in the CRM. Take control first.");
+      toast.info(
+        "AmarktAI is working in the CRM. Take control before navigating."
+      );
       return;
     }
     if (controlRef.current === "HUMAN_CONTROL") {
@@ -484,377 +712,318 @@ function LiveWorkspace({
     requestHumanControl();
   };
 
-  const handlePointer = (
-    event: React.PointerEvent<HTMLDivElement>,
-    type: "mousePressed" | "mouseReleased" | "mouseMoved"
-  ) => {
-    if (!frameMetadata?.deviceWidth || !frameMetadata?.deviceHeight) return;
-    if (type === "mouseMoved") {
-      const now = performance.now();
-      if (now - lastPointerMoveAtRef.current < 35) return;
-      lastPointerMoveAtRef.current = now;
-    }
-    const rect = viewerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const x = Math.max(
-      0,
-      Math.min(
-        frameMetadata.deviceWidth,
-        ((event.clientX - rect.left) / rect.width) * frameMetadata.deviceWidth
-      )
-    );
-    const y = Math.max(
-      0,
-      Math.min(
-        frameMetadata.deviceHeight,
-        ((event.clientY - rect.top) / rect.height) * frameMetadata.deviceHeight
-      )
-    );
-    queueOrSendInput({
-      kind: "mouse",
-      type,
-      x,
-      y,
-      button: type === "mouseMoved" ? "none" : "left",
-      clickCount: type === "mouseMoved" ? 0 : 1,
-    });
-  };
+  const confirmSignedIn = () => send({ type: "customerFinishedSigningIn" });
 
-  const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
-    if (!frameMetadata?.deviceWidth || !frameMetadata?.deviceHeight) return;
-    const rect = viewerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    queueOrSendInput({
-      kind: "mouse",
-      type: "mouseWheel",
-      x:
-        ((event.clientX - rect.left) / rect.width) * frameMetadata.deviceWidth,
-      y:
-        ((event.clientY - rect.top) / rect.height) * frameMetadata.deviceHeight,
-      deltaX: event.deltaX,
-      deltaY: event.deltaY,
-      button: "none",
-    });
-  };
-
-  const handleKey = (
-    event: React.KeyboardEvent<HTMLDivElement>,
-    type: "keyDown" | "keyUp"
-  ) => {
-    if (event.key === "Tab" || event.key === "Backspace") event.preventDefault();
-    queueOrSendInput({
-      kind: "key",
-      type,
-      key: event.key,
-      code: event.code,
-      text: type === "keyDown" && event.key.length === 1 ? event.key : undefined,
-      modifiers:
-        (event.altKey ? 1 : 0) |
-        (event.ctrlKey ? 2 : 0) |
-        (event.metaKey ? 4 : 0) |
-        (event.shiftKey ? 8 : 0),
-    });
-  };
-
-  const giveAiControl = async () => {
-    if (!session) return;
-    pendingInputsRef.current = [];
-    pendingNavigationRef.current = null;
-    if (controlRef.current === "HUMAN_CONTROL") {
-      pendingAiControlRef.current = true;
-      send({ type: "releaseHumanControl" });
-      return;
-    }
-    await actuallyRequestAiControl();
-  };
-
-  const giveHumanControl = async () => {
-    if (!session) return;
-    pendingAiControlRef.current = false;
-    try {
-      await releaseAi.mutateAsync({ viewerSessionId: session.viewerSessionId });
-    } catch (error) {
-      toast.error(friendlyError(error, "CRM control could not be returned."));
-    }
-  };
-
-  const askAboutPage = async () => {
+  const submitAssistant = async () => {
     if (!session || !assistantPrompt.trim()) return;
     try {
+      setAssistantWorkflowRunId(null);
       const result = await askAssistant.mutateAsync({
         viewerSessionId: session.viewerSessionId,
         command: assistantPrompt.trim(),
       });
-      setAssistantResult(result.response.content);
-      setAssistantWorkflowRunId(result.workflowRunId);
-      setActivity(current => [
-        `AmarktAI analysed the current CRM page`,
-        ...current.slice(0, 7),
-      ]);
+      setAssistantResult(result.summary);
+      setAssistantWorkflowRunId(
+        typeof result.workflowRunId === "number" ? result.workflowRunId : null
+      );
+      setAssistantPrompt("");
     } catch (error) {
-      toast.error(
-        friendlyError(error, "AmarktAI could not analyse this CRM page.")
+      setAssistantWorkflowRunId(null);
+      setAssistantResult(
+        friendlyError(error, "AmarktAI could not complete that request.")
       );
     }
   };
 
-  const authenticated = authenticationState === "AUTHENTICATED";
-  const humanControl = control === "HUMAN_CONTROL";
-  const agentControl = control === "AGENT_CONTROL";
+  const domain = (() => {
+    try {
+      return new URL(currentUrl).hostname;
+    } catch {
+      return crmName;
+    }
+  })();
+
+  const authReady = authenticationState === "AUTHENTICATED";
+  const availableSystems = systems.filter(system => system.baseUrl);
 
   return (
-    <div className="grid h-full min-h-0 grid-rows-[54px_1fr] overflow-hidden">
-      <header className="flex min-w-0 items-center justify-between gap-3 border-b border-[#D4DEE9] bg-white px-3 shadow-sm sm:px-4">
-        <div className="flex min-w-0 items-center gap-2">
-          <button
-            type="button"
-            onClick={onToday}
-            className="grid size-8 shrink-0 place-items-center rounded-lg border border-[#D9E2ED] text-[#617188] hover:bg-[#F2F6FA]"
-            aria-label="Back to AmarktAI"
+    <div className="flex h-full min-h-0 flex-col bg-white">
+      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-[#D7E0EA] bg-[#F7F9FC] px-2.5">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 px-2 text-[#526277]"
+          onClick={onToday}
+        >
+          <ChevronLeft className="mr-1 h-4 w-4" />
+          <span className="hidden xl:inline">Today</span>
+        </Button>
+
+        <div className="h-6 w-px bg-[#D7E0EA]" />
+
+        <div className="flex items-center gap-0.5">
+          <Button
+            aria-label="Back"
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 p-0"
+            onClick={() => navigateBrowser("back")}
           >
-            <Home size={15} />
-          </button>
-          <div className="min-w-0">
-            <p className="truncate text-xs font-black uppercase tracking-[.08em] text-[#2F6FED]">
-              Source CRM
-            </p>
-            <p className="truncate text-sm font-bold text-[#2C3D53]">
-              {crmName}
-            </p>
-          </div>
-          {systems.length > 1 ? (
-            <label className="relative hidden sm:block">
-              <select
-                value={connectedSystemId}
-                onChange={event => onChoose(Number(event.target.value))}
-                className="h-8 appearance-none rounded-lg border border-[#D9E2ED] bg-white pl-3 pr-8 text-xs font-bold text-[#52647A] outline-none"
-                aria-label="Choose CRM"
-              >
-                {systems.map(system => (
-                  <option key={system.id} value={system.id}>
-                    {system.displayName}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-2 top-2 size-4 text-[#7B8798]" />
-            </label>
-          ) : null}
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <Button
+            aria-label="Forward"
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 p-0"
+            onClick={() => navigateBrowser("forward")}
+          >
+            <ArrowRight className="h-4 w-4" />
+          </Button>
+          <Button
+            aria-label="Refresh CRM"
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 p-0"
+            onClick={() => navigateBrowser("refresh")}
+          >
+            <RefreshCw className="h-4 w-4" />
+          </Button>
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
-          <span
-            className={`hidden rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[.05em] sm:inline-flex ${
-              authenticated
-                ? "bg-emerald-50 text-emerald-700"
-                : "bg-amber-50 text-amber-700"
-            }`}
-          >
-            {authenticated ? "Signed in" : "Sign-in required"}
-          </span>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => void openViewer(true)}
-            disabled={open.isPending}
-          >
-            <RotateCcw className="mr-2 h-3.5 w-3.5" />
-            Reconnect
-          </Button>
-          {humanControl ? (
-            <Button size="sm" onClick={() => void giveAiControl()}>
-              <Bot className="mr-2 h-3.5 w-3.5" /> Give control to AmarktAI
-            </Button>
-          ) : agentControl ? (
-            <Button size="sm" variant="outline" onClick={() => void giveHumanControl()}>
-              <MousePointer2 className="mr-2 h-3.5 w-3.5" /> Take control
-            </Button>
+        <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-[#D7E0EA] bg-white px-3 py-1.5 text-xs shadow-sm">
+          <Globe2 className="h-3.5 w-3.5 shrink-0 text-[#3F70D8]" />
+          {availableSystems.length > 1 ? (
+            <select
+              aria-label="Choose CRM"
+              value={connectedSystemId}
+              onChange={event => onChoose(Number(event.target.value))}
+              className="max-w-40 bg-transparent font-bold text-[#26354A] outline-none"
+            >
+              {availableSystems.map(system => (
+                <option key={system.id} value={system.id}>
+                  {system.displayName}
+                </option>
+              ))}
+            </select>
           ) : (
-            <Button size="sm" variant="outline" onClick={requestHumanControl}>
-              <MousePointer2 className="mr-2 h-3.5 w-3.5" /> Take control
-            </Button>
+            <span className="shrink-0 font-bold text-[#26354A]">{crmName}</span>
           )}
+          <span className="truncate text-[#77859A]">{domain}</span>
         </div>
+
+        <div className="hidden min-w-0 items-center gap-2 lg:flex">
+          <span
+            className={`h-2 w-2 shrink-0 rounded-full ${
+              authReady ? "bg-emerald-500" : "bg-amber-400"
+            }`}
+          />
+          <span className="max-w-52 truncate text-xs font-semibold text-[#526277]">
+            {status}
+          </span>
+        </div>
+
+        <Button
+          variant={assistantOpen ? "default" : "outline"}
+          size="sm"
+          className="h-8"
+          onClick={() => setAssistantOpen(open => !open)}
+        >
+          <Sparkles className="mr-1.5 h-4 w-4" />
+          Assistant
+        </Button>
       </header>
 
-      <div className="grid min-h-0 grid-cols-1 overflow-hidden xl:grid-cols-[1fr_330px]">
-        <section className="relative flex min-h-0 flex-col overflow-hidden bg-[#D9E3EE]">
-          <div className="flex h-10 shrink-0 items-center gap-1 border-b border-[#C9D4E1] bg-[#EEF3F7] px-2">
-            <button
-              type="button"
-              onClick={() => navigateBrowser("back")}
-              className="grid size-7 place-items-center rounded-md text-[#607086] hover:bg-white"
-              aria-label="Back"
-            >
-              <ArrowLeft size={14} />
-            </button>
-            <button
-              type="button"
-              onClick={() => navigateBrowser("forward")}
-              className="grid size-7 place-items-center rounded-md text-[#607086] hover:bg-white"
-              aria-label="Forward"
-            >
-              <ArrowRight size={14} />
-            </button>
-            <button
-              type="button"
-              onClick={() => navigateBrowser("refresh")}
-              className="grid size-7 place-items-center rounded-md text-[#607086] hover:bg-white"
-              aria-label="Refresh"
-            >
-              <RefreshCw size={14} />
-            </button>
-            <div className="ml-1 flex h-7 min-w-0 flex-1 items-center rounded-md border border-[#D4DEE9] bg-white px-2 text-[10px] font-medium text-[#7B8798]">
-              <LockKeyhole className="mr-1.5 size-3 shrink-0 text-emerald-600" />
-              <span className="truncate">{currentUrl || "Secure CRM session"}</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setAssistantOpen(value => !value)}
-              className={`ml-1 grid size-7 place-items-center rounded-md ${assistantOpen ? "bg-[#2F6FED] text-white" : "text-[#607086] hover:bg-white"}`}
-              aria-label="AmarktAI page assistant"
-            >
-              <Sparkles size={14} />
-            </button>
-          </div>
-
+      <div className="relative flex min-h-0 flex-1">
+        <section className="relative min-w-0 flex-1 bg-[#E9EEF5]">
           <div
             ref={viewerRef}
             role="application"
-            aria-label={`${crmName} secure browser`}
+            aria-label={`${crmName} live CRM`}
             tabIndex={0}
-            onPointerDown={event => handlePointer(event, "mousePressed")}
-            onPointerUp={event => handlePointer(event, "mouseReleased")}
-            onPointerMove={event => handlePointer(event, "mouseMoved")}
-            onWheel={handleWheel}
-            onKeyDown={event => handleKey(event, "keyDown")}
-            onKeyUp={event => handleKey(event, "keyUp")}
-            className={`relative min-h-0 flex-1 overflow-hidden outline-none ${humanControl ? "cursor-default" : agentControl ? "cursor-not-allowed" : "cursor-pointer"}`}
+            onPointerEnter={() => requestHumanControl()}
+            onPointerDown={event => forwardPointer(event, "mousePressed")}
+            onPointerUp={event => forwardPointer(event, "mouseReleased")}
+            onPointerMove={event => forwardPointer(event, "mouseMoved")}
+            onWheel={forwardWheel}
+            onKeyDown={event => forwardKey(event, "keyDown")}
+            onKeyUp={event => forwardKey(event, "keyUp")}
+            onPaste={forwardPaste}
+            onContextMenu={event => event.preventDefault()}
+            className="relative h-full w-full cursor-default overflow-hidden bg-[#E9EEF5] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#3F70D8]"
           >
             {image ? (
               <img
                 src={image}
-                alt={`${crmName} live workspace`}
+                alt=""
+                aria-hidden="true"
                 draggable={false}
-                className="h-full w-full select-none object-contain"
+                className="pointer-events-none h-full w-full select-none object-contain"
               />
             ) : (
-              <div className="grid h-full place-items-center bg-[#E7EDF4] text-center">
-                <div>
-                  <Loader2 className="mx-auto h-7 w-7 animate-spin text-[#2F6FED]" />
-                  <p className="mt-3 text-sm font-bold text-[#52647A]">{status}</p>
-                </div>
+              <div className="flex h-full flex-col items-center justify-center gap-3 text-[#6C798B]">
+                <Loader2 className="h-7 w-7 animate-spin text-[#3F70D8]" />
+                <p className="text-sm font-semibold">{status}</p>
               </div>
             )}
-            {agentControl ? (
-              <div className="pointer-events-none absolute inset-x-0 bottom-4 mx-auto w-max rounded-full border border-[#BBD0F3] bg-white/95 px-4 py-2 text-xs font-bold text-[#2F63C7] shadow-lg backdrop-blur">
-                <Bot className="mr-2 inline h-3.5 w-3.5" />
-                AmarktAI has CRM control
-              </div>
-            ) : null}
-          </div>
 
-          <div className="flex min-h-9 shrink-0 items-center justify-between gap-2 border-t border-[#C9D4E1] bg-[#EEF3F7] px-3 text-[10px] font-semibold text-[#6B7A8D]">
-            <span className="truncate">{status}</span>
-            <span className="flex shrink-0 items-center gap-1.5">
-              <ShieldCheck className="size-3.5 text-emerald-600" /> Private session
-            </span>
-          </div>
-
-          {assistantOpen ? (
-            <div className="absolute bottom-12 right-3 z-20 w-[min(400px,calc(100%-24px))] rounded-2xl border border-[#D3DEEA] bg-white p-4 shadow-2xl">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="grid size-8 place-items-center rounded-lg bg-[#EAF1FF] text-[#2F6FED]">
-                    <Sparkles size={15} />
-                  </span>
-                  <div>
-                    <p className="text-xs font-black text-[#26354A]">Ask AmarktAI</p>
-                    <p className="text-[10px] text-[#7B8798]">About this CRM page</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setAssistantOpen(false)}
-                  className="grid size-7 place-items-center rounded-md text-[#7B8798] hover:bg-[#F2F5F8]"
-                  aria-label="Close assistant"
-                >
-                  <Circle size={14} />
-                </button>
-              </div>
-              <textarea
-                value={assistantPrompt}
-                onChange={event => setAssistantPrompt(event.target.value)}
-                placeholder="What should I know about this page?"
-                className="mt-3 min-h-20 w-full resize-none rounded-xl border border-[#D4DEE9] p-3 text-sm text-[#33445B] outline-none focus:border-[#91ACE0]"
-              />
-              <Button
-                size="sm"
-                className="mt-2 w-full"
-                disabled={!assistantPrompt.trim() || askAssistant.isPending}
-                onClick={() => void askAboutPage()}
-              >
-                {askAssistant.isPending ? (
-                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Send className="mr-2 h-3.5 w-3.5" />
-                )}
-                Ask
-              </Button>
-              {assistantResult ? (
-                <div className="mt-3 rounded-xl bg-[#F4F7FB] p-3 text-xs leading-5 text-[#52647A]">
-                  <p className="whitespace-pre-wrap">{assistantResult}</p>
-                  {assistantWorkflowRunId ? (
-                    <button
-                      type="button"
-                      onClick={() => window.location.assign("/reviews")}
-                      className="mt-2 font-bold text-[#2F6FED] hover:underline"
-                    >
-                      Open Review
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
+            <div className="pointer-events-none absolute bottom-3 left-3 flex items-center gap-2 rounded-full border border-white/60 bg-[#26354A]/90 px-3 py-1.5 text-[11px] font-bold text-white shadow-md backdrop-blur">
+              <MousePointer2 className="h-3.5 w-3.5" />
+              {control === "HUMAN_CONTROL"
+                ? "You control the CRM"
+                : control === "AGENT_CONTROL"
+                  ? "AmarktAI is working"
+                  : "Move here to take control"}
             </div>
-          ) : null}
+          </div>
         </section>
 
-        <aside className="hidden min-h-0 flex-col border-l border-[#D4DEE9] bg-white xl:flex">
-          <div className="border-b border-[#E5EAF0] p-4">
-            <p className="text-[10px] font-black uppercase tracking-[.12em] text-[#2F6FED]">
-              AmarktAI context
-            </p>
-            <h2 className="mt-1 font-display text-xl font-bold tracking-[-.035em] text-[#26354A]">
-              Source CRM workspace
-            </h2>
-            <p className="mt-2 text-xs leading-5 text-[#708096]">
-              Use this view for sign-in, specialist work and recovery. Daily customer work should happen in AmarktAI.
-            </p>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto p-4">
-            <div className="rounded-xl border border-[#E0E7EF] bg-[#F8FAFC] p-3">
-              <p className="text-[10px] font-black uppercase text-[#8390A2]">
-                Session
-              </p>
-              <p className="mt-1 text-xs font-bold text-[#33445B]">
-                {authenticated ? "Authenticated" : "Sign-in required"}
-              </p>
-              <p className="mt-1 break-all text-[10px] leading-4 text-[#7B8798]">
-                {currentUrl || "Waiting for CRM"}
-              </p>
-            </div>
-            <div className="mt-4 space-y-2">
-              {activity.map((item, index) => (
-                <div
-                  key={`${item}-${index}`}
-                  className="flex gap-2 rounded-xl border border-[#E5EAF0] bg-white p-3"
-                >
-                  <Grip className="mt-0.5 size-3.5 shrink-0 text-[#A2AEBE]" />
-                  <p className="text-[11px] leading-5 text-[#607086]">{item}</p>
+        {assistantOpen ? (
+          <aside className="absolute inset-y-0 right-0 z-30 flex w-[min(390px,94vw)] flex-col border-l border-[#D7E0EA] bg-white shadow-[-18px_0_45px_rgba(38,53,74,.12)] lg:relative lg:z-auto lg:w-[370px] lg:shadow-none">
+            <div className="flex h-12 shrink-0 items-center justify-between border-b border-[#D7E0EA] px-4">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-[#3F70D8]" />
+                <div>
+                  <p className="text-sm font-bold text-[#26354A]">
+                    AmarktAI Assistant
+                  </p>
+                  <p className="text-[10px] font-semibold uppercase tracking-[.12em] text-emerald-600">
+                    Ready
+                  </p>
                 </div>
-              ))}
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0"
+                aria-label="Close assistant"
+                onClick={() => setAssistantOpen(false)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
             </div>
-          </div>
-        </aside>
+
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              <div className="rounded-xl border border-[#DCE7F6] bg-[#F4F8FF] p-3">
+                <p className="text-xs font-bold text-[#26354A]">{status}</p>
+                <p className="mt-1 text-xs leading-5 text-[#6C798B]">
+                  {authReady
+                    ? "Your private CRM session is connected. Ask me to work with the customer or use the CRM yourself."
+                    : "Finish signing in inside the CRM. Your password and verification code stay between you and the CRM."}
+                </p>
+              </div>
+
+              {assistantResult ? (
+                <div className="mt-3 rounded-xl border border-[#D7E0EA] bg-white p-3 text-sm leading-6 text-[#33445B]">
+                  {assistantResult}
+                </div>
+              ) : null}
+
+              <InlineCrmReview workflowRunId={assistantWorkflowRunId} />
+
+              <details className="mt-4 rounded-xl border border-[#D7E0EA] bg-white">
+                <summary className="cursor-pointer list-none px-3 py-2.5 text-xs font-bold text-[#33445B]">
+                  CRM controls
+                </summary>
+                <div className="space-y-2 border-t border-[#E5EAF0] p-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-start"
+                    onClick={() => void takeControl()}
+                  >
+                    <MousePointer2 className="mr-2 h-4 w-4" />
+                    {control === "HUMAN_CONTROL"
+                      ? "You have control"
+                      : "Take control"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-start"
+                    onClick={requestAi}
+                    disabled={
+                      control === "AGENT_CONTROL" || acquireAi.isPending
+                    }
+                  >
+                    <ShieldCheck className="mr-2 h-4 w-4" />
+                    {control === "AGENT_CONTROL"
+                      ? "AmarktAI has control"
+                      : "Give control to AmarktAI"}
+                  </Button>
+                  {!authReady ? (
+                    <Button
+                      size="sm"
+                      className="w-full justify-start"
+                      onClick={confirmSignedIn}
+                    >
+                      Check my sign-in
+                    </Button>
+                  ) : null}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full justify-start"
+                    onClick={() => void openViewer(true)}
+                    disabled={open.isPending}
+                  >
+                    <RefreshCw
+                      className={`mr-2 h-4 w-4 ${
+                        open.isPending ? "animate-spin" : ""
+                      }`}
+                    />
+                    Reconnect browser
+                  </Button>
+                </div>
+              </details>
+
+              <details className="mt-3 rounded-xl border border-[#D7E0EA] bg-white">
+                <summary className="cursor-pointer list-none px-3 py-2.5 text-xs font-bold text-[#33445B]">
+                  Recent CRM activity
+                </summary>
+                <ul className="space-y-2 border-t border-[#E5EAF0] p-3 text-xs text-[#6C798B]">
+                  {activity.map((item, index) => (
+                    <li key={`${item}-${index}`}>{item}</li>
+                  ))}
+                </ul>
+              </details>
+            </div>
+
+            <div className="shrink-0 border-t border-[#D7E0EA] bg-[#FAFBFD] p-3">
+              <textarea
+                aria-label="Ask AmarktAI"
+                value={assistantPrompt}
+                onChange={event => setAssistantPrompt(event.target.value)}
+                onKeyDown={event => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    void submitAssistant();
+                  }
+                }}
+                className="min-h-20 w-full resize-none rounded-xl border border-[#CCD6E2] bg-white px-3 py-2 text-sm outline-none focus:border-[#3F70D8] focus:ring-2 focus:ring-[#DCE7F6]"
+                placeholder="Ask AmarktAI to find a customer, prepare a call, explain history…"
+              />
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <span className="text-[10px] text-[#8995A6]">
+                  Enter to send · Shift+Enter for a new line
+                </span>
+                <Button
+                  size="sm"
+                  onClick={() => void submitAssistant()}
+                  disabled={!assistantPrompt.trim() || askAssistant.isPending}
+                >
+                  {askAssistant.isPending ? "Working…" : "Ask"}
+                </Button>
+              </div>
+            </div>
+          </aside>
+        ) : null}
+      </div>
+
+      <div className="sr-only" aria-live="polite">
+        {control === "HUMAN_CONTROL"
+          ? "You currently control the CRM."
+          : status}
       </div>
     </div>
   );
@@ -863,26 +1032,19 @@ function LiveWorkspace({
 function NoBrowserCrm({ onConnections }: { onConnections: () => void }) {
   return (
     <div className="grid h-full place-items-center p-6">
-      <div className="max-w-md rounded-3xl border border-[#D4DEE9] bg-white p-7 text-center shadow-sm">
-        <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-[#EAF1FF] text-[#2F6FED]">
-          <LogIn size={22} />
-        </span>
-        <h2 className="mt-4 font-display text-2xl font-bold tracking-[-.04em] text-[#26354A]">
-          Connect the company CRM first
+      <div className="max-w-md rounded-2xl border border-dashed border-[#C9D3DF] bg-white p-8 text-center shadow-sm">
+        <MonitorUp className="mx-auto h-8 w-8 text-[#7A8799]" />
+        <h2 className="mt-4 text-lg font-bold text-[#26354A]">
+          Connect a CRM to work here
         </h2>
-        <p className="mt-2 text-sm leading-6 text-[#708096]">
-          A manager needs to connect the source CRM before this secure workspace can open.
+        <p className="mx-auto mt-2 text-sm leading-6 text-[#6C798B]">
+          Connect the company CRM once. Each salesperson then signs in to their
+          own private CRM workspace beside the AmarktAI Assistant.
         </p>
         <Button className="mt-5" onClick={onConnections}>
-          Open CRM setup
+          Open connections
         </Button>
       </div>
     </div>
   );
-}
-
-export function crmDesktopViewport(input: { width: number; height: number }) {
-  const width = Math.round(Math.max(960, Math.min(1920, input.width)));
-  const height = Math.round(Math.max(640, Math.min(1200, input.height)));
-  return { width, height };
 }
