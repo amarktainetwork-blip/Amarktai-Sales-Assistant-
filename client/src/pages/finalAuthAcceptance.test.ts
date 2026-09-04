@@ -45,6 +45,8 @@ describe("final account presentation", () => {
     expect(auth).toContain('/images/site-hero.svg');
     expect(auth).not.toContain("images.pexels.com");
     expect(auth).not.toContain("images.unsplash.com");
-    expect(auth).not.toContain('navigate("/dashboard")');
+    expect(auth).toContain('window.location.assign("/auth?step=verify")');
+    expect(auth).toContain("if (!user || !security.data?.verified || invite || reset) return;");
+    expect(auth).toContain('navigate("/dashboard", { replace: true });');
   });
 });
