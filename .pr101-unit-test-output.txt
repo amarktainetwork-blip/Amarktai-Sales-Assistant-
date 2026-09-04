@@ -1,0 +1,1255 @@
+
+> amarktai-sales-assistant@1.0.0 test /home/runner/work/Amarktai-Sales-Assistant-/Amarktai-Sales-Assistant-
+> vitest run
+
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90m/home/runner/work/Amarktai-Sales-Assistant-/Amarktai-Sales-Assistant-[39m
+
+ [32m✓[39m server/companyDiscovery.test.ts [2m([22m[2m15 tests[22m[2m)[22m[33m 538[2mms[22m[39m
+   [33m[2m✓[22m[39m professional public website discovery[2m > [22mcontains a real isolated renderer connection failure [33m393[2mms[22m[39m
+ [32m✓[39m server/wholeSiteCompanyKnowledge.test.ts [2m([22m[2m9 tests[22m[2m)[22m[90m 77[2mms[22m[39m
+ [32m✓[39m server/crm/automaticCommissioning.test.ts [2m([22m[2m14 tests[22m[2m)[22m[90m 23[2mms[22m[39m
+ [32m✓[39m server/companyKnowledgeModelOutput.test.ts [2m([22m[2m30 tests[22m[2m)[22m[90m 49[2mms[22m[39m
+ [32m✓[39m server/crmRouter.test.ts [2m([22m[2m12 tests[22m[2m)[22m[90m 10[2mms[22m[39m
+ [32m✓[39m server/configuredWorkflow.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 12[2mms[22m[39m
+ [32m✓[39m server/companyKnowledgeRuntimeFinalization.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 52[2mms[22m[39m
+ [32m✓[39m server/companyKnowledgeInlineRuntime.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 65[2mms[22m[39m
+ [32m✓[39m server/browserConnectors/operationContracts.test.ts [2m([22m[2m15 tests[22m[2m)[22m[90m 12[2mms[22m[39m
+ [32m✓[39m server/onboardingAcceptance.test.ts [2m([22m[2m12 tests[22m[2m)[22m[90m 9[2mms[22m[39m
+ [32m✓[39m server/companyKnowledgeAuditPriceProvenanceCompatibility.test.ts [2m([22m[2m8 tests[22m[2m)[22m[90m 17[2mms[22m[39m
+ [32m✓[39m server/crm/assistantBatchExecution.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 806[2mms[22m[39m
+   [33m[2m✓[22m[39m real assistant deterministic CRM batch path[2m > [22msurfaces a bounded permanent partial failure in the one final assistant result [33m752[2mms[22m[39m
+ [32m✓[39m client/src/marketing/publicMarketing.test.tsx [2m([22m[2m16 tests[22m[2m)[22m[90m 287[2mms[22m[39m
+ [32m✓[39m server/companyKnowledgeAuditSchemaCompatibility.test.ts [2m([22m[2m13 tests[22m[2m)[22m[90m 28[2mms[22m[39m
+ [32m✓[39m server/liveCalls/context.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 25[2mms[22m[39m
+ [32m✓[39m server/companyKnowledgeJobContract.test.ts [2m([22m[2m8 tests[22m[2m)[22m[90m 8[2mms[22m[39m
+ [32m✓[39m server/dashboardVisualAcceptance.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 9[2mms[22m[39m
+ [32m✓[39m server/productionReadinessUi.test.ts [2m([22m[2m9 tests[22m[2m)[22m[90m 12[2mms[22m[39m
+ [32m✓[39m server/companyKnowledgeHumanReviewFallback.test.ts [2m([22m[2m8 tests[22m[2m)[22m[90m 27[2mms[22m[39m
+ [32m✓[39m server/salesCommsWatchtower.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 11[2mms[22m[39m
+ [32m✓[39m server/genxCompanyLearning.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 31[2mms[22m[39m
+ [32m✓[39m server/liveCalls/closeoutIdempotency.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 114[2mms[22m[39m
+ [32m✓[39m server/companyKnowledgeAuditUnclassifiedExclusionCompatibility.test.ts [2m([22m[2m8 tests[22m[2m)[22m[90m 19[2mms[22m[39m
+ [32m✓[39m server/crm/actionExecutionPreconditions.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 17[2mms[22m[39m
+ [32m✓[39m server/companyKnowledgePartialConflictCompatibility.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 14[2mms[22m[39m
+ [32m✓[39m server/delegatedMailbox.test.ts [2m([22m[2m9 tests[22m[2m)[22m[90m 8[2mms[22m[39m
+ [32m✓[39m server/companyKnowledgePartialBatchRuntime.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 38[2mms[22m[39m
+[90mstdout[2m | server/publicContact.test.ts[2m > [22m[2mpublic contact form backend[2m > [22m[2msends a formatted enquiry to the configured recipient
+[22m[39m{"event":"public_contact_submitted","requestId":"529e00ab-3355-4f95-b1d9-42f8c6e093d8","reason":"Team setup","companySupplied":true}
+
+[90mstdout[2m | server/publicContact.test.ts[2m > [22m[2mpublic contact form backend[2m > [22m[2mtrims a valid email before validation and delivery:  user@example.com 
+[22m[39m{"event":"public_contact_submitted","requestId":"f567540b-254f-495d-b2a7-2dfcacb7ca6f","reason":"Team setup","companySupplied":true}
+
+[90mstdout[2m | server/publicContact.test.ts[2m > [22m[2mpublic contact form backend[2m > [22m[2mtrims a valid email before validation and delivery: USER@example.com
+[22m[39m{"event":"public_contact_submitted","requestId":"7d290c71-50db-4572-a774-efcd7159b382","reason":"Team setup","companySupplied":true}
+
+[90mstderr[2m | server/publicContact.test.ts[2m > [22m[2mpublic contact form backend[2m > [22m[2mreturns a visible-safe failure when SMTP delivery fails
+[22m[39m{"event":"public_contact_delivery_failed","requestId":"bc267911-ec45-4ca1-b15c-5632cf86715d","detail":"SMTP unavailable"}
+
+[90mstderr[2m | server/publicContact.test.ts[2m > [22m[2mpublic contact form backend[2m > [22m[2mdrops honeypot abuse without sending mail or revealing the filter
+[22m[39m{"event":"public_contact_abuse_rejected","requestId":"df95d58a-1473-48ed-be85-cca9cf7bfa11"}
+
+ [32m✓[39m server/publicContact.test.ts [2m([22m[2m8 tests[22m[2m)[22m[90m 19[2mms[22m[39m
+ [32m✓[39m server/browserConnectors/managedCrmBrowserSessionManager.test.ts [2m([22m[2m13 tests[22m[2m)[22m[90m 7[2mms[22m[39m
+ [32m✓[39m server/memory.test.ts [2m([22m[2m9 tests[22m[2m)[22m[90m 24[2mms[22m[39m
+ [32m✓[39m server/genxCompanyLearningAsync.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 137[2mms[22m[39m
+[90mstderr[2m | server/teamAdmin/routes.test.ts[2m > [22m[2mteam-admin CRM owner mapping boundary[2m > [22m[2mdenies a cross-tenant mapping request before any database operation
+[22m[39m{"event":"team_admin_error","detail":"ACTIVE_ORGANISATION_ACCESS_DENIED"}
+
+[90mstderr[2m | server/teamAdmin/routes.test.ts[2m > [22m[2mteam-admin CRM owner mapping boundary[2m > [22m[2mdenies a cross-tenant pipeline-stage mapping request before any database operation
+[22m[39m{"event":"team_admin_error","detail":"ACTIVE_ORGANISATION_ACCESS_DENIED"}
+
+[90mstderr[2m | server/teamAdmin/routes.test.ts[2m > [22m[2mteam-admin CRM owner mapping boundary[2m > [22m[2mdenies CRM identity confirmation outside the active organisation before database access
+[22m[39m{"event":"team_admin_error","detail":"ACTIVE_ORGANISATION_ACCESS_DENIED"}
+
+ [32m✓[39m server/teamAdmin/routes.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 13[2mms[22m[39m
+ [32m✓[39m server/universalFoundation.test.ts [2m([22m[2m8 tests[22m[2m)[22m[90m 13[2mms[22m[39m
+ [32m✓[39m server/telesales/closeoutPlanner.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 6[2mms[22m[39m
+ [32m✓[39m server/companyKnowledgeVerifierContract.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 10[2mms[22m[39m
+ [32m✓[39m server/personalWorkLearning.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 8[2mms[22m[39m
+ [32m✓[39m server/browserConnectors/browserCrmAdapter.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 9[2mms[22m[39m
+ [31m❯[39m server/sourceOfTruthAcceptance.test.ts [2m([22m[2m5 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[90m 37[2mms[22m[39m
+[31m   [31m×[31m repository source of truth[2m > [22mkeeps exactly one public, dashboard and shared base stylesheet[90m 14[2mms[22m[31m[39m
+[31m     → expected [ …(4) ] to deeply equal [ …(3) ][39m
+ [32m✓[39m server/companyKnowledgeEnvelope.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 20[2mms[22m[39m
+ [32m✓[39m server/deploymentVerifierSeparation.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 4[2mms[22m[39m
+ [32m✓[39m server/genie/organisationReadiness.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 8[2mms[22m[39m
+ [32m✓[39m server/connectedSystems.publicApi.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 6[2mms[22m[39m
+ [32m✓[39m server/agentCommissioning.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 6[2mms[22m[39m
+ [32m✓[39m server/today.inboundOwnership.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 11[2mms[22m[39m
+ [32m✓[39m server/browserIdentityIsolation.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 4[2mms[22m[39m
+ [32m✓[39m server/crmWorkspaceUiContract.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 6[2mms[22m[39m
+ [32m✓[39m server/clientActionConfiguration.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 6[2mms[22m[39m
+ [32m✓[39m server/companyKnowledgeEnqueue.test.ts [2m([22m[2m1 test[22m[2m)[22m[90m 8[2mms[22m[39m
+ [32m✓[39m server/companyKnowledgeCorpus.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 22[2mms[22m[39m
+ [32m✓[39m server/finalLaunchAcceptance.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 5[2mms[22m[39m
+ [32m✓[39m server/companyDiscoveryCanonicalHost.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 39[2mms[22m[39m
+ [32m✓[39m server/liveCrmViewer.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 6[2mms[22m[39m
+ [32m✓[39m server/approvedTemplates.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 7[2mms[22m[39m
+ [32m✓[39m server/security/http.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 8[2mms[22m[39m
+ [32m✓[39m client/src/clientBrandingAcceptance.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 19[2mms[22m[39m
+ [32m✓[39m server/governedEvidenceAgentDesk.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 4[2mms[22m[39m
+ [32m✓[39m server/browserConnectors/runtimeFailure.test.ts [2m([22m[2m13 tests[22m[2m)[22m[90m 14[2mms[22m[39m
+ [32m✓[39m server/governedAssistantEntry.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 5[2mms[22m[39m
+ [32m✓[39m server/companyKnowledgeAuditBatchProvenance.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 4[2mms[22m[39m
+ [32m✓[39m server/companyKnowledgePriceLabelCompatibility.test.ts [2m([22m[2m1 test[22m[2m)[22m[90m 10[2mms[22m[39m
+ [32m✓[39m server/personalMailbox.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 6[2mms[22m[39m
+ [32m✓[39m server/browserConnectors/browserSession.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 7[2mms[22m[39m
+ [32m✓[39m server/workflowRules.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 7[2mms[22m[39m
+ [32m✓[39m server/autonomyPolicy.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 4[2mms[22m[39m
+ [32m✓[39m server/communications/inboundMatching.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 11[2mms[22m[39m
+ [32m✓[39m server/personalSetupUi.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 5[2mms[22m[39m
+ [32m✓[39m server/featureAcceptance.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 7[2mms[22m[39m
+ [31m❯[39m server/assistantHandoverContract.test.ts [2m([22m[2m3 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[90m 30[2mms[22m[39m
+[31m   [31m×[31m client-handover Assistant contract[2m > [22muses one full-page conversation and one integrated composer[90m 27[2mms[22m[31m[39m
+[31m     → expected 'import DashboardLayout from "@/compon…' to contain 'I’m ready when you are.'[39m
+ [32m✓[39m server/crm/ensureCommissioning.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 5[2mms[22m[39m
+ [32m✓[39m server/httpAuth.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 7[2mms[22m[39m
+ [32m✓[39m server/platformOwner.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 8[2mms[22m[39m
+ [32m✓[39m client/src/pages/finalAuthAcceptance.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 6[2mms[22m[39m
+ [32m✓[39m client/src/lib/reviewStatus.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 7[2mms[22m[39m
+ [32m✓[39m server/companyKnowledgeReviewUi.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 5[2mms[22m[39m
+ [32m✓[39m server/genxCapabilities.test.ts [2m([22m[2m1 test[22m[2m)[22m[90m 11[2mms[22m[39m
+ [32m✓[39m server/auth.logout.test.ts [2m([22m[2m1 test[22m[2m)[22m[90m 7[2mms[22m[39m
+ [32m✓[39m server/crmBrowserSecretBoundary.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 3[2mms[22m[39m
+ [32m✓[39m server/crm/runtimeCapabilities.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 5[2mms[22m[39m
+ [32m✓[39m server/assistantKnowledgeContract.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 3[2mms[22m[39m
+ [32m✓[39m server/voice/tts.test.ts [2m([22m[2m1 test[22m[2m)[22m[90m 10[2mms[22m[39m
+ [32m✓[39m server/browserConnectors/browserControlArbitration.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 9[2mms[22m[39m
+ [32m✓[39m server/communications/inboundPipeline.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 6[2mms[22m[39m
+ [32m✓[39m server/companyKnowledgeRetention.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 4[2mms[22m[39m
+ [32m✓[39m server/browserConnectors/learnedLifecycle.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 5[2mms[22m[39m
+ [32m✓[39m server/productionAgentProbe.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 5[2mms[22m[39m
+ [32m✓[39m server/voice/stt.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 14[2mms[22m[39m
+ [32m✓[39m server/localAuth.session.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 18[2mms[22m[39m
+ [32m✓[39m server/browserConnectors/scriptEngine.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 6[2mms[22m[39m
+ [32m✓[39m server/navigationAcceptance.test.ts [2m([22m[2m1 test[22m[2m)[22m[90m 10[2mms[22m[39m
+ [32m✓[39m server/managementElevation.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 6[2mms[22m[39m
+ [32m✓[39m server/connectedSystemCommissioningState.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 3[2mms[22m[39m
+ [32m✓[39m server/browserConnectors/crmBrowserCredentialBoundary.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 3[2mms[22m[39m
+ [32m✓[39m server/legacyWorkflowBypass.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 4[2mms[22m[39m
+ [32m✓[39m server/aiCoalescing.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 6[2mms[22m[39m
+ [32m✓[39m server/automationPolicy.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 5[2mms[22m[39m
+ [32m✓[39m server/entitlements/guard.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 5[2mms[22m[39m
+ [32m✓[39m server/autonomySettingsUi.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 6[2mms[22m[39m
+ [32m✓[39m server/liveCoach.outcomes.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 6[2mms[22m[39m
+ [32m✓[39m server/liveCallsVisualAcceptance.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 5[2mms[22m[39m
+ [32m✓[39m server/supervisor.test.ts [2m([22m[2m9 tests[22m[2m)[22m[90m 9[2mms[22m[39m
+ [32m✓[39m server/compliance/retention.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 6[2mms[22m[39m
+ [31m❯[39m server/onboardingFlow.test.ts [2m([22m[2m2 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[90m 7[2mms[22m[39m
+[31m   [31m×[31m universal CRM onboarding[2m > [22moffers known presets and a first-class unknown CRM route[90m 6[2mms[22m[31m[39m
+[31m     → expected 'import DashboardLayout from "@/compon…' to match /Amarktai never asks for\s+or records …/[39m
+ [32m✓[39m server/connectors/webhookSecurity.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 4[2mms[22m[39m
+ [32m✓[39m server/exportDocuments.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 5[2mms[22m[39m
+ [32m✓[39m server/activeOrganisationGuard.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 5[2mms[22m[39m
+ [32m✓[39m server/genxCompanyLearningUpload.test.ts [2m([22m[2m1 test[22m[2m)[22m[90m 4[2mms[22m[39m
+ [32m✓[39m server/playbooks/versioning.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 5[2mms[22m[39m
+ [32m✓[39m server/organisation.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 5[2mms[22m[39m
+ [32m✓[39m client/src/lib/crmViewerInput.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 6[2mms[22m[39m
+ [32m✓[39m server/connectors/webhookIntake.test.ts [2m([22m[2m1 test[22m[2m)[22m[90m 6[2mms[22m[39m
+ [32m✓[39m server/companyKnowledgeRepairPrompt.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 4[2mms[22m[39m
+ [32m✓[39m server/aiCredits.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 4[2mms[22m[39m
+ [32m✓[39m server/actionProposalClaim.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 2[2mms[22m[39m
+ [32m✓[39m server/communications.blankGuard.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 4[2mms[22m[39m
+ [32m✓[39m server/twoFactor.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 5[2mms[22m[39m
+ [32m✓[39m server/prioritization/scoring.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 5[2mms[22m[39m
+ [32m✓[39m server/security/networkPolicy.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 11[2mms[22m[39m
+ [32m✓[39m server/reviewedEmailRetrySafety.test.ts [2m([22m[2m1 test[22m[2m)[22m[90m 3[2mms[22m[39m
+ [32m✓[39m server/observability/alerts.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 2[2mms[22m[39m
+ [32m✓[39m server/savedItems.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 6[2mms[22m[39m
+ [32m✓[39m server/liveCalls/signals.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 9[2mms[22m[39m
+ [32m✓[39m server/connectedSystemAdminRoutes.test.ts [2m([22m[2m1 test[22m[2m)[22m[90m 4[2mms[22m[39m
+ [32m✓[39m server/communications/inboundReview.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 4[2mms[22m[39m
+ [32m✓[39m server/voice/guard.test.ts [2m([22m[2m1 test[22m[2m)[22m[90m 4[2mms[22m[39m
+ [32m✓[39m server/liveCalls/completion.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 5[2mms[22m[39m
+ [32m✓[39m server/browserProxyConfig.test.ts [2m([22m[2m1 test[22m[2m)[22m[90m 3[2mms[22m[39m
+ [32m✓[39m server/forecasting/explainable.test.ts [2m([22m[2m1 test[22m[2m)[22m[90m 4[2mms[22m[39m
+ [32m✓[39m server/qa/scoring.test.ts [2m([22m[2m1 test[22m[2m)[22m[90m 3[2mms[22m[39m
+ [32m✓[39m server/crm/adapterRegistry.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 5[2mms[22m[39m
+ [32m✓[39m server/localAuth.test.ts [2m([22m[2m1 test[22m[2m)[22m[90m 2[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[1m[7m Failed Tests 3 [27m[22m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[31m[1m[7m FAIL [27m[22m[39m server/assistantHandoverContract.test.ts[2m > [22mclient-handover Assistant contract[2m > [22muses one full-page conversation and one integrated composer
+[31m[1mAssertionError[22m: expected 'import DashboardLayout from "@/compon…' to contain 'I’m ready when you are.'[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- I’m ready when you are.[39m
+[31m+ import DashboardLayout from "@/components/DashboardLayout";[39m
+[31m+ import { Button } from "@/components/ui/button";[39m
+[31m+ import { Textarea } from "@/components/ui/textarea";[39m
+[31m+ import { useAuth } from "@/_core/hooks/useAuth";[39m
+[31m+ import { friendlyError } from "@/lib/friendlyError";[39m
+[31m+ import { trpc } from "@/lib/trpc";[39m
+[31m+ import {[39m
+[31m+   ArrowRight,[39m
+[31m+   BriefcaseBusiness,[39m
+[31m+   Building2,[39m
+[31m+   CalendarClock,[39m
+[31m+   Headphones,[39m
+[31m+   Loader2,[39m
+[31m+   RotateCcw,[39m
+[31m+   Send,[39m
+[31m+   Sparkles,[39m
+[31m+   UserRound,[39m
+[31m+ } from "lucide-react";[39m
+[31m+ import { useEffect, useMemo, useRef, useState } from "react";[39m
+[31m+ import { useLocation } from "wouter";[39m
+[31m+[39m
+[31m+ type Message = {[39m
+[31m+   role: "user" | "assistant";[39m
+[31m+   content: string;[39m
+[31m+   action?: { label: string; path: string };[39m
+[31m+ };[39m
+[31m+[39m
+[31m+ type AssistantResponse = {[39m
+[31m+   content?: string;[39m
+[31m+   error?: string;[39m
+[31m+   suggestedAction?: { label: string; path: string };[39m
+[31m+   reviewRequired?: boolean;[39m
+[31m+ };[39m
+[31m+[39m
+[31m+ const suggestions = [[39m
+[31m+   "Who should I contact next?",[39m
+[31m+   "Prepare my next call",[39m
+[31m+   "What needs my attention?",[39m
+[31m+   "Draft a follow-up",[39m
+[31m+ ];[39m
+[31m+[39m
+[31m+ async function askAssistant(input: {[39m
+[31m+   messages: Array<{ role: "user" | "assistant"; content: string }>;[39m
+[31m+   contactId?: number;[39m
+[31m+ }) {[39m
+[31m+   const response = await fetch("/api/assistant", {[39m
+[31m+     method: "POST",[39m
+[31m+     credentials: "include",[39m
+[31m+     headers: { "Content-Type": "application/json" },[39m
+[31m+     body: JSON.stringify(input),[39m
+[31m+   });[39m
+[31m+   const body = (await response.json().catch(() => ({}))) as AssistantResponse;[39m
+[31m+   if (!response.ok)[39m
+[31m+     throw new Error(body.error || "AmarktAI could not respond.");[39m
+[31m+   return body;[39m
+[31m+ }[39m
+[31m+[39m
+[31m+ function AssistantMark({ compact = false }: { compact?: boolean }) {[39m
+[31m+   const size = compact[39m
+[31m+     ? "h-8 w-8 rounded-lg text-[10px]"[39m
+[31m+     : "h-10 w-10 rounded-xl text-[12px]";[39m
+[31m+   return ([39m
+[31m+     <span[39m
+[31m+       aria-label="AmarktAI"[39m
+[31m+       className={`${size} grid shrink-0 place-items-center bg-gradient-to-br from-[#2F6FED] to-[#4FB9FF] font-black tracking-[-.04em] text-white shadow-[0_8px_20px_rgba(47,111,237,.20)]`}[39m
+[31m+     >[39m
+[31m+       AI[39m
+[31m+     </span>[39m
+[31m+   );[39m
+[31m+ }[39m
+[31m+[39m
+[31m+ export default function Assistant() {[39m
+[31m+   const [, navigate] = useLocation();[39m
+[31m+   const { user } = useAuth();[39m
+[31m+   const customers = trpc.sales.customers.useQuery();[39m
+[31m+   const organisation = trpc.organisation.current.useQuery();[39m
+[31m+   const [messages, setMessages] = useState<Message[]>([]);[39m
+[31m+   const [draft, setDraft] = useState("");[39m
+[31m+   const [contactId, setContactId] = useState<number | undefined>();[39m
+[31m+   const [busy, setBusy] = useState(false);[39m
+[31m+   const [error, setError] = useState("");[39m
+[31m+   const chatEnd = useRef<HTMLDivElement>(null);[39m
+[31m+[39m
+[31m+   const firstName =[39m
+[31m+     organisation.data?.memberOnboarding.preferredName ||[39m
+[31m+     user?.name?.trim().split(/\s+/)[0] ||[39m
+[31m+     "there";[39m
+[31m+   const selectedCustomer = useMemo([39m
+[31m+     () => customers.data?.find(customer => customer.id === contactId),[39m
+[31m+     [contactId, customers.data][39m
+[31m+   );[39m
+[31m+[39m
+[31m+   useEffect(() => {[39m
+[31m+     const prompt = new URLSearchParams(window.location.search)[39m
+[31m+       .get("prompt")[39m
+[31m+       ?.trim();[39m
+[31m+     if (prompt) setDraft(prompt.slice(0, 12_000));[39m
+[31m+   }, []);[39m
+[31m+[39m
+[31m+   useEffect(() => {[39m
+[31m+     chatEnd.current?.scrollIntoView({ behavior: "smooth", block: "end" });[39m
+[31m+   }, [messages, busy]);[39m
+[31m+[39m
+[31m+   async function send(prompt = draft) {[39m
+[31m+     const content = prompt.trim();[39m
+[31m+     if (!content || busy) return;[39m
+[31m+     const nextMessages: Message[] = [...messages, { role: "user", content }];[39m
+[31m+     setMessages(nextMessages);[39m
+[31m+     setDraft("");[39m
+[31m+     setError("");[39m
+[31m+     setBusy(true);[39m
+[31m+     try {[39m
+[31m+       const response = await askAssistant({[39m
+[31m+         contactId,[39m
+[31m+         messages: nextMessages.map(message => ({[39m
+[31m+           role: message.role,[39m
+[31m+           content: message.content,[39m
+[31m+         })),[39m
+[31m+       });[39m
+[31m+       setMessages(current => [[39m
+[31m+         ...current,[39m
+[31m+         {[39m
+[31m+           role: "assistant",[39m
+[31m+           content:[39m
+[31m+             response.content || "I’m ready. What would you like to do next?",[39m
+[31m+           action: response.suggestedAction,[39m
+[31m+         },[39m
+[31m+       ]);[39m
+[31m+     } catch (cause) {[39m
+[31m+       setError([39m
+[31m+         friendlyError([39m
+[31m+           cause,[39m
+[31m+           "I couldn't complete that request just now. Nothing was changed."[39m
+[31m+         )[39m
+[31m+       );[39m
+[31m+     } finally {[39m
+[31m+       setBusy(false);[39m
+[31m+     }[39m
+[31m+   }[39m
+[31m+[39m
+[31m+   async function retry() {[39m
+[31m+     if (busy || !messages.length) return;[39m
+[31m+     setError("");[39m
+[31m+     setBusy(true);[39m
+[31m+     try {[39m
+[31m+       const response = await askAssistant({[39m
+[31m+         contactId,[39m
+[31m+         messages: messages.map(message => ({[39m
+[31m+           role: message.role,[39m
+[31m+           content: message.content,[39m
+[31m+         })),[39m
+[31m+       });[39m
+[31m+       setMessages(current => [[39m
+[31m+         ...current,[39m
+[31m+         {[39m
+[31m+           role: "assistant",[39m
+[31m+           content:[39m
+[31m+             response.content || "I’m ready. What would you like to do next?",[39m
+[31m+           action: response.suggestedAction,[39m
+[31m+         },[39m
+[31m+       ]);[39m
+[31m+     } catch (cause) {[39m
+[31m+       setError([39m
+[31m+         friendlyError([39m
+[31m+           cause,[39m
+[31m+           "I couldn't complete that request just now. Nothing was changed."[39m
+[31m+         )[39m
+[31m+       );[39m
+[31m+     } finally {[39m
+[31m+       setBusy(false);[39m
+[31m+     }[39m
+[31m+   }[39m
+[31m+[39m
+[31m+   const hour = new Date().getHours();[39m
+[31m+   const greeting = hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening";[39m
+[31m+[39m
+[31m+   return ([39m
+[31m+     <DashboardLayout>[39m
+[31m+       <div[39m
+[31m+         data-assistant-workspace[39m
+[31m+         className="mx-auto flex h-[calc(100dvh-104px)] min-h-[620px] max-w-[1440px] flex-col overflow-hidden text-[#24344A]"[39m
+[31m+       >[39m
+[31m+         <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[#D7E0EA] pb-4">[39m
+[31m+           <div className="flex min-w-0 items-center gap-3">[39m
+[31m+             <AssistantMark />[39m
+[31m+             <div className="min-w-0">[39m
+[31m+               <p className="text-sm font-black tracking-[-.01em] text-[#24344A]">[39m
+[31m+                 Amarkt<span className="text-[#2F6FED]">AI</span>[39m
+[31m+               </p>[39m
+[31m+               <h1 className="truncate text-sm font-medium text-[#6B7B90]">[39m
+[31m+                 Good {greeting}, {firstName}. What are we working on?[39m
+[31m+               </h1>[39m
+[31m+             </div>[39m
+[31m+           </div>[39m
+[31m+[39m
+[31m+           <label className="flex min-w-0 items-center gap-2 text-xs font-semibold text-[#66758A]">[39m
+[31m+             <UserRound className="h-4 w-4 shrink-0 text-[#2F6FED]" />[39m
+[31m+             <span className="sr-only">Customer context</span>[39m
+[31m+             <select[39m
+[31m+               aria-label="Customer context"[39m
+[31m+               value={contactId ?? ""}[39m
+[31m+               onChange={event =>[39m
+[31m+                 setContactId([39m
+[31m+                   event.target.value ? Number(event.target.value) : undefined[39m
+[31m+                 )[39m
+[31m+               }[39m
+[31m+               className="h-9 max-w-[min(52vw,340px)] truncate rounded-xl border border-[#CAD6E4] bg-white px-3 text-xs font-semibold text-[#33445B] outline-none focus:border-[#2F6FED] focus:ring-2 focus:ring-[#DCE7F6]"[39m
+[31m+             >[39m
+[31m+               <option value="">All customers</option>[39m
+[31m+               {customers.data?.map(customer => ([39m
+[31m+                 <option key={customer.id} value={customer.id}>[39m
+[31m+                   {customer.name}[39m
+[31m+                   {customer.companyName ? ` · ${customer.companyName}` : ""}[39m
+[31m+                 </option>[39m
+[31m+               ))}[39m
+[31m+             </select>[39m
+[31m+           </label>[39m
+[31m+         </header>[39m
+[31m+[39m
+[31m+         <div className="mt-4 grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">[39m
+[31m+           <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[#D7E0EA] bg-white">[39m
+[31m+             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-7 sm:py-6">[39m
+[31m+               <div className="mx-auto flex min-h-full max-w-3xl flex-col">[39m
+[31m+                 {!messages.length ? ([39m
+[31m+                   <div className="flex max-w-2xl items-start gap-3 pt-3">[39m
+[31m+                     <AssistantMark compact />[39m
+[31m+                     <div className="min-w-0 flex-1">[39m
+[31m+                       <div className="rounded-2xl rounded-tl-md bg-[#F4F7FB] px-4 py-3 text-[15px] leading-7 text-[#33445B]">[39m
+[31m+                         I already have the sales workspace context. Ask me who to call, what happened with a customer, what needs attention, or what follow-up should be prepared next.[39m
+[31m+                       </div>[39m
+[31m+                       <div className="mt-4 flex flex-wrap gap-2">[39m
+[31m+                         {suggestions.map(prompt => ([39m
+[31m+                           <button[39m
+[31m+                             key={prompt}[39m
+[31m+                             type="button"[39m
+[31m+                             onClick={() => void send(prompt)}[39m
+[31m+                             className="rounded-full border border-[#D7E1EE] bg-white px-3.5 py-2 text-xs font-semibold text-[#40516A] transition hover:border-[#9CB8E8] hover:bg-[#F1F6FF] hover:text-[#2F63C7]"[39m
+[31m+                           >[39m
+[31m+                             {prompt}[39m
+[31m+                           </button>[39m
+[31m+                         ))}[39m
+[31m+                       </div>[39m
+[31m+                     </div>[39m
+[31m+                   </div>[39m
+[31m+                 ) : ([39m
+[31m+                   <div className="space-y-6">[39m
+[31m+                     {selectedCustomer ? ([39m
+[31m+                       <p className="flex items-center gap-2 text-xs font-semibold text-[#718096]">[39m
+[31m+                         <UserRound className="h-3.5 w-3.5" />[39m
+[31m+                         Customer context: {selectedCustomer.name}[39m
+[31m+                       </p>[39m
+[31m+                     ) : null}[39m
+[31m+[39m
+[31m+                     {messages.map((message, index) => ([39m
+[31m+                       <div[39m
+[31m+                         key={`${message.role}-${index}`}[39m
+[31m+                         className={[39m
+[31m+                           message.role === "user"[39m
+[31m+                             ? "ml-auto max-w-[min(82%,680px)] rounded-2xl rounded-br-md bg-[#2F6FED] px-4 py-3 text-[15px] leading-6 text-white"[39m
+[31m+                             : "max-w-[min(94%,760px)]"[39m
+[31m+                         }[39m
+[31m+                       >[39m
+[31m+                         {message.role === "assistant" ? ([39m
+[31m+                           <div className="flex gap-3">[39m
+[31m+                             <AssistantMark compact />[39m
+[31m+                             <div className="min-w-0 flex-1">[39m
+[31m+                               <div className="whitespace-pre-wrap text-[15px] leading-7 text-[#33445B]">[39m
+[31m+                                 {message.content}[39m
+[31m+                               </div>[39m
+[31m+                               {message.action ? ([39m
+[31m+                                 <Button[39m
+[31m+                                   size="sm"[39m
+[31m+                                   variant="outline"[39m
+[31m+                                   className="mt-3"[39m
+[31m+                                   onClick={() => navigate(message.action!.path)}[39m
+[31m+                                 >[39m
+[31m+                                   {message.action.label}[39m
+[31m+                                   <ArrowRight className="ml-2 h-3.5 w-3.5" />[39m
+[31m+                                 </Button>[39m
+[31m+                               ) : null}[39m
+[31m+                             </div>[39m
+[31m+                           </div>[39m
+[31m+                         ) : ([39m
+[31m+                           message.content[39m
+[31m+                         )}[39m
+[31m+                       </div>[39m
+[31m+                     ))}[39m
+[31m+[39m
+[31m+                     {busy ? ([39m
+[31m+                       <div className="flex items-center gap-3 text-sm text-[#718096]">[39m
+[31m+                         <AssistantMark compact />[39m
+[31m+                         <Loader2 className="h-4 w-4 animate-spin" />[39m
+[31m+                         Working with your current sales context…[39m
+[31m+                       </div>[39m
+[31m+                     ) : null}[39m
+[31m+[39m
+[31m+                     {error ? ([39m
+[31m+                       <div[39m
+[31m+                         role="alert"[39m
+[31m+                         className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"[39m
+[31m+                       >[39m
+[31m+                         <p>{error}</p>[39m
+[31m+                         <Button[39m
+[31m+                           size="sm"[39m
+[31m+                           variant="outline"[39m
+[31m+                           className="mt-3"[39m
+[31m+                           onClick={() => void retry()}[39m
+[31m+                           disabled={busy}[39m
+[31m+                         >[39m
+[31m+                           <RotateCcw className="mr-2 h-3.5 w-3.5" />[39m
+[31m+                           Try again[39m
+[31m+                         </Button>[39m
+[31m+                       </div>[39m
+[31m+                     ) : null}[39m
+[31m+                   </div>[39m
+[31m+                 )}[39m
+[31m+                 <div ref={chatEnd} />[39m
+[31m+               </div>[39m
+[31m+             </div>[39m
+[31m+[39m
+[31m+             <div className="shrink-0 border-t border-[#E5EAF0] bg-[#FAFCFF] p-3 sm:p-4">[39m
+[31m+               <div className="mx-auto max-w-3xl rounded-2xl border border-[#CBD7E6] bg-white p-2 focus-within:border-[#8AACE6] focus-within:ring-2 focus-within:ring-[#E5EDFB]">[39m
+[31m+                 <Textarea[39m
+[31m+                   aria-label="Message AmarktAI"[39m
+[31m+                   value={draft}[39m
+[31m+                   onChange={event => setDraft(event.target.value)}[39m
+[31m+                   onKeyDown={event => {[39m
+[31m+                     if (event.key === "Enter" && !event.shiftKey) {[39m
+[31m+                       event.preventDefault();[39m
+[31m+                       void send();[39m
+[31m+                     }[39m
+[31m+                   }}[39m
+[31m+                   placeholder={[39m
+[31m+                     selectedCustomer[39m
+[31m+                       ? `Ask AmarktAI about ${selectedCustomer.name}…`[39m
+[31m+                       : "Ask AmarktAI about your day, customers, calls or follow-ups…"[39m
+[31m+                   }[39m
+[31m+                   className="min-h-[62px] resize-none border-0 bg-transparent px-3 py-3 text-[15px] leading-6 shadow-none focus-visible:ring-0"[39m
+[31m+                 />[39m
+[31m+                 <div className="flex items-center justify-between gap-3 border-t border-[#EEF2F6] px-2 pt-2">[39m
+[31m+                   <p className="text-[11px] text-[#8290A3]">[39m
+[31m+                     Customer-facing actions remain governed and reviewable.[39m
+[31m+                   </p>[39m
+[31m+                   <Button[39m
+[31m+                     size="sm"[39m
+[31m+                     disabled={!draft.trim() || busy}[39m
+[31m+                     onClick={() => void send()}[39m
+[31m+                   >[39m
+[31m+                     {busy ? ([39m
+[31m+                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />[39m
+[31m+                     ) : ([39m
+[31m+                       <Send className="mr-2 h-4 w-4" />[39m
+[31m+                     )}[39m
+[31m+                     Send[39m
+[31m+                   </Button>[39m
+[31m+                 </div>[39m
+[31m+               </div>[39m
+[31m+             </div>[39m
+[31m+           </section>[39m
+[31m+[39m
+[31m+           <aside className="hidden min-h-0 overflow-y-auto xl:block">[39m
+[31m+             <div className="handover-surface p-5">[39m
+[31m+               <div className="flex items-center gap-2 text-[#2F6FED]">[39m
+[31m+                 <Sparkles className="h-4 w-4" />[39m
+[31m+                 <p className="text-[10px] font-black uppercase tracking-[.13em]">[39m
+[31m+                   Active context[39m
+[31m+                 </p>[39m
+[31m+               </div>[39m
+[31m+               {selectedCustomer ? ([39m
+[31m+                 <div className="mt-4 space-y-4">[39m
+[31m+                   <div>[39m
+[31m+                     <h2 className="font-display text-2xl font-bold tracking-[-.04em] text-[#1D2D43]">[39m
+[31m+                       {selectedCustomer.name}[39m
+[31m+                     </h2>[39m
+[31m+                     <p className="mt-1 flex items-center gap-2 text-xs text-[#718096]">[39m
+[31m+                       <Building2 className="h-3.5 w-3.5" />[39m
+[31m+                       {selectedCustomer.companyName || "No linked company"}[39m
+[31m+                     </p>[39m
+[31m+                   </div>[39m
+[31m+                   <ContextFact[39m
+[31m+                     icon={BriefcaseBusiness}[39m
+[31m+                     label="Opportunity"[39m
+[31m+                     value={selectedCustomer.openOpportunity?.name || "No open opportunity"}[39m
+[31m+                   />[39m
+[31m+                   <ContextFact[39m
+[31m+                     icon={CalendarClock}[39m
+[31m+                     label="Next step"[39m
+[31m+                     value={selectedCustomer.nextAction?.title || "No next action recorded"}[39m
+[31m+                   />[39m
+[31m+                   <div className="grid gap-2">[39m
+[31m+                     <Button[39m
+[31m+                       variant="outline"[39m
+[31m+                       onClick={() => navigate(`/calls?contactId=${selectedCustomer.id}`)}[39m
+[31m+                     >[39m
+[31m+                       <Headphones className="mr-2 h-4 w-4" /> Open call companion[39m
+[31m+                     </Button>[39m
+[31m+                     <Button[39m
+[31m+                       variant="ghost"[39m
+[31m+                       onClick={() => navigate("/customers")}[39m
+[31m+                     >[39m
+[31m+                       Open full customer record[39m
+[31m+                     </Button>[39m
+[31m+                   </div>[39m
+[31m+                 </div>[39m
+[31m+               ) : ([39m
+[31m+                 <div className="mt-4 rounded-2xl bg-[#F6F9FD] p-4 text-sm leading-6 text-[#66758A]">[39m
+[31m+                   Choose a customer above when you want AmarktAI to keep the conversation tightly focused on one relationship. Leave it on All customers for prioritisation and day planning.[39m
+[31m+                 </div>[39m
+[31m+               )}[39m
+[31m+             </div>[39m
+[31m+           </aside>[39m
+[31m+         </div>[39m
+[31m+       </div>[39m
+[31m+     </DashboardLayout>[39m
+[31m+   );[39m
+[31m+ }[39m
+[31m+[39m
+[31m+ function ContextFact({[39m
+[31m+   icon: Icon,[39m
+[31m+   label,[39m
+[31m+   value,[39m
+[31m+ }: {[39m
+[31m+   icon: typeof Building2;[39m
+[31m+   label: string;[39m
+[31m+   value: string;[39m
+[31m+ }) {[39m
+[31m+   return ([39m
+[31m+     <div className="handover-soft-surface p-4">[39m
+[31m+       <div className="flex items-center gap-2 text-[#2F6FED]">[39m
+[31m+         <Icon className="h-4 w-4" />[39m
+[31m+         <p className="text-[10px] font-black uppercase tracking-[.1em] text-[#7B8CA2]">[39m
+[31m+           {label}[39m
+[31m+         </p>[39m
+[31m+       </div>[39m
+[31m+       <p className="mt-2 text-sm font-bold leading-5 text-[#33445B]">{value}</p>[39m
+[31m+     </div>[39m
+[31m+   );[39m
+[31m+ }[39m
+[31m+[39m
+
+[36m [2m❯[22m server/assistantHandoverContract.test.ts:[2m16:27[22m[39m
+    [90m 14| [39m  [34mit[39m([32m"uses one full-page conversation and one integrated composer"[39m[33m,[39m ()…
+    [90m 15| [39m    [34mexpect[39m(assistantPage)[33m.[39m[34mtoContain[39m([32m"data-assistant-workspace"[39m)[33m;[39m
+    [90m 16| [39m    [34mexpect[39m(assistantPage)[33m.[39m[34mtoContain[39m([32m"I’m ready when you are."[39m)[33m;[39m
+    [90m   | [39m                          [31m^[39m
+    [90m 17| [39m    [34mexpect[39m(assistantPage)[33m.[39mnot[33m.[39m[34mtoContain[39m([32m"Try asking me"[39m)[33m;[39m
+    [90m 18| [39m    [34mexpect[39m(assistantPage)[33m.[39mnot[33m.[39m[34mtoContain[39m([32m"<Bot"[39m)[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯[22m[39m
+
+[31m[1m[7m FAIL [27m[22m[39m server/onboardingFlow.test.ts[2m > [22muniversal CRM onboarding[2m > [22moffers known presets and a first-class unknown CRM route
+[31m[1mAssertionError[22m: expected 'import DashboardLayout from "@/compon…' to match /Amarktai never asks for\s+or records …/[39m
+
+[32m- Expected:[39m 
+/Amarktai never asks for\s+or records the password or verification code/
+
+[31m+ Received:[39m 
+"import DashboardLayout from \"@/components/DashboardLayout\";
+import { Button } from \"@/components/ui/button\";
+import { friendlyError } from \"@/lib/friendlyError\";
+import { trpc } from \"@/lib/trpc\";
+import {
+  AlertCircle,
+  ArrowRight,
+  CheckCircle2,
+  DatabaseZap,
+  ExternalLink,
+  Loader2,
+  Plus,
+  RefreshCw,
+  ShieldCheck,
+  Sparkles,
+  Trash2,
+  X,
+} from \"lucide-react\";
+import { useMemo, useState } from \"react\";
+import { toast } from \"sonner\";
+import { useLocation } from \"wouter\";
+
+type Provider =
+  | \"genie\"
+  | \"hubspot\"
+  | \"salesforce\"
+  | \"pipedrive\"
+  | \"zoho\"
+  | \"custom_browser\";
+
+const providers: Array<{
+  provider: Provider;
+  label: string;
+  url: string;
+  transport: \"browser\" | \"oauth\";
+}> = [
+  {
+    provider: \"genie\",
+    label: \"Genie\",
+    url: \"https://genie.entrepreneurscircle.org/\",
+    transport: \"browser\",
+  },
+  {
+    provider: \"hubspot\",
+    label: \"HubSpot\",
+    url: \"https://app.hubspot.com/\",
+    transport: \"oauth\",
+  },
+  {
+    provider: \"salesforce\",
+    label: \"Salesforce\",
+    url: \"https://login.salesforce.com/\",
+    transport: \"oauth\",
+  },
+  {
+    provider: \"pipedrive\",
+    label: \"Pipedrive\",
+    url: \"https://app.pipedrive.com/\",
+    transport: \"oauth\",
+  },
+  {
+    provider: \"zoho\",
+    label: \"Zoho CRM\",
+    url: \"https://crm.zoho.com/\",
+    transport: \"oauth\",
+  },
+  {
+    provider: \"custom_browser\",
+    label: \"Other CRM\",
+    url: \"\",
+    transport: \"browser\",
+  },
+];
+
+const readCapabilities = [
+  \"contacts.read\",
+  \"companies.read\",
+  \"opportunities.read\",
+  \"tasks.read\",
+  \"activities.read\",
+  \"notes.read\",
+  \"owners.read\",
+  \"pipelines.read\",
+];
+const writeCapabilities = [
+  \"contacts.write\",
+  \"companies.write\",
+  \"opportunities.write\",
+  \"tasks.write\",
+  \"activities.write\",
+  \"notes.write\",
+  \"email.send\",
+  \"sms.send\",
+  \"whatsapp.send\",
+  \"sequences.apply\",
+];
+
+function statusPresentation(status: string) {
+  if (status === \"ready\")
+    return {
+      tone: \"ready\" as const,
+      title: \"Connected\",
+      detail: \"The connection is available and can feed the AmarktAI workspace.\",
+    };
+  if (status === \"testing\" || status === \"connecting\")
+    return {
+      tone: \"working\" as const,
+      title: \"Commissioning\",
+      detail: \"AmarktAI is safely checking which CRM data and operations are available.\",
+    };
+  if (status === \"authentication_expired\")
+    return {
+      tone: \"attention\" as const,
+      title: \"Sign in again\",
+      detail: \"The saved CRM session expired. Reopen the source CRM and sign in directly.\",
+    };
+  if (status === \"limited_permissions\")
+    return {
+      tone: \"attention\" as const,
+      title: \"Connected with limits\",
+      detail: \"The CRM is connected, but some operations still need permission or commissioning.\",
+    };
+  if (status === \"needs_attention\" || status === \"error\")
+    return {
+      tone: \"attention\" as const,
+      title: \"Needs attention\",
+      detail: \"Open the source CRM to finish the connection or resolve the sign-in issue.\",
+    };
+  return {
+    tone: \"working\" as const,
+    title: \"Ready to sign in\",
+    detail: \"Open the source CRM and sign in with your own account to continue.\",
+  };
+}
+
+async function responseError(response: Response) {
+  try {
+    const body = (await response.json()) as { error?: string };
+    return body.error || `Request failed (${response.status})`;
+  } catch {
+    return `Request failed (${response.status})`;
+  }
+}
+
+export default function ConnectionsV2() {
+  const [, navigate] = useLocation();
+  const organisation = trpc.organisation.current.useQuery();
+  const organisationId = organisation.data?.organisationId;
+  const systems = trpc.connectedSystems.list.useQuery(
+    { organisationId: organisationId || 0 },
+    { enabled: Boolean(organisationId), refetchInterval: 5_000 }
+  );
+  const readiness = trpc.integrations.list.useQuery(undefined, {
+    enabled: Boolean(organisationId),
+    retry: false,
+  });
+  const create = trpc.connectedSystems.create.useMutation();
+  const beginOAuth = trpc.connectedSystems.beginOAuth.useMutation();
+  const [adding, setAdding] = useState(false);
+  const [selected, setSelected] = useState<(typeof providers)[number]>(
+    providers[0]
+  );
+  const [customUrl, setCustomUrl] = useState(\"\");
+  const [error, setError] = useState(\"\");
+  const [disconnectingId, setDisconnectingId] = useState<number | null>(null);
+  const [confirmDisconnectId, setConfirmDisconnectId] = useState<number | null>(
+    null
+  );
+  const canManage =
+    organisation.data?.role === \"owner\" ||
+    organisation.data?.role === \"manager\";
+  const startUrl =
+    selected.provider === \"custom_browser\" ? customUrl.trim() : selected.url;
+  const connected = useMemo(() => systems.data || [], [systems.data]);
+  const workspaceReady = Boolean(readiness.data?.genie.ready);
+
+  async function connect() {
+    if (!organisationId) return;
+    setError(\"\");
+    try {
+      const parsed = new URL(startUrl);
+      if (parsed.protocol !== \"https:\") throw new Error(\"https required\");
+      const id = await create.mutateAsync({
+        organisationId,
+        provider: selected.provider,
+        displayName: selected.label,
+        baseUrl: startUrl,
+        connectionMethod: selected.transport,
+        allowedReadCapabilities: readCapabilities,
+        allowedWriteCapabilities: writeCapabilities,
+      });
+      await systems.refetch();
+      setAdding(false);
+      if (selected.transport === \"oauth\") {
+        const result = await beginOAuth.mutateAsync({
+          organisationId,
+          connectedSystemId: id,
+        });
+        window.location.assign(result.authorizationUrl);
+      } else {
+        toast.success(\"CRM added. Sign in inside the secure source workspace to continue commissioning.\");
+        navigate(`/crm/${id}`);
+      }
+    } catch (cause) {
+      setError(
+        friendlyError(
+          cause,
+          \"The CRM connection could not be changed safely. Try again.\"
+        )
+      );
+    }
+  }
+
+  async function disconnect(connectedSystemId: number) {
+    if (!canManage) return;
+    if (confirmDisconnectId !== connectedSystemId) {
+      setConfirmDisconnectId(connectedSystemId);
+      return;
+    }
+    setDisconnectingId(connectedSystemId);
+    setError(\"\");
+    try {
+      const response = await fetch(
+        `/api/connected-system-admin/${connectedSystemId}/disconnect`,
+        {
+          method: \"POST\",
+          credentials: \"include\",
+          headers: { \"Content-Type\": \"application/json\" },
+          body: \"{}\",
+        }
+      );
+      if (!response.ok) throw new Error(await responseError(response));
+      setConfirmDisconnectId(null);
+      toast.success(
+        \"CRM disconnected. Sign-in data was removed while retained CRM history and audit evidence were preserved.\"
+      );
+      await systems.refetch();
+    } catch (cause) {
+      const message = friendlyError(
+        cause,
+        \"The CRM connection could not be changed safely. Try again.\"
+      );
+      setError(message);
+      toast.error(message);
+    } finally {
+      setDisconnectingId(null);
+    }
+  }
+
+  return (
+    <DashboardLayout>
+      <div className=\"mx-auto max-w-[1320px] space-y-5 text-[#26354A]\">
+        <header className=\"rounded-3xl border border-[#DCE4EE] bg-white p-6 shadow-sm sm:p-8\">
+          <div className=\"flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between\">
+            <div>
+              <p className=\"handover-kicker\">CRM setup</p>
+              <h1 className=\"mt-3 font-display text-4xl font-bold tracking-[-.06em] sm:text-5xl\">
+                Connect the CRM once. Work from AmarktAI every day.
+              </h1>
+              <p className=\"mt-3 max-w-3xl text-sm leading-6 text-[#66758A] sm:text-base\">
+                The CRM stays the system of record. AmarktAI brings customer, opportunity, task, activity and sales context into a cleaner workspace so salespeople can focus on calls, follow-up and decisions instead of CRM navigation.
+              </p>
+            </div>
+            {canManage ? (
+              <Button onClick={() => setAdding(value => !value)}>
+                {adding ? (
+                  <X className=\"mr-2 h-4 w-4\" />
+                ) : (
+                  <Plus className=\"mr-2 h-4 w-4\" />
+                )}
+                {adding ? \"Close\" : \"Connect CRM\"}
+              </Button>
+            ) : null}
+          </div>
+        </header>
+
+        <section className=\"grid gap-3 md:grid-cols-3\">
+          <JourneyStep
+            number=\"1\"
+            title=\"Connect\"
+            detail=\"Manager connects the company CRM and each salesperson signs in with their own account where required.\"
+          />
+          <JourneyStep
+            number=\"2\"
+            title=\"Prove\"
+            detail=\"AmarktAI commissions the required read and write operations before the workspace can become Ready.\"
+          />
+          <JourneyStep
+            number=\"3\"
+            title=\"Work here\"
+            detail=\"Customers, calls, tasks, opportunities, notes and approved actions move into the AmarktAI workflow.\"
+          />
+        </section>
+
+        <section className={`rounded-2xl border p-4 ${workspaceReady ? \"border-emerald-200 bg-emerald-50\" : \"border-[#D8E2F0] bg-[#F6F9FD]\"}`}>
+          <div className=\"flex flex-wrap items-center justify-between gap-3\">
+            <div className=\"flex items-start gap-3\">
+              <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${workspaceReady ? \"bg-emerald-100 text-emerald-700\" : \"bg-[#EAF1FF] text-[#2F6FED]\"}`}>
+                {workspaceReady ? <CheckCircle2 className=\"h-5 w-5\" /> : <Sparkles className=\"h-5 w-5\" />}
+              </span>
+              <div>
+                <p className=\"font-bold text-[#26354A]\">
+                  {workspaceReady ? \"Core CRM workspace ready\" : \"CRM commissioning still in progress\"}
+                </p>
+                <p className=\"mt-1 text-sm leading-5 text-[#66758A]\">
+                  {workspaceReady
+                    ? \"The required CRM operations are proven for the AmarktAI workspace.\"
+                    : \"A connection alone is not enough. Required operations must be proven before setup is considered complete.\"}
+                </p>
+              </div>
+            </div>
+            {!workspaceReady && connected.length ? (
+              <span className=\"text-xs font-bold text-[#55708F]\">
+                Use Teach AmarktAI below if a required function needs help.
+              </span>
+            ) : null}
+          </div>
+        </section>
+
+        {adding ? (
+          <section className=\"handover-surface p-5 sm:p-6\">
+            <div className=\"flex items-center gap-3\">
+              <span className=\"grid h-10 w-10 place-items-center rounded-xl bg-[#EDF3FF] text-[#2F6FED]\">
+                <DatabaseZap className=\"h-5 w-5\" />
+              </span>
+              <div>
+                <h2 className=\"font-display text-2xl font-bold tracking-[-.035em]\">
+                  Choose the company CRM
+                </h2>
+                <p className=\"mt-1 text-sm text-[#718096]\">
+                  Provider names appear only here because this is the technical connection step.
+                </p>
+              </div>
+            </div>
+
+            <div className=\"mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3\">
+              {providers.map(item => (
+                <button
+                  key={item.provider}
+                  type=\"button\"
+                  onClick={() => {
+                    setSelected(item);
+                    setError(\"\");
+                  }}
+                  className={`rounded-2xl border p-4 text-left transition ${
+                    selected.provider === item.provider
+                      ? \"border-[#2F6FED] bg-[#F1F6FF] shadow-sm\"
+                      : \"border-[#DCE4EE] bg-white hover:border-[#AFC3E8] hover:bg-[#FAFCFF]\"
+                  }`}
+                >
+                  <span className=\"font-bold text-[#26354A]\">{item.label}</span>
+                  <span className=\"mt-1 block text-xs text-[#718096]\">
+                    {item.transport === \"oauth\"
+                      ? \"Secure account connection\"
+                      : \"Private browser connection\"}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {selected.provider === \"custom_browser\" ? (
+              <label className=\"mt-5 block max-w-xl text-sm font-bold text-[#33445B]\">
+                CRM sign-in address
+                <input
+                  value={customUrl}
+                  onChange={event => {
+                    setCustomUrl(event.target.value);
+                    setError(\"\");
+                  }}
+                  placeholder=\"https://crm.example.com/\"
+                  className=\"mt-2 h-11 w-full rounded-xl border border-[#C9D4E2] bg-white px-3 text-[#26354A] outline-none focus:border-[#2F6FED] focus:ring-2 focus:ring-[#DCE7F6]\"
+                />
+              </label>
+            ) : null}
+
+            {error ? (
+              <p
+                role=\"alert\"
+                className=\"mt-4 flex max-w-2xl items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-800\"
+              >
+                <AlertCircle className=\"mt-0.5 h-4 w-4 shrink-0\" />
+                {error}
+              </p>
+            ) : null}
+
+            <Button
+              className=\"mt-5\"
+              onClick={() => void connect()}
+              disabled={!startUrl || create.isPending}
+            >
+              {create.isPending ? (
+                <Loader2 className=\"mr-2 h-4 w-4 animate-spin\" />
+              ) : (
+                <ExternalLink className=\"mr-2 h-4 w-4\" />
+              )}
+              {selected.transport === \"browser\"
+                ? \"Open secure sign-in\"
+                : \"Connect account\"}
+            </Button>
+          </section>
+        ) : null}
+
+        {!adding && error ? (
+          <p
+            role=\"alert\"
+            className=\"flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800\"
+          >
+            <AlertCircle className=\"mt-0.5 h-4 w-4 shrink-0\" />
+            {error}
+          </p>
+        ) : null}
+
+        <section className=\"grid gap-4\">
+          {systems.isLoading ? (
+            <div className=\"handover-surface p-8 text-[#66758A]\">
+              <Loader2 className=\"mr-2 inline h-4 w-4 animate-spin\" />
+              Loading CRM connections…
+            </div>
+          ) : null}
+
+          {connected.map(system => {
+            const presentation = statusPresentation(system.status);
+            const confirming = confirmDisconnectId === system.id;
+
+            return (
+              <article key={system.id} className=\"rounded-2xl border border-[#DCE4EE] bg-white p-5 shadow-sm\">
+                <div className=\"flex flex-wrap items-start justify-between gap-4\">
+                  <div className=\"min-w-0 flex-1\">
+                    <div className=\"flex flex-wrap items-center gap-2\">
+                      {presentation.tone === \"ready\" ? (
+                        <CheckCircle2 className=\"h-5 w-5 shrink-0 text-emerald-600\" />
+                      ) : presentation.tone === \"attention\" ? (
+                        <AlertCircle className=\"h-5 w-5 shrink-0 text-amber-600\" />
+                      ) : (
+                        <Loader2 className=\"h-5 w-5 shrink-0 text-[#2F6FED]\" />
+                      )}
+                      <h2 className=\"truncate text-lg font-bold text-[#26354A]\">
+                        {system.displayName}
+                      </h2>
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[.06em] ${
+                          presentation.tone === \"ready\"
+                            ? \"bg-emerald-50 text-emerald-700\"
+                            : presentation.tone === \"attention\"
+                              ? \"bg-amber-50 text-amber-700\"
+                              : \"bg-blue-50 text-blue-700\"
+                        }`}
+                      >
+                        {presentation.title}
+                      </span>
+                    </div>
+                    <p className=\"mt-2 max-w-3xl text-sm leading-6 text-[#66758A]\">
+                      {presentation.detail}
+                    </p>
+                  </div>
+
+                  <div className=\"flex flex-wrap gap-2\">
+                    <Button
+                      variant=\"outline\"
+                      onClick={() => navigate(`/crm/${system.id}`)}
+                    >
+                      <ShieldCheck className=\"mr-2 h-4 w-4\" />
+                      {system.status === \"authentication_expired\"
+                        ? \"Sign in again\"
+                        : \"Open source CRM\"}
+                    </Button>
+                    <Button
+                      variant=\"ghost\"
+                      aria-label=\"Refresh connection status\"
+                      onClick={() => void systems.refetch()}
+                    >
+                      <RefreshCw className=\"h-4 w-4\" />
+                    </Button>
+                  </div>
+                </div>
+
+                {canManage ? (
+                  <div className=\"mt-4 border-t border-[#E5EAF0] pt-4\">
+                    {confirming ? (
+                      <div className=\"flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-3\">
+                        <div>
+                          <p className=\"text-sm font-bold text-red-800\">
+                            Disconnect this CRM?
+                          </p>
+                          <p className=\"mt-1 text-xs leading-5 text-red-700\">
+                            Saved authentication is removed. Retained CRM history and audit evidence remain available.
+                          </p>
+                        </div>
+                        <div className=\"flex gap-2\">
+                          <Button
+                            variant=\"ghost\"
+                            size=\"sm\"
+                            onClick={() => setConfirmDisconnectId(null)}
+                            disabled={disconnectingId === system.id}
+                          >
+                            Keep connected
+                          </Button>
+                          <Button
+                            size=\"sm\"
+                            className=\"bg-red-600 text-white hover:bg-red-700\"
+                            onClick={() => void disconnect(system.id)}
+                            disabled={disconnectingId === system.id}
+                          >
+                            {disconnectingId === system.id ? (
+                              <Loader2 className=\"mr-2 h-4 w-4 animate-spin\" />
+                            ) : (
+                              <Trash2 className=\"mr-2 h-4 w-4\" />
+                            )}
+                            Disconnect
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        type=\"button\"
+                        className=\"text-xs font-semibold text-[#8793A4] transition hover:text-red-700\"
+                        onClick={() => setConfirmDisconnectId(system.id)}
+                      >
+                        Disconnect CRM
+                      </button>
+                    )}
+                  </div>
+                ) : null}
+              </article>
+            );
+          })}
+
+          {!systems.isLoading && connected.length === 0 ? (
+            <div className=\"rounded-3xl border border-dashed border-[#C9D4E2] bg-white p-12 text-center shadow-sm\">
+              <DatabaseZap className=\"mx-auto h-9 w-9 text-[#2F6FED]\" />
+              <h2 className=\"mt-4 font-display text-2xl font-bold tracking-[-.035em]\">
+                No CRM connected yet
+              </h2>
+              <p className=\"mx-auto mt-2 max-w-xl text-sm leading-6 text-[#718096]\">
+                Connect the company CRM once. After commissioning, customer and sales activity will flow into AmarktAI automatically.
+              </p>
+              {canManage ? (
+                <Button className=\"mt-5\" onClick={() => setAdding(true)}>
+                  <Plus className=\"mr-2 h-4 w-4\" /> Connect CRM
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+        </section>
+      </div>
+    </DashboardLayout>
+  );
+}
+
+function JourneyStep({
+  number,
+  title,
+  detail,
+}: {
+  number: string;
+  title: string;
+  detail: string;
+}) {
+  return (
+    <div className=\"handover-surface flex items-start gap-4 p-4\">
+      <span className=\"grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#EDF3FF] text-sm font-black text-[#2F6FED]\">
+        {number}
+      </span>
+      <div>
+        <p className=\"font-bold text-[#26354A]\">{title}</p>
+        <p className=\"mt-1 text-xs leading-5 text-[#718096]\">{detail}</p>
+      </div>
+      <ArrowRight className=\"ml-auto mt-2 hidden h-4 w-4 text-[#B1BDCC] md:block\" />
+    </div>
+  );
+}
+"
+
+[36m [2m❯[22m server/onboardingFlow.test.ts:[2m25:25[22m[39m
+    [90m 23| [39m      [34mexpect[39m(onboarding)[33m.[39m[34mtoContain[39m(label)[33m;[39m
+    [90m 24| [39m    [34mexpect[39m(onboarding)[33m.[39m[34mtoContain[39m([32m"sign in directly"[39m)[33m;[39m
+    [90m 25| [39m    [34mexpect[39m(connections)[33m.[39m[34mtoMatch[39m(
+    [90m   | [39m                        [31m^[39m
+    [90m 26| [39m      [36m/Amarktai never asks for\s+or records the password or verificati[39m…
+    [90m 27| [39m    )[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯[22m[39m
+
+[31m[1m[7m FAIL [27m[22m[39m server/sourceOfTruthAcceptance.test.ts[2m > [22mrepository source of truth[2m > [22mkeeps exactly one public, dashboard and shared base stylesheet
+[31m[1mAssertionError[22m: expected [ …(4) ] to deeply equal [ …(3) ][39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  Array [[22m
+[2m    "client/src/dashboard-final.css",[22m
+[2m    "client/src/index.css",[22m
+[2m    "client/src/marketing/final-site.css",[22m
+[31m+   "client/src/workspace-handover.css",[39m
+[2m  ][22m
+
+[36m [2m❯[22m server/sourceOfTruthAcceptance.test.ts:[2m100:7[22m[39m
+    [90m 98| [39m        [33m.[39m[34mfilter[39m(file [33m=>[39m file[33m.[39m[34mendsWith[39m([32m".css"[39m))
+    [90m 99| [39m        [33m.[39m[34msort[39m()
+    [90m100| [39m    )[33m.[39m[34mtoEqual[39m([
+    [90m   | [39m      [31m^[39m
+    [90m101| [39m      [32m"client/src/dashboard-final.css"[39m[33m,[39m
+    [90m102| [39m      [32m"client/src/index.css"[39m[33m,[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯[22m[39m
+
+[2m Test Files [22m [1m[31m3 failed[39m[22m[2m | [22m[1m[32m127 passed[39m[22m[90m (130)[39m
+[2m      Tests [22m [1m[31m3 failed[39m[22m[2m | [22m[1m[32m578 passed[39m[22m[90m (581)[39m
+[2m   Start at [22m 11:37:05
+[2m   Duration [22m 31.68s[2m (transform 2.98s, setup 0ms, collect 59.24s, tests 3.25s, environment 29ms, prepare 10.32s)[22m
+
+
+::error file=/home/runner/work/Amarktai-Sales-Assistant-/Amarktai-Sales-Assistant-/server/assistantHandoverContract.test.ts,title=server/assistantHandoverContract.test.ts > client-handover Assistant contract > uses one full-page conversation and one integrated composer,line=16,column=27::AssertionError: expected 'import DashboardLayout from "@/compon…' to contain 'I’m ready when you are.'%0A%0A- Expected%0A+ Received%0A%0A- I’m ready when you are.%0A+ import DashboardLayout from "@/components/DashboardLayout";%0A+ import { Button } from "@/components/ui/button";%0A+ import { Textarea } from "@/components/ui/textarea";%0A+ import { useAuth } from "@/_core/hooks/useAuth";%0A+ import { friendlyError } from "@/lib/friendlyError";%0A+ import { trpc } from "@/lib/trpc";%0A+ import {%0A+   ArrowRight,%0A+   BriefcaseBusiness,%0A+   Building2,%0A+   CalendarClock,%0A+   Headphones,%0A+   Loader2,%0A+   RotateCcw,%0A+   Send,%0A+   Sparkles,%0A+   UserRound,%0A+ } from "lucide-react";%0A+ import { useEffect, useMemo, useRef, useState } from "react";%0A+ import { useLocation } from "wouter";%0A+%0A+ type Message = {%0A+   role: "user" | "assistant";%0A+   content: string;%0A+   action?: { label: string; path: string };%0A+ };%0A+%0A+ type AssistantResponse = {%0A+   content?: string;%0A+   error?: string;%0A+   suggestedAction?: { label: string; path: string };%0A+   reviewRequired?: boolean;%0A+ };%0A+%0A+ const suggestions = [%0A+   "Who should I contact next?",%0A+   "Prepare my next call",%0A+   "What needs my attention?",%0A+   "Draft a follow-up",%0A+ ];%0A+%0A+ async function askAssistant(input: {%0A+   messages: Array<{ role: "user" | "assistant"; content: string }>;%0A+   contactId?: number;%0A+ }) {%0A+   const response = await fetch("/api/assistant", {%0A+     method: "POST",%0A+     credentials: "include",%0A+     headers: { "Content-Type": "application/json" },%0A+     body: JSON.stringify(input),%0A+   });%0A+   const body = (await response.json().catch(() => ({}))) as AssistantResponse;%0A+   if (!response.ok)%0A+     throw new Error(body.error || "AmarktAI could not respond.");%0A+   return body;%0A+ }%0A+%0A+ function AssistantMark({ compact = false }: { compact?: boolean }) {%0A+   const size = compact%0A+     ? "h-8 w-8 rounded-lg text-[10px]"%0A+     : "h-10 w-10 rounded-xl text-[12px]";%0A+   return (%0A+     <span%0A+       aria-label="AmarktAI"%0A+       className={`${size} grid shrink-0 place-items-center bg-gradient-to-br from-[#2F6FED] to-[#4FB9FF] font-black tracking-[-.04em] text-white shadow-[0_8px_20px_rgba(47,111,237,.20)]`}%0A+     >%0A+       AI%0A+     </span>%0A+   );%0A+ }%0A+%0A+ export default function Assistant() {%0A+   const [, navigate] = useLocation();%0A+   const { user } = useAuth();%0A+   const customers = trpc.sales.customers.useQuery();%0A+   const organisation = trpc.organisation.current.useQuery();%0A+   const [messages, setMessages] = useState<Message[]>([]);%0A+   const [draft, setDraft] = useState("");%0A+   const [contactId, setContactId] = useState<number | undefined>();%0A+   const [busy, setBusy] = useState(false);%0A+   const [error, setError] = useState("");%0A+   const chatEnd = useRef<HTMLDivElement>(null);%0A+%0A+   const firstName =%0A+     organisation.data?.memberOnboarding.preferredName ||%0A+     user?.name?.trim().split(/\s+/)[0] ||%0A+     "there";%0A+   const selectedCustomer = useMemo(%0A+     () => customers.data?.find(customer => customer.id === contactId),%0A+     [contactId, customers.data]%0A+   );%0A+%0A+   useEffect(() => {%0A+     const prompt = new URLSearchParams(window.location.search)%0A+       .get("prompt")%0A+       ?.trim();%0A+     if (prompt) setDraft(prompt.slice(0, 12_000));%0A+   }, []);%0A+%0A+   useEffect(() => {%0A+     chatEnd.current?.scrollIntoView({ behavior: "smooth", block: "end" });%0A+   }, [messages, busy]);%0A+%0A+   async function send(prompt = draft) {%0A+     const content = prompt.trim();%0A+     if (!content || busy) return;%0A+     const nextMessages: Message[] = [...messages, { role: "user", content }];%0A+     setMessages(nextMessages);%0A+     setDraft("");%0A+     setError("");%0A+     setBusy(true);%0A+     try {%0A+       const response = await askAssistant({%0A+         contactId,%0A+         messages: nextMessages.map(message => ({%0A+           role: message.role,%0A+           content: message.content,%0A+         })),%0A+       });%0A+       setMessages(current => [%0A+         ...current,%0A+         {%0A+           role: "assistant",%0A+           content:%0A+             response.content || "I’m ready. What would you like to do next?",%0A+           action: response.suggestedAction,%0A+         },%0A+       ]);%0A+     } catch (cause) {%0A+       setError(%0A+         friendlyError(%0A+           cause,%0A+           "I couldn't complete that request just now. Nothing was changed."%0A+         )%0A+       );%0A+     } finally {%0A+       setBusy(false);%0A+     }%0A+   }%0A+%0A+   async function retry() {%0A+     if (busy || !messages.length) return;%0A+     setError("");%0A+     setBusy(true);%0A+     try {%0A+       const response = await askAssistant({%0A+         contactId,%0A+         messages: messages.map(message => ({%0A+           role: message.role,%0A+           content: message.content,%0A+         })),%0A+       });%0A+       setMessages(current => [%0A+         ...current,%0A+         {%0A+           role: "assistant",%0A+           content:%0A+             response.content || "I’m ready. What would you like to do next?",%0A+           action: response.suggestedAction,%0A+         },%0A+       ]);%0A+     } catch (cause) {%0A+       setError(%0A+         friendlyError(%0A+           cause,%0A+           "I couldn't complete that request just now. Nothing was changed."%0A+         )%0A+       );%0A+     } finally {%0A+       setBusy(false);%0A+     }%0A+   }%0A+%0A+   const hour = new Date().getHours();%0A+   const greeting = hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening";%0A+%0A+   return (%0A+     <DashboardLayout>%0A+       <div%0A+         data-assistant-workspace%0A+         className="mx-auto flex h-[calc(100dvh-104px)] min-h-[620px] max-w-[1440px] flex-col overflow-hidden text-[#24344A]"%0A+       >%0A+         <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[#D7E0EA] pb-4">%0A+           <div className="flex min-w-0 items-center gap-3">%0A+             <AssistantMark />%0A+             <div className="min-w-0">%0A+               <p className="text-sm font-black tracking-[-.01em] text-[#24344A]">%0A+                 Amarkt<span className="text-[#2F6FED]">AI</span>%0A+               </p>%0A+               <h1 className="truncate text-sm font-medium text-[#6B7B90]">%0A+                 Good {greeting}, {firstName}. What are we working on?%0A+               </h1>%0A+             </div>%0A+           </div>%0A+%0A+           <label className="flex min-w-0 items-center gap-2 text-xs font-semibold text-[#66758A]">%0A+             <UserRound className="h-4 w-4 shrink-0 text-[#2F6FED]" />%0A+             <span className="sr-only">Customer context</span>%0A+             <select%0A+               aria-label="Customer context"%0A+               value={contactId ?? ""}%0A+               onChange={event =>%0A+                 setContactId(%0A+                   event.target.value ? Number(event.target.value) : undefined%0A+                 )%0A+               }%0A+               className="h-9 max-w-[min(52vw,340px)] truncate rounded-xl border border-[#CAD6E4] bg-white px-3 text-xs font-semibold text-[#33445B] outline-none focus:border-[#2F6FED] focus:ring-2 focus:ring-[#DCE7F6]"%0A+             >%0A+               <option value="">All customers</option>%0A+               {customers.data?.map(customer => (%0A+                 <option key={customer.id} value={customer.id}>%0A+                   {customer.name}%0A+                   {customer.companyName ? ` · ${customer.companyName}` : ""}%0A+                 </option>%0A+               ))}%0A+             </select>%0A+           </label>%0A+         </header>%0A+%0A+         <div className="mt-4 grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">%0A+           <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[#D7E0EA] bg-white">%0A+             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-7 sm:py-6">%0A+               <div className="mx-auto flex min-h-full max-w-3xl flex-col">%0A+                 {!messages.length ? (%0A+                   <div className="flex max-w-2xl items-start gap-3 pt-3">%0A+                     <AssistantMark compact />%0A+                     <div className="min-w-0 flex-1">%0A+                       <div className="rounded-2xl rounded-tl-md bg-[#F4F7FB] px-4 py-3 text-[15px] leading-7 text-[#33445B]">%0A+                         I already have the sales workspace context. Ask me who to call, what happened with a customer, what needs attention, or what follow-up should be prepared next.%0A+                       </div>%0A+                       <div className="mt-4 flex flex-wrap gap-2">%0A+                         {suggestions.map(prompt => (%0A+                           <button%0A+                             key={prompt}%0A+                             type="button"%0A+                             onClick={() => void send(prompt)}%0A+                             className="rounded-full border border-[#D7E1EE] bg-white px-3.5 py-2 text-xs font-semibold text-[#40516A] transition hover:border-[#9CB8E8] hover:bg-[#F1F6FF] hover:text-[#2F63C7]"%0A+                           >%0A+                             {prompt}%0A+                           </button>%0A+                         ))}%0A+                       </div>%0A+                     </div>%0A+                   </div>%0A+                 ) : (%0A+                   <div className="space-y-6">%0A+                     {selectedCustomer ? (%0A+                       <p className="flex items-center gap-2 text-xs font-semibold text-[#718096]">%0A+                         <UserRound className="h-3.5 w-3.5" />%0A+                         Customer context: {selectedCustomer.name}%0A+                       </p>%0A+                     ) : null}%0A+%0A+                     {messages.map((message, index) => (%0A+                       <div%0A+                         key={`${message.role}-${index}`}%0A+                         className={%0A+                           message.role === "user"%0A+                             ? "ml-auto max-w-[min(82%25,680px)] rounded-2xl rounded-br-md bg-[#2F6FED] px-4 py-3 text-[15px] leading-6 text-white"%0A+                             : "max-w-[min(94%25,760px)]"%0A+                         }%0A+                       >%0A+                         {message.role === "assistant" ? (%0A+                           <div className="flex gap-3">%0A+                             <AssistantMark compact />%0A+                             <div className="min-w-0 flex-1">%0A+                               <div className="whitespace-pre-wrap text-[15px] leading-7 text-[#33445B]">%0A+                                 {message.content}%0A+                               </div>%0A+                               {message.action ? (%0A+                                 <Button%0A+                                   size="sm"%0A+                                   variant="outline"%0A+                                   className="mt-3"%0A+                                   onClick={() => navigate(message.action!.path)}%0A+                                 >%0A+                                   {message.action.label}%0A+                                   <ArrowRight className="ml-2 h-3.5 w-3.5" />%0A+                                 </Button>%0A+                               ) : null}%0A+                             </div>%0A+                           </div>%0A+                         ) : (%0A+                           message.content%0A+                         )}%0A+                       </div>%0A+                     ))}%0A+%0A+                     {busy ? (%0A+                       <div className="flex items-center gap-3 text-sm text-[#718096]">%0A+                         <AssistantMark compact />%0A+                         <Loader2 className="h-4 w-4 animate-spin" />%0A+                         Working with your current sales context…%0A+                       </div>%0A+                     ) : null}%0A+%0A+                     {error ? (%0A+                       <div%0A+                         role="alert"%0A+                         className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"%0A+                       >%0A+                         <p>{error}</p>%0A+                         <Button%0A+                           size="sm"%0A+                           variant="outline"%0A+                           className="mt-3"%0A+                           onClick={() => void retry()}%0A+                           disabled={busy}%0A+                         >%0A+                           <RotateCcw className="mr-2 h-3.5 w-3.5" />%0A+                           Try again%0A+                         </Button>%0A+                       </div>%0A+                     ) : null}%0A+                   </div>%0A+                 )}%0A+                 <div ref={chatEnd} />%0A+               </div>%0A+             </div>%0A+%0A+             <div className="shrink-0 border-t border-[#E5EAF0] bg-[#FAFCFF] p-3 sm:p-4">%0A+               <div className="mx-auto max-w-3xl rounded-2xl border border-[#CBD7E6] bg-white p-2 focus-within:border-[#8AACE6] focus-within:ring-2 focus-within:ring-[#E5EDFB]">%0A+                 <Textarea%0A+                   aria-label="Message AmarktAI"%0A+                   value={draft}%0A+                   onChange={event => setDraft(event.target.value)}%0A+                   onKeyDown={event => {%0A+                     if (event.key === "Enter" && !event.shiftKey) {%0A+                       event.preventDefault();%0A+                       void send();%0A+                     }%0A+                   }}%0A+                   placeholder={%0A+                     selectedCustomer%0A+                       ? `Ask AmarktAI about ${selectedCustomer.name}…`%0A+                       : "Ask AmarktAI about your day, customers, calls or follow-ups…"%0A+                   }%0A+                   className="min-h-[62px] resize-none border-0 bg-transparent px-3 py-3 text-[15px] leading-6 shadow-none focus-visible:ring-0"%0A+                 />%0A+                 <div className="flex items-center justify-between gap-3 border-t border-[#EEF2F6] px-2 pt-2">%0A+                   <p className="text-[11px] text-[#8290A3]">%0A+                     Customer-facing actions remain governed and reviewable.%0A+                   </p>%0A+                   <Button%0A+                     size="sm"%0A+                     disabled={!draft.trim() || busy}%0A+                     onClick={() => void send()}%0A+                   >%0A+                     {busy ? (%0A+                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />%0A+                     ) : (%0A+                       <Send className="mr-2 h-4 w-4" />%0A+                     )}%0A+                     Send%0A+                   </Button>%0A+                 </div>%0A+               </div>%0A+             </div>%0A+           </section>%0A+%0A+           <aside className="hidden min-h-0 overflow-y-auto xl:block">%0A+             <div className="handover-surface p-5">%0A+               <div className="flex items-center gap-2 text-[#2F6FED]">%0A+                 <Sparkles className="h-4 w-4" />%0A+                 <p className="text-[10px] font-black uppercase tracking-[.13em]">%0A+                   Active context%0A+                 </p>%0A+               </div>%0A+               {selectedCustomer ? (%0A+                 <div className="mt-4 space-y-4">%0A+                   <div>%0A+                     <h2 className="font-display text-2xl font-bold tracking-[-.04em] text-[#1D2D43]">%0A+                       {selectedCustomer.name}%0A+                     </h2>%0A+                     <p className="mt-1 flex items-center gap-2 text-xs text-[#718096]">%0A+                       <Building2 className="h-3.5 w-3.5" />%0A+                       {selectedCustomer.companyName || "No linked company"}%0A+                     </p>%0A+                   </div>%0A+                   <ContextFact%0A+                     icon={BriefcaseBusiness}%0A+                     label="Opportunity"%0A+                     value={selectedCustomer.openOpportunity?.name || "No open opportunity"}%0A+                   />%0A+                   <ContextFact%0A+                     icon={CalendarClock}%0A+                     label="Next step"%0A+                     value={selectedCustomer.nextAction?.title || "No next action recorded"}%0A+                   />%0A+                   <div className="grid gap-2">%0A+                     <Button%0A+                       variant="outline"%0A+                       onClick={() => navigate(`/calls?contactId=${selectedCustomer.id}`)}%0A+                     >%0A+                       <Headphones className="mr-2 h-4 w-4" /> Open call companion%0A+                     </Button>%0A+                     <Button%0A+                       variant="ghost"%0A+                       onClick={() => navigate("/customers")}%0A+                     >%0A+                       Open full customer record%0A+                     </Button>%0A+                   </div>%0A+                 </div>%0A+               ) : (%0A+                 <div className="mt-4 rounded-2xl bg-[#F6F9FD] p-4 text-sm leading-6 text-[#66758A]">%0A+                   Choose a customer above when you want AmarktAI to keep the conversation tightly focused on one relationship. Leave it on All customers for prioritisation and day planning.%0A+                 </div>%0A+               )}%0A+             </div>%0A+           </aside>%0A+         </div>%0A+       </div>%0A+     </DashboardLayout>%0A+   );%0A+ }%0A+%0A+ function ContextFact({%0A+   icon: Icon,%0A+   label,%0A+   value,%0A+ }: {%0A+   icon: typeof Building2;%0A+   label: string;%0A+   value: string;%0A+ }) {%0A+   return (%0A+     <div className="handover-soft-surface p-4">%0A+       <div className="flex items-center gap-2 text-[#2F6FED]">%0A+         <Icon className="h-4 w-4" />%0A+         <p className="text-[10px] font-black uppercase tracking-[.1em] text-[#7B8CA2]">%0A+           {label}%0A+         </p>%0A+       </div>%0A+       <p className="mt-2 text-sm font-bold leading-5 text-[#33445B]">{value}</p>%0A+     </div>%0A+   );%0A+ }%0A+%0A%0A ❯ server/assistantHandoverContract.test.ts:16:27%0A%0A
+
+::error file=/home/runner/work/Amarktai-Sales-Assistant-/Amarktai-Sales-Assistant-/server/onboardingFlow.test.ts,title=server/onboardingFlow.test.ts > universal CRM onboarding > offers known presets and a first-class unknown CRM route,line=25,column=25::AssertionError: expected 'import DashboardLayout from "@/compon…' to match /Amarktai never asks for\s+or records …/%0A%0A- Expected: %0A/Amarktai never asks for\s+or records the password or verification code/%0A%0A+ Received: %0A"import DashboardLayout from \"@/components/DashboardLayout\";%0Aimport { Button } from \"@/components/ui/button\";%0Aimport { friendlyError } from \"@/lib/friendlyError\";%0Aimport { trpc } from \"@/lib/trpc\";%0Aimport {%0A  AlertCircle,%0A  ArrowRight,%0A  CheckCircle2,%0A  DatabaseZap,%0A  ExternalLink,%0A  Loader2,%0A  Plus,%0A  RefreshCw,%0A  ShieldCheck,%0A  Sparkles,%0A  Trash2,%0A  X,%0A} from \"lucide-react\";%0Aimport { useMemo, useState } from \"react\";%0Aimport { toast } from \"sonner\";%0Aimport { useLocation } from \"wouter\";%0A%0Atype Provider =%0A  | \"genie\"%0A  | \"hubspot\"%0A  | \"salesforce\"%0A  | \"pipedrive\"%0A  | \"zoho\"%0A  | \"custom_browser\";%0A%0Aconst providers: Array<{%0A  provider: Provider;%0A  label: string;%0A  url: string;%0A  transport: \"browser\" | \"oauth\";%0A}> = [%0A  {%0A    provider: \"genie\",%0A    label: \"Genie\",%0A    url: \"https://genie.entrepreneurscircle.org/\",%0A    transport: \"browser\",%0A  },%0A  {%0A    provider: \"hubspot\",%0A    label: \"HubSpot\",%0A    url: \"https://app.hubspot.com/\",%0A    transport: \"oauth\",%0A  },%0A  {%0A    provider: \"salesforce\",%0A    label: \"Salesforce\",%0A    url: \"https://login.salesforce.com/\",%0A    transport: \"oauth\",%0A  },%0A  {%0A    provider: \"pipedrive\",%0A    label: \"Pipedrive\",%0A    url: \"https://app.pipedrive.com/\",%0A    transport: \"oauth\",%0A  },%0A  {%0A    provider: \"zoho\",%0A    label: \"Zoho CRM\",%0A    url: \"https://crm.zoho.com/\",%0A    transport: \"oauth\",%0A  },%0A  {%0A    provider: \"custom_browser\",%0A    label: \"Other CRM\",%0A    url: \"\",%0A    transport: \"browser\",%0A  },%0A];%0A%0Aconst readCapabilities = [%0A  \"contacts.read\",%0A  \"companies.read\",%0A  \"opportunities.read\",%0A  \"tasks.read\",%0A  \"activities.read\",%0A  \"notes.read\",%0A  \"owners.read\",%0A  \"pipelines.read\",%0A];%0Aconst writeCapabilities = [%0A  \"contacts.write\",%0A  \"companies.write\",%0A  \"opportunities.write\",%0A  \"tasks.write\",%0A  \"activities.write\",%0A  \"notes.write\",%0A  \"email.send\",%0A  \"sms.send\",%0A  \"whatsapp.send\",%0A  \"sequences.apply\",%0A];%0A%0Afunction statusPresentation(status: string) {%0A  if (status === \"ready\")%0A    return {%0A      tone: \"ready\" as const,%0A      title: \"Connected\",%0A      detail: \"The connection is available and can feed the AmarktAI workspace.\",%0A    };%0A  if (status === \"testing\" || status === \"connecting\")%0A    return {%0A      tone: \"working\" as const,%0A      title: \"Commissioning\",%0A      detail: \"AmarktAI is safely checking which CRM data and operations are available.\",%0A    };%0A  if (status === \"authentication_expired\")%0A    return {%0A      tone: \"attention\" as const,%0A      title: \"Sign in again\",%0A      detail: \"The saved CRM session expired. Reopen the source CRM and sign in directly.\",%0A    };%0A  if (status === \"limited_permissions\")%0A    return {%0A      tone: \"attention\" as const,%0A      title: \"Connected with limits\",%0A      detail: \"The CRM is connected, but some operations still need permission or commissioning.\",%0A    };%0A  if (status === \"needs_attention\" || status === \"error\")%0A    return {%0A      tone: \"attention\" as const,%0A      title: \"Needs attention\",%0A      detail: \"Open the source CRM to finish the connection or resolve the sign-in issue.\",%0A    };%0A  return {%0A    tone: \"working\" as const,%0A    title: \"Ready to sign in\",%0A    detail: \"Open the source CRM and sign in with your own account to continue.\",%0A  };%0A}%0A%0Aasync function responseError(response: Response) {%0A  try {%0A    const body = (await response.json()) as { error?: string };%0A    return body.error || `Request failed (${response.status})`;%0A  } catch {%0A    return `Request failed (${response.status})`;%0A  }%0A}%0A%0Aexport default function ConnectionsV2() {%0A  const [, navigate] = useLocation();%0A  const organisation = trpc.organisation.current.useQuery();%0A  const organisationId = organisation.data?.organisationId;%0A  const systems = trpc.connectedSystems.list.useQuery(%0A    { organisationId: organisationId || 0 },%0A    { enabled: Boolean(organisationId), refetchInterval: 5_000 }%0A  );%0A  const readiness = trpc.integrations.list.useQuery(undefined, {%0A    enabled: Boolean(organisationId),%0A    retry: false,%0A  });%0A  const create = trpc.connectedSystems.create.useMutation();%0A  const beginOAuth = trpc.connectedSystems.beginOAuth.useMutation();%0A  const [adding, setAdding] = useState(false);%0A  const [selected, setSelected] = useState<(typeof providers)[number]>(%0A    providers[0]%0A  );%0A  const [customUrl, setCustomUrl] = useState(\"\");%0A  const [error, setError] = useState(\"\");%0A  const [disconnectingId, setDisconnectingId] = useState<number | null>(null);%0A  const [confirmDisconnectId, setConfirmDisconnectId] = useState<number | null>(%0A    null%0A  );%0A  const canManage =%0A    organisation.data?.role === \"owner\" ||%0A    organisation.data?.role === \"manager\";%0A  const startUrl =%0A    selected.provider === \"custom_browser\" ? customUrl.trim() : selected.url;%0A  const connected = useMemo(() => systems.data || [], [systems.data]);%0A  const workspaceReady = Boolean(readiness.data?.genie.ready);%0A%0A  async function connect() {%0A    if (!organisationId) return;%0A    setError(\"\");%0A    try {%0A      const parsed = new URL(startUrl);%0A      if (parsed.protocol !== \"https:\") throw new Error(\"https required\");%0A      const id = await create.mutateAsync({%0A        organisationId,%0A        provider: selected.provider,%0A        displayName: selected.label,%0A        baseUrl: startUrl,%0A        connectionMethod: selected.transport,%0A        allowedReadCapabilities: readCapabilities,%0A        allowedWriteCapabilities: writeCapabilities,%0A      });%0A      await systems.refetch();%0A      setAdding(false);%0A      if (selected.transport === \"oauth\") {%0A        const result = await beginOAuth.mutateAsync({%0A          organisationId,%0A          connectedSystemId: id,%0A        });%0A        window.location.assign(result.authorizationUrl);%0A      } else {%0A        toast.success(\"CRM added. Sign in inside the secure source workspace to continue commissioning.\");%0A        navigate(`/crm/${id}`);%0A      }%0A    } catch (cause) {%0A      setError(%0A        friendlyError(%0A          cause,%0A          \"The CRM connection could not be changed safely. Try again.\"%0A        )%0A      );%0A    }%0A  }%0A%0A  async function disconnect(connectedSystemId: number) {%0A    if (!canManage) return;%0A    if (confirmDisconnectId !== connectedSystemId) {%0A      setConfirmDisconnectId(connectedSystemId);%0A      return;%0A    }%0A    setDisconnectingId(connectedSystemId);%0A    setError(\"\");%0A    try {%0A      const response = await fetch(%0A        `/api/connected-system-admin/${connectedSystemId}/disconnect`,%0A        {%0A          method: \"POST\",%0A          credentials: \"include\",%0A          headers: { \"Content-Type\": \"application/json\" },%0A          body: \"{}\",%0A        }%0A      );%0A      if (!response.ok) throw new Error(await responseError(response));%0A      setConfirmDisconnectId(null);%0A      toast.success(%0A        \"CRM disconnected. Sign-in data was removed while retained CRM history and audit evidence were preserved.\"%0A      );%0A      await systems.refetch();%0A    } catch (cause) {%0A      const message = friendlyError(%0A        cause,%0A        \"The CRM connection could not be changed safely. Try again.\"%0A      );%0A      setError(message);%0A      toast.error(message);%0A    } finally {%0A      setDisconnectingId(null);%0A    }%0A  }%0A%0A  return (%0A    <DashboardLayout>%0A      <div className=\"mx-auto max-w-[1320px] space-y-5 text-[#26354A]\">%0A        <header className=\"rounded-3xl border border-[#DCE4EE] bg-white p-6 shadow-sm sm:p-8\">%0A          <div className=\"flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between\">%0A            <div>%0A              <p className=\"handover-kicker\">CRM setup</p>%0A              <h1 className=\"mt-3 font-display text-4xl font-bold tracking-[-.06em] sm:text-5xl\">%0A                Connect the CRM once. Work from AmarktAI every day.%0A              </h1>%0A              <p className=\"mt-3 max-w-3xl text-sm leading-6 text-[#66758A] sm:text-base\">%0A                The CRM stays the system of record. AmarktAI brings customer, opportunity, task, activity and sales context into a cleaner workspace so salespeople can focus on calls, follow-up and decisions instead of CRM navigation.%0A              </p>%0A            </div>%0A            {canManage ? (%0A              <Button onClick={() => setAdding(value => !value)}>%0A                {adding ? (%0A                  <X className=\"mr-2 h-4 w-4\" />%0A                ) : (%0A                  <Plus className=\"mr-2 h-4 w-4\" />%0A                )}%0A                {adding ? \"Close\" : \"Connect CRM\"}%0A              </Button>%0A            ) : null}%0A          </div>%0A        </header>%0A%0A        <section className=\"grid gap-3 md:grid-cols-3\">%0A          <JourneyStep%0A            number=\"1\"%0A            title=\"Connect\"%0A            detail=\"Manager connects the company CRM and each salesperson signs in with their own account where required.\"%0A          />%0A          <JourneyStep%0A            number=\"2\"%0A            title=\"Prove\"%0A            detail=\"AmarktAI commissions the required read and write operations before the workspace can become Ready.\"%0A          />%0A          <JourneyStep%0A            number=\"3\"%0A            title=\"Work here\"%0A            detail=\"Customers, calls, tasks, opportunities, notes and approved actions move into the AmarktAI workflow.\"%0A          />%0A        </section>%0A%0A        <section className={`rounded-2xl border p-4 ${workspaceReady ? \"border-emerald-200 bg-emerald-50\" : \"border-[#D8E2F0] bg-[#F6F9FD]\"}`}>%0A          <div className=\"flex flex-wrap items-center justify-between gap-3\">%0A            <div className=\"flex items-start gap-3\">%0A              <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${workspaceReady ? \"bg-emerald-100 text-emerald-700\" : \"bg-[#EAF1FF] text-[#2F6FED]\"}`}>%0A                {workspaceReady ? <CheckCircle2 className=\"h-5 w-5\" /> : <Sparkles className=\"h-5 w-5\" />}%0A              </span>%0A              <div>%0A                <p className=\"font-bold text-[#26354A]\">%0A                  {workspaceReady ? \"Core CRM workspace ready\" : \"CRM commissioning still in progress\"}%0A                </p>%0A                <p className=\"mt-1 text-sm leading-5 text-[#66758A]\">%0A                  {workspaceReady%0A                    ? \"The required CRM operations are proven for the AmarktAI workspace.\"%0A                    : \"A connection alone is not enough. Required operations must be proven before setup is considered complete.\"}%0A                </p>%0A              </div>%0A            </div>%0A            {!workspaceReady && connected.length ? (%0A              <span className=\"text-xs font-bold text-[#55708F]\">%0A                Use Teach AmarktAI below if a required function needs help.%0A              </span>%0A            ) : null}%0A          </div>%0A        </section>%0A%0A        {adding ? (%0A          <section className=\"handover-surface p-5 sm:p-6\">%0A            <div className=\"flex items-center gap-3\">%0A              <span className=\"grid h-10 w-10 place-items-center rounded-xl bg-[#EDF3FF] text-[#2F6FED]\">%0A                <DatabaseZap className=\"h-5 w-5\" />%0A              </span>%0A              <div>%0A                <h2 className=\"font-display text-2xl font-bold tracking-[-.035em]\">%0A                  Choose the company CRM%0A                </h2>%0A                <p className=\"mt-1 text-sm text-[#718096]\">%0A                  Provider names appear only here because this is the technical connection step.%0A                </p>%0A              </div>%0A            </div>%0A%0A            <div className=\"mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3\">%0A              {providers.map(item => (%0A                <button%0A                  key={item.provider}%0A                  type=\"button\"%0A                  onClick={() => {%0A                    setSelected(item);%0A                    setError(\"\");%0A                  }}%0A                  className={`rounded-2xl border p-4 text-left transition ${%0A                    selected.provider === item.provider%0A                      ? \"border-[#2F6FED] bg-[#F1F6FF] shadow-sm\"%0A                      : \"border-[#DCE4EE] bg-white hover:border-[#AFC3E8] hover:bg-[#FAFCFF]\"%0A                  }`}%0A                >%0A                  <span className=\"font-bold text-[#26354A]\">{item.label}</span>%0A                  <span className=\"mt-1 block text-xs text-[#718096]\">%0A                    {item.transport === \"oauth\"%0A                      ? \"Secure account connection\"%0A                      : \"Private browser connection\"}%0A                  </span>%0A                </button>%0A              ))}%0A            </div>%0A%0A            {selected.provider === \"custom_browser\" ? (%0A              <label className=\"mt-5 block max-w-xl text-sm font-bold text-[#33445B]\">%0A                CRM sign-in address%0A                <input%0A                  value={customUrl}%0A                  onChange={event => {%0A                    setCustomUrl(event.target.value);%0A                    setError(\"\");%0A                  }}%0A                  placeholder=\"https://crm.example.com/\"%0A                  className=\"mt-2 h-11 w-full rounded-xl border border-[#C9D4E2] bg-white px-3 text-[#26354A] outline-none focus:border-[#2F6FED] focus:ring-2 focus:ring-[#DCE7F6]\"%0A                />%0A              </label>%0A            ) : null}%0A%0A            {error ? (%0A              <p%0A                role=\"alert\"%0A                className=\"mt-4 flex max-w-2xl items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-800\"%0A              >%0A                <AlertCircle className=\"mt-0.5 h-4 w-4 shrink-0\" />%0A                {error}%0A              </p>%0A            ) : null}%0A%0A            <Button%0A              className=\"mt-5\"%0A              onClick={() => void connect()}%0A              disabled={!startUrl || create.isPending}%0A            >%0A              {create.isPending ? (%0A                <Loader2 className=\"mr-2 h-4 w-4 animate-spin\" />%0A              ) : (%0A                <ExternalLink className=\"mr-2 h-4 w-4\" />%0A              )}%0A              {selected.transport === \"browser\"%0A                ? \"Open secure sign-in\"%0A                : \"Connect account\"}%0A            </Button>%0A          </section>%0A        ) : null}%0A%0A        {!adding && error ? (%0A          <p%0A            role=\"alert\"%0A            className=\"flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800\"%0A          >%0A            <AlertCircle className=\"mt-0.5 h-4 w-4 shrink-0\" />%0A            {error}%0A          </p>%0A        ) : null}%0A%0A        <section className=\"grid gap-4\">%0A          {systems.isLoading ? (%0A            <div className=\"handover-surface p-8 text-[#66758A]\">%0A              <Loader2 className=\"mr-2 inline h-4 w-4 animate-spin\" />%0A              Loading CRM connections…%0A            </div>%0A          ) : null}%0A%0A          {connected.map(system => {%0A            const presentation = statusPresentation(system.status);%0A            const confirming = confirmDisconnectId === system.id;%0A%0A            return (%0A              <article key={system.id} className=\"rounded-2xl border border-[#DCE4EE] bg-white p-5 shadow-sm\">%0A                <div className=\"flex flex-wrap items-start justify-between gap-4\">%0A                  <div className=\"min-w-0 flex-1\">%0A                    <div className=\"flex flex-wrap items-center gap-2\">%0A                      {presentation.tone === \"ready\" ? (%0A                        <CheckCircle2 className=\"h-5 w-5 shrink-0 text-emerald-600\" />%0A                      ) : presentation.tone === \"attention\" ? (%0A                        <AlertCircle className=\"h-5 w-5 shrink-0 text-amber-600\" />%0A                      ) : (%0A                        <Loader2 className=\"h-5 w-5 shrink-0 text-[#2F6FED]\" />%0A                      )}%0A                      <h2 className=\"truncate text-lg font-bold text-[#26354A]\">%0A                        {system.displayName}%0A                      </h2>%0A                      <span%0A                        className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[.06em] ${%0A                          presentation.tone === \"ready\"%0A                            ? \"bg-emerald-50 text-emerald-700\"%0A                            : presentation.tone === \"attention\"%0A                              ? \"bg-amber-50 text-amber-700\"%0A                              : \"bg-blue-50 text-blue-700\"%0A                        }`}%0A                      >%0A                        {presentation.title}%0A                      </span>%0A                    </div>%0A                    <p className=\"mt-2 max-w-3xl text-sm leading-6 text-[#66758A]\">%0A                      {presentation.detail}%0A                    </p>%0A                  </div>%0A%0A                  <div className=\"flex flex-wrap gap-2\">%0A                    <Button%0A                      variant=\"outline\"%0A                      onClick={() => navigate(`/crm/${system.id}`)}%0A                    >%0A                      <ShieldCheck className=\"mr-2 h-4 w-4\" />%0A                      {system.status === \"authentication_expired\"%0A                        ? \"Sign in again\"%0A                        : \"Open source CRM\"}%0A                    </Button>%0A                    <Button%0A                      variant=\"ghost\"%0A                      aria-label=\"Refresh connection status\"%0A                      onClick={() => void systems.refetch()}%0A                    >%0A                      <RefreshCw className=\"h-4 w-4\" />%0A                    </Button>%0A                  </div>%0A                </div>%0A%0A                {canManage ? (%0A                  <div className=\"mt-4 border-t border-[#E5EAF0] pt-4\">%0A                    {confirming ? (%0A                      <div className=\"flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-3\">%0A                        <div>%0A                          <p className=\"text-sm font-bold text-red-800\">%0A                            Disconnect this CRM?%0A                          </p>%0A                          <p className=\"mt-1 text-xs leading-5 text-red-700\">%0A                            Saved authentication is removed. Retained CRM history and audit evidence remain available.%0A                          </p>%0A                        </div>%0A                        <div className=\"flex gap-2\">%0A                          <Button%0A                            variant=\"ghost\"%0A                            size=\"sm\"%0A                            onClick={() => setConfirmDisconnectId(null)}%0A                            disabled={disconnectingId === system.id}%0A                          >%0A                            Keep connected%0A                          </Button>%0A                          <Button%0A                            size=\"sm\"%0A                            className=\"bg-red-600 text-white hover:bg-red-700\"%0A                            onClick={() => void disconnect(system.id)}%0A                            disabled={disconnectingId === system.id}%0A                          >%0A                            {disconnectingId === system.id ? (%0A                              <Loader2 className=\"mr-2 h-4 w-4 animate-spin\" />%0A                            ) : (%0A                              <Trash2 className=\"mr-2 h-4 w-4\" />%0A                            )}%0A                            Disconnect%0A                          </Button>%0A                        </div>%0A                      </div>%0A                    ) : (%0A                      <button%0A                        type=\"button\"%0A                        className=\"text-xs font-semibold text-[#8793A4] transition hover:text-red-700\"%0A                        onClick={() => setConfirmDisconnectId(system.id)}%0A                      >%0A                        Disconnect CRM%0A                      </button>%0A                    )}%0A                  </div>%0A                ) : null}%0A              </article>%0A            );%0A          })}%0A%0A          {!systems.isLoading && connected.length === 0 ? (%0A            <div className=\"rounded-3xl border border-dashed border-[#C9D4E2] bg-white p-12 text-center shadow-sm\">%0A              <DatabaseZap className=\"mx-auto h-9 w-9 text-[#2F6FED]\" />%0A              <h2 className=\"mt-4 font-display text-2xl font-bold tracking-[-.035em]\">%0A                No CRM connected yet%0A              </h2>%0A              <p className=\"mx-auto mt-2 max-w-xl text-sm leading-6 text-[#718096]\">%0A                Connect the company CRM once. After commissioning, customer and sales activity will flow into AmarktAI automatically.%0A              </p>%0A              {canManage ? (%0A                <Button className=\"mt-5\" onClick={() => setAdding(true)}>%0A                  <Plus className=\"mr-2 h-4 w-4\" /> Connect CRM%0A                </Button>%0A              ) : null}%0A            </div>%0A          ) : null}%0A        </section>%0A      </div>%0A    </DashboardLayout>%0A  );%0A}%0A%0Afunction JourneyStep({%0A  number,%0A  title,%0A  detail,%0A}: {%0A  number: string;%0A  title: string;%0A  detail: string;%0A}) {%0A  return (%0A    <div className=\"handover-surface flex items-start gap-4 p-4\">%0A      <span className=\"grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#EDF3FF] text-sm font-black text-[#2F6FED]\">%0A        {number}%0A      </span>%0A      <div>%0A        <p className=\"font-bold text-[#26354A]\">{title}</p>%0A        <p className=\"mt-1 text-xs leading-5 text-[#718096]\">{detail}</p>%0A      </div>%0A      <ArrowRight className=\"ml-auto mt-2 hidden h-4 w-4 text-[#B1BDCC] md:block\" />%0A    </div>%0A  );%0A}%0A"%0A%0A ❯ server/onboardingFlow.test.ts:25:25%0A%0A
+
+::error file=/home/runner/work/Amarktai-Sales-Assistant-/Amarktai-Sales-Assistant-/server/sourceOfTruthAcceptance.test.ts,title=server/sourceOfTruthAcceptance.test.ts > repository source of truth > keeps exactly one public%2C dashboard and shared base stylesheet,line=100,column=7::AssertionError: expected [ …(4) ] to deeply equal [ …(3) ]%0A%0A- Expected%0A+ Received%0A%0A  Array [%0A    "client/src/dashboard-final.css",%0A    "client/src/index.css",%0A    "client/src/marketing/final-site.css",%0A+   "client/src/workspace-handover.css",%0A  ]%0A%0A ❯ server/sourceOfTruthAcceptance.test.ts:100:7%0A%0A
+ ELIFECYCLE  Test failed. See above for more details.
+TEST_EXIT_CODE=1
