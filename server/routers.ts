@@ -86,6 +86,7 @@ import {
   getPersonalMailboxReadiness,
   validatePersonalMailboxEmailPreview,
 } from "./personalMailbox";
+import { getPersonalMailboxStatus } from "./personalMailboxRuntime";
 import {
   getLatestCompanyKnowledgeJob,
   retryCompanyKnowledgeJob,
@@ -535,7 +536,12 @@ export const appRouter = router({
         ...dashboard,
         connectionReadiness: {
           crmBrowserBridge: genieReadiness.ready,
-          personalMailbox: getPersonalMailboxReadiness().ready,
+          personalMailbox: (
+            await getPersonalMailboxStatus({
+              userId: ctx.user.id,
+              organisationId: ctx.activeOrganisation.organisationId,
+            })
+          ).connected,
           intelligenceService: getGenxReadiness().ready,
           emailDelivery: getSmtpReadiness().ready,
         },
@@ -875,7 +881,7 @@ export const appRouter = router({
             reason: error instanceof Error ? error.message : String(error),
           });
           throw new Error(
-            "The email was not sent. Check your Microsoft mailbox connection and try again."
+            "The email was not sent. Check your personal mailbox connection and try again."
           );
         }
         await recordActionExecution({
@@ -896,7 +902,7 @@ export const appRouter = router({
             executionEvidence.retryable === false
           )
             throw new Error(
-              "Microsoft accepted this approved email, but delivery readback could not be verified. Review now marks it Failed. Do not resend it until the stable action reference is reconciled."
+              "The mailbox provider accepted this approved email, but sent-mail readback could not be verified. Review now marks it Failed. Do not resend it until the stable action reference is reconciled."
             );
           throw new Error(
             "The email was not sent. Check your mailbox connection and try again."

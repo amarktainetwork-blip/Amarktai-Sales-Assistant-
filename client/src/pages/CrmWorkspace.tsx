@@ -120,7 +120,7 @@ export default function CrmWorkspace() {
   );
   const [browserAuthenticationState, setBrowserAuthenticationState] =
     useState("STARTING");
-  const [safeReadsReady, setSafeReadsReady] = useState(false);
+  const [commissioningReady, setCommissioningReady] = useState(false);
   const completionAttemptedRef = useRef(false);
   const selected = useMemo(
     () =>
@@ -143,7 +143,7 @@ export default function CrmWorkspace() {
   );
 
   useEffect(() => {
-    setSafeReadsReady(false);
+    setCommissioningReady(false);
     setBrowserAuthenticationState("STARTING");
     completionAttemptedRef.current = false;
     if (!selected || !canManage || onboardingComplete) return;
@@ -155,10 +155,11 @@ export default function CrmWorkspace() {
       );
       if (!response.ok || cancelled) return;
       const body = (await response.json().catch(() => ({}))) as {
-        job?: { progress?: { safeReads?: { status?: string } } } | null;
+        job?: { state?: string; status?: string } | null;
       };
-      if (body.job?.progress?.safeReads?.status === "Ready")
-        setSafeReadsReady(true);
+      setCommissioningReady(
+        body.job?.state === "READY" && body.job?.status === "ready"
+      );
     };
     void check();
     const timer = window.setInterval(() => void check(), 3_000);
@@ -174,7 +175,7 @@ export default function CrmWorkspace() {
       onboardingComplete ||
       completionAttemptedRef.current ||
       browserAuthenticationState !== "AUTHENTICATED" ||
-      !safeReadsReady ||
+      !commissioningReady ||
       companySetup.data?.profile?.discoveryStatus !== "confirmed"
     )
       return;
@@ -191,7 +192,7 @@ export default function CrmWorkspace() {
         toast.error(
           friendlyError(
             error,
-            "Setup is ready, but completion could not be saved. Try reopening the CRM."
+            "CRM commissioning is not fully proven yet, or completion could not be saved. Finish the required CRM operations and try again."
           )
         );
       });
@@ -202,7 +203,7 @@ export default function CrmWorkspace() {
     completeOnboarding,
     onboardingComplete,
     navigate,
-    safeReadsReady,
+    commissioningReady,
     utils.organisation.current,
   ]);
 
