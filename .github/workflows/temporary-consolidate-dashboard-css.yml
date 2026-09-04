@@ -1,0 +1,41 @@
+name: Temporary dashboard stylesheet consolidation
+
+on:
+  push:
+    branches: ["fix/client-handover-frontend-crm-outlook"]
+
+permissions:
+  contents: write
+
+jobs:
+  consolidate:
+    if: github.event.head_commit.message == 'Run dashboard stylesheet consolidation'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/client-handover-frontend-crm-outlook
+          fetch-depth: 0
+      - name: Consolidate canonical dashboard stylesheet
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! grep -q 'Client-handover workspace finish' client/src/dashboard-final.css; then
+            printf '\n\n' >> client/src/dashboard-final.css
+            cat client/src/workspace-handover.css >> client/src/dashboard-final.css
+          fi
+          rm -f client/src/workspace-handover.css
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('client/src/App.tsx')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace('import "./workspace-handover.css";\n', '')
+          path.write_text(text, encoding='utf-8')
+          PY
+      - name: Commit consolidated stylesheet
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add client/src/dashboard-final.css client/src/App.tsx client/src/workspace-handover.css
+          git commit -m "Consolidate handover visuals into canonical dashboard stylesheet"
+          git push origin HEAD:fix/client-handover-frontend-crm-outlook
