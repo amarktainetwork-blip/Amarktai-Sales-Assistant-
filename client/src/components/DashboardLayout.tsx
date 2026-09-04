@@ -93,6 +93,12 @@ export default function DashboardLayout({
       retry: false,
     }
   );
+  const integrationReadiness = trpc.integrations.list.useQuery(undefined, {
+    enabled: Boolean(
+      user && security.data?.verified && canManage && organisationId
+    ),
+    retry: false,
+  });
   const utils = trpc.useUtils();
   const switchOrganisation = trpc.organisation.switch.useMutation({
     onSuccess: async () => {
@@ -119,12 +125,7 @@ export default function DashboardLayout({
   const storedCompanyComplete = onboarding?.complete === true;
   const profileConfirmed =
     companySetup.data?.profile?.discoveryStatus === "confirmed";
-  const crmReady = Boolean(
-    connectedSystems.data?.some(
-      system =>
-        system.status === "ready" || system.status === "limited_permissions"
-    )
-  );
+  const crmReady = Boolean(integrationReadiness.data?.genie.ready);
   const setupComplete = canManage
     ? Boolean(storedCompanyComplete && profileConfirmed && crmReady)
     : storedCompanyComplete;
