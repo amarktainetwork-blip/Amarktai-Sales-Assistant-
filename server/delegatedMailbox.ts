@@ -87,6 +87,7 @@ export async function createDelegatedMailboxAuthorization(input: {
     organisationId: input.organisationId,
     nonce,
     redirectUri: config.redirectUri!,
+    provider: "microsoft",
     expiresAt: new Date(Date.now() + 10 * 60_000),
   });
   const url = new URL(
@@ -113,6 +114,7 @@ async function consumeMailboxState(nonce: string) {
       .where(
         and(
           eq(userMailboxOAuthStates.nonce, nonce),
+          eq(userMailboxOAuthStates.provider, "microsoft"),
           isNull(userMailboxOAuthStates.consumedAt),
           gt(userMailboxOAuthStates.expiresAt, new Date())
         )
@@ -718,10 +720,11 @@ export async function syncDelegatedMailbox(input: {
               "Send this reviewed inbound reply only once from the connected personal mailbox.",
             crmRoute: {
               routable: true,
-              provider: "microsoft_delegated",
+              provider: "personal_mailbox",
+              mailboxProvider: "microsoft",
               displayName: "Your Microsoft mailbox",
               connectionMode: "delegated_oauth",
-              requiredCapability: "Mail.Send",
+              requiredCapability: "Mail.Read + Mail.Send",
             },
             to: sender,
             subject: /^re:/i.test(item.subject || "")

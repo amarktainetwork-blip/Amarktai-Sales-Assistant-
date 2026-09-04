@@ -2189,7 +2189,7 @@ export const userMailboxConnections = mysqlTable(
     userId: int("userId")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    provider: mysqlEnum("provider", ["microsoft"]).notNull(),
+    provider: mysqlEnum("provider", ["microsoft", "google", "smtp"]).notNull(),
     email: varchar("email", { length: 320 }).notNull(),
     displayName: varchar("displayName", { length: 220 }),
     tenantId: varchar("tenantId", { length: 180 }),
@@ -2233,6 +2233,9 @@ export const userMailboxOAuthStates = mysqlTable(
       .references(() => users.id, { onDelete: "cascade" }),
     nonce: varchar("nonce", { length: 128 }).notNull().unique(),
     redirectUri: varchar("redirectUri", { length: 1024 }).notNull(),
+    provider: mysqlEnum("provider", ["microsoft", "google"])
+      .notNull()
+      .default("microsoft"),
     expiresAt: timestamp("expiresAt").notNull(),
     consumedAt: timestamp("consumedAt"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),

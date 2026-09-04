@@ -1,0 +1,2 @@
+ALTER TABLE `userMailboxConnections` MODIFY COLUMN `provider` enum('microsoft','google','smtp') NOT NULL;--> statement-breakpoint
+ALTER TABLE `userMailboxOAuthStates` ADD `provider` enum('microsoft','google') DEFAULT 'microsoft' NOT NULL;
