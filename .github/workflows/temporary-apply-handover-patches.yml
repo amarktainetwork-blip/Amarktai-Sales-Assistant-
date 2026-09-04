@@ -22,154 +22,62 @@ jobs:
           node-version: 22.15.0
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Apply handover-safe provider patches
+      - name: Extend mailbox schema
         run: |
           python3 - <<'PY'
           from pathlib import Path
-
-          def replace_once(path, old, new, label):
-              p = Path(path)
-              text = p.read_text()
-              if text.count(old) != 1:
-                  raise SystemExit(f"{path}: expected one {label}, found {text.count(old)}")
-              p.write_text(text.replace(old, new, 1))
-
-          # Schema: preserve Microsoft rows while expanding provider identity.
-          replace_once(
-              'drizzle/schema.ts',
-              'provider: mysqlEnum("provider", ["microsoft"]).notNull(),',
-              'provider: mysqlEnum("provider", ["microsoft", "google", "smtp"]).notNull(),',
-              'Microsoft-only mailbox provider enum',
-          )
-          replace_once(
-              'drizzle/schema.ts',
-              '    redirectUri: varchar("redirectUri", { length: 1024 }).notNull(),\n    expiresAt: timestamp("expiresAt").notNull(),',
-              '    redirectUri: varchar("redirectUri", { length: 1024 }).notNull(),\n    provider: mysqlEnum("provider", ["microsoft", "google"])\n      .notNull()\n      .default("microsoft"),\n    expiresAt: timestamp("expiresAt").notNull(),',
-              'mailbox OAuth provider marker',
-          )
-
-          # Existing Microsoft OAuth states are explicitly provider-bound.
-          replace_once(
-              'server/delegatedMailbox.ts',
+          p = Path('drizzle/schema.ts')
+          text = p.read_text()
+          old = 'provider: mysqlEnum("provider", ["microsoft"]).notNull(),'
+          if text.count(old) != 1:
+              raise SystemExit(f'provider enum count={text.count(old)}')
+          text = text.replace(old, 'provider: mysqlEnum("provider", ["microsoft", "google", "smtp"]).notNull(),', 1)
+          old = '    redirectUri: varchar("redirectUri", { length: 1024 }).notNull(),\n    expiresAt: timestamp("expiresAt").notNull(),'
+          if text.count(old) != 1:
+              raise SystemExit(f'oauth marker count={text.count(old)}')
+          text = text.replace(old, '    redirectUri: varchar("redirectUri", { length: 1024 }).notNull(),\n    provider: mysqlEnum("provider", ["microsoft", "google"])\n      .notNull()\n      .default("microsoft"),\n    expiresAt: timestamp("expiresAt").notNull(),', 1)
+          p.write_text(text)
+          PY
+      - name: Bind Microsoft OAuth state and inbound route
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('server/delegatedMailbox.ts')
+          text = p.read_text()
+          changes = [
+            (
               '    nonce,\n    redirectUri: config.redirectUri!,\n    expiresAt: new Date(Date.now() + 10 * 60_000),',
               '    nonce,\n    redirectUri: config.redirectUri!,\n    provider: "microsoft",\n    expiresAt: new Date(Date.now() + 10 * 60_000),',
-              'Microsoft OAuth state insert',
-          )
-          replace_once(
-              'server/delegatedMailbox.ts',
+              'oauth insert',
+            ),
+            (
               '          eq(userMailboxOAuthStates.nonce, nonce),\n          isNull(userMailboxOAuthStates.consumedAt),',
               '          eq(userMailboxOAuthStates.nonce, nonce),\n          eq(userMailboxOAuthStates.provider, "microsoft"),\n          isNull(userMailboxOAuthStates.consumedAt),',
-              'Microsoft OAuth state provider guard',
-          )
-          replace_once(
-              'server/delegatedMailbox.ts',
+              'oauth consume guard',
+            ),
+            (
               '              provider: "microsoft_delegated",\n              displayName: "Your Microsoft mailbox",\n              connectionMode: "delegated_oauth",\n              requiredCapability: "Mail.Send",',
               '              provider: "personal_mailbox",\n              mailboxProvider: "microsoft",\n              displayName: "Your Microsoft mailbox",\n              connectionMode: "delegated_oauth",\n              requiredCapability: "Mail.Read + Mail.Send",',
-              'Microsoft inbound reply route',
-          )
-
-          # Personal mailbox action routing becomes provider-neutral and binds the reviewed provider.
-          p = Path('server/crmRouter.ts')
-          text = p.read_text()
-          text = text.replace(
-              'import { getDelegatedMailboxStatus } from "./delegatedMailbox";',
-              'import {\n  getPersonalMailboxStatus,\n  type PersonalMailboxProvider,\n} from "./personalMailboxRuntime";',
-              1,
-          )
-          start = text.index('export type PersonalMicrosoftRouteContext =')
-          end = text.index('/**\n * A mutable action', start)
-          text = text[:start] + '''export type PersonalMailboxRouteContext = {\n  connected: boolean;\n  provider?: PersonalMailboxProvider;\n  mailbox?: string;\n  capabilities?: {\n    sendEmail: boolean;\n    inboxSync: boolean;\n    calendar: boolean;\n    sentReadback: boolean;\n  };\n};\n\n''' + text[end:]
-          start = text.index('function delegatedMicrosoftRoute(')
-          end = text.index('export function routeConnectedSystemActions<', start)
-          text = text[:start] + '''function personalMailboxRoute(\n  actionType: string,\n  personalMailbox?: PersonalMailboxRouteContext\n) {\n  const email = actionType === "send_email" || actionType === "send_email_template";\n  const calendar = actionType === "create_calendar_event";\n  if (!email && !calendar) return undefined;\n  const capability = email ? "sendEmail" : "calendar";\n  const requiredCapability = email ? "personal mailbox email send" : "personal mailbox calendar";\n  if (!personalMailbox?.connected || !personalMailbox.provider)\n    return {\n      routable: false as const,\n      reason: email\n        ? "Connect your personal mailbox before preparing an executable email action."\n        : "Connect Microsoft 365 or Google Calendar before preparing an executable calendar action.",\n      requiredCapability,\n      connectionMode: "per_user_mailbox" as const,\n    };\n  if (!personalMailbox.capabilities?.[capability])\n    return {\n      routable: false as const,\n      reason: calendar\n        ? "Your connected mailbox does not provide calendar access. Connect Microsoft 365 or Google Calendar for this action."\n        : "Your connected mailbox is missing email-send permission. Reconnect it before using this action.",\n      requiredCapability,\n      connectionMode: "per_user_mailbox" as const,\n    };\n  return {\n    routable: true as const,\n    provider: "personal_mailbox",\n    mailboxProvider: personalMailbox.provider,\n    displayName: personalMailbox.mailbox || "Your personal mailbox",\n    connectionMode:\n      personalMailbox.provider === "smtp"\n        ? ("verified_smtp" as const)\n        : ("delegated_oauth" as const),\n    requiredCapability,\n    mailbox: personalMailbox.mailbox,\n    sentReadback: Boolean(personalMailbox.capabilities?.sentReadback),\n  };\n}\n\n''' + text[end:]
-          text = text.replace(
-              '  options?: { personalMicrosoft?: PersonalMicrosoftRouteContext }',
-              '  options?: { personalMailbox?: PersonalMailboxRouteContext }',
-              1,
-          )
-          text = text.replace(
-              '    const microsoftRoute = delegatedMicrosoftRoute(\n      effectiveActionType || action.actionType,\n      options?.personalMicrosoft\n    );\n    if (microsoftRoute)\n      return {\n        ...action,\n        payload: { ...action.payload, crmRoute: microsoftRoute },\n      };',
-              '    const mailboxRoute = personalMailboxRoute(\n      effectiveActionType || action.actionType,\n      options?.personalMailbox\n    );\n    if (mailboxRoute)\n      return {\n        ...action,\n        payload: { ...action.payload, crmRoute: mailboxRoute },\n      };',
-              1,
-          )
-          start = text.index('export async function routeConnectedSystemActionsForUser<')
-          text = text[:start] + '''export async function routeConnectedSystemActionsForUser<\n  T extends { actionType: string; payload: Record<string, unknown> },\n>(input: {\n  userId: number;\n  organisationId: number;\n  actions: T[];\n  systems: ConnectedSystemRoute[];\n}) {\n  const requiresMailbox = input.actions.some(action => {\n    const actionType = routedActionType(action) || action.actionType;\n    return (\n      actionType === "send_email" ||\n      actionType === "send_email_template" ||\n      actionType === "create_calendar_event"\n    );\n  });\n  if (!requiresMailbox)\n    return routeConnectedSystemActions(input.actions, input.systems);\n  const status = await getPersonalMailboxStatus({\n    userId: input.userId,\n    organisationId: input.organisationId,\n  });\n  return routeConnectedSystemActions(input.actions, input.systems, {\n    personalMailbox: status.mailbox\n      ? {\n          connected: true,\n          provider: status.mailbox.provider,\n          mailbox: status.mailbox.email,\n          capabilities: status.mailbox.capabilities,\n        }\n      : { connected: false },\n  });\n}\n'''
+              'inbound route',
+            ),
+          ]
+          for old, new, label in changes:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label} count={count}')
+              text = text.replace(old, new, 1)
           p.write_text(text)
-
-          # Canonical action execution selects the exact personal mailbox provider reviewed in the proposal.
-          p = Path('server/crm/canonicalActionExecution.ts')
-          text = p.read_text()
-          old_import = '''import {\n  createDelegatedOutlookCalendarEvent,\n  sendDelegatedOutlookMail,\n} from "../delegatedMailbox";\nimport {\n  findDelegatedSentMailByReference,\n  waitForDelegatedSentMailReadback,\n} from "../delegatedMailboxReadback";'''
-          new_import = '''import {\n  createPersonalMailboxCalendarEvent,\n  findPersonalSentMailByReference,\n  sendPersonalMailboxMail,\n  waitForPersonalSentMailReadback,\n  type PersonalMailboxProvider,\n} from "../personalMailboxRuntime";'''
-          if text.count(old_import) != 1:
-              raise SystemExit('canonicalActionExecution: expected Microsoft mailbox imports')
-          text = text.replace(old_import, new_import, 1)
-          text = text.replace('function stableMicrosoftReference(', 'function stableMailboxReference(', 1)
-          start = text.index('async function executeMicrosoft(')
-          end = text.index('async function verifyCrmPostcondition', start)
-          new_exec = '''async function executePersonalMailbox(input: {\n  organisationId: number;\n  proposal: ActionProposal;\n  correlationId: string;\n  payload: Record<string, unknown>;\n}) {\n  const route = object(input.payload.crmRoute);\n  const legacyMicrosoft = route.provider === "microsoft_delegated";\n  const rawProvider = legacyMicrosoft ? "microsoft" : route.mailboxProvider;\n  if (rawProvider !== "microsoft" && rawProvider !== "google" && rawProvider !== "smtp")\n    throw new Error("The reviewed personal mailbox provider is no longer available. Re-review the action after reconnecting the mailbox.");\n  const provider = rawProvider as PersonalMailboxProvider;\n  const reference = stableMailboxReference(input.proposal);\n  if (\n    input.proposal.actionType === "send_email" ||\n    input.proposal.actionType === "send_email_template"\n  ) {\n    if (provider !== "smtp") {\n      const prior = await findPersonalSentMailByReference({\n        userId: input.proposal.userId,\n        organisationId: input.organisationId,\n        provider,\n        reviewReference: reference,\n      });\n      if (prior.found)\n        return {\n          success: true,\n          skipped: true,\n          duplicatePrevented: true,\n          detail: "Sent mail already contains this exact approved action reference, so the email was not sent twice.",\n          provider: `${provider}_personal`,\n          correlationId: input.correlationId,\n          completedAt: new Date().toISOString(),\n          providerResult: prior,\n          retryable: false,\n        };\n    }\n    const sent = await sendPersonalMailboxMail({\n      userId: input.proposal.userId,\n      organisationId: input.organisationId,\n      provider,\n      to: String(input.payload.to ?? input.payload.email ?? ""),\n      subject: String(input.payload.subject ?? input.proposal.title),\n      body: String(input.payload.body ?? input.payload.message ?? ""),\n      reviewReference: reference,\n      contactExternalId:\n        typeof input.payload.contactExternalId === "string"\n          ? input.payload.contactExternalId\n          : undefined,\n    });\n    if (provider === "smtp")\n      return {\n        success: Boolean(sent.sent),\n        acceptedByProvider: Boolean(sent.sent),\n        detail: sent.sent\n          ? "The verified SMTP server accepted the approved email. This connection has no sent-folder readback, so the stable Message-ID and review reference are retained and blind retry is disabled."\n          : "The SMTP server did not accept the approved email.",\n        provider: "smtp_personal",\n        correlationId: input.correlationId,\n        completedAt: new Date().toISOString(),\n        providerResult: sent,\n        sentReadbackSupported: false,\n        retryable: false,\n      };\n    const readback = await waitForPersonalSentMailReadback({\n      userId: input.proposal.userId,\n      organisationId: input.organisationId,\n      provider,\n      reviewReference: reference,\n    });\n    if (!readback.found)\n      return {\n        success: false,\n        acceptedByProvider: true,\n        detail: "The mailbox provider accepted the approved email, but sent-mail readback was not visible in the bounded verification window. The stable action reference prevents blind resend; reconcile before any retry.",\n        provider: `${provider}_personal`,\n        correlationId: input.correlationId,\n        completedAt: new Date().toISOString(),\n        providerResult: readback,\n        retryable: false,\n      };\n    return {\n      success: true,\n      detail: "The approved email was sent from the salesperson's personal mailbox and read back using the stable action reference.",\n      provider: `${provider}_personal`,\n      correlationId: input.correlationId,\n      completedAt: new Date().toISOString(),\n      providerResult: readback,\n      retryable: false,\n    };\n  }\n  if (input.proposal.actionType === "create_calendar_event") {\n    const startIso =\n      typeof input.payload.startIso === "string"\n        ? input.payload.startIso\n        : typeof input.payload.start === "string"\n          ? input.payload.start\n          : "";\n    const endIso =\n      typeof input.payload.endIso === "string"\n        ? input.payload.endIso\n        : typeof input.payload.end === "string"\n          ? input.payload.end\n          : "";\n    const result = await createPersonalMailboxCalendarEvent({\n      userId: input.proposal.userId,\n      organisationId: input.organisationId,\n      provider,\n      subject: String(\n        input.payload.subject ?? input.payload.title ?? input.proposal.title\n      ),\n      body: String(\n        input.payload.body ??\n          input.payload.message ??\n          input.payload.content ??\n          input.proposal.title\n      ),\n      startIso,\n      endIso,\n      attendees: calendarAttendees(input.payload, input.proposal.targetLabel),\n      timezone:\n        typeof input.payload.timezone === "string"\n          ? input.payload.timezone\n          : undefined,\n      reviewReference: reference,\n    });\n    return {\n      success: Boolean(result.eventId),\n      detail: result.eventId\n        ? "The approved calendar invitation was created with a stable external reference and returned an event ID."\n        : "The mailbox calendar provider did not return an event ID. Do not retry until the stable action reference is reconciled.",\n      provider: `${provider}_personal`,\n      correlationId: input.correlationId,\n      completedAt: new Date().toISOString(),\n      providerResult: result,\n      retryable: false,\n    };\n  }\n  throw new Error("Unsupported personal mailbox action.");\n}\n\n'''
-          text = text[:start] + new_exec + text[end:]
-          text = text.replace(
-              '"EMAIL_EXECUTION_OWNER_INVALID: salesperson email must execute through the user\'s delegated Microsoft mailbox."',
-              '"EMAIL_EXECUTION_OWNER_INVALID: salesperson email must execute through the reviewed personal mailbox route."',
-              1,
-          )
-          text = text.replace(
-              '  if (route.provider === "microsoft_delegated")\n    return executeMicrosoft({ ...input, payload });',
-              '  if (\n    route.provider === "microsoft_delegated" ||\n    route.provider === "personal_mailbox"\n  )\n    return executePersonalMailbox({ ...input, payload });',
-              1,
-          )
-          p.write_text(text)
-
-          # Runtime dashboard and reviewed-email errors use actual user mailbox truth.
-          p = Path('server/routers.ts')
-          text = p.read_text()
-          text = text.replace(
-              'import {\n  getPersonalMailboxReadiness,\n  validatePersonalMailboxEmailPreview,\n} from "./personalMailbox";',
-              'import { validatePersonalMailboxEmailPreview } from "./personalMailbox";\nimport { getPersonalMailboxStatus } from "./personalMailboxRuntime";',
-              1,
-          )
-          marker = '''      const genieReadiness = await getOrganisationGenieReadiness(\n        ctx.activeOrganisation.organisationId,\n        systems\n      );\n      return {'''
-          replacement = '''      const genieReadiness = await getOrganisationGenieReadiness(\n        ctx.activeOrganisation.organisationId,\n        systems\n      );\n      const personalMailbox = await getPersonalMailboxStatus({\n        userId: ctx.user.id,\n        organisationId: ctx.activeOrganisation.organisationId,\n      });\n      return {'''
-          if marker not in text:
-              raise SystemExit('routers.ts: operations dashboard marker missing')
-          text = text.replace(marker, replacement, 1)
-          text = text.replace(
-              '          personalMailbox: getPersonalMailboxReadiness().ready,',
-              '          personalMailbox: personalMailbox.connected,',
-              1,
-          )
-          text = text.replace(
-              '"The email was not sent. Check your Microsoft mailbox connection and try again."',
-              '"The email was not sent. Check your personal mailbox connection and try again."',
-          )
-          text = text.replace(
-              '"Microsoft accepted this approved email, but delivery readback could not be verified. Review now marks it Failed. Do not resend it until the stable action reference is reconciled."',
-              '"The mailbox provider accepted this approved email, but sent-mail readback could not be verified. Review now marks it Failed. Do not resend it until the stable action reference is reconciled."',
-              1,
-          )
-          p.write_text(text)
-
-          # Integration verifier reports all available provider paths, not a fake single provider.
-          p = Path('server/verifyIntegrations.ts')
-          text = p.read_text()
-          old = '''  const personalMailbox = getPersonalMailboxReadiness();\n  results.personalMailbox = personalMailbox.ready\n    ? {\n        status: "DELEGATED_OAUTH_CONFIGURED",\n        provider: personalMailbox.provider,\n        connectionModel: personalMailbox.connectionModel,\n        requiresUserConsent: true,\n      }\n    : { status: "NOT_CONFIGURED" };'''
-          new = '''  const personalMailbox = getPersonalMailboxReadiness();\n  results.personalMailbox = {\n    status: personalMailbox.ready\n      ? "PERSONAL_MAILBOX_CONNECTION_PATHS_AVAILABLE"\n      : "NOT_CONFIGURED",\n    providers: personalMailbox.providers.map(provider => ({\n      provider: provider.provider,\n      configured: provider.configured,\n      connectionModel: provider.connectionModel,\n      capabilities: provider.capabilities,\n    })),\n    requiresUserConsent: true,\n  };'''
-          if old not in text:
-              raise SystemExit('verifyIntegrations.ts: personal mailbox block missing')
-          p.write_text(text.replace(old, new, 1))
           PY
       - name: Generate exact Drizzle migration
         env:
           DATABASE_URL: mysql://migration:placeholder@127.0.0.1:3306/amarktai
         run: pnpm exec drizzle-kit generate --name provider_neutral_personal_mailbox
-      - name: Commit patched runtime and generated migration
-        shell: bash
+      - name: Commit schema and Microsoft compatibility changes
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add drizzle server
+          git add drizzle server/delegatedMailbox.ts
           git diff --cached --check
-          git commit -m "Complete provider-neutral personal mailbox runtime"
+          git commit -m "Add provider-neutral mailbox schema and Microsoft compatibility"
           git push origin HEAD:fix/client-handover-mailbox-readiness-ui
