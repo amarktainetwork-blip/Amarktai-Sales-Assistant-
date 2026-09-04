@@ -5,13 +5,13 @@ const read = (relative: string) =>
   readFileSync(new URL(relative, import.meta.url), "utf8");
 
 describe("commercial Sales Assistant product boundaries", () => {
-  it("keeps one Assistant UI with automatic routing and retry", () => {
+  it("keeps one AmarktAI UI with automatic routing and retry", () => {
     const app = read("../client/src/App.tsx");
     const assistant = read("../client/src/pages/Assistant.tsx");
     expect(app).toContain('<Route path="/assistant" component={Assistant} />');
     expect(app).toContain('<LegacyRedirect to="/assistant" />');
     expect(assistant).toContain("data-assistant-workspace");
-    expect(assistant).toContain("Amarktai AI");
+    expect(assistant).toContain('aria-label="AmarktAI"');
     expect(assistant).toContain("Good ");
     expect(assistant).toContain("async function retry()");
     expect(assistant).not.toContain("agentKey");
@@ -47,11 +47,14 @@ describe("commercial Sales Assistant product boundaries", () => {
     expect(layout).toContain("if (!canManage) return []");
   });
 
-  it("keeps the current setup handoff but refuses server completion until CRM core operations are proven", () => {
+  it("completes setup only after final CRM commissioning READY and server core-operation proof", () => {
     const crm = read("../client/src/pages/CrmWorkspace.tsx");
     const organisation = read("./organisation.ts");
     expect(crm).toContain('browserAuthenticationState !== "AUTHENTICATED"');
-    expect(crm).toContain('safeReads?.status === "Ready"');
+    expect(crm).toContain('body.job?.state === "READY"');
+    expect(crm).toContain('body.job?.status === "ready"');
+    expect(crm).toContain("!commissioningReady");
+    expect(crm).not.toContain('safeReads?.status === "Ready"');
     expect(crm).toContain('discoveryStatus !== "confirmed"');
     expect(crm).toContain("mutateAsync({ step: 4, complete: true })");
     expect(organisation).toContain('profile.discoveryStatus === "confirmed"');
