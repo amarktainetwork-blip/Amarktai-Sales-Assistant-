@@ -1,4 +1,7 @@
-import { getDelegatedMailboxStatus } from "./delegatedMailbox";
+import {
+  getPersonalMailboxStatus,
+  type PersonalMailboxProvider,
+} from "./personalMailboxRuntime";
 import {
   isCustomOperationKey,
   productionOperationAvailable,
@@ -16,10 +19,16 @@ export type ConnectedSystemRoute = {
   configuration?: Record<string, unknown>;
 };
 
-export type PersonalMicrosoftRouteContext = {
+export type PersonalMailboxRouteContext = {
   connected: boolean;
-  scopes: string[];
+  provider?: PersonalMailboxProvider;
   mailbox?: string;
+  capabilities?: {
+    sendEmail: boolean;
+    inboxSync: boolean;
+    calendar: boolean;
+    sentReadback: boolean;
+  };
 };
 
 /**
@@ -55,7 +64,9 @@ export const ACTION_CONNECTED_CAPABILITIES: Record<string, string[][]> = {
 };
 
 function isBrowserConnection(system: ConnectedSystemRoute) {
-  return system.connectionMethod === "browser" || system.connectionMethod === "sidecar";
+  return (
+    system.connectionMethod === "browser" || system.connectionMethod === "sidecar"
+  );
 }
 
 export function connectedSystemSupportsAction(
@@ -75,7 +86,10 @@ export function connectedSystemSupportsAction(
     return Boolean(
       customOperationKey &&
         isCustomOperationKey(customOperationKey) &&
-        productionOperationAvailable(system.learnedOperations, customOperationKey)
+        productionOperationAvailable(
+          system.learnedOperations,
+          customOperationKey
+        )
     );
   }
 
@@ -83,7 +97,9 @@ export function connectedSystemSupportsAction(
     ["activities.write"],
   ];
   return alternatives.some(required =>
-    required.every(capability => system.verifiedCapabilities.includes(capability))
+    required.every(capability =>
+      system.verifiedCapabilities.includes(capability)
+    )
   );
 }
 
@@ -91,8 +107,7 @@ function routedActionType(action: {
   actionType: string;
   payload: Record<string, unknown>;
 }) {
-  if (action.actionType !== "deterministic_crm_batch")
-    return action.actionType;
+  if (action.actionType !== "deterministic_crm_batch") return action.actionType;
   const plan = action.payload.batchPlan;
   if (!plan || typeof plan !== "object" || Array.isArray(plan)) return "";
   const nested = (plan as Record<string, unknown>).actionType;
@@ -105,9 +120,12 @@ function routedPayload(action: {
 }) {
   if (action.actionType !== "deterministic_crm_batch") return action.payload;
   const plan = action.payload.batchPlan;
-  if (!plan || typeof plan !== "object" || Array.isArray(plan)) return action.payload;
+  if (!plan || typeof plan !== "object" || Array.isArray(plan))
+    return action.payload;
   const nestedPayload = (plan as Record<string, unknown>).payload;
-  return nestedPayload && typeof nestedPayload === "object" && !Array.isArray(nestedPayload)
+  return nestedPayload &&
+    typeof nestedPayload === "object" &&
+    !Array.isArray(nestedPayload)
     ? (nestedPayload as Record<string, unknown>)
     : action.payload;
 }
@@ -116,49 +134,52 @@ function connectionCanRoute(status: string) {
   return status === "ready" || status === "limited_permissions";
 }
 
-function delegatedMicrosoftRoute(
+function personalMailboxRoute(
   actionType: string,
-  personalMicrosoft?: PersonalMicrosoftRouteContext
+  personalMailbox?: PersonalMailboxRouteContext
 ) {
-  const email = actionType === "send_email" || actionType === "send_email_template";
+  const email =
+    actionType === "send_email" || actionType === "send_email_template";
   const calendar = actionType === "create_calendar_event";
   if (!email && !calendar) return undefined;
-  const requiredCapabilities = email
-    ? ["Mail.Read", "Mail.Send"]
-    : ["Calendars.ReadWrite"];
-  const requiredCapability = requiredCapabilities.join(" + ");
-  const displayName = email ? "Your Microsoft mailbox" : "Your Microsoft calendar";
-  const connectMessage = email
-    ? "Connect your Microsoft mailbox before preparing an executable email action."
-    : "Connect your Microsoft calendar before preparing an executable calendar action.";
-  if (!personalMicrosoft?.connected)
+
+  const capability = email ? "sendEmail" : "calendar";
+  const requiredCapability = email
+    ? "personal mailbox email send"
+    : "personal mailbox calendar";
+
+  if (!personalMailbox?.connected || !personalMailbox.provider)
     return {
       routable: false as const,
-      reason: connectMessage,
+      reason: email
+        ? "Connect your personal mailbox before preparing an executable email action."
+        : "Connect Microsoft 365 or Google Calendar before preparing an executable calendar action.",
       requiredCapability,
-      requiredCapabilities,
-      connectionMode: "per_user_delegated_oauth" as const,
+      connectionMode: "per_user_mailbox" as const,
     };
-  const scopes = new Set(personalMicrosoft.scopes.map(scope => scope.toLowerCase()));
-  const missing = requiredCapabilities.filter(
-    capability => !scopes.has(capability.toLowerCase())
-  );
-  if (missing.length)
+
+  if (!personalMailbox.capabilities?.[capability])
     return {
       routable: false as const,
-      reason: `${displayName} is connected but is missing the required ${missing.join(" + ")} permission${missing.length === 1 ? "" : "s"}. Reconnect it before using this action.`,
+      reason: calendar
+        ? "Your connected mailbox does not provide calendar access. Connect Microsoft 365 or Google Calendar for this action."
+        : "Your connected mailbox is missing email-send permission. Reconnect it before using this action.",
       requiredCapability,
-      requiredCapabilities,
-      connectionMode: "per_user_delegated_oauth" as const,
+      connectionMode: "per_user_mailbox" as const,
     };
+
   return {
     routable: true as const,
-    provider: "microsoft_delegated",
-    displayName,
-    connectionMode: "per_user_delegated_oauth" as const,
+    provider: "personal_mailbox",
+    mailboxProvider: personalMailbox.provider,
+    displayName: personalMailbox.mailbox || "Your personal mailbox",
+    connectionMode:
+      personalMailbox.provider === "smtp"
+        ? ("verified_smtp" as const)
+        : ("delegated_oauth" as const),
     requiredCapability,
-    requiredCapabilities,
-    mailbox: personalMicrosoft.mailbox,
+    mailbox: personalMailbox.mailbox,
+    sentReadback: Boolean(personalMailbox.capabilities?.sentReadback),
   };
 }
 
@@ -167,20 +188,22 @@ export function routeConnectedSystemActions<
 >(
   actions: T[],
   systems: ConnectedSystemRoute[],
-  options?: { personalMicrosoft?: PersonalMicrosoftRouteContext }
+  options?: { personalMailbox?: PersonalMailboxRouteContext }
 ) {
-  const eligibleSystems = systems.filter(system => connectionCanRoute(system.status));
+  const eligibleSystems = systems.filter(system =>
+    connectionCanRoute(system.status)
+  );
   return actions.map(action => {
     const effectiveActionType = routedActionType(action);
     const effectivePayload = routedPayload(action);
-    const microsoftRoute = delegatedMicrosoftRoute(
+    const mailboxRoute = personalMailboxRoute(
       effectiveActionType || action.actionType,
-      options?.personalMicrosoft
+      options?.personalMailbox
     );
-    if (microsoftRoute)
+    if (mailboxRoute)
       return {
         ...action,
-        payload: { ...action.payload, crmRoute: microsoftRoute },
+        payload: { ...action.payload, crmRoute: mailboxRoute },
       };
 
     const customAction = effectiveActionType === "custom_crm_action";
@@ -190,7 +213,9 @@ export function routeConnectedSystemActions<
         : undefined;
     const alternatives = customAction
       ? []
-      : ACTION_CONNECTED_CAPABILITIES[effectiveActionType] || [["activities.write"]];
+      : ACTION_CONNECTED_CAPABILITIES[effectiveActionType] || [
+          ["activities.write"],
+        ];
     const preferred =
       typeof effectivePayload.preferredProvider === "string"
         ? effectivePayload.preferredProvider
@@ -199,15 +224,16 @@ export function routeConnectedSystemActions<
       typeof effectivePayload.preferredConnectedSystemId === "number"
         ? effectivePayload.preferredConnectedSystemId
         : undefined;
-    const eligible = customAction && !customOperationKey
-      ? []
-      : eligibleSystems.filter(system =>
-          connectedSystemSupportsAction(
-            system,
-            effectiveActionType,
-            customOperationKey
-          )
-        );
+    const eligible =
+      customAction && !customOperationKey
+        ? []
+        : eligibleSystems.filter(system =>
+            connectedSystemSupportsAction(
+              system,
+              effectiveActionType,
+              customOperationKey
+            )
+          );
     const chosen = preferredConnectedSystemId
       ? eligible.find(system => system.id === preferredConnectedSystemId)
       : preferred
@@ -227,7 +253,9 @@ export function routeConnectedSystemActions<
           connectedSystemId: chosen.id,
           requiredCapability,
           operationKey: customOperationKey,
-          operationState: customAction ? ("LIVE_PROVEN" as const) : undefined,
+          operationState: customAction
+            ? ("LIVE_PROVEN" as const)
+            : undefined,
           shadowMode: chosen.configuration?.shadowMode === true,
         }
       : {
@@ -251,7 +279,7 @@ export async function routeConnectedSystemActionsForUser<
   actions: T[];
   systems: ConnectedSystemRoute[];
 }) {
-  const requiresMicrosoft = input.actions.some(action => {
+  const requiresMailbox = input.actions.some(action => {
     const actionType = routedActionType(action) || action.actionType;
     return (
       actionType === "send_email" ||
@@ -259,21 +287,21 @@ export async function routeConnectedSystemActionsForUser<
       actionType === "create_calendar_event"
     );
   });
-  if (!requiresMicrosoft)
+  if (!requiresMailbox)
     return routeConnectedSystemActions(input.actions, input.systems);
-  const status = await getDelegatedMailboxStatus({
+
+  const status = await getPersonalMailboxStatus({
     userId: input.userId,
     organisationId: input.organisationId,
   });
   return routeConnectedSystemActions(input.actions, input.systems, {
-    personalMicrosoft: {
-      connected: status.connected,
-      scopes: Array.isArray(status.mailbox?.scopes)
-        ? status.mailbox.scopes.filter(
-            (scope): scope is string => typeof scope === "string"
-          )
-        : [],
-      mailbox: status.mailbox?.email || undefined,
-    },
+    personalMailbox: status.mailbox
+      ? {
+          connected: true,
+          provider: status.mailbox.provider,
+          mailbox: status.mailbox.email,
+          capabilities: status.mailbox.capabilities,
+        }
+      : { connected: false },
   });
 }
