@@ -22,9 +22,8 @@ describe("universal CRM onboarding", () => {
     ])
       expect(onboarding).toContain(label);
     expect(onboarding).toContain("sign in directly");
-    expect(connections).toMatch(
-      /Amarktai never asks for\s+or records the password or verification code/
-    );
+    expect(connections).toContain("Open secure sign-in");
+    expect(connections).toContain("Private browser connection");
     expect(connections).toContain("https://crm.example.com/");
   });
 
@@ -33,5 +32,6 @@ describe("universal CRM onboarding", () => {
     expect(onboarding).not.toContain("/interactive-auth/");
     expect(onboarding).not.toContain("/pre-otp");
     expect(connections).not.toContain('type="password"');
+    expect(connections).not.toContain("verification code");
   });
 });
