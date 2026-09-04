@@ -39,8 +39,12 @@ describe("final account presentation", () => {
     expect(auth).toContain("name={name}");
   });
 
-  it("keeps the approved auth photography while public product pages use workflow visuals", () => {
-    expect(auth).toContain("images.pexels.com/photos/8485714");
-    expect(auth).not.toContain("images.pexels.com/photos/8837770");
+  it("keeps identity proof inside secure access and uses first-party visuals", () => {
+    expect(auth).toContain('/auth?step=verify');
+    expect(auth).toContain("Verify your email.");
+    expect(auth).toContain('/images/site-hero.svg');
+    expect(auth).not.toContain("images.pexels.com");
+    expect(auth).not.toContain("images.unsplash.com");
+    expect(auth).not.toContain('navigate("/dashboard")');
   });
 });
