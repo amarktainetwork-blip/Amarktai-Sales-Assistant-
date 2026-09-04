@@ -148,7 +148,7 @@ export default function Knowledge() {
                 Company knowledge
               </p>
               <h1 className="mt-2 font-display text-4xl font-bold tracking-[-.06em] sm:text-5xl">
-                What Amarktai knows about your business.
+                What AmarktAI knows about your business.
               </h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-[#66758A]">
                 Review the trusted facts used by the Assistant. Correct them

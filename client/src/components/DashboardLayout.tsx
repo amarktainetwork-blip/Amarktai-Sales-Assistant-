@@ -53,7 +53,7 @@ const dailyMenu: NavItem[] = [
   { icon: Home, label: "Home", path: "/today" },
   { icon: ContactRound, label: "Customers", path: "/customers" },
   { icon: Headphones, label: "Calls", path: "/calls" },
-  { icon: MessageSquareText, label: "Assistant", path: "/assistant" },
+  { icon: MessageSquareText, label: "AmarktAI", path: "/assistant" },
   { icon: ClipboardCheck, label: "Review", path: "/reviews" },
 ];
 
@@ -84,7 +84,7 @@ export default function DashboardLayout({
     retry: false,
   });
   const organisationId = organisation.data?.organisationId;
-  const connectedSystems = trpc.connectedSystems.list.useQuery(
+  trpc.connectedSystems.list.useQuery(
     { organisationId: organisationId ?? 0 },
     {
       enabled: Boolean(
@@ -93,6 +93,12 @@ export default function DashboardLayout({
       retry: false,
     }
   );
+  const integrationReadiness = trpc.integrations.list.useQuery(undefined, {
+    enabled: Boolean(
+      user && security.data?.verified && canManage && organisationId
+    ),
+    retry: false,
+  });
   const utils = trpc.useUtils();
   const switchOrganisation = trpc.organisation.switch.useMutation({
     onSuccess: async () => {
@@ -119,12 +125,7 @@ export default function DashboardLayout({
   const storedCompanyComplete = onboarding?.complete === true;
   const profileConfirmed =
     companySetup.data?.profile?.discoveryStatus === "confirmed";
-  const crmReady = Boolean(
-    connectedSystems.data?.some(
-      system =>
-        system.status === "ready" || system.status === "limited_permissions"
-    )
-  );
+  const crmReady = Boolean(integrationReadiness.data?.genie.ready);
   const setupComplete = canManage
     ? Boolean(storedCompanyComplete && profileConfirmed && crmReady)
     : storedCompanyComplete;
@@ -177,12 +178,12 @@ export default function DashboardLayout({
       });
       if (!response.ok) throw new Error("CRM identity could not be confirmed.");
       setCrmIdentity({ mapped: true, candidates: [] });
-      toast.success("Your CRM identity is connected.");
+      toast.success("Your sales identity is connected.");
     } catch (error) {
       toast.error(
         friendlyError(
           error,
-          "Your CRM identity could not be confirmed. Try again or ask your manager for help."
+          "Your sales identity could not be confirmed. Try again or ask your manager for help."
         )
       );
     } finally {
@@ -196,7 +197,7 @@ export default function DashboardLayout({
       ...(workspaceMode === "team"
         ? [{ icon: Users, label: "Team", path: "/team" } satisfies NavItem]
         : []),
-      { icon: Cable, label: "CRM", path: "/connections" },
+      { icon: Cable, label: "CRM setup", path: "/connections" },
       { icon: Settings2, label: "Settings", path: "/settings" },
     ];
   }, [canManage, workspaceMode]);
@@ -247,7 +248,7 @@ export default function DashboardLayout({
     <SidebarProvider>
       <Sidebar
         collapsible="icon"
-        className="border-r border-[#DCE4EE] bg-white text-[#26354A]"
+        className="amarktai-dashboard-sidebar border-r border-[#DCE4EE] bg-white text-[#26354A]"
       >
         <SidebarHeader className="h-[82px] justify-center border-b border-[#E5EAF0] px-5">
           <BrandMark />
@@ -286,7 +287,7 @@ export default function DashboardLayout({
             </Avatar>
             <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
               <p className="truncate text-sm font-bold text-[#26354A]">
-                {user.name || "Amarktai user"}
+                {user.name || "AmarktAI user"}
               </p>
               <p className="truncate text-[11px] text-[#7B8798]">
                 {user.email || "Sales workspace"}
@@ -312,8 +313,7 @@ export default function DashboardLayout({
           {canManage && !setupComplete && location !== "/company-setup" ? (
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-950 shadow-sm">
               <span>
-                Setup is not complete yet. Finish the business knowledge and CRM
-                connection before using the sales workspace.
+                Workspace setup is not complete yet. Finish company knowledge and prove the required CRM operations before the team starts working here.
               </span>
               <Button size="sm" onClick={() => navigate("/company-setup")}>
                 Continue setup
@@ -322,7 +322,9 @@ export default function DashboardLayout({
           ) : null}
           {showManagementAccess ? (
             <div className="mb-4">
-              <ManagementElevation />
+              <ManagementElevation
+                showBrowserCommissioning={location === "/connections"}
+              />
             </div>
           ) : null}
           {children}
@@ -335,14 +337,14 @@ export default function DashboardLayout({
 function pageTitle(location: string) {
   if (location.startsWith("/customers")) return "Customers";
   if (location.startsWith("/calls")) return "Calls";
-  if (location.startsWith("/assistant")) return "Assistant";
+  if (location.startsWith("/assistant")) return "AmarktAI";
   if (location.startsWith("/reviews")) return "Review";
   if (location.startsWith("/team")) return "Team";
   if (location.startsWith("/settings")) return "Settings";
   if (location.startsWith("/company-setup")) return "Company setup";
-  if (location.startsWith("/connections")) return "CRM connection";
+  if (location.startsWith("/connections")) return "CRM setup";
   if (location.startsWith("/knowledge")) return "Company knowledge";
-  if (location.startsWith("/crm")) return "CRM workspace";
+  if (location.startsWith("/crm")) return "Source CRM";
   return "Home";
 }
 
@@ -352,11 +354,10 @@ function WorkspaceSetupPending() {
       <div className="w-full max-w-xl rounded-2xl border border-[#DCE2E9] bg-white p-7 shadow-sm">
         <BrandMark />
         <h1 className="mt-8 text-3xl font-bold tracking-[-.04em]">
-          Your company workspace is being prepared.
+          Your AmarktAI workspace is being prepared.
         </h1>
         <p className="mt-3 text-sm leading-6 text-[#6C798B]">
-          Your manager is connecting the shared business knowledge and CRM. You
-          won’t need to repeat that setup when it’s ready.
+          Your manager is connecting company knowledge and the CRM. When setup is proven, your customers, tasks, opportunities and call context will be available here automatically.
         </p>
       </div>
     </div>
@@ -377,11 +378,10 @@ function SalespersonIdentityGate({
       <div className="w-full max-w-xl rounded-2xl border border-[#DCE2E9] bg-white p-7 shadow-sm">
         <BrandMark />
         <h1 className="mt-8 text-3xl font-bold tracking-[-.04em]">
-          Which CRM salesperson are you?
+          Which salesperson record is yours?
         </h1>
         <p className="mt-3 text-sm leading-6 text-[#6C798B]">
-          Confirm your match once so customers and tasks stay tied to the right
-          person.
+          Confirm the match once so AmarktAI can bring the right customers, tasks and opportunities into your workspace.
         </p>
         {candidates.length ? (
           <div className="mt-5 grid gap-3">
@@ -394,7 +394,7 @@ function SalespersonIdentityGate({
               >
                 <p className="font-bold">{candidate.displayName}</p>
                 <p className="mt-1 text-xs text-[#6C798B]">
-                  {candidate.email || "CRM salesperson"}
+                  {candidate.email || "Salesperson record"}
                 </p>
                 <span className="mt-3 inline-block text-sm font-bold text-[#3F70D8]">
                   This is me
@@ -404,8 +404,7 @@ function SalespersonIdentityGate({
           </div>
         ) : (
           <p className="mt-5 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
-            We couldn’t find an exact match yet. Ask your manager to link your
-            CRM salesperson record to your Amarktai account.
+            We couldn’t find an exact match yet. Ask your manager to link your salesperson record to your AmarktAI account.
           </p>
         )}
       </div>
@@ -422,7 +421,7 @@ function SignedOut() {
           Sign in to your sales workspace.
         </h1>
         <p className="mt-3 leading-6 text-[#6C798B]">
-          Work with customers, calls, priorities and your connected CRM.
+          Your customers, calls, priorities, follow-ups and connected CRM context live here with AmarktAI.
         </p>
         <Button
           onClick={() => startLogin()}

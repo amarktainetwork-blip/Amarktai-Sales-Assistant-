@@ -356,7 +356,7 @@ export default function TeamManagement() {
                 CRM salesperson links
               </h2>
               <p className="mt-1 text-sm text-[#66758A]">
-                Link CRM work to the right Amarktai member. Uncertain matches
+                Link CRM work to the right AmarktAI member. Uncertain matches
                 stay unlinked.
               </p>
             </div>
@@ -412,7 +412,7 @@ export default function TeamManagement() {
               aria-label="CRM salesperson email"
             />
             <select
-              aria-label="Amarktai member"
+              aria-label="AmarktAI member"
               value={mapping.userId}
               onChange={event =>
                 setMapping({ ...mapping, userId: event.target.value })

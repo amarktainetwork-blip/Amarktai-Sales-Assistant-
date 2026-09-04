@@ -266,7 +266,7 @@ export default function Settings() {
           <SettingCard
             icon={BookOpenCheck}
             title="Company knowledge"
-            detail="Review the trusted business facts Amarktai uses when helping the sales team."
+            detail="Review the trusted business facts AmarktAI uses when helping the sales team."
             action="Review knowledge"
             onClick={() => navigate("/knowledge")}
           />
@@ -305,7 +305,7 @@ export default function Settings() {
                 <h2 className="mt-1 text-lg font-bold">Personal mailbox</h2>
                 <p className="mt-1 max-w-2xl text-sm leading-6 text-[#66758A]">
                   Connect your own Microsoft account through the Microsoft 365
-                  adapter. Amarktai never asks for your mailbox password. Drafts
+                  adapter. AmarktAI never asks for your mailbox password. Drafts
                   wait for your review unless your approved autonomy settings
                   allow otherwise.
                 </p>
@@ -367,10 +367,10 @@ export default function Settings() {
                 Autonomy &amp; approvals
               </p>
               <h2 className="mt-1 text-lg font-bold">
-                Choose how Amarktai may work for you
+                Choose how AmarktAI may work for you
               </h2>
               <p className="mt-1 max-w-3xl text-sm leading-6 text-[#66758A]">
-                Start with review. You can give Amarktai more freedom later as
+                Start with review. You can give AmarktAI more freedom later as
                 you become comfortable with how it works.
               </p>
             </div>

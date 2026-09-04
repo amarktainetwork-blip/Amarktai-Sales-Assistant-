@@ -121,7 +121,7 @@ function CompanyKnowledgeReview() {
             </span>
             <div>
               <p className="text-[10px] font-black uppercase tracking-[.14em] text-emerald-700">
-                Amarktai learned your business
+                AmarktAI learned your business
               </p>
               <h1 className="mt-1 text-3xl font-bold tracking-[-.04em]">
                 Here is what I understood.

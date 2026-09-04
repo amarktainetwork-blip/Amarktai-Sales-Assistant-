@@ -120,7 +120,7 @@ export default function CrmWorkspace() {
   );
   const [browserAuthenticationState, setBrowserAuthenticationState] =
     useState("STARTING");
-  const [safeReadsReady, setSafeReadsReady] = useState(false);
+  const [commissioningReady, setCommissioningReady] = useState(false);
   const completionAttemptedRef = useRef(false);
   const selected = useMemo(
     () =>
@@ -143,7 +143,7 @@ export default function CrmWorkspace() {
   );
 
   useEffect(() => {
-    setSafeReadsReady(false);
+    setCommissioningReady(false);
     setBrowserAuthenticationState("STARTING");
     completionAttemptedRef.current = false;
     if (!selected || !canManage || onboardingComplete) return;
@@ -155,10 +155,11 @@ export default function CrmWorkspace() {
       );
       if (!response.ok || cancelled) return;
       const body = (await response.json().catch(() => ({}))) as {
-        job?: { progress?: { safeReads?: { status?: string } } } | null;
+        job?: { state?: string; status?: string } | null;
       };
-      if (body.job?.progress?.safeReads?.status === "Ready")
-        setSafeReadsReady(true);
+      setCommissioningReady(
+        body.job?.state === "READY" && body.job?.status === "ready"
+      );
     };
     void check();
     const timer = window.setInterval(() => void check(), 3_000);
@@ -174,7 +175,7 @@ export default function CrmWorkspace() {
       onboardingComplete ||
       completionAttemptedRef.current ||
       browserAuthenticationState !== "AUTHENTICATED" ||
-      !safeReadsReady ||
+      !commissioningReady ||
       companySetup.data?.profile?.discoveryStatus !== "confirmed"
     )
       return;
@@ -191,7 +192,7 @@ export default function CrmWorkspace() {
         toast.error(
           friendlyError(
             error,
-            "Setup is ready, but completion could not be saved. Try reopening the CRM."
+            "CRM commissioning is not fully proven yet, or completion could not be saved. Finish the required CRM operations and try again."
           )
         );
       });
@@ -202,7 +203,7 @@ export default function CrmWorkspace() {
     completeOnboarding,
     onboardingComplete,
     navigate,
-    safeReadsReady,
+    commissioningReady,
     utils.organisation.current,
   ]);
 
@@ -341,7 +342,7 @@ function LiveWorkspace({
     if (controlRef.current === "AGENT_CONTROL") {
       if (!(event.kind === "mouse" && event.type === "mouseMoved"))
         toast.info(
-          "Amarktai is working in the CRM. Take control to work manually."
+          "AmarktAI is working in the CRM. Take control to work manually."
         );
       return;
     }
@@ -379,7 +380,7 @@ function LiveWorkspace({
       await acquireAi.mutateAsync({ viewerSessionId: session.viewerSessionId });
     } catch (error) {
       toast.error(
-        friendlyError(error, "Amarktai could not take CRM control right now.")
+        friendlyError(error, "AmarktAI could not take CRM control right now.")
       );
     }
   };
@@ -445,7 +446,7 @@ function LiveWorkspace({
               message.control === "HUMAN_CONTROL"
                 ? "You took CRM control"
                 : message.control === "AGENT_CONTROL"
-                  ? "Amarktai took CRM control"
+                  ? "AmarktAI took CRM control"
                   : "CRM control is idle"
             } · ${new Date().toLocaleTimeString()}`,
             ...current,
@@ -699,7 +700,7 @@ function LiveWorkspace({
   const navigateBrowser = (action: BrowserNavigationAction) => {
     if (controlRef.current === "AGENT_CONTROL") {
       toast.info(
-        "Amarktai is working in the CRM. Take control before navigating."
+        "AmarktAI is working in the CRM. Take control before navigating."
       );
       return;
     }
@@ -729,7 +730,7 @@ function LiveWorkspace({
     } catch (error) {
       setAssistantWorkflowRunId(null);
       setAssistantResult(
-        friendlyError(error, "Amarktai could not complete that request.")
+        friendlyError(error, "AmarktAI could not complete that request.")
       );
     }
   };
@@ -871,7 +872,7 @@ function LiveWorkspace({
               {control === "HUMAN_CONTROL"
                 ? "You control the CRM"
                 : control === "AGENT_CONTROL"
-                  ? "Amarktai is working"
+                  ? "AmarktAI is working"
                   : "Move here to take control"}
             </div>
           </div>
@@ -884,7 +885,7 @@ function LiveWorkspace({
                 <Sparkles className="h-4 w-4 text-[#3F70D8]" />
                 <div>
                   <p className="text-sm font-bold text-[#26354A]">
-                    Amarktai Assistant
+                    AmarktAI Assistant
                   </p>
                   <p className="text-[10px] font-semibold uppercase tracking-[.12em] text-emerald-600">
                     Ready
@@ -947,8 +948,8 @@ function LiveWorkspace({
                   >
                     <ShieldCheck className="mr-2 h-4 w-4" />
                     {control === "AGENT_CONTROL"
-                      ? "Amarktai has control"
-                      : "Give control to Amarktai"}
+                      ? "AmarktAI has control"
+                      : "Give control to AmarktAI"}
                   </Button>
                   {!authReady ? (
                     <Button
@@ -990,7 +991,7 @@ function LiveWorkspace({
 
             <div className="shrink-0 border-t border-[#D7E0EA] bg-[#FAFBFD] p-3">
               <textarea
-                aria-label="Ask Amarktai"
+                aria-label="Ask AmarktAI"
                 value={assistantPrompt}
                 onChange={event => setAssistantPrompt(event.target.value)}
                 onKeyDown={event => {
@@ -1000,7 +1001,7 @@ function LiveWorkspace({
                   }
                 }}
                 className="min-h-20 w-full resize-none rounded-xl border border-[#CCD6E2] bg-white px-3 py-2 text-sm outline-none focus:border-[#3F70D8] focus:ring-2 focus:ring-[#DCE7F6]"
-                placeholder="Ask Amarktai to find a customer, prepare a call, explain history…"
+                placeholder="Ask AmarktAI to find a customer, prepare a call, explain history…"
               />
               <div className="mt-2 flex items-center justify-between gap-2">
                 <span className="text-[10px] text-[#8995A6]">
@@ -1038,7 +1039,7 @@ function NoBrowserCrm({ onConnections }: { onConnections: () => void }) {
         </h2>
         <p className="mx-auto mt-2 text-sm leading-6 text-[#6C798B]">
           Connect the company CRM once. Each salesperson then signs in to their
-          own private CRM workspace beside the Amarktai Assistant.
+          own private CRM workspace beside the AmarktAI Assistant.
         </p>
         <Button className="mt-5" onClick={onConnections}>
           Open connections

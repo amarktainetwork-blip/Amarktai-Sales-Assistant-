@@ -521,7 +521,7 @@ export default function LiveCalls() {
             Listen less to the admin. Listen more to the customer.
           </h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-[#66758A]">
-            With your permission, Amarktai can transcribe the call, notice
+            With your permission, AmarktAI can transcribe the call, notice
             important questions and commitments, and offer coaching when it is
             useful. You stay in control of what is saved or sent.
           </p>
@@ -565,7 +565,7 @@ export default function LiveCalls() {
                   `${callContext.data.context.contactName}${callContext.data.context.companyName ? ` · ${callContext.data.context.companyName}` : ""}\n${callContext.data.context.phone || callContext.data.context.email || "No phone or email available"}`,
                 ],
                 [
-                  "CRM",
+                  "Opportunity",
                   `${callContext.data.context.pipeline || "No pipeline"} / ${callContext.data.context.stage || "No stage"}\n${callContext.data.context.opportunityName || "No open opportunity"}`,
                 ],
                 [
@@ -627,7 +627,7 @@ export default function LiveCalls() {
               Customer / contact
             </label>
             <Input
-              aria-label="Customer or CRM record"
+              aria-label="Customer"
               disabled={recording}
               value={leadLabel}
               onChange={event => {
@@ -655,7 +655,7 @@ export default function LiveCalls() {
                   >
                     <b>{contact.name}</b>
                     <span className="ml-2 text-[#7B8798]">
-                      {contact.email || contact.phone || "CRM customer"}
+                      {contact.email || contact.phone || "Customer"}
                     </span>
                   </button>
                 ))}
@@ -674,7 +674,7 @@ export default function LiveCalls() {
                 </p>
                 <p className="mt-1 text-xs leading-5 text-[#66758A]">
                   Best for browser calls. Select the call tab and share its
-                  audio; Amarktai combines it with your microphone.
+                  audio; AmarktAI combines it with your microphone.
                 </p>
               </button>
               <button
@@ -853,8 +853,8 @@ export default function LiveCalls() {
                 <div className="mt-4 rounded-xl bg-[#EAF1FF] p-3 text-xs leading-5 text-[#35547A]">
                   {callContext.data?.context
                     ? "This call is linked to the selected customer. "
-                    : "Choose a customer before preparing CRM changes. "}
-                  Amarktai will prepare a factual note and call activity
+                    : "Choose a customer before preparing customer updates. "}
+                  AmarktAI will prepare a factual note and call activity
                   {taskExternalId ? " + complete the current task" : ""}
                   {callbackAt ? " + create a callback" : ""}
                   {communicationChannel
