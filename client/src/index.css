@@ -63,6 +63,21 @@ button, a, input, textarea, select { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 :focus-visible { outline: 3px solid var(--color-focus); outline-offset: 3px; }
 
+/* First-party product illustrations are diagrams, not stock photographs. */
+.amk-auth__visual > img[src$=".svg"] {
+  object-fit: contain !important;
+  object-position: center !important;
+  padding: clamp(68px, 8vw, 128px);
+  opacity: .46;
+  filter: saturate(.82) contrast(1.04);
+}
+.amk-photo-frame img[src$=".svg"] {
+  object-fit: contain !important;
+  object-position: center !important;
+  padding: clamp(18px, 2.4vw, 34px);
+  background: linear-gradient(145deg, #eef4ff, #f4fbfb);
+}
+
 /* Secure access and onboarding share one visual language. */
 .amk-auth--setup { background: #f7f8fa; }
 .amk-auth__visual--product { background: linear-gradient(145deg, #10233d 0%, #173d67 58%, #1c5d72 100%); }
