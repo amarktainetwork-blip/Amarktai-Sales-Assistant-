@@ -56,6 +56,7 @@ export default function Today() {
   const utils = trpc.useUtils();
   const [reminder, setReminder] = useState("");
   const [selected, setSelected] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
 
   const saveReminder = trpc.memory.command.useMutation({
     onSuccess: () => {
@@ -119,6 +120,49 @@ export default function Today() {
     };
   }, [organisationId]);
 
+  async function refreshDay() {
+    if (refreshing || !organisationId) return;
+    setRefreshing(true);
+    let mailboxWarning = false;
+    try {
+      const statusResponse = await fetch("/api/mailbox", {
+        credentials: "include",
+      });
+      if (statusResponse.ok) {
+        const status = (await statusResponse.json()) as { connected?: boolean };
+        if (status.connected) {
+          const syncResponse = await fetch("/api/mailbox/sync", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: "{}",
+          });
+          mailboxWarning = !syncResponse.ok;
+        }
+      }
+      await Promise.all([
+        utils.sales.today.invalidate(),
+        utils.sales.customers.invalidate(),
+      ]);
+      await today.refetch();
+      if (mailboxWarning) {
+        toast.warning(
+          "Sales data refreshed. Your mailbox could not refresh just now, so recent replies may take a moment to appear."
+        );
+      } else {
+        toast.success("Your sales day is up to date.");
+      }
+    } catch {
+      try {
+        await today.refetch();
+      } finally {
+        toast.error("Refresh could not finish. Your existing sales data is still safe.");
+      }
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   const ask = (prompt: string) =>
     navigate(`/assistant?prompt=${encodeURIComponent(prompt)}`);
 
@@ -145,8 +189,13 @@ export default function Today() {
           <p className="mt-3 text-sm leading-6 text-[#66758A]">
             Nothing has been changed. Check the CRM connection and try again.
           </p>
-          <Button className="mt-5" onClick={() => void today.refetch()}>
-            <RefreshCw className="mr-2 h-4 w-4" /> Try again
+          <Button className="mt-5" disabled={refreshing} onClick={() => void refreshDay()}>
+            {refreshing ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="mr-2 h-4 w-4" />
+            )}
+            {refreshing ? "Refreshing…" : "Try again"}
           </Button>
         </div>
       </DashboardLayout>
@@ -172,8 +221,13 @@ export default function Today() {
               </p>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => void today.refetch()}>
-                <RefreshCw className="mr-2 h-4 w-4" /> Refresh
+              <Button variant="outline" disabled={refreshing} onClick={() => void refreshDay()}>
+                {refreshing ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                )}
+                {refreshing ? "Refreshing…" : "Refresh"}
               </Button>
               <Button onClick={() => navigate("/assistant")}>
                 <Bot className="mr-2 h-4 w-4" /> Ask AmarktAI
