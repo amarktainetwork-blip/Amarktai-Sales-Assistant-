@@ -76,9 +76,17 @@ function PersonalSetupBoundary() {
   const workspace = workspacePrefixes.some(
     prefix => pathname === prefix || pathname.startsWith(`${prefix}/`)
   );
+  const crmCommissioningRoute =
+    pathname === "/crm" || pathname.startsWith("/crm/");
 
+  // The CRM workspace is itself a required onboarding step. Blocking it until
+  // company setup is complete creates a circular dependency: company setup
+  // cannot become complete until CRM authentication and commissioning finish.
+  // Keep the normal onboarding gate on every other protected workspace route,
+  // but allow the authenticated CRM workspace to render so setup can progress.
   if (
     !workspace ||
+    crmCommissioningRoute ||
     loading ||
     !user ||
     security.isLoading ||
