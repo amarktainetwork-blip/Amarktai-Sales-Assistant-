@@ -14,8 +14,31 @@ describe("final client-facing handover polish", () => {
 
   it("keeps onboarding hero legible inside the dashboard route shell", () => {
     const css = read("index.css");
-    expect(css).toContain('> main.amk-auth--setup .amk-auth__visual .amk-auth__message h1');
-    expect(css).toMatch(/main\.amk-auth--setup[\s\S]*\.amk-auth__message h1[\s\S]*color:\s*#ffffff\s*!important/);
+    expect(css).toContain(
+      'body:has([data-slot="sidebar-wrapper"]) .amk-auth--setup .amk-auth__visual .amk-auth__message h1'
+    );
+    expect(css).not.toContain(
+      '[data-slot="sidebar-inset"] > main.amk-auth--setup'
+    );
+    expect(css).toMatch(
+      /\.amk-auth--setup[\s\S]*\.amk-auth__message h1[\s\S]*color:\s*#ffffff\s*!important/
+    );
+  });
+
+  it("keeps onboarding viewport-fixed and confines longer setup overflow to the form pane", () => {
+    const css = read("index.css");
+    expect(css).toContain("main.amk-auth.amk-auth--setup {");
+    expect(css).toMatch(
+      /main\.amk-auth\.amk-auth--setup[\s\S]*overflow:\s*hidden\s*!important/
+    );
+    expect(css).toContain(
+      "@media (min-width: 981px) and (max-height: 860px)"
+    );
+    expect(css).toContain(
+      "main.amk-auth.fixed:not(.amk-auth--setup) .amk-auth__form-side"
+    );
+    expect(css).toContain("overflow-y: auto;");
+    expect(css).toContain("min-height: 64px !important;");
   });
 
   it("keeps company setup in customer language", () => {
