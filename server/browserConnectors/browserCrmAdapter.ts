@@ -38,6 +38,7 @@ import {
   BROWSER_OPERATION_CATALOGUE,
   verifyBrowserCreateTarget,
   verifyBrowserPostconditions,
+  verifyBrowserReadProof,
   verifyBrowserTarget,
   type BrowserTargetIdentity,
 } from "./operationContracts";
@@ -55,6 +56,7 @@ import {
   currentModelSpendBoundary,
   runModelFreeOperation,
 } from "../aiExecutionBoundary";
+import { GENIE_PROVIDER_PACK } from "../crm/providerPacks";
 
 const DEFAULT_GENIE_OPERATION_MAP: Record<string, string> = {
   searchContacts: "search_candidate",
@@ -207,6 +209,7 @@ export async function resolveBrowserProfile(
   const configured = asProfile(connection.configuration.browserProfile);
   if (provider === "genie") {
     const installed = await genieProfile();
+    const providerPack = GENIE_PROVIDER_PACK;
     if (configured)
       return {
         ...installed,
@@ -218,14 +221,24 @@ export async function resolveBrowserProfile(
         login:
           configured.login ||
           (connection.baseUrl ? { url: connection.baseUrl } : installed?.login),
-        scripts: { ...(installed?.scripts || {}), ...configured.scripts },
+        scripts: {
+          ...providerPack.scripts,
+          ...(installed?.scripts || {}),
+          ...configured.scripts,
+        },
         operationMap: {
           ...(installed?.operationMap || DEFAULT_GENIE_OPERATION_MAP),
           ...(configured.operationMap || {}),
         },
         operationDefinitions: {
+          ...(providerPack.operationDefinitions || {}),
           ...(installed?.operationDefinitions || {}),
           ...(configured.operationDefinitions || {}),
+        },
+        resultKeys: {
+          ...(providerPack.resultKeys || {}),
+          ...(installed?.resultKeys || {}),
+          ...(configured.resultKeys || {}),
         },
       } satisfies BrowserProfile;
     if (connection.baseUrl)
@@ -233,13 +246,31 @@ export async function resolveBrowserProfile(
         browserEndpoint:
           installed?.browserEndpoint || process.env.BROWSERLESS_WS_ENDPOINT,
         login: { url: connection.baseUrl },
-        scripts: installed?.scripts || {},
+        scripts: { ...providerPack.scripts, ...(installed?.scripts || {}) },
         operationMap: installed?.operationMap || DEFAULT_GENIE_OPERATION_MAP,
-        resultKeys: installed?.resultKeys,
-        operationDefinitions: installed?.operationDefinitions,
+        resultKeys: {
+          ...(providerPack.resultKeys || {}),
+          ...(installed?.resultKeys || {}),
+        },
+        operationDefinitions: {
+          ...(providerPack.operationDefinitions || {}),
+          ...(installed?.operationDefinitions || {}),
+        },
         artifactDirectory: installed?.artifactDirectory,
       } satisfies BrowserProfile;
-    if (installed) return installed;
+    if (installed)
+      return {
+        ...installed,
+        scripts: { ...providerPack.scripts, ...installed.scripts },
+        resultKeys: {
+          ...(providerPack.resultKeys || {}),
+          ...(installed.resultKeys || {}),
+        },
+        operationDefinitions: {
+          ...(providerPack.operationDefinitions || {}),
+          ...(installed.operationDefinitions || {}),
+        },
+      };
   }
   if (configured) return configured;
   return connection.baseUrl
@@ -348,6 +379,11 @@ export type BrowserDiscoveryControl = {
   selector: string;
   href?: string;
   pageUrl?: string;
+  ariaLabel?: string;
+  placeholder?: string;
+  name?: string;
+  fieldId?: string;
+  pageTitle?: string;
 };
 
 /**
@@ -381,7 +417,7 @@ export async function inspectBrowserCrmNavigation(input: {
       const readControls = () =>
         page
           .locator(
-            "nav a, aside a, [role='navigation'] a, a[href], button, input, textarea, select, [data-testid], [data-field], [role='button'], [role='tab'], label, h1, h2, h3"
+            "nav a, aside a, [role='navigation'] a, button, input, textarea, select, [data-testid], [data-field], [role='button'], [role='tab'], label"
           )
           .evaluateAll(elements =>
             elements.slice(0, 300).map(element => {
@@ -416,7 +452,7 @@ export async function inspectBrowserCrmNavigation(input: {
                   aria ||
                   testId ||
                   dataField ||
-                  (/^(?:a|button|label|h1|h2|h3)$/.test(tag)
+                  (/^(?:a|button|label)$/.test(tag)
                     ? html.innerText || html.textContent || ""
                     : "")
                 )
@@ -425,6 +461,12 @@ export async function inspectBrowserCrmNavigation(input: {
                   .slice(0, 160),
                 selector,
                 href,
+                ariaLabel: aria || undefined,
+                placeholder:
+                  html.getAttribute("placeholder")?.trim().slice(0, 160) ||
+                  undefined,
+                name: name || undefined,
+                fieldId: id || dataField || undefined,
               };
             })
           );
@@ -668,6 +710,16 @@ async function runDeterministicOperation(input: RunOperationInput) {
       }
     );
     if (!result.success) throw new Error(result.detail);
+    const readProof =
+      learned?.definition.mode === "read" && input.publishByUserId
+        ? verifyBrowserReadProof({
+            operationKey,
+            data: result.data,
+            payload,
+          })
+        : undefined;
+    if (readProof && !readProof.ok)
+      throw new Error(`${readProof.code}: ${readProof.detail}`);
     if (learned)
       await recordBrowserOperationResult({
         organisationId: input.connection.organisationId,
@@ -686,6 +738,8 @@ async function runDeterministicOperation(input: RunOperationInput) {
           postconditionVerified:
             learned.definition.mode === "write" &&
             result.data.shadowMode !== "true",
+          structuredReadVerified: readProof?.ok,
+          readProofCode: readProof?.code,
           shadowMode: result.data.shadowMode === "true",
           screenshotPath: result.screenshotPath,
         },
@@ -1122,7 +1176,10 @@ export function browserCrmAdapter(
       });
       const extracted = rows(execution.result, execution.profile, "getContact");
       return extracted[0]
-        ? contact(extracted[0])
+        ? contact({
+            ...extracted[0],
+            externalId: extracted[0].externalId || input.externalId,
+          })
         : {
             externalId: input.externalId,
             raw: {

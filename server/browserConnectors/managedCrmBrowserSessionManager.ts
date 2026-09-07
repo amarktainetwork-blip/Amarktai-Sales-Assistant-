@@ -727,6 +727,21 @@ export const managedCrmBrowserSessionManager = {
     return { ...session.snapshot };
   },
 
+  keepAlive(session: ManagedCrmBrowserSession) {
+    if (
+      activeSessions.get(session.key) !== session ||
+      session.page.isClosed() ||
+      !session.browser.isConnected()
+    )
+      throw new Error("CRM_BROWSER_SESSION_DISCONNECTED");
+    armIdle(session);
+    session.snapshot = {
+      ...session.snapshot,
+      lastInteractionAt: new Date().toISOString(),
+    };
+    return { ...session.snapshot };
+  },
+
   subscribe(
     session: ManagedCrmBrowserSession,
     listener: (snapshot: CrmBrowserSessionSnapshot) => void

@@ -101,6 +101,7 @@ export default function Today() {
   });
 
   const priority = today.data?.queues.priority ?? [];
+  const work = today.data?.queues.work ?? [];
   const current = priority[selected];
 
   useEffect(() => {
@@ -316,6 +317,63 @@ export default function Today() {
                 {prompt}
               </button>
             ))}
+          </div>
+        </section>
+
+        <section className="mt-6 rounded-3xl border border-[#DCE4EE] bg-white p-5 shadow-sm sm:p-6">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#8290A3]">
+                Ordered work queue
+              </p>
+              <h2 className="mt-1 font-display text-2xl font-bold tracking-[-.04em]">
+                What to do next
+              </h2>
+            </div>
+            {work.length ? (
+              <Button
+                size="sm"
+                onClick={() =>
+                  ask(
+                    `Help me start this work item: ${work[0].reason} Next action: ${work[0].recommendedNextAction}`
+                  )
+                }
+              >
+                Start next <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            ) : null}
+          </div>
+          <div className="mt-4 space-y-2">
+            {work.length ? (
+              work.slice(0, 12).map((item, index) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() =>
+                    ask(
+                      `Help me with ${item.type}: ${item.reason} ${item.recommendedNextAction}`
+                    )
+                  }
+                  className="flex w-full items-start gap-4 rounded-2xl border border-[#E1E7EF] p-4 text-left transition hover:border-[#9CB8E8] hover:bg-[#FAFCFF]"
+                >
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#EDF3FF] text-xs font-black text-[#3F70D8]">
+                    {index + 1}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-bold text-[#33445B]">
+                      {item.reason}
+                    </span>
+                    <span className="mt-1 block text-xs leading-5 text-[#718096]">
+                      {item.recommendedNextAction}
+                      {item.dueAt ? ` · ${dueLabel(item.dueAt)}` : ""}
+                    </span>
+                  </span>
+                  <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-[#8290A3]" />
+                </button>
+              ))
+            ) : (
+              <Empty text="No synchronized sales work needs attention right now." />
+            )}
           </div>
         </section>
 

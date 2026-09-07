@@ -88,6 +88,18 @@ export type BrowserOperationCatalogueItem = {
   safeWatchdog: boolean;
 };
 
+export type BrowserProofPolicy = {
+  requiresTargetIdentity: boolean;
+  requiresStructuredResult: boolean;
+  requiresExactSearchMatch: boolean;
+  requiresPostcondition: boolean;
+  requiresTargetGuardian: boolean;
+  allowEmptyBusinessValue: boolean;
+  safeWatchdog: boolean;
+  readOnly: boolean;
+  write: boolean;
+};
+
 export const BROWSER_OPERATION_CATALOGUE: BrowserOperationCatalogueItem[] = [
   {
     key: "auth.login",
@@ -585,6 +597,129 @@ export function operationChecksum(input: {
   postconditionAssertions?: unknown;
 }) {
   return createHash("sha256").update(JSON.stringify(input)).digest("hex");
+}
+
+export function browserProofPolicy(
+  operationKey: string,
+  mode: BrowserOperationMode
+): BrowserProofPolicy {
+  const catalogue = BROWSER_OPERATION_CATALOGUE.find(
+    operation => operation.key === operationKey
+  );
+  return {
+    requiresTargetIdentity: mode === "write" || operationKey === "contact.read",
+    requiresStructuredResult: mode === "read",
+    requiresExactSearchMatch: operationKey === "contact.search",
+    requiresPostcondition: mode === "write",
+    requiresTargetGuardian: mode === "write",
+    allowEmptyBusinessValue:
+      operationKey === "contact.read" || operationKey.endsWith(".sync"),
+    safeWatchdog: catalogue?.safeWatchdog === true,
+    readOnly: mode === "read",
+    write: mode === "write",
+  };
+}
+
+function proofRows(data: Record<string, string>) {
+  const rows: Array<Record<string, unknown>> = [];
+  for (const serialized of Object.values(data)) {
+    if (typeof serialized !== "string" || !/^[\s]*[\[{]/.test(serialized))
+      continue;
+    try {
+      const parsed = JSON.parse(serialized) as unknown;
+      const values = Array.isArray(parsed) ? parsed : [parsed];
+      rows.push(
+        ...values.filter(
+          (value): value is Record<string, unknown> =>
+            Boolean(value) && typeof value === "object" && !Array.isArray(value)
+        )
+      );
+    } catch {
+      // Non-JSON body text is deliberately not structured proof.
+    }
+  }
+  return rows;
+}
+
+function exactIdentityMatch(row: Record<string, unknown>, expected: string) {
+  const target = normalized("name", expected);
+  const fullName = `${clean(row.firstName)} ${clean(row.lastName)}`.trim();
+  return [
+    row.externalId,
+    row.id,
+    row.name,
+    fullName,
+    row.email,
+    row.phone,
+  ].some(value => normalized("name", value) === target);
+}
+
+export function verifyBrowserReadProof(input: {
+  operationKey: string;
+  data: Record<string, string>;
+  payload: Record<string, unknown>;
+  policy?: BrowserProofPolicy;
+}) {
+  const policy = input.policy || browserProofPolicy(input.operationKey, "read");
+  const rows = proofRows(input.data);
+  if (policy.requiresStructuredResult && !rows.length)
+    return {
+      ok: false,
+      code: "STRUCTURED_RESULT_REQUIRED" as const,
+      detail: "Generic page or body text is not deterministic read proof.",
+    };
+  if (policy.requiresExactSearchMatch) {
+    const query = clean(input.payload.query || input.payload.externalId);
+    if (!query)
+      return {
+        ok: false,
+        code: "TARGET_IDENTITY_REQUIRED" as const,
+        detail:
+          "An exact search identity is required for contact search proof.",
+      };
+    const exact = rows.filter(row => exactIdentityMatch(row, query));
+    if (exact.length !== 1)
+      return {
+        ok: false,
+        code:
+          exact.length > 1
+            ? ("AMBIGUOUS_TARGET" as const)
+            : ("TARGET_MISMATCH" as const),
+        detail:
+          exact.length > 1
+            ? "More than one CRM result exactly matched the search identity."
+            : "The exact search identity was not represented in the structured result.",
+      };
+  }
+  if (policy.requiresTargetIdentity) {
+    const target = clean(
+      input.payload.externalId || input.payload.contactExternalId
+    );
+    if (!target)
+      return {
+        ok: false,
+        code: "TARGET_IDENTITY_REQUIRED" as const,
+        detail: "The read must be bound to one exact external record identity.",
+      };
+    const structuredContact = rows.some(row =>
+      ["firstName", "lastName", "email", "phone", "ownerExternalId"].some(key =>
+        Object.prototype.hasOwnProperty.call(row, key)
+      )
+    );
+    if (!structuredContact)
+      return {
+        ok: false,
+        code: "STRUCTURED_RESULT_REQUIRED" as const,
+        detail:
+          "The contact read did not execute the expected structured fields.",
+      };
+  }
+  return {
+    ok: true,
+    code: "READ_PROOF_VERIFIED" as const,
+    detail: "Deterministic structured read proof passed.",
+    rowCount: rows.length,
+  };
 }
 
 function clean(value: unknown) {

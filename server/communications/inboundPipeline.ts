@@ -5,6 +5,7 @@ import {
   crmContacts,
   externalUserMappings,
   inboundMessages,
+  salesWorkItems,
   organisations,
 } from "../../drizzle/schema";
 import { getDb } from "../db";
@@ -221,6 +222,57 @@ export async function ingestInboundMessage(input: {
       .limit(1)
   )[0];
   if (!message) throw new Error("Inbound message could not be persisted.");
+  await db
+    .insert(salesWorkItems)
+    .values({
+      organisationId: input.organisationId,
+      salespersonUserId: input.mailboxUserId ?? null,
+      connectedSystemId:
+        input.connectedSystemId ?? contact?.connectedSystemId ?? null,
+      sourceKey: `mailbox:inbound:${message.id}`,
+      sourceType: "inbound_message",
+      sourceExternalId: externalMessageId,
+      contactExternalId: contact?.externalId ?? null,
+      type:
+        classification.category === "meeting_request"
+          ? "APPOINTMENT"
+          : "REPLY_REQUIRED",
+      priority: classification.category === "objection" ? 105 : 95,
+      dueAt: input.envelope.receivedAt,
+      reason:
+        classification.category === "meeting_request"
+          ? "A customer sent a meeting request."
+          : "An inbound customer message needs a reply.",
+      status: shouldSurfaceInbound(classification) ? "open" : "completed",
+      recommendedNextAction:
+        "Review the customer and mailbox context, then prepare a governed reply.",
+      automationEligibility: "propose",
+      approvalRequirement: "salesperson",
+      freshness: "current",
+      sourceUpdatedAt: input.envelope.receivedAt,
+      syncedAt: new Date(),
+      metadata: {
+        channel: input.envelope.channel,
+        category: classification.category,
+        contactMatched: Boolean(contact),
+        contactAmbiguous: match.ambiguous,
+      },
+    })
+    .onDuplicateKeyUpdate({
+      set: {
+        salespersonUserId: input.mailboxUserId ?? null,
+        contactExternalId: contact?.externalId ?? null,
+        status: shouldSurfaceInbound(classification) ? "open" : "completed",
+        freshness: "current",
+        syncedAt: new Date(),
+        metadata: {
+          channel: input.envelope.channel,
+          category: classification.category,
+          contactMatched: Boolean(contact),
+          contactAmbiguous: match.ambiguous,
+        },
+      },
+    });
   if (classification.category === "unsubscribe")
     await db
       .insert(contactCommunicationSuppressions)

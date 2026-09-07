@@ -414,6 +414,11 @@ export async function createWorkflowRun(input: {
           ?.routable === false
           ? "blocked"
           : "review_required") as "blocked" | "review_required",
+        governanceState:
+          (action.payload.crmRoute as { routable?: boolean } | undefined)
+            ?.routable === false
+            ? ("NEEDS_ATTENTION" as const)
+            : ("READY_FOR_REVIEW" as const),
       }))
     );
   }
@@ -492,7 +497,10 @@ export async function updateDelegatedEmailDraft(input: {
   if (!body) throw new Error("Write a reply before sending this email.");
   await db
     .update(actionProposals)
-    .set({ payload: { ...proposal.payload, body } })
+    .set({
+      payload: { ...proposal.payload, body },
+      governanceState: "EDITED",
+    })
     .where(
       and(
         eq(actionProposals.id, proposal.id),
@@ -633,7 +641,12 @@ export async function reviewActionProposal(
   const db = await requireDb();
   await db
     .update(actionProposals)
-    .set({ state, reviewedAt: new Date() })
+    .set({
+      state,
+      governanceState: state === "approved" ? "APPROVED" : "REJECTED",
+      reviewedAt: new Date(),
+      reviewedByUserId: userId,
+    })
     .where(
       and(
         eq(actionProposals.id, proposalId),
@@ -712,6 +725,7 @@ export async function claimApprovedActionProposal(input: {
   const result = await db
     .update(actionProposals)
     .set({
+      governanceState: "EXECUTING",
       executionClaimId: input.correlationId,
       executionClaimedAt: claimedAt,
       executionResult: claim,
@@ -774,6 +788,7 @@ export async function recordActionExecution(input: {
 }) {
   const db = await requireDb();
   const state: "executed" | "blocked" = input.success ? "executed" : "blocked";
+  const uncertain = input.result.uncertain === true;
   const screenshotPath =
     typeof input.result.screenshotPath === "string"
       ? input.result.screenshotPath
@@ -793,7 +808,13 @@ export async function recordActionExecution(input: {
     .update(actionProposals)
     .set({
       state,
+      governanceState: input.success
+        ? "VERIFIED"
+        : uncertain
+          ? "NEEDS_ATTENTION"
+          : "FAILED",
       executedAt: new Date(),
+      verifiedAt: input.success ? new Date() : null,
       executionClaimId: null,
       executionClaimedAt: null,
       executionResult: normalizedResult,
@@ -836,6 +857,7 @@ export async function returnClaimedActionForReview(input: {
     .update(actionProposals)
     .set({
       state: "review_required",
+      governanceState: "READY_FOR_REVIEW",
       reviewedAt: null,
       executionClaimId: null,
       executionClaimedAt: null,

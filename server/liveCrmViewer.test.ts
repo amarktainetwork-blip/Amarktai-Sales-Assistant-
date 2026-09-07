@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   canAcceptBrowserInput,
+  dispatchPlaywrightInput,
   isLiveCrmViewerAccessAllowed,
   shouldForwardScreencastFrame,
   shouldReuseLiveCrmViewerSession,
@@ -81,6 +82,41 @@ describe("live CRM stream bounds", () => {
     expect(shouldForwardScreencastFrame({ ...base, socketCount: 0 })).toBe(
       false
     );
+  });
+
+  it("uses Playwright page mouse and keyboard input", async () => {
+    const page = {
+      mouse: {
+        move: vi.fn(async () => undefined),
+        down: vi.fn(async () => undefined),
+        up: vi.fn(async () => undefined),
+        wheel: vi.fn(async () => undefined),
+      },
+      keyboard: {
+        insertText: vi.fn(async () => undefined),
+        down: vi.fn(async () => undefined),
+        up: vi.fn(async () => undefined),
+      },
+    };
+    await dispatchPlaywrightInput(page as never, {
+      kind: "mouse",
+      type: "mousePressed",
+      x: 120,
+      y: 90,
+      button: "left",
+      clickCount: 1,
+    });
+    await dispatchPlaywrightInput(page as never, {
+      kind: "key",
+      type: "keyDown",
+      text: "hello",
+    });
+    expect(page.mouse.move).toHaveBeenCalledWith(120, 90);
+    expect(page.mouse.down).toHaveBeenCalledWith({
+      button: "left",
+      clickCount: 1,
+    });
+    expect(page.keyboard.insertText).toHaveBeenCalledWith("hello");
   });
 });
 

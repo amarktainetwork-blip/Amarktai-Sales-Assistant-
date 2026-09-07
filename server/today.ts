@@ -9,6 +9,7 @@ import {
   crmTasks,
   externalUserMappings,
   inboundMessages,
+  salesWorkItems,
 } from "../drizzle/schema";
 import { getDb } from "./db";
 import { canViewTeamData, requireOrganisationMembership } from "./organisation";
@@ -57,6 +58,7 @@ export async function getTodayWork(input: {
     inboundRows,
     reminders,
     callbacks,
+    workItems,
   ] = await Promise.all([
     db
       .select()
@@ -155,6 +157,22 @@ export async function getTodayWork(input: {
       )
       .orderBy(desc(callbackTasks.dueAt))
       .limit(100),
+    db
+      .select()
+      .from(salesWorkItems)
+      .where(
+        and(
+          eq(salesWorkItems.organisationId, input.organisationId),
+          or(
+            eq(salesWorkItems.status, "open"),
+            eq(salesWorkItems.status, "in_progress"),
+            eq(salesWorkItems.status, "snoozed"),
+            eq(salesWorkItems.status, "blocked")
+          )
+        )
+      )
+      .orderBy(desc(salesWorkItems.priority), desc(salesWorkItems.updatedAt))
+      .limit(500),
   ]);
   const ownerIds = new Set(mappings.map(mapping => mapping.externalUserId));
   const unrestricted = canViewTeamData(membership.role);
@@ -194,6 +212,18 @@ export async function getTodayWork(input: {
   const currentInbound = actionableInbound.filter(message =>
     isCurrentActionableInbound(message, now)
   );
+  const assignedWork = workItems
+    .filter(item => unrestricted || item.salespersonUserId === input.userId)
+    .sort((a, b) => {
+      const overdue = (value: Date | null) => (value && value < now ? 1 : 0);
+      return (
+        overdue(b.dueAt) - overdue(a.dueAt) ||
+        b.priority - a.priority ||
+        (a.dueAt?.valueOf() ?? Number.MAX_SAFE_INTEGER) -
+          (b.dueAt?.valueOf() ?? Number.MAX_SAFE_INTEGER) ||
+        a.sourceKey.localeCompare(b.sourceKey)
+      );
+    });
   const priority = scopedOpportunities
     .map(opportunity => {
       const staleDays = ageDays(opportunity.lastActivityAt, now) ?? 14;
@@ -261,6 +291,7 @@ export async function getTodayWork(input: {
       remindersDue: reminders.length,
       callbacksDue: callbacks.length,
       newLeads: newestLeads.length,
+      workItems: assignedWork.length,
     },
     queues: {
       dueToday: dueToday.slice(0, 12),
@@ -270,6 +301,7 @@ export async function getTodayWork(input: {
       callbacks: callbacks.slice(0, 20),
       priority,
       newLeads: newestLeads,
+      work: assignedWork.slice(0, 100),
     },
   };
 }

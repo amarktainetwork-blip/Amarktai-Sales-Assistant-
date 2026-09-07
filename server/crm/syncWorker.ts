@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lt, or } from "drizzle-orm";
 import {
   connectedSystems,
   connectorSyncJobs,
@@ -11,6 +11,7 @@ import { syncConnectedSystem } from "./sync";
 
 export const DEFAULT_CRM_SYNC_INTERVAL_MS = 120_000;
 const MAX_CONNECTIONS_PER_CYCLE = 50;
+export const CRM_SYNC_STALE_LEASE_MS = 10 * 60_000;
 
 export function crmSyncIntervalMs(raw = process.env.CRM_SYNC_INTERVAL_MS) {
   const parsed = Number(raw || DEFAULT_CRM_SYNC_INTERVAL_MS);
@@ -124,10 +125,26 @@ export async function runConnectionScopedCrmSyncCycle(now = new Date()) {
   let failed = 0;
   for (const row of rows) {
     if (!crmSyncJobIsDue(row.job.lastStartedAt, now)) continue;
-    await db
+    const staleBefore = new Date(now.valueOf() - CRM_SYNC_STALE_LEASE_MS);
+    const claim = await db
       .update(connectorSyncJobs)
       .set({ status: "running", lastStartedAt: now, lastError: null })
-      .where(eq(connectorSyncJobs.id, row.job.id));
+      .where(
+        and(
+          eq(connectorSyncJobs.id, row.job.id),
+          or(
+            inArray(connectorSyncJobs.status, ["ready", "error"]),
+            and(
+              eq(connectorSyncJobs.status, "running"),
+              or(
+                isNull(connectorSyncJobs.lastStartedAt),
+                lt(connectorSyncJobs.lastStartedAt, staleBefore)
+              )
+            )
+          )
+        )
+      );
+    if (Number(claim[0].affectedRows || 0) !== 1) continue;
     try {
       const userId = await synchronizationUser({
         organisationId: row.system.organisationId,

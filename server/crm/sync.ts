@@ -28,6 +28,7 @@ import type {
 } from "./types";
 import { normalizeCrmEmail, normalizeCrmPhone } from "./identity";
 import { runModelFreeOperation } from "../aiExecutionBoundary";
+import { upsertSalesWorkFromCrm } from "../salesWork";
 
 async function cursorFor(systemId: number, resourceType: string) {
   const db = await getDb();
@@ -334,6 +335,14 @@ async function syncConnectedSystemDeterministically(input: {
         cursor: existing?.cursor ?? undefined,
       });
       await persist(input.organisationId, system.id, result.records as never[]);
+      await upsertSalesWorkFromCrm({
+        organisationId: input.organisationId,
+        connectedSystemId: system.id,
+        resource: {
+          type: resourceType,
+          records: result.records,
+        } as Parameters<typeof upsertSalesWorkFromCrm>[0]["resource"],
+      });
       await saveCursor(system.id, resourceType, result.cursor);
       summary[resourceType] = result.records.length;
     } catch (error) {

@@ -10,15 +10,60 @@ import {
   validateLearnedOperationDefinition,
   verifyBrowserCreateTarget,
   verifyBrowserPostconditions,
+  verifyBrowserReadProof,
   verifyBrowserTarget,
 } from "./operationContracts";
 
 describe("Genie commissioning catalogue", () => {
   it("preserves every required operation including the governed dialler", () => {
-    const keys = new Set(BROWSER_OPERATION_CATALOGUE.map(operation => operation.key));
+    const keys = new Set(
+      BROWSER_OPERATION_CATALOGUE.map(operation => operation.key)
+    );
     for (const key of [
-      "auth.login", "home.open", "prospect.next", "contact.search", "contact.open", "contact.read", "contact.sync", "contact.create", "contact.update", "company.read", "company.sync", "company.create", "history.read", "note.read", "note.create", "interaction.latest", "communication.context", "task.list", "task.read", "task.sync", "task.create", "task.complete", "task.create_callback", "opportunity.read", "opportunity.sync", "opportunity.create", "opportunity.update", "pipeline.list", "stage.read", "stage.update", "owner.sync", "owner.assign", "activity.sync", "activity.create", "dialler.launch", "email.send", "sms.send", "whatsapp.send", "sequence.apply", "appointment.book", "quote.create", "workflow.execute",
-    ]) expect(keys.has(key), `${key} must remain in the catalogue`).toBe(true);
+      "auth.login",
+      "home.open",
+      "prospect.next",
+      "contact.search",
+      "contact.open",
+      "contact.read",
+      "contact.sync",
+      "contact.create",
+      "contact.update",
+      "company.read",
+      "company.sync",
+      "company.create",
+      "history.read",
+      "note.read",
+      "note.create",
+      "interaction.latest",
+      "communication.context",
+      "task.list",
+      "task.read",
+      "task.sync",
+      "task.create",
+      "task.complete",
+      "task.create_callback",
+      "opportunity.read",
+      "opportunity.sync",
+      "opportunity.create",
+      "opportunity.update",
+      "pipeline.list",
+      "stage.read",
+      "stage.update",
+      "owner.sync",
+      "owner.assign",
+      "activity.sync",
+      "activity.create",
+      "dialler.launch",
+      "email.send",
+      "sms.send",
+      "whatsapp.send",
+      "sequence.apply",
+      "appointment.book",
+      "quote.create",
+      "workflow.execute",
+    ])
+      expect(keys.has(key), `${key} must remain in the catalogue`).toBe(true);
   });
 });
 
@@ -100,6 +145,66 @@ describe("browser CRM postconditions", () => {
         { noteBody: "factual note" }
       )
     ).toMatchObject({ ok: true, code: "POSTCONDITION_VERIFIED" });
+  });
+});
+
+describe("browser CRM read proof", () => {
+  it("rejects generic body-only success", () => {
+    expect(
+      verifyBrowserReadProof({
+        operationKey: "contact.read",
+        data: { body: "Contact page loaded successfully" },
+        payload: { externalId: "contact-1" },
+      })
+    ).toMatchObject({ ok: false, code: "STRUCTURED_RESULT_REQUIRED" });
+  });
+
+  it("proves one exact search result and rejects ambiguity", () => {
+    const input = {
+      operationKey: "contact.search",
+      payload: { query: "safe@example.test" },
+    };
+    expect(
+      verifyBrowserReadProof({
+        ...input,
+        data: {
+          records: JSON.stringify([
+            { externalId: "contact-1", email: "safe@example.test" },
+          ]),
+        },
+      })
+    ).toMatchObject({ ok: true, code: "READ_PROOF_VERIFIED" });
+    expect(
+      verifyBrowserReadProof({
+        ...input,
+        data: {
+          records: JSON.stringify([
+            { externalId: "contact-1", email: "safe@example.test" },
+            { externalId: "contact-2", email: "safe@example.test" },
+          ]),
+        },
+      })
+    ).toMatchObject({ ok: false, code: "AMBIGUOUS_TARGET" });
+  });
+
+  it("accepts a structured exact contact read when optional phone is empty", () => {
+    expect(
+      verifyBrowserReadProof({
+        operationKey: "contact.read",
+        payload: { externalId: "contact-1" },
+        data: {
+          records: JSON.stringify([
+            {
+              firstName: "Safe",
+              lastName: "Customer",
+              email: "safe@example.test",
+              phone: "",
+              ownerExternalId: "owner-7",
+            },
+          ]),
+        },
+      })
+    ).toMatchObject({ ok: true });
   });
 });
 
