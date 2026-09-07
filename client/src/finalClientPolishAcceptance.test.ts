@@ -12,6 +12,12 @@ describe("final client-facing handover polish", () => {
     expect(app).not.toContain("handover-final.css");
   });
 
+  it("keeps onboarding hero legible inside the dashboard route shell", () => {
+    const css = read("index.css");
+    expect(css).toContain('> main.amk-auth--setup .amk-auth__visual .amk-auth__message h1');
+    expect(css).toMatch(/main\.amk-auth--setup[\s\S]*\.amk-auth__message h1[\s\S]*color:\s*#ffffff\s*!important/);
+  });
+
   it("keeps company setup in customer language", () => {
     const onboarding = read("pages/Onboarding.tsx");
     expect(onboarding).toContain("Set up AmarktAI for your business.");
