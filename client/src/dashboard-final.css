@@ -788,3 +788,63 @@ body:has([data-slot="sidebar-wrapper"]) .handover-primary-number {
     transition: none !important;
   }
 }
+
+/* The assistant is one conversation surface. Customer context remains available
+   from the workspace header rather than a competing detached card. */
+body:has([data-slot="sidebar-wrapper"]) [data-assistant-workspace] {
+  height: calc(100dvh - 116px) !important;
+  min-height: 660px !important;
+  max-width: 1180px !important;
+  border: 1px solid #d7e0ea !important;
+  border-radius: 28px !important;
+  background: #fff !important;
+  box-shadow: 0 18px 55px rgba(31, 53, 84, .10) !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-assistant-workspace] > header {
+  margin: 0 !important;
+  padding: 20px 24px !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-assistant-workspace] > div[class*="grid"] {
+  display: block !important;
+  margin-top: 0 !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-assistant-workspace] > div[class*="grid"] > section {
+  height: 100% !important;
+  border: 0 !important;
+  border-radius: 0 0 28px 28px !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-assistant-workspace] > div[class*="grid"] > aside {
+  display: none !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-assistant-workspace] textarea {
+  font-size: 16px !important;
+}
+
+/* Dashboard copyright belongs in the sidebar footer and never floats over work. */
+body:has(.amarktai-dashboard-sidebar)::after {
+  content: none !important;
+  display: none !important;
+}
+body:has(.amarktai-dashboard-sidebar) [data-sidebar="footer"]::after {
+  content: "© 2026 AmarktAI Sales Assistant · Part of Amarktai Network";
+  display: block;
+  margin: 7px 4px 0;
+  color: #7a8798;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: center;
+  letter-spacing: .015em;
+}
+
+@media (max-width: 640px) {
+  body:has([data-slot="sidebar-wrapper"]) [data-assistant-workspace] {
+    height: calc(100dvh - 92px) !important;
+    min-height: 560px !important;
+    border-radius: 20px !important;
+  }
+  body:has([data-slot="sidebar-wrapper"]) [data-assistant-workspace] > header {
+    padding: 16px !important;
+  }
+}

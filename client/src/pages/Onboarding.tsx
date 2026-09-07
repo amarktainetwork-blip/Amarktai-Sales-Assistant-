@@ -137,7 +137,7 @@ function SetupVisual() {
     <section className="amk-auth__visual amk-auth__visual--product">
       <img
         src="/images/site-intelligence.svg"
-        alt="AmarktAI sales workspace illustration"
+        alt="AmarktAI sales workspace"
       />
       <div className="amk-auth__shade" />
       <div className="amk-auth__visual-inner">
@@ -146,26 +146,26 @@ function SetupVisual() {
         </div>
         <div className="amk-auth__message">
           <p className="amk-auth__eyebrow">
-            <ShieldCheck size={15} /> SECURE COMPANY SETUP
+            <ShieldCheck size={15} /> SET UP YOUR SALES WORKSPACE
           </p>
           <h1>
-            Set it up once.
+            A few steps now.
             <br />
-            Work here every day.
+            A simpler sales day after.
           </h1>
           <p>
-            AmarktAI learns the approved business context, connects to the CRM
-            you already use and keeps important customer actions reviewable.
+            Tell AmarktAI about your business, connect the tools your team already
+            uses, and then work from one clear daily sales workspace.
           </p>
           <div className="amk-auth__proof">
             <span>
-              <CheckCircle2 size={16} /> CRM remains the system of record
+              <CheckCircle2 size={16} /> Your business facts stay under your control
             </span>
             <span>
-              <CheckCircle2 size={16} /> Company knowledge is approved first
+              <CheckCircle2 size={16} /> Connect the CRM you already use
             </span>
             <span>
-              <CheckCircle2 size={16} /> Daily sales work happens in AmarktAI
+              <CheckCircle2 size={16} /> Review important actions before they happen
             </span>
           </div>
         </div>
@@ -332,7 +332,7 @@ export default function Onboarding() {
       setError(
         friendlyError(
           cause,
-          "AmarktAI couldn't start learning from the website. Nothing was approved or changed."
+          "AmarktAI couldn't read the website just now. Nothing was changed, so you can safely try again."
         )
       );
     }
@@ -348,7 +348,7 @@ export default function Onboarding() {
       setError(
         friendlyError(
           cause,
-          "Company learning could not resume. Please try again."
+          "AmarktAI couldn't continue reading the website. Please try again."
         )
       );
     }
@@ -382,14 +382,14 @@ export default function Onboarding() {
         return;
       }
       toast.success(
-        "CRM added. Sign in directly inside your private CRM workspace."
+        `Open ${provider.label} and sign in directly inside your private CRM workspace.`
       );
       navigate(`/crm/${id}`);
     } catch (cause) {
       setError(
         friendlyError(
           cause,
-          "The CRM could not be connected. Please try again."
+          `${provider.label} could not be connected. Check the address and try again.`
         )
       );
     }
@@ -400,7 +400,7 @@ export default function Onboarding() {
       <SetupShell>
         <div className="flex min-h-72 items-center justify-center gap-3 text-sm font-semibold text-[#66758A]">
           <Loader2 className="h-5 w-5 animate-spin text-[#2F6FED]" />
-          Preparing your setup…
+          Getting your workspace ready…
         </div>
       </SetupShell>
     );
@@ -410,18 +410,18 @@ export default function Onboarding() {
       <SetupShell>
         <Bot className="h-8 w-8 text-[#2F6FED]" />
         <p className="mt-6 text-[10px] font-black uppercase tracking-[.14em] text-[#2F6FED]">
-          YOUR PERSONAL WORKSPACE
+          YOUR WORKSPACE
         </p>
         <h2 className="mt-2 text-4xl font-bold tracking-[-.05em] text-[#203047]">
-          Your company setup is already handled.
+          Your company is already set up.
         </h2>
         <p className="mt-4 text-sm leading-7 text-[#607086]">
-          Shared company knowledge and the CRM are managed once for the team.
-          Your own AmarktAI identity, CRM mapping and mailbox stay personal to
-          you.
+          The shared business information and CRM are already connected for your
+          team. You only need your own salesperson match and mailbox so AmarktAI
+          can show the right customers and follow-ups to you.
         </p>
         <Button className="mt-7" onClick={() => navigate("/assistant")}>
-          Open AmarktAI <ArrowRight className="ml-2 h-4 w-4" />
+          Continue to my workspace <ArrowRight className="ml-2 h-4 w-4" />
         </Button>
       </SetupShell>
     );
@@ -430,15 +430,15 @@ export default function Onboarding() {
 
   return (
     <SetupShell wide>
-      <div className="border-b border-[#E5EAF0] pb-5">
+      <div className="border-b border-[#C9D3DF] pb-5">
         <p className="amk-auth__panel-eyebrow">COMPANY SETUP</p>
         <h2 className="!text-[clamp(34px,3vw,46px)]">
-          Get AmarktAI ready for the sales day.
+          Set up AmarktAI for your business.
         </h2>
         <p className="amk-auth__muted !mt-3">
-          Complete the company setup once. Your CRM remains the system of record;
-          AmarktAI becomes the daily workspace for preparation, calls, follow-up
-          and review.
+          We’ll guide you through the basics, learn from your public website and
+          connect the CRM your team already uses. You can review everything as
+          you go.
         </p>
         <div className="mt-5 grid gap-3 sm:grid-cols-4">
           {labels.map((label, index) => (
@@ -471,56 +471,56 @@ export default function Onboarding() {
         <section className="mt-7">
           {!workspaceMode ? (
             <>
-              <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#2F6FED]">
-                STEP 1 · WORKSPACE
+              <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#35516F]">
+                STEP 1 · WHO IS USING AMARKTAI?
               </p>
               <h3 className="mt-2 text-2xl font-bold tracking-[-.035em] text-[#203047]">
-                Who will use this workspace?
+                Who are we setting this up for?
               </h3>
               <p className="mt-3 text-sm leading-6 text-[#607086]">
-                Choose the shape of the workspace. You can still add team members
-                later if you start with one salesperson.
+                Start with yourself or set up the whole sales team. You can add
+                more people later.
               </p>
               <div className="mt-6 grid gap-4 sm:grid-cols-2">
                 <button
                   type="button"
                   disabled={updateOnboarding.isPending}
                   onClick={() => void chooseMode("individual")}
-                  className="rounded-2xl border border-[#DCE4EE] bg-[#FAFCFF] p-5 text-left transition hover:border-[#8EACEB] hover:bg-[#F3F7FF]"
+                  className="rounded-2xl border border-[#C9D3DF] bg-[#F7F9FC] p-5 text-left transition hover:border-[#8EACEB] hover:bg-white"
                 >
                   <Building2 className="h-5 w-5 text-[#2F6FED]" />
-                  <p className="mt-4 font-bold">Just me</p>
-                  <p className="mt-2 text-sm leading-6 text-[#718096]">
-                    One salesperson with a personal daily sales workspace.
+                  <p className="mt-4 font-bold">One salesperson</p>
+                  <p className="mt-2 text-sm leading-6 text-[#65768B]">
+                    A personal daily sales workspace for one person.
                   </p>
                 </button>
                 <button
                   type="button"
                   disabled={updateOnboarding.isPending}
                   onClick={() => void chooseMode("team")}
-                  className="rounded-2xl border border-[#DCE4EE] bg-[#FAFCFF] p-5 text-left transition hover:border-[#8EACEB] hover:bg-[#F3F7FF]"
+                  className="rounded-2xl border border-[#C9D3DF] bg-[#F7F9FC] p-5 text-left transition hover:border-[#8EACEB] hover:bg-white"
                 >
                   <Users className="h-5 w-5 text-[#2F6FED]" />
-                  <p className="mt-4 font-bold">My sales team</p>
-                  <p className="mt-2 text-sm leading-6 text-[#718096]">
-                    Shared approved company knowledge with private salesperson
-                    workspaces.
+                  <p className="mt-4 font-bold">A sales team</p>
+                  <p className="mt-2 text-sm leading-6 text-[#65768B]">
+                    Shared company information with a private workspace for each
+                    salesperson.
                   </p>
                 </button>
               </div>
             </>
           ) : (
             <>
-              <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#2F6FED]">
-                STEP 1 · BUSINESS
+              <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#35516F]">
+                STEP 1 · YOUR BUSINESS
               </p>
               <h3 className="mt-2 text-2xl font-bold tracking-[-.035em] text-[#203047]">
-                Tell AmarktAI which business it is working for.
+                Tell us about your business.
               </h3>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-[#607086]">
-                Start with the essentials. The next step reads the authorised
-                public website and shows you exactly what it learned before any
-                information becomes trusted knowledge.
+                Start with the essentials. If you add your website, AmarktAI can
+                read the public pages in the next step and show you what it found
+                before any information becomes trusted knowledge.
               </p>
               <div className="mt-6 grid gap-4 sm:grid-cols-2">
                 <Input
@@ -590,7 +590,7 @@ export default function Onboarding() {
                   Save and continue
                 </Button>
                 <Button variant="ghost" onClick={() => setWorkspaceMode(null)}>
-                  Change workspace type
+                  Change who this is for
                 </Button>
               </div>
             </>
@@ -600,29 +600,28 @@ export default function Onboarding() {
 
       {step === 2 ? (
         <section className="mt-7">
-          <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#2F6FED]">
+          <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#35516F]">
             STEP 2 · LEARN
           </p>
           <h3 className="mt-2 text-2xl font-bold tracking-[-.035em] text-[#203047]">
-            Let AmarktAI learn the public business context.
+            Let AmarktAI learn your public website.
           </h3>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-[#607086]">
-            AmarktAI reads the authorised public company website, organises the
-            useful facts and then gives you a review. Nothing becomes trusted
+            AmarktAI will read the public pages you’ve authorised and turn them
+            into a clear business summary. Nothing becomes trusted
             company knowledge until you confirm it.
           </p>
 
           {learningRunning ? (
-            <div className="mt-6 rounded-2xl border border-blue-100 bg-[#F4F8FF] p-5">
+            <div className="mt-6 rounded-2xl border border-[#CAD8EA] bg-[#F4F7FB] p-5">
               <div className="flex items-center gap-3">
                 <Loader2 className="h-5 w-5 animate-spin text-[#2F6FED]" />
                 <div>
                   <p className="font-bold">
-                    {learning.data?.humanStatus || "Reading website"}
+                    {learning.data?.humanStatus || "Reading your website"}
                   </p>
                   <p className="mt-1 text-sm text-[#718096]">
-                    Progress is saved automatically. You can safely leave and
-                    return to this setup.
+                    You can leave this page and come back. Your progress is saved.
                   </p>
                 </div>
               </div>
@@ -633,14 +632,15 @@ export default function Onboarding() {
                 Website learning paused before it finished.
               </p>
               <p className="mt-2 text-sm leading-6 text-amber-800">
-                Nothing new was trusted. Resume from the saved progress.
+                Nothing new was trusted. Nothing was added. Continue from where
+                it stopped.
               </p>
               <Button
                 className="mt-4"
                 variant="outline"
                 onClick={() => void retryCompanyLearning()}
               >
-                <RefreshCw className="mr-2 h-4 w-4" /> Resume
+                <RefreshCw className="mr-2 h-4 w-4" /> Continue reading
               </Button>
             </div>
           ) : (
@@ -654,12 +654,12 @@ export default function Onboarding() {
               ) : (
                 <Globe2 className="mr-2 h-4 w-4" />
               )}
-              Learn from website
+              Read my website
             </Button>
           )}
           {!profile.websiteUrl.trim() ? (
             <p className="mt-3 text-xs text-amber-700">
-              Add the company website in the previous step before starting.
+              Add your company website in the previous step first.
             </p>
           ) : null}
         </section>
@@ -667,17 +667,16 @@ export default function Onboarding() {
 
       {step === 3 ? (
         <section className="mt-7">
-          <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#2F6FED]">
-            STEP 3 · CRM
+          <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#35516F]">
+            STEP 3 · YOUR CRM
           </p>
           <h3 className="mt-2 text-2xl font-bold tracking-[-.035em] text-[#203047]">
             Connect the CRM your team already uses.
           </h3>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-[#607086]">
-            The CRM stays your system of record. AmarktAI uses the authorised
-            connection to bring customers, tasks and opportunities into the
-            daily workspace. Browser-based CRM passwords are entered only inside
-            the private CRM session.
+            Choose your CRM below. You’ll sign in with the CRM itself, and
+            AmarktAI will use that connection to bring your customers, tasks and
+            opportunities into the daily workspace.
           </p>
           <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {providers.map(option => (
@@ -690,15 +689,15 @@ export default function Onboarding() {
                 }}
                 className={`rounded-2xl border p-4 text-left transition ${
                   provider.provider === option.provider
-                    ? "border-[#2F6FED] bg-[#F3F7FF]"
-                    : "border-[#DCE4EE] bg-[#FAFCFF] hover:border-[#AFC3E8]"
+                    ? "border-[#2F6FED] bg-white shadow-sm"
+                    : "border-[#C9D3DF] bg-[#F7F9FC] hover:border-[#AFC3E8] hover:bg-white"
                 }`}
               >
                 <p className="font-bold">{option.label}</p>
                 <p className="mt-1 text-xs text-[#718096]">
                   {option.method === "browser"
                     ? "Secure CRM workspace"
-                    : "Secure account connection"}
+                    : "Connect your account securely"}
                 </p>
               </button>
             ))}
@@ -734,26 +733,25 @@ export default function Onboarding() {
       {step === 4 ? (
         <section className="mt-7">
           <p className="text-[10px] font-black uppercase tracking-[.14em] text-emerald-700">
-            STEP 4 · PROVE THE CONNECTION
+            STEP 4 · FINISH SETUP
           </p>
           <h3 className="mt-2 text-3xl font-bold tracking-[-.04em] text-[#203047]">
-            Sign in to your CRM and let AmarktAI prove safe access.
+            Sign in to your CRM and finish the connection.
           </h3>
           <p className="mt-4 max-w-2xl text-sm leading-6 text-[#607086]">
-            Open the private CRM workspace and sign in directly. Setup is not
-            complete just because authentication succeeds: AmarktAI must still
-            prove the required CRM reads and governed write operations before
-            the daily workspace is called ready.
+            Open the private CRM workspace and sign in directly with your CRM.
+            AmarktAI will then check that customers, tasks and opportunities come
+            through before the workspace is called ready.
           </p>
           <div className="mt-6 grid gap-3 sm:grid-cols-3">
             {[
-              ["Business", "Approved"],
+              ["Business", "Ready"],
               ["CRM", connectedSystems[0]?.displayName || "Connected"],
-              ["Daily workspace", "Ready after live proof"],
+              ["Workspace", "Final connection check"],
             ].map(([label, value]) => (
               <div
                 key={label}
-                className="rounded-2xl border border-[#E1E7EF] bg-[#FAFCFF] p-4"
+                className="rounded-2xl border border-[#C9D3DF] bg-[#F7F9FC] p-4"
               >
                 <p className="text-xs font-bold text-[#8290A3]">{label}</p>
                 <p className="mt-1 font-bold text-[#26354A]">{value}</p>
@@ -765,7 +763,7 @@ export default function Onboarding() {
             onClick={() => navigate(`/crm/${connectedSystems[0]?.id}`)}
           >
             <Network className="mr-2 h-4 w-4" />
-            Open CRM and continue setup
+            Open {connectedSystems[0]?.displayName || "CRM"} and finish setup
             <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
         </section>
