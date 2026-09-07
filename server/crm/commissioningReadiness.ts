@@ -1,7 +1,10 @@
 export const CORE_BROWSER_OPERATIONS = [
   "contact.search",
   "contact.read",
+  "company.read",
   "task.list",
+  "history.read",
+  "owner.sync",
   "note.create",
   "task.create_callback",
   "opportunity.read",

@@ -100,36 +100,42 @@ function statusPresentation(status: string) {
     return {
       tone: "ready" as const,
       title: "Connected",
-      detail: "The connection is available and can feed the AmarktAI workspace.",
+      detail:
+        "The connection is available and can feed the AmarktAI workspace.",
     };
   if (status === "testing" || status === "connecting")
     return {
       tone: "working" as const,
       title: "Commissioning",
-      detail: "AmarktAI is safely checking which CRM data and operations are available.",
+      detail:
+        "AmarktAI is safely checking which CRM data and operations are available.",
     };
   if (status === "authentication_expired")
     return {
       tone: "attention" as const,
       title: "Sign in again",
-      detail: "The saved CRM session expired. Reopen the source CRM and sign in directly.",
+      detail:
+        "The saved CRM session expired. Reopen the source CRM and sign in directly.",
     };
   if (status === "limited_permissions")
     return {
       tone: "attention" as const,
       title: "Connected with limits",
-      detail: "The CRM is connected, but some operations still need permission or commissioning.",
+      detail:
+        "The CRM is connected, but some operations still need permission or commissioning.",
     };
   if (status === "needs_attention" || status === "error")
     return {
       tone: "attention" as const,
       title: "Needs attention",
-      detail: "Open the source CRM to finish the connection or resolve the sign-in issue.",
+      detail:
+        "Open the source CRM to finish the connection or resolve the sign-in issue.",
     };
   return {
     tone: "working" as const,
     title: "Ready to sign in",
-    detail: "Open the source CRM and sign in with your own account to continue.",
+    detail:
+      "Open the source CRM and sign in with your own account to continue.",
   };
 }
 
@@ -198,7 +204,9 @@ export default function ConnectionsV2() {
         });
         window.location.assign(result.authorizationUrl);
       } else {
-        toast.success("CRM added. Sign in inside the secure source workspace to continue commissioning.");
+        toast.success(
+          "CRM added. Sign in inside the secure source workspace to continue commissioning."
+        );
         navigate(`/crm/${id}`);
       }
     } catch (cause) {
@@ -258,7 +266,10 @@ export default function ConnectionsV2() {
                 Connect the CRM once. Work from AmarktAI every day.
               </h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-[#66758A] sm:text-base">
-                The CRM stays the system of record. AmarktAI brings customer, opportunity, task, activity and sales context into a cleaner workspace so salespeople can focus on calls, follow-up and decisions instead of CRM navigation.
+                The CRM stays the system of record. AmarktAI brings customer,
+                opportunity, task, activity and sales context into a cleaner
+                workspace so salespeople can focus on calls, follow-up and
+                decisions instead of CRM navigation.
               </p>
             </div>
             {canManage ? (
@@ -292,15 +303,25 @@ export default function ConnectionsV2() {
           />
         </section>
 
-        <section className={`rounded-2xl border p-4 ${workspaceReady ? "border-emerald-200 bg-emerald-50" : "border-[#D8E2F0] bg-[#F6F9FD]"}`}>
+        <section
+          className={`rounded-2xl border p-4 ${workspaceReady ? "border-emerald-200 bg-emerald-50" : "border-[#D8E2F0] bg-[#F6F9FD]"}`}
+        >
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-start gap-3">
-              <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${workspaceReady ? "bg-emerald-100 text-emerald-700" : "bg-[#EAF1FF] text-[#2F6FED]"}`}>
-                {workspaceReady ? <CheckCircle2 className="h-5 w-5" /> : <Sparkles className="h-5 w-5" />}
+              <span
+                className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${workspaceReady ? "bg-emerald-100 text-emerald-700" : "bg-[#EAF1FF] text-[#2F6FED]"}`}
+              >
+                {workspaceReady ? (
+                  <CheckCircle2 className="h-5 w-5" />
+                ) : (
+                  <Sparkles className="h-5 w-5" />
+                )}
               </span>
               <div>
                 <p className="font-bold text-[#26354A]">
-                  {workspaceReady ? "Core CRM workspace ready" : "CRM commissioning still in progress"}
+                  {workspaceReady
+                    ? "Core CRM workspace ready"
+                    : "CRM commissioning still in progress"}
                 </p>
                 <p className="mt-1 text-sm leading-5 text-[#66758A]">
                   {workspaceReady
@@ -311,7 +332,8 @@ export default function ConnectionsV2() {
             </div>
             {!workspaceReady && connected.length ? (
               <span className="text-xs font-bold text-[#55708F]">
-                Use Teach AmarktAI below if a required function needs help.
+                Advanced diagnostics are available below only if automatic
+                commissioning cannot prove a required function.
               </span>
             ) : null}
           </div>
@@ -328,7 +350,8 @@ export default function ConnectionsV2() {
                   Choose the company CRM
                 </h2>
                 <p className="mt-1 text-sm text-[#718096]">
-                  Provider names appear only here because this is the technical connection step.
+                  Provider names appear only here because this is the technical
+                  connection step.
                 </p>
               </div>
             </div>
@@ -423,7 +446,10 @@ export default function ConnectionsV2() {
             const confirming = confirmDisconnectId === system.id;
 
             return (
-              <article key={system.id} className="rounded-2xl border border-[#DCE4EE] bg-white p-5 shadow-sm">
+              <article
+                key={system.id}
+                className="rounded-2xl border border-[#DCE4EE] bg-white p-5 shadow-sm"
+              >
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
@@ -483,7 +509,8 @@ export default function ConnectionsV2() {
                             Disconnect this CRM?
                           </p>
                           <p className="mt-1 text-xs leading-5 text-red-700">
-                            Saved authentication is removed. Retained CRM history and audit evidence remain available.
+                            Saved authentication is removed. Retained CRM
+                            history and audit evidence remain available.
                           </p>
                         </div>
                         <div className="flex gap-2">
@@ -532,7 +559,8 @@ export default function ConnectionsV2() {
                 No CRM connected yet
               </h2>
               <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[#718096]">
-                Connect the company CRM once. After commissioning, customer and sales activity will flow into AmarktAI automatically.
+                Connect the company CRM once. After commissioning, customer and
+                sales activity will flow into AmarktAI automatically.
               </p>
               {canManage ? (
                 <Button className="mt-5" onClick={() => setAdding(true)}>

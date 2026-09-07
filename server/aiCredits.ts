@@ -2,154 +2,537 @@ import { and, eq, sql } from "drizzle-orm";
 import { organisations, salesActivityEvents, users } from "../drizzle/schema";
 import { PRICING_PLANS, type PlanKey } from "../shared/pricing";
 import { getDb, recordAudit } from "./db";
-import { canManageOrganisationForUser, requireOrganisationMembership } from "./organisation";
+import {
+  canManageOrganisationForUser,
+  requireOrganisationMembership,
+} from "./organisation";
 
 export type CreditLedgerMetadata = {
   creditsDelta: number;
-  transactionType: "allowance" | "purchase" | "usage" | "usage_exempt" | "adjustment" | "refund";
+  transactionType:
+    | "allowance"
+    | "purchase"
+    | "usage"
+    | "usage_exempt"
+    | "adjustment"
+    | "refund";
   feature?: string;
+  provider?: "genx";
+  purpose?: AiPurpose;
   model?: string;
   providerUsage?: Record<string, unknown>;
   reference?: string;
+  correlationId?: string;
   note?: string;
   period?: string;
 };
+
+export type AiPurpose =
+  | "assistant_reasoning"
+  | "communication_draft"
+  | "communication_rewrite"
+  | "call_preparation"
+  | "call_coaching"
+  | "summarisation"
+  | "company_learning"
+  | "crm_commissioning"
+  | "crm_targeted_repair"
+  | "other_explicit_ai";
+
+/** Bounded, auditable classification. Unknown features cannot invent purposes. */
+export function classifyAiPurpose(feature: string): AiPurpose {
+  const value = feature.toLowerCase();
+  if (value.includes("commission")) return "crm_commissioning";
+  if (value.includes("repair")) return "crm_targeted_repair";
+  if (value.includes("rewrite")) return "communication_rewrite";
+  if (
+    value.includes("draft") ||
+    value.includes("email") ||
+    value.includes("message")
+  )
+    return "communication_draft";
+  if (value.includes("call") && value.includes("coach")) return "call_coaching";
+  if (
+    value.includes("call") &&
+    (value.includes("prep") || value.includes("brief"))
+  )
+    return "call_preparation";
+  if (value.includes("summary") || value.includes("summar"))
+    return "summarisation";
+  if (value.includes("learn") || value.includes("knowledge"))
+    return "company_learning";
+  if (value.includes("assistant")) return "assistant_reasoning";
+  return "other_explicit_ai";
+}
 
 function plan(value: unknown) {
   const key = typeof value === "string" ? value : "trial";
   return PRICING_PLANS.find(item => item.key === key) || PRICING_PLANS[0];
 }
 function periodKey(date: Date, timezone: string) {
-  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit" }).formatToParts(date);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(date);
   return `${parts.find(part => part.type === "year")?.value || date.getUTCFullYear()}-${parts.find(part => part.type === "month")?.value || String(date.getUTCMonth() + 1).padStart(2, "0")}`;
 }
-function meta(event: typeof salesActivityEvents.$inferSelect): CreditLedgerMetadata | null {
+function meta(
+  event: typeof salesActivityEvents.$inferSelect
+): CreditLedgerMetadata | null {
   const value = event.metadata as Record<string, unknown>;
   const delta = Number(value.creditsDelta);
   if (!Number.isFinite(delta)) return null;
-  return { ...value, creditsDelta: Math.trunc(delta), transactionType: String(value.transactionType || "adjustment") as CreditLedgerMetadata["transactionType"] };
+  return {
+    ...value,
+    creditsDelta: Math.trunc(delta),
+    transactionType: String(
+      value.transactionType || "adjustment"
+    ) as CreditLedgerMetadata["transactionType"],
+  };
 }
 
-export function assessAiCreditDebit(entries: CreditLedgerMetadata[], credits: number, reference?: string, billingExempt = false) {
+export function assessAiCreditDebit(
+  entries: CreditLedgerMetadata[],
+  credits: number,
+  reference?: string,
+  billingExempt = false
+) {
   const balance = entries.reduce((sum, entry) => sum + entry.creditsDelta, 0);
-  if (reference && entries.some(entry => ["usage", "usage_exempt"].includes(entry.transactionType) && entry.reference === reference)) return { idempotent: true as const, balance };
-  if (billingExempt) return { idempotent: false as const, balance, billingExempt: true as const };
-  if (balance < credits) throw new Error(`This organisation has ${balance} AI Credits remaining but this operation requires ${credits}. Add credits or change the AI budget.`);
+  if (
+    reference &&
+    entries.some(
+      entry =>
+        ["usage", "usage_exempt"].includes(entry.transactionType) &&
+        entry.reference === reference
+    )
+  )
+    return { idempotent: true as const, balance };
+  if (billingExempt)
+    return {
+      idempotent: false as const,
+      balance,
+      billingExempt: true as const,
+    };
+  if (balance < credits)
+    throw new Error(
+      `This organisation has ${balance} AI Credits remaining but this operation requires ${credits}. Add credits or change the AI budget.`
+    );
   return { idempotent: false as const, balance };
 }
 
-export function aiUsageMetadata(input: { credits: number; feature: string; model?: string; providerUsage?: Record<string, unknown>; reference?: string; billingExempt: boolean }): CreditLedgerMetadata {
+export function aiUsageMetadata(input: {
+  credits: number;
+  feature: string;
+  model?: string;
+  providerUsage?: Record<string, unknown>;
+  reference?: string;
+  billingExempt: boolean;
+}): CreditLedgerMetadata {
   return {
-    creditsDelta: input.billingExempt ? 0 : -input.credits,
+    creditsDelta:
+      input.billingExempt || input.credits === 0 ? 0 : -input.credits,
     transactionType: input.billingExempt ? "usage_exempt" : "usage",
     feature: input.feature,
+    provider: "genx",
+    purpose: classifyAiPurpose(input.feature),
     model: input.model,
     providerUsage: input.providerUsage,
     reference: input.reference,
+    correlationId: input.reference,
     note: input.billingExempt ? "platform_owner_billing_exemption" : undefined,
   };
 }
 
-async function lockOrganisation(tx: Parameters<Parameters<NonNullable<Awaited<ReturnType<typeof getDb>>>["transaction"]>[0]>[0], organisationId: number) {
-  const [locked] = await tx.execute(sql`SELECT id FROM ${organisations} WHERE ${organisations.id} = ${organisationId} FOR UPDATE`) as unknown as [Array<{ id: number }>, unknown];
+async function lockOrganisation(
+  tx: Parameters<
+    Parameters<NonNullable<Awaited<ReturnType<typeof getDb>>>["transaction"]>[0]
+  >[0],
+  organisationId: number
+) {
+  const [locked] = (await tx.execute(
+    sql`SELECT id FROM ${organisations} WHERE ${organisations.id} = ${organisationId} FOR UPDATE`
+  )) as unknown as [Array<{ id: number }>, unknown];
   if (!locked.length) throw new Error("Organisation was not found.");
 }
 
-async function ensureMonthlyAllowance(input: { organisationId: number; userId: number; timezone: string }) {
+async function ensureMonthlyAllowance(input: {
+  organisationId: number;
+  userId: number;
+  timezone: string;
+}) {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
   await db.transaction(async tx => {
     await lockOrganisation(tx, input.organisationId);
-    const organisation = (await tx.select().from(organisations).where(eq(organisations.id, input.organisationId)).limit(1))[0];
+    const organisation = (
+      await tx
+        .select()
+        .from(organisations)
+        .where(eq(organisations.id, input.organisationId))
+        .limit(1)
+    )[0];
     if (!organisation) throw new Error("Organisation was not found.");
     const settings = (organisation.settings || {}) as Record<string, unknown>;
-    const currentPeriod = periodKey(new Date(), input.timezone || organisation.timezone || "UTC");
+    const currentPeriod = periodKey(
+      new Date(),
+      input.timezone || organisation.timezone || "UTC"
+    );
     const selectedPlan = plan(settings.planKey);
-    const allowanceMarker = settings.aiCreditAllowance as { period?: string; planKey?: string } | undefined;
-    if (allowanceMarker?.period === currentPeriod && allowanceMarker.planKey === selectedPlan.key) return;
-    const existing = await tx.select().from(salesActivityEvents).where(and(eq(salesActivityEvents.organisationId, input.organisationId), eq(salesActivityEvents.source, "ai_credit"), eq(salesActivityEvents.eventType, "ai_credit_allowance"))).limit(5000);
-    const alreadyGranted = existing.some(event => { const metadata = meta(event); return metadata?.period === currentPeriod && metadata.note === `plan:${selectedPlan.key}`; });
+    const allowanceMarker = settings.aiCreditAllowance as
+      | { period?: string; planKey?: string }
+      | undefined;
+    if (
+      allowanceMarker?.period === currentPeriod &&
+      allowanceMarker.planKey === selectedPlan.key
+    )
+      return;
+    const existing = await tx
+      .select()
+      .from(salesActivityEvents)
+      .where(
+        and(
+          eq(salesActivityEvents.organisationId, input.organisationId),
+          eq(salesActivityEvents.source, "ai_credit"),
+          eq(salesActivityEvents.eventType, "ai_credit_allowance")
+        )
+      )
+      .limit(5000);
+    const alreadyGranted = existing.some(event => {
+      const metadata = meta(event);
+      return (
+        metadata?.period === currentPeriod &&
+        metadata.note === `plan:${selectedPlan.key}`
+      );
+    });
     if (!alreadyGranted && selectedPlan.includedAiCredits > 0) {
-      await tx.insert(salesActivityEvents).values({ organisationId: input.organisationId, salespersonUserId: input.userId, eventType: "ai_credit_allowance", source: "ai_credit", occurredAt: new Date(), metadata: { creditsDelta: selectedPlan.includedAiCredits, transactionType: "allowance", period: currentPeriod, note: `plan:${selectedPlan.key}` } satisfies CreditLedgerMetadata });
+      await tx
+        .insert(salesActivityEvents)
+        .values({
+          organisationId: input.organisationId,
+          salespersonUserId: input.userId,
+          eventType: "ai_credit_allowance",
+          source: "ai_credit",
+          occurredAt: new Date(),
+          metadata: {
+            creditsDelta: selectedPlan.includedAiCredits,
+            transactionType: "allowance",
+            period: currentPeriod,
+            note: `plan:${selectedPlan.key}`,
+          } satisfies CreditLedgerMetadata,
+        });
     }
-    await tx.update(organisations).set({ settings: { ...settings, planKey: selectedPlan.key, aiCreditAllowance: { period: currentPeriod, planKey: selectedPlan.key } } }).where(eq(organisations.id, input.organisationId));
+    await tx
+      .update(organisations)
+      .set({
+        settings: {
+          ...settings,
+          planKey: selectedPlan.key,
+          aiCreditAllowance: {
+            period: currentPeriod,
+            planKey: selectedPlan.key,
+          },
+        },
+      })
+      .where(eq(organisations.id, input.organisationId));
   });
 }
 
 async function ledger(organisationId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
-  return db.select().from(salesActivityEvents).where(and(eq(salesActivityEvents.organisationId, organisationId), eq(salesActivityEvents.source, "ai_credit"))).limit(20_000);
+  return db
+    .select()
+    .from(salesActivityEvents)
+    .where(
+      and(
+        eq(salesActivityEvents.organisationId, organisationId),
+        eq(salesActivityEvents.source, "ai_credit")
+      )
+    )
+    .limit(20_000);
 }
 
-export async function getAiCreditWallet(input: { userId: number; organisationId: number }) {
-  const membership = await requireOrganisationMembership(input.userId, input.organisationId);
+export async function getAiCreditWallet(input: {
+  userId: number;
+  organisationId: number;
+}) {
+  const membership = await requireOrganisationMembership(
+    input.userId,
+    input.organisationId
+  );
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
-  const actor = (await db.select({ isPlatformOwner: users.isPlatformOwner }).from(users).where(eq(users.id, input.userId)).limit(1))[0];
+  const actor = (
+    await db
+      .select({ isPlatformOwner: users.isPlatformOwner })
+      .from(users)
+      .where(eq(users.id, input.userId))
+      .limit(1)
+  )[0];
   const billingExempt = actor?.isPlatformOwner === true;
-  if (!billingExempt) await ensureMonthlyAllowance({ organisationId: input.organisationId, userId: input.userId, timezone: membership.timezone });
+  if (!billingExempt)
+    await ensureMonthlyAllowance({
+      organisationId: input.organisationId,
+      userId: input.userId,
+      timezone: membership.timezone,
+    });
   const events = await ledger(input.organisationId);
-  const entries = events.map(event => ({ event, metadata: meta(event) })).filter((item): item is { event: typeof events[number]; metadata: CreditLedgerMetadata } => Boolean(item.metadata));
-  const balance = entries.reduce((sum, item) => sum + item.metadata.creditsDelta, 0);
-  const used = entries.filter(item => item.metadata.creditsDelta < 0).reduce((sum, item) => sum + Math.abs(item.metadata.creditsDelta), 0);
-  const purchased = entries.filter(item => item.metadata.transactionType === "purchase" && item.metadata.creditsDelta > 0).reduce((sum, item) => sum + item.metadata.creditsDelta, 0);
+  const entries = events
+    .map(event => ({ event, metadata: meta(event) }))
+    .filter(
+      (
+        item
+      ): item is {
+        event: (typeof events)[number];
+        metadata: CreditLedgerMetadata;
+      } => Boolean(item.metadata)
+    );
+  const balance = entries.reduce(
+    (sum, item) => sum + item.metadata.creditsDelta,
+    0
+  );
+  const used = entries
+    .filter(item => item.metadata.creditsDelta < 0)
+    .reduce((sum, item) => sum + Math.abs(item.metadata.creditsDelta), 0);
+  const purchased = entries
+    .filter(
+      item =>
+        item.metadata.transactionType === "purchase" &&
+        item.metadata.creditsDelta > 0
+    )
+    .reduce((sum, item) => sum + item.metadata.creditsDelta, 0);
   const organisationDb = await getDb();
-  const organisation = organisationDb ? (await organisationDb.select().from(organisations).where(eq(organisations.id, input.organisationId)).limit(1))[0] : undefined;
-  const selectedPlan = plan((organisation?.settings as Record<string, unknown> | undefined)?.planKey);
-  return { balance, used, purchased, billingExempt, plan: selectedPlan, entries: entries.sort((a, b) => Number(b.event.occurredAt) - Number(a.event.occurredAt)).slice(0, 200).map(item => ({ id: item.event.id, userId: item.event.salespersonUserId, occurredAt: item.event.occurredAt, ...item.metadata })) };
+  const organisation = organisationDb
+    ? (
+        await organisationDb
+          .select()
+          .from(organisations)
+          .where(eq(organisations.id, input.organisationId))
+          .limit(1)
+      )[0]
+    : undefined;
+  const selectedPlan = plan(
+    (organisation?.settings as Record<string, unknown> | undefined)?.planKey
+  );
+  return {
+    balance,
+    used,
+    purchased,
+    billingExempt,
+    plan: selectedPlan,
+    entries: entries
+      .sort((a, b) => Number(b.event.occurredAt) - Number(a.event.occurredAt))
+      .slice(0, 200)
+      .map(item => ({
+        id: item.event.id,
+        userId: item.event.salespersonUserId,
+        occurredAt: item.event.occurredAt,
+        ...item.metadata,
+      })),
+  };
 }
 
-async function append(input: { actorUserId: number; organisationId: number; salespersonUserId?: number; metadata: CreditLedgerMetadata }) {
+async function append(input: {
+  actorUserId: number;
+  organisationId: number;
+  salespersonUserId?: number;
+  metadata: CreditLedgerMetadata;
+}) {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
-  if (!Number.isInteger(input.metadata.creditsDelta) || input.metadata.creditsDelta === 0 || Math.abs(input.metadata.creditsDelta) > 10_000_000) throw new Error("AI credit transaction amount is invalid.");
-  await db.insert(salesActivityEvents).values({ organisationId: input.organisationId, salespersonUserId: input.salespersonUserId ?? input.actorUserId, eventType: `ai_credit_${input.metadata.transactionType}`, source: "ai_credit", occurredAt: new Date(), metadata: input.metadata });
+  if (
+    !Number.isInteger(input.metadata.creditsDelta) ||
+    input.metadata.creditsDelta === 0 ||
+    Math.abs(input.metadata.creditsDelta) > 10_000_000
+  )
+    throw new Error("AI credit transaction amount is invalid.");
+  await db
+    .insert(salesActivityEvents)
+    .values({
+      organisationId: input.organisationId,
+      salespersonUserId: input.salespersonUserId ?? input.actorUserId,
+      eventType: `ai_credit_${input.metadata.transactionType}`,
+      source: "ai_credit",
+      occurredAt: new Date(),
+      metadata: input.metadata,
+    });
 }
 
-export async function consumeAiCredits(input: { userId: number; organisationId: number; credits: number; feature: string; model?: string; providerUsage?: Record<string, unknown>; reference?: string }) {
-  const membership = await requireOrganisationMembership(input.userId, input.organisationId);
+export async function consumeAiCredits(input: {
+  userId: number;
+  organisationId: number;
+  credits: number;
+  feature: string;
+  model?: string;
+  providerUsage?: Record<string, unknown>;
+  reference?: string;
+}) {
+  const membership = await requireOrganisationMembership(
+    input.userId,
+    input.organisationId
+  );
   const credits = Math.max(0, Math.floor(input.credits));
-  if (!credits) return getAiCreditWallet({ userId: input.userId, organisationId: input.organisationId });
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
-  const actor = (await db.select({ isPlatformOwner: users.isPlatformOwner }).from(users).where(eq(users.id, input.userId)).limit(1))[0];
+  const actor = (
+    await db
+      .select({ isPlatformOwner: users.isPlatformOwner })
+      .from(users)
+      .where(eq(users.id, input.userId))
+      .limit(1)
+  )[0];
   const billingExempt = actor?.isPlatformOwner === true;
-  if (!billingExempt) await ensureMonthlyAllowance({ organisationId: input.organisationId, userId: input.userId, timezone: membership.timezone });
+  if (!billingExempt)
+    await ensureMonthlyAllowance({
+      organisationId: input.organisationId,
+      userId: input.userId,
+      timezone: membership.timezone,
+    });
   const reference = input.reference?.slice(0, 180);
   await db.transaction(async tx => {
     await lockOrganisation(tx, input.organisationId);
-    const events = await tx.select().from(salesActivityEvents).where(and(eq(salesActivityEvents.organisationId, input.organisationId), eq(salesActivityEvents.source, "ai_credit"))).limit(20_000);
-    const entries = events.map(event => meta(event)).filter((item): item is CreditLedgerMetadata => Boolean(item));
-    const debit = assessAiCreditDebit(entries, credits, reference, billingExempt);
+    const events = await tx
+      .select()
+      .from(salesActivityEvents)
+      .where(
+        and(
+          eq(salesActivityEvents.organisationId, input.organisationId),
+          eq(salesActivityEvents.source, "ai_credit")
+        )
+      )
+      .limit(20_000);
+    const entries = events
+      .map(event => meta(event))
+      .filter((item): item is CreditLedgerMetadata => Boolean(item));
+    const debit = assessAiCreditDebit(
+      entries,
+      credits,
+      reference,
+      billingExempt
+    );
     if (debit.idempotent) return;
-    const metadata = aiUsageMetadata({ credits, feature: input.feature.slice(0, 120), model: input.model?.slice(0, 160), providerUsage: input.providerUsage, reference, billingExempt });
-    await tx.insert(salesActivityEvents).values({ organisationId: input.organisationId, salespersonUserId: input.userId, eventType: billingExempt ? "ai_provider_usage" : "ai_credit_usage", source: "ai_credit", occurredAt: new Date(), metadata });
+    const metadata = aiUsageMetadata({
+      credits,
+      feature: input.feature.slice(0, 120),
+      model: input.model?.slice(0, 160),
+      providerUsage: input.providerUsage,
+      reference,
+      billingExempt,
+    });
+    await tx
+      .insert(salesActivityEvents)
+      .values({
+        organisationId: input.organisationId,
+        salespersonUserId: input.userId,
+        eventType: billingExempt ? "ai_provider_usage" : "ai_credit_usage",
+        source: "ai_credit",
+        occurredAt: new Date(),
+        metadata,
+      });
   });
-  return getAiCreditWallet({ userId: input.userId, organisationId: input.organisationId });
+  return getAiCreditWallet({
+    userId: input.userId,
+    organisationId: input.organisationId,
+  });
 }
 
-export async function adjustAiCredits(input: { userId: number; organisationId: number; creditsDelta: number; transactionType: "purchase" | "adjustment" | "refund"; note?: string; reference?: string }) {
-  const membership = await requireOrganisationMembership(input.userId, input.organisationId);
-  if (!(await canManageOrganisationForUser(input.userId, membership.role))) throw new Error("Only organisation owners, managers, and platform owners can adjust AI Credits.");
+export async function adjustAiCredits(input: {
+  userId: number;
+  organisationId: number;
+  creditsDelta: number;
+  transactionType: "purchase" | "adjustment" | "refund";
+  note?: string;
+  reference?: string;
+}) {
+  const membership = await requireOrganisationMembership(
+    input.userId,
+    input.organisationId
+  );
+  if (!(await canManageOrganisationForUser(input.userId, membership.role)))
+    throw new Error(
+      "Only organisation owners, managers, and platform owners can adjust AI Credits."
+    );
   const delta = Math.trunc(input.creditsDelta);
-  if (!delta || Math.abs(delta) > 10_000_000) throw new Error("AI credit adjustment is invalid.");
-  if ((input.transactionType === "purchase" || input.transactionType === "refund") && delta < 0) throw new Error(`${input.transactionType} transactions must add credits.`);
-  await append({ actorUserId: input.userId, organisationId: input.organisationId, metadata: { creditsDelta: delta, transactionType: input.transactionType, note: input.note?.slice(0, 300), reference: input.reference?.slice(0, 180) } });
-  await recordAudit({ userId: input.userId, eventType: "ai_credit_adjusted", entityType: "organisation", entityId: String(input.organisationId), summary: `AI Credit balance adjusted by ${delta}.`, metadata: { creditsDelta: delta, transactionType: input.transactionType, reference: input.reference } });
-  return getAiCreditWallet({ userId: input.userId, organisationId: input.organisationId });
+  if (!delta || Math.abs(delta) > 10_000_000)
+    throw new Error("AI credit adjustment is invalid.");
+  if (
+    (input.transactionType === "purchase" ||
+      input.transactionType === "refund") &&
+    delta < 0
+  )
+    throw new Error(`${input.transactionType} transactions must add credits.`);
+  await append({
+    actorUserId: input.userId,
+    organisationId: input.organisationId,
+    metadata: {
+      creditsDelta: delta,
+      transactionType: input.transactionType,
+      note: input.note?.slice(0, 300),
+      reference: input.reference?.slice(0, 180),
+    },
+  });
+  await recordAudit({
+    userId: input.userId,
+    eventType: "ai_credit_adjusted",
+    entityType: "organisation",
+    entityId: String(input.organisationId),
+    summary: `AI Credit balance adjusted by ${delta}.`,
+    metadata: {
+      creditsDelta: delta,
+      transactionType: input.transactionType,
+      reference: input.reference,
+    },
+  });
+  return getAiCreditWallet({
+    userId: input.userId,
+    organisationId: input.organisationId,
+  });
 }
 
-export async function setOrganisationPlan(input: { userId: number; organisationId: number; planKey: PlanKey }) {
-  const membership = await requireOrganisationMembership(input.userId, input.organisationId);
-  if (!(await canManageOrganisationForUser(input.userId, membership.role))) throw new Error("Only organisation owners, managers, and platform owners can change the plan assignment.");
+export async function setOrganisationPlan(input: {
+  userId: number;
+  organisationId: number;
+  planKey: PlanKey;
+}) {
+  const membership = await requireOrganisationMembership(
+    input.userId,
+    input.organisationId
+  );
+  if (!(await canManageOrganisationForUser(input.userId, membership.role)))
+    throw new Error(
+      "Only organisation owners, managers, and platform owners can change the plan assignment."
+    );
   const selected = plan(input.planKey);
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
-  const organisation = (await db.select().from(organisations).where(eq(organisations.id, input.organisationId)).limit(1))[0];
+  const organisation = (
+    await db
+      .select()
+      .from(organisations)
+      .where(eq(organisations.id, input.organisationId))
+      .limit(1)
+  )[0];
   if (!organisation) throw new Error("Organisation was not found.");
-  const settings = { ...(organisation.settings as Record<string, unknown>), planKey: selected.key, aiCreditAllowance: undefined };
-  await db.update(organisations).set({ settings }).where(eq(organisations.id, input.organisationId));
-  await recordAudit({ userId: input.userId, eventType: "plan_assignment_changed", entityType: "organisation", entityId: String(input.organisationId), summary: `Organisation plan assigned to ${selected.name}.`, metadata: { planKey: selected.key } });
-  return getAiCreditWallet({ userId: input.userId, organisationId: input.organisationId });
+  const settings = {
+    ...(organisation.settings as Record<string, unknown>),
+    planKey: selected.key,
+    aiCreditAllowance: undefined,
+  };
+  await db
+    .update(organisations)
+    .set({ settings })
+    .where(eq(organisations.id, input.organisationId));
+  await recordAudit({
+    userId: input.userId,
+    eventType: "plan_assignment_changed",
+    entityType: "organisation",
+    entityId: String(input.organisationId),
+    summary: `Organisation plan assigned to ${selected.name}.`,
+    metadata: { planKey: selected.key },
+  });
+  return getAiCreditWallet({
+    userId: input.userId,
+    organisationId: input.organisationId,
+  });
 }

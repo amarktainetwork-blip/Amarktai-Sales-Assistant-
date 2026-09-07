@@ -24,6 +24,11 @@ import {
   resolveApprovedCommunicationTemplate,
 } from "./approvedTemplates";
 import { getOutboundSuppressionStatus } from "./communications";
+import {
+  buildGroundedDraftInstruction,
+  groundedDraftIssues,
+  type GroundedDraftContext,
+} from "./assistantDraftGrounding";
 
 export type DirectAssistantActionResponse = {
   content: string;
@@ -38,7 +43,11 @@ type Channel = "email" | "sms" | "whatsapp";
 
 function channelFromRequest(value: string): Channel | undefined {
   const normalized = value.toLowerCase();
-  if (!/\b(send|draft|write|prepare|reply|respond|email|text|message)\b/.test(normalized))
+  if (
+    !/\b(send|draft|write|prepare|reply|respond|email|text|message)\b/.test(
+      normalized
+    )
+  )
     return undefined;
   if (/\bwhats\s*app\b/.test(normalized)) return "whatsapp";
   if (/\b(sms|text message)\b/.test(normalized)) return "sms";
@@ -48,7 +57,9 @@ function channelFromRequest(value: string): Channel | undefined {
 
 function isDraftOnly(value: string) {
   const normalized = value.toLowerCase();
-  return /\b(draft|write|prepare)\b/.test(normalized) && !/\bsend\b/.test(normalized);
+  return (
+    /\b(draft|write|prepare)\b/.test(normalized) && !/\bsend\b/.test(normalized)
+  );
 }
 
 function isReply(value: string) {
@@ -65,17 +76,17 @@ function cleanDraft(value: string) {
     .slice(0, 20_000);
 }
 
-function emailSubject(request: string, recentInbound?: string) {
-  if (isReply(request) && recentInbound) {
-    const subject = recentInbound.split(":", 1)[0]?.trim();
+function emailSubject(request: string, recentInboundSubject?: string) {
+  if (isReply(request) && recentInboundSubject) {
+    const subject = recentInboundSubject.trim();
     if (subject)
       return /^re:/i.test(subject)
         ? subject.slice(0, 180)
         : `Re: ${subject}`.slice(0, 180);
   }
-  const explicit = request.match(
-    /\b(?:about|regarding|subject(?: is|:))\s+([^.!?\n]{3,120})/i
-  )?.[1]?.trim();
+  const explicit = request
+    .match(/\b(?:about|regarding|subject(?: is|:))\s+([^.!?\n]{3,120})/i)?.[1]
+    ?.trim();
   return explicit ? explicit.slice(0, 180) : "Following up";
 }
 
@@ -256,20 +267,32 @@ export async function tryPrepareDirectAssistantAction(input: {
       input.organisationId,
       input.request
     );
+    const approvedKnowledge = knowledge
+      .map(
+        source => `${source.title}\n${source.content || source.sourceUrl || ""}`
+      )
+      .join("\n\n");
+    const grounding: GroundedDraftContext = {
+      request: input.request,
+      contactName: customer.contactName,
+      companyName: customer.companyName,
+      emailSubject: customer.recentInboundSubject,
+      inboundMessage: customer.recentInboundBody || customer.recentInbound,
+      opportunityName: customer.opportunityName,
+      stage: customer.stage,
+      lastInteraction: customer.lastInteraction,
+      outstandingCommitment: customer.objective,
+      approvedKnowledge,
+    };
     const draft = await runGenxAgent({
       agentKey: "communications",
       messages: [
         {
           role: "user",
-          content:
-            `Draft only the ${channel === "email" ? "email body" : channel.toUpperCase() + " message"} for the salesperson's requested customer communication. ` +
-            "Use only the supplied customer context and approved business knowledge. Preserve any factual wording the user explicitly supplied. Do not invent prices, availability, guarantees, commitments, dates, customer facts or policy. Do not add commentary about drafting.\n\n" +
-            `User request: ${input.request}`,
+          content: buildGroundedDraftInstruction(grounding),
         },
       ],
-      approvedKnowledge: knowledge
-        .map(source => `${source.title}\n${source.content || source.sourceUrl || ""}`)
-        .join("\n\n"),
+      approvedKnowledge,
       workingContext: JSON.stringify({
         selectedCustomer: customer,
         channel,
@@ -287,6 +310,33 @@ export async function tryPrepareDirectAssistantAction(input: {
       maxOutputTokens: channel === "email" ? 700 : 220,
     });
     body = cleanDraft(draft.content);
+    const issues = groundedDraftIssues(body, grounding);
+    if (issues.length) {
+      const repaired = await runGenxAgent({
+        agentKey: "communications",
+        messages: [
+          {
+            role: "user",
+            content: `${buildGroundedDraftInstruction(grounding)}\n\nThe previous draft failed these deterministic safeguards: ${issues.join(", ")}. Correct those issues and return only the revised message body.`,
+          },
+        ],
+        approvedKnowledge,
+        workingContext: JSON.stringify({ selectedCustomer: customer, channel }),
+        billing: {
+          userId: input.userId,
+          organisationId: input.organisationId,
+          feature: `assistant_${channel}_draft_grounding_repair`,
+          reference: `contact:${customer.contactExternalId}`,
+        },
+        maxOutputTokens: channel === "email" ? 700 : 220,
+      });
+      body = cleanDraft(repaired.content);
+      if (groundedDraftIssues(body, grounding).length)
+        return {
+          content:
+            "I could not produce a draft that stayed consistent with the current customer context, so nothing was prepared or sent.",
+        };
+    }
     if (!body)
       return {
         content:
@@ -294,7 +344,7 @@ export async function tryPrepareDirectAssistantAction(input: {
       };
     subject =
       channel === "email"
-        ? emailSubject(input.request, customer.recentInbound)
+        ? emailSubject(input.request, customer.recentInboundSubject)
         : undefined;
     contentSource = {
       kind: "assistant_draft",
@@ -386,8 +436,7 @@ export async function tryPrepareDirectAssistantAction(input: {
       },
       duplicateVerification: {
         state: "unknown",
-        rule:
-          "Execution must re-check external communication history/idempotency immediately before the irreversible send.",
+        rule: "Execution must re-check external communication history/idempotency immediately before the irreversible send.",
       },
       requiredPostconditions:
         configuration.requiredPostconditions[actionType] || [],

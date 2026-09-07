@@ -19,6 +19,7 @@ import {
 } from "./security/connectionSecrets";
 import { ingestInboundMessage } from "./communications/inboundPipeline";
 import { runGenxAgent } from "./genx";
+import { runModelFreeOperation } from "./aiExecutionBoundary";
 
 const delegatedScopes = [
   "openid",
@@ -400,7 +401,7 @@ async function assertEmailNotSuppressed(
 }
 
 /** Sends only after the existing proposal/review boundary supplies its reference. */
-export async function sendDelegatedOutlookMail(input: {
+async function sendDelegatedOutlookMailDeterministically(input: {
   userId: number;
   organisationId: number;
   to: string;
@@ -450,6 +451,30 @@ export async function sendDelegatedOutlookMail(input: {
     sent: true as const,
     provider: "microsoft_delegated" as const,
     from: mailbox.email,
+  };
+}
+
+export async function sendDelegatedOutlookMail(input: {
+  userId: number;
+  organisationId: number;
+  to: string;
+  subject: string;
+  body: string;
+  reviewReference: string;
+  contactExternalId?: string;
+}) {
+  const result = await runModelFreeOperation(
+    {
+      purpose: "mailbox_transport",
+      organisationId: input.organisationId,
+      reference: input.reviewReference,
+    },
+    () => sendDelegatedOutlookMailDeterministically(input)
+  );
+  return {
+    ...result.value,
+    modelUsed: result.evidence.modelUsed,
+    providerCallCount: result.evidence.providerCallCount,
   };
 }
 
@@ -580,9 +605,10 @@ function cleanDraft(value: string) {
  * Performs a bounded, user-owned inbox refresh and creates reviewable reply
  * proposals in the existing action queue. It never sends during synchronization.
  */
-export async function syncDelegatedMailbox(input: {
+async function syncDelegatedMailboxInternal(input: {
   userId: number;
   organisationId: number;
+  prepareReviewDrafts?: boolean;
 }) {
   await requireOrganisationMembership(input.userId, input.organisationId);
   const syncStartedAt = new Date();
@@ -643,7 +669,12 @@ export async function syncDelegatedMailbox(input: {
       },
     });
     if (!ingested.duplicate) received += 1;
-    if (ingested.duplicate || !ingested.replyEligible) continue;
+    if (
+      ingested.duplicate ||
+      !ingested.replyEligible ||
+      !input.prepareReviewDrafts
+    )
+      continue;
     const idempotencyKey = `mailbox:${input.userId}:inbound:${ingested.id}:reply`;
     const existingProposal = (
       await db
@@ -763,6 +794,28 @@ export async function syncDelegatedMailbox(input: {
     },
   });
   return { received, draftsPrepared, morePagesPending: Boolean(next) };
+}
+
+export async function syncDelegatedMailbox(input: {
+  userId: number;
+  organisationId: number;
+  /** Explicit opt-in for one genuinely generative draft per new eligible input. */
+  prepareReviewDrafts?: boolean;
+}) {
+  if (input.prepareReviewDrafts) return syncDelegatedMailboxInternal(input);
+  const result = await runModelFreeOperation(
+    {
+      purpose: "mailbox_sync",
+      organisationId: input.organisationId,
+      reference: `mailbox-sync:${input.userId}:${Date.now()}`,
+    },
+    () => syncDelegatedMailboxInternal(input)
+  );
+  return {
+    ...result.value,
+    modelUsed: result.evidence.modelUsed,
+    providerCallCount: result.evidence.providerCallCount,
+  };
 }
 
 export async function disconnectDelegatedMailbox(input: {

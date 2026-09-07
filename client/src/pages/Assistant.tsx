@@ -38,6 +38,8 @@ const suggestions = [
   "What needs my attention?",
   "Draft a follow-up",
 ];
+const emptyState =
+  "I already have the sales workspace context. AmarktAI knows your connected sales workspace. Ask about customers, messages, calls, follow-ups or what needs attention.";
 
 async function askAssistant(input: {
   messages: Array<{ role: "user" | "assistant"; content: string }>;
@@ -178,7 +180,7 @@ export default function Assistant() {
     <DashboardLayout>
       <div
         data-assistant-workspace
-        className="mx-auto flex h-[calc(100dvh-104px)] min-h-[620px] max-w-[1440px] flex-col overflow-hidden text-[#24344A]"
+        className="mx-auto flex h-[calc(100dvh-90px)] min-h-[480px] max-w-[1180px] flex-col overflow-hidden text-[#24344A] sm:min-h-[560px]"
       >
         <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[#D7E0EA] pb-4">
           <div className="flex min-w-0 items-center gap-3">
@@ -218,7 +220,10 @@ export default function Assistant() {
         </header>
 
         <div className="mt-4 grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-          <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[#D7E0EA] bg-white">
+          <section
+            data-assistant-conversation
+            className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[#D7E0EA] bg-white"
+          >
             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-7 sm:py-6">
               <div className="mx-auto flex min-h-full max-w-3xl flex-col">
                 {!messages.length ? (
@@ -226,7 +231,7 @@ export default function Assistant() {
                     <AssistantMark compact />
                     <div className="min-w-0 flex-1">
                       <div className="rounded-2xl rounded-tl-md bg-[#F4F7FB] px-4 py-3 text-[15px] leading-7 text-[#33445B]">
-                        I already have the sales workspace context. Ask me who to call, what happened with a customer, what needs attention, or what follow-up should be prepared next.
+                        {emptyState}
                       </div>
                       <div className="mt-4 flex flex-wrap gap-2">
                         {suggestions.map(prompt => (
@@ -318,7 +323,10 @@ export default function Assistant() {
               </div>
             </div>
 
-            <div className="shrink-0 border-t border-[#E5EAF0] bg-[#FAFCFF] p-3 sm:p-4">
+            <div
+              data-assistant-composer
+              className="shrink-0 border-t border-[#E5EAF0] bg-[#FAFCFF] p-3 sm:p-4"
+            >
               <div className="mx-auto max-w-3xl rounded-2xl border border-[#CBD7E6] bg-white p-2 focus-within:border-[#8AACE6] focus-within:ring-2 focus-within:ring-[#E5EDFB]">
                 <Textarea
                   aria-label="Message AmarktAI"
@@ -380,19 +388,28 @@ export default function Assistant() {
                   <ContextFact
                     icon={BriefcaseBusiness}
                     label="Opportunity"
-                    value={selectedCustomer.openOpportunity?.name || "No open opportunity"}
+                    value={
+                      selectedCustomer.openOpportunity?.name ||
+                      "No open opportunity"
+                    }
                   />
                   <ContextFact
                     icon={CalendarClock}
                     label="Next step"
-                    value={selectedCustomer.nextAction?.title || "No next action recorded"}
+                    value={
+                      selectedCustomer.nextAction?.title ||
+                      "No next action recorded"
+                    }
                   />
                   <div className="grid gap-2">
                     <Button
                       variant="outline"
-                      onClick={() => navigate(`/calls?contactId=${selectedCustomer.id}`)}
+                      onClick={() =>
+                        navigate(`/calls?contactId=${selectedCustomer.id}`)
+                      }
                     >
-                      <Headphones className="mr-2 h-4 w-4" /> Open call companion
+                      <Headphones className="mr-2 h-4 w-4" /> Open call
+                      companion
                     </Button>
                     <Button
                       variant="ghost"
@@ -404,7 +421,9 @@ export default function Assistant() {
                 </div>
               ) : (
                 <div className="mt-4 rounded-2xl bg-[#F6F9FD] p-4 text-sm leading-6 text-[#66758A]">
-                  Choose a customer above when you want AmarktAI to keep the conversation tightly focused on one relationship. Leave it on All customers for prioritisation and day planning.
+                  Choose a customer above when you want AmarktAI to keep the
+                  conversation tightly focused on one relationship. Leave it on
+                  All customers for prioritisation and day planning.
                 </div>
               )}
             </div>

@@ -2,6 +2,11 @@ type FetchResponse = Pick<Response, "ok" | "json">;
 
 type RefreshSalesDayOptions = {
   fetcher: (input: string, init?: RequestInit) => Promise<FetchResponse>;
+  syncCrm: () => Promise<{
+    checked?: number;
+    failed?: number;
+    lastSuccessfulAt?: string | null;
+  }>;
   invalidateToday: () => Promise<unknown>;
   invalidateCustomers: () => Promise<unknown>;
   refetchToday: () => Promise<{ isError: boolean; error?: unknown }>;
@@ -9,11 +14,26 @@ type RefreshSalesDayOptions = {
 
 export async function refreshSalesDay({
   fetcher,
+  syncCrm,
   invalidateToday,
   invalidateCustomers,
   refetchToday,
-}: RefreshSalesDayOptions): Promise<{ mailboxWarning: boolean }> {
+}: RefreshSalesDayOptions): Promise<{
+  mailboxWarning: boolean;
+  crmWarning: boolean;
+  lastSuccessfulAt: string | null;
+}> {
   let mailboxWarning = false;
+  let crmWarning = false;
+  let lastSuccessfulAt: string | null = null;
+
+  try {
+    const crm = await syncCrm();
+    crmWarning = Boolean(crm.failed) || crm.checked === 0;
+    lastSuccessfulAt = crm.lastSuccessfulAt || null;
+  } catch {
+    crmWarning = true;
+  }
 
   try {
     const statusResponse = await fetcher("/api/mailbox", {
@@ -43,5 +63,5 @@ export async function refreshSalesDay({
     throw result.error ?? new Error("Sales day refresh failed");
   }
 
-  return { mailboxWarning };
+  return { mailboxWarning, crmWarning, lastSuccessfulAt };
 }

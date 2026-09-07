@@ -51,6 +51,10 @@ import {
   releaseBrowserControl,
 } from "./browserControlArbitration";
 import { connectManagedCrmBrowser } from "./managedCrmBrowserSessionManager";
+import {
+  currentModelSpendBoundary,
+  runModelFreeOperation,
+} from "../aiExecutionBoundary";
 
 const DEFAULT_GENIE_OPERATION_MAP: Record<string, string> = {
   searchContacts: "search_candidate",
@@ -486,7 +490,7 @@ export async function inspectBrowserCrmNavigation(input: {
     }
   );
 }
-async function runOperation(input: {
+type RunOperationInput = {
   connection: AdapterConnection;
   secret: ConnectionSecretPayload;
   provider: string;
@@ -495,7 +499,26 @@ async function runOperation(input: {
   correlationId: string;
   allowTestReady?: boolean;
   publishByUserId?: number;
-}) {
+};
+
+async function runOperation(input: RunOperationInput) {
+  const result = await runModelFreeOperation(
+    {
+      purpose: "crm_operation",
+      organisationId: input.connection.organisationId,
+      connectedSystemId: input.connection.id,
+      reference: input.correlationId,
+    },
+    () => runDeterministicOperation(input)
+  );
+  result.value.result.data.modelUsed = String(result.evidence.modelUsed);
+  result.value.result.data.providerCallCount = String(
+    result.evidence.providerCallCount
+  );
+  return result.value;
+}
+
+async function runDeterministicOperation(input: RunOperationInput) {
   const profile = await resolveBrowserProfile(
     input.connection,
     input.provider as Extract<CrmProvider, "genie" | "custom_browser">
@@ -655,6 +678,9 @@ async function runOperation(input: {
         publishByUserId: input.publishByUserId,
         evidence: {
           correlationId: input.correlationId,
+          modelUsed:
+            currentModelSpendBoundary()?.mode === "forbid" ? false : undefined,
+          providerCallCount: currentModelSpendBoundary()?.providerCallAttempts,
           completedAt: result.completedAt,
           targetVerified: learned.definition.mode === "write",
           postconditionVerified:
@@ -737,6 +763,8 @@ export async function testLearnedBrowserOperation(input: {
         correlationId: input.correlationId,
         completedAt: result.result.completedAt,
         controlledReplay: true,
+        modelUsed: result.result.data.modelUsed === "true",
+        providerCallCount: Number(result.result.data.providerCallCount || 0),
         targetVerified: learned.definition.mode === "write",
         postconditionVerified: learned.definition.mode === "write",
         screenshotPath: result.result.screenshotPath,

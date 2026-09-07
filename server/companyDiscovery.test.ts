@@ -24,6 +24,49 @@ function html(body: string, title = "Example Company") {
 }
 
 describe("professional public website discovery", () => {
+  it("reports factual crawl phases and counts while pages are processed", async () => {
+    globalThis.fetch = vi.fn().mockImplementation((input: URL | string) => {
+      const url = new URL(String(input));
+      if (url.pathname === "/robots.txt")
+        return Promise.resolve(new Response("User-agent: *"));
+      if (url.pathname === "/sitemap.xml")
+        return Promise.resolve(
+          new Response(
+            "<urlset><url><loc>https://example.co.za/about</loc></url></urlset>",
+            { headers: { "content-type": "application/xml" } }
+          )
+        );
+      return Promise.resolve(
+        html(
+          `<h1>${url.pathname === "/about" ? "About" : "Home"}</h1><p>Useful company information for customers.</p>`
+        )
+      );
+    });
+    const progress: Array<{
+      phase: string;
+      discoveredPages: number;
+      processedPages: number;
+    }> = [];
+    await discoverPublicWebsite("https://example.co.za", {
+      onProgress: value => progress.push(value),
+    });
+    expect(progress.map(item => item.phase)).toEqual(
+      expect.arrayContaining([
+        "discovering",
+        "fetching",
+        "extracting",
+        "normalising",
+      ])
+    );
+    expect(progress.at(-1)).toMatchObject({
+      phase: "normalising",
+      processedPages: 2,
+    });
+    expect(
+      progress.every(item => item.discoveredPages >= item.processedPages)
+    ).toBe(true);
+  });
+
   it("rejects local and private-network targets before a fetch is attempted", async () => {
     const fetchSpy = vi.fn();
     globalThis.fetch = fetchSpy;

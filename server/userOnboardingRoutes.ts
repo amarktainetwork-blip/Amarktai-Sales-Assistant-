@@ -1,10 +1,17 @@
 import type { Express, Response } from "express";
-import { and, eq } from "drizzle-orm";
-import { companyProfiles, externalUserMappings } from "../drizzle/schema";
+import { and, desc, eq } from "drizzle-orm";
+import {
+  companyProfiles,
+  connectorSyncJobs,
+  crmCommissioningJobs,
+  externalUserMappings,
+} from "../drizzle/schema";
 import { listConnectedSystemsForUser } from "./connectedSystems";
 import { getDb, getUserById, recordAudit } from "./db";
 import { requireLocalHttpContext } from "./httpAuth";
 import { getDelegatedMailboxStatus } from "./delegatedMailbox";
+import { browserOperationReadinessForSystem } from "./browserConnectors/learnedOperations";
+import { coreBrowserCommissioningReady } from "./crm/commissioningReadiness";
 import {
   canManageOrganisation,
   updateMemberOnboardingState,
@@ -120,6 +127,65 @@ async function confirmedCompanyProfile(organisationId: number) {
   return Boolean(row && row.discoveryStatus === "confirmed" && row.confirmedAt);
 }
 
+async function commissionedCrmReady(
+  organisationId: number,
+  systems: Awaited<ReturnType<typeof listConnectedSystemsForUser>>
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  for (const system of systems) {
+    const commissioning = (
+      await db
+        .select({
+          status: crmCommissioningJobs.status,
+          progress: crmCommissioningJobs.progress,
+        })
+        .from(crmCommissioningJobs)
+        .where(eq(crmCommissioningJobs.connectedSystemId, system.id))
+        .orderBy(desc(crmCommissioningJobs.id))
+        .limit(1)
+    )[0];
+    const sync = (
+      await db
+        .select({
+          status: connectorSyncJobs.status,
+          lastSucceededAt: connectorSyncJobs.lastSucceededAt,
+        })
+        .from(connectorSyncJobs)
+        .where(
+          and(
+            eq(connectorSyncJobs.connectedSystemId, system.id),
+            eq(connectorSyncJobs.resourceType, "crm_reconciliation")
+          )
+        )
+        .limit(1)
+    )[0];
+    const accounting = (
+      commissioning?.progress as Record<string, unknown> | null
+    )?.capabilityAccounting as { criticalGaps?: unknown[] } | undefined;
+    const operationallyReady =
+      commissioning?.status === "ready" &&
+      (accounting?.criticalGaps?.length || 0) === 0 &&
+      sync?.status === "ready" &&
+      Boolean(sync.lastSucceededAt);
+    if (!operationallyReady) continue;
+    const browser = ["browser", "sidecar"].includes(system.connectionMethod);
+    if (!browser && ["ready", "limited_permissions"].includes(system.status))
+      return true;
+    if (!browser || !["ready", "limited_permissions"].includes(system.status))
+      continue;
+    const matrix = await browserOperationReadinessForSystem({
+      organisationId,
+      connectedSystemId: system.id,
+    });
+    const statuses = new Map(
+      matrix.operations.map(operation => [operation.key, operation.status])
+    );
+    if (coreBrowserCommissioningReady(statuses)) return true;
+  }
+  return false;
+}
+
 async function snapshotWithMembership(input: {
   userId: number;
   membership: Awaited<ReturnType<typeof requireLocalHttpContext>>["membership"];
@@ -159,8 +225,12 @@ async function snapshotWithMembership(input: {
       "authentication_expired",
     ].includes(system.status)
   );
+  const crmReady = await commissionedCrmReady(
+    input.membership.organisationId,
+    systems
+  );
   const effectiveCompanyComplete =
-    storedCompany.complete || (companyKnowledgeReady && crmConnected);
+    storedCompany.complete && companyKnowledgeReady && crmReady;
   const mailbox = await getDelegatedMailboxStatus({
     userId: input.userId,
     organisationId: input.membership.organisationId,
@@ -186,6 +256,7 @@ async function snapshotWithMembership(input: {
             : null,
       knowledgeReady: companyKnowledgeReady,
       crmConnected,
+      crmReady,
     },
     personalCrm,
     identity: await identityState({

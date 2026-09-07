@@ -6,6 +6,7 @@ import {
   normalizeCrmWheelDelta,
 } from "@/lib/crmViewerInput";
 import { friendlyError } from "@/lib/friendlyError";
+import type { CrmViewerPhase } from "@/lib/crmViewerLifecycle";
 import { trpc } from "@/lib/trpc";
 import {
   ArrowLeft,
@@ -185,7 +186,7 @@ export default function CrmWorkspace() {
       .then(async () => {
         await utils.organisation.current.invalidate();
         toast.success("Setup complete. Your Assistant is ready.");
-        navigate("/assistant");
+        navigate("/today");
       })
       .catch(error => {
         completionAttemptedRef.current = false;
@@ -271,17 +272,21 @@ function LiveWorkspace({
     null
   );
   const [status, setStatus] = useState("Opening your CRM…");
+  const [viewerPhase, setViewerPhase] = useState<CrmViewerPhase>("starting");
   const [currentUrl, setCurrentUrl] = useState("");
   const [authenticationState, setAuthenticationState] = useState("STARTING");
   const [assistantPrompt, setAssistantPrompt] = useState("");
   const [assistantResult, setAssistantResult] = useState<string | null>(null);
-  const [assistantWorkflowRunId, setAssistantWorkflowRunId] = useState<number | null>(null);
+  const [assistantWorkflowRunId, setAssistantWorkflowRunId] = useState<
+    number | null
+  >(null);
   const [activity, setActivity] = useState<string[]>([
     "Secure CRM workspace opened",
   ]);
 
   const viewerRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<WebSocket | null>(null);
+  const frameReceivedRef = useRef(false);
   const controlRef = useRef(control);
   const pendingInputsRef = useRef<BrowserInputEvent[]>([]);
   const pendingNavigationRef = useRef<BrowserNavigationAction | null>(null);
@@ -310,6 +315,8 @@ function LiveWorkspace({
       setSession(null);
       setImage("");
       setFrameMetadata(null);
+      frameReceivedRef.current = false;
+      setViewerPhase("starting");
       setStatus("Opening your CRM…");
       const next = await open.mutateAsync({
         connectedSystemId,
@@ -321,6 +328,7 @@ function LiveWorkspace({
       setCurrentUrl(next.url);
     } catch (error) {
       setStatus(friendlyError(error, "The CRM workspace could not be opened."));
+      setViewerPhase("failed");
     }
   };
 
@@ -389,6 +397,7 @@ function LiveWorkspace({
     if (!session) return;
     const socket = new WebSocket(streamUrl(session));
     socketRef.current = socket;
+    let frameTimeout: number | undefined;
 
     const sendSize = () => {
       const rect = viewerRef.current?.getBoundingClientRect();
@@ -408,7 +417,7 @@ function LiveWorkspace({
     };
 
     socket.onopen = () => {
-      setStatus("CRM ready for sign-in");
+      setStatus("Starting secure CRM browser…");
       sendSize();
     };
 
@@ -416,8 +425,16 @@ function LiveWorkspace({
       const message = JSON.parse(String(event.data)) as StreamMessage;
 
       if (message.type === "frame") {
+        frameReceivedRef.current = true;
+        if (frameTimeout) window.clearTimeout(frameTimeout);
         setImage(`data:image/jpeg;base64,${message.data}`);
         setFrameMetadata(message.metadata ?? null);
+        setViewerPhase(current =>
+          current === "authenticated" ? current : "interactive"
+        );
+        setStatus(current =>
+          current === "Connected" ? current : "CRM sign-in is interactive"
+        );
       } else if (message.type === "control") {
         setControl(message.control);
         controlRef.current = message.control;
@@ -456,12 +473,26 @@ function LiveWorkspace({
         setControl(message.control);
         controlRef.current = message.control;
         setCurrentUrl(message.url);
+        if (!frameReceivedRef.current) {
+          setStatus("Loading CRM sign-in…");
+          frameTimeout = window.setTimeout(() => {
+            if (frameReceivedRef.current) return;
+            setViewerPhase("failed");
+            setStatus(
+              "The CRM sign-in page did not render. Reconnect the browser to try again."
+            );
+          }, 12_000);
+        }
       } else if (message.type === "navigation") {
         setCurrentUrl(message.url);
       } else if (message.type === "session") {
         setCurrentUrl(message.currentUrl);
         setAuthenticationState(message.authenticationState);
         onAuthenticationState(message.authenticationState);
+        if (message.authenticationState === "AUTHENTICATED")
+          setViewerPhase("authenticated");
+        else if (message.authenticationState === "ERROR")
+          setViewerPhase("failed");
         setStatus(
           message.errorMessage ||
             (message.authenticationState === "AUTHENTICATED"
@@ -485,6 +516,7 @@ function LiveWorkspace({
                 ].slice(0, 8)
           );
       } else if (message.type === "disconnected") {
+        setViewerPhase("failed");
         setStatus("The CRM browser connection paused. Reopen it to continue.");
       } else if (message.type === "error") {
         const friendly = friendlyError(
@@ -492,11 +524,13 @@ function LiveWorkspace({
           "That CRM action could not be completed."
         );
         setStatus(friendly);
+        setViewerPhase("failed");
         toast.error(friendly);
       }
     };
 
     socket.onclose = event => {
+      setViewerPhase("failed");
       setStatus(
         event.code === 4002
           ? "This CRM was disconnected. Reconnect it from Connections to continue."
@@ -516,6 +550,7 @@ function LiveWorkspace({
 
     return () => {
       window.clearInterval(heartbeat);
+      if (frameTimeout) window.clearTimeout(frameTimeout);
       observer.disconnect();
       socket.close();
     };
@@ -860,6 +895,22 @@ function LiveWorkspace({
                 draggable={false}
                 className="pointer-events-none h-full w-full select-none object-contain"
               />
+            ) : viewerPhase === "failed" ? (
+              <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center text-[#526277]">
+                <p className="max-w-lg text-sm font-semibold leading-6">
+                  {status}
+                </p>
+                <Button
+                  variant="outline"
+                  onClick={() => void openViewer(true)}
+                  disabled={open.isPending}
+                >
+                  <RefreshCw
+                    className={`mr-2 h-4 w-4 ${open.isPending ? "animate-spin" : ""}`}
+                  />
+                  Reconnect browser
+                </Button>
+              </div>
             ) : (
               <div className="flex h-full flex-col items-center justify-center gap-3 text-[#6C798B]">
                 <Loader2 className="h-7 w-7 animate-spin text-[#3F70D8]" />
@@ -867,7 +918,7 @@ function LiveWorkspace({
               </div>
             )}
 
-            <div className="pointer-events-none absolute bottom-3 left-3 flex items-center gap-2 rounded-full border border-white/60 bg-[#26354A]/90 px-3 py-1.5 text-[11px] font-bold text-white shadow-md backdrop-blur">
+            <div className="pointer-events-none absolute bottom-3 left-3 flex items-center gap-2 rounded-full border border-[#BFD3F4] bg-[#EDF4FF]/95 px-3 py-1.5 text-[11px] font-bold text-[#244E91] shadow-md backdrop-blur">
               <MousePointer2 className="h-3.5 w-3.5" />
               {control === "HUMAN_CONTROL"
                 ? "You control the CRM"

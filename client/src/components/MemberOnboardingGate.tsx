@@ -13,6 +13,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { nextRequiredOnboardingPath } from "@/lib/onboardingNextStep";
 
 type Persona =
   | "individual"
@@ -233,7 +234,8 @@ export default function MemberOnboardingGate() {
       !companySetupAllowed
     )
       return true;
-    if (snapshot.company.complete && (needsIdentity || needsMailbox)) return true;
+    if (snapshot.company.complete && (needsIdentity || needsMailbox))
+      return true;
     return false;
   }, [
     loading,
@@ -302,7 +304,8 @@ export default function MemberOnboardingGate() {
         method: "POST",
         body: "{}",
       });
-      window.location.assign("/dashboard");
+      const next = await api<Snapshot>("/api/user-onboarding");
+      window.location.assign(nextRequiredOnboardingPath(next));
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -347,7 +350,10 @@ export default function MemberOnboardingGate() {
             <p className="amk-auth__panel-eyebrow">SETUP NEEDS ATTENTION</p>
             <h2>Your workspace could not be prepared.</h2>
             <p className="amk-auth__muted">{error}</p>
-            <Button className={`mt-6 ${blueButton}`} onClick={() => void refresh()}>
+            <Button
+              className={`mt-6 ${blueButton}`}
+              onClick={() => void refresh()}
+            >
               Retry
             </Button>
           </div>
@@ -379,10 +385,10 @@ export default function MemberOnboardingGate() {
               <p className="amk-auth__panel-eyebrow">PERSONAL SETUP COMPLETE</p>
               <h2>Now set up the company once.</h2>
               <p className="amk-auth__muted">
-                Add the company details, let AmarktAI learn the authorised public
-                website, approve the useful knowledge and connect the CRM. Future
-                team members inherit that company setup while keeping their own
-                personal workspace.
+                Add the company details, let AmarktAI learn the authorised
+                public website, approve the useful knowledge and connect the
+                CRM. Future team members inherit that company setup while
+                keeping their own personal workspace.
               </p>
               <Button
                 className={`mt-7 ${blueButton}`}

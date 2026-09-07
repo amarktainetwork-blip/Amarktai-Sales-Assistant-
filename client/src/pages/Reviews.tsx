@@ -78,8 +78,7 @@ function filterMatches(filter: ReviewFilter, lifecycle: ReviewLifecycle) {
 function lifecycleTone(lifecycle: ReviewLifecycle) {
   if (lifecycle === "completed")
     return "border-emerald-200 bg-emerald-50 text-emerald-800";
-  if (lifecycle === "failed")
-    return "border-red-200 bg-red-50 text-red-800";
+  if (lifecycle === "failed") return "border-red-200 bg-red-50 text-red-800";
   if (lifecycle === "blocked")
     return "border-amber-200 bg-amber-50 text-amber-900";
   if (lifecycle === "skipped")
@@ -143,26 +142,61 @@ function EvidenceDetails({ item }: { item: ReviewItem }) {
       {open ? (
         <div className="mt-3 space-y-4 text-xs leading-5 text-[#5D6D80]">
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            <Evidence label="External customer ID" value={text(payload.contactExternalId) || text(context.contactExternalId)} />
-            <Evidence label="Execution route" value={text(route.provider) || text(route.reason)} />
+            <Evidence
+              label="External customer ID"
+              value={
+                text(payload.contactExternalId) ||
+                text(context.contactExternalId)
+              }
+            />
+            <Evidence
+              label="Execution route"
+              value={text(route.provider) || text(route.reason)}
+            />
             <Evidence label="Execution owner" value={executionOwner} />
             <Evidence label="Content/template source" value={source} />
-            <Evidence label="Target verified" value={evidenceValue(verification.targetVerified)} />
-            <Evidence label="Recipient verified" value={evidenceValue(verification.recipientVerified)} />
-            <Evidence label="Suppression verified" value={evidenceValue(compliance.suppressionVerified)} />
-            <Evidence label="Duplicate state" value={evidenceValue(duplicate.state) || text(duplicate.rule)} />
+            <Evidence
+              label="Target verified"
+              value={evidenceValue(verification.targetVerified)}
+            />
+            <Evidence
+              label="Recipient verified"
+              value={evidenceValue(verification.recipientVerified)}
+            />
+            <Evidence
+              label="Suppression verified"
+              value={evidenceValue(compliance.suppressionVerified)}
+            />
+            <Evidence
+              label="Duplicate state"
+              value={evidenceValue(duplicate.state) || text(duplicate.rule)}
+            />
             <Evidence label="Result provider" value={text(result.provider)} />
-            <Evidence label="Correlation ID" value={text(result.correlationId)} />
-            <Evidence label="Readback verified" value={evidenceValue(result.guardedReadbackVerified)} />
-            <Evidence label="Duplicate prevented" value={evidenceValue(result.duplicatePrevented)} />
-            <Evidence label="Screenshot evidence" value={text(resultEvidence.availability)} />
+            <Evidence
+              label="Correlation ID"
+              value={text(result.correlationId)}
+            />
+            <Evidence
+              label="Readback verified"
+              value={evidenceValue(result.guardedReadbackVerified)}
+            />
+            <Evidence
+              label="Duplicate prevented"
+              value={evidenceValue(result.duplicatePrevented)}
+            />
+            <Evidence
+              label="Screenshot evidence"
+              value={text(resultEvidence.availability)}
+            />
             <Evidence label="Reviewed" value={displayTime(item.reviewedAt)} />
             <Evidence label="Completed" value={displayTime(item.executedAt)} />
           </div>
 
           {requiredPostconditions.length ? (
             <div className="rounded-xl border border-[#DCE4EE] bg-[#F8FAFD] p-3">
-              <p className="font-bold text-[#40536B]">Required postconditions</p>
+              <p className="font-bold text-[#40536B]">
+                Required postconditions
+              </p>
               <ul className="mt-1 list-disc space-y-1 pl-4">
                 {requiredPostconditions.map((value, index) => (
                   <li key={`${item.id}-post-${index}`}>{String(value)}</li>
@@ -179,7 +213,9 @@ function EvidenceDetails({ item }: { item: ReviewItem }) {
           ) : null}
 
           <div className="rounded-xl border border-[#DCE4EE] bg-[#F8FAFD] p-3">
-            <p className="font-bold text-[#40536B]">Decision and execution history</p>
+            <p className="font-bold text-[#40536B]">
+              Decision and execution history
+            </p>
             {audit.isLoading ? (
               <p className="mt-2">
                 <Loader2 className="mr-1.5 inline h-3.5 w-3.5 animate-spin" />
@@ -187,19 +223,25 @@ function EvidenceDetails({ item }: { item: ReviewItem }) {
               </p>
             ) : audit.isError ? (
               <p className="mt-2 text-amber-800">
-                Audit evidence could not be loaded. The proposal itself has not been changed.
+                Audit evidence could not be loaded. The proposal itself has not
+                been changed.
               </p>
             ) : audit.data?.length ? (
               <ol className="mt-2 space-y-2">
                 {audit.data.map(entry => (
-                  <li key={entry.id} className="border-l-2 border-[#C9D7E8] pl-3">
+                  <li
+                    key={entry.id}
+                    className="border-l-2 border-[#C9D7E8] pl-3"
+                  >
                     <p className="font-bold text-[#40536B]">{entry.summary}</p>
                     <p>{displayTime(entry.createdAt) || entry.eventType}</p>
                   </li>
                 ))}
               </ol>
             ) : (
-              <p className="mt-2">No additional audit events are recorded yet.</p>
+              <p className="mt-2">
+                No additional audit events are recorded yet.
+              </p>
             )}
           </div>
         </div>
@@ -249,7 +291,9 @@ export default function Reviews() {
   const execute = trpc.assistant.executeApprovedCrmAction.useMutation({
     onSuccess: async () => {
       await refresh();
-      toast.success("The approved action completed and its result was recorded.");
+      toast.success(
+        "The approved action completed and its result was recorded."
+      );
     },
     onError: async cause => {
       await actions.refetch();
@@ -342,7 +386,10 @@ export default function Reviews() {
                 One place to approve, apply and prove every action.
               </h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-[#66758A]">
-                Pending work stays review-first. Approved work shows when it is executing. Completed, skipped, blocked and failed actions remain visible with the customer target, safeguards, readback and audit evidence that produced the final result.
+                Pending work stays review-first. Approved work shows when it is
+                executing. Completed, skipped, blocked and failed actions remain
+                visible with the customer target, safeguards, readback and audit
+                evidence that produced the final result.
               </p>
             </div>
             <Button variant="outline" onClick={() => navigate("/assistant")}>
@@ -394,7 +441,8 @@ export default function Reviews() {
               Review could not be loaded.
             </h2>
             <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[#66758A]">
-              Nothing has been changed. Restore the workspace connection and reload Review.
+              Nothing has been changed. Restore the workspace connection and
+              reload Review.
             </p>
             <Button className="mt-5" onClick={() => void actions.refetch()}>
               Try again
@@ -418,6 +466,12 @@ export default function Reviews() {
               const subject = text(payload.subject);
               const sender = text(payload.senderIdentity);
               const why = text(payload.why);
+              const purpose =
+                text(payload.communicationIntent) === "reply"
+                  ? "Reply to the current customer thread"
+                  : mailboxDraft
+                    ? "New customer email"
+                    : text(payload.actionPurpose);
               const resultDetail = reviewResultDetail(item);
               const statusCopy = REVIEW_LIFECYCLE_COPY[lifecycle];
 
@@ -436,7 +490,8 @@ export default function Reviews() {
                             <Loader2 className="h-3 w-3 animate-spin" />
                           ) : lifecycle === "completed" ? (
                             <CheckCircle2 className="h-3 w-3" />
-                          ) : lifecycle === "failed" || lifecycle === "blocked" ? (
+                          ) : lifecycle === "failed" ||
+                            lifecycle === "blocked" ? (
                             <ShieldAlert className="h-3 w-3" />
                           ) : lifecycle === "approved" ? (
                             <Check className="h-3 w-3" />
@@ -456,33 +511,51 @@ export default function Reviews() {
                         {item.title}
                       </h2>
                       <p className="mt-2 text-sm leading-6 text-[#66758A]">
-                        Customer: <span className="font-bold text-[#40536B]">{item.targetLabel}</span>
+                        Customer:{" "}
+                        <span className="font-bold text-[#40536B]">
+                          {item.targetLabel}
+                        </span>
                       </p>
                       <p className="mt-1 text-xs leading-5 text-[#8190A3]">
                         {resultDetail || statusCopy.description}
                       </p>
 
-                      {destination || subject || sender ? (
+                      {destination || subject || sender || purpose ? (
                         <div className="mt-4 grid gap-3 rounded-2xl border border-[#DCE4EE] bg-[#F7F9FC] p-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
                           {destination ? (
                             <p>
-                              <span className="font-bold text-[#33445B]">Recipient</span>
+                              <span className="font-bold text-[#33445B]">
+                                Recipient
+                              </span>
                               <br />
                               {destination}
                             </p>
                           ) : null}
                           {sender ? (
                             <p>
-                              <span className="font-bold text-[#33445B]">Sender</span>
+                              <span className="font-bold text-[#33445B]">
+                                Sender
+                              </span>
                               <br />
                               {sender}
                             </p>
                           ) : null}
                           {subject ? (
                             <p>
-                              <span className="font-bold text-[#33445B]">Subject</span>
+                              <span className="font-bold text-[#33445B]">
+                                Subject
+                              </span>
                               <br />
                               {subject}
+                            </p>
+                          ) : null}
+                          {purpose ? (
+                            <p>
+                              <span className="font-bold text-[#33445B]">
+                                Purpose
+                              </span>
+                              <br />
+                              {purpose}
                             </p>
                           ) : null}
                         </div>
@@ -490,9 +563,15 @@ export default function Reviews() {
 
                       {mailboxDraft && lifecycle === "pending" ? (
                         <div className="mt-4 rounded-2xl border border-[#DCE4EE] bg-[#F7F9FC] p-4">
+                          <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
+                            Check any price, availability, finance or guarantee
+                            statement against approved evidence before sending.
+                          </p>
                           {why ? (
                             <div className="mb-3 rounded-xl border border-[#DCE4EE] bg-white p-3 text-xs leading-5 text-[#66758A]">
-                              <p className="font-bold text-[#40536B]">Why a reply is needed</p>
+                              <p className="font-bold text-[#40536B]">
+                                Why a reply is needed
+                              </p>
                               <p className="mt-1">{why}</p>
                             </div>
                           ) : null}
@@ -546,9 +625,10 @@ export default function Reviews() {
                             }
                           >
                             <Mail className="mr-2 h-4 w-4" />
-                            Save edit
+                            Save edits
                           </Button>
                           <Button
+                            aria-label="Send email"
                             disabled={sendEmail.isPending || !draftBody.trim()}
                             onClick={() =>
                               sendEmail.mutate({
@@ -562,7 +642,7 @@ export default function Reviews() {
                             ) : (
                               <Send className="mr-2 h-4 w-4" />
                             )}
-                            Send email
+                            Approve &amp; send
                           </Button>
                         </>
                       ) : lifecycle === "pending" ? (
@@ -600,7 +680,9 @@ export default function Reviews() {
                       ) : lifecycle === "approved" ? (
                         <Button
                           disabled={execute.isPending}
-                          onClick={() => execute.mutate({ proposalId: item.id })}
+                          onClick={() =>
+                            execute.mutate({ proposalId: item.id })
+                          }
                         >
                           {execute.isPending ? (
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -625,10 +707,15 @@ export default function Reviews() {
           <section className="rounded-3xl border border-dashed border-[#C9D4E2] bg-white p-10 text-center shadow-sm">
             <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-600" />
             <h2 className="mt-4 font-display text-2xl font-bold">
-              No {filters.find(option => option.key === filter)?.label.toLowerCase()} actions.
+              No{" "}
+              {filters
+                .find(option => option.key === filter)
+                ?.label.toLowerCase()}{" "}
+              actions.
             </h2>
             <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[#66758A]">
-              Change the Review filter to inspect action history, or return to the Assistant to prepare new work.
+              Change the Review filter to inspect action history, or return to
+              the Assistant to prepare new work.
             </p>
             <Button className="mt-5" onClick={() => navigate("/assistant")}>
               Open Assistant

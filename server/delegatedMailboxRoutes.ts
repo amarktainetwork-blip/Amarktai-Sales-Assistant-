@@ -68,7 +68,7 @@ export function registerDelegatedMailboxRoutes(app: Express) {
         state,
         code,
       });
-      return res.redirect(302, "/settings?mailbox=connected#mailbox");
+      return res.redirect(302, "/today?mailbox=connected");
     } catch (error) {
       const message = encodeURIComponent(customerError(error));
       return res.redirect(302, `/settings?mailbox=error&message=${message}`);

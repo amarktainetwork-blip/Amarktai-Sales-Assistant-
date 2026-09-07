@@ -194,7 +194,7 @@ function CompanyKnowledgeReview() {
           <div className="space-y-5">
             <section className="rounded-3xl border border-[#DCE4EE] bg-white p-5 shadow-sm sm:p-6">
               <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#6B7A90]">
-                About your business
+                A · Business at a glance · About your business
               </p>
               <p className="mt-3 max-w-4xl text-base leading-7 text-[#40516A]">
                 {companyFacts[0]?.content ||
@@ -204,7 +204,7 @@ function CompanyKnowledgeReview() {
 
             <section className="rounded-3xl border border-[#BFD1EE] bg-[#F4F8FF] p-5 shadow-sm sm:p-6">
               <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#2F63C7]">
-                Primary sales focus
+                B · Primary sales focus
               </p>
               <h2 className="mt-1 text-xl font-bold">
                 Choose up to three priorities
@@ -242,13 +242,13 @@ function CompanyKnowledgeReview() {
 
             <section className="rounded-3xl border border-[#DCE4EE] bg-white p-5 shadow-sm sm:p-6">
               <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#6B7A90]">
-                What you sell
+                C · Programmes, products &amp; services · What you sell
               </p>
-              <div className="mt-4 grid gap-3 md:grid-cols-2">
-                {offerings.slice(0, 6).map(item => (
+              <div className="mt-4 overflow-hidden rounded-2xl border border-[#E2E8F0]">
+                {offerings.slice(0, 8).map(item => (
                   <article
                     key={item.index}
-                    className="rounded-2xl border border-[#E2E8F0] bg-[#FAFCFF] p-4"
+                    className="grid gap-1 border-b border-[#E2E8F0] bg-[#FAFCFF] p-4 last:border-b-0 md:grid-cols-[minmax(180px,.7fr)_minmax(0,1.3fr)] md:gap-5"
                   >
                     <h3 className="font-bold">
                       {corrections[item.index]?.title ?? item.title}
@@ -259,14 +259,14 @@ function CompanyKnowledgeReview() {
                   </article>
                 ))}
               </div>
-              {offerings.length > 6 ? (
+              {offerings.length > 8 ? (
                 <details className="mt-4 rounded-2xl border border-[#E2E8F0]">
                   <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-bold">
                     Other products &amp; services{" "}
                     <ChevronDown className="h-4 w-4" />
                   </summary>
                   <div className="grid gap-3 border-t border-[#E2E8F0] p-4 md:grid-cols-2">
-                    {offerings.slice(6).map(item => (
+                    {offerings.slice(8).map(item => (
                       <article key={item.index}>
                         <h3 className="font-bold">
                           {corrections[item.index]?.title ?? item.title}
@@ -283,7 +283,7 @@ function CompanyKnowledgeReview() {
 
             <div className="grid gap-5 md:grid-cols-2">
               <ReportSection
-                title="Who you sell to"
+                title="D · Customer fit / outcomes · Who you sell to"
                 items={offerings.filter(item =>
                   /best suited to:/i.test(item.content)
                 )}
@@ -291,13 +291,13 @@ function CompanyKnowledgeReview() {
                 empty="No clear target-customer description was found."
               />
               <ReportSection
-                title="Credentials & trust"
+                title="E · Credentials & trust"
                 items={credentials}
                 corrections={corrections}
                 empty="No public credentials were identified."
               />
               <ReportSection
-                title="Customer support & contact"
+                title="F · Support & contact · Customer support & contact"
                 items={contacts}
                 corrections={corrections}
                 empty="No clear public support or contact facts were identified."
@@ -307,7 +307,7 @@ function CompanyKnowledgeReview() {
                   <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-[.14em] text-amber-800">
-                      Important commercial information
+                      {"G · Protected commercial information · Important commercial information"}
                     </p>
                     <p className="mt-2 text-sm leading-6 text-amber-950">
                       {commercial.length
@@ -321,7 +321,7 @@ function CompanyKnowledgeReview() {
 
             <details className="rounded-3xl border border-[#DCE4EE] bg-white shadow-sm">
               <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4 text-sm font-bold">
-                Sources <ChevronDown className="h-4 w-4" />
+                H · Sources <ChevronDown className="h-4 w-4" />
               </summary>
               <div className="border-t border-[#E5EAF0] px-5 py-4 text-sm text-[#66758A]">
                 {discovery.sourceUrl ? (

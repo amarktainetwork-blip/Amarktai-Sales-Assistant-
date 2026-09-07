@@ -9,6 +9,13 @@ const response = (ok: boolean, body: unknown = {}) => ({
 function dependencies(fetcher: ReturnType<typeof vi.fn>) {
   return {
     fetcher,
+    syncCrm: vi
+      .fn()
+      .mockResolvedValue({
+        checked: 1,
+        failed: 0,
+        lastSuccessfulAt: "2026-08-31T08:00:00.000Z",
+      }),
     invalidateToday: vi.fn().mockResolvedValue(undefined),
     invalidateCustomers: vi.fn().mockResolvedValue(undefined),
     refetchToday: vi.fn().mockResolvedValue({ isError: false }),
@@ -25,6 +32,8 @@ describe("refreshSalesDay", () => {
 
     await expect(refreshSalesDay(deps)).resolves.toEqual({
       mailboxWarning: false,
+      crmWarning: false,
+      lastSuccessfulAt: "2026-08-31T08:00:00.000Z",
     });
     expect(fetcher).toHaveBeenNthCalledWith(1, "/api/mailbox", {
       credentials: "include",
@@ -49,6 +58,8 @@ describe("refreshSalesDay", () => {
 
     await expect(refreshSalesDay(deps)).resolves.toEqual({
       mailboxWarning: true,
+      crmWarning: false,
+      lastSuccessfulAt: "2026-08-31T08:00:00.000Z",
     });
     expect(deps.refetchToday).toHaveBeenCalledOnce();
   });

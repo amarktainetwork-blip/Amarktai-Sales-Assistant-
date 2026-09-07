@@ -4,6 +4,7 @@ import { startCompanyKnowledgeWorker } from "../companyKnowledgeJobs";
 import { startAutomaticCommissioningWorker } from "../crm/automaticCommissioning";
 import { startPersonalWorkLearningWorker } from "../personalWorkLearning";
 import { syncReadyDelegatedMailboxes } from "../mailboxWorker";
+import { startConnectionScopedCrmSyncWorker } from "../crm/syncWorker";
 
 const intervalMs = Number(
   process.env.CRM_HEALTH_INTERVAL_MS || 12 * 60 * 60 * 1000
@@ -74,6 +75,7 @@ setInterval(() => void processMailboxes(), mailboxIntervalMs);
 startCompanyKnowledgeWorker();
 startAutomaticCommissioningWorker();
 startPersonalWorkLearningWorker();
+startConnectionScopedCrmSyncWorker();
 
 process.on("SIGTERM", () => process.exit(0));
 process.on("SIGINT", () => process.exit(0));

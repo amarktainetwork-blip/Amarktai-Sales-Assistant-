@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -67,6 +67,16 @@ describe("provider-neutral browser CRM row normalization", () => {
 });
 
 describe("browser profile", () => {
+  it("keeps repeated browser CRM reads, sync and writes behind the hard zero-model boundary", async () => {
+    const source = await readFile(
+      new URL("./browserCrmAdapter.ts", import.meta.url),
+      "utf8"
+    );
+    expect(source).toContain("runModelFreeOperation(");
+    expect(source).toContain('purpose: "crm_operation"');
+    expect(source).not.toContain("runGenxAgent");
+  });
+
   it("uses connectedSystem.baseUrl as a provider hint without credentials", async () => {
     const profile = await resolveBrowserProfile(
       {
