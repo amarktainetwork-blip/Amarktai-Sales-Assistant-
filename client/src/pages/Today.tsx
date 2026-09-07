@@ -1,6 +1,7 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { refreshSalesDay } from "@/lib/refreshSalesDay";
 import { trpc } from "@/lib/trpc";
 import {
   AlarmClock,
@@ -18,7 +19,7 @@ import {
   Sparkles,
   UserRound,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 
@@ -57,6 +58,7 @@ export default function Today() {
   const [reminder, setReminder] = useState("");
   const [selected, setSelected] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const refreshInFlight = useRef(false);
 
   const saveReminder = trpc.memory.command.useMutation({
     onSuccess: () => {
@@ -121,30 +123,16 @@ export default function Today() {
   }, [organisationId]);
 
   async function refreshDay() {
-    if (refreshing || !organisationId) return;
+    if (refreshInFlight.current || !organisationId) return;
+    refreshInFlight.current = true;
     setRefreshing(true);
-    let mailboxWarning = false;
     try {
-      const statusResponse = await fetch("/api/mailbox", {
-        credentials: "include",
+      const { mailboxWarning } = await refreshSalesDay({
+        fetcher: fetch,
+        invalidateToday: () => utils.sales.today.invalidate(),
+        invalidateCustomers: () => utils.sales.customers.invalidate(),
+        refetchToday: () => today.refetch(),
       });
-      if (statusResponse.ok) {
-        const status = (await statusResponse.json()) as { connected?: boolean };
-        if (status.connected) {
-          const syncResponse = await fetch("/api/mailbox/sync", {
-            method: "POST",
-            credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: "{}",
-          });
-          mailboxWarning = !syncResponse.ok;
-        }
-      }
-      await Promise.all([
-        utils.sales.today.invalidate(),
-        utils.sales.customers.invalidate(),
-      ]);
-      await today.refetch();
       if (mailboxWarning) {
         toast.warning(
           "Sales data refreshed. Your mailbox could not refresh just now, so recent replies may take a moment to appear."
@@ -153,12 +141,11 @@ export default function Today() {
         toast.success("Your sales day is up to date.");
       }
     } catch {
-      try {
-        await today.refetch();
-      } finally {
-        toast.error("Refresh could not finish. Your existing sales data is still safe.");
-      }
+      toast.error(
+        "Refresh could not finish. Your existing sales data is still safe."
+      );
     } finally {
+      refreshInFlight.current = false;
       setRefreshing(false);
     }
   }

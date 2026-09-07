@@ -6,12 +6,10 @@ const read = (file: string) =>
   readFileSync(path.resolve(process.cwd(), "client/src", file), "utf8");
 
 describe("final client-facing handover polish", () => {
-  it("loads the final handover stylesheet after the dashboard stylesheet", () => {
+  it("keeps final polish in the canonical public, dashboard and base stylesheets", () => {
     const app = read("App.tsx");
-    const dashboardIndex = app.indexOf('import "./dashboard-final.css";');
-    const handoverIndex = app.indexOf('import "./handover-final.css";');
-    expect(dashboardIndex).toBeGreaterThanOrEqual(0);
-    expect(handoverIndex).toBeGreaterThan(dashboardIndex);
+    expect(app).toContain('import "./dashboard-final.css";');
+    expect(app).not.toContain("handover-final.css");
   });
 
   it("keeps company setup in customer language", () => {
@@ -26,22 +24,25 @@ describe("final client-facing handover polish", () => {
 
   it("makes Home refresh the live mailbox-backed sales day", () => {
     const today = read("pages/Today.tsx");
+    const refresh = read("lib/refreshSalesDay.ts");
     expect(today).toContain("async function refreshDay()");
-    expect(today).toContain('fetch("/api/mailbox/sync"');
+    expect(today).toContain("refreshInFlight.current");
+    expect(today).toContain("refreshSalesDay({");
+    expect(refresh).toContain('fetcher("/api/mailbox/sync"');
     expect(today).toContain("utils.sales.today.invalidate()");
     expect(today).toContain("utils.sales.customers.invalidate()");
     expect(today).toContain('toast.success("Your sales day is up to date.")');
   });
 
   it("keeps AmarktAI as one conversation surface", () => {
-    const css = read("handover-final.css");
+    const css = read("dashboard-final.css");
     expect(css).toContain("[data-assistant-workspace]");
     expect(css).toContain('[data-assistant-workspace] > div[class*="grid"] > aside');
     expect(css).toMatch(/aside[\s\S]*display:\s*none\s*!important/);
   });
 
   it("moves dashboard copyright into the sidebar footer", () => {
-    const css = read("handover-final.css");
+    const css = read("dashboard-final.css");
     expect(css).toContain('body:has(.amarktai-dashboard-sidebar)::after');
     expect(css).toContain('body:has(.amarktai-dashboard-sidebar) [data-sidebar="footer"]::after');
     expect(css).toContain("Part of Amarktai Network");
@@ -49,9 +50,9 @@ describe("final client-facing handover polish", () => {
   });
 
   it("widens public pages and gives approved photography more presence", () => {
-    const css = read("handover-final.css");
+    const css = read("marketing/final-site.css");
     expect(css).toContain("width: min(1320px, calc(100% - 72px))");
-    expect(css).toContain(".amk-photo-frame--hero { height: 640px !important; }");
-    expect(css).toContain(".amk-photo-frame--page { height: 560px !important; }");
+    expect(css).toContain(".amk-photo-frame--hero { height: 640px; }");
+    expect(css).toContain(".amk-photo-frame--page { height: 560px; }");
   });
 });

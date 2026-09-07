@@ -381,7 +381,9 @@ export default function Onboarding() {
         window.location.assign(result.authorizationUrl);
         return;
       }
-      toast.success(`Open ${provider.label} and sign in to finish connecting it.`);
+      toast.success(
+        `Open ${provider.label} and sign in directly inside your private CRM workspace.`
+      );
       navigate(`/crm/${id}`);
     } catch (cause) {
       setError(
@@ -424,7 +426,7 @@ export default function Onboarding() {
       </SetupShell>
     );
 
-  const labels = ["Business", "Website", "CRM", "Finish"];
+  const labels = ["Business", "Learn", "CRM", "Ready"];
 
   return (
     <SetupShell wide>
@@ -518,7 +520,7 @@ export default function Onboarding() {
               <p className="mt-3 max-w-2xl text-sm leading-6 text-[#607086]">
                 Start with the essentials. If you add your website, AmarktAI can
                 read the public pages in the next step and show you what it found
-                before your team uses it.
+                before any information becomes trusted knowledge.
               </p>
               <div className="mt-6 grid gap-4 sm:grid-cols-2">
                 <Input
@@ -599,15 +601,15 @@ export default function Onboarding() {
       {step === 2 ? (
         <section className="mt-7">
           <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#35516F]">
-            STEP 2 · YOUR WEBSITE
+            STEP 2 · LEARN
           </p>
           <h3 className="mt-2 text-2xl font-bold tracking-[-.035em] text-[#203047]">
             Let AmarktAI learn your public website.
           </h3>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-[#607086]">
             AmarktAI will read the public pages you’ve authorised and turn them
-            into a clear business summary. You’ll review it before your team uses
-            it for sales conversations.
+            into a clear business summary. Nothing becomes trusted
+            company knowledge until you confirm it.
           </p>
 
           {learningRunning ? (
@@ -627,10 +629,11 @@ export default function Onboarding() {
           ) : learningNeedsAttention ? (
             <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5">
               <p className="font-bold text-amber-900">
-                AmarktAI paused before it finished reading the website.
+                Website learning paused before it finished.
               </p>
               <p className="mt-2 text-sm leading-6 text-amber-800">
-                Nothing new has been added. Continue from where it stopped.
+                Nothing new was trusted. Nothing was added. Continue from where
+                it stopped.
               </p>
               <Button
                 className="mt-4"
@@ -693,7 +696,7 @@ export default function Onboarding() {
                 <p className="font-bold">{option.label}</p>
                 <p className="mt-1 text-xs text-[#718096]">
                   {option.method === "browser"
-                    ? "Sign in securely with your CRM"
+                    ? "Secure CRM workspace"
                     : "Connect your account securely"}
                 </p>
               </button>
@@ -736,9 +739,9 @@ export default function Onboarding() {
             Sign in to your CRM and finish the connection.
           </h3>
           <p className="mt-4 max-w-2xl text-sm leading-6 text-[#607086]">
-            Open your CRM, sign in normally and let AmarktAI check that the
-            everyday sales flow works properly. We’ll make sure customers, tasks
-            and opportunities come through before we call the workspace ready.
+            Open the private CRM workspace and sign in directly with your CRM.
+            AmarktAI will then check that customers, tasks and opportunities come
+            through before the workspace is called ready.
           </p>
           <div className="mt-6 grid gap-3 sm:grid-cols-3">
             {[
