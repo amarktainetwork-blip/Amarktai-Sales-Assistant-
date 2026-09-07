@@ -5,6 +5,8 @@ import { listConnectedSystemsForUser } from "./connectedSystems";
 import { getDb, getUserById, recordAudit } from "./db";
 import { requireLocalHttpContext } from "./httpAuth";
 import { getDelegatedMailboxStatus } from "./delegatedMailbox";
+import { browserOperationReadinessForSystem } from "./browserConnectors/learnedOperations";
+import { coreBrowserCommissioningReady } from "./crm/commissioningReadiness";
 import {
   canManageOrganisation,
   updateMemberOnboardingState,
@@ -120,6 +122,28 @@ async function confirmedCompanyProfile(organisationId: number) {
   return Boolean(row && row.discoveryStatus === "confirmed" && row.confirmedAt);
 }
 
+async function commissionedCrmReady(
+  organisationId: number,
+  systems: Awaited<ReturnType<typeof listConnectedSystemsForUser>>
+) {
+  for (const system of systems) {
+    const browser = ["browser", "sidecar"].includes(system.connectionMethod);
+    if (!browser && ["ready", "limited_permissions"].includes(system.status))
+      return true;
+    if (!browser || !["ready", "limited_permissions"].includes(system.status))
+      continue;
+    const matrix = await browserOperationReadinessForSystem({
+      organisationId,
+      connectedSystemId: system.id,
+    });
+    const statuses = new Map(
+      matrix.operations.map(operation => [operation.key, operation.status])
+    );
+    if (coreBrowserCommissioningReady(statuses)) return true;
+  }
+  return false;
+}
+
 async function snapshotWithMembership(input: {
   userId: number;
   membership: Awaited<ReturnType<typeof requireLocalHttpContext>>["membership"];
@@ -159,8 +183,12 @@ async function snapshotWithMembership(input: {
       "authentication_expired",
     ].includes(system.status)
   );
+  const crmReady = await commissionedCrmReady(
+    input.membership.organisationId,
+    systems
+  );
   const effectiveCompanyComplete =
-    storedCompany.complete || (companyKnowledgeReady && crmConnected);
+    storedCompany.complete && companyKnowledgeReady && crmReady;
   const mailbox = await getDelegatedMailboxStatus({
     userId: input.userId,
     organisationId: input.membership.organisationId,
@@ -186,6 +214,7 @@ async function snapshotWithMembership(input: {
             : null,
       knowledgeReady: companyKnowledgeReady,
       crmConnected,
+      crmReady,
     },
     personalCrm,
     identity: await identityState({

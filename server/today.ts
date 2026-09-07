@@ -25,6 +25,16 @@ function ageDays(value?: Date | null, now = new Date()) {
     : null;
 }
 
+export function isCurrentActionableInbound(
+  message: { needsAction: boolean; receivedAt: Date },
+  now = new Date(),
+  maximumAgeDays = 45
+) {
+  if (!message.needsAction) return false;
+  const age = now.valueOf() - message.receivedAt.valueOf();
+  return age >= 0 && age <= maximumAgeDays * 86_400_000;
+}
+
 export async function getTodayWork(input: {
   userId: number;
   organisationId: number;
@@ -143,6 +153,9 @@ export async function getTodayWork(input: {
       return belongsToUser(row.contactOwnerExternalId);
     })
     .map(row => row.message);
+  const currentInbound = actionableInbound.filter(message =>
+    isCurrentActionableInbound(message, now)
+  );
   const priority = scopedOpportunities
     .map(opportunity => {
       const staleDays = ageDays(opportunity.lastActivityAt, now) ?? 14;
@@ -155,7 +168,7 @@ export async function getTodayWork(input: {
           task.dueAt &&
           task.dueAt <= dayEnd(now)
       );
-      const inboundForContact = actionableInbound.filter(
+      const inboundForContact = currentInbound.filter(
         message =>
           message.contactExternalId &&
           message.contactExternalId === opportunity.contactExternalId
@@ -197,14 +210,14 @@ export async function getTodayWork(input: {
       staleOpportunities: staleOpportunities.length,
       noNextStep: noNextStep.length,
       priorityRecords: priority.length,
-      inboundNeedsAction: actionableInbound.length,
+      inboundNeedsAction: currentInbound.length,
       remindersDue: reminders.length,
       callbacksDue: callbacks.length,
     },
     queues: {
       dueToday: dueToday.slice(0, 12),
       overdueTasks: overdueTasks.slice(0, 12),
-      inbound: actionableInbound.slice(0, 20),
+      inbound: currentInbound.slice(0, 20),
       reminders: reminders.slice(0, 20),
       callbacks: callbacks.slice(0, 20),
       priority,

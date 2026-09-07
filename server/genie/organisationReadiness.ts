@@ -32,7 +32,8 @@ export function deriveOrganisationGenieReadiness(input: {
       .filter(operation => operation.status === "LIVE_PROVEN")
       .map(operation => operation.key);
     const coreOperational = coreBrowserCommissioningReady(statuses);
-    const allCatalogueOperationsProven = Boolean(matrix?.operations.length) &&
+    const allCatalogueOperationsProven =
+      Boolean(matrix?.operations.length) &&
       matrix.operations.every(operation => operation.status === "LIVE_PROVEN");
 
     return {
@@ -95,7 +96,7 @@ export function deriveOrganisationGenieReadiness(input: {
       : coreOperational
         ? `Genie core sales operations are LIVE_PROVEN with ${liveOperations.length} proven operation(s); optional CRM functions can continue commissioning without blocking the working core.`
         : authenticated
-          ? "Genie authentication is verified, but the required core operations are not yet LIVE_PROVEN. Finish automatic commissioning or Teach Amarktai before the workspace can be called ready."
+          ? "Genie authentication is verified, but the required core operations are not yet LIVE_PROVEN. Automatic commissioning is still running or advanced diagnostics need attention before the workspace can be called ready."
           : configured
             ? "A Genie connection exists but its latest authentication test needs attention."
             : "No organisation Genie connection exists.",

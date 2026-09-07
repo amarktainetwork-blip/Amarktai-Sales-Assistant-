@@ -14,6 +14,7 @@ import { runGenxAgent, type ChatMessage } from "./genx";
 import { listConnectedSystemsForUser } from "./connectedSystems";
 import { planAssistantCrmBatchInstruction } from "./crm/assistantBatchExecution";
 import { routeConnectedSystemActions } from "./crmRouter";
+import { tryPrepareDirectAssistantAction } from "./assistantDirectActions";
 import {
   createAssistantMemory,
   isSafeAssistantMemory,
@@ -259,6 +260,14 @@ export function registerAssistantRoutes(app: Express) {
         userId,
         organisationId: membership.organisationId,
       });
+
+      const preparedCommunication = await tryPrepareDirectAssistantAction({
+        userId,
+        organisationId: membership.organisationId,
+        contactId,
+        request: latestUserMessage,
+      });
+      if (preparedCommunication) return res.json(preparedCommunication);
 
       const direct =
         directAssistantAction(query) || deterministicTodayAnswer(query, today);

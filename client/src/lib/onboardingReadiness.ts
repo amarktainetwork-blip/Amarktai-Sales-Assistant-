@@ -1,7 +1,10 @@
 export const CORE_GENIE_TASKS = [
   "contact.search",
   "contact.read",
+  "company.read",
   "task.list",
+  "history.read",
+  "owner.sync",
   "note.create",
   "task.create_callback",
   "opportunity.read",
@@ -18,11 +21,17 @@ type CrmSystem = {
 export const CRM_CAPABILITY_PRESENTATION = [
   { label: "Contacts", keys: ["contact.search", "contact.read"], core: true },
   { label: "Customer details", keys: ["contact.read"], core: true },
-  { label: "Companies", keys: ["company.read"], core: false },
+  { label: "Companies", keys: ["company.read"], core: true },
   { label: "Tasks", keys: ["task.list"], core: true },
+  { label: "Activities", keys: ["history.read"], core: true },
+  { label: "Salesperson identity", keys: ["owner.sync"], core: true },
   { label: "Notes", keys: ["note.create"], core: true },
   { label: "Callbacks", keys: ["task.create_callback"], core: true },
-  { label: "Opportunities", keys: ["opportunity.read", "opportunity.update"], core: true },
+  {
+    label: "Opportunities",
+    keys: ["opportunity.read", "opportunity.update"],
+    core: true,
+  },
   { label: "Email", keys: ["email.send"], core: false },
   { label: "SMS", keys: ["sms.send"], core: false },
   { label: "WhatsApp", keys: ["whatsapp.send"], core: false },
@@ -66,7 +75,11 @@ export function humanBrowserCapabilityStatus(
     .map(key => operations.find(operation => operation.key === key))
     .filter((operation): operation is BrowserOperation => Boolean(operation));
   if (!selected.length) return "Unavailable";
-  if (selected.some(operation => ["BLOCKED", "DEGRADED"].includes(operation.status)))
+  if (
+    selected.some(operation =>
+      ["BLOCKED", "DEGRADED"].includes(operation.status)
+    )
+  )
     return "Failed";
   if (selected.every(operation => operation.status === "LIVE_PROVEN"))
     return "Ready";

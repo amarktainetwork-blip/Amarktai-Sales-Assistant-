@@ -91,6 +91,7 @@ export function presentCompanyKnowledgeJob(job: CompanyKnowledgeJob) {
     resultDiscoveryId: job.resultDiscoveryId,
     lastError: job.lastError ? safeText(job.lastError, 500) : null,
     startedAt: job.startedAt,
+    updatedAt: job.updatedAt,
     completedAt: job.completedAt,
   };
 }
@@ -348,6 +349,7 @@ async function checkpoint(
       })),
       progress: {
         ...(job.progress || {}),
+        phase: "analysing",
         humanStatus: "Building company corpus",
         corpusPages: value.corpus.pageCount,
         corpusBytes: value.corpus.byteSize,
@@ -363,6 +365,7 @@ async function checkpoint(
       analysisCalls: 1,
       progress: {
         ...(job.progress || {}),
+        phase: "analysing",
         humanStatus: "Checking products and pricing",
         analysisComplete: true,
       },
@@ -375,6 +378,7 @@ async function checkpoint(
     auditDraft: JSON.stringify(value.audit),
     progress: {
       ...(job.progress || {}),
+      phase: "auditing",
       humanStatus: "Auditing company knowledge",
       auditComplete: true,
     },
@@ -395,13 +399,36 @@ async function advanceCompanyKnowledgeJob(jobId: number) {
         phase: "SCANNING_WEBSITE",
         progress: { ...(job.progress || {}), humanStatus: "Scanning website" },
       });
-      discovery = await discoverPublicWebsite(job.websiteUrl);
+      discovery = await discoverPublicWebsite(job.websiteUrl, {
+        onProgress: async progress => {
+          await updateJob(job.id, {
+            progress: {
+              ...(job.progress || {}),
+              ...progress,
+              humanStatus:
+                progress.phase === "discovering"
+                  ? "Finding authorised website pages"
+                  : progress.phase === "fetching"
+                    ? "Reading authorised pages"
+                    : progress.phase === "extracting"
+                      ? "Extracting useful company facts"
+                      : "Removing duplicate website material",
+            },
+            leaseExpiresAt: new Date(Date.now() + JOB_LEASE_MS),
+          });
+        },
+      });
       await updateJob(job.id, {
         discoverySnapshot: JSON.stringify(discovery),
         phase: "CLASSIFYING_PAGES",
         progress: {
           ...(job.progress || {}),
           humanStatus: "Building company corpus",
+          phase: "normalising",
+          discoveredPages: discovery.pages.length,
+          totalPagesKnown: discovery.pages.length,
+          processedPages: discovery.pages.length,
+          failedPages: 0,
           pagesScanned: discovery.pages.length,
         },
         leaseExpiresAt: new Date(Date.now() + JOB_LEASE_MS),
@@ -438,6 +465,11 @@ async function advanceCompanyKnowledgeJob(jobId: number) {
           phase: nextPhase,
           progress: {
             ...(job.progress || {}),
+            phase:
+              nextPhase === "RECONCILING_KNOWLEDGE" ||
+              nextPhase === "CHECKING_COMPLETENESS"
+                ? "auditing"
+                : "analysing",
             humanStatus: humanPhase(nextPhase),
           },
           leaseExpiresAt: new Date(Date.now() + JOB_LEASE_MS),
@@ -476,6 +508,7 @@ async function advanceCompanyKnowledgeJob(jobId: number) {
       repairCalls: review.repairCalls,
       temporaryResources: {},
       progress: {
+        phase: ready ? "ready" : "failed",
         humanStatus: ready
           ? "Ready for review"
           : "Company knowledge needs attention",
@@ -532,6 +565,8 @@ async function advanceCompanyKnowledgeJob(jobId: number) {
       completedAt: retrying ? null : new Date(),
       progress: {
         ...(job.progress || {}),
+        phase: retrying ? "fetching" : "failed",
+        retryState: retrying ? "scheduled" : "available",
         humanStatus: retrying
           ? "Website reading will retry shortly"
           : "Company learning needs attention",

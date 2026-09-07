@@ -113,17 +113,20 @@ describe("company knowledge business-basics approval policy", () => {
     const items = buildBusinessBasicsApproval([
       {
         title: "Course2Career",
-        content: "Course2Career provides technology and project management training.",
+        content:
+          "Course2Career provides technology and project management training.",
         category: "company",
       },
       {
         title: "Accreditations",
-        content: "The website identifies Course2Career as a CompTIA Training Partner.",
+        content:
+          "The website identifies Course2Career as a CompTIA Training Partner.",
         category: "certifications",
       },
       {
         title: "Contact",
-        content: "Support email: support@example.test. Opening hours: Monday to Friday.",
+        content:
+          "Support email: support@example.test. Opening hours: Monday to Friday.",
         category: "contact",
       },
     ]);
@@ -134,6 +137,69 @@ describe("company knowledge business-basics approval policy", () => {
       credentials: 1,
       contact: 1,
     });
+  });
+
+  it("collapses equivalent regulation, phone and operating-hours facts for review", () => {
+    const items = buildBusinessBasicsApproval([
+      {
+        title: "FCA status",
+        content: "Course2Career is an Introducer Appointed Representative.",
+        category: "certifications",
+      },
+      {
+        title: "Financial Conduct Authority",
+        content:
+          "The business states that it is an FCA Introducer Appointed Representative.",
+        category: "company_certification",
+      },
+      {
+        title: "Main phone",
+        content: "Call +44 (0) 20 1234 5678.",
+        category: "contact",
+      },
+      {
+        title: "Telephone",
+        content: "Phone: +44 20 1234 5678",
+        category: "contact",
+      },
+      {
+        title: "Opening hours",
+        content: "Monday to Friday, 09:00 to 17:00.",
+        category: "contact",
+      },
+      {
+        title: "Operating hours",
+        content: "Business hours are Monday to Friday, 09:00–17:00.",
+        category: "contact",
+      },
+    ]);
+
+    expect(items.filter(item => item.group === "credentials")).toHaveLength(1);
+    expect(items.filter(item => item.group === "contact")).toHaveLength(2);
+  });
+
+  it("collapses formatting-equivalent catalogue entries without collapsing different courses", () => {
+    const items = buildBusinessBasicsApproval([
+      {
+        title: "Cyber Security Career Programme",
+        content: "Cyber programme.",
+        category: "career_programmes",
+        offering: { name: "Cyber Security Career Programme" },
+      },
+      {
+        title: "Cyber Security Training Program",
+        content: "Equivalent cyber programme.",
+        category: "individual_courses",
+        offering: { name: "Cyber Security Training Program" },
+      },
+      {
+        title: "Data Analytics Course",
+        content: "Data course.",
+        category: "individual_courses",
+        offering: { name: "Data Analytics Course" },
+      },
+    ]);
+    expect(items.filter(item => item.group === "offerings")).toHaveLength(2);
   });
 
   it("ranks sales focus by generic evidence richness rather than company-specific names", () => {
@@ -181,7 +247,9 @@ describe("company knowledge business-basics approval policy", () => {
       priceFacts: [{ value: "£229" }],
     };
 
-    expect(websiteKnowledgePassesCommercialApprovalPolicy(candidate)).toBe(false);
+    expect(websiteKnowledgePassesCommercialApprovalPolicy(candidate)).toBe(
+      false
+    );
     expect(
       websiteKnowledgePassesCommercialApprovalPolicy(candidate, {
         title: "Course A",

@@ -72,7 +72,57 @@ function compactText(value: string) {
 }
 
 function normalizedKey(value: string) {
-  return compactText(value).toLowerCase();
+  return compactText(value)
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/\bprogram\b/g, "programme")
+    .replace(/\borganisation\b/g, "organization")
+    .replace(/[^a-z0-9@+]+/g, " ")
+    .trim();
+}
+
+function semanticPresentationKey(
+  item: Omit<BusinessBasicsApprovalItem, "index">
+) {
+  const text = normalizedKey(`${item.title} ${item.content}`);
+  if (item.group === "credentials") {
+    if (
+      /\bfca\b|financial conduct authority|introducer appointed representative/.test(
+        text
+      )
+    )
+      return "credentials:fca";
+    const accreditation = text.match(
+      /\b(?:comptia|pearson|microsoft|aws|cisco|peoplecert|ec council)\b/
+    )?.[0];
+    if (accreditation) return `credentials:${accreditation}`;
+  }
+  if (item.group === "contact") {
+    const email = `${item.title} ${item.content}`
+      .toLowerCase()
+      .match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/)?.[0];
+    if (email) return `contact:email:${email}`;
+    const phone = `${item.title} ${item.content}`
+      .replace(/\(0\)/g, "")
+      .match(/(?:\+?\d[\d\s().-]{7,}\d)/)?.[0]
+      ?.replace(/\D/g, "");
+    if (phone) return `contact:phone:${phone}`;
+    if (
+      /opening hours|operating hours|business hours|monday.*friday/.test(text)
+    )
+      return "contact:hours";
+  }
+  if (item.group === "offerings") {
+    const offering = normalizedKey(item.title)
+      .replace(
+        /\b(?:career|training|course|programme|program|qualification|pathway)\b/g,
+        " "
+      )
+      .replace(/\s+/g, " ")
+      .trim();
+    return `offerings:${offering || normalizedKey(item.title)}`;
+  }
+  return `${item.group}:${normalizedKey(item.title)}`;
 }
 
 function safeDescriptiveText(value?: string, maximum = 40_000) {
@@ -103,10 +153,13 @@ export function websiteKnowledgePassesCommercialApprovalPolicy(
   candidate: WebsiteKnowledgeApprovalCandidate,
   correction?: Pick<WebsiteKnowledgeCorrection, "title" | "content">
 ) {
-  if (isPermanentlyCommercialKnowledgeCategory(candidate.category)) return false;
+  if (isPermanentlyCommercialKnowledgeCategory(candidate.category))
+    return false;
   if (!websiteKnowledgeNeedsCommercialReview(candidate)) return true;
   if (!correction) return false;
-  return !containsCommercialKnowledge(`${correction.title}\n${correction.content}`);
+  return !containsCommercialKnowledge(
+    `${correction.title}\n${correction.content}`
+  );
 }
 
 function safeIdentityTitle(value: string) {
@@ -120,17 +173,24 @@ function safeOfferingIdentity(candidate: WebsiteKnowledgeApprovalCandidate) {
   if (!name) return null;
 
   const rawType = compactText(candidate.offering?.type || "");
-  const type = rawType && !containsCommercialKnowledge(rawType) ? rawType : "offering";
+  const type =
+    rawType && !containsCommercialKnowledge(rawType) ? rawType : "offering";
   const details = [
     safeDescriptiveText(candidate.offering?.description, 8_000),
     safeDescriptiveText(candidate.offering?.targetCustomer)
       ? `Best suited to: ${safeDescriptiveText(candidate.offering?.targetCustomer, 4_000)}`
       : "",
     candidate.offering?.outcomes?.length
-      ? safeDescriptiveText(`Outcomes: ${candidate.offering.outcomes.join("; ")}`, 8_000)
+      ? safeDescriptiveText(
+          `Outcomes: ${candidate.offering.outcomes.join("; ")}`,
+          8_000
+        )
       : "",
     candidate.offering?.support?.length
-      ? safeDescriptiveText(`Support: ${candidate.offering.support.join("; ")}`, 8_000)
+      ? safeDescriptiveText(
+          `Support: ${candidate.offering.support.join("; ")}`,
+          8_000
+        )
       : "",
   ].filter(Boolean);
 
@@ -166,9 +226,7 @@ export function buildBusinessBasicsApproval(
     if (["conflict", "ambiguous"].includes(candidate.reviewState || "")) return;
 
     const category = candidate.category || "";
-    let item:
-      | Omit<BusinessBasicsApprovalItem, "index">
-      | null = null;
+    let item: Omit<BusinessBasicsApprovalItem, "index"> | null = null;
 
     if (offeringCategories.has(category)) {
       const identity = safeOfferingIdentity(candidate);
@@ -179,14 +237,20 @@ export function buildBusinessBasicsApproval(
       if (!identity) return;
       item = { ...identity, group: "company" };
     } else if (credentialCategories.has(category)) {
-      if (containsCommercialKnowledge(`${candidate.title}\n${candidate.content}`)) return;
+      if (
+        containsCommercialKnowledge(`${candidate.title}\n${candidate.content}`)
+      )
+        return;
       item = {
         title: compactText(candidate.title).slice(0, 220),
         content: compactText(candidate.content).slice(0, 40_000),
         group: "credentials",
       };
     } else if (category === "contact") {
-      if (containsCommercialKnowledge(`${candidate.title}\n${candidate.content}`)) return;
+      if (
+        containsCommercialKnowledge(`${candidate.title}\n${candidate.content}`)
+      )
+        return;
       item = {
         title: compactText(candidate.title).slice(0, 220),
         content: compactText(candidate.content).slice(0, 40_000),
@@ -195,7 +259,7 @@ export function buildBusinessBasicsApproval(
     }
 
     if (!item?.title || !item.content) return;
-    const key = `${item.group}:${normalizedKey(item.title)}`;
+    const key = semanticPresentationKey(item);
     if (seen.has(key)) return;
     seen.add(key);
     result.push({ index, ...item });

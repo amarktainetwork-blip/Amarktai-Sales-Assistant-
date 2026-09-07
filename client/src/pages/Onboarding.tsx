@@ -135,10 +135,7 @@ function StepDot({
 function SetupVisual() {
   return (
     <section className="amk-auth__visual amk-auth__visual--product">
-      <img
-        src="/images/site-intelligence.svg"
-        alt="AmarktAI sales workspace"
-      />
+      <img src="/images/site-intelligence.svg" alt="AmarktAI sales workspace" />
       <div className="amk-auth__shade" />
       <div className="amk-auth__visual-inner">
         <div className="amk-auth__topline">
@@ -150,22 +147,23 @@ function SetupVisual() {
           </p>
           <h1>
             A few steps now.
-            <br />
-            A simpler sales day after.
+            <br />A simpler sales day after.
           </h1>
           <p>
-            Tell AmarktAI about your business, connect the tools your team already
-            uses, and then work from one clear daily sales workspace.
+            Tell AmarktAI about your business, connect the tools your team
+            already uses, and then work from one clear daily sales workspace.
           </p>
           <div className="amk-auth__proof">
             <span>
-              <CheckCircle2 size={16} /> Your business facts stay under your control
+              <CheckCircle2 size={16} /> Your business facts stay under your
+              control
             </span>
             <span>
               <CheckCircle2 size={16} /> Connect the CRM you already use
             </span>
             <span>
-              <CheckCircle2 size={16} /> Review important actions before they happen
+              <CheckCircle2 size={16} /> Review important actions before they
+              happen
             </span>
           </div>
         </div>
@@ -280,6 +278,14 @@ export default function Onboarding() {
   const learningNeedsAttention = ["needs_attention", "failed"].includes(
     learning.data?.status || ""
   );
+  const learningProgress = (learning.data?.progress || {}) as {
+    discoveredPages?: number;
+    totalPagesKnown?: number;
+    processedPages?: number;
+    failedPages?: number;
+    currentHost?: string;
+    retryState?: string;
+  };
 
   const step = useMemo(() => {
     if (!workspaceMode || !profileSaved) return 1;
@@ -519,8 +525,8 @@ export default function Onboarding() {
               </h3>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-[#607086]">
                 Start with the essentials. If you add your website, AmarktAI can
-                read the public pages in the next step and show you what it found
-                before any information becomes trusted knowledge.
+                read the public pages in the next step and show you what it
+                found before any information becomes trusted knowledge.
               </p>
               <div className="mt-6 grid gap-4 sm:grid-cols-2">
                 <Input
@@ -581,7 +587,9 @@ export default function Onboarding() {
               />
               <div className="mt-5 flex flex-wrap gap-3">
                 <Button
-                  disabled={!profile.companyName.trim() || saveProfile.isPending}
+                  disabled={
+                    !profile.companyName.trim() || saveProfile.isPending
+                  }
                   onClick={() => void saveBusiness()}
                 >
                   {saveProfile.isPending ? (
@@ -608,8 +616,7 @@ export default function Onboarding() {
           </h3>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-[#607086]">
             AmarktAI will read the public pages you’ve authorised and turn them
-            into a clear business summary. Nothing becomes trusted
-            company knowledge until you confirm it.
+            into a clear business summary. {"Nothing becomes trusted company knowledge until you confirm it."}
           </p>
 
           {learningRunning ? (
@@ -621,10 +628,43 @@ export default function Onboarding() {
                     {learning.data?.humanStatus || "Reading your website"}
                   </p>
                   <p className="mt-1 text-sm text-[#718096]">
-                    You can leave this page and come back. Your progress is saved.
+                    You can leave this page and come back. Your progress is
+                    saved.
                   </p>
                 </div>
               </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-xl border border-[#D5E0EE] bg-white px-3 py-2">
+                  <p className="text-[10px] font-black uppercase tracking-[.1em] text-[#718096]">
+                    Authorised pages found
+                  </p>
+                  <p className="mt-1 text-lg font-bold text-[#26354A]">
+                    {learningProgress.discoveredPages ?? "—"}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-[#D5E0EE] bg-white px-3 py-2 sm:col-span-2">
+                  <p className="text-[10px] font-black uppercase tracking-[.1em] text-[#718096]">
+                    Reading progress
+                  </p>
+                  <p className="mt-1 text-sm font-bold text-[#26354A]">
+                    {typeof learningProgress.processedPages === "number" &&
+                    typeof learningProgress.totalPagesKnown === "number"
+                      ? `${learningProgress.processedPages} of ${learningProgress.totalPagesKnown} pages processed`
+                      : "Preparing the authorised page list…"}
+                  </p>
+                  {learningProgress.currentHost ? (
+                    <p className="mt-1 truncate text-xs text-[#718096]">
+                      Reading {learningProgress.currentHost}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+              <p className="mt-4 text-xs leading-5 text-[#66758A]">
+                Larger websites can take several minutes because AmarktAI reads
+                the authorised pages, removes duplicates and checks important
+                facts before asking you to approve them. No percentage or finish
+                time is guessed.
+              </p>
             </div>
           ) : learningNeedsAttention ? (
             <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5">
@@ -740,8 +780,8 @@ export default function Onboarding() {
           </h3>
           <p className="mt-4 max-w-2xl text-sm leading-6 text-[#607086]">
             Open the private CRM workspace and sign in directly with your CRM.
-            AmarktAI will then check that customers, tasks and opportunities come
-            through before the workspace is called ready.
+            AmarktAI will then check that customers, tasks and opportunities
+            come through before the workspace is called ready.
           </p>
           <div className="mt-6 grid gap-3 sm:grid-cols-3">
             {[

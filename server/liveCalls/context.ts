@@ -34,6 +34,8 @@ export type LiveCallCrmContext = {
   stage?: string;
   lastInteraction?: string;
   recentInbound?: string;
+  recentInboundSubject?: string;
+  recentInboundBody?: string;
   reasons: string[];
   objective?: string;
   diallerLaunch?: {
@@ -195,6 +197,8 @@ async function contextForContact(input: {
           1_000
         )
       : undefined,
+    recentInboundSubject: inbound?.subject?.slice(0, 500) || undefined,
+    recentInboundBody: inbound?.body?.slice(0, 2_500) || undefined,
     reasons: input.reasons || [],
     objective:
       task?.title || opportunity?.raw?.nextStep?.toString() || undefined,
@@ -322,7 +326,8 @@ export async function startLiveCallFromToday(input: {
       eventType: "genie_dialler_launched",
       entityType: "call_session",
       entityId: String(callSessionId),
-      summary: "The LIVE_PROVEN Genie dialler was launched for the exact normalized call contact.",
+      summary:
+        "The LIVE_PROVEN Genie dialler was launched for the exact normalized call contact.",
       metadata: {
         connectedSystemId: context.diallerLaunch.connectedSystemId,
         contactExternalId: context.diallerLaunch.contactExternalId,
@@ -416,9 +421,27 @@ export async function getWorkingContextForContact(input: {
   contactId: number;
 }) {
   const db = await dbOrThrow();
-  const contact = (await db.select().from(crmContacts).where(and(eq(crmContacts.id, input.contactId), eq(crmContacts.organisationId, input.organisationId))).limit(1))[0];
-  if (!contact) throw new Error("The selected CRM contact is outside the active organisation.");
-  return contextForContact({ organisationId: input.organisationId, contact, source: "manual_resolved" });
+  const contact = (
+    await db
+      .select()
+      .from(crmContacts)
+      .where(
+        and(
+          eq(crmContacts.id, input.contactId),
+          eq(crmContacts.organisationId, input.organisationId)
+        )
+      )
+      .limit(1)
+  )[0];
+  if (!contact)
+    throw new Error(
+      "The selected CRM contact is outside the active organisation."
+    );
+  return contextForContact({
+    organisationId: input.organisationId,
+    contact,
+    source: "manual_resolved",
+  });
 }
 
 export async function getLiveCallContext(input: {

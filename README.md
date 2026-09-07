@@ -32,6 +32,13 @@ No CRM, mailbox, calendar, SMS, WhatsApp or speech provider is represented as li
 - AI-credit accounting with concurrency-safe debits and monthly allowance grants.
 - Self-hosted Webdock package with Caddy, MariaDB, Valkey and internal Chromium/CDP.
 
+The client setup path is one persistent sequence: personal profile, business
+details, factual website-learning progress, manager review of deduplicated
+knowledge, CRM authentication, automatic operation commissioning, delegated
+personal mailbox where configured, and then Home. A connected CRM is not ready
+until the required reads and governed writes are independently `LIVE_PROVEN`;
+manual “Teach AmarktAI” controls are an advanced repair path, not normal setup.
+
 ## Canonical repository
 
 ```text

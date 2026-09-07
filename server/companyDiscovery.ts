@@ -80,8 +80,18 @@ export type DiscoveryRenderer = (
   url: URL,
   approvedHostname: string
 ) => Promise<RenderedPublicPage | null>;
+export type WebsiteDiscoveryProgress = {
+  phase: "discovering" | "fetching" | "extracting" | "normalising";
+  discoveredPages: number;
+  totalPagesKnown: number;
+  processedPages: number;
+  failedPages: number;
+  currentPage?: string;
+  currentHost: string;
+};
 export type DiscoveryOptions = {
   renderer?: DiscoveryRenderer;
+  onProgress?: (progress: WebsiteDiscoveryProgress) => void | Promise<void>;
   /** Test/internal overrides may only tighten the production ceilings. */
   limits?: Partial<{
     maxPages: number;
@@ -1201,6 +1211,21 @@ export async function discoverPublicWebsite(
   const startedAt = new Date().toISOString();
   const initial = canonicalize(await assertPublicUrl(rawUrl.trim()));
   const approvedHostname = initial.hostname.toLowerCase();
+  const report = async (
+    progress: Omit<WebsiteDiscoveryProgress, "currentHost">
+  ) =>
+    options.onProgress?.({
+      ...progress,
+      currentHost: approvedHostname,
+    });
+  await report({
+    phase: "discovering",
+    discoveredPages: 1,
+    totalPagesKnown: 1,
+    processedPages: 0,
+    failedPages: 0,
+    currentPage: initial.toString(),
+  });
   const robots = await loadRobots(
     initial,
     approvedHostname,
@@ -1235,6 +1260,15 @@ export async function discoverPublicWebsite(
   };
   const renderer = options.renderer ?? renderPublicPage;
 
+  await report({
+    phase: "fetching",
+    discoveredPages: queued.size,
+    totalPagesKnown: Math.min(limits.maxPages, queued.size),
+    processedPages: 0,
+    failedPages: 0,
+    currentPage: initial.toString(),
+  });
+
   while (
     queue.length &&
     pages.length < limits.maxPages &&
@@ -1250,6 +1284,14 @@ export async function discoverPublicWebsite(
     const batch = queue
       .splice(0, CONCURRENCY)
       .filter(candidate => !visited.has(candidate.url.toString()));
+    await report({
+      phase: "fetching",
+      discoveredPages: queued.size,
+      totalPagesKnown: Math.min(limits.maxPages, queued.size),
+      processedPages: pages.length,
+      failedPages: Math.max(0, visited.size - pages.length),
+      currentPage: batch[0]?.url.toString(),
+    });
     batch.forEach(candidate => visited.add(candidate.url.toString()));
     const results = await Promise.all(
       batch.map(candidate =>
@@ -1301,6 +1343,14 @@ export async function discoverPublicWebsite(
         });
       }
     }
+    await report({
+      phase: "extracting",
+      discoveredPages: queued.size,
+      totalPagesKnown: Math.min(limits.maxPages, queued.size),
+      processedPages: pages.length,
+      failedPages: Math.max(0, visited.size - pages.length),
+      currentPage: batch.at(-1)?.url.toString(),
+    });
   }
 
   if (!pages.length && lastFetchError) throw lastFetchError;
@@ -1308,6 +1358,14 @@ export async function discoverPublicWebsite(
     throw new Error(
       "The website did not return any readable public HTML pages."
     );
+
+  await report({
+    phase: "normalising",
+    discoveredPages: queued.size,
+    totalPagesKnown: Math.min(limits.maxPages, queued.size),
+    processedPages: pages.length,
+    failedPages: Math.max(0, visited.size - pages.length),
+  });
 
   const primary =
     pages.find(page => page.url.toString() === initial.toString()) || pages[0];

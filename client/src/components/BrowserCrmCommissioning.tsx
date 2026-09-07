@@ -150,7 +150,8 @@ export default function BrowserCrmCommissioning() {
     }
   );
   const utils = trpc.useUtils();
-  const startTraining = trpc.connectedSystems.startBrowserTraining.useMutation();
+  const startTraining =
+    trpc.connectedSystems.startBrowserTraining.useMutation();
   const saveReview = trpc.connectedSystems.reviewBrowserOperation.useMutation();
 
   const [training, setTraining] = useState<{
@@ -160,20 +161,28 @@ export default function BrowserCrmCommissioning() {
   } | null>(null);
   const [reviewData, setReviewData] = useState<ReviewData | null>(null);
   const [reviewSteps, setReviewSteps] = useState<ReviewStep[]>([]);
-  const [readAction, setReadAction] = useState<"read_text" | "read_value" | "read_rows">("read_text");
+  const [readAction, setReadAction] = useState<
+    "read_text" | "read_value" | "read_rows"
+  >("read_text");
   const [readSelector, setReadSelector] = useState("");
   const [readKey, setReadKey] = useState("result");
   const [readFields, setReadFields] = useState("");
   const [targetRowSelector, setTargetRowSelector] = useState("");
   const [targetFields, setTargetFields] = useState("");
-  const [postAction, setPostAction] = useState<"read_text" | "read_value" | "read_attribute">("read_text");
+  const [postAction, setPostAction] = useState<
+    "read_text" | "read_value" | "read_attribute"
+  >("read_text");
   const [postSelector, setPostSelector] = useState("");
   const [postKey, setPostKey] = useState("result");
   const [postAttribute, setPostAttribute] = useState("");
-  const [postComparator, setPostComparator] = useState<"equals" | "contains" | "exists" | "not_equals">("equals");
+  const [postComparator, setPostComparator] = useState<
+    "equals" | "contains" | "exists" | "not_equals"
+  >("equals");
   const [postExpectedInput, setPostExpectedInput] = useState("");
   const [postExpectedValue, setPostExpectedValue] = useState("");
-  const [replayOperation, setReplayOperation] = useState<OperationRow | null>(null);
+  const [replayOperation, setReplayOperation] = useState<OperationRow | null>(
+    null
+  );
   const [replayInputs, setReplayInputs] = useState("{}");
   const [authorisedWrite, setAuthorisedWrite] = useState(false);
   const [publishConfirmed, setPublishConfirmed] = useState(false);
@@ -190,6 +199,30 @@ export default function BrowserCrmCommissioning() {
     }
     return Array.from(result.entries());
   }, [operations]);
+  const commissioningSummary = useMemo(
+    () =>
+      [
+        ["Customer data", ["contact.search", "contact.read", "company.read"]],
+        ["Tasks", ["task.list"]],
+        ["Opportunities", ["opportunity.read", "opportunity.update"]],
+        ["Activities", ["history.read"]],
+        ["Notes", ["note.create"]],
+        ["Callback tasks", ["task.create_callback"]],
+        ["Salesperson identity", ["owner.sync"]],
+      ].map(([label, keys]) => ({
+        label: label as string,
+        ready: (keys as string[]).every(key =>
+          operations.some(
+            operation =>
+              operation.key === key && operation.status === "LIVE_PROVEN"
+          )
+        ),
+      })),
+    [operations]
+  );
+  const unresolvedCount = operations.filter(
+    operation => operation.status !== "LIVE_PROVEN"
+  ).length;
 
   async function refresh() {
     await Promise.all([
@@ -316,11 +349,15 @@ export default function BrowserCrmCommissioning() {
   async function controlledReplay(publish: boolean) {
     if (!selectedSystem || !replayOperation) return;
     if (replayOperation.mode === "write" && !authorisedWrite) {
-      toast.error("Confirm that the write test uses a client-authorised safe test record.");
+      toast.error(
+        "Confirm that the write test uses a client-authorised safe test record."
+      );
       return;
     }
     if (publish && !publishConfirmed) {
-      toast.error("Confirm that this successful operation may be enabled for production use.");
+      toast.error(
+        "Confirm that this successful operation may be enabled for production use."
+      );
       return;
     }
     let inputs: Record<string, unknown>;
@@ -330,7 +367,9 @@ export default function BrowserCrmCommissioning() {
         throw new Error("Inputs must be a JSON object.");
       inputs = parsed as Record<string, unknown>;
     } catch (error) {
-      toast.error(friendlyError(error, "Test inputs must be a valid JSON object."));
+      toast.error(
+        friendlyError(error, "Test inputs must be a valid JSON object.")
+      );
       return;
     }
     try {
@@ -381,9 +420,9 @@ export default function BrowserCrmCommissioning() {
             <h3 className="font-bold">CRM operation commissioning</h3>
           </div>
           <p className="mt-1 max-w-3xl text-xs leading-5 text-[#6C798B]">
-            Each CRM function has its own proof state. Authentication alone never
-            enables production actions. Teach, review, run a controlled test, then
-            publish only the operation that passed.
+            Each CRM function has its own proof state. Authentication alone
+            never enables production actions. Teach, review, run a controlled
+            test, then publish only the operation that passed.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => void refresh()}>
@@ -417,59 +456,112 @@ export default function BrowserCrmCommissioning() {
         </p>
       ) : (
         <div className="mt-4 grid gap-4">
-          {grouped.map(([area, rows]) => (
-            <div key={area} className="rounded-lg border border-[#E1E7EF]">
-              <div className="border-b border-[#E1E7EF] bg-[#F8FAFC] px-3 py-2 text-xs font-bold text-[#526278]">
-                {area}
-              </div>
-              <div className="divide-y divide-[#EEF2F6]">
-                {rows.map(operation => (
-                  <div
-                    key={operation.key}
-                    className="flex flex-wrap items-center justify-between gap-3 px-3 py-3"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-[#26354A]">
-                        {operation.label}
-                      </p>
-                      <p className="mt-0.5 text-[11px] text-[#718096]">
-                        {operation.key} · {operation.mode.toUpperCase()} · {statusCopy[operation.status]}
-                      </p>
-                      {operation.lastError ? (
-                        <p className="mt-1 max-w-2xl text-xs text-red-700">
-                          {operation.lastError}
-                        </p>
-                      ) : null}
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {operation.status === "LIVE_PROVEN" ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">
-                          <CheckCircle2 className="size-3.5" /> LIVE_PROVEN
-                        </span>
-                      ) : null}
-                      {operation.status === "NOT_LEARNED" ||
-                      operation.status === "DEGRADED" ||
-                      operation.status === "BLOCKED" ? (
-                        <Button size="sm" variant="outline" onClick={() => void beginTeach(operation)}>
-                          Teach AmarktAI
-                        </Button>
-                      ) : null}
-                      {operation.status === "LEARNED" ? (
-                        <Button size="sm" onClick={() => void openReview(operation)}>
-                          Review demonstration
-                        </Button>
-                      ) : null}
-                      {operation.status === "TEST_READY" ? (
-                        <Button size="sm" onClick={() => openReplay(operation)}>
-                          Controlled test
-                        </Button>
-                      ) : null}
-                    </div>
-                  </div>
-                ))}
-              </div>
+          <div className="overflow-hidden rounded-xl border border-[#E1E7EF]">
+            <div className="flex items-center justify-between gap-3 border-b border-[#E1E7EF] bg-[#F8FAFC] px-4 py-3 text-sm">
+              <span className="font-bold text-[#26354A]">CRM connection</span>
+              <span
+                className={`font-bold ${["testing", "ready", "limited_permissions"].includes(selectedSystem?.status || "") ? "text-emerald-700" : "text-amber-700"}`}
+              >
+                {["testing", "ready", "limited_permissions"].includes(
+                  selectedSystem?.status || ""
+                )
+                  ? "Connected"
+                  : "Action needed"}
+              </span>
             </div>
-          ))}
+            {commissioningSummary.map(item => (
+              <div
+                key={item.label}
+                className="flex items-center justify-between gap-3 border-b border-[#EEF2F6] px-4 py-3 text-sm last:border-b-0"
+              >
+                <span className="font-semibold text-[#40516A]">
+                  {item.label}
+                </span>
+                <span
+                  className={
+                    item.ready
+                      ? "font-bold text-emerald-700"
+                      : "font-bold text-amber-700"
+                  }
+                >
+                  {item.ready ? "Proven" : "Action needed"}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <details className="rounded-xl border border-[#E1E7EF] bg-white">
+            <summary className="cursor-pointer list-none px-4 py-3 text-sm font-bold text-[#526278]">
+              Advanced diagnostics · {unresolvedCount} operation
+              {unresolvedCount === 1 ? "" : "s"} need attention
+            </summary>
+            <div className="grid gap-4 border-t border-[#E1E7EF] p-3">
+              {grouped.map(([area, rows]) => (
+                <div key={area} className="rounded-lg border border-[#E1E7EF]">
+                  <div className="border-b border-[#E1E7EF] bg-[#F8FAFC] px-3 py-2 text-xs font-bold text-[#526278]">
+                    {area}
+                  </div>
+                  <div className="divide-y divide-[#EEF2F6]">
+                    {rows.map(operation => (
+                      <div
+                        key={operation.key}
+                        className="flex flex-wrap items-center justify-between gap-3 px-3 py-3"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-[#26354A]">
+                            {operation.label}
+                          </p>
+                          <p className="mt-0.5 text-[11px] text-[#718096]">
+                            {operation.key} · {operation.mode.toUpperCase()} ·{" "}
+                            {statusCopy[operation.status]}
+                          </p>
+                          {operation.lastError ? (
+                            <p className="mt-1 max-w-2xl text-xs text-red-700">
+                              {operation.lastError}
+                            </p>
+                          ) : null}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {operation.status === "LIVE_PROVEN" ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">
+                              <CheckCircle2 className="size-3.5" /> LIVE_PROVEN
+                            </span>
+                          ) : null}
+                          {operation.status === "NOT_LEARNED" ||
+                          operation.status === "DEGRADED" ||
+                          operation.status === "BLOCKED" ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => void beginTeach(operation)}
+                            >
+                              Teach AmarktAI
+                            </Button>
+                          ) : null}
+                          {operation.status === "LEARNED" ? (
+                            <Button
+                              size="sm"
+                              onClick={() => void openReview(operation)}
+                            >
+                              Review demonstration
+                            </Button>
+                          ) : null}
+                          {operation.status === "TEST_READY" ? (
+                            <Button
+                              size="sm"
+                              onClick={() => openReplay(operation)}
+                            >
+                              Controlled test
+                            </Button>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </details>
         </div>
       )}
 
@@ -477,13 +569,24 @@ export default function BrowserCrmCommissioning() {
         <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">
           <p className="font-bold">Teach session: {training.operationKey}</p>
           <p className="mt-2">
-            Session ID <code className="rounded bg-white px-1.5 py-0.5 font-mono">{training.id}</code> · expires {training.expiresAt}
+            Session ID{" "}
+            <code className="rounded bg-white px-1.5 py-0.5 font-mono">
+              {training.id}
+            </code>{" "}
+            · expires {training.expiresAt}
           </p>
           <ol className="mt-3 list-decimal space-y-1 pl-5 text-xs leading-5">
             <li>Open the AmarktAI Sidecar recorder in the connected CRM.</li>
-            <li>Enter this session ID and perform this one CRM function once.</li>
-            <li>Stop the recorder. Secrets and typed values are not learned.</li>
-            <li>Return here and refresh proof. The operation should become Awaiting review.</li>
+            <li>
+              Enter this session ID and perform this one CRM function once.
+            </li>
+            <li>
+              Stop the recorder. Secrets and typed values are not learned.
+            </li>
+            <li>
+              Return here and refresh proof. The operation should become
+              Awaiting review.
+            </li>
           </ol>
           <Button className="mt-3" size="sm" onClick={() => void refresh()}>
             I finished the demonstration — refresh
@@ -501,16 +604,23 @@ export default function BrowserCrmCommissioning() {
           </div>
           <p className="mt-1 text-xs leading-5 text-[#6C798B]">
             Confirm only selectors and placeholders you can verify from the CRM.
-            Do not add passwords, session tokens, customer secrets, or guessed selectors.
+            Do not add passwords, session tokens, customer secrets, or guessed
+            selectors.
           </p>
           <div className="mt-3 space-y-2">
             {reviewSteps.map((step, index) => (
-              <div key={index} className="grid gap-2 rounded-lg border border-[#E1E7EF] bg-white p-3 md:grid-cols-[150px_1fr_1fr]">
+              <div
+                key={index}
+                className="grid gap-2 rounded-lg border border-[#E1E7EF] bg-white p-3 md:grid-cols-[150px_1fr_1fr]"
+              >
                 <select
                   value={step.action}
                   onChange={event => {
                     const next = [...reviewSteps];
-                    next[index] = { ...step, action: event.target.value as ReviewStep["action"] };
+                    next[index] = {
+                      ...step,
+                      action: event.target.value as ReviewStep["action"],
+                    };
                     setReviewSteps(next);
                   }}
                   className="h-9 rounded-md border border-[#D6DFEA] px-2 text-xs"
@@ -526,14 +636,19 @@ export default function BrowserCrmCommissioning() {
                     "expect_visible",
                     "wait_for_url",
                   ].map(action => (
-                    <option key={action} value={action}>{action}</option>
+                    <option key={action} value={action}>
+                      {action}
+                    </option>
                   ))}
                 </select>
                 <input
                   value={step.selector || ""}
                   onChange={event => {
                     const next = [...reviewSteps];
-                    next[index] = { ...step, selector: event.target.value || undefined };
+                    next[index] = {
+                      ...step,
+                      selector: event.target.value || undefined,
+                    };
                     setReviewSteps(next);
                   }}
                   placeholder="Selector (not used for goto)"
@@ -543,7 +658,10 @@ export default function BrowserCrmCommissioning() {
                   value={step.value || ""}
                   onChange={event => {
                     const next = [...reviewSteps];
-                    next[index] = { ...step, value: event.target.value || undefined };
+                    next[index] = {
+                      ...step,
+                      value: event.target.value || undefined,
+                    };
                     setReviewSteps(next);
                   }}
                   placeholder="Placeholder/value when required"
@@ -557,7 +675,13 @@ export default function BrowserCrmCommissioning() {
             <div className="mt-4 grid gap-3 md:grid-cols-3">
               <label className="text-xs font-semibold text-[#526278]">
                 Result type
-                <select value={readAction} onChange={event => setReadAction(event.target.value as typeof readAction)} className="mt-1 h-10 w-full rounded-md border border-[#D6DFEA] bg-white px-2">
+                <select
+                  value={readAction}
+                  onChange={event =>
+                    setReadAction(event.target.value as typeof readAction)
+                  }
+                  className="mt-1 h-10 w-full rounded-md border border-[#D6DFEA] bg-white px-2"
+                >
                   <option value="read_text">Text</option>
                   <option value="read_value">Input value</option>
                   <option value="read_rows">Rows</option>
@@ -565,16 +689,32 @@ export default function BrowserCrmCommissioning() {
               </label>
               <label className="text-xs font-semibold text-[#526278]">
                 Result selector
-                <input value={readSelector} onChange={event => setReadSelector(event.target.value)} className="mt-1 h-10 w-full rounded-md border border-[#D6DFEA] px-2" placeholder="Verified result selector" />
+                <input
+                  value={readSelector}
+                  onChange={event => setReadSelector(event.target.value)}
+                  className="mt-1 h-10 w-full rounded-md border border-[#D6DFEA] px-2"
+                  placeholder="Verified result selector"
+                />
               </label>
               <label className="text-xs font-semibold text-[#526278]">
                 Result key
-                <input value={readKey} onChange={event => setReadKey(event.target.value)} className="mt-1 h-10 w-full rounded-md border border-[#D6DFEA] px-2" />
+                <input
+                  value={readKey}
+                  onChange={event => setReadKey(event.target.value)}
+                  className="mt-1 h-10 w-full rounded-md border border-[#D6DFEA] px-2"
+                />
               </label>
               {readAction === "read_rows" ? (
                 <label className="text-xs font-semibold text-[#526278] md:col-span-3">
                   Row fields — one verified field per line: key=selector
-                  <textarea value={readFields} onChange={event => setReadFields(event.target.value)} className="mt-1 min-h-24 w-full rounded-md border border-[#D6DFEA] p-2 font-mono text-xs" placeholder={'externalId=[data-contact-id]\nname=.contact-name'} />
+                  <textarea
+                    value={readFields}
+                    onChange={event => setReadFields(event.target.value)}
+                    className="mt-1 min-h-24 w-full rounded-md border border-[#D6DFEA] p-2 font-mono text-xs"
+                    placeholder={
+                      "externalId=[data-contact-id]\nname=.contact-name"
+                    }
+                  />
                 </label>
               ) : null}
             </div>
@@ -582,23 +722,47 @@ export default function BrowserCrmCommissioning() {
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               <label className="text-xs font-semibold text-[#526278]">
                 Target row selector
-                <input value={targetRowSelector} onChange={event => setTargetRowSelector(event.target.value)} className="mt-1 h-10 w-full rounded-md border border-[#D6DFEA] px-2" placeholder="Verified row selector" />
+                <input
+                  value={targetRowSelector}
+                  onChange={event => setTargetRowSelector(event.target.value)}
+                  className="mt-1 h-10 w-full rounded-md border border-[#D6DFEA] px-2"
+                  placeholder="Verified row selector"
+                />
               </label>
               <label className="text-xs font-semibold text-[#526278]">
                 Target identity fields — key=selector
-                <textarea value={targetFields} onChange={event => setTargetFields(event.target.value)} className="mt-1 min-h-24 w-full rounded-md border border-[#D6DFEA] p-2 font-mono text-xs" placeholder={'externalId=[data-contact-id]\nemail=.email'} />
+                <textarea
+                  value={targetFields}
+                  onChange={event => setTargetFields(event.target.value)}
+                  className="mt-1 min-h-24 w-full rounded-md border border-[#D6DFEA] p-2 font-mono text-xs"
+                  placeholder={"externalId=[data-contact-id]\nemail=.email"}
+                />
               </label>
               <label className="text-xs font-semibold text-[#526278]">
                 Success selector
-                <input value={postSelector} onChange={event => setPostSelector(event.target.value)} className="mt-1 h-10 w-full rounded-md border border-[#D6DFEA] px-2" />
+                <input
+                  value={postSelector}
+                  onChange={event => setPostSelector(event.target.value)}
+                  className="mt-1 h-10 w-full rounded-md border border-[#D6DFEA] px-2"
+                />
               </label>
               <label className="text-xs font-semibold text-[#526278]">
                 Success result key
-                <input value={postKey} onChange={event => setPostKey(event.target.value)} className="mt-1 h-10 w-full rounded-md border border-[#D6DFEA] px-2" />
+                <input
+                  value={postKey}
+                  onChange={event => setPostKey(event.target.value)}
+                  className="mt-1 h-10 w-full rounded-md border border-[#D6DFEA] px-2"
+                />
               </label>
               <label className="text-xs font-semibold text-[#526278]">
                 Success read type
-                <select value={postAction} onChange={event => setPostAction(event.target.value as typeof postAction)} className="mt-1 h-10 w-full rounded-md border border-[#D6DFEA] bg-white px-2">
+                <select
+                  value={postAction}
+                  onChange={event =>
+                    setPostAction(event.target.value as typeof postAction)
+                  }
+                  className="mt-1 h-10 w-full rounded-md border border-[#D6DFEA] bg-white px-2"
+                >
                   <option value="read_text">Text</option>
                   <option value="read_value">Input value</option>
                   <option value="read_attribute">Attribute</option>
@@ -607,12 +771,24 @@ export default function BrowserCrmCommissioning() {
               {postAction === "read_attribute" ? (
                 <label className="text-xs font-semibold text-[#526278]">
                   Attribute
-                  <input value={postAttribute} onChange={event => setPostAttribute(event.target.value)} className="mt-1 h-10 w-full rounded-md border border-[#D6DFEA] px-2" />
+                  <input
+                    value={postAttribute}
+                    onChange={event => setPostAttribute(event.target.value)}
+                    className="mt-1 h-10 w-full rounded-md border border-[#D6DFEA] px-2"
+                  />
                 </label>
               ) : null}
               <label className="text-xs font-semibold text-[#526278]">
                 Comparator
-                <select value={postComparator} onChange={event => setPostComparator(event.target.value as typeof postComparator)} className="mt-1 h-10 w-full rounded-md border border-[#D6DFEA] bg-white px-2">
+                <select
+                  value={postComparator}
+                  onChange={event =>
+                    setPostComparator(
+                      event.target.value as typeof postComparator
+                    )
+                  }
+                  className="mt-1 h-10 w-full rounded-md border border-[#D6DFEA] bg-white px-2"
+                >
                   <option value="equals">equals</option>
                   <option value="contains">contains</option>
                   <option value="exists">exists</option>
@@ -621,53 +797,94 @@ export default function BrowserCrmCommissioning() {
               </label>
               <label className="text-xs font-semibold text-[#526278]">
                 Expected input placeholder
-                <input value={postExpectedInput} onChange={event => setPostExpectedInput(event.target.value)} className="mt-1 h-10 w-full rounded-md border border-[#D6DFEA] px-2" placeholder="e.g. stage" />
+                <input
+                  value={postExpectedInput}
+                  onChange={event => setPostExpectedInput(event.target.value)}
+                  className="mt-1 h-10 w-full rounded-md border border-[#D6DFEA] px-2"
+                  placeholder="e.g. stage"
+                />
               </label>
               <label className="text-xs font-semibold text-[#526278] md:col-span-2">
                 Or exact expected value
-                <input value={postExpectedValue} onChange={event => setPostExpectedValue(event.target.value)} className="mt-1 h-10 w-full rounded-md border border-[#D6DFEA] px-2" />
+                <input
+                  value={postExpectedValue}
+                  onChange={event => setPostExpectedValue(event.target.value)}
+                  className="mt-1 h-10 w-full rounded-md border border-[#D6DFEA] px-2"
+                />
               </label>
             </div>
           )}
 
           <div className="mt-4 flex flex-wrap gap-2">
-            <Button onClick={() => void approveReview()} disabled={saveReview.isPending}>
+            <Button
+              onClick={() => void approveReview()}
+              disabled={saveReview.isPending}
+            >
               {saveReview.isPending ? "Saving review…" : "Save as TEST_READY"}
             </Button>
-            <Button variant="outline" onClick={() => setReviewData(null)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setReviewData(null)}>
+              Cancel
+            </Button>
           </div>
         </div>
       ) : null}
 
       {replayOperation ? (
         <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
-          <p className="font-bold">Controlled replay: {replayOperation.label}</p>
+          <p className="font-bold">
+            Controlled replay: {replayOperation.label}
+          </p>
           <p className="mt-1 text-xs leading-5">
-            Use only deterministic placeholders and a known test record. A test does
-            not publish the operation unless you explicitly choose publish.
+            Use only deterministic placeholders and a known test record. A test
+            does not publish the operation unless you explicitly choose publish.
           </p>
           <label className="mt-3 block text-xs font-semibold">
             Test inputs (JSON object)
-            <textarea value={replayInputs} onChange={event => setReplayInputs(event.target.value)} className="mt-1 min-h-28 w-full rounded-md border border-amber-300 bg-white p-2 font-mono text-xs text-[#26354A]" />
+            <textarea
+              value={replayInputs}
+              onChange={event => setReplayInputs(event.target.value)}
+              className="mt-1 min-h-28 w-full rounded-md border border-amber-300 bg-white p-2 font-mono text-xs text-[#26354A]"
+            />
           </label>
           {replayOperation.mode === "write" ? (
             <label className="mt-3 flex items-start gap-2 text-xs font-semibold">
-              <input type="checkbox" checked={authorisedWrite} onChange={event => setAuthorisedWrite(event.target.checked)} className="mt-0.5" />
-              I confirm this write replay uses a client-authorised safe test record and destination.
+              <input
+                type="checkbox"
+                checked={authorisedWrite}
+                onChange={event => setAuthorisedWrite(event.target.checked)}
+                className="mt-0.5"
+              />
+              I confirm this write replay uses a client-authorised safe test
+              record and destination.
             </label>
           ) : null}
           <label className="mt-2 flex items-start gap-2 text-xs font-semibold">
-            <input type="checkbox" checked={publishConfirmed} onChange={event => setPublishConfirmed(event.target.checked)} className="mt-0.5" />
-            If the controlled replay passes, I authorise this exact operation version for production use.
+            <input
+              type="checkbox"
+              checked={publishConfirmed}
+              onChange={event => setPublishConfirmed(event.target.checked)}
+              className="mt-0.5"
+            />
+            If the controlled replay passes, I authorise this exact operation
+            version for production use.
           </label>
           <div className="mt-3 flex flex-wrap gap-2">
-            <Button variant="outline" disabled={replayPending} onClick={() => void controlledReplay(false)}>
+            <Button
+              variant="outline"
+              disabled={replayPending}
+              onClick={() => void controlledReplay(false)}
+            >
               Test only
             </Button>
-            <Button disabled={replayPending || !publishConfirmed} onClick={() => void controlledReplay(true)}>
+            <Button
+              disabled={replayPending || !publishConfirmed}
+              onClick={() => void controlledReplay(true)}
+            >
               {replayPending ? "Running…" : "Test and publish LIVE_PROVEN"}
             </Button>
-            <Button variant="ghost" onClick={() => setReplayOperation(null)}>Close</Button>
+            <Button variant="ghost" onClick={() => setReplayOperation(null)}>
+              Close
+            </Button>
           </div>
           {replayResult ? (
             <pre className="mt-3 max-h-60 overflow-auto rounded-lg bg-white p-3 text-[11px] text-[#33445B]">

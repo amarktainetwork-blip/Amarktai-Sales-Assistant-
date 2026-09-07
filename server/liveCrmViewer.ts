@@ -343,13 +343,9 @@ async function startStream(session: LiveCrmSession) {
   const cdp = await page.context().newCDPSession(page);
   session.cdp = cdp;
   session.streaming = true;
-  await cdp.send("Page.startScreencast", {
-    format: "jpeg",
-    quality: 68,
-    maxWidth: 1_920,
-    maxHeight: 1_200,
-    everyNthFrame: 1,
-  });
+  // Install the listener before starting the screencast. A static login page
+  // can emit its only frame while startScreencast is resolving; registering
+  // afterwards leaves the viewer connected but permanently blank.
   cdp.on("Page.screencastFrame", frame => {
     void cdp
       .send("Page.screencastFrameAck", { sessionId: frame.sessionId })
@@ -374,6 +370,34 @@ async function startStream(session: LiveCrmSession) {
       url: session.lastUrl,
     });
   });
+  await cdp.send("Page.startScreencast", {
+    format: "jpeg",
+    quality: 68,
+    maxWidth: 1_920,
+    maxHeight: 1_200,
+    everyNthFrame: 1,
+  });
+  // Seed a guaranteed initial image as a fallback for completely static pages.
+  const initial = await cdp
+    .send("Page.captureScreenshot", {
+      format: "jpeg",
+      quality: 68,
+      fromSurface: true,
+    })
+    .catch(() => null);
+  if (initial?.data) {
+    const viewport = page.viewportSize();
+    broadcast(session, {
+      type: "frame",
+      data: initial.data,
+      metadata: {
+        deviceWidth: viewport?.width,
+        deviceHeight: viewport?.height,
+        deviceScaleFactor: 1,
+      },
+      url: session.lastUrl,
+    });
+  }
   page.once("close", () => {
     broadcast(session, {
       type: "disconnected",
@@ -646,6 +670,10 @@ export function registerLiveCrmViewerSocket(server: Server) {
       touchViewerSession(session);
       void startStream(session)
         .then(() => {
+          socketPayload(socket, {
+            type: "session",
+            ...managedCrmBrowserSessionManager.snapshot(session.managed),
+          });
           socketPayload(socket, {
             type: "ready",
             url: session.lastUrl,
