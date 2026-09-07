@@ -10,6 +10,15 @@ Amarktai Sales Assistant is a self-hosted, multi-tenant sales operating layer fo
 - `connectedSystems` and backend capability verification are connection truth. A configured environment variable, an OAuth redirect or a customer confirmation alone is never proof that a provider is live.
 - Generated drafts and recommendations are proposals. Only accepted, correlation-bound actions may execute, and their evidence remains in the audit trail.
 
+## Learn once, execute many
+
+- Commissioning may use GenX to understand an unfamiliar CRM and produce a declarative operation. A browser operation becomes production-executable only after its saved version is `LIVE_PROVEN` with deterministic proof.
+- Normal CRM reads, writes, readback, synchronization, Refresh Now, mailbox transport and approved-template materialization run inside a fail-closed zero-model boundary. They never fall back to GenX; a failure is surfaced as a connector/runtime failure.
+- Previously learned operations are stored per organisation and connected system, then reloaded after process or browser restarts. A changed operation is degraded independently and may enter the explicit targeted-repair flow; unrelated proven operations remain usable.
+- The connection-scoped CRM worker reconciles incrementally every 120 seconds by default. Operators may set `CRM_SYNC_INTERVAL_MS` (minimum 30000) without changing code. External IDs, cursors and database uniqueness constraints provide restart-safe duplicate protection.
+- Genie remains authoritative. Amarktai stores synchronized projections, checkpoints, evidence and proposed actions; it does not create a second independent CRM truth.
+- Every real GenX provider call is recorded in the existing AI-credit ledger with tenant/user scope, feature, bounded purpose, model, provider usage, credits and correlation reference. Credential-bound Course2Career/Outlook gates remain `AWAITING_LIVE_PROOF` until the production acceptance verifier records real evidence.
+
 ## Supported connections
 
 Native OAuth adapters are included for **HubSpot, Salesforce, Pipedrive and Zoho CRM**. **Genie** and other authorised web CRMs use the deterministic browser connector. The **Other CRM** path is designed for a company CRM that has a usable web interface but no dedicated Amarktai API adapter; selectors and operations must be calibrated and verified before the connection can become ready.

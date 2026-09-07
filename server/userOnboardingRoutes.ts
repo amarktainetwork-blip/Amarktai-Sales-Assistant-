@@ -1,6 +1,11 @@
 import type { Express, Response } from "express";
-import { and, eq } from "drizzle-orm";
-import { companyProfiles, externalUserMappings } from "../drizzle/schema";
+import { and, desc, eq } from "drizzle-orm";
+import {
+  companyProfiles,
+  connectorSyncJobs,
+  crmCommissioningJobs,
+  externalUserMappings,
+} from "../drizzle/schema";
 import { listConnectedSystemsForUser } from "./connectedSystems";
 import { getDb, getUserById, recordAudit } from "./db";
 import { requireLocalHttpContext } from "./httpAuth";
@@ -126,7 +131,44 @@ async function commissionedCrmReady(
   organisationId: number,
   systems: Awaited<ReturnType<typeof listConnectedSystemsForUser>>
 ) {
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
   for (const system of systems) {
+    const commissioning = (
+      await db
+        .select({
+          status: crmCommissioningJobs.status,
+          progress: crmCommissioningJobs.progress,
+        })
+        .from(crmCommissioningJobs)
+        .where(eq(crmCommissioningJobs.connectedSystemId, system.id))
+        .orderBy(desc(crmCommissioningJobs.id))
+        .limit(1)
+    )[0];
+    const sync = (
+      await db
+        .select({
+          status: connectorSyncJobs.status,
+          lastSucceededAt: connectorSyncJobs.lastSucceededAt,
+        })
+        .from(connectorSyncJobs)
+        .where(
+          and(
+            eq(connectorSyncJobs.connectedSystemId, system.id),
+            eq(connectorSyncJobs.resourceType, "crm_reconciliation")
+          )
+        )
+        .limit(1)
+    )[0];
+    const accounting = (
+      commissioning?.progress as Record<string, unknown> | null
+    )?.capabilityAccounting as { criticalGaps?: unknown[] } | undefined;
+    const operationallyReady =
+      commissioning?.status === "ready" &&
+      (accounting?.criticalGaps?.length || 0) === 0 &&
+      sync?.status === "ready" &&
+      Boolean(sync.lastSucceededAt);
+    if (!operationallyReady) continue;
     const browser = ["browser", "sidecar"].includes(system.connectionMethod);
     if (!browser && ["ready", "limited_permissions"].includes(system.status))
       return true;

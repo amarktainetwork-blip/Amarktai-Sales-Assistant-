@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { CRITICAL_CLIENT_FEATURES, evaluateStrictClientAcceptance, FEATURE_ACCEPTANCE_NAMES, operationStatus, result, type FeatureAcceptanceMatrix } from "./featureAcceptance";
+import {
+  CRITICAL_CLIENT_FEATURES,
+  deriveP0AcceptanceLedger,
+  evaluateStrictClientAcceptance,
+  FEATURE_ACCEPTANCE_NAMES,
+  operationStatus,
+  P0_ACCEPTANCE_NAMES,
+  result,
+  type FeatureAcceptanceMatrix,
+} from "./featureAcceptance";
 
 describe("client feature acceptance truth", () => {
   it("contains every required product feature exactly once", () => {
@@ -9,26 +18,65 @@ describe("client feature acceptance truth", () => {
   });
 
   it("never promotes configured browser operations to live proof", () => {
-    const configured = operationStatus(new Map([["email.send", "TEST_READY"]]), ["email.send"], "CRM email");
+    const configured = operationStatus(
+      new Map([["email.send", "TEST_READY"]]),
+      ["email.send"],
+      "CRM email"
+    );
     expect(configured.status).toBe("CONFIGURED");
-    const live = operationStatus(new Map([["email.send", "LIVE_PROVEN"]]), ["email.send"], "CRM email");
+    const live = operationStatus(
+      new Map([["email.send", "LIVE_PROVEN"]]),
+      ["email.send"],
+      "CRM email"
+    );
     expect(live.status).toBe("LIVE_PROVEN");
   });
 
   it("requires LIVE_PROVEN for every critical client feature", () => {
-    const matrix = Object.fromEntries(FEATURE_ACCEPTANCE_NAMES.map(name => [name, result("LIVE_PROVEN", "proof")])) as FeatureAcceptanceMatrix;
+    const matrix = Object.fromEntries(
+      FEATURE_ACCEPTANCE_NAMES.map(name => [
+        name,
+        result("LIVE_PROVEN", "proof"),
+      ])
+    ) as FeatureAcceptanceMatrix;
     for (const critical of CRITICAL_CLIENT_FEATURES) {
-      const candidate = { ...matrix, [critical]: result("TESTED", "tests only") };
-      expect(evaluateStrictClientAcceptance(candidate).passed, critical).toBe(false);
+      const candidate = {
+        ...matrix,
+        [critical]: result("TESTED", "tests only"),
+      };
+      expect(evaluateStrictClientAcceptance(candidate).passed, critical).toBe(
+        false
+      );
     }
     expect(evaluateStrictClientAcceptance(matrix).passed).toBe(true);
   });
 
   it("allows optional CRM functions only when live-proven or truthfully not applicable", () => {
-    const matrix = Object.fromEntries(FEATURE_ACCEPTANCE_NAMES.map(name => [name, result("LIVE_PROVEN", "proof")])) as FeatureAcceptanceMatrix;
-    matrix.CRM_SMS = result("NOT_APPLICABLE", "connected account does not expose SMS");
+    const matrix = Object.fromEntries(
+      FEATURE_ACCEPTANCE_NAMES.map(name => [
+        name,
+        result("LIVE_PROVEN", "proof"),
+      ])
+    ) as FeatureAcceptanceMatrix;
+    matrix.CRM_SMS = result(
+      "NOT_APPLICABLE",
+      "connected account does not expose SMS"
+    );
     expect(evaluateStrictClientAcceptance(matrix).passed).toBe(true);
     matrix.CRM_SMS = result("TESTED", "tests only");
     expect(evaluateStrictClientAcceptance(matrix).passed).toBe(false);
+  });
+
+  it("keeps credential-bound Course2Career proof pending in the machine ledger", () => {
+    const ledger = deriveP0AcceptanceLedger();
+    expect(Object.keys(ledger)).toHaveLength(P0_ACCEPTANCE_NAMES.length);
+    expect(ledger.GENX_SPEND_BOUNDARY).toBe("PASS");
+    expect(ledger.CRM_NEW_LEAD_INGEST).toBe("AWAITING_LIVE_PROOF");
+    expect(ledger.CRM_WRITE_READBACK).toBe("AWAITING_LIVE_PROOF");
+    expect(ledger.OUTLOOK_MODEL_FREE_TRANSPORT).toBe("AWAITING_LIVE_PROOF");
+    expect(
+      deriveP0AcceptanceLedger({ CRM_NEW_LEAD_INGEST: true })
+        .CRM_NEW_LEAD_INGEST
+    ).toBe("PASS");
   });
 });

@@ -112,7 +112,7 @@ import {
 import { getCrmAdapter } from "./crm/adapterRegistry";
 import { createCrmOAuthState } from "./crm/oauthState";
 import { crmOAuthCallbackUrl } from "./crm/oauthRoutes";
-import { syncConnectedSystem } from "./crm/sync";
+import { syncConnectedSystem, syncConnectedSystemsForUser } from "./crm/sync";
 import { getTodayWork } from "./today";
 import {
   acquireAiControl,
@@ -786,13 +786,11 @@ export const appRouter = router({
           return { success: true };
         }),
     }),
-    prepareWorkflow: secondFactorProcedure
-      .input(workflowInput)
-      .mutation(() => {
-        throw new Error(
-          "Legacy workflow preparation is disabled. Use the governed Assistant with an exact CRM customer context."
-        );
-      }),
+    prepareWorkflow: secondFactorProcedure.input(workflowInput).mutation(() => {
+      throw new Error(
+        "Legacy workflow preparation is disabled. Use the governed Assistant with an exact CRM customer context."
+      );
+    }),
     reviewAction: secondFactorProcedure
       .input(
         z.object({
@@ -1311,6 +1309,12 @@ export const appRouter = router({
             "Only organisation owners and managers can synchronize connected systems."
           );
         return syncConnectedSystem({ userId: ctx.user.id, ...input });
+      }),
+    syncAll: secondFactorProcedure
+      .input(z.object({ organisationId: z.number().int().positive() }))
+      .mutation(({ ctx, input }) => {
+        requireActiveOrganisationContext(ctx, input.organisationId);
+        return syncConnectedSystemsForUser({ userId: ctx.user.id, ...input });
       }),
     browserOperationMatrix: secondFactorProcedure
       .input(

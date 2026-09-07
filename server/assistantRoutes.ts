@@ -15,6 +15,9 @@ import { listConnectedSystemsForUser } from "./connectedSystems";
 import { planAssistantCrmBatchInstruction } from "./crm/assistantBatchExecution";
 import { routeConnectedSystemActions } from "./crmRouter";
 import { tryPrepareDirectAssistantAction } from "./assistantDirectActions";
+import { attachRuntimeOperationReadiness } from "./crm/runtimeCapabilities";
+import { syncConnectedSystemsForUser } from "./crm/sync";
+import { planAssistantSingleRecordAction } from "./crm/assistantSingleRecord";
 import {
   createAssistantMemory,
   isSafeAssistantMemory,
@@ -85,11 +88,21 @@ function listLines<T>(
   return items.slice(0, maximum).map(render).join("\n");
 }
 
-function deterministicTodayAnswer(
+export function deterministicTodayAnswer(
   query: string,
   today: Awaited<ReturnType<typeof getTodayWork>>
 ): PublicAssistantResponse | undefined {
   const normalized = query.toLowerCase();
+
+  if (/newest leads?|new leads?|latest leads?|recent leads?/.test(normalized)) {
+    const items = today.queues.newLeads;
+    return {
+      content: items.length
+        ? `Here are the newest synchronized leads:\n\n${listLines(items, item => `• ${[item.firstName, item.lastName].filter(Boolean).join(" ") || item.email || item.externalId}${item.lifecycleStage ? ` — ${item.lifecycleStage}` : ""}`)}`
+        : "There are no synchronized leads to show yet.",
+      suggestedAction: { label: "Open customers", path: "/customers" },
+    };
+  }
 
   if (/overdue.*task|task.*overdue|what.*overdue|late task/.test(normalized)) {
     const items = today.queues.overdueTasks;
@@ -256,6 +269,25 @@ export function registerAssistantRoutes(app: Express) {
         });
       }
 
+      if (
+        /^(?:please\s+)?(?:refresh|sync)(?:\s+my)?\s+crm[.!]?$/i.test(
+          latestUserMessage.trim()
+        )
+      ) {
+        const sync = await syncConnectedSystemsForUser({
+          userId,
+          organisationId: membership.organisationId,
+        });
+        return res.json({
+          content: sync.failed
+            ? `CRM refresh finished with ${sync.failed} connection${sync.failed === 1 ? "" : "s"} needing attention. Existing synchronized data is still available.`
+            : sync.synchronized
+              ? "Your CRM is synchronized with the latest available records."
+              : "There is no ready CRM connection to synchronize yet.",
+          suggestedAction: { label: "Open today's work", path: "/today" },
+        });
+      }
+
       const today = await getTodayWork({
         userId,
         organisationId: membership.organisationId,
@@ -268,6 +300,94 @@ export function registerAssistantRoutes(app: Express) {
         request: latestUserMessage,
       });
       if (preparedCommunication) return res.json(preparedCommunication);
+
+      if (contactId) {
+        const context = await getWorkingContextForContact({
+          organisationId: membership.organisationId,
+          contactId,
+        });
+        if (
+          context &&
+          /(?:what|which).*(?:stage|opportunity)|(?:active|current).*(?:deal|opportunity)/i.test(
+            latestUserMessage
+          )
+        )
+          return res.json({
+            content: context.opportunityExternalId
+              ? `${context.contactName}'s active opportunity is ${context.opportunityName || "the current opportunity"}${context.stage ? ` in the ${context.stage} stage` : ", with no synchronized stage value"}.`
+              : `${context.contactName} has no active synchronized opportunity.`,
+            suggestedAction: {
+              label: "Open customers",
+              path: "/customers",
+            },
+          });
+        if (
+          context &&
+          /(?:show|open|what).*(?:history|last interaction)/i.test(
+            latestUserMessage
+          )
+        )
+          return res.json({
+            content: [
+              `${context.contactName}'s latest synchronized context:`,
+              context.lastInteraction ||
+                "No CRM interaction is synchronized yet.",
+              context.recentInbound
+                ? `Recent inbound: ${context.recentInbound}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join("\n\n"),
+            suggestedAction: { label: "Open customers", path: "/customers" },
+          });
+        const action = context
+          ? planAssistantSingleRecordAction({
+              instruction: latestUserMessage,
+              context,
+              timezone: membership.timezone,
+            })
+          : undefined;
+        if (action) {
+          const systems = await attachRuntimeOperationReadiness({
+            organisationId: membership.organisationId,
+            systems: await listConnectedSystemsForUser(
+              userId,
+              membership.organisationId
+            ),
+          });
+          const routed = routeConnectedSystemActions([action], systems);
+          const routable = Boolean(
+            (routed[0]?.payload.crmRoute as { routable?: boolean } | undefined)
+              ?.routable
+          );
+          await createWorkflowRun({
+            userId,
+            organisationId: membership.organisationId,
+            workflowKey: "assistant_deterministic_single_record",
+            leadLabel: context.contactName,
+            payload: { instruction: latestUserMessage, plannerCalls: 0 },
+            verificationSummary:
+              "Prepared from an exact selected CRM record and deterministic instruction.",
+            actions: routed,
+          });
+          return res.json(
+            routable
+              ? {
+                  content:
+                    "I prepared that exact CRM change for Review. Nothing has been changed yet.",
+                  suggestedAction: {
+                    label: "Review proposed change",
+                    path: "/reviews",
+                  },
+                  reviewRequired: true,
+                }
+              : {
+                  content:
+                    "That exact CRM action is not LIVE_PROVEN on the current connection yet. Nothing was changed.",
+                }
+          );
+        }
+      }
 
       const direct =
         directAssistantAction(query) || deterministicTodayAnswer(query, today);
@@ -287,10 +407,14 @@ export function registerAssistantRoutes(app: Express) {
 
       const batchAction = planAssistantCrmBatchInstruction(query);
       if (batchAction) {
-        const systems = await listConnectedSystemsForUser(
+        const listedSystems = await listConnectedSystemsForUser(
           userId,
           membership.organisationId
         );
+        const systems = await attachRuntimeOperationReadiness({
+          organisationId: membership.organisationId,
+          systems: listedSystems,
+        });
         const routed = routeConnectedSystemActions([batchAction], systems);
         const workflowRunId = await createWorkflowRun({
           userId,
@@ -331,7 +455,7 @@ export function registerAssistantRoutes(app: Express) {
             contactId,
           })
         : undefined;
-      const [sources, operationalContext, relevantMemory, user] =
+      const [sources, operationalContext, relevantMemory, user, listedSystems] =
         await Promise.all([
           searchApprovedKnowledge(userId, membership.organisationId, query),
           getAssistantOperationalContext(userId, membership.organisationId),
@@ -342,7 +466,12 @@ export function registerAssistantRoutes(app: Express) {
             contactExternalId: contactContext?.contactExternalId,
           }),
           getUserById(userId),
+          listConnectedSystemsForUser(userId, membership.organisationId),
         ]);
+      const runtimeSystems = await attachRuntimeOperationReadiness({
+        organisationId: membership.organisationId,
+        systems: listedSystems,
+      });
       const approvedKnowledge = sources.length
         ? sources
             .map(
@@ -396,6 +525,18 @@ export function registerAssistantRoutes(app: Express) {
         approvedPlaybooks: operationalContext.approvedPlaybooks,
         allowedActions: operationalContext.allowedActions,
         connections: operationalContext.connections,
+        commissionedCapabilities: runtimeSystems.map(system => ({
+          id: system.id,
+          provider: system.provider,
+          status: system.status,
+          verifiedCapabilities: system.verifiedCapabilities,
+          liveProvenOperations: system.learnedOperations
+            .filter(operation => operation.productionReady)
+            .map(operation => ({
+              key: operation.operationKey,
+              mode: operation.mode,
+            })),
+        })),
         requestRoute: route.summary,
       });
 

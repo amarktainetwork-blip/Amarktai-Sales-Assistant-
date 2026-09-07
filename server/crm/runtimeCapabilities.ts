@@ -46,17 +46,22 @@ export function productionOperationAvailable(
   );
 }
 
-function safeOperation(operation: Record<string, unknown>): RuntimeLearnedOperation {
+function safeOperation(
+  operation: Record<string, unknown>
+): RuntimeLearnedOperation {
   const operationKey = String(operation.key || operation.operationKey || "");
   const mode = operation.mode === "write" ? "write" : "read";
   const status = String(operation.status || "NOT_LEARNED");
   return {
     operationKey,
-    label: String(operation.label || operationKey || "CRM-specific function").slice(0, 160),
+    label: String(
+      operation.label || operationKey || "CRM-specific function"
+    ).slice(0, 160),
     mode,
     status,
     version: Number(operation.version || 0),
-    lastTestAt: operation.lastTestAt instanceof Date ? operation.lastTestAt : null,
+    lastTestAt:
+      operation.lastTestAt instanceof Date ? operation.lastTestAt : null,
     lastSuccessAt:
       operation.lastSuccessAt instanceof Date ? operation.lastSuccessAt : null,
     lastFailureAt:
@@ -72,7 +77,10 @@ function safeOperation(operation: Record<string, unknown>): RuntimeLearnedOperat
  */
 export async function attachRuntimeOperationReadiness<
   T extends RuntimeConnectedSystem,
->(input: { organisationId: number; systems: T[] }): Promise<Array<T & { learnedOperations: RuntimeLearnedOperation[] }>> {
+>(input: {
+  organisationId: number;
+  systems: T[];
+}): Promise<Array<T & { learnedOperations: RuntimeLearnedOperation[] }>> {
   return Promise.all(
     input.systems.map(async system => {
       if (
@@ -84,11 +92,9 @@ export async function attachRuntimeOperationReadiness<
         organisationId: input.organisationId,
         connectedSystemId: system.id,
       });
-      const learnedOperations = matrix.operations
-        .map(operation =>
-          safeOperation(operation as unknown as Record<string, unknown>)
-        )
-        .filter(operation => operation.operationKey.startsWith("custom."));
+      const learnedOperations = matrix.operations.map(operation =>
+        safeOperation(operation as unknown as Record<string, unknown>)
+      );
       return { ...system, learnedOperations };
     })
   );

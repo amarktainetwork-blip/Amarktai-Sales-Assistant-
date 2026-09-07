@@ -46,6 +46,19 @@ function dueLabel(value: Date | null) {
   });
 }
 
+function freshnessLabel(value?: Date | string | null, status?: string) {
+  if (status === "attention") return "CRM sync needs attention";
+  if (!value) return "CRM has not synchronized yet";
+  const seconds = Math.max(
+    0,
+    Math.floor((Date.now() - new Date(value).valueOf()) / 1000)
+  );
+  if (seconds < 60)
+    return `CRM updated ${seconds} second${seconds === 1 ? "" : "s"} ago`;
+  const minutes = Math.floor(seconds / 60);
+  return `CRM updated ${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+}
+
 export default function Today() {
   const [, navigate] = useLocation();
   const organisation = trpc.organisation.current.useQuery();
@@ -59,6 +72,7 @@ export default function Today() {
   const [selected, setSelected] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const refreshInFlight = useRef(false);
+  const syncAll = trpc.connectedSystems.syncAll.useMutation();
 
   const saveReminder = trpc.memory.command.useMutation({
     onSuccess: () => {
@@ -127,13 +141,18 @@ export default function Today() {
     refreshInFlight.current = true;
     setRefreshing(true);
     try {
-      const { mailboxWarning } = await refreshSalesDay({
+      const { mailboxWarning, crmWarning } = await refreshSalesDay({
         fetcher: fetch,
+        syncCrm: () => syncAll.mutateAsync({ organisationId }),
         invalidateToday: () => utils.sales.today.invalidate(),
         invalidateCustomers: () => utils.sales.customers.invalidate(),
         refetchToday: () => today.refetch(),
       });
-      if (mailboxWarning) {
+      if (crmWarning) {
+        toast.warning(
+          "Some CRM records could not refresh just now. Existing synchronized data remains available."
+        );
+      } else if (mailboxWarning) {
         toast.warning(
           "Sales data refreshed. Your mailbox could not refresh just now, so recent replies may take a moment to appear."
         );
@@ -176,7 +195,11 @@ export default function Today() {
           <p className="mt-3 text-sm leading-6 text-[#66758A]">
             Nothing has been changed. Check the CRM connection and try again.
           </p>
-          <Button className="mt-5" disabled={refreshing} onClick={() => void refreshDay()}>
+          <Button
+            className="mt-5"
+            disabled={refreshing}
+            onClick={() => void refreshDay()}
+          >
             {refreshing ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
@@ -206,9 +229,19 @@ export default function Today() {
                 Your priorities, follow-ups and customer replies in one place.
                 Ask AmarktAI whenever you want help deciding what to do next.
               </p>
+              <p className="mt-2 text-xs font-semibold text-[#66758A]">
+                {freshnessLabel(
+                  today.data?.freshness.lastSuccessfulAt,
+                  today.data?.freshness.status
+                )}
+              </p>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" disabled={refreshing} onClick={() => void refreshDay()}>
+              <Button
+                variant="outline"
+                disabled={refreshing}
+                onClick={() => void refreshDay()}
+              >
                 {refreshing ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (

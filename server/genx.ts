@@ -2,6 +2,7 @@ import { AGENT_CATALOG } from "./agentCatalog";
 import { consumeAiCredits, getAiCreditWallet } from "./aiCredits";
 import { currentAiRequestIdentity } from "./aiRequestContext";
 import { coalesceTenantAiRequest, tenantAiRequestKey } from "./aiCoalescing";
+import { assertModelSpendAllowed } from "./aiExecutionBoundary";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 export type GenxUsage = {
@@ -259,9 +260,8 @@ export async function discoverGenxCapabilities(options?: { force?: boolean }) {
     data?: GenxModelRecord[];
   };
   const models = (payload.data ?? [])
-    .filter(
-      (model): model is GenxModelRecord & { id: string } =>
-        Boolean(model.id?.trim())
+    .filter((model): model is GenxModelRecord & { id: string } =>
+      Boolean(model.id?.trim())
     )
     .map(model => ({
       id: model.id.trim(),
@@ -285,12 +285,7 @@ export async function discoverGenxCapabilities(options?: { force?: boolean }) {
 
 export async function selectAdvertisedGenxModel(input: {
   configuredModel?: string;
-  capability:
-    | "text"
-    | "audio"
-    | "speech_to_text"
-    | "text_to_speech"
-    | "vision";
+  capability: "text" | "audio" | "speech_to_text" | "text_to_speech" | "vision";
 }) {
   const configured = input.configuredModel?.trim();
   if (!configured) return undefined;
@@ -386,6 +381,7 @@ export async function runGenxAgent(input: {
   maxContextChars?: number;
   maxOutputTokens?: number;
 }) {
+  assertModelSpendAllowed("genx", input.billing?.feature);
   // Agent Desk must never silently route these seven evidence specialists
   // through generic model chat. Internal bounded extraction calls (currently
   // Promise Tracker) provide explicit billing and therefore bypass this
@@ -458,10 +454,7 @@ export async function runGenxAgent(input: {
         positiveInt(process.env.GENX_MAX_OUTPUT_TOKENS, 900)
     )
   );
-  const knowledgeBudget = Math.min(
-    12_000,
-    Math.floor(maxContextChars * 0.45)
-  );
+  const knowledgeBudget = Math.min(12_000, Math.floor(maxContextChars * 0.45));
   const approvedKnowledge = input.approvedKnowledge
     ?.trim()
     .slice(0, knowledgeBudget);
@@ -512,7 +505,8 @@ export async function runGenxAgent(input: {
         payload.usage?.completion_tokens ?? payload.usage?.output_tokens,
       totalTokens: payload.usage?.total_tokens,
     };
-    if (billing && charge > 0)
+    // Record every real provider call, including zero-credit/exempt usage.
+    if (billing)
       await consumeAiCredits({
         userId: billing.userId,
         organisationId: billing.organisationId,

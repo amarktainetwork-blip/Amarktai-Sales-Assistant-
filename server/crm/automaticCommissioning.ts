@@ -3,6 +3,7 @@ import { and, desc, eq, inArray, isNull, lt, or } from "drizzle-orm";
 import {
   browserLearnedOperations,
   connectedSystems,
+  connectorSyncJobs,
   crmCommissioningJobs,
   type CrmCommissioningJob,
 } from "../../drizzle/schema";
@@ -42,6 +43,27 @@ import type {
   NormalizedOpportunity,
   NormalizedTask,
 } from "./types";
+import { accountBrowserCapabilities } from "./capabilityAccounting";
+import { ensureConnectionScopedCrmSyncJob } from "./syncWorker";
+import { syncConnectedSystem } from "./sync";
+
+const AUTOMATIC_CORE_BROWSER_OPERATIONS = [
+  "contact.search",
+  "contact.read",
+  "task.list",
+  "note.create",
+  "task.create_callback",
+  "opportunity.read",
+  "opportunity.update",
+] as const;
+
+export function coreBrowserCommissioningReady(
+  statuses: ReadonlyMap<string, string>
+) {
+  return AUTOMATIC_CORE_BROWSER_OPERATIONS.every(
+    key => statuses.get(key) === "LIVE_PROVEN"
+  );
+}
 
 export const COMMISSIONING_STATES = [
   "AUTHENTICATE",
@@ -86,16 +108,6 @@ type DiscoverySnapshot = {
   controls: BrowserDiscoveryControl[];
   readOnly: true;
 };
-
-const CORE_BROWSER_OPERATIONS = [
-  "contact.search",
-  "contact.read",
-  "task.list",
-  "note.create",
-  "task.create_callback",
-  "opportunity.read",
-  "opportunity.update",
-] as const;
 
 const COMMUNICATION_OPERATIONS: Record<
   string,
@@ -670,14 +682,6 @@ export function nextCommissioningState(input: {
   if (input.state === "VERIFY_READBACK") return "PUBLISH_PROVEN_OPERATIONS";
   if (input.state === "PUBLISH_PROVEN_OPERATIONS") return "READY";
   return "READY";
-}
-
-export function coreBrowserCommissioningReady(
-  statuses: ReadonlyMap<string, string>
-) {
-  return CORE_BROWSER_OPERATIONS.every(
-    key => statuses.get(key) === "LIVE_PROVEN"
-  );
 }
 
 export function automaticRepairStatusAfterProof(input: {
@@ -1712,19 +1716,72 @@ export async function advanceAutomaticCommissioning(jobId: number) {
       const coreReady =
         system.connectionMethod === "oauth" ||
         coreBrowserCommissioningReady(statuses);
+      const capabilityAccounting = matrix
+        ? accountBrowserCapabilities({
+            operationStatuses: statuses,
+            discoveredOperationKeys: discovered,
+            allowedReadCapabilities: system.allowedReadCapabilities,
+            allowedWriteCapabilities: system.allowedWriteCapabilities,
+          })
+        : { rows: [], criticalGaps: [], complete: true };
+      let initialSyncReady = false;
+      let initialSyncError: string | null = null;
+      try {
+        await ensureConnectionScopedCrmSyncJob({
+          organisationId: job.organisationId,
+          connectedSystemId: job.connectedSystemId,
+        });
+        const initialSync = await syncConnectedSystem({
+          userId: job.requestedByUserId!,
+          organisationId: job.organisationId,
+          connectedSystemId: job.connectedSystemId,
+        });
+        const commissioningDb = await getDb();
+        if (!commissioningDb)
+          throw new Error("Database connection is unavailable.");
+        await commissioningDb
+          .update(connectorSyncJobs)
+          .set({
+            status: "ready",
+            lastStartedAt: new Date(),
+            lastSucceededAt: new Date(),
+            lastError: null,
+          })
+          .where(
+            and(
+              eq(connectorSyncJobs.connectedSystemId, job.connectedSystemId),
+              eq(connectorSyncJobs.resourceType, "crm_reconciliation")
+            )
+          );
+        initialSyncReady = true;
+        progress.initialSync = initialSync;
+      } catch (error) {
+        initialSyncError =
+          error instanceof Error
+            ? error.message.slice(0, 800)
+            : String(error).slice(0, 800);
+        progress.initialSync = {
+          status: "Needs attention",
+          error: initialSyncError,
+        };
+      }
+      const ready =
+        coreReady && capabilityAccounting.complete && initialSyncReady;
+      progress.capabilityAccounting = capabilityAccounting;
       progress.published = "Ready";
       next = "READY";
       await updateJob(job.id, {
         state: "READY",
-        status: coreReady ? "ready" : "needs_attention",
+        status: ready ? "ready" : "needs_attention",
         progress: {
           ...progress,
-          humanStatus: coreReady ? "Ready" : "Core functions need setup",
+          humanStatus: ready ? "Ready" : "Core functions need setup",
         },
         optionalFailures: failures,
         discoveredOperationKeys: discovered,
         completedAt: new Date(),
         leaseExpiresAt: null,
+        lastError: initialSyncError,
       });
       return;
     }
