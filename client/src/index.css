@@ -275,6 +275,20 @@ body:has([data-company-knowledge-report])::after {
   letter-spacing: .025em;
   pointer-events: none;
 }
+
+/* Onboarding runs inside DashboardLayout for routing/auth, but its hero must remain
+   visually isolated from dashboard-wide heading and text normalization. */
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] > main.amk-auth--setup .amk-auth__visual .amk-auth__message h1 {
+  color: #ffffff !important;
+  text-shadow: 0 3px 24px rgba(0,0,0,.28) !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] > main.amk-auth--setup .amk-auth__visual .amk-auth__message > p:not(.amk-auth__eyebrow) {
+  color: #eef4fb !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] > main.amk-auth--setup .amk-auth__visual .amk-auth__proof {
+  color: #f3f7fb !important;
+}
+
 @media (max-width: 1100px) {
   .amk-auth--setup { grid-template-columns: 1fr; }
   .amk-auth--setup .amk-auth__visual { display: none; }
