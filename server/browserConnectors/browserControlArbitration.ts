@@ -97,6 +97,17 @@ function removeSharedLease(input: ControlKey, expectedToken?: string) {
   }
 }
 
+function busyCode(
+  requested: Exclude<BrowserControlState, "IDLE">,
+  existing?: Exclude<BrowserControlState, "IDLE">
+) {
+  if (existing === "HUMAN_CONTROL") return "CRM_VIEWER_HUMAN_CONTROL_ACTIVE";
+  if (existing === "AGENT_CONTROL") return "CRM_VIEWER_AGENT_CONTROL_ACTIVE";
+  return requested === "AGENT_CONTROL"
+    ? "CRM_VIEWER_HUMAN_CONTROL_ACTIVE"
+    : "CRM_VIEWER_AGENT_CONTROL_ACTIVE";
+}
+
 function acquireSharedLease(
   input: ControlKey,
   state: Exclude<BrowserControlState, "IDLE">,
@@ -118,29 +129,22 @@ function acquireSharedLease(
   }
 
   if (existing && existing.expiresAt > now)
-    throw new Error(
-      state === "AGENT_CONTROL"
-        ? "CRM_VIEWER_HUMAN_CONTROL_ACTIVE"
-        : "CRM_VIEWER_AGENT_CONTROL_ACTIVE"
-    );
-  if (existing || !existingToken) removeSharedLease(input);
+    throw new Error(busyCode(state, existing.state));
+  if (existing) removeSharedLease(input);
 
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   const token = randomUUID();
   try {
+    // mkdir is the atomic cross-process claim. Never pre-delete a path when no
+    // stale record was observed, otherwise a concurrent claimant could be lost.
     mkdirSync(path, { mode: 0o700 });
   } catch (error) {
     const concurrent = readSharedLease(input);
     if (concurrent && concurrent.expiresAt <= Date.now()) {
-      removeSharedLease(input);
+      removeSharedLease(input, concurrent.token);
       return acquireSharedLease(input, state, requestedTtlMs);
     }
-    throw new Error(
-      state === "AGENT_CONTROL"
-        ? "CRM_VIEWER_HUMAN_CONTROL_ACTIVE"
-        : "CRM_VIEWER_AGENT_CONTROL_ACTIVE",
-      { cause: error }
-    );
+    throw new Error(busyCode(state, concurrent?.state), { cause: error });
   }
   const record: SharedLeaseRecord = {
     token,
@@ -236,11 +240,7 @@ function acquire(
 ) {
   const { key, lease } = getLease(input);
   if (lease.state !== "IDLE" && lease.state !== state)
-    throw new Error(
-      state === "AGENT_CONTROL"
-        ? "CRM_VIEWER_HUMAN_CONTROL_ACTIVE"
-        : "CRM_VIEWER_AGENT_CONTROL_ACTIVE"
-    );
+    throw new Error(busyCode(state, lease.state));
 
   const shared = acquireSharedLease(
     input,
