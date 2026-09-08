@@ -4,6 +4,7 @@ import {
   managedCrmBrowserSessionManager,
   providerAuthenticatedUrlMarker,
   resolvedAuthenticationState,
+  shouldRetainCommissionedBrowserPage,
   shouldReuseManagedCrmBrowserSession,
   type BrowserAuthenticationEvidence,
 } from "./managedCrmBrowserSessionManager";
@@ -156,6 +157,27 @@ describe("conservative CRM authentication proof", () => {
 });
 
 describe("managed CRM browser recovery", () => {
+  it("retains only an authenticated manager commissioning page beyond viewer idle expiry", () => {
+    expect(
+      shouldRetainCommissionedBrowserPage({
+        canCommission: true,
+        snapshot: { authenticationState: "AUTHENTICATED" },
+      })
+    ).toBe(true);
+    expect(
+      shouldRetainCommissionedBrowserPage({
+        canCommission: false,
+        snapshot: { authenticationState: "AUTHENTICATED" },
+      })
+    ).toBe(false);
+    expect(
+      shouldRetainCommissionedBrowserPage({
+        canCommission: true,
+        snapshot: { authenticationState: "LOGIN_REQUIRED" },
+      })
+    ).toBe(false);
+  });
+
   it("exposes an explicit manager-owned keep-alive boundary", () => {
     expect(managedCrmBrowserSessionManager.keepAlive).toBeTypeOf("function");
   });

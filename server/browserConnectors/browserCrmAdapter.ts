@@ -4,6 +4,7 @@ import {
   type BrowserContext,
   type Locator,
   type Page,
+  type Route,
 } from "playwright-core";
 import { assertAuthorisedConnectionUrl } from "../connectedSystems";
 import type {
@@ -45,6 +46,7 @@ import {
 import { recordLearnedRuntimeFailure } from "./runtimeFailure";
 import {
   createContextWithBrowserSession,
+  findBrowserSessionPage,
   isBrowserSessionPackage,
 } from "./browserSession";
 import {
@@ -332,6 +334,58 @@ async function withPage<T>(
   const browser: Browser = await connect(profile);
   if (!secret.browserSession || !isBrowserSessionPackage(secret.browserSession))
     throw new Error("Your CRM needs you to sign in again.");
+
+  const recovered = await findBrowserSessionPage({
+    browser,
+    browserSession: secret.browserSession,
+    organisationId: connection.organisationId,
+    connectedSystemId: connection.id,
+    authorise: url => authorizeNavigation(connection, url),
+  });
+
+  if (recovered) {
+    const { page, context } = recovered;
+    let blocked: BlockedNavigation | undefined;
+    const routeHandler = async (route: Route) => {
+      const request = route.request();
+      if (
+        !request.isNavigationRequest() ||
+        request.frame() !== page.mainFrame()
+      )
+        return route.continue();
+      try {
+        await authorizeNavigation(connection, request.url());
+        return route.continue();
+      } catch (error) {
+        blocked = {
+          url: request.url(),
+          detail: error instanceof Error ? error.message : String(error),
+        };
+        return route.abort("blockedbyclient");
+      }
+    };
+    await page.route("**/*", routeHandler);
+    try {
+      await authorizeNavigation(connection, page.url());
+      if (blocked)
+        throw new Error(
+          "Your CRM redirected to a new sign-in service. A manager needs to approve it."
+        );
+      return await run(page, context);
+    } finally {
+      await page.unroute("**/*", routeHandler).catch(() => undefined);
+    }
+  }
+
+  // Genie is proven to bind authentication to the live page/client state. A
+  // new page, even in the same BrowserContext, returns user_not_logged_in. Do
+  // not misclassify that as selector drift or burn AI trying to relearn it.
+  if (provider === "genie")
+    throw new Error(
+      "CRM_BROWSER_REAUTHENTICATION_REQUIRED: reopen the Secure CRM Browser and sign in once so autonomous actions can attach to the commissioned Genie tab."
+    );
+
+  // Custom browser connectors may still support ordinary storage-state replay.
   const context = await createContextWithBrowserSession({
     browser,
     browserSession: secret.browserSession,
@@ -618,12 +672,19 @@ async function runDeterministicOperation(input: RunOperationInput) {
       artifactPrefix: `${input.provider}-${operationKey}-${suffix}`,
       authorizeNavigation: url => authorizeNavigation(input.connection, url),
     });
+  const browserUserId = Number(
+    input.secret.browserUserId || input.secret.commissioningUserId || 0
+  );
+  if (!Number.isInteger(browserUserId) || browserUserId <= 0)
+    throw new Error(
+      "CRM_BROWSER_IDENTITY_OWNER_REQUIRED: reopen the Secure CRM Browser so this browser identity can be bound to its salesperson."
+    );
   let acquiredControl = false;
   try {
     acquireAiBrowserControl({
       organisationId: input.connection.organisationId,
       connectedSystemId: input.connection.id,
-      userId: 0,
+      userId: browserUserId,
     });
     acquiredControl = true;
     const result = await withPage(
@@ -775,7 +836,7 @@ async function runDeterministicOperation(input: RunOperationInput) {
       releaseBrowserControl({
         organisationId: input.connection.organisationId,
         connectedSystemId: input.connection.id,
-        userId: 0,
+        userId: browserUserId,
       });
   }
 }

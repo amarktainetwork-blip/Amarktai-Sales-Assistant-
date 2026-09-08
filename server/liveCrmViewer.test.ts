@@ -6,6 +6,7 @@ import {
   shouldForwardScreencastFrame,
   shouldReuseLiveCrmViewerSession,
 } from "./liveCrmViewer";
+import { readFileSync } from "node:fs";
 
 const viewerToken = Buffer.from("viewer-token-for-test").toString("base64url");
 const session = {
@@ -121,6 +122,16 @@ describe("live CRM stream bounds", () => {
 });
 
 describe("live CRM viewer reconnect", () => {
+  it("releases browser control when the final human viewer disconnects", () => {
+    const source = readFileSync(
+      new URL("./liveCrmViewer.ts", import.meta.url),
+      "utf8"
+    );
+    expect(source).toMatch(
+      /if \(!session\.sockets\.size\) \{[\s\S]*releaseBrowserControl\(controlScope\(session\)\)/
+    );
+  });
+
   it("replaces a cached viewer only when reconnect is explicit", () => {
     expect(
       shouldReuseLiveCrmViewerSession({
