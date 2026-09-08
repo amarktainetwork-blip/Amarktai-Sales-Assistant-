@@ -2,6 +2,7 @@ import {
   mkdirSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
@@ -97,6 +98,17 @@ function removeSharedLease(input: ControlKey, expectedToken?: string) {
   }
 }
 
+function orphanedSharedClaimExpired(input: ControlKey) {
+  try {
+    return (
+      Date.now() - statSync(sharedLeasePath(input)).mtimeMs >=
+      MIN_SHARED_LEASE_MS
+    );
+  } catch {
+    return false;
+  }
+}
+
 function busyCode(
   requested: Exclude<BrowserControlState, "IDLE">,
   existing?: Exclude<BrowserControlState, "IDLE">
@@ -142,6 +154,13 @@ function acquireSharedLease(
     const concurrent = readSharedLease(input);
     if (concurrent && concurrent.expiresAt <= Date.now()) {
       removeSharedLease(input, concurrent.token);
+      return acquireSharedLease(input, state, requestedTtlMs);
+    }
+    if (!concurrent && orphanedSharedClaimExpired(input)) {
+      // Recover only an old, record-less mkdir claim. A fresh record-less
+      // directory may be between its atomic mkdir and lease.json write, so it
+      // must remain busy until the full minimum lease window has elapsed.
+      removeSharedLease(input);
       return acquireSharedLease(input, state, requestedTtlMs);
     }
     throw new Error(busyCode(state, concurrent?.state), { cause: error });
@@ -215,12 +234,7 @@ function armRenewal(
   const renewIn = Math.max(1_000, Math.floor(ttlMs / 3));
   lease.timer = setTimeout(() => {
     try {
-      const shared = acquireSharedLease(
-        input,
-        state,
-        ttlMs,
-        lease.sharedToken
-      );
+      const shared = acquireSharedLease(input, state, ttlMs, lease.sharedToken);
       lease.sharedToken = shared.token;
       lease.expiresAt = shared.expiresAt;
       armRenewal(input, key, lease, state, ttlMs);
@@ -253,7 +267,10 @@ function acquire(
   lease.expiresAt = shared.expiresAt;
   armRenewal(input, key, lease, state, ttlMs);
   emit(lease);
-  return { control: state, expiresAt: new Date(shared.expiresAt).toISOString() };
+  return {
+    control: state,
+    expiresAt: new Date(shared.expiresAt).toISOString(),
+  };
 }
 
 export function acquireHumanBrowserControl(
@@ -316,11 +333,7 @@ export function resetBrowserControlArbitrationForTests() {
     const [organisationId, connectedSystemId, userId] = key
       .split(":")
       .map(Number);
-    localRelease(
-      { organisationId, connectedSystemId, userId },
-      key,
-      lease
-    );
+    localRelease({ organisationId, connectedSystemId, userId }, key, lease);
   });
   leases.clear();
   if (process.env.NODE_ENV === "test")

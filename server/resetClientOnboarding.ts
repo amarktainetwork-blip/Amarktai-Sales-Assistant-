@@ -1,11 +1,16 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import mysql, { type Connection, type RowDataPacket } from "mysql2/promise";
+import mysql, {
+  type Connection,
+  type ResultSetHeader,
+  type RowDataPacket,
+} from "mysql2/promise";
 
 export const RESET_CONFIRM_PREFIX = "DELETE_LOCAL_CLIENT_ONBOARDING";
-const DEFAULT_EVIDENCE_ROOT = "/app/data/connector-evidence/onboarding-reset-backups";
+const DEFAULT_EVIDENCE_ROOT =
+  "/app/data/connector-evidence/onboarding-reset-backups";
 
-type Args = {
+export type ResetArgs = {
   organisationId?: number;
   expectedCompany?: string;
   expectedDomain?: string;
@@ -66,10 +71,24 @@ export function websiteMatchesDomain(
 ) {
   if (!websiteUrl) return false;
   try {
-    return normalizeExpectedDomain(websiteUrl) === normalizeExpectedDomain(expectedDomain);
+    return (
+      normalizeExpectedDomain(websiteUrl) ===
+      normalizeExpectedDomain(expectedDomain)
+    );
   } catch {
     return false;
   }
+}
+
+export function companyMatchesExpected(
+  actualCompany: string | null | undefined,
+  expectedCompany: string
+) {
+  return (
+    typeof actualCompany === "string" &&
+    actualCompany.trim().toLocaleLowerCase("en") ===
+      expectedCompany.trim().toLocaleLowerCase("en")
+  );
 }
 
 export function confirmationToken(input: {
@@ -79,7 +98,7 @@ export function confirmationToken(input: {
   return `${RESET_CONFIRM_PREFIX}:${input.organisationId}:${input.slug}`;
 }
 
-export function parseResetArgs(argv: string[]): Args {
+export function parseResetArgs(argv: string[]): ResetArgs {
   const values = new Map<string, string>();
   let apply = false;
   for (const arg of argv) {
@@ -91,10 +110,11 @@ export function parseResetArgs(argv: string[]): Args {
     if (match) values.set(match[1], match[2]);
   }
   const rawId = clean(values.get("organisation-id"));
-  const organisationId = rawId ? Number(rawId) : undefined;
+  const organisationId =
+    rawId && /^\d+$/.test(rawId) ? Number(rawId) : undefined;
   if (
-    organisationId !== undefined &&
-    (!Number.isInteger(organisationId) || organisationId <= 0)
+    rawId !== undefined &&
+    (!organisationId || !Number.isSafeInteger(organisationId))
   )
     throw new Error("RESET_ORGANISATION_ID_INVALID");
   return {
@@ -104,6 +124,41 @@ export function parseResetArgs(argv: string[]): Args {
     confirm: clean(values.get("confirm")),
     apply,
   };
+}
+
+export function assertResetIdentity(input: {
+  profiles: Array<{ companyName: string; websiteUrl: string | null }>;
+  expectedCompany: string;
+  expectedDomain: string;
+}) {
+  const companyMatch = input.profiles.some(profile =>
+    companyMatchesExpected(profile.companyName, input.expectedCompany)
+  );
+  if (!companyMatch) throw new Error("RESET_EXPECTED_COMPANY_MISMATCH");
+  const domainMatch = input.profiles.some(profile =>
+    websiteMatchesDomain(profile.websiteUrl, input.expectedDomain)
+  );
+  if (!domainMatch) throw new Error("RESET_EXPECTED_DOMAIN_MISMATCH");
+  const exactProfileMatch = input.profiles.some(
+    profile =>
+      companyMatchesExpected(profile.companyName, input.expectedCompany) &&
+      websiteMatchesDomain(profile.websiteUrl, input.expectedDomain)
+  );
+  if (!exactProfileMatch)
+    throw new Error(
+      "RESET_TARGET_IDENTITY_MISMATCH: the exact expected company/domain pair was not found."
+    );
+}
+
+export function assertApplyConfirmation(input: {
+  apply: boolean;
+  confirm?: string;
+  expectedConfirm: string;
+}) {
+  if (input.apply && input.confirm !== input.expectedConfirm)
+    throw new Error(
+      `RESET_CONFIRMATION_MISMATCH: rerun with --confirm=${input.expectedConfirm}`
+    );
 }
 
 function quoteIdentifier(identifier: string) {
@@ -120,7 +175,9 @@ async function organisationColumns(connection: Connection) {
         AND COLUMN_NAME = 'organisationId'
       ORDER BY TABLE_NAME`
   );
-  return rows.map(row => row.tableName).filter(name => name !== "organisations");
+  return rows
+    .map(row => row.tableName)
+    .filter(name => name !== "organisations");
 }
 
 async function organisationForeignKeys(connection: Connection) {
@@ -163,7 +220,8 @@ async function writeEvidence(input: {
   foreignKeys: OrgForeignKeyRow[];
   apply: boolean;
 }) {
-  const root = process.env.ONBOARDING_RESET_EVIDENCE_DIR || DEFAULT_EVIDENCE_ROOT;
+  const root =
+    process.env.ONBOARDING_RESET_EVIDENCE_DIR || DEFAULT_EVIDENCE_ROOT;
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const path = join(
     root,
@@ -237,7 +295,7 @@ async function loadTarget(connection: Connection, organisationId: number) {
   return { organisation, profiles, systems };
 }
 
-export async function resetClientOnboarding(args: Args) {
+export async function resetClientOnboarding(args: ResetArgs) {
   if (!args.organisationId) throw new Error("RESET_ORGANISATION_ID_REQUIRED");
   if (!args.expectedCompany) throw new Error("RESET_EXPECTED_COMPANY_REQUIRED");
   if (!args.expectedDomain) throw new Error("RESET_EXPECTED_DOMAIN_REQUIRED");
@@ -250,16 +308,11 @@ export async function resetClientOnboarding(args: Args) {
       connection,
       args.organisationId
     );
-    const matchingProfile = profiles.find(
-      profile =>
-        profile.companyName.trim().toLowerCase() ===
-          args.expectedCompany!.trim().toLowerCase() &&
-        websiteMatchesDomain(profile.websiteUrl, args.expectedDomain!)
-    );
-    if (!matchingProfile)
-      throw new Error(
-        "RESET_TARGET_IDENTITY_MISMATCH: the organisation does not contain the exact expected company/domain profile."
-      );
+    assertResetIdentity({
+      profiles,
+      expectedCompany: args.expectedCompany,
+      expectedDomain: args.expectedDomain,
+    });
 
     const tables = await organisationColumns(connection);
     const foreignKeys = await organisationForeignKeys(connection);
@@ -293,10 +346,11 @@ export async function resetClientOnboarding(args: Args) {
       console.log("RESET_RESULT=DRY_RUN_PASS");
       return { applied: false, evidencePath, expectedConfirm, counts };
     }
-    if (args.confirm !== expectedConfirm)
-      throw new Error(
-        `RESET_CONFIRMATION_MISMATCH: rerun with --confirm=${expectedConfirm}`
-      );
+    assertApplyConfirmation({
+      apply: args.apply,
+      confirm: args.confirm,
+      expectedConfirm,
+    });
 
     await connection.beginTransaction();
     try {
@@ -314,7 +368,7 @@ export async function resetClientOnboarding(args: Args) {
       // The organisation is the destructive root. CASCADE constraints remove
       // connector secrets, CRM cache, commissioning, learned operations,
       // knowledge jobs and every other organisation-owned child.
-      const [deleted] = await connection.execute<mysql.ResultSetHeader>(
+      const [deleted] = await connection.execute<ResultSetHeader>(
         `DELETE FROM organisations WHERE id = ?`,
         [organisation.id]
       );
@@ -324,7 +378,9 @@ export async function resetClientOnboarding(args: Args) {
       // Detect any organisationId-bearing table that was not correctly wired
       // to the tenant lifecycle. Never commit a partial client reset.
       const survivors = await scopedCounts(connection, organisation.id, tables);
-      const nonZero = Object.entries(survivors).filter(([, count]) => count > 0);
+      const nonZero = Object.entries(survivors).filter(
+        ([, count]) => count > 0
+      );
       if (nonZero.length)
         throw new Error(
           `RESET_ORPHANED_ROWS_DETECTED:${JSON.stringify(Object.fromEntries(nonZero))}`
@@ -350,7 +406,8 @@ async function main() {
   await resetClientOnboarding(args);
 }
 
-const invokedAsScript = process.argv[1]?.endsWith("resetClientOnboarding.js") ||
+const invokedAsScript =
+  process.argv[1]?.endsWith("resetClientOnboarding.js") ||
   process.argv[1]?.endsWith("resetClientOnboarding.ts");
 if (invokedAsScript)
   main().catch(error => {

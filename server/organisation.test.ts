@@ -12,6 +12,11 @@ const member = (organisationId: number): OrganisationMembership => ({
 });
 
 describe("active organisation selection", () => {
+  it("rejects a deleted workspace claim but allows a fresh login to bootstrap again", () => {
+    expect(() => selectActiveMembership([], 1)).toThrow("ACTIVE_ORGANISATION_ACCESS_DENIED");
+    expect(selectActiveMembership([], null)).toBeNull();
+  });
+
   it("uses the sole membership only when no tenant claim is present", () => {
     expect(selectActiveMembership([member(12)], null)?.organisationId).toBe(12);
   });

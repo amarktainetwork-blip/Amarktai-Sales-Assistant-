@@ -562,11 +562,7 @@ function installPageGovernance(session: ManagedCrmBrowserSession, page: Page) {
 function armIdle(session: ManagedCrmBrowserSession) {
   if (session.idleTimer) clearTimeout(session.idleTimer);
   session.idleTimer = undefined;
-  if (
-    session.canCommission &&
-    session.snapshot.authenticationState === "AUTHENTICATED"
-  )
-    return;
+  if (shouldRetainCommissionedBrowserPage(session)) return;
   session.idleTimer = setTimeout(
     () =>
       void managedCrmBrowserSessionManager.teardown(
@@ -575,6 +571,16 @@ function armIdle(session: ManagedCrmBrowserSession) {
         session.openedByUserId
       ),
     IDLE_TIMEOUT_MS
+  );
+}
+
+export function shouldRetainCommissionedBrowserPage(input: {
+  canCommission: boolean;
+  snapshot: Pick<CrmBrowserSessionSnapshot, "authenticationState">;
+}) {
+  return (
+    input.canCommission &&
+    input.snapshot.authenticationState === "AUTHENTICATED"
   );
 }
 
@@ -667,7 +673,7 @@ export const managedCrmBrowserSessionManager = {
               connectedSystemId: input.connection.id,
               rawUrl,
             }).then(() => undefined),
-        }).catch(() => undefined)
+        })
       : undefined;
     const context =
       recovered?.context ||
@@ -691,7 +697,8 @@ export const managedCrmBrowserSessionManager = {
         organisationId: input.connection.organisationId,
         connectedSystemId: input.connection.id,
         provider: input.connection.provider,
-        currentUrl: recovered?.page.url() || restored?.authenticatedUrl || startUrl,
+        currentUrl:
+          recovered?.page.url() || restored?.authenticatedUrl || startUrl,
         authenticationState: "STARTING",
         connectionHealth: "connecting",
         lastInteractionAt: new Date().toISOString(),

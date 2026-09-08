@@ -771,7 +771,13 @@ export function registerLiveCrmViewerSocket(server: Server) {
 
       socket.on("close", () => {
         session.sockets.delete(socket);
-        if (!session.sockets.size) void stopStream(session);
+        if (!session.sockets.size) {
+          // Heartbeats intentionally preserve a lease while its owner is
+          // active. Once the final human viewer disconnects, release control
+          // immediately so the autonomous worker can safely resume reads.
+          releaseBrowserControl(controlScope(session));
+          void stopStream(session);
+        }
       });
     }
   );

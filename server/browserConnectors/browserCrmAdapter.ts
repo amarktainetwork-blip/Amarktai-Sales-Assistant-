@@ -4,6 +4,7 @@ import {
   type BrowserContext,
   type Locator,
   type Page,
+  type Route,
 } from "playwright-core";
 import { assertAuthorisedConnectionUrl } from "../connectedSystems";
 import type {
@@ -340,18 +341,17 @@ async function withPage<T>(
     organisationId: connection.organisationId,
     connectedSystemId: connection.id,
     authorise: url => authorizeNavigation(connection, url),
-  }).catch(() => undefined);
+  });
 
   if (recovered) {
     const { page, context } = recovered;
     let blocked: BlockedNavigation | undefined;
-    const routeHandler = async (route: Parameters<Page["route"]>[1] extends (
-      route: infer R
-    ) => unknown
-      ? R
-      : never) => {
+    const routeHandler = async (route: Route) => {
       const request = route.request();
-      if (!request.isNavigationRequest() || request.frame() !== page.mainFrame())
+      if (
+        !request.isNavigationRequest() ||
+        request.frame() !== page.mainFrame()
+      )
         return route.continue();
       try {
         await authorizeNavigation(connection, request.url());

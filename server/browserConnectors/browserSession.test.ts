@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+import type { BrowserContext } from "playwright-core";
 import {
+  captureBrowserSessionPackage,
   createContextWithBrowserSession,
   findBrowserSessionPage,
   isBrowserSessionPackage,
@@ -26,6 +28,37 @@ function packageFor(
 }
 
 describe("connection-scoped browser session packages", () => {
+  it("captures the exact authenticated Chromium target in the current v3 package", async () => {
+    const detach = vi.fn(async () => undefined);
+    const page = {
+      isClosed: () => false,
+      url: () => "https://crm.example.test/app",
+      evaluate: vi.fn(async () => ({ app: "ready" })),
+      context: (): BrowserContext => context as never,
+    };
+    const context = {
+      pages: () => [page],
+      storageState: vi.fn(async () => ({ cookies: [] })),
+      newCDPSession: vi.fn(async () => ({
+        send: vi.fn(async () => ({
+          targetInfo: { targetId: "target_abc123" },
+        })),
+        detach,
+      })),
+    };
+    const captured = await captureBrowserSessionPackage({
+      context: context as never,
+      organisationId: 7,
+      connectedSystemId: 11,
+      authenticatedUrl: "https://crm.example.test/app",
+      authorise: vi.fn(async () => undefined),
+      pages: [page as never],
+    });
+    expect(captured.pageTargetId).toBe("target_abc123");
+    expect(captured.version).toBe(3);
+    expect(detach).toHaveBeenCalledOnce();
+  });
+
   it("accepts the correct organisation and connection owner", () => {
     expect(
       validateBrowserSessionPackage(packageFor(), {
@@ -52,7 +85,10 @@ describe("connection-scoped browser session packages", () => {
 
   it("rejects a malformed persisted browser target identity", () => {
     expect(
-      isBrowserSessionPackage({ ...packageFor(), pageTargetId: "bad target/id" })
+      isBrowserSessionPackage({
+        ...packageFor(),
+        pageTargetId: "bad target/id",
+      })
     ).toBe(false);
   });
 
@@ -85,6 +121,30 @@ describe("connection-scoped browser session packages", () => {
     expect(result?.targetId).toBe("target_abc123");
     expect(authorise).toHaveBeenCalledWith("https://crm.example.test/app");
     expect(detach).toHaveBeenCalled();
+  });
+
+  it("does not substitute another live page when the exact target is gone", async () => {
+    const context = {
+      pages: () => [
+        {
+          isClosed: () => false,
+          url: () => "https://crm.example.test/app",
+          context: (): BrowserContext => context as never,
+        },
+      ],
+      newCDPSession: vi.fn(async () => ({
+        send: vi.fn(async () => ({ targetInfo: { targetId: "other-target" } })),
+        detach: vi.fn(async () => undefined),
+      })),
+    };
+    await expect(
+      findBrowserSessionPage({
+        browser: { contexts: () => [context] } as never,
+        browserSession: packageFor(),
+        organisationId: 7,
+        connectedSystemId: 11,
+      })
+    ).resolves.toBeUndefined();
   });
 
   it("does not restore a legacy or unscoped package", async () => {
