@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  browserRuntimeFailureCode,
   classifyBrowserRuntimeFailure,
   recordLearnedRuntimeFailure,
 } from "./runtimeFailure";
@@ -9,12 +10,24 @@ describe("learned browser runtime failure truth", () => {
     ["TARGET_MISMATCH: wrong record", "target_mismatch"],
     ["AMBIGUOUS_TARGET: two rows", "ambiguous_target"],
     ["selector .save was not visible", "selector_drift"],
+    ["STRUCTURED_RESULT_REQUIRED: no deterministic rows", "read_proof_failure"],
     ["deterministic click failed", "execution_failure"],
     ["EXECUTION_UNVERIFIED: postcondition mismatch", "postcondition_failure"],
     ["REAUTHENTICATION_REQUIRED", "authentication"],
     ["CDP transport timed out", "transient_transport"],
   ] as const)("classifies %s", (detail, expected) => {
     expect(classifyBrowserRuntimeFailure(detail)).toBe(expected);
+  });
+
+  it("retains only a bounded machine failure code from detailed runtime errors", () => {
+    expect(
+      browserRuntimeFailureCode(
+        "STRUCTURED_RESULT_REQUIRED: customer-looking detail must not be copied"
+      )
+    ).toBe("STRUCTURED_RESULT_REQUIRED");
+    expect(browserRuntimeFailureCode("selector .save was not visible")).toBe(
+      undefined
+    );
   });
 
   it.each([
@@ -48,6 +61,36 @@ describe("learned browser runtime failure truth", () => {
       })
     );
     expect(record).toHaveBeenCalledTimes(1);
+  });
+
+  it("records a safe read-proof failure code without retaining the detailed text", async () => {
+    const record = vi.fn().mockResolvedValue({ status: "DEGRADED" });
+    await recordLearnedRuntimeFailure(
+      {
+        organisationId: 3,
+        connectedSystemId: 8,
+        operationKey: "contact.sync",
+        version: 5,
+        correlationId: "corr-read-proof",
+        detail:
+          "STRUCTURED_RESULT_REQUIRED: customer-looking detail must not be copied",
+      },
+      { record }
+    );
+    expect(record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        error:
+          "read_proof_failure: STRUCTURED_RESULT_REQUIRED: deterministic browser operation failed.",
+        evidence: expect.objectContaining({
+          correlationId: "corr-read-proof",
+          failureClassification: "read_proof_failure",
+          failureCode: "STRUCTURED_RESULT_REQUIRED",
+        }),
+      })
+    );
+    expect(JSON.stringify(record.mock.calls[0])).not.toContain(
+      "customer-looking detail"
+    );
   });
 
   it("records reauthentication without selector guessing and marks the connection", async () => {

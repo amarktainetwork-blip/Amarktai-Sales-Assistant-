@@ -25,6 +25,24 @@ describe("canonical Genie provider pack", () => {
     expect(providerPackFingerprint()).toMatch(/^[a-f0-9]{64}$/);
   });
 
+  it("waits for the Genie contact table before catalogue extraction", () => {
+    const definition = GENIE_PROVIDER_PACK.operationDefinitions?.["contact.sync"];
+    const executeScript = (definition?.definition as { executeScript?: string })
+      ?.executeScript;
+    const script = executeScript
+      ? GENIE_PROVIDER_PACK.scripts[executeScript]
+      : undefined;
+    expect(script?.steps.map(step => step.action)).toEqual([
+      "click",
+      "expect_visible",
+      "read_rows",
+    ]);
+    expect(script?.steps[1]).toMatchObject({
+      action: "expect_visible",
+      selector: ".tabulator-row:not(.tabulator-headers)",
+    });
+  });
+
   it("ships only TEST_READY inputs for later deterministic certification", () => {
     expect(Object.keys(GENIE_PROVIDER_PACK.operationDefinitions || {})).toEqual(
       ["contact.sync", "contact.search", "contact.read"]
