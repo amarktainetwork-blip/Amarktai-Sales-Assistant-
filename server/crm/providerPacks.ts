@@ -2,12 +2,16 @@ import { createHash } from "node:crypto";
 import type { BrowserProfile } from "../browserConnectors/browserCrmAdapter";
 
 /** Reusable provider structure only: never tenant IDs, credentials or customer values. */
-export const GENIE_PROVIDER_PACK_VERSION = "genie-2026.09.07.1";
+export const GENIE_PROVIDER_PACK_VERSION = "genie-2026.09.08.1";
 
 const scripts: BrowserProfile["scripts"] = {
   genie_contact_sync: {
     steps: [
       { action: "click", selector: "#sb_contacts" },
+      {
+        action: "expect_visible",
+        selector: ".tabulator-row:not(.tabulator-headers)",
+      },
       {
         action: "read_rows",
         selector: ".tabulator-row:not(.tabulator-headers)",
