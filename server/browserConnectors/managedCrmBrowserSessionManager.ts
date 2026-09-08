@@ -22,6 +22,7 @@ import {
 import {
   captureBrowserSessionPackage,
   createContextWithBrowserSession,
+  findBrowserSessionPage,
   isBrowserSessionPackage,
 } from "./browserSession";
 import { crmBrowserPreset, type CrmBrowserPreset } from "./crmBrowserPresets";
@@ -288,14 +289,19 @@ async function persistPersonalSession(
     organisationId: session.connection.organisationId,
     connectedSystemId: session.connection.id,
     secretKind: "browser",
-    secret: { ...existingPersonal, browserSession },
+    secret: {
+      ...existingPersonal,
+      browserSession,
+      browserUserId: session.openedByUserId,
+    },
   });
 }
 
 /**
- * Company capability commissioning may run after the interactive browser closes.
- * Keep one backend-only snapshot for that job, but bind it permanently to the
- * manager who established it. It is never restored into another user's browser.
+ * Company capability commissioning may run after the interactive viewer closes.
+ * Keep one backend-only snapshot for that job, bind it permanently to the
+ * manager who established it, and retain the exact authenticated Chromium page.
+ * It is never restored into another user's browser identity.
  */
 async function persistSharedCommissioningSession(
   session: ManagedCrmBrowserSession,
@@ -319,6 +325,7 @@ async function persistSharedCommissioningSession(
       ...existingShared,
       browserSession,
       commissioningUserId: session.openedByUserId,
+      browserUserId: session.openedByUserId,
     },
   });
 }
@@ -348,6 +355,7 @@ async function persistAuthenticatedSession(
         organisationId: session.connection.organisationId,
         connectedSystemId: session.connection.id,
         authenticatedUrl: session.page.url(),
+        pages: [session.page],
         authorise: rawUrl =>
           assertAuthorisedConnectionUrl({
             organisationId: session.connection.organisationId,
@@ -389,11 +397,16 @@ async function persistAuthenticatedSession(
           provider: session.connection.provider,
           credentialsObserved: false,
           identityScope: "user",
+          exactPageIdentityPersisted: Boolean(browserSession.pageTargetId),
           commissioningIdentityUpdated:
             session.canCommission &&
             (await ownsSharedCommissioningSession(session)),
         },
       });
+      // A manager-authenticated commissioning page is backend infrastructure,
+      // not a viewer tab. Do not let the viewer inactivity timer destroy the
+      // identity that the autonomous worker must reuse.
+      armIdle(session);
     } catch (error) {
       session.authenticatedPersisted = false;
       console.warn(
@@ -548,6 +561,12 @@ function installPageGovernance(session: ManagedCrmBrowserSession, page: Page) {
 
 function armIdle(session: ManagedCrmBrowserSession) {
   if (session.idleTimer) clearTimeout(session.idleTimer);
+  session.idleTimer = undefined;
+  if (
+    session.canCommission &&
+    session.snapshot.authenticationState === "AUTHENTICATED"
+  )
+    return;
   session.idleTimer = setTimeout(
     () =>
       void managedCrmBrowserSessionManager.teardown(
@@ -636,13 +655,29 @@ export const managedCrmBrowserSessionManager = {
     const browser = await connectManagedCrmBrowser(
       endpointFor(input.connection)
     );
-    const context = await createContextWithBrowserSession({
-      browser,
-      browserSession: restored,
-      organisationId: input.connection.organisationId,
-      connectedSystemId: input.connection.id,
-    });
-    const page = await context.newPage();
+    const recovered = restored
+      ? await findBrowserSessionPage({
+          browser,
+          browserSession: restored,
+          organisationId: input.connection.organisationId,
+          connectedSystemId: input.connection.id,
+          authorise: rawUrl =>
+            assertAuthorisedConnectionUrl({
+              organisationId: input.connection.organisationId,
+              connectedSystemId: input.connection.id,
+              rawUrl,
+            }).then(() => undefined),
+        }).catch(() => undefined)
+      : undefined;
+    const context =
+      recovered?.context ||
+      (await createContextWithBrowserSession({
+        browser,
+        browserSession: restored,
+        organisationId: input.connection.organisationId,
+        connectedSystemId: input.connection.id,
+      }));
+    const page = recovered?.page || (await context.newPage());
     const session: ManagedCrmBrowserSession = {
       key,
       connection: input.connection,
@@ -656,14 +691,14 @@ export const managedCrmBrowserSessionManager = {
         organisationId: input.connection.organisationId,
         connectedSystemId: input.connection.id,
         provider: input.connection.provider,
-        currentUrl: restored?.authenticatedUrl || startUrl,
+        currentUrl: recovered?.page.url() || restored?.authenticatedUrl || startUrl,
         authenticationState: "STARTING",
         connectionHealth: "connecting",
         lastInteractionAt: new Date().toISOString(),
       },
       listeners: new Set(),
       customerConfirmed: false,
-      authenticatedPersisted: Boolean(personalSession),
+      authenticatedPersisted: Boolean(recovered && restored?.pageTargetId),
       restoredSession: Boolean(restored),
       canCommission,
     };
@@ -683,6 +718,7 @@ export const managedCrmBrowserSessionManager = {
         )
         .then(() => {
           session.page = popup;
+          session.authenticatedPersisted = false;
           emit(session, { currentUrl: popup.url() });
         })
         .catch(() => {
@@ -696,13 +732,17 @@ export const managedCrmBrowserSessionManager = {
     armIdle(session);
     const restoredUrl = restored?.authenticatedUrl;
     try {
-      await page.goto(restoredUrl || startUrl, {
-        waitUntil: "domcontentloaded",
-        timeout: 45_000,
-      });
-      await evaluate(session);
+      if (recovered) {
+        await evaluate(session);
+      } else {
+        await page.goto(restoredUrl || startUrl, {
+          waitUntil: "domcontentloaded",
+          timeout: 45_000,
+        });
+        await evaluate(session);
+      }
     } catch (error) {
-      if (restoredUrl && restoredUrl !== startUrl) {
+      if (!recovered && restoredUrl && restoredUrl !== startUrl) {
         try {
           await page.goto(startUrl, {
             waitUntil: "domcontentloaded",
@@ -753,6 +793,7 @@ export const managedCrmBrowserSessionManager = {
 
   async customerFinishedSigningIn(session: ManagedCrmBrowserSession) {
     session.customerConfirmed = true;
+    session.authenticatedPersisted = false;
     await evaluate(session);
     return { ...session.snapshot };
   },
