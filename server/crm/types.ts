@@ -51,6 +51,13 @@ export type ConnectionSecretPayload = {
   browserSession?: Record<string, unknown>;
   /** Backend-only owner tag for the manager session copied into company commissioning. */
   commissioningUserId?: number;
+  /**
+   * Runtime-only browser identity owner. Callers attach this after decrypting a
+   * user-scoped browser secret so deterministic execution and viewer control
+   * arbitrate against the same salesperson identity. It is never required to
+   * be persisted in the encrypted secret.
+   */
+  browserUserId?: number;
 };
 
 export type AdapterEvidence = {
