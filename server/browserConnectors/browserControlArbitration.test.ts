@@ -3,12 +3,13 @@ import {
   acquireAiBrowserControl,
   acquireHumanBrowserControl,
   browserControlState,
+  BROWSER_CONTROL_SHARED_LEASE_MIN_MS,
   releaseBrowserControl,
   resetBrowserControlArbitrationForTests,
   subscribeBrowserControl,
 } from "./browserControlArbitration";
 
-const scope = { organisationId: 11, connectedSystemId: 22, userId: 0 };
+const scope = { organisationId: 11, connectedSystemId: 22, userId: 33 };
 
 afterEach(() => {
   resetBrowserControlArbitrationForTests();
@@ -30,17 +31,22 @@ describe("shared browser control arbitration", () => {
     );
   });
 
-  it("expires a lease deterministically and broadcasts idle state", () => {
+  it("rejects synthetic or unowned browser identities", () => {
+    expect(() =>
+      acquireAiBrowserControl({ ...scope, userId: 0 }, 8_000)
+    ).toThrow("CRM_BROWSER_CONTROL_SCOPE_INVALID");
+  });
+
+  it("keeps an acquired lease alive while the owner heartbeat is running", () => {
     vi.useFakeTimers();
     const states: string[] = [];
     const unsubscribe = subscribeBrowserControl(scope, state =>
       states.push(state)
     );
     acquireHumanBrowserControl(scope, 50);
-    vi.advanceTimersByTime(51);
-    expect(browserControlState(scope)).toBe("IDLE");
+    vi.advanceTimersByTime(BROWSER_CONTROL_SHARED_LEASE_MIN_MS + 1);
+    expect(browserControlState(scope)).toBe("HUMAN_CONTROL");
     expect(states).toContain("HUMAN_CONTROL");
-    expect(states.at(-1)).toBe("IDLE");
     unsubscribe();
   });
 
