@@ -10,6 +10,7 @@ import {
   requireOrganisationMembership,
 } from "../organisation";
 import { recordOperationalEvent } from "../observability/events";
+import { GENIE_PROVIDER_PACK_VERSION } from "../crm/providerPacks";
 import {
   BROWSER_OPERATION_CATALOGUE,
   compileGuidedBrowserOperation,
@@ -90,6 +91,24 @@ async function scopedSystem(organisationId: number, connectedSystemId: number) {
   return system;
 }
 
+export function effectiveLatestBrowserOperation<
+  T extends { status: BrowserOperationStatus; prerequisites: unknown },
+>(latest: T | undefined): T | undefined {
+  if (!latest) return undefined;
+  const prerequisites =
+    latest.prerequisites &&
+    typeof latest.prerequisites === "object" &&
+    !Array.isArray(latest.prerequisites)
+      ? (latest.prerequisites as Record<string, unknown>)
+      : {};
+  const canonicalGeniePack = prerequisites.providerPack === "genie";
+  const currentPack =
+    prerequisites.providerPackVersion === GENIE_PROVIDER_PACK_VERSION;
+  if (canonicalGeniePack && !currentPack)
+    return { ...latest, status: "NOT_LEARNED" as const };
+  return latest;
+}
+
 export async function latestBrowserOperation(input: {
   organisationId: number;
   connectedSystemId: number;
@@ -113,7 +132,7 @@ export async function latestBrowserOperation(input: {
     )
     .orderBy(desc(browserLearnedOperations.version))
     .limit(1);
-  const latest = rows[0];
+  const latest = effectiveLatestBrowserOperation(rows[0]);
   if (
     latest &&
     input.allowedStatuses &&
@@ -275,7 +294,7 @@ export async function browserOperationReadinessForSystem(input: {
   };
   const standardOperations = BROWSER_OPERATION_CATALOGUE.map(item => ({
     ...item,
-    ...(latest.get(item.key) || empty),
+    ...(effectiveLatestBrowserOperation(latest.get(item.key)) || empty),
   }));
   const standardKeys = new Set(
     BROWSER_OPERATION_CATALOGUE.map(item => item.key)
@@ -290,7 +309,7 @@ export async function browserOperationReadinessForSystem(input: {
         mode: "read" as const,
         safeWatchdog: false,
       }),
-      ...row,
+      ...(effectiveLatestBrowserOperation(row) || row),
     }));
   const operations = [...standardOperations, ...customOperations];
 
