@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { and, desc, eq, inArray, isNull, lt, or } from "drizzle-orm";
 import {
   browserLearnedOperations,
@@ -46,6 +46,10 @@ import type {
 import { accountBrowserCapabilities } from "./capabilityAccounting";
 import { ensureConnectionScopedCrmSyncJob } from "./syncWorker";
 import { syncConnectedSystem } from "./sync";
+import {
+  GENIE_PROVIDER_PACK_VERSION,
+  providerPackFingerprint,
+} from "./providerPacks";
 
 const AUTOMATIC_CORE_BROWSER_OPERATIONS = [
   "contact.search",
@@ -108,6 +112,32 @@ type DiscoverySnapshot = {
   controls: BrowserDiscoveryControl[];
   readOnly: true;
 };
+
+export function crmDiscoveryFingerprint(
+  snapshot: DiscoverySnapshot,
+  packVersion = "custom"
+) {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        packVersion,
+        pageUrl: snapshot.pageUrl,
+        controls: snapshot.controls.map(control => ({
+          tag: control.tag,
+          role: control.role,
+          label: control.label,
+          selector: control.selector,
+          href: control.href,
+          pageUrl: control.pageUrl,
+          ariaLabel: control.ariaLabel,
+          placeholder: control.placeholder,
+          name: control.name,
+          fieldId: control.fieldId,
+        })),
+      })
+    )
+    .digest("hex");
+}
 
 const COMMUNICATION_OPERATIONS: Record<
   string,
@@ -181,6 +211,14 @@ function safeText(value: unknown, maximum = 500) {
   return typeof value === "string" ? value.trim().slice(0, maximum) : "";
 }
 
+const SAFE_DISCOVERY_LABEL =
+  /^(?:home|dashboard|contacts?|customers?|leads?|prospects?|companies|accounts?|organisations?|organizations?|tasks?|manual actions?|callbacks?|reminders?|notes?|history|timeline|opportunities|deals?|pipelines?|stages?|status|owners?|assignees?|salespeople|activities|interactions?|email|sms|text message|whatsapp|sequences?|cadences?|calls?|dialler|appointments?|meetings?|calendars?|quotes?|proposals?|workflows?|automations?|custom fields?|properties|settings|search|open|view|add|create|update|edit|save|cancel|next|previous)(?:\s+(?:and|or|new|all|my|current|latest|sales|crm|record|records|action|actions|details?))*$/i;
+
+function safeDiscoveryLabel(value: unknown) {
+  const label = safeText(value, 160).replace(/\s+/g, " ");
+  return SAFE_DISCOVERY_LABEL.test(label) ? label : "";
+}
+
 export function connectorClass(provider: string) {
   if (["hubspot", "salesforce", "pipedrive", "zoho"].includes(provider))
     return "native_api" as const;
@@ -209,13 +247,30 @@ export function buildSecretFreeDiscoveryPrompt(snapshot: DiscoverySnapshot) {
   const serialized = JSON.stringify({
     pageUrl: snapshot.pageUrl,
     controls: snapshot.controls.map(
-      ({ tag, role, label, selector, href, pageUrl }) => ({
+      ({
         tag,
         role,
-        label: safeText(label, 160),
+        label,
+        selector,
+        href,
+        pageUrl,
+        ariaLabel,
+        placeholder,
+        name,
+        fieldId,
+        pageTitle,
+      }) => ({
+        tag,
+        role,
+        label: safeDiscoveryLabel(label),
         selector: safeText(selector, 300),
         href: safeText(href, 1_000) || undefined,
         pageUrl: safeText(pageUrl, 1_000) || undefined,
+        ariaLabel: safeText(ariaLabel, 160) || undefined,
+        placeholder: safeText(placeholder, 160) || undefined,
+        name: safeText(name, 160) || undefined,
+        fieldId: safeText(fieldId, 160) || undefined,
+        pageTitle: safeDiscoveryLabel(pageTitle) || undefined,
       })
     ),
   });
@@ -225,6 +280,8 @@ export function buildSecretFreeDiscoveryPrompt(snapshot: DiscoverySnapshot) {
     )
   )
     throw new Error("DISCOVERY_PROMPT_SECRET_FIELD_REJECTED");
+  if (serialized.length > 120_000)
+    throw new Error("DISCOVERY_PROMPT_BOUND_EXCEEDED");
   return `Identify CRM navigation capabilities from this bounded control-only snapshot. Return operation keys only. Never infer a write as safe.\n${serialized}`;
 }
 
@@ -863,6 +920,56 @@ export async function attemptBoundedAutomaticRepair(input: {
   };
 }
 
+/** One targeted model call at most for all drifted operations in one system scan. */
+export async function attemptBoundedAutomaticRepairBatch(input: {
+  system: typeof connectedSystems.$inferSelect;
+  operationKeys: string[];
+}) {
+  const operationKeys = Array.from(new Set(input.operationKeys))
+    .filter(key => BROWSER_OPERATION_CATALOGUE.some(item => item.key === key))
+    .slice(0, 80);
+  if (!operationKeys.length)
+    return {
+      calls: 0,
+      installed: [] as string[],
+      reason: "no_affected_operations",
+    };
+  if (!getGenxReadiness().configured)
+    return { calls: 0, installed: [] as string[], reason: "genx_unavailable" };
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const job = (
+    await db
+      .select()
+      .from(crmCommissioningJobs)
+      .where(eq(crmCommissioningJobs.connectedSystemId, input.system.id))
+      .limit(1)
+  )[0];
+  if (!job?.requestedByUserId)
+    return {
+      calls: 0,
+      installed: [] as string[],
+      reason: "commissioning_owner_required",
+    };
+  const secret = await ownedCommissioningSecret({
+    userId: job.requestedByUserId,
+    organisationId: input.system.organisationId,
+    connectedSystemId: input.system.id,
+    connectionMethod: input.system.connectionMethod,
+  });
+  const snapshot = await inspectBrowserCrmNavigation({
+    connection: toAdapterConnection(input.system),
+    secret,
+    provider: input.system.provider as "genie" | "custom_browser",
+  });
+  return discoverSemanticOperationDefinitions({
+    job,
+    snapshot,
+    targetOperationKeys: operationKeys,
+    allowReplacement: true,
+  });
+}
+
 export async function installKnownGeniePack(
   job: CrmCommissioningJob,
   system: typeof connectedSystems.$inferSelect
@@ -1007,8 +1114,10 @@ async function discoverSemanticOperationDefinitions(input: {
     billing: {
       userId: input.job.requestedByUserId,
       organisationId: input.job.organisationId,
-      feature: "crm_commissioning_discovery",
-      reference: `crm-commissioning:${input.job.id}:semantic-discovery`,
+      feature: input.allowReplacement
+        ? "crm_commissioning_repair"
+        : "crm_commissioning_discovery",
+      reference: `crm-commissioning:${input.job.id}:${input.allowReplacement ? "repair" : "initial"}:${crmDiscoveryFingerprint(input.snapshot)}`,
     },
     messages: [
       {
@@ -1114,23 +1223,75 @@ async function testOperations(input: {
   const latest = new Map<string, (typeof rows)[number]>();
   for (const row of rows)
     if (!latest.has(row.operationKey)) latest.set(row.operationKey, row);
-  const selected = Array.from(latest.values()).filter(row => {
-    const definition = row.definition as Record<string, unknown>;
-    return operationEligibleForCommissioningTest({
-      status: row.status,
-      definitionMode: definition.mode,
-      requestedMode: input.mode,
+  const selected = Array.from(latest.values())
+    .filter(row => {
+      const definition = row.definition as Record<string, unknown>;
+      return operationEligibleForCommissioningTest({
+        status: row.status,
+        definitionMode: definition.mode,
+        requestedMode: input.mode,
+      });
+    })
+    .sort((left, right) => {
+      const order = ["contact.sync", "contact.search", "contact.read"];
+      const leftIndex = order.indexOf(left.operationKey);
+      const rightIndex = order.indexOf(right.operationKey);
+      return (
+        (leftIndex < 0 ? order.length : leftIndex) -
+        (rightIndex < 0 ? order.length : rightIndex)
+      );
     });
-  });
   const failures = { ...(input.job.optionalFailures || {}) };
   const proven: string[] = [];
   const failedOperationKeys: string[] = [];
-  const runOne = async (operationKey: string) => {
-    const payload =
+  let repairGenxCalls = 0;
+  let derivedContact:
+    | { externalId: string; query: string; derivedFrom: string }
+    | undefined;
+  const runOne = async (operation: (typeof rows)[number]) => {
+    const operationKey = operation.operationKey;
+    const prerequisites = operation.prerequisites as Record<string, unknown>;
+    const verificationInputs =
+      prerequisites.verificationInputs &&
+      typeof prerequisites.verificationInputs === "object" &&
+      !Array.isArray(prerequisites.verificationInputs)
+        ? (prerequisites.verificationInputs as Record<string, unknown>)
+        : prerequisites.watchdogInputs &&
+            typeof prerequisites.watchdogInputs === "object" &&
+            !Array.isArray(prerequisites.watchdogInputs)
+          ? (prerequisites.watchdogInputs as Record<string, unknown>)
+          : {};
+    const inputRole = safeText(prerequisites.verificationInputRole, 80);
+    let payload =
       input.mode === "write"
         ? controlledWritePayload(operationKey, input.safeTestRecord!)
-        : {};
-    await testLearnedBrowserOperation({
+        : verificationInputs;
+    if (input.mode === "read" && inputRole === "derived_contact_query") {
+      if (!derivedContact) throw new Error("VERIFICATION_TARGET_NOT_DERIVED");
+      payload = { query: derivedContact.query };
+    }
+    if (input.mode === "read" && inputRole === "derived_contact_external_id") {
+      if (!derivedContact) throw new Error("VERIFICATION_TARGET_NOT_DERIVED");
+      payload = { externalId: derivedContact.externalId };
+    }
+    if (
+      input.mode === "read" &&
+      ["derived_contact_query", "derived_contact_external_id"].includes(
+        inputRole
+      )
+    )
+      await db
+        .update(browserLearnedOperations)
+        .set({
+          prerequisites: {
+            ...prerequisites,
+            verificationInputs: payload,
+            watchdogInputs: payload,
+            verificationTargetSource: derivedContact?.derivedFrom,
+          },
+        })
+        .where(eq(browserLearnedOperations.id, operation.id));
+    const executed = await testLearnedBrowserOperation({
       connection: toAdapterConnection(system),
       secret: input.secret,
       provider: system.provider as "genie" | "custom_browser",
@@ -1139,10 +1300,39 @@ async function testOperations(input: {
       correlationId: `auto-${input.job.id}-${operationKey}-${randomUUID()}`,
       publishByUserId: input.job.requestedByUserId || undefined,
     });
+    if (inputRole === "contact_catalogue_seed") {
+      const resultData = (executed.providerResult?.data || {}) as Record<
+        string,
+        string
+      >;
+      const serialized = resultData.records;
+      const parsed = serialized ? (JSON.parse(serialized) as unknown) : [];
+      const row = Array.isArray(parsed)
+        ? parsed.find(
+            value => value && typeof value === "object" && !Array.isArray(value)
+          )
+        : undefined;
+      const source = (row || {}) as Record<string, unknown>;
+      const rawExternalId = safeText(source.externalId, 1_000);
+      const name = safeText(source.name, 180);
+      if (!rawExternalId) throw new Error("VERIFICATION_TARGET_NOT_DERIVED");
+      const baseUrl = resultData.actualPageUrl || system.baseUrl || undefined;
+      const externalId = baseUrl
+        ? new URL(rawExternalId, baseUrl).toString()
+        : rawExternalId;
+      derivedContact = {
+        externalId,
+        query:
+          name ||
+          rawExternalId.split("/").filter(Boolean).at(-1) ||
+          rawExternalId,
+        derivedFrom: "deterministic_contact_catalogue",
+      };
+    }
   };
   for (const operation of selected.slice(0, 80)) {
     try {
-      await runOne(operation.operationKey);
+      await runOne(operation);
       proven.push(operation.operationKey);
       delete failures[operation.operationKey];
     } catch (error) {
@@ -1169,9 +1359,16 @@ async function testOperations(input: {
         targetOperationKeys: failedOperationKeys,
         allowReplacement: true,
       });
+      repairGenxCalls += repair.calls;
       for (const operationKey of repair.installed) {
         try {
-          await runOne(operationKey);
+          const replacement = await latestBrowserOperation({
+            organisationId: input.job.organisationId,
+            connectedSystemId: input.job.connectedSystemId,
+            operationKey,
+          });
+          if (!replacement) throw new Error("REPAIR_VERSION_NOT_FOUND");
+          await runOne(replacement);
           if (!proven.includes(operationKey)) proven.push(operationKey);
           delete failures[operationKey];
         } catch (error) {
@@ -1186,7 +1383,14 @@ async function testOperations(input: {
       // keep their independently proven lifecycle state.
     }
   }
-  return { proven, failures, attempted: selected.length };
+  return {
+    proven,
+    failures,
+    attempted: selected.length,
+    repairGenxCalls,
+    modelUsedDuringVerification: false as const,
+    providerCallCountDuringVerification: 0 as const,
+  };
 }
 
 export function operationEligibleForCommissioningTest(input: {
@@ -1273,6 +1477,19 @@ export async function startAutomaticCommissioning(input: {
   )[0];
   if (!system)
     throw new Error("Connected system was not found in this organisation.");
+  const previousJob = (
+    await db
+      .select()
+      .from(crmCommissioningJobs)
+      .where(
+        eq(crmCommissioningJobs.connectedSystemId, input.connectedSystemId)
+      )
+      .limit(1)
+  )[0];
+  const previousProgress = (previousJob?.progress || {}) as Record<
+    string,
+    unknown
+  >;
   const approvedBrowserSecret = ["browser", "sidecar"].includes(
     system.connectionMethod
   )
@@ -1307,6 +1524,11 @@ export async function startAutomaticCommissioning(input: {
       ...(initialState === "DISCOVER_NAVIGATION"
         ? { authentication: "complete", secureSession: "complete" }
         : {}),
+      learningMemory:
+        previousProgress.learningMemory &&
+        typeof previousProgress.learningMemory === "object"
+          ? previousProgress.learningMemory
+          : {},
     },
     safeTestRecord: null,
     discoveredOperationKeys: [],
@@ -1587,6 +1809,40 @@ export async function advanceAutomaticCommissioning(jobId: number) {
       });
       buildSecretFreeDiscoveryPrompt(snapshot);
       progress.discoverySnapshot = snapshot;
+      const packVersion =
+        system.provider === "genie" ? GENIE_PROVIDER_PACK_VERSION : "tenant";
+      const fingerprint = crmDiscoveryFingerprint(snapshot, packVersion);
+      const memory =
+        progress.learningMemory && typeof progress.learningMemory === "object"
+          ? (progress.learningMemory as Record<string, unknown>)
+          : {};
+      progress.learningMemory = {
+        ...memory,
+        providerPackVersion: packVersion,
+        providerPackFingerprint:
+          system.provider === "genie" ? providerPackFingerprint() : undefined,
+        discoveryFingerprint: fingerprint,
+        structuralAreaFingerprints: Object.fromEntries(
+          Array.from(
+            new Set(
+              snapshot.controls.map(
+                control => control.pageUrl || snapshot.pageUrl
+              )
+            )
+          ).map(pageUrl => [
+            pageUrl,
+            createHash("sha256")
+              .update(
+                JSON.stringify(
+                  snapshot.controls.filter(
+                    control => (control.pageUrl || snapshot.pageUrl) === pageUrl
+                  )
+                )
+              )
+              .digest("hex"),
+          ])
+        ),
+      };
       progress.navigation = "Ready";
       next = "DISCOVER_CAPABILITIES";
     } else if (job.state === "DISCOVER_CAPABILITIES") {
@@ -1608,23 +1864,54 @@ export async function advanceAutomaticCommissioning(jobId: number) {
         genieDiscoveryTargets = knownPack.needsDiscovery;
         progress.placeholderOperationsRejected = knownPack.needsDiscovery;
       }
+      const learningMemory =
+        progress.learningMemory && typeof progress.learningMemory === "object"
+          ? (progress.learningMemory as Record<string, unknown>)
+          : {};
+      const discoveryFingerprint = safeText(
+        learningMemory.discoveryFingerprint,
+        64
+      );
+      const learnedFingerprints = Array.isArray(
+        learningMemory.learnedFingerprints
+      )
+        ? (learningMemory.learnedFingerprints as unknown[])
+            .filter((value): value is string => typeof value === "string")
+            .slice(-20)
+        : [];
       if (
         system.provider === "custom_browser" ||
         genieDiscoveryTargets.length
       ) {
-        const semantic = await discoverSemanticOperationDefinitions({
-          job,
-          snapshot,
-          targetOperationKeys: genieDiscoveryTargets.length
-            ? genieDiscoveryTargets
-            : undefined,
-          allowReplacement: system.provider === "genie",
-        }).catch(() => ({
-          calls: getGenxReadiness().configured ? 1 : 0,
-          installed: [] as string[],
-        }));
+        const alreadyLearned =
+          Boolean(discoveryFingerprint) &&
+          learnedFingerprints.includes(discoveryFingerprint);
+        const semantic = alreadyLearned
+          ? { calls: 0, installed: [] as string[] }
+          : await discoverSemanticOperationDefinitions({
+              job,
+              snapshot,
+              targetOperationKeys: genieDiscoveryTargets.length
+                ? genieDiscoveryTargets
+                : undefined,
+              allowReplacement: system.provider === "genie",
+            }).catch(() => ({
+              calls: getGenxReadiness().configured ? 1 : 0,
+              installed: [] as string[],
+            }));
         discovered.push(...semantic.installed);
         progress.semanticDiscoveryCalls = semantic.calls;
+        progress.initialGenxCalls =
+          Number(progress.initialGenxCalls || 0) + semantic.calls;
+        progress.learningMemory = {
+          ...learningMemory,
+          learnedFingerprints:
+            semantic.calls > 0 && discoveryFingerprint
+              ? Array.from(
+                  new Set([...learnedFingerprints, discoveryFingerprint])
+                ).slice(-20)
+              : learnedFingerprints,
+        };
         if (genieDiscoveryTargets.length)
           progress.genieAutomaticallyDiscovered = semantic.installed;
       }
@@ -1649,6 +1936,12 @@ export async function advanceAutomaticCommissioning(jobId: number) {
         proven: result.proven,
         attempted: result.attempted,
       };
+      progress.deterministicExecutions =
+        Number(progress.deterministicExecutions || 0) + result.attempted;
+      progress.repairGenxCalls =
+        Number(progress.repairGenxCalls || 0) + result.repairGenxCalls;
+      progress.modelUsedDuringVerification = false;
+      progress.providerCallCountDuringVerification = 0;
       const matrix = await browserOperationReadinessForSystem({
         organisationId: job.organisationId,
         connectedSystemId: job.connectedSystemId,

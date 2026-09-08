@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const durableRows = [
+let durableRows = [
   {
     id: 1,
     organisationId: 7,
@@ -43,7 +43,10 @@ vi.mock("../db", () => ({
 }));
 
 describe("LIVE_PROVEN learned-operation restart persistence", () => {
-  beforeEach(() => vi.resetModules());
+  beforeEach(() => {
+    durableRows = durableRows.filter(row => row.version === 3);
+    vi.resetModules();
+  });
 
   it("reloads the durable definition after a process-module restart without commissioning", async () => {
     const model = vi.fn(() => {
@@ -66,5 +69,34 @@ describe("LIVE_PROVEN learned-operation restart persistence", () => {
     expect(after.status).toBe("LIVE_PROVEN");
     expect(after.checksum).toBe("persisted-checksum");
     expect(model).not.toHaveBeenCalled();
-  });
+  }, 15_000);
+
+  it("never falls back to an older LIVE_PROVEN version when the latest is TEST_READY", async () => {
+    durableRows = [
+      {
+        ...durableRows[0],
+        id: 2,
+        version: 4,
+        status: "TEST_READY",
+        checksum: "new-test-ready",
+      },
+      durableRows[0],
+    ];
+    const operations = await import("./learnedOperations");
+    await expect(
+      operations.requireRuntimeBrowserOperation({
+        organisationId: 7,
+        connectedSystemId: 9,
+        operationKey: "contact.read",
+      })
+    ).rejects.toThrow("TEST_READY");
+    await expect(
+      operations.requireRuntimeBrowserOperation({
+        organisationId: 7,
+        connectedSystemId: 9,
+        operationKey: "contact.read",
+        allowTestReady: true,
+      })
+    ).resolves.toMatchObject({ version: 4, checksum: "new-test-ready" });
+  }, 15_000);
 });

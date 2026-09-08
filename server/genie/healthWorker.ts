@@ -7,7 +7,7 @@ import { syncReadyDelegatedMailboxes } from "../mailboxWorker";
 import { startConnectionScopedCrmSyncWorker } from "../crm/syncWorker";
 
 const intervalMs = Number(
-  process.env.CRM_HEALTH_INTERVAL_MS || 12 * 60 * 60 * 1000
+  process.env.CRM_HEALTH_INTERVAL_MS || 24 * 60 * 60 * 1000
 );
 
 async function check() {

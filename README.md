@@ -19,6 +19,28 @@ Amarktai Sales Assistant is a self-hosted, multi-tenant sales operating layer fo
 - Genie remains authoritative. Amarktai stores synchronized projections, checkpoints, evidence and proposed actions; it does not create a second independent CRM truth.
 - Every real GenX provider call is recorded in the existing AI-credit ledger with tenant/user scope, feature, bounded purpose, model, provider usage, credits and correlation reference. Credential-bound Course2Career/Outlook gates remain `AWAITING_LIVE_PROOF` until the production acceptance verifier records real evidence.
 
+### CRM commissioning and provider packs
+
+The browser connector resolves CRM structure in one order: the versioned code-owned provider pack, the installed connector configuration, and finally the tenant-specific learned overlay. The Genie pack contains only stable navigation and field structure; customer values and credentials never belong in it. Discovery input is allowlisted, size-bounded structural metadata, and a successful discovery fingerprint is retained so an unchanged connection is not billed again.
+
+Missing functions are learned in one bounded initial batch rather than one model call per operation. Model output can create only a `TEST_READY` candidate. Exact-target deterministic reads, safe structural proof and write readback are required before that exact latest version can become `LIVE_PROVEN`; production never falls back to an older proven version while a newer version is unproven or degraded. Routine execution and verification record `modelUsed=false` and `providerCallCount=0`.
+
+The operation watchdog runs daily by default. An unchanged proven surface uses no GenX. Drift degrades only affected functions and permits at most one targeted repair batch for that affected set; unaffected operations remain available. Pack version, tenant-overlay version, fingerprints, affected operation keys and repair-call counts are retained in connection health evidence.
+
+### Ordered sales work and automation governance
+
+`salesWorkItems` is the normalized queue between CRM/mailbox truth and the Today experience. The first contact sync establishes a persisted baseline and creates no historical `NEW_LEAD` work; only an explicit creation event or a newly observed contact after that baseline may create one stable item. CRM sync also derives organisation-scoped work keys for due or overdue tasks, callbacks and opportunities needing attention. Inbound delegated-mailbox messages add reply or appointment work without copying message bodies into queue metadata. Unique source keys make repeated sync idempotent, and deterministic ordering puts overdue and higher-priority work first while retaining source freshness and last-sync evidence.
+
+Managers choose **Assist only**, **Balanced** or **Automated** during final onboarding and may then customize the same policy in Management Controls. One deterministic server evaluator applies monitored events, scope, triggers, conditions, schedule/time zone, per-action approval mode, action caps, deduplication windows, bounded retries, quiet hours and explicit action/channel/template allowlists before trigger, work/proposal creation, approval routing and execution. Communications, opportunity/stage changes and disabled action categories retain their mandatory review boundaries; no preset silently enables destructive work.
+
+Today work moves durably through `OPEN`, `IN_PROGRESS`, `SNOOZED`, `BLOCKED` and `COMPLETED` with an optimistic state version and transition idempotency key. Starting work opens its CRM context; snoozing and rescheduling change when it is actionable. A CRM task, inbound reply or callback closes only from its exact authoritative CRM/mailbox readback, explicit handled confirmation or recorded call outcome, after which the next deterministic queue item becomes current.
+
+Governed actions move through explicit durable states: `PROPOSED`, `READY_FOR_REVIEW`, `APPROVED`, `REJECTED`, `EDITED`, `EXECUTING`, `VERIFIED`, `FAILED` or `NEEDS_ATTENTION`. Execution uses an atomic claim and idempotency key. A CRM write resolves and proves the exact target, checks policy, executes only a commissioned deterministic operation, reads the authoritative CRM back and becomes verified only after its expected postcondition is proven. An uncertain external result becomes `NEEDS_ATTENTION` and is not blindly retried.
+
+### Mailbox, calls and next actions
+
+Delegated Microsoft mailbox/calendar sync and approved send/readback stay in the zero-model transport boundary and use provider message identities for duplicate protection. Inbound classification may create governed reply or appointment work. Call preparation assembles existing customer and work context; recorded outcomes create proposed note, task or follow-up actions that pass through the same approval policy and CRM readback boundary before the queue advances. Actual calls remain human-led unless an explicitly commissioned and authorised dialler action exists.
+
 ## Supported connections
 
 Native OAuth adapters are included for **HubSpot, Salesforce, Pipedrive and Zoho CRM**. **Genie** and other authorised web CRMs use the deterministic browser connector. The **Other CRM** path is designed for a company CRM that has a usable web interface but no dedicated Amarktai API adapter; selectors and operations must be calibrated and verified before the connection can become ready.

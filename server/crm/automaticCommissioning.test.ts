@@ -11,6 +11,7 @@ import {
   operationEligibleForCommissioningTest,
   resolveSafeTestContext,
   safeReadCommissioningPassed,
+  crmDiscoveryFingerprint,
 } from "./automaticCommissioning";
 import { runDeterministicCrmBatch } from "./deterministicBatch";
 import {
@@ -110,6 +111,36 @@ describe("automatic CRM commissioning product contract", () => {
     expect(prompt).not.toContain("username");
     expect(prompt).not.toContain("password");
     expect(prompt).not.toContain("s3cr3t");
+  });
+
+  it("removes customer-looking control text while retaining structural navigation", () => {
+    const prompt = buildSecretFreeDiscoveryPrompt({
+      ...snapshot,
+      controls: [
+        ...snapshot.controls,
+        {
+          tag: "a",
+          role: "link",
+          label: "Jane Example Customer",
+          selector: ".contact-name-link",
+          href: "https://crm.example.test/contact/123",
+        },
+      ],
+    });
+    expect(prompt).not.toContain("Jane Example Customer");
+    expect(prompt).toContain("Customers");
+  });
+
+  it("reuses a stable structural discovery fingerprint for zero-rebilling memory", () => {
+    expect(crmDiscoveryFingerprint(snapshot, "genie-pack-v1")).toBe(
+      crmDiscoveryFingerprint(
+        { ...snapshot, controls: [...snapshot.controls] },
+        "genie-pack-v1"
+      )
+    );
+    expect(crmDiscoveryFingerprint(snapshot, "genie-pack-v2")).not.toBe(
+      crmDiscoveryFingerprint(snapshot, "genie-pack-v1")
+    );
   });
 
   it("waits for one authorised test record before controlled writes", () => {

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   aiUsageMetadata,
   assessAiCreditDebit,
+  classifyAiReasonCategory,
   classifyAiPurpose,
   type CreditLedgerMetadata,
 } from "./aiCredits";
@@ -57,8 +58,17 @@ describe("AI credit debit invariants", () => {
     expect(classifyAiPurpose("crm_automatic_commissioning")).toBe(
       "crm_commissioning"
     );
+    expect(classifyAiPurpose("crm_commissioning_repair")).toBe(
+      "crm_targeted_repair"
+    );
     expect(classifyAiPurpose("assistant_email_draft")).toBe(
       "communication_draft"
+    );
+    expect(classifyAiReasonCategory("crm_commissioning_discovery")).toBe(
+      "INITIAL_CRM_LEARNING"
+    );
+    expect(classifyAiReasonCategory("crm_commissioning_repair")).toBe(
+      "CRM_DRIFT_REPAIR"
     );
     expect(
       aiUsageMetadata({
@@ -72,6 +82,7 @@ describe("AI credit debit invariants", () => {
     ).toMatchObject({
       provider: "genx",
       purpose: "communication_draft",
+      reasonCategory: "USER_INTELLIGENCE",
       creditsDelta: 0,
       correlationId: "request-7",
       providerUsage: { totalTokens: 12 },

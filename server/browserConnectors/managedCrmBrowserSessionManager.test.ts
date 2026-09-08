@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   authenticationStateFromEvidence,
+  managedCrmBrowserSessionManager,
   providerAuthenticatedUrlMarker,
   resolvedAuthenticationState,
   shouldReuseManagedCrmBrowserSession,
@@ -155,6 +156,9 @@ describe("conservative CRM authentication proof", () => {
 });
 
 describe("managed CRM browser recovery", () => {
+  it("exposes an explicit manager-owned keep-alive boundary", () => {
+    expect(managedCrmBrowserSessionManager.keepAlive).toBeTypeOf("function");
+  });
   it("does not reuse an about:blank session after navigation failed", () => {
     expect(
       shouldReuseManagedCrmBrowserSession({

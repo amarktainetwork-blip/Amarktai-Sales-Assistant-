@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import {
   crmActivities,
   crmCompanies,
@@ -28,6 +28,7 @@ import type {
 } from "./types";
 import { normalizeCrmEmail, normalizeCrmPhone } from "./identity";
 import { runModelFreeOperation } from "../aiExecutionBoundary";
+import { upsertSalesWorkFromCrm } from "../salesWork";
 
 async function cursorFor(systemId: number, resourceType: string) {
   const db = await getDb();
@@ -194,6 +195,32 @@ async function upsertContacts(
   }
 }
 
+async function existingContactIds(
+  organisationId: number,
+  systemId: number,
+  externalIds: string[]
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const found = new Set<string>();
+  for (let offset = 0; offset < externalIds.length; offset += 500) {
+    const chunk = externalIds.slice(offset, offset + 500);
+    if (!chunk.length) continue;
+    const rows = await db
+      .select({ externalId: crmContacts.externalId })
+      .from(crmContacts)
+      .where(
+        and(
+          eq(crmContacts.organisationId, organisationId),
+          eq(crmContacts.connectedSystemId, systemId),
+          inArray(crmContacts.externalId, chunk)
+        )
+      );
+    rows.forEach(row => found.add(row.externalId));
+  }
+  return found;
+}
+
 async function upsertOpportunities(
   organisationId: number,
   systemId: number,
@@ -333,7 +360,27 @@ async function syncConnectedSystemDeterministically(input: {
         secret,
         cursor: existing?.cursor ?? undefined,
       });
+      const contactBaseline =
+        resourceType === "contacts"
+          ? {
+              baselineComplete: Boolean(existing?.lastSuccessfulAt),
+              existingExternalIds: await existingContactIds(
+                input.organisationId,
+                system.id,
+                result.records.map(record => record.externalId)
+              ),
+            }
+          : undefined;
       await persist(input.organisationId, system.id, result.records as never[]);
+      await upsertSalesWorkFromCrm({
+        organisationId: input.organisationId,
+        connectedSystemId: system.id,
+        resource: {
+          type: resourceType,
+          records: result.records,
+        } as Parameters<typeof upsertSalesWorkFromCrm>[0]["resource"],
+        contactBaseline,
+      });
       await saveCursor(system.id, resourceType, result.cursor);
       summary[resourceType] = result.records.length;
     } catch (error) {

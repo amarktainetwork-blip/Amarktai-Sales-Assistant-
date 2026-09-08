@@ -19,6 +19,7 @@ import {
   sanitizeTrainingCapture,
   assertBrowserOperationRuntimeStatus,
   assertBrowserOperationScope,
+  browserProofPolicy,
   validateLearnedOperationDefinition,
   validateOperationKey,
   type BrowserOperationCatalogueItem,
@@ -111,10 +112,15 @@ export async function latestBrowserOperation(input: {
       )
     )
     .orderBy(desc(browserLearnedOperations.version))
-    .limit(10);
-  return rows.find(
-    row => !input.allowedStatuses || input.allowedStatuses.includes(row.status)
-  );
+    .limit(1);
+  const latest = rows[0];
+  if (
+    latest &&
+    input.allowedStatuses &&
+    !input.allowedStatuses.includes(latest.status)
+  )
+    return undefined;
+  return latest;
 }
 
 export async function requireRuntimeBrowserOperation(input: {
@@ -271,7 +277,9 @@ export async function browserOperationReadinessForSystem(input: {
     ...item,
     ...(latest.get(item.key) || empty),
   }));
-  const standardKeys = new Set(BROWSER_OPERATION_CATALOGUE.map(item => item.key));
+  const standardKeys = new Set(
+    BROWSER_OPERATION_CATALOGUE.map(item => item.key)
+  );
   const customOperations = Array.from(latest.entries())
     .filter(([key]) => !standardKeys.has(key))
     .map(([key, row]) => ({
@@ -333,7 +341,10 @@ export async function saveLearnedBrowserOperation(input: {
     operationKey,
   });
   const version = (previous?.version ?? 0) + 1;
-  const prerequisites = input.prerequisites ?? {};
+  const prerequisites = {
+    ...(input.prerequisites ?? {}),
+    proofPolicy: browserProofPolicy(operationKey, definition.mode),
+  };
   const targetAssertions = input.targetAssertions ?? {};
   const checksum = operationChecksum({
     operationKey,

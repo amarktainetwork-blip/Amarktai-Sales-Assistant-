@@ -437,12 +437,29 @@ export const actionProposals = mysqlTable(
     ])
       .default("review_required")
       .notNull(),
+    governanceState: mysqlEnum("governanceState", [
+      "PROPOSED",
+      "READY_FOR_REVIEW",
+      "APPROVED",
+      "REJECTED",
+      "EDITED",
+      "EXECUTING",
+      "VERIFIED",
+      "FAILED",
+      "NEEDS_ATTENTION",
+    ])
+      .default("PROPOSED")
+      .notNull(),
     idempotencyKey: varchar("idempotencyKey", { length: 255 }).notNull(),
     payload: json("payload").$type<Record<string, unknown>>().notNull(),
     reviewedAt: timestamp("reviewedAt"),
+    reviewedByUserId: int("reviewedByUserId").references(() => users.id, {
+      onDelete: "set null",
+    }),
     executionClaimId: varchar("executionClaimId", { length: 64 }),
     executionClaimedAt: timestamp("executionClaimedAt"),
     executedAt: timestamp("executedAt"),
+    verifiedAt: timestamp("verifiedAt"),
     executionResult: json("executionResult").$type<Record<string, unknown>>(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
@@ -457,6 +474,11 @@ export const actionProposals = mysqlTable(
       table.executionClaimedAt
     ),
     index("actionProposals_run_idx").on(table.workflowRunId),
+    index("actionProposals_governance_state_idx").on(
+      table.organisationId,
+      table.governanceState,
+      table.createdAt
+    ),
     uniqueIndex("actionProposals_idempotency_uq").on(
       table.userId,
       table.idempotencyKey
@@ -1330,6 +1352,99 @@ export const salesActivityEvents = mysqlTable(
       table.organisationId,
       table.salespersonUserId,
       table.occurredAt
+    ),
+  ]
+);
+
+/**
+ * Normalized, assignment-aware salesperson work derived from authoritative
+ * CRM/mailbox records. The source systems remain authoritative; this table is
+ * the durable orchestration index and never replaces their record payloads.
+ */
+export const salesWorkItems = mysqlTable(
+  "salesWorkItems",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    organisationId: int("organisationId")
+      .notNull()
+      .references(() => organisations.id, { onDelete: "cascade" }),
+    salespersonUserId: int("salespersonUserId").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    connectedSystemId: int("connectedSystemId").references(
+      () => connectedSystems.id,
+      { onDelete: "cascade" }
+    ),
+    sourceKey: varchar("sourceKey", { length: 255 }).notNull(),
+    sourceType: varchar("sourceType", { length: 80 }).notNull(),
+    sourceExternalId: varchar("sourceExternalId", { length: 180 }).notNull(),
+    contactExternalId: varchar("contactExternalId", { length: 180 }),
+    companyExternalId: varchar("companyExternalId", { length: 180 }),
+    opportunityExternalId: varchar("opportunityExternalId", { length: 180 }),
+    taskExternalId: varchar("taskExternalId", { length: 180 }),
+    type: varchar("type", { length: 80 }).notNull(),
+    priority: int("priority").notNull().default(0),
+    dueAt: timestamp("dueAt"),
+    reason: text("reason").notNull(),
+    status: mysqlEnum("status", [
+      "open",
+      "in_progress",
+      "snoozed",
+      "completed",
+      "blocked",
+    ])
+      .notNull()
+      .default("open"),
+    startedAt: timestamp("startedAt"),
+    completedAt: timestamp("completedAt"),
+    snoozedUntil: timestamp("snoozedUntil"),
+    blockedReason: text("blockedReason"),
+    stateVersion: int("stateVersion").notNull().default(0),
+    lastTransitionKey: varchar("lastTransitionKey", { length: 120 }),
+    recommendedNextAction: text("recommendedNextAction").notNull(),
+    automationEligibility: mysqlEnum("automationEligibility", [
+      "disabled",
+      "propose",
+      "automatic",
+    ])
+      .notNull()
+      .default("propose"),
+    approvalRequirement: mysqlEnum("approvalRequirement", [
+      "none",
+      "salesperson",
+      "manager",
+    ])
+      .notNull()
+      .default("salesperson"),
+    freshness: mysqlEnum("freshness", [
+      "current",
+      "stale",
+      "disconnected",
+      "unknown",
+    ])
+      .notNull()
+      .default("unknown"),
+    sourceUpdatedAt: timestamp("sourceUpdatedAt"),
+    syncedAt: timestamp("syncedAt").defaultNow().notNull(),
+    metadata: json("metadata").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    uniqueIndex("sales_work_items_org_source_key_unique").on(
+      table.organisationId,
+      table.sourceKey
+    ),
+    index("sales_work_items_org_user_status_due_idx").on(
+      table.organisationId,
+      table.salespersonUserId,
+      table.status,
+      table.dueAt
+    ),
+    index("sales_work_items_org_priority_idx").on(
+      table.organisationId,
+      table.priority,
+      table.updatedAt
     ),
   ]
 );

@@ -10,6 +10,7 @@ import { listConnectedSystemsForUser } from "../connectedSystems";
 import { routeConnectedSystemActions } from "../crmRouter";
 import { detectLiveSignals } from "./signals";
 import { completeLiveCallExact, requireLiveCallOwner } from "./store";
+import { completeCallbackWorkAfterVerifiedCall } from "../salesWork";
 import { parseLiveCallCompletion } from "./completion";
 import { planTelesalesCloseout } from "../telesales/closeoutPlanner";
 import { getAutomationPolicy } from "../automationPolicy";
@@ -354,6 +355,13 @@ export function registerLiveCallRoutes(app: Express) {
             summary: summary.content,
             structuredOutcome,
           });
+          await completeCallbackWorkAfterVerifiedCall({
+            userId: user.id,
+            organisationId: user.membership.organisationId,
+            contactExternalId: identity?.contactExternalId,
+            opportunityExternalId: identity?.opportunityExternalId,
+            taskExternalId: identity?.taskExternalId,
+          }).catch(() => 0);
           if (
             structuredOutcome.callbackAt &&
             req.body?.commitmentsConfirmed === true

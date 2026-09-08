@@ -68,6 +68,7 @@ type BrowserInputEvent =
     };
 
 type BrowserNavigationAction = "back" | "forward" | "refresh";
+type AutomationPreset = "assist_only" | "balanced" | "automated";
 
 type StreamMessage =
   | { type: "ready"; url: string; control: string; expiresAt: string }
@@ -122,6 +123,8 @@ export default function CrmWorkspace() {
   const [browserAuthenticationState, setBrowserAuthenticationState] =
     useState("STARTING");
   const [commissioningReady, setCommissioningReady] = useState(false);
+  const [savingAutomationPreset, setSavingAutomationPreset] =
+    useState<AutomationPreset | null>(null);
   const completionAttemptedRef = useRef(false);
   const selected = useMemo(
     () =>
@@ -142,6 +145,39 @@ export default function CrmWorkspace() {
       !Array.isArray(onboarding) &&
       (onboarding as { complete?: unknown }).complete === true
   );
+  const automationPolicyConfigured = Boolean(
+    !canManage ||
+      (organisation.data?.settings?.automationPolicy &&
+        typeof organisation.data.settings.automationPolicy === "object" &&
+        !Array.isArray(organisation.data.settings.automationPolicy))
+  );
+
+  async function saveOnboardingAutomationPreset(preset: AutomationPreset) {
+    setSavingAutomationPreset(preset);
+    try {
+      const response = await fetch("/api/sales-automation/policy", {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ preset }),
+      });
+      const body = (await response.json().catch(() => ({}))) as {
+        error?: string;
+      };
+      if (!response.ok)
+        throw new Error(
+          body.error || "Automation preference could not be saved."
+        );
+      await utils.organisation.current.invalidate();
+      toast.success("Automation preference saved. Finishing setup…");
+    } catch (error) {
+      toast.error(
+        friendlyError(error, "Automation preference could not be saved.")
+      );
+    } finally {
+      setSavingAutomationPreset(null);
+    }
+  }
 
   useEffect(() => {
     setCommissioningReady(false);
@@ -177,6 +213,7 @@ export default function CrmWorkspace() {
       completionAttemptedRef.current ||
       browserAuthenticationState !== "AUTHENTICATED" ||
       !commissioningReady ||
+      !automationPolicyConfigured ||
       companySetup.data?.profile?.discoveryStatus !== "confirmed"
     )
       return;
@@ -199,6 +236,7 @@ export default function CrmWorkspace() {
       });
   }, [
     browserAuthenticationState,
+    automationPolicyConfigured,
     canManage,
     companySetup.data?.profile?.discoveryStatus,
     completeOnboarding,
@@ -212,7 +250,7 @@ export default function CrmWorkspace() {
     <DashboardLayout>
       <div
         data-crm-workspace-root
-        className="h-[calc(100vh-66px)] min-h-0 overflow-hidden bg-[#EDF2F7]"
+        className="relative h-[calc(100vh-66px)] min-h-0 overflow-hidden bg-[#EDF2F7]"
       >
         <style>{`
           main:has(> [data-crm-workspace-root]) {
@@ -239,6 +277,69 @@ export default function CrmWorkspace() {
         ) : (
           <NoBrowserCrm onConnections={() => navigate("/connections")} />
         )}
+        {canManage &&
+        !onboardingComplete &&
+        browserAuthenticationState === "AUTHENTICATED" &&
+        commissioningReady &&
+        companySetup.data?.profile?.discoveryStatus === "confirmed" &&
+        !automationPolicyConfigured ? (
+          <div className="absolute inset-x-0 bottom-0 z-30 border-t border-[#C7D4E4] bg-white/95 p-4 shadow-[0_-18px_50px_rgba(20,48,84,.18)] backdrop-blur sm:p-6">
+            <div className="mx-auto max-w-5xl">
+              <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#2865C7]">
+                FINAL SETUP · AUTOMATION PREFERENCE
+              </p>
+              <h2 className="mt-1 text-xl font-bold text-[#203047]">
+                Choose how much AmarktAI may do automatically.
+              </h2>
+              <p className="mt-1 text-sm text-[#607086]">
+                Customer messages and important CRM changes still keep their
+                required safety checks. You can change this later in Management
+                Controls.
+              </p>
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                {(
+                  [
+                    [
+                      "assist_only",
+                      "Assist only",
+                      "Monitor and propose actions for you to approve.",
+                    ],
+                    [
+                      "balanced",
+                      "Balanced",
+                      "Run safe reminders; keep communications in review.",
+                    ],
+                    [
+                      "automated",
+                      "Automated",
+                      "Run approved deterministic categories automatically.",
+                    ],
+                  ] as const
+                ).map(([preset, title, detail]) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    disabled={savingAutomationPreset !== null}
+                    onClick={() => void saveOnboardingAutomationPreset(preset)}
+                    className="rounded-2xl border border-[#C7D4E4] bg-[#F7F9FC] p-4 text-left transition hover:border-[#6D9DE8] hover:bg-[#EEF5FF] disabled:opacity-60"
+                  >
+                    <span className="flex items-center gap-2 font-bold text-[#203047]">
+                      {savingAutomationPreset === preset ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <ShieldCheck className="size-4 text-[#2865C7]" />
+                      )}
+                      {title}
+                    </span>
+                    <span className="mt-1 block text-xs leading-5 text-[#607086]">
+                      {detail}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </DashboardLayout>
   );
@@ -516,9 +617,15 @@ function LiveWorkspace({
                 ].slice(0, 8)
           );
       } else if (message.type === "disconnected") {
+        setImage("");
+        setFrameMetadata(null);
+        frameReceivedRef.current = false;
         setViewerPhase("failed");
         setStatus("The CRM browser connection paused. Reopen it to continue.");
       } else if (message.type === "error") {
+        setImage("");
+        setFrameMetadata(null);
+        frameReceivedRef.current = false;
         const friendly = friendlyError(
           message.message || message.code,
           "That CRM action could not be completed."
@@ -530,6 +637,9 @@ function LiveWorkspace({
     };
 
     socket.onclose = event => {
+      setImage("");
+      setFrameMetadata(null);
+      frameReceivedRef.current = false;
       setViewerPhase("failed");
       setStatus(
         event.code === 4002

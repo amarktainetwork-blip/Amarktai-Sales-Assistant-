@@ -19,6 +19,7 @@ export type CreditLedgerMetadata = {
   feature?: string;
   provider?: "genx";
   purpose?: AiPurpose;
+  reasonCategory?: AiReasonCategory;
   model?: string;
   providerUsage?: Record<string, unknown>;
   reference?: string;
@@ -26,6 +27,12 @@ export type CreditLedgerMetadata = {
   note?: string;
   period?: string;
 };
+
+export type AiReasonCategory =
+  | "INITIAL_BUSINESS_LEARNING"
+  | "INITIAL_CRM_LEARNING"
+  | "CRM_DRIFT_REPAIR"
+  | "USER_INTELLIGENCE";
 
 export type AiPurpose =
   | "assistant_reasoning"
@@ -42,8 +49,8 @@ export type AiPurpose =
 /** Bounded, auditable classification. Unknown features cannot invent purposes. */
 export function classifyAiPurpose(feature: string): AiPurpose {
   const value = feature.toLowerCase();
-  if (value.includes("commission")) return "crm_commissioning";
   if (value.includes("repair")) return "crm_targeted_repair";
+  if (value.includes("commission")) return "crm_commissioning";
   if (value.includes("rewrite")) return "communication_rewrite";
   if (
     value.includes("draft") ||
@@ -63,6 +70,24 @@ export function classifyAiPurpose(feature: string): AiPurpose {
     return "company_learning";
   if (value.includes("assistant")) return "assistant_reasoning";
   return "other_explicit_ai";
+}
+
+export function classifyAiReasonCategory(feature: string): AiReasonCategory {
+  const value = feature.toLowerCase();
+  if (value.includes("crm") && value.includes("repair"))
+    return "CRM_DRIFT_REPAIR";
+  if (
+    value.includes("crm") &&
+    (value.includes("commission") || value.includes("learn"))
+  )
+    return "INITIAL_CRM_LEARNING";
+  if (
+    value.includes("company") ||
+    value.includes("knowledge") ||
+    value.includes("website")
+  )
+    return "INITIAL_BUSINESS_LEARNING";
+  return "USER_INTELLIGENCE";
 }
 
 function plan(value: unknown) {
@@ -136,6 +161,7 @@ export function aiUsageMetadata(input: {
     feature: input.feature,
     provider: "genx",
     purpose: classifyAiPurpose(input.feature),
+    reasonCategory: classifyAiReasonCategory(input.feature),
     model: input.model,
     providerUsage: input.providerUsage,
     reference: input.reference,
@@ -206,21 +232,19 @@ async function ensureMonthlyAllowance(input: {
       );
     });
     if (!alreadyGranted && selectedPlan.includedAiCredits > 0) {
-      await tx
-        .insert(salesActivityEvents)
-        .values({
-          organisationId: input.organisationId,
-          salespersonUserId: input.userId,
-          eventType: "ai_credit_allowance",
-          source: "ai_credit",
-          occurredAt: new Date(),
-          metadata: {
-            creditsDelta: selectedPlan.includedAiCredits,
-            transactionType: "allowance",
-            period: currentPeriod,
-            note: `plan:${selectedPlan.key}`,
-          } satisfies CreditLedgerMetadata,
-        });
+      await tx.insert(salesActivityEvents).values({
+        organisationId: input.organisationId,
+        salespersonUserId: input.userId,
+        eventType: "ai_credit_allowance",
+        source: "ai_credit",
+        occurredAt: new Date(),
+        metadata: {
+          creditsDelta: selectedPlan.includedAiCredits,
+          transactionType: "allowance",
+          period: currentPeriod,
+          note: `plan:${selectedPlan.key}`,
+        } satisfies CreditLedgerMetadata,
+      });
     }
     await tx
       .update(organisations)
@@ -347,16 +371,14 @@ async function append(input: {
     Math.abs(input.metadata.creditsDelta) > 10_000_000
   )
     throw new Error("AI credit transaction amount is invalid.");
-  await db
-    .insert(salesActivityEvents)
-    .values({
-      organisationId: input.organisationId,
-      salespersonUserId: input.salespersonUserId ?? input.actorUserId,
-      eventType: `ai_credit_${input.metadata.transactionType}`,
-      source: "ai_credit",
-      occurredAt: new Date(),
-      metadata: input.metadata,
-    });
+  await db.insert(salesActivityEvents).values({
+    organisationId: input.organisationId,
+    salespersonUserId: input.salespersonUserId ?? input.actorUserId,
+    eventType: `ai_credit_${input.metadata.transactionType}`,
+    source: "ai_credit",
+    occurredAt: new Date(),
+    metadata: input.metadata,
+  });
 }
 
 export async function consumeAiCredits(input: {
@@ -420,16 +442,14 @@ export async function consumeAiCredits(input: {
       reference,
       billingExempt,
     });
-    await tx
-      .insert(salesActivityEvents)
-      .values({
-        organisationId: input.organisationId,
-        salespersonUserId: input.userId,
-        eventType: billingExempt ? "ai_provider_usage" : "ai_credit_usage",
-        source: "ai_credit",
-        occurredAt: new Date(),
-        metadata,
-      });
+    await tx.insert(salesActivityEvents).values({
+      organisationId: input.organisationId,
+      salespersonUserId: input.userId,
+      eventType: billingExempt ? "ai_provider_usage" : "ai_credit_usage",
+      source: "ai_credit",
+      occurredAt: new Date(),
+      metadata,
+    });
   });
   return getAiCreditWallet({
     userId: input.userId,

@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, Server } from "node:http";
 import { URL } from "node:url";
-import type { CDPSession } from "playwright-core";
+import type { CDPSession, Page } from "playwright-core";
 import { WebSocket, WebSocketServer, type RawData } from "ws";
 import {
   getConnectedSystemForUser,
@@ -47,7 +47,7 @@ type ViewerSocketMessage =
   | { type: "customerFinishedSigningIn" }
   | { type: "ping" };
 
-type ViewerInputEvent =
+export type ViewerInputEvent =
   | {
       kind: "mouse";
       type: "mousePressed" | "mouseReleased" | "mouseMoved" | "mouseWheel";
@@ -281,6 +281,7 @@ function armSessionExpiry(session: LiveCrmSession) {
 
 function touchViewerSession(session: LiveCrmSession) {
   if (!session.interactive) return;
+  managedCrmBrowserSessionManager.keepAlive(session.managed);
   session.expiresAt = Date.now() + VIEWER_TTL_MS;
   armSessionExpiry(session);
 }
@@ -399,10 +400,7 @@ async function startStream(session: LiveCrmSession) {
     });
   }
   page.once("close", () => {
-    broadcast(session, {
-      type: "disconnected",
-      message: "The CRM page is no longer available. Reconnect to continue.",
-    });
+    retireViewerSession(session, "disconnected");
   });
 }
 
@@ -414,35 +412,40 @@ async function stopStream(session: LiveCrmSession) {
   session.cdp = undefined;
 }
 
+export async function dispatchPlaywrightInput(
+  page: Pick<Page, "mouse" | "keyboard">,
+  event: ViewerInputEvent
+) {
+  const input = assertInput(event);
+  if (input.kind === "mouse") {
+    await page.mouse.move(input.x, input.y);
+    if (input.type === "mousePressed")
+      await page.mouse.down({
+        button: input.button === "none" ? "left" : input.button || "left",
+        clickCount: input.clickCount || 1,
+      });
+    else if (input.type === "mouseReleased")
+      await page.mouse.up({
+        button: input.button === "none" ? "left" : input.button || "left",
+        clickCount: input.clickCount || 1,
+      });
+    else if (input.type === "mouseWheel")
+      await page.mouse.wheel(input.deltaX || 0, input.deltaY || 0);
+    return;
+  }
+  if (input.type === "char" || (input.type === "keyDown" && input.text))
+    return page.keyboard.insertText(input.text || input.key || "");
+  const key = input.key || input.code;
+  if (!key) return;
+  if (input.type === "keyDown") await page.keyboard.down(key);
+  else await page.keyboard.up(key);
+}
+
 async function dispatchInput(session: LiveCrmSession, event: ViewerInputEvent) {
   if (!session.interactive || session.expiresAt <= Date.now())
     throw new Error("CRM_VIEWER_SESSION_EXPIRED");
   assertHumanControl(session);
-  if (!session.cdp) throw new Error("CRM_VIEWER_STREAM_UNAVAILABLE");
-  const input = assertInput(event);
-  if (input.kind === "mouse") {
-    await session.cdp.send("Input.dispatchMouseEvent", {
-      type: input.type,
-      x: input.x,
-      y: input.y,
-      button: input.button || "none",
-      clickCount: input.clickCount || 0,
-      deltaX: input.deltaX || 0,
-      deltaY: input.deltaY || 0,
-    });
-  } else {
-    if (input.type === "keyDown" && input.text) {
-      await session.cdp.send("Input.insertText", { text: input.text });
-      return;
-    }
-    await session.cdp.send("Input.dispatchKeyEvent", {
-      type: input.type,
-      key: input.key || "",
-      code: input.code || "",
-      text: input.text || "",
-      modifiers: input.modifiers || 0,
-    });
-  }
+  await dispatchPlaywrightInput(session.managed.page, event);
 }
 
 export async function createLiveCrmViewerSession(input: {

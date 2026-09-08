@@ -16,6 +16,7 @@ import {
   recordActionExecution,
   reviewActionProposal,
 } from "./db";
+import { resolveSalesWorkAfterVerifiedAction } from "./salesWork";
 
 function object(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -27,10 +28,7 @@ export function autonomyPermissionForAction(
   actionType: string,
   payload: Record<string, unknown> = {}
 ): AutonomyPermission {
-  if (
-    actionType === "send_email" &&
-    payload.communicationIntent === "reply"
-  )
+  if (actionType === "send_email" && payload.communicationIntent === "reply")
     return "email_replies";
   if (/^send_email/.test(actionType)) return "new_emails";
   if (/sms/.test(actionType)) return "sms";
@@ -48,15 +46,14 @@ function communicationAction(actionType: string) {
 }
 
 function duplicateState(value: unknown): DuplicateActionState {
-  return value === "clear" || value === "already_completed"
-    ? value
-    : "unknown";
+  return value === "clear" || value === "already_completed" ? value : "unknown";
 }
 
 export function evaluateEffectiveAutoExecution(input: {
   proposal: ActionProposal;
   policy: AutomationPolicy;
   autonomy: Awaited<ReturnType<typeof getUserAutonomy>>;
+  actionsInRun?: number;
 }) {
   const payload = object(input.proposal.payload);
   const route = object(payload.crmRoute);
@@ -65,20 +62,37 @@ export function evaluateEffectiveAutoExecution(input: {
   const duplicate = object(payload.duplicateVerification);
   const policy = automationPolicyDecision(
     input.policy,
-    input.proposal.actionType
+    input.proposal.actionType,
+    {
+      phase: "execution",
+      manual: false,
+      monitorKey:
+        typeof payload.monitorKey === "string" ? payload.monitorKey : undefined,
+      triggerKey:
+        typeof payload.triggerKey === "string" ? payload.triggerKey : undefined,
+      userId: input.proposal.userId,
+      pipelineId:
+        String(payload.pipelineId || payload.pipeline || "") || undefined,
+      leadSource: String(payload.leadSource || "") || undefined,
+      channel: String(payload.channel || "") || undefined,
+      templateId:
+        String(payload.templateId || payload.templateName || "") || undefined,
+      attributes: object(payload.conditions),
+      actionsInRun: input.actionsInRun,
+      duplicate: duplicateState(duplicate.state) === "already_completed",
+      retryCount: Number(payload.retryCount || 0),
+    }
   );
   const communication = communicationAction(input.proposal.actionType);
   const targetVerified = verification.targetVerified === true;
-  const recipientVerified = !communication || verification.recipientVerified === true;
+  const recipientVerified =
+    !communication || verification.recipientVerified === true;
   const suppressionVerified =
     !communication || compliance.suppressionVerified === true;
   const result = autonomyDecision({
     user: input.autonomy.user,
     organisationCeiling: input.autonomy.organisationCeiling,
-    permission: autonomyPermissionForAction(
-      input.proposal.actionType,
-      payload
-    ),
+    permission: autonomyPermissionForAction(input.proposal.actionType, payload),
     organisationAllowsAction: policy.organisationAllowsAction,
     policyRequiresReview: policy.policyRequiresReview,
     optedOut: compliance.optedOut === true,
@@ -90,9 +104,7 @@ export function evaluateEffectiveAutoExecution(input: {
     duplicateState: duplicateState(duplicate.state),
   });
   const autoExecutable =
-    policy.mayAutoExecute &&
-    result.allowed &&
-    !result.reviewRequired;
+    policy.mayAutoExecute && result.allowed && !result.reviewRequired;
   return {
     autoExecutable,
     allowedAfterReview:
@@ -135,11 +147,13 @@ export async function executeAutoPreapprovedActions(input: {
     userId: input.userId,
     organisationId: input.organisationId,
   });
-  for (const proposal of input.proposals) {
+  for (let index = 0; index < input.proposals.length; index += 1) {
+    const proposal = input.proposals[index];
     const decision = evaluateEffectiveAutoExecution({
       proposal,
       policy: input.policy,
       autonomy,
+      actionsInRun: index,
     });
     if (!decision.autoExecutable) {
       executions.push({
@@ -188,6 +202,13 @@ export async function executeAutoPreapprovedActions(input: {
         success: result.success,
         result,
       });
+      if (result.success)
+        await resolveSalesWorkAfterVerifiedAction({
+          userId: input.userId,
+          organisationId: input.organisationId,
+          actionType: approved.actionType,
+          payload: approved.payload as Record<string, unknown>,
+        }).catch(() => false);
       executions.push({
         proposalId: approved.id,
         success: result.success,

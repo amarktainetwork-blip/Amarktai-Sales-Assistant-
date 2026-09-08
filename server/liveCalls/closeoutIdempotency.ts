@@ -1,7 +1,16 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, lt, or, sql } from "drizzle-orm";
-import { actionProposals, workflowRuns } from "../../drizzle/schema";
+import { and, eq, gte, lt, or, sql } from "drizzle-orm";
+import {
+  actionProposals,
+  organisations,
+  workflowRuns,
+} from "../../drizzle/schema";
 import { getDb } from "../db";
+import {
+  automationDeduplicationSignature,
+  automationDeduplicationWindowMinutes,
+  evaluateStoredAutomationPolicy,
+} from "../automationPolicyEvaluator";
 import type { ProposedAction } from "../workflowRules";
 
 const CLAIM_LEASE_MS = 5 * 60_000;
@@ -194,6 +203,46 @@ export async function prepareClaimedCloseoutWorkflow(input: {
         .limit(1)
     )[0];
     if (!claimed) throw new Error("CLOSEOUT_CLAIM_LOST");
+    const organisation = (
+      await tx
+        .select({ settings: organisations.settings })
+        .from(organisations)
+        .where(eq(organisations.id, Number(input.payload.organisationId)))
+        .limit(1)
+    )[0];
+    const storedPolicy = (organisation?.settings as Record<string, unknown>)
+      ?.automationPolicy;
+    const deduplicationWindowMinutes =
+      automationDeduplicationWindowMinutes(storedPolicy);
+    const recentProposals = await tx
+      .select({
+        actionType: actionProposals.actionType,
+        targetLabel: actionProposals.targetLabel,
+        payload: actionProposals.payload,
+      })
+      .from(actionProposals)
+      .where(
+        and(
+          eq(
+            actionProposals.organisationId,
+            Number(input.payload.organisationId)
+          ),
+          gte(
+            actionProposals.createdAt,
+            new Date(Date.now() - deduplicationWindowMinutes * 60_000)
+          )
+        )
+      )
+      .limit(2_000);
+    const recentSignatures = new Set(
+      recentProposals.map(proposal =>
+        automationDeduplicationSignature({
+          actionType: proposal.actionType,
+          targetLabel: proposal.targetLabel,
+          payload: proposal.payload,
+        })
+      )
+    );
     await tx
       .update(workflowRuns)
       .set({
@@ -206,21 +255,70 @@ export async function prepareClaimedCloseoutWorkflow(input: {
       await tx
         .insert(actionProposals)
         .values(
-          input.actions.map(action => ({
-            userId: Number(input.payload.userId),
-            organisationId: Number(input.payload.organisationId),
-            workflowRunId: input.workflowRunId,
-            actionType: action.actionType,
-            title: action.title,
-            targetLabel: action.targetLabel,
-            idempotencyKey: action.idempotencyKey,
-            payload: action.payload,
-            state: ((
-              action.payload.crmRoute as { routable?: boolean } | undefined
-            )?.routable === false
-              ? "blocked"
-              : "review_required") as "blocked" | "review_required",
-          }))
+          input.actions.map((action, index) => {
+            const payload = action.payload as Record<string, unknown>;
+            const signature = automationDeduplicationSignature({
+              actionType: action.actionType,
+              targetLabel: action.targetLabel,
+              payload,
+            });
+            const duplicate = recentSignatures.has(signature);
+            recentSignatures.add(signature);
+            const policy = evaluateStoredAutomationPolicy(storedPolicy, {
+              phase: "proposal",
+              actionType: action.actionType,
+              manual: true,
+              triggerKey: "explicit_user_action",
+              userId: Number(input.payload.userId),
+              pipelineId:
+                String(payload.pipelineId || payload.pipeline || "") ||
+                undefined,
+              leadSource: String(payload.leadSource || "") || undefined,
+              channel: String(payload.channel || "") || undefined,
+              templateId:
+                String(payload.templateId || payload.templateName || "") ||
+                undefined,
+              attributes:
+                payload.conditions && typeof payload.conditions === "object"
+                  ? (payload.conditions as Record<string, unknown>)
+                  : {},
+              actionsInRun: index,
+              duplicate,
+            });
+            const routable =
+              (action.payload.crmRoute as { routable?: boolean } | undefined)
+                ?.routable !== false;
+            const allowed = routable && policy.allowedToCreate;
+            return {
+              userId: Number(input.payload.userId),
+              organisationId: Number(input.payload.organisationId),
+              workflowRunId: input.workflowRunId,
+              actionType: action.actionType,
+              title: action.title,
+              targetLabel: action.targetLabel,
+              idempotencyKey: action.idempotencyKey,
+              payload: {
+                ...action.payload,
+                triggerKey: "explicit_user_action",
+                automatedTrigger: false,
+                automationPolicyDecision: {
+                  outcome: policy.outcome,
+                  detail: policy.detail,
+                  evaluatedAt: new Date().toISOString(),
+                },
+                automationDeduplication: {
+                  duplicate,
+                  windowMinutes: deduplicationWindowMinutes,
+                },
+              },
+              state: (allowed ? "review_required" : "blocked") as
+                | "blocked"
+                | "review_required",
+              governanceState: allowed
+                ? ("READY_FOR_REVIEW" as const)
+                : ("NEEDS_ATTENTION" as const),
+            };
+          })
         )
         .onDuplicateKeyUpdate({
           set: { idempotencyKey: sql`${actionProposals.idempotencyKey}` },
