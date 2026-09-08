@@ -654,6 +654,52 @@ function exactIdentityMatch(row: Record<string, unknown>, expected: string) {
   ].some(value => normalized("name", value) === target);
 }
 
+function recordIdentityTokens(value: unknown) {
+  const raw = clean(value);
+  if (!raw) return [];
+  const tokens = new Set([normalized("externalId", raw)]);
+  try {
+    const url = new URL(raw, "https://crm.invalid");
+    const path = url.pathname.replace(/\/+$/, "");
+    if (path) {
+      tokens.add(normalized("externalId", path));
+      const last = path.split("/").filter(Boolean).at(-1);
+      if (last) tokens.add(normalized("externalId", decodeURIComponent(last)));
+    }
+    for (const key of ["id", "contactId", "contact_id", "recordId"]) {
+      const candidate = url.searchParams.get(key);
+      if (candidate) tokens.add(normalized("externalId", candidate));
+    }
+  } catch {
+    // The raw immutable CRM identifier remains the comparison token.
+  }
+  return Array.from(tokens).filter(Boolean);
+}
+
+function exactRecordIdentityRepresented(input: {
+  expected: string;
+  rows: Array<Record<string, unknown>>;
+  data: Record<string, string>;
+}) {
+  const expected = new Set(recordIdentityTokens(input.expected));
+  const actualValues: unknown[] = [
+    input.data.actualExternalId,
+    input.data.actualPageUrl,
+    ...input.rows.flatMap(row => [
+      row.externalId,
+      row.id,
+      row.contactExternalId,
+      row.recordId,
+      row.pageUrl,
+    ]),
+  ];
+  const actual = new Set(actualValues.flatMap(recordIdentityTokens));
+  return {
+    hasActualIdentity: actual.size > 0,
+    matches: Array.from(actual).some(value => expected.has(value)),
+  };
+}
+
 export function verifyBrowserReadProof(input: {
   operationKey: string;
   data: Record<string, string>;
@@ -712,6 +758,25 @@ export function verifyBrowserReadProof(input: {
         code: "STRUCTURED_RESULT_REQUIRED" as const,
         detail:
           "The contact read did not execute the expected structured fields.",
+      };
+    const identity = exactRecordIdentityRepresented({
+      expected: target,
+      rows,
+      data: input.data,
+    });
+    if (!identity.hasActualIdentity)
+      return {
+        ok: false,
+        code: "TARGET_IDENTITY_REQUIRED" as const,
+        detail:
+          "The CRM read returned fields but no immutable identity for the record actually opened.",
+      };
+    if (!identity.matches)
+      return {
+        ok: false,
+        code: "TARGET_MISMATCH" as const,
+        detail:
+          "The CRM record actually opened did not match the requested external identity.",
       };
   }
   return {

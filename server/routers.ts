@@ -115,6 +115,10 @@ import { crmOAuthCallbackUrl } from "./crm/oauthRoutes";
 import { syncConnectedSystem, syncConnectedSystemsForUser } from "./crm/sync";
 import { getTodayWork } from "./today";
 import {
+  resolveSalesWorkAfterVerifiedAction,
+  transitionSalesWorkItem,
+} from "./salesWork";
+import {
   acquireAiControl,
   createLiveCrmViewerSession,
   getSanitisedLiveCrmContext,
@@ -854,6 +858,7 @@ export const appRouter = router({
           organisationId: organisation.organisationId,
           proposalId: input.proposalId,
           correlationId,
+          manualExecution: true,
         });
         if (!proposal)
           throw new Error("This email is no longer waiting for your approval.");
@@ -884,6 +889,13 @@ export const appRouter = router({
           success: result.success,
           result,
         });
+        if (result.success)
+          await resolveSalesWorkAfterVerifiedAction({
+            userId: ctx.user.id,
+            organisationId: organisation.organisationId,
+            actionType: proposal.actionType,
+            payload: proposal.payload as Record<string, unknown>,
+          }).catch(() => false);
         if (!result.success) {
           const executionEvidence = result as {
             acceptedByProvider?: boolean;
@@ -929,6 +941,7 @@ export const appRouter = router({
           organisationId: organisation.organisationId,
           proposalId: input.proposalId,
           correlationId,
+          manualExecution: true,
         });
         if (!proposal)
           throw new Error(
@@ -972,6 +985,13 @@ export const appRouter = router({
           success: result.success,
           result,
         });
+        if (result.success)
+          await resolveSalesWorkAfterVerifiedAction({
+            userId: ctx.user.id,
+            organisationId: organisation.organisationId,
+            actionType: proposal.actionType,
+            payload: proposal.payload as Record<string, unknown>,
+          }).catch(() => false);
         if (!result.success)
           throw new Error(`CRM action failed: ${result.detail}`);
         return result;
@@ -1496,6 +1516,29 @@ export const appRouter = router({
           userId: ctx.user.id,
           organisationId: input.organisationId,
         });
+      }),
+    workAction: secondFactorProcedure
+      .input(
+        z.object({
+          organisationId: z.number().int().positive(),
+          workItemId: z.number().int().positive(),
+          action: z.enum([
+            "start",
+            "open_context",
+            "snooze",
+            "reschedule",
+            "complete",
+            "block",
+          ]),
+          dueAt: z.coerce.date().optional(),
+          reason: z.string().trim().max(2_000).optional(),
+          explicitHandled: z.boolean().optional(),
+          transitionKey: z.string().trim().max(120).optional(),
+        })
+      )
+      .mutation(({ ctx, input }) => {
+        requireActiveOrganisationContext(ctx, input.organisationId);
+        return transitionSalesWorkItem({ userId: ctx.user.id, ...input });
       }),
     customers: secondFactorProcedure.query(({ ctx }) => {
       if (!ctx.activeOrganisation)

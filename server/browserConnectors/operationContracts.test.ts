@@ -187,20 +187,58 @@ describe("browser CRM read proof", () => {
     ).toMatchObject({ ok: false, code: "AMBIGUOUS_TARGET" });
   });
 
-  it("accepts a structured exact contact read when optional phone is empty", () => {
+  const contactFields = {
+    firstName: "Safe",
+    lastName: "Customer",
+    email: "safe@example.test",
+    phone: "",
+    ownerExternalId: "owner-7",
+  };
+
+  it("accepts a structured contact read only when the opened external ID matches", () => {
+    expect(
+      verifyBrowserReadProof({
+        operationKey: "contact.read",
+        payload: { externalId: "contact-1" },
+        data: {
+          actualPageUrl: "https://crm.example/contacts/contact-1",
+          records: JSON.stringify([contactFields]),
+        },
+      })
+    ).toMatchObject({ ok: true });
+  });
+
+  it("rejects structured fields from the wrong opened CRM record", () => {
+    expect(
+      verifyBrowserReadProof({
+        operationKey: "contact.read",
+        payload: { externalId: "contact-1" },
+        data: {
+          actualPageUrl: "https://crm.example/contacts/contact-2",
+          records: JSON.stringify([contactFields]),
+        },
+      })
+    ).toMatchObject({ ok: false, code: "TARGET_MISMATCH" });
+  });
+
+  it("rejects structured contact fields without actual target identity", () => {
+    expect(
+      verifyBrowserReadProof({
+        operationKey: "contact.read",
+        payload: { externalId: "contact-1" },
+        data: { records: JSON.stringify([contactFields]) },
+      })
+    ).toMatchObject({ ok: false, code: "TARGET_IDENTITY_REQUIRED" });
+  });
+
+  it("keeps optional empty phone valid when immutable identity matches", () => {
     expect(
       verifyBrowserReadProof({
         operationKey: "contact.read",
         payload: { externalId: "contact-1" },
         data: {
           records: JSON.stringify([
-            {
-              firstName: "Safe",
-              lastName: "Customer",
-              email: "safe@example.test",
-              phone: "",
-              ownerExternalId: "owner-7",
-            },
+            { externalId: "contact-1", ...contactFields },
           ]),
         },
       })

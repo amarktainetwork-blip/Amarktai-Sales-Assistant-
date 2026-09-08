@@ -27,8 +27,21 @@ describe("canonical Genie provider pack", () => {
 
   it("ships only TEST_READY inputs for later deterministic certification", () => {
     expect(Object.keys(GENIE_PROVIDER_PACK.operationDefinitions || {})).toEqual(
-      ["contact.search", "contact.read"]
+      ["contact.sync", "contact.search", "contact.read"]
     );
     expect(JSON.stringify(GENIE_PROVIDER_PACK)).not.toContain("LIVE_PROVEN");
+  });
+
+  it("derives tenant verification targets rather than embedding customer data", () => {
+    const definitions = GENIE_PROVIDER_PACK.operationDefinitions || {};
+    expect(definitions["contact.sync"]?.prerequisites).toMatchObject({
+      verificationInputRole: "contact_catalogue_seed",
+    });
+    expect(definitions["contact.search"]?.prerequisites).toMatchObject({
+      verificationInputRole: "derived_contact_query",
+    });
+    expect(definitions["contact.read"]?.prerequisites).toMatchObject({
+      verificationInputRole: "derived_contact_external_id",
+    });
   });
 });

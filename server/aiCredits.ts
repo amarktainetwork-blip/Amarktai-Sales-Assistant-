@@ -49,8 +49,8 @@ export type AiPurpose =
 /** Bounded, auditable classification. Unknown features cannot invent purposes. */
 export function classifyAiPurpose(feature: string): AiPurpose {
   const value = feature.toLowerCase();
-  if (value.includes("commission")) return "crm_commissioning";
   if (value.includes("repair")) return "crm_targeted_repair";
+  if (value.includes("commission")) return "crm_commissioning";
   if (value.includes("rewrite")) return "communication_rewrite";
   if (
     value.includes("draft") ||

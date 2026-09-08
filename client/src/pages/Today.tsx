@@ -73,6 +73,10 @@ export default function Today() {
   const [refreshing, setRefreshing] = useState(false);
   const refreshInFlight = useRef(false);
   const syncAll = trpc.connectedSystems.syncAll.useMutation();
+  const workAction = trpc.sales.workAction.useMutation({
+    onSuccess: () => utils.sales.today.invalidate(),
+    onError: error => toast.error(error.message),
+  });
 
   const saveReminder = trpc.memory.command.useMutation({
     onSuccess: () => {
@@ -103,6 +107,42 @@ export default function Today() {
   const priority = today.data?.queues.priority ?? [];
   const work = today.data?.queues.work ?? [];
   const current = priority[selected];
+
+  const applyWorkAction = async (
+    item: (typeof work)[number],
+    action:
+      | "start"
+      | "open_context"
+      | "snooze"
+      | "reschedule"
+      | "complete"
+      | "block"
+  ) => {
+    if (!organisationId) return;
+    const dueAt =
+      action === "snooze"
+        ? new Date(Date.now() + 24 * 60 * 60 * 1_000)
+        : action === "reschedule"
+          ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1_000)
+          : undefined;
+    const result = await workAction.mutateAsync({
+      organisationId,
+      workItemId: item.id,
+      action,
+      dueAt,
+      explicitHandled: action === "complete",
+      reason: action === "block" ? "Needs salesperson attention." : undefined,
+      transitionKey:
+        action === "open_context" ? undefined : crypto.randomUUID(),
+    });
+    if (action === "start" || action === "open_context")
+      navigate(result.context.route);
+    else if (action === "snooze") toast.success("Work snoozed until tomorrow.");
+    else if (action === "reschedule")
+      toast.success("Work moved forward one week.");
+    else if (action === "complete") toast.success("Work marked complete.");
+    else if (action === "block") toast.success("Work marked as blocked.");
+  };
 
   useEffect(() => {
     setSelected(index =>
@@ -333,11 +373,8 @@ export default function Today() {
             {work.length ? (
               <Button
                 size="sm"
-                onClick={() =>
-                  ask(
-                    `Help me start this work item: ${work[0].reason} Next action: ${work[0].recommendedNextAction}`
-                  )
-                }
+                disabled={workAction.isPending}
+                onClick={() => applyWorkAction(work[0], "start")}
               >
                 Start next <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
@@ -346,15 +383,9 @@ export default function Today() {
           <div className="mt-4 space-y-2">
             {work.length ? (
               work.slice(0, 12).map((item, index) => (
-                <button
+                <div
                   key={item.id}
-                  type="button"
-                  onClick={() =>
-                    ask(
-                      `Help me with ${item.type}: ${item.reason} ${item.recommendedNextAction}`
-                    )
-                  }
-                  className="flex w-full items-start gap-4 rounded-2xl border border-[#E1E7EF] p-4 text-left transition hover:border-[#9CB8E8] hover:bg-[#FAFCFF]"
+                  className="flex w-full flex-wrap items-start gap-4 rounded-2xl border border-[#E1E7EF] p-4 text-left transition hover:border-[#9CB8E8] hover:bg-[#FAFCFF]"
                 >
                   <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#EDF3FF] text-xs font-black text-[#3F70D8]">
                     {index + 1}
@@ -368,8 +399,56 @@ export default function Today() {
                       {item.dueAt ? ` · ${dueLabel(item.dueAt)}` : ""}
                     </span>
                   </span>
-                  <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-[#8290A3]" />
-                </button>
+                  <span className="flex flex-wrap justify-end gap-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={workAction.isPending}
+                      onClick={() => applyWorkAction(item, "open_context")}
+                    >
+                      Open
+                    </Button>
+                    <Button
+                      size="sm"
+                      disabled={workAction.isPending}
+                      onClick={() => applyWorkAction(item, "start")}
+                    >
+                      Start
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={workAction.isPending}
+                      onClick={() => applyWorkAction(item, "snooze")}
+                    >
+                      Snooze
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={workAction.isPending}
+                      onClick={() => applyWorkAction(item, "reschedule")}
+                    >
+                      Reschedule
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={workAction.isPending}
+                      onClick={() => applyWorkAction(item, "complete")}
+                    >
+                      Complete
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={workAction.isPending}
+                      onClick={() => applyWorkAction(item, "block")}
+                    >
+                      Block
+                    </Button>
+                  </span>
+                </div>
               ))
             ) : (
               <Empty text="No synchronized sales work needs attention right now." />

@@ -1395,6 +1395,12 @@ export const salesWorkItems = mysqlTable(
     ])
       .notNull()
       .default("open"),
+    startedAt: timestamp("startedAt"),
+    completedAt: timestamp("completedAt"),
+    snoozedUntil: timestamp("snoozedUntil"),
+    blockedReason: text("blockedReason"),
+    stateVersion: int("stateVersion").notNull().default(0),
+    lastTransitionKey: varchar("lastTransitionKey", { length: 120 }),
     recommendedNextAction: text("recommendedNextAction").notNull(),
     automationEligibility: mysqlEnum("automationEligibility", [
       "disabled",

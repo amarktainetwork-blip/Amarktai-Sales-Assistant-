@@ -19,6 +19,7 @@ import {
   parseDeterministicReminder,
   persistConfirmedCommitment,
 } from "../memory";
+import { evaluateStoredAutomationPolicy } from "../automationPolicyEvaluator";
 
 export type InboundEnvelope = {
   externalMessageId: string;
@@ -222,6 +223,47 @@ export async function ingestInboundMessage(input: {
       .limit(1)
   )[0];
   if (!message) throw new Error("Inbound message could not be persisted.");
+  const policyOrganisation = (
+    await db
+      .select({ settings: organisations.settings })
+      .from(organisations)
+      .where(eq(organisations.id, input.organisationId))
+      .limit(1)
+  )[0];
+  const policyContext = {
+    actionType: "reply_to_inbound",
+    monitorKey: "inbound_mail",
+    triggerKey: "inbound_email",
+    userId: input.mailboxUserId,
+    channel: input.envelope.channel,
+    attributes: { category: classification.category },
+    now: input.envelope.receivedAt,
+    manual: false,
+  } as const;
+  const triggerPolicy = evaluateStoredAutomationPolicy(
+    (policyOrganisation?.settings as Record<string, unknown>)?.automationPolicy,
+    {
+      ...policyContext,
+      phase: "trigger",
+    }
+  );
+  const workPolicy = triggerPolicy.allowedToCreate
+    ? evaluateStoredAutomationPolicy(
+        (policyOrganisation?.settings as Record<string, unknown>)
+          ?.automationPolicy,
+        { ...policyContext, phase: "work" }
+      )
+    : triggerPolicy;
+  const workStatus =
+    existing && !existing.needsAction
+      ? ("completed" as const)
+      : !shouldSurfaceInbound(classification)
+        ? ("completed" as const)
+        : ["OUTSIDE_SCHEDULE", "QUIET_HOURS"].includes(workPolicy.outcome)
+          ? ("snoozed" as const)
+          : workPolicy.allowedToCreate
+            ? ("open" as const)
+            : ("blocked" as const);
   await db
     .insert(salesWorkItems)
     .values({
@@ -243,11 +285,15 @@ export async function ingestInboundMessage(input: {
         classification.category === "meeting_request"
           ? "A customer sent a meeting request."
           : "An inbound customer message needs a reply.",
-      status: shouldSurfaceInbound(classification) ? "open" : "completed",
+      status: workStatus,
       recommendedNextAction:
         "Review the customer and mailbox context, then prepare a governed reply.",
-      automationEligibility: "propose",
-      approvalRequirement: "salesperson",
+      automationEligibility: workPolicy.mayExecute
+        ? "automatic"
+        : workPolicy.allowedToCreate
+          ? "propose"
+          : "disabled",
+      approvalRequirement: workPolicy.approvalMode,
       freshness: "current",
       sourceUpdatedAt: input.envelope.receivedAt,
       syncedAt: new Date(),
@@ -256,13 +302,16 @@ export async function ingestInboundMessage(input: {
         category: classification.category,
         contactMatched: Boolean(contact),
         contactAmbiguous: match.ambiguous,
+        automationPolicyOutcome: workPolicy.outcome,
+        monitorKey: "inbound_mail",
+        triggerKey: "inbound_email",
       },
     })
     .onDuplicateKeyUpdate({
       set: {
         salespersonUserId: input.mailboxUserId ?? null,
         contactExternalId: contact?.externalId ?? null,
-        status: shouldSurfaceInbound(classification) ? "open" : "completed",
+        status: workStatus,
         freshness: "current",
         syncedAt: new Date(),
         metadata: {
@@ -270,6 +319,9 @@ export async function ingestInboundMessage(input: {
           category: classification.category,
           contactMatched: Boolean(contact),
           contactAmbiguous: match.ambiguous,
+          automationPolicyOutcome: workPolicy.outcome,
+          monitorKey: "inbound_mail",
+          triggerKey: "inbound_email",
         },
       },
     });

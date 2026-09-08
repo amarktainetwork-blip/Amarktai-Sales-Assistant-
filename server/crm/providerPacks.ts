@@ -5,6 +5,20 @@ import type { BrowserProfile } from "../browserConnectors/browserCrmAdapter";
 export const GENIE_PROVIDER_PACK_VERSION = "genie-2026.09.07.1";
 
 const scripts: BrowserProfile["scripts"] = {
+  genie_contact_sync: {
+    steps: [
+      { action: "click", selector: "#sb_contacts" },
+      {
+        action: "read_rows",
+        selector: ".tabulator-row:not(.tabulator-headers)",
+        key: "records",
+        fields: {
+          externalId: { selector: ".contact-name-link", attribute: "href" },
+          name: { selector: ".contact-name-link" },
+        },
+      },
+    ],
+  },
   genie_contact_search: {
     steps: [
       { action: "click", selector: "#sb_contacts" },
@@ -66,8 +80,24 @@ export const GENIE_PROVIDER_PACK: Pick<
   "scripts" | "operationDefinitions" | "resultKeys"
 > = {
   scripts,
-  resultKeys: { searchContacts: "records", getContact: "records" },
+  resultKeys: {
+    syncContacts: "records",
+    searchContacts: "records",
+    getContact: "records",
+  },
   operationDefinitions: {
+    "contact.sync": {
+      definition: {
+        mode: "read",
+        executeScript: "genie_contact_sync",
+        resultKey: "records",
+      },
+      prerequisites: {
+        providerPack: "genie",
+        providerPackVersion: GENIE_PROVIDER_PACK_VERSION,
+        verificationInputRole: "contact_catalogue_seed",
+      },
+    },
     "contact.search": {
       definition: {
         mode: "read",
@@ -77,6 +107,7 @@ export const GENIE_PROVIDER_PACK: Pick<
       prerequisites: {
         providerPack: "genie",
         providerPackVersion: GENIE_PROVIDER_PACK_VERSION,
+        verificationInputRole: "derived_contact_query",
       },
     },
     "contact.read": {
@@ -88,6 +119,7 @@ export const GENIE_PROVIDER_PACK: Pick<
       prerequisites: {
         providerPack: "genie",
         providerPackVersion: GENIE_PROVIDER_PACK_VERSION,
+        verificationInputRole: "derived_contact_external_id",
       },
     },
   },

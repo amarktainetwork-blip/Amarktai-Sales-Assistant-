@@ -684,6 +684,7 @@ async function runDeterministicOperation(input: RunOperationInput) {
         }
         const execution = await runScript(page, script, "execute");
         if (!execution.success) throw new Error(execution.detail);
+        execution.data.actualPageUrl = page.url();
         if (learned?.definition.mode === "write") {
           const readback = await runScript(
             page,

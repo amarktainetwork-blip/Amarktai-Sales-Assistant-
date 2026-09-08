@@ -744,6 +744,11 @@ async function syncDelegatedMailboxInternal(input: {
           targetLabel: item.from?.emailAddress?.name?.trim() || sender,
           idempotencyKey,
           payload: {
+            automatedTrigger: true,
+            monitorKey: "inbound_mail",
+            triggerKey: "inbound_email",
+            channel: "email",
+            conditions: { category: ingested.classification.category },
             reviewRequired: true,
             duplicateProtection:
               "Send this reviewed inbound reply only once from the connected personal mailbox.",

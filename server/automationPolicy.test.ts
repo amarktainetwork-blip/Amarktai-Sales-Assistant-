@@ -4,6 +4,11 @@ import {
   mayAutoExecute,
   normalizeAutomationPolicy,
 } from "./automationPolicy";
+import {
+  automationDeduplicationSignature,
+  automationDeduplicationWindowMinutes,
+  evaluateAutomationPolicy,
+} from "./automationPolicyEvaluator";
 
 describe("organisation automation policy", () => {
   it("defaults to review mode with safe deterministic admin actions", () => {
@@ -67,5 +72,177 @@ describe("organisation automation policy", () => {
       days: [1],
       startHour: 23,
     });
+  });
+
+  it.each([
+    [
+      "disabled action",
+      { actionModes: { append_contact_note: "disabled" } },
+      {},
+      "DISABLED",
+    ],
+    ["monitor", { monitorKeys: ["callbacks"] }, {}, "ACTION_NOT_ALLOWED"],
+    ["trigger", { triggerKeys: ["callback_due"] }, {}, "ACTION_NOT_ALLOWED"],
+    [
+      "salesperson scope",
+      { scope: { userIds: [99], pipelineIds: [], leadSources: [] } },
+      {},
+      "OUT_OF_SCOPE",
+    ],
+    [
+      "pipeline scope",
+      { scope: { userIds: [], pipelineIds: ["renewals"], leadSources: [] } },
+      {},
+      "OUT_OF_SCOPE",
+    ],
+    [
+      "lead-source scope",
+      { scope: { userIds: [], pipelineIds: [], leadSources: ["referral"] } },
+      {},
+      "OUT_OF_SCOPE",
+    ],
+    [
+      "conditions",
+      { conditions: { stage: ["qualified"] } },
+      {},
+      "OUT_OF_SCOPE",
+    ],
+    [
+      "schedule day",
+      { schedule: { mode: "continuous", timezone: "UTC", days: [1] } },
+      {},
+      "OUTSIDE_SCHEDULE",
+    ],
+    [
+      "business hours",
+      {
+        schedule: {
+          mode: "business_hours",
+          timezone: "UTC",
+          days: [0],
+          startHour: 8,
+          endHour: 17,
+        },
+      },
+      {},
+      "OUTSIDE_SCHEDULE",
+    ],
+    ["quiet hours", { safety: { quietHoursEnabled: true } }, {}, "QUIET_HOURS"],
+    [
+      "action allowlist",
+      { safety: { allowedActionKeys: ["schedule_callback"] } },
+      {},
+      "ACTION_NOT_ALLOWED",
+    ],
+    [
+      "channel allowlist",
+      { safety: { allowedChannels: ["sms"] } },
+      {},
+      "CHANNEL_NOT_ALLOWED",
+    ],
+    [
+      "template allowlist",
+      { safety: { allowedTemplateIds: ["approved-template"] } },
+      { actionType: "send_email" },
+      "TEMPLATE_NOT_ALLOWED",
+    ],
+    ["action limit", {}, { actionsInRun: 25 }, "ACTION_LIMIT_REACHED"],
+    ["deduplication", {}, { duplicate: true }, "DEDUPLICATED"],
+    ["retry limit", {}, { retryCount: 3 }, "ACTION_NOT_ALLOWED"],
+  ])(
+    "prevents execution outside the %s restriction",
+    (_label, policyPatch, contextPatch, outcome) => {
+      const base = normalizeAutomationPolicy({
+        preset: "automated",
+        mode: "auto_preapproved",
+        autoActionTypes: ["append_contact_note"],
+        actionModes: { append_contact_note: "automatic" },
+        requireReviewForCommunications: false,
+        requireReviewForStageChanges: false,
+        monitorKeys: ["new_leads"],
+        triggerKeys: ["new_lead"],
+        schedule: { mode: "continuous", timezone: "UTC", days: [0] },
+        safety: {
+          maximumActionsPerRun: 25,
+          deduplicationWindowMinutes: 1440,
+          maximumRetries: 2,
+          quietHoursEnabled: false,
+          allowedActionKeys: [],
+          allowedChannels: [],
+          allowedTemplateIds: [],
+        },
+      });
+      const patch = policyPatch as Partial<typeof base>;
+      const policy = {
+        ...base,
+        ...patch,
+        safety: { ...base.safety, ...(patch.safety || {}) },
+      };
+      const result = evaluateAutomationPolicy(policy, {
+        phase: "execution",
+        actionType: "append_contact_note",
+        monitorKey: "new_leads",
+        triggerKey: "new_lead",
+        userId: 7,
+        pipelineId: "sales",
+        leadSource: "website",
+        channel: "email",
+        templateId: "followup",
+        attributes: { stage: "new" },
+        now: new Date("2026-09-06T22:00:00.000Z"),
+        ...contextPatch,
+      });
+      expect(result.outcome).toBe(outcome);
+      expect(result.mayExecute).toBe(false);
+    }
+  );
+
+  it("requires the configured approver before execution", () => {
+    const salesperson = normalizeAutomationPolicy({
+      preset: "automated",
+      actionModes: { append_contact_note: "salesperson_approval" },
+      schedule: { mode: "continuous", days: [0] },
+      safety: { quietHoursEnabled: false },
+    });
+    expect(
+      evaluateAutomationPolicy(salesperson, {
+        phase: "execution",
+        actionType: "append_contact_note",
+        now: new Date("2026-09-06T12:00:00.000Z"),
+      }).outcome
+    ).toBe("SALESPERSON_APPROVAL_REQUIRED");
+    const manager = normalizeAutomationPolicy({
+      ...salesperson,
+      actionModes: { append_contact_note: "manager_approval" },
+    });
+    expect(
+      evaluateAutomationPolicy(manager, {
+        phase: "execution",
+        actionType: "append_contact_note",
+        approvalSatisfied: true,
+        now: new Date("2026-09-06T12:00:00.000Z"),
+      }).outcome
+    ).toBe("MANAGER_APPROVAL_REQUIRED");
+  });
+
+  it("uses the configured bounded deduplication window and stable action identity", () => {
+    expect(
+      automationDeduplicationWindowMinutes({
+        safety: { deduplicationWindowMinutes: 30 },
+      })
+    ).toBe(30);
+    expect(
+      automationDeduplicationSignature({
+        actionType: "send_email",
+        targetLabel: "Customer",
+        payload: { to: "a@example.com", body: "Hello", ignored: "one" },
+      })
+    ).toBe(
+      automationDeduplicationSignature({
+        actionType: "send_email",
+        targetLabel: "customer",
+        payload: { ignored: "two", body: "Hello", to: "a@example.com" },
+      })
+    );
   });
 });

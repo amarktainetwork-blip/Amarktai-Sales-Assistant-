@@ -3,6 +3,7 @@ import {
   count,
   desc,
   eq,
+  gte,
   gt,
   isNotNull,
   isNull,
@@ -34,9 +35,16 @@ import {
   crmActivities,
   crmOpportunities,
   crmTasks,
+  organisations,
+  organisationMembers,
 } from "../drizzle/schema";
 import type { ProposedAction } from "./workflowRules";
 import { normalizeSavedItemTags, type SavedItemTargetType } from "./savedItems";
+import {
+  automationDeduplicationSignature,
+  automationDeduplicationWindowMinutes,
+  evaluateStoredAutomationPolicy,
+} from "./automationPolicyEvaluator";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -400,26 +408,121 @@ export async function createWorkflowRun(input: {
   const workflowRunId = Number(inserted[0].insertId);
 
   if (input.actions.length > 0) {
+    const organisation = (
+      await db
+        .select({ settings: organisations.settings })
+        .from(organisations)
+        .where(eq(organisations.id, input.organisationId))
+        .limit(1)
+    )[0];
+    const storedPolicy = (organisation?.settings as Record<string, unknown>)
+      ?.automationPolicy;
+    const deduplicationWindowMinutes =
+      automationDeduplicationWindowMinutes(storedPolicy);
+    const recentProposals = await db
+      .select({
+        actionType: actionProposals.actionType,
+        targetLabel: actionProposals.targetLabel,
+        payload: actionProposals.payload,
+      })
+      .from(actionProposals)
+      .where(
+        and(
+          eq(actionProposals.organisationId, input.organisationId),
+          gte(
+            actionProposals.createdAt,
+            new Date(Date.now() - deduplicationWindowMinutes * 60_000)
+          )
+        )
+      )
+      .limit(2_000);
+    const recentSignatures = new Set(
+      recentProposals.map(proposal =>
+        automationDeduplicationSignature({
+          actionType: proposal.actionType,
+          targetLabel: proposal.targetLabel,
+          payload: proposal.payload,
+        })
+      )
+    );
     await db.insert(actionProposals).values(
-      input.actions.map(action => ({
-        userId: input.userId,
-        organisationId: input.organisationId,
-        workflowRunId,
-        actionType: action.actionType,
-        title: action.title,
-        targetLabel: action.targetLabel,
-        idempotencyKey: action.idempotencyKey,
-        payload: action.payload,
-        state: ((action.payload.crmRoute as { routable?: boolean } | undefined)
-          ?.routable === false
-          ? "blocked"
-          : "review_required") as "blocked" | "review_required",
-        governanceState:
+      input.actions.map((action, index) => {
+        const payload = action.payload as Record<string, unknown>;
+        const signature = automationDeduplicationSignature({
+          actionType: action.actionType,
+          targetLabel: action.targetLabel,
+          payload,
+        });
+        const duplicate = recentSignatures.has(signature);
+        recentSignatures.add(signature);
+        const manual = payload.automatedTrigger !== true;
+        const monitorKey =
+          typeof payload.monitorKey === "string"
+            ? payload.monitorKey
+            : undefined;
+        const triggerKey =
+          typeof payload.triggerKey === "string"
+            ? payload.triggerKey
+            : manual
+              ? "explicit_user_action"
+              : undefined;
+        const policy = evaluateStoredAutomationPolicy(storedPolicy, {
+          phase: "proposal",
+          actionType: action.actionType,
+          manual,
+          monitorKey,
+          triggerKey,
+          userId: input.userId,
+          pipelineId:
+            String(payload.pipelineId || payload.pipeline || "") || undefined,
+          leadSource: String(payload.leadSource || "") || undefined,
+          channel: String(payload.channel || "") || undefined,
+          templateId:
+            String(payload.templateId || payload.templateName || "") ||
+            undefined,
+          attributes:
+            payload.conditions && typeof payload.conditions === "object"
+              ? (payload.conditions as Record<string, unknown>)
+              : {},
+          actionsInRun: index,
+          duplicate,
+          retryCount: Number(payload.retryCount || 0),
+        });
+        const routable =
           (action.payload.crmRoute as { routable?: boolean } | undefined)
-            ?.routable === false
-            ? ("NEEDS_ATTENTION" as const)
-            : ("READY_FOR_REVIEW" as const),
-      }))
+            ?.routable !== false;
+        const allowed = routable && policy.allowedToCreate;
+        return {
+          userId: input.userId,
+          organisationId: input.organisationId,
+          workflowRunId,
+          actionType: action.actionType,
+          title: action.title,
+          targetLabel: action.targetLabel,
+          idempotencyKey: action.idempotencyKey,
+          payload: {
+            ...action.payload,
+            ...(monitorKey ? { monitorKey } : {}),
+            ...(triggerKey ? { triggerKey } : {}),
+            automatedTrigger: !manual,
+            automationPolicyDecision: {
+              outcome: policy.outcome,
+              detail: policy.detail,
+              evaluatedAt: new Date().toISOString(),
+            },
+            automationDeduplication: {
+              duplicate,
+              windowMinutes: deduplicationWindowMinutes,
+            },
+          },
+          state: (allowed ? "review_required" : "blocked") as
+            | "blocked"
+            | "review_required",
+          governanceState: allowed
+            ? ("READY_FOR_REVIEW" as const)
+            : ("NEEDS_ATTENTION" as const),
+        };
+      })
     );
   }
 
@@ -442,16 +545,26 @@ export async function listActionProposals(
   workflowRunId?: number
 ) {
   const db = await requireDb();
-  const whereClause = workflowRunId
-    ? and(
-        eq(actionProposals.userId, userId),
-        eq(actionProposals.organisationId, organisationId),
-        eq(actionProposals.workflowRunId, workflowRunId)
+  const membership = (
+    await db
+      .select({ role: organisationMembers.role })
+      .from(organisationMembers)
+      .where(
+        and(
+          eq(organisationMembers.organisationId, organisationId),
+          eq(organisationMembers.userId, userId),
+          eq(organisationMembers.isActive, true)
+        )
       )
-    : and(
-        eq(actionProposals.userId, userId),
-        eq(actionProposals.organisationId, organisationId)
-      );
+      .limit(1)
+  )[0];
+  if (!membership) return [];
+  const teamReview = ["owner", "manager"].includes(membership.role);
+  const whereClause = and(
+    eq(actionProposals.organisationId, organisationId),
+    ...(teamReview ? [] : [eq(actionProposals.userId, userId)]),
+    ...(workflowRunId ? [eq(actionProposals.workflowRunId, workflowRunId)] : [])
+  );
   return db
     .select()
     .from(actionProposals)
@@ -639,6 +752,80 @@ export async function reviewActionProposal(
   state: "approved" | "skipped"
 ) {
   const db = await requireDb();
+  const [organisation, membership] = await Promise.all([
+    db
+      .select({ settings: organisations.settings })
+      .from(organisations)
+      .where(eq(organisations.id, organisationId))
+      .limit(1)
+      .then(rows => rows[0]),
+    db
+      .select({ role: organisationMembers.role })
+      .from(organisationMembers)
+      .where(
+        and(
+          eq(organisationMembers.organisationId, organisationId),
+          eq(organisationMembers.userId, userId),
+          eq(organisationMembers.isActive, true)
+        )
+      )
+      .limit(1)
+      .then(rows => rows[0]),
+  ]);
+  if (!membership)
+    throw new Error("You do not have access to this organisation.");
+  const teamReview = ["owner", "manager"].includes(membership.role);
+  const proposal = (
+    await db
+      .select()
+      .from(actionProposals)
+      .where(
+        and(
+          eq(actionProposals.id, proposalId),
+          eq(actionProposals.organisationId, organisationId),
+          eq(actionProposals.state, "review_required"),
+          ...(teamReview ? [] : [eq(actionProposals.userId, userId)])
+        )
+      )
+      .limit(1)
+  )[0];
+  if (!proposal) throw new Error("This action is no longer awaiting review.");
+  const payload = proposal.payload as Record<string, unknown>;
+  const storedDeduplication = payload.automationDeduplication as
+    | { duplicate?: boolean }
+    | undefined;
+  const evaluation = evaluateStoredAutomationPolicy(
+    (organisation?.settings as Record<string, unknown>)?.automationPolicy,
+    {
+      phase: "approval",
+      actionType: proposal.actionType,
+      manual: true,
+      monitorKey:
+        typeof payload.monitorKey === "string" ? payload.monitorKey : undefined,
+      triggerKey:
+        typeof payload.triggerKey === "string" ? payload.triggerKey : undefined,
+      userId,
+      pipelineId:
+        String(payload.pipelineId || payload.pipeline || "") || undefined,
+      leadSource: String(payload.leadSource || "") || undefined,
+      channel: String(payload.channel || "") || undefined,
+      templateId:
+        String(payload.templateId || payload.templateName || "") || undefined,
+      attributes:
+        payload.conditions && typeof payload.conditions === "object"
+          ? (payload.conditions as Record<string, unknown>)
+          : {},
+      duplicate: storedDeduplication?.duplicate === true,
+    }
+  );
+  if (state === "approved" && !evaluation.allowedToCreate)
+    throw new Error(`AUTOMATION_POLICY_${evaluation.outcome}`);
+  if (
+    state === "approved" &&
+    evaluation.approvalMode === "manager" &&
+    !["owner", "manager"].includes(membership?.role || "")
+  )
+    throw new Error("MANAGER_APPROVAL_REQUIRED");
   await db
     .update(actionProposals)
     .set({
@@ -650,9 +837,9 @@ export async function reviewActionProposal(
     .where(
       and(
         eq(actionProposals.id, proposalId),
-        eq(actionProposals.userId, userId),
         eq(actionProposals.organisationId, organisationId),
-        eq(actionProposals.state, "review_required")
+        eq(actionProposals.state, "review_required"),
+        ...(teamReview ? [] : [eq(actionProposals.userId, userId)])
       )
     );
   await recordAudit({
@@ -711,8 +898,113 @@ export async function claimApprovedActionProposal(input: {
   organisationId: number;
   proposalId: number;
   correlationId: string;
+  manualExecution?: boolean;
 }) {
   const db = await requireDb();
+  const preflight = (
+    await db
+      .select()
+      .from(actionProposals)
+      .where(
+        and(
+          eq(actionProposals.id, input.proposalId),
+          eq(actionProposals.userId, input.userId),
+          eq(actionProposals.organisationId, input.organisationId),
+          eq(actionProposals.state, "approved")
+        )
+      )
+      .limit(1)
+  )[0];
+  if (!preflight) return undefined;
+  const organisation = (
+    await db
+      .select({ settings: organisations.settings })
+      .from(organisations)
+      .where(eq(organisations.id, input.organisationId))
+      .limit(1)
+  )[0];
+  const reviewer = preflight.reviewedByUserId
+    ? (
+        await db
+          .select({ role: organisationMembers.role })
+          .from(organisationMembers)
+          .where(
+            and(
+              eq(organisationMembers.organisationId, input.organisationId),
+              eq(organisationMembers.userId, preflight.reviewedByUserId),
+              eq(organisationMembers.isActive, true)
+            )
+          )
+          .limit(1)
+      )[0]
+    : undefined;
+  const payload = preflight.payload as Record<string, unknown>;
+  const storedPolicy = (organisation?.settings as Record<string, unknown>)
+    ?.automationPolicy;
+  const deduplicationWindowMinutes =
+    automationDeduplicationWindowMinutes(storedPolicy);
+  const signature = automationDeduplicationSignature({
+    actionType: preflight.actionType,
+    targetLabel: preflight.targetLabel,
+    payload,
+  });
+  const recent = await db
+    .select({
+      id: actionProposals.id,
+      actionType: actionProposals.actionType,
+      targetLabel: actionProposals.targetLabel,
+      payload: actionProposals.payload,
+      state: actionProposals.state,
+    })
+    .from(actionProposals)
+    .where(
+      and(
+        eq(actionProposals.organisationId, input.organisationId),
+        gte(
+          actionProposals.createdAt,
+          new Date(Date.now() - deduplicationWindowMinutes * 60_000)
+        )
+      )
+    )
+    .limit(2_000);
+  const duplicate = recent.some(
+    proposal =>
+      proposal.id !== preflight.id &&
+      !["skipped", "blocked"].includes(proposal.state) &&
+      automationDeduplicationSignature({
+        actionType: proposal.actionType,
+        targetLabel: proposal.targetLabel,
+        payload: proposal.payload,
+      }) === signature
+  );
+  const evaluation = evaluateStoredAutomationPolicy(storedPolicy, {
+    phase: "execution",
+    actionType: preflight.actionType,
+    manual: input.manualExecution === true,
+    monitorKey:
+      typeof payload.monitorKey === "string" ? payload.monitorKey : undefined,
+    triggerKey:
+      typeof payload.triggerKey === "string" ? payload.triggerKey : undefined,
+    userId: preflight.userId,
+    pipelineId:
+      String(payload.pipelineId || payload.pipeline || "") || undefined,
+    leadSource: String(payload.leadSource || "") || undefined,
+    channel: String(payload.channel || "") || undefined,
+    templateId:
+      String(payload.templateId || payload.templateName || "") || undefined,
+    attributes:
+      payload.conditions && typeof payload.conditions === "object"
+        ? (payload.conditions as Record<string, unknown>)
+        : {},
+    approvalSatisfied: Boolean(preflight.reviewedByUserId),
+    managerApprovalSatisfied: ["owner", "manager"].includes(
+      reviewer?.role || ""
+    ),
+    retryCount: Number(payload.retryCount || 0),
+    duplicate,
+  });
+  if (!evaluation.mayExecute)
+    throw new Error(`AUTOMATION_POLICY_${evaluation.outcome}`);
   const claimedAt = new Date();
   const claim = {
     status: "executing",

@@ -1,4 +1,4 @@
-import { and, desc, eq, lte, or } from "drizzle-orm";
+import { and, desc, eq, isNull, lte, or } from "drizzle-orm";
 import {
   assistantReminders,
   callbackTasks,
@@ -166,7 +166,13 @@ export async function getTodayWork(input: {
           or(
             eq(salesWorkItems.status, "open"),
             eq(salesWorkItems.status, "in_progress"),
-            eq(salesWorkItems.status, "snoozed"),
+            and(
+              eq(salesWorkItems.status, "snoozed"),
+              or(
+                isNull(salesWorkItems.snoozedUntil),
+                lte(salesWorkItems.snoozedUntil, now)
+              )
+            ),
             eq(salesWorkItems.status, "blocked")
           )
         )

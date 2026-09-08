@@ -23,15 +23,28 @@ type Policy = {
     "automatic" | "salesperson_approval" | "manager_approval" | "disabled"
   >;
   monitorKeys?: string[];
+  triggerKeys?: string[];
+  scope?: {
+    userIds: number[];
+    pipelineIds: string[];
+    leadSources: string[];
+  };
+  conditions?: Record<string, string[]>;
   schedule?: {
     mode: "continuous" | "business_hours" | "daily" | "manual";
+    timezone?: string;
     days: number[];
+    startHour?: number;
+    endHour?: number;
   };
   safety?: {
     maximumActionsPerRun: number;
     deduplicationWindowMinutes: number;
     maximumRetries: number;
     quietHoursEnabled: boolean;
+    allowedActionKeys: string[];
+    allowedChannels: Array<"email" | "sms" | "whatsapp" | "dialler">;
+    allowedTemplateIds: string[];
   };
   requireReviewForCommunications?: boolean;
   requireReviewForStageChanges?: boolean;
@@ -75,6 +88,28 @@ const autoOptions = [
   ["send_sms", "Send SMS"],
   ["send_whatsapp", "Send WhatsApp"],
 ] as const;
+
+const monitorOptions = [
+  ["new_leads", "New leads"],
+  ["task_changes", "Task changes"],
+  ["opportunities", "Opportunities"],
+  ["inbound_mail", "Inbound mail"],
+  ["callbacks", "Callbacks"],
+  ["appointments", "Appointments"],
+  ["stale_leads", "Stale leads"],
+  ["overdue_tasks", "Overdue tasks"],
+] as const;
+const triggerOptions = [
+  ["new_lead", "New lead"],
+  ["field_or_stage_change", "CRM field/stage change"],
+  ["inbound_email", "Inbound email"],
+  ["scheduled_time", "Scheduled time"],
+  ["overdue_task", "Overdue task"],
+  ["callback_due", "Callback due"],
+  ["opportunity_stalled", "Opportunity stalled"],
+  ["explicit_user_action", "User action"],
+] as const;
+const weekdayOptions = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -193,6 +228,28 @@ export default function AdminControls() {
           ? Array.from(new Set([...policy.autoActionTypes, actionType]))
           : policy.autoActionTypes.filter(value => value !== actionType),
     });
+  }
+  function togglePolicyList(
+    values: string[] | undefined,
+    value: string,
+    update: (next: string[]) => void
+  ) {
+    const current = values || [];
+    update(
+      current.includes(value)
+        ? current.filter(item => item !== value)
+        : [...current, value]
+    );
+  }
+  function commaValues(value: string) {
+    return Array.from(
+      new Set(
+        value
+          .split(",")
+          .map(item => item.trim())
+          .filter(Boolean)
+      )
+    );
   }
 
   async function savePolicy() {
@@ -369,6 +426,135 @@ export default function AdminControls() {
                 ))}
               </div>
             </div>
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              <PolicyChecks
+                title="Monitor"
+                options={monitorOptions}
+                selected={policy?.monitorKeys || []}
+                onToggle={value =>
+                  policy &&
+                  togglePolicyList(policy.monitorKeys, value, monitorKeys =>
+                    setPolicy({ ...policy, monitorKeys })
+                  )
+                }
+              />
+              <PolicyChecks
+                title="Start work when"
+                options={triggerOptions}
+                selected={policy?.triggerKeys || []}
+                onToggle={value =>
+                  policy &&
+                  togglePolicyList(policy.triggerKeys, value, triggerKeys =>
+                    setPolicy({ ...policy, triggerKeys })
+                  )
+                }
+              />
+            </div>
+            <div className="mt-5">
+              <p className="text-xs font-bold text-[#A9BFDF]">
+                Salesperson scope
+              </p>
+              <p className="mt-1 text-xs text-[#829CC4]">
+                No selection means every salesperson in this organisation.
+              </p>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                {members
+                  .filter(member => member.isActive)
+                  .map(member => (
+                    <label
+                      key={member.userId}
+                      className="flex items-center gap-2 rounded-lg border border-white/10 bg-[#08172F] p-2 text-xs text-[#C5D6EF]"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={(policy?.scope?.userIds || []).includes(
+                          member.userId
+                        )}
+                        onChange={() => {
+                          if (!policy) return;
+                          const values = policy.scope?.userIds || [];
+                          const userIds = values.includes(member.userId)
+                            ? values.filter(id => id !== member.userId)
+                            : [...values, member.userId];
+                          setPolicy({
+                            ...policy,
+                            scope: {
+                              userIds,
+                              pipelineIds: policy.scope?.pipelineIds || [],
+                              leadSources: policy.scope?.leadSources || [],
+                            },
+                          });
+                        }}
+                      />
+                      {member.name || member.email || `User ${member.userId}`}
+                    </label>
+                  ))}
+              </div>
+            </div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <PolicyText
+                label="CRM pipeline IDs"
+                value={(policy?.scope?.pipelineIds || []).join(", ")}
+                placeholder="sales, renewals"
+                onChange={value =>
+                  policy &&
+                  setPolicy({
+                    ...policy,
+                    scope: {
+                      userIds: policy.scope?.userIds || [],
+                      pipelineIds: commaValues(value),
+                      leadSources: policy.scope?.leadSources || [],
+                    },
+                  })
+                }
+              />
+              <PolicyText
+                label="Lead sources"
+                value={(policy?.scope?.leadSources || []).join(", ")}
+                placeholder="website, referral"
+                onChange={value =>
+                  policy &&
+                  setPolicy({
+                    ...policy,
+                    scope: {
+                      userIds: policy.scope?.userIds || [],
+                      pipelineIds: policy.scope?.pipelineIds || [],
+                      leadSources: commaValues(value),
+                    },
+                  })
+                }
+              />
+              <PolicyText
+                label="Allowed CRM stages"
+                value={(policy?.conditions?.stage || []).join(", ")}
+                placeholder="qualified, proposal"
+                onChange={value =>
+                  policy &&
+                  setPolicy({
+                    ...policy,
+                    conditions: {
+                      ...(policy.conditions || {}),
+                      stage: commaValues(value),
+                    },
+                  })
+                }
+              />
+              <PolicyText
+                label="Allowed inbound categories"
+                value={(policy?.conditions?.category || []).join(", ")}
+                placeholder="reply, meeting_request"
+                onChange={value =>
+                  policy &&
+                  setPolicy({
+                    ...policy,
+                    conditions: {
+                      ...(policy.conditions || {}),
+                      category: commaValues(value),
+                    },
+                  })
+                }
+              />
+            </div>
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
               <label className="text-xs font-bold text-[#A9BFDF]">
                 Maximum actions per run
@@ -382,12 +568,16 @@ export default function AdminControls() {
                     setPolicy({
                       ...policy,
                       safety: {
+                        ...(policy.safety || {
+                          maximumActionsPerRun: 25,
+                          deduplicationWindowMinutes: 1440,
+                          maximumRetries: 2,
+                          quietHoursEnabled: true,
+                          allowedActionKeys: [],
+                          allowedChannels: [],
+                          allowedTemplateIds: [],
+                        }),
                         maximumActionsPerRun: Number(event.target.value),
-                        deduplicationWindowMinutes:
-                          policy.safety?.deduplicationWindowMinutes || 1440,
-                        maximumRetries: policy.safety?.maximumRetries ?? 2,
-                        quietHoursEnabled:
-                          policy.safety?.quietHoursEnabled !== false,
                       },
                     })
                   }
@@ -403,10 +593,13 @@ export default function AdminControls() {
                     setPolicy({
                       ...policy,
                       schedule: {
+                        ...(policy.schedule || {
+                          mode: "continuous",
+                          days: [1, 2, 3, 4, 5],
+                        }),
                         mode: event.target.value as NonNullable<
                           Policy["schedule"]
                         >["mode"],
-                        days: policy.schedule?.days || [1, 2, 3, 4, 5],
                       },
                     })
                   }
@@ -419,7 +612,203 @@ export default function AdminControls() {
                 </select>
               </label>
             </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <PolicyText
+                label="Schedule time zone"
+                value={policy?.schedule?.timezone || "Africa/Johannesburg"}
+                placeholder="Africa/Johannesburg"
+                onChange={timezone =>
+                  policy &&
+                  setPolicy({
+                    ...policy,
+                    schedule: {
+                      ...(policy.schedule || {
+                        mode: "continuous",
+                        days: [1, 2, 3, 4, 5],
+                      }),
+                      timezone,
+                    },
+                  })
+                }
+              />
+              <PolicyNumber
+                label="Starts at hour"
+                min={0}
+                max={23}
+                value={policy?.schedule?.startHour ?? 8}
+                onChange={startHour =>
+                  policy &&
+                  setPolicy({
+                    ...policy,
+                    schedule: {
+                      ...(policy.schedule || {
+                        mode: "continuous",
+                        days: [1, 2, 3, 4, 5],
+                      }),
+                      startHour,
+                    },
+                  })
+                }
+              />
+              <PolicyNumber
+                label="Ends before hour"
+                min={1}
+                max={24}
+                value={policy?.schedule?.endHour ?? 17}
+                onChange={endHour =>
+                  policy &&
+                  setPolicy({
+                    ...policy,
+                    schedule: {
+                      ...(policy.schedule || {
+                        mode: "continuous",
+                        days: [1, 2, 3, 4, 5],
+                      }),
+                      endHour,
+                    },
+                  })
+                }
+              />
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {weekdayOptions.map((day, index) => (
+                <button
+                  key={day}
+                  type="button"
+                  onClick={() => {
+                    if (!policy) return;
+                    const days = policy.schedule?.days || [];
+                    setPolicy({
+                      ...policy,
+                      schedule: {
+                        ...(policy.schedule || {
+                          mode: "continuous",
+                          days: [],
+                        }),
+                        days: days.includes(index)
+                          ? days.filter(value => value !== index)
+                          : [...days, index].sort(),
+                      },
+                    });
+                  }}
+                  className={`rounded-lg border px-3 py-2 text-xs font-bold ${(policy?.schedule?.days || []).includes(index) ? "border-[#6EA3FF] bg-[#153B7A] text-white" : "border-white/10 bg-[#08172F] text-[#829CC4]"}`}
+                >
+                  {day}
+                </button>
+              ))}
+            </div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <PolicyNumber
+                label="Deduplication window (minutes)"
+                min={1}
+                max={43_200}
+                value={policy?.safety?.deduplicationWindowMinutes || 1440}
+                onChange={deduplicationWindowMinutes =>
+                  policy?.safety &&
+                  setPolicy({
+                    ...policy,
+                    safety: {
+                      ...policy.safety,
+                      deduplicationWindowMinutes,
+                    },
+                  })
+                }
+              />
+              <PolicyNumber
+                label="Maximum retries"
+                min={0}
+                max={10}
+                value={policy?.safety?.maximumRetries ?? 2}
+                onChange={maximumRetries =>
+                  policy?.safety &&
+                  setPolicy({
+                    ...policy,
+                    safety: { ...policy.safety, maximumRetries },
+                  })
+                }
+              />
+              <PolicyText
+                label="Allowed template IDs"
+                value={(policy?.safety?.allowedTemplateIds || []).join(", ")}
+                placeholder="followup-v2, renewal"
+                onChange={value =>
+                  policy?.safety &&
+                  setPolicy({
+                    ...policy,
+                    safety: {
+                      ...policy.safety,
+                      allowedTemplateIds: commaValues(value),
+                    },
+                  })
+                }
+              />
+            </div>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <PolicyChecks
+                title="Allowed action keys"
+                options={autoOptions}
+                selected={policy?.safety?.allowedActionKeys || []}
+                emptyMeansAll
+                onToggle={value =>
+                  policy?.safety &&
+                  togglePolicyList(
+                    policy.safety.allowedActionKeys,
+                    value,
+                    allowedActionKeys =>
+                      setPolicy({
+                        ...policy,
+                        safety: { ...policy.safety!, allowedActionKeys },
+                      })
+                  )
+                }
+              />
+              <PolicyChecks
+                title="Allowed channels"
+                options={[
+                  ["email", "Email"],
+                  ["sms", "SMS"],
+                  ["whatsapp", "WhatsApp"],
+                  ["dialler", "Dialler"],
+                ]}
+                selected={policy?.safety?.allowedChannels || []}
+                emptyMeansAll
+                onToggle={value =>
+                  policy?.safety &&
+                  togglePolicyList(
+                    policy.safety.allowedChannels,
+                    value,
+                    allowedChannels =>
+                      setPolicy({
+                        ...policy,
+                        safety: {
+                          ...policy.safety!,
+                          allowedChannels: allowedChannels as NonNullable<
+                            Policy["safety"]
+                          >["allowedChannels"],
+                        },
+                      })
+                  )
+                }
+              />
+            </div>
             <div className="mt-5 space-y-2">
+              <label className="flex items-center gap-3 text-sm text-[#C5D6EF]">
+                <input
+                  type="checkbox"
+                  checked={policy?.safety?.quietHoursEnabled !== false}
+                  onChange={event =>
+                    policy?.safety &&
+                    setPolicy({
+                      ...policy,
+                      safety: {
+                        ...policy.safety,
+                        quietHoursEnabled: event.target.checked,
+                      },
+                    })
+                  }
+                />
+                Pause unattended automation during quiet hours
+              </label>
               <label className="flex items-center gap-3 text-sm text-[#C5D6EF]">
                 <input
                   type="checkbox"
@@ -653,5 +1042,97 @@ function Metric({ label, value }: { label: string; value: string | number }) {
       </p>
       <p className="mt-1 font-display text-2xl font-bold text-white">{value}</p>
     </div>
+  );
+}
+
+function PolicyChecks({
+  title,
+  options,
+  selected,
+  onToggle,
+  emptyMeansAll = false,
+}: {
+  title: string;
+  options: ReadonlyArray<readonly [string, string]>;
+  selected: string[];
+  onToggle: (value: string) => void;
+  emptyMeansAll?: boolean;
+}) {
+  return (
+    <div>
+      <p className="text-xs font-bold text-[#A9BFDF]">{title}</p>
+      {emptyMeansAll && !selected.length ? (
+        <p className="mt-1 text-[11px] text-[#829CC4]">
+          No selection currently allows all.
+        </p>
+      ) : null}
+      <div className="mt-2 grid gap-2">
+        {options.map(([value, label]) => (
+          <label
+            key={value}
+            className="flex items-center gap-2 rounded-lg border border-white/10 bg-[#08172F] p-2 text-xs text-[#C5D6EF]"
+          >
+            <input
+              type="checkbox"
+              checked={selected.includes(value)}
+              onChange={() => onToggle(value)}
+            />
+            {label}
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PolicyText({
+  label,
+  value,
+  placeholder,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="text-xs font-bold text-[#A9BFDF]">
+      {label}
+      <Input
+        value={value}
+        placeholder={placeholder}
+        onChange={event => onChange(event.target.value)}
+        className="mt-2 border-white/15 bg-[#08172F] text-white"
+      />
+    </label>
+  );
+}
+
+function PolicyNumber({
+  label,
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <label className="text-xs font-bold text-[#A9BFDF]">
+      {label}
+      <Input
+        type="number"
+        value={value}
+        min={min}
+        max={max}
+        onChange={event => onChange(Number(event.target.value))}
+        className="mt-2 border-white/15 bg-[#08172F] text-white"
+      />
+    </label>
   );
 }

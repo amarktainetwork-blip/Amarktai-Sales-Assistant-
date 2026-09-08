@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { watchdogRepairPlan } from "./operationWatchdog";
+import {
+  selectLatestWatchdogVersions,
+  watchdogRepairPlan,
+} from "./operationWatchdog";
 
 describe("daily CRM drift economics", () => {
   it("uses zero GenX calls when every deterministic watchdog passes", () => {
@@ -29,4 +32,20 @@ describe("daily CRM drift economics", () => {
       maximumRepairBatches: 1,
     });
   });
+
+  it.each(["TEST_READY", "DEGRADED", "BLOCKED"])(
+    "never executes v1 LIVE_PROVEN when latest v2 is %s",
+    status => {
+      const decisions = selectLatestWatchdogVersions(
+        [
+          { operationKey: "contact.read", version: 1, status: "LIVE_PROVEN" },
+          { operationKey: "contact.read", version: 2, status },
+        ],
+        new Set(["contact.read"])
+      );
+      expect(decisions).toHaveLength(1);
+      expect(decisions[0].operation.version).toBe(2);
+      expect(decisions[0].eligible).toBe(false);
+    }
+  );
 });

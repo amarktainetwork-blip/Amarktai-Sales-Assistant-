@@ -1223,18 +1223,31 @@ async function testOperations(input: {
   const latest = new Map<string, (typeof rows)[number]>();
   for (const row of rows)
     if (!latest.has(row.operationKey)) latest.set(row.operationKey, row);
-  const selected = Array.from(latest.values()).filter(row => {
-    const definition = row.definition as Record<string, unknown>;
-    return operationEligibleForCommissioningTest({
-      status: row.status,
-      definitionMode: definition.mode,
-      requestedMode: input.mode,
+  const selected = Array.from(latest.values())
+    .filter(row => {
+      const definition = row.definition as Record<string, unknown>;
+      return operationEligibleForCommissioningTest({
+        status: row.status,
+        definitionMode: definition.mode,
+        requestedMode: input.mode,
+      });
+    })
+    .sort((left, right) => {
+      const order = ["contact.sync", "contact.search", "contact.read"];
+      const leftIndex = order.indexOf(left.operationKey);
+      const rightIndex = order.indexOf(right.operationKey);
+      return (
+        (leftIndex < 0 ? order.length : leftIndex) -
+        (rightIndex < 0 ? order.length : rightIndex)
+      );
     });
-  });
   const failures = { ...(input.job.optionalFailures || {}) };
   const proven: string[] = [];
   const failedOperationKeys: string[] = [];
   let repairGenxCalls = 0;
+  let derivedContact:
+    | { externalId: string; query: string; derivedFrom: string }
+    | undefined;
   const runOne = async (operation: (typeof rows)[number]) => {
     const operationKey = operation.operationKey;
     const prerequisites = operation.prerequisites as Record<string, unknown>;
@@ -1248,11 +1261,37 @@ async function testOperations(input: {
             !Array.isArray(prerequisites.watchdogInputs)
           ? (prerequisites.watchdogInputs as Record<string, unknown>)
           : {};
-    const payload =
+    const inputRole = safeText(prerequisites.verificationInputRole, 80);
+    let payload =
       input.mode === "write"
         ? controlledWritePayload(operationKey, input.safeTestRecord!)
         : verificationInputs;
-    await testLearnedBrowserOperation({
+    if (input.mode === "read" && inputRole === "derived_contact_query") {
+      if (!derivedContact) throw new Error("VERIFICATION_TARGET_NOT_DERIVED");
+      payload = { query: derivedContact.query };
+    }
+    if (input.mode === "read" && inputRole === "derived_contact_external_id") {
+      if (!derivedContact) throw new Error("VERIFICATION_TARGET_NOT_DERIVED");
+      payload = { externalId: derivedContact.externalId };
+    }
+    if (
+      input.mode === "read" &&
+      ["derived_contact_query", "derived_contact_external_id"].includes(
+        inputRole
+      )
+    )
+      await db
+        .update(browserLearnedOperations)
+        .set({
+          prerequisites: {
+            ...prerequisites,
+            verificationInputs: payload,
+            watchdogInputs: payload,
+            verificationTargetSource: derivedContact?.derivedFrom,
+          },
+        })
+        .where(eq(browserLearnedOperations.id, operation.id));
+    const executed = await testLearnedBrowserOperation({
       connection: toAdapterConnection(system),
       secret: input.secret,
       provider: system.provider as "genie" | "custom_browser",
@@ -1261,6 +1300,35 @@ async function testOperations(input: {
       correlationId: `auto-${input.job.id}-${operationKey}-${randomUUID()}`,
       publishByUserId: input.job.requestedByUserId || undefined,
     });
+    if (inputRole === "contact_catalogue_seed") {
+      const resultData = (executed.providerResult?.data || {}) as Record<
+        string,
+        string
+      >;
+      const serialized = resultData.records;
+      const parsed = serialized ? (JSON.parse(serialized) as unknown) : [];
+      const row = Array.isArray(parsed)
+        ? parsed.find(
+            value => value && typeof value === "object" && !Array.isArray(value)
+          )
+        : undefined;
+      const source = (row || {}) as Record<string, unknown>;
+      const rawExternalId = safeText(source.externalId, 1_000);
+      const name = safeText(source.name, 180);
+      if (!rawExternalId) throw new Error("VERIFICATION_TARGET_NOT_DERIVED");
+      const baseUrl = resultData.actualPageUrl || system.baseUrl || undefined;
+      const externalId = baseUrl
+        ? new URL(rawExternalId, baseUrl).toString()
+        : rawExternalId;
+      derivedContact = {
+        externalId,
+        query:
+          name ||
+          rawExternalId.split("/").filter(Boolean).at(-1) ||
+          rawExternalId,
+        derivedFrom: "deterministic_contact_catalogue",
+      };
+    }
   };
   for (const operation of selected.slice(0, 80)) {
     try {

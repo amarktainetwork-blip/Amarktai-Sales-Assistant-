@@ -5,6 +5,10 @@ import {
   canManageOrganisationForUser,
   requireOrganisationMembership,
 } from "./organisation";
+import {
+  evaluateAutomationPolicy,
+  type AutomationEvaluationContext,
+} from "./automationPolicyEvaluator";
 
 export type AutomationMode = "advise" | "review" | "auto_preapproved";
 export type AutomationPreset = "assist_only" | "balanced" | "automated";
@@ -272,7 +276,7 @@ export function normalizeAutomationPolicy(value: unknown): AutomationPolicy {
       endHour:
         schedule.endHour === undefined
           ? undefined
-          : integer(schedule.endHour, 17, 0, 23),
+          : integer(schedule.endHour, 17, 1, 24),
     },
     safety: {
       maximumActionsPerRun: integer(
@@ -372,59 +376,35 @@ export async function saveAutomationPolicy(input: {
   return policy;
 }
 
-const COMMUNICATION_ACTIONS = new Set([
-  "send_email",
-  "send_email_template",
-  "send_sms",
-  "send_sms_template",
-  "send_whatsapp",
-  "send_whatsapp_template",
-]);
-const STAGE_ACTIONS = new Set([
-  "update_current_opportunity",
-  "update_opportunity",
-  "update_contact_status",
-]);
-
 export function automationPolicyDecision(
   policy: AutomationPolicy,
-  actionType: string
+  actionType: string,
+  context: Partial<Omit<AutomationEvaluationContext, "actionType">> = {}
 ) {
-  const configuredMode = policy.actionModes[actionType];
+  const evaluated = evaluateAutomationPolicy(policy, {
+    phase: context.phase || "execution",
+    actionType,
+    manual: context.manual ?? true,
+    ...context,
+  });
   const autoMode = policy.mode === "auto_preapproved";
   const allowListed = policy.autoActionTypes.includes(actionType);
-  const policyRequiresReview =
-    configuredMode === "salesperson_approval" ||
-    configuredMode === "manager_approval" ||
-    (policy.requireReviewForCommunications &&
-      COMMUNICATION_ACTIONS.has(actionType)) ||
-    (policy.requireReviewForStageChanges && STAGE_ACTIONS.has(actionType));
+  const policyRequiresReview = evaluated.approvalRequired;
   return {
     autoMode,
     allowListed,
     policyRequiresReview,
-    organisationAllowsAction:
-      configuredMode !== "disabled" && autoMode && allowListed,
-    mayAutoExecute:
-      configuredMode !== "disabled" &&
-      configuredMode !== "salesperson_approval" &&
-      configuredMode !== "manager_approval" &&
-      autoMode &&
-      allowListed &&
-      !policyRequiresReview,
+    organisationAllowsAction: evaluated.mayExecute,
+    mayAutoExecute: evaluated.mayExecute,
     approvalMode:
-      configuredMode ||
-      (policyRequiresReview ? "salesperson_approval" : "automatic"),
+      evaluated.approvalMode === "manager"
+        ? "manager_approval"
+        : evaluated.approvalMode === "salesperson"
+          ? "salesperson_approval"
+          : "automatic",
     blockingReason:
-      configuredMode === "disabled"
-        ? "organisation_action_disabled"
-        : !autoMode
-          ? "organisation_mode_requires_review"
-          : !allowListed
-            ? "action_not_in_organisation_auto_allow_list"
-            : policyRequiresReview
-              ? "organisation_action_review_required"
-              : null,
+      evaluated.outcome === "ALLOWED_AUTOMATIC" ? null : evaluated.outcome,
+    evaluation: evaluated,
   } as const;
 }
 

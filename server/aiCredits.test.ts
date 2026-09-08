@@ -58,6 +58,9 @@ describe("AI credit debit invariants", () => {
     expect(classifyAiPurpose("crm_automatic_commissioning")).toBe(
       "crm_commissioning"
     );
+    expect(classifyAiPurpose("crm_commissioning_repair")).toBe(
+      "crm_targeted_repair"
+    );
     expect(classifyAiPurpose("assistant_email_draft")).toBe(
       "communication_draft"
     );
