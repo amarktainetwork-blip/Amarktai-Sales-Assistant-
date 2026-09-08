@@ -7,8 +7,14 @@ export type BrowserRuntimeFailureClassification =
   | "target_mismatch"
   | "ambiguous_target"
   | "selector_drift"
+  | "read_proof_failure"
   | "postcondition_failure"
   | "execution_failure";
+
+export function browserRuntimeFailureCode(detail: string) {
+  const match = detail.trim().match(/^([A-Z][A-Z0-9_]{2,80})(?::|\b)/);
+  return match?.[1];
+}
 
 export function classifyBrowserRuntimeFailure(
   detail: string
@@ -24,6 +30,12 @@ export function classifyBrowserRuntimeFailure(
     return "ambiguous_target";
   if (/EXECUTION_UNVERIFIED|POSTCONDITION/i.test(detail))
     return "postcondition_failure";
+  if (
+    /STRUCTURED_RESULT_REQUIRED|TARGET_IDENTITY_REQUIRED|EXACT_SEARCH_MATCH_REQUIRED|READ_PROOF/i.test(
+      detail
+    )
+  )
+    return "read_proof_failure";
   if (
     /TARGET_VERIFICATION_FAILED|selector|locator|element (?:missing|not found)|expected element|navigation drift|structure drift|detached|not visible/i.test(
       detail
@@ -57,6 +69,7 @@ export async function recordLearnedRuntimeFailure(
   } = {}
 ) {
   const classification = classifyBrowserRuntimeFailure(input.detail);
+  const failureCode = browserRuntimeFailureCode(input.detail);
   const record = dependencies.record || recordBrowserOperationResult;
   const result = await record({
     organisationId: input.organisationId,
@@ -65,10 +78,11 @@ export async function recordLearnedRuntimeFailure(
     version: input.version,
     success: false,
     watchdog: true,
-    error: `${classification}: deterministic browser operation failed.`,
+    error: `${classification}${failureCode ? `: ${failureCode}` : ""}: deterministic browser operation failed.`,
     evidence: {
       correlationId: input.correlationId,
       failureClassification: classification,
+      ...(failureCode ? { failureCode } : {}),
     },
   });
   if (classification === "authentication") {
