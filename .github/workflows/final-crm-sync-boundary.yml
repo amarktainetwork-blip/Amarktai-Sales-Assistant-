@@ -1,0 +1,70 @@
+name: Final CRM Sync Eligibility Repair
+
+on:
+  push:
+    branches:
+      - fix/final-complete-product
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.event.head_commit.message != 'Fix final CRM sync eligibility boundary'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/final-complete-product
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.15.0
+          cache: pnpm
+      - name: Restrict sync to authorised and LIVE_PROVEN capability surfaces
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path('server/crm/sync.ts')
+          text = path.read_text()
+          marker = '''import { upsertSalesWorkFromCrm } from "../salesWork";\n\nasync function cursorFor'''
+          replacement = '''import { upsertSalesWorkFromCrm } from "../salesWork";\n\nexport function crmResourceSyncEligible(\n  connection: Pick<\n    AdapterConnection,\n    "allowedReadCapabilities" | "verifiedCapabilities"\n  >,\n  capability: string\n) {\n  return (\n    connection.allowedReadCapabilities.includes(capability) &&\n    connection.verifiedCapabilities.includes(capability)\n  );\n}\n\nasync function cursorFor'''
+          if text.count(marker) != 1:
+              raise SystemExit(f'sync eligibility helper marker: expected one match, found {text.count(marker)}')
+          text = text.replace(marker, replacement, 1)
+
+          old = '''    if (!connection.allowedReadCapabilities.includes(capability)) {\n      summary[resourceType] = 0;\n      continue;\n    }'''
+          new = '''    if (!crmResourceSyncEligible(connection, capability)) {\n      summary[resourceType] = 0;\n      continue;\n    }'''
+          if text.count(old) != 1:
+              raise SystemExit(f'sync resource gate: expected one match, found {text.count(old)}')
+          text = text.replace(old, new, 1)
+          path.write_text(text)
+
+          test_path = Path('server/crm/syncEligibility.test.ts')
+          test_path.write_text('''import { describe, expect, it } from "vitest";\nimport { crmResourceSyncEligible } from "./sync";\n\ndescribe("CRM resource sync eligibility", () => {\n  const connection = {\n    allowedReadCapabilities: [\n      "contacts.read",\n      "companies.read",\n      "tasks.read",\n    ],\n    verifiedCapabilities: ["contacts.read"],\n  };\n\n  it("syncs only an authorised capability that is also LIVE_PROVEN/verified", () => {\n    expect(crmResourceSyncEligible(connection, "contacts.read")).toBe(true);\n    expect(crmResourceSyncEligible(connection, "companies.read")).toBe(false);\n    expect(crmResourceSyncEligible(connection, "tasks.read")).toBe(false);\n  });\n\n  it("never syncs a capability that was not authorised even if a stale verification value exists", () => {\n    expect(\n      crmResourceSyncEligible(\n        {\n          allowedReadCapabilities: ["contacts.read"],\n          verifiedCapabilities: ["contacts.read", "opportunities.read"],\n        },\n        "opportunities.read"\n      )\n    ).toBe(false);\n  });\n});\n''')
+          PY
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Focused CRM contracts
+        run: pnpm exec vitest run server/crm/syncEligibility.test.ts server/crm/capabilityAccounting.test.ts server/crm/automaticCommissioning.test.ts server/onboardingFlow.test.ts
+      - name: TypeScript
+        run: pnpm check
+      - name: Full unit tests
+        run: pnpm test
+      - name: Production build
+        run: pnpm build
+      - name: Commit exact tested sync boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/final-crm-sync-boundary.yml
+          git config user.name "Amarktai Release Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add server/crm/sync.ts server/crm/syncEligibility.test.ts .github/workflows/final-crm-sync-boundary.yml
+          git diff --cached --check
+          git commit -m "Fix final CRM sync eligibility boundary"
+          git push origin HEAD:fix/final-complete-product
