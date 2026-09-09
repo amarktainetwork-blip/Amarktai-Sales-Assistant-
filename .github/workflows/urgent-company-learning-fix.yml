@@ -1,0 +1,141 @@
+name: Urgent company learning acceptance repair
+
+on:
+  push:
+    branches:
+      - fix/urgent-company-learning-approval-quality
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/urgent-company-learning-approval-quality
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.15.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Apply product repair
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new, label):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected 1 match, found {count}')
+              p.write_text(text.replace(old, new, 1))
+
+          replace_once(
+              'server/db.ts',
+              '''  const completeness = (\n    discovery.proposedFacts as {\n      completeness?: { status?: string };\n    }\n  ).completeness;\n  if (completeness?.status === "incomplete")\n    throw new Error(\n      "This company-knowledge pack is incomplete. Retry company learning before approving any facts."\n    );\n''',
+              '''  const completeness = (\n    discovery.proposedFacts as {\n      completeness?: { status?: string };\n    }\n  ).completeness;\n  // Whole-site coverage gaps must not invalidate individually source-grounded\n  // facts. The manager approves only the bounded candidate indexes below; any\n  // missing or unselected facts remain untrusted and can be reviewed later.\n  const coverageIncomplete = completeness?.status === "incomplete";\n''',
+              'db incomplete-pack approval guard',
+          )
+
+          replace_once(
+              'shared/companyKnowledgeApprovalPolicy.ts',
+              '''function safeIdentityTitle(value: string) {\n  const title = compactText(value);\n  if (!title || containsCommercialKnowledge(title)) return null;\n  return title.slice(0, 220);\n}\n''',
+              '''function safeIdentityTitle(value: string) {\n  const title = compactText(value);\n  if (!title || containsCommercialKnowledge(title)) return null;\n  const semantic = title.replace(/[^A-Za-z0-9]+/g, "");\n  if (semantic.length < 3) return null;\n  if (/^(?:svg|image|icon|untitled|other|more)$/i.test(title)) return null;\n  return title.slice(0, 220);\n}\n''',
+              'safe offering title filter',
+          )
+
+          replace_once(
+              'shared/companyKnowledgeApprovalPolicy.ts',
+              '''      const score = offeringRichness(candidate);\n      const sourceCount = new Set([\n        ...(candidate.sourcePageIds || []),\n        ...(candidate.offering?.sourcePageIds || []),\n      ]).size;\n      return {\n        ...item,\n        score,\n        reason:\n          sourceCount > 1\n            ? `Strongly represented across ${sourceCount} website sources`\n            : "A clearly described company offering",\n      };\n''',
+              '''      const type = candidate.offering?.type || "";\n      const typePriority =\n        type === "career_programme"\n          ? 10_000\n          : type === "individual_course"\n            ? 1_000\n            : 0;\n      const score = typePriority + offeringRichness(candidate);\n      const sourceCount = new Set([\n        ...(candidate.sourcePageIds || []),\n        ...(candidate.offering?.sourcePageIds || []),\n      ]).size;\n      return {\n        ...item,\n        score,\n        reason:\n          type === "career_programme"\n            ? sourceCount > 1\n              ? `Career programme evidenced across ${sourceCount} website sources`\n              : "Career programme identified from first-party website evidence"\n            : sourceCount > 1\n              ? `Strongly represented across ${sourceCount} website sources`\n              : "A clearly described company offering",\n      };\n''',
+              'career programme sales-focus priority',
+          )
+
+          replace_once(
+              'client/src/pages/CompanySetup.tsx',
+              '''  const offerings = basics.filter(item => item.group === "offerings");\n''',
+              '''  const offerings = basics\n    .filter(item => item.group === "offerings")\n    .sort((left, right) => {\n      const rank = (index: number) => {\n        const type = candidates[index]?.offering?.type || "";\n        return type === "career_programme"\n          ? 0\n          : type === "individual_course"\n            ? 1\n            : 2;\n      };\n      return rank(left.index) - rank(right.index) || left.index - right.index;\n    });\n''',
+              'offering display priority',
+          )
+
+          replace_once(
+              'client/src/pages/CompanySetup.tsx',
+              '''  const commercial = candidates\n    .map((candidate, index) => ({ candidate, index }))\n    .filter(item => websiteKnowledgeNeedsCommercialReview(item.candidate));\n''',
+              '''  const commercial = candidates\n    .map((candidate, index) => ({ candidate, index }))\n    .filter(item => websiteKnowledgeNeedsCommercialReview(item.candidate));\n  const completeness = (\n    discovery?.proposedFacts as\n      | {\n          completeness?: {\n            status?: string;\n            importantGaps?: string[];\n            careerProgrammesDiscovered?: number;\n            finalProposedOfferings?: number;\n          };\n        }\n      | undefined\n  )?.completeness;\n  const coverageIncomplete = completeness?.status === "incomplete";\n''',
+              'company review completeness presentation',
+          )
+
+          replace_once(
+              'client/src/pages/CompanySetup.tsx',
+              '''  return (\n    <DashboardLayout>\n      <div\n        data-company-knowledge-review-shell\n        className="fixed inset-0 z-[240] overflow-y-auto bg-[#F4F7FB]"\n      >\n        <div\n          data-company-knowledge-report\n          className="mx-auto max-w-5xl space-y-5 px-4 py-8 text-[#26354A] sm:px-6 lg:px-8"\n        >\n''',
+              '''  return (\n    <main\n      data-company-knowledge-review-shell\n      className="min-h-screen bg-[#F4F7FB]"\n    >\n      <div\n        data-company-knowledge-report\n        className="mx-auto max-w-6xl space-y-5 px-4 py-8 text-[#26354A] sm:px-6 lg:px-8"\n      >\n''',
+              'standalone company review shell opening',
+          )
+
+          replace_once(
+              'client/src/pages/CompanySetup.tsx',
+              '''          </header>\n\n          {!basics.length ? (\n''',
+              '''          </header>\n\n          {coverageIncomplete ? (\n            <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-950">\n              <p className="font-bold">Website coverage needs follow-up, but this review is usable.</p>\n              <p className="mt-1">\n                Only the source-grounded facts you confirm below become trusted.\n                Missing or unselected items remain untrusted; you do not need to\n                rerun the paid website crawl just to continue onboarding.\n              </p>\n              {completeness?.importantGaps?.length ? (\n                <p className="mt-2 text-xs">\n                  {completeness.importantGaps.slice(0, 3).join(" ")}\n                </p>\n              ) : null}\n            </section>\n          ) : null}\n\n          {!basics.length ? (\n''',
+              'company review coverage warning',
+          )
+
+          replace_once(
+              'client/src/pages/CompanySetup.tsx',
+              '''        </div>\n      </div>\n    </DashboardLayout>\n  );\n}\n\nfunction ReportSection''',
+              '''      </div>\n    </main>\n  );\n}\n\nfunction ReportSection''',
+              'standalone company review shell closing',
+          )
+
+          replace_once(
+              'server/companyKnowledgePartialBatchRuntime.ts',
+              '''Preserve contradictory first-party facts; do not silently choose one.\\n\\nNested objects must follow the exact structures shown in this reference schema:''',
+              '''Preserve contradictory first-party facts; do not silently choose one. Career programmes are first-class sales entities: preserve every distinct career programme directly evidenced in this batch as type career_programme, even when it contains multiple courses. Do not demote a career programme to an individual course. Use the first-party page title or H1 as the offering name when it clearly identifies the programme/course, and never emit placeholder or blank offering names.\\n\\nNested objects must follow the exact structures shown in this reference schema:''',
+              'career programme extraction instruction',
+          )
+
+          replace_once(
+              'README.md',
+              '''2. **Learn** — read the authorised public website, show factual page progress, review the evidence-backed company knowledge and explicitly confirm it.\n''',
+              '''2. **Learn** — read the authorised public website, show factual page progress, review the evidence-backed company knowledge and explicitly confirm it. Career programmes are treated as first-class offerings and are prioritised in the review. If whole-site coverage reports gaps, a manager may still confirm only the individually source-grounded facts shown; missing or unselected facts remain untrusted and do not force another paid crawl just to continue onboarding.\n''',
+              'README company-learning contract',
+          )
+
+          p = Path('server/clientHandoverAcceptance.test.ts')
+          tests = p.read_text()
+          old_imports = '''const companySetup = fs.readFileSync(\n  "client/src/pages/CompanySetup.tsx",\n  "utf8"\n);\nconst routers = fs.readFileSync("server/routers.ts", "utf8");\n'''
+          new_imports = '''const companySetup = fs.readFileSync(\n  "client/src/pages/CompanySetup.tsx",\n  "utf8"\n);\nconst routers = fs.readFileSync("server/routers.ts", "utf8");\nconst db = fs.readFileSync("server/db.ts", "utf8");\nconst approvalPolicy = fs.readFileSync(\n  "shared/companyKnowledgeApprovalPolicy.ts",\n  "utf8"\n);\nconst companyLearningRuntime = fs.readFileSync(\n  "server/companyKnowledgePartialBatchRuntime.ts",\n  "utf8"\n);\n'''
+          if tests.count(old_imports) != 1:
+              raise SystemExit('acceptance imports anchor mismatch')
+          tests = tests.replace(old_imports, new_imports, 1)
+          old_test = '''  it("keeps company knowledge review in the onboarding shell instead of exposing the dashboard sidebar", () => {\n    expect(companySetup).toContain("data-company-knowledge-review-shell");\n    expect(companySetup).toContain("fixed inset-0 z-[240]");\n    expect(companySetup).toContain("data-company-knowledge-report");\n  });\n'''
+          new_test = '''  it("keeps company knowledge review in a standalone onboarding shell", () => {\n    expect(companySetup).toContain("data-company-knowledge-review-shell");\n    expect(companySetup).toContain("min-h-screen bg-[#F4F7FB]");\n    expect(companySetup).toContain("data-company-knowledge-report");\n  });\n\n  it("does not force another paid crawl just to approve individually grounded facts", () => {\n    expect(db).not.toContain(\n      "This company-knowledge pack is incomplete. Retry company learning before approving any facts."\n    );\n    expect(db).toContain("const coverageIncomplete = completeness?.status");\n    expect(companySetup).toContain("you do not need to");\n    expect(companySetup).toContain("rerun the paid website crawl");\n  });\n\n  it("prioritises career programmes and rejects placeholder offering names", () => {\n    expect(approvalPolicy).toContain('type === "career_programme"');\n    expect(approvalPolicy).toContain("10_000");\n    expect(approvalPolicy).toContain("svg|image|icon|untitled|other|more");\n    expect(companyLearningRuntime).toContain(\n      "Career programmes are first-class sales entities"\n    );\n  });\n'''
+          if tests.count(old_test) != 1:
+              raise SystemExit('acceptance shell test anchor mismatch')
+          p.write_text(tests.replace(old_test, new_test, 1))
+          PY
+      - name: Format
+        run: pnpm exec prettier --write server/db.ts shared/companyKnowledgeApprovalPolicy.ts client/src/pages/CompanySetup.tsx server/companyKnowledgePartialBatchRuntime.ts server/clientHandoverAcceptance.test.ts README.md
+      - name: TypeScript
+        run: pnpm check
+      - name: Tests
+        run: pnpm test
+      - name: Production build
+        run: pnpm build
+      - name: Commit tested repair
+        shell: bash
+        run: |
+          rm -f .github/workflows/urgent-company-learning-fix.yml
+          git add -A
+          git diff --cached --stat
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix: unblock grounded company knowledge and prioritise career programmes'
+          git push origin HEAD:fix/urgent-company-learning-approval-quality
