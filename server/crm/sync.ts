@@ -346,13 +346,22 @@ async function syncConnectedSystemDeterministically(input: {
   const summary: Record<string, number> = {};
   const failures: Record<string, string> = {};
   const resources = [
-    ["companies", adapter.syncCompanies, upsertCompanies],
-    ["contacts", adapter.syncContacts, upsertContacts],
-    ["opportunities", adapter.syncOpportunities, upsertOpportunities],
-    ["tasks", adapter.syncTasks, upsertTasks],
-    ["activities", adapter.syncActivities, upsertActivities],
+    ["companies", "companies.read", adapter.syncCompanies, upsertCompanies],
+    ["contacts", "contacts.read", adapter.syncContacts, upsertContacts],
+    [
+      "opportunities",
+      "opportunities.read",
+      adapter.syncOpportunities,
+      upsertOpportunities,
+    ],
+    ["tasks", "tasks.read", adapter.syncTasks, upsertTasks],
+    ["activities", "activities.read", adapter.syncActivities, upsertActivities],
   ] as const;
-  for (const [resourceType, sync, persist] of resources) {
+  for (const [resourceType, capability, sync, persist] of resources) {
+    if (!connection.allowedReadCapabilities.includes(capability)) {
+      summary[resourceType] = 0;
+      continue;
+    }
     const existing = await cursorFor(system.id, resourceType);
     try {
       const result = await sync({
