@@ -1,0 +1,60 @@
+name: Urgent company learning test diagnosis
+
+on:
+  push:
+    branches:
+      - fix/urgent-company-learning-approval-quality
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/urgent-company-learning-approval-quality
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.15.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Reapply product repair from canonical repair workflow
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          text = Path('.github/workflows/urgent-company-learning-fix.yml').read_text()
+          marker = "          python3 <<'PY'\n"
+          start = text.index(marker) + len(marker)
+          end = text.index("          PY\n      - name: Format", start)
+          body = text[start:end]
+          lines = []
+          for line in body.splitlines():
+              lines.append(line[10:] if line.startswith('          ') else line)
+          Path('/tmp/repair.py').write_text('\n'.join(lines) + '\n')
+          PY
+          python3 /tmp/repair.py
+          pnpm exec prettier --write server/db.ts shared/companyKnowledgeApprovalPolicy.ts client/src/pages/CompanySetup.tsx server/companyKnowledgePartialBatchRuntime.ts server/clientHandoverAcceptance.test.ts README.md
+      - name: Capture exact failing tests
+        shell: bash
+        run: |
+          set +e
+          pnpm test > .ci-test-failure.txt 2>&1
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo 'TESTS_PASS' > .ci-test-failure.txt
+          fi
+          tail -n 250 .ci-test-failure.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .ci-test-failure.txt
+          git commit -m 'ci: capture urgent company-learning test result'
+          git push origin HEAD:fix/urgent-company-learning-approval-quality
+          exit "$status"
