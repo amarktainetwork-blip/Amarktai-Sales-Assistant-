@@ -45,6 +45,25 @@ jobs:
           p.write_text(text.replace(old, '    if count < 1:\n', 1))
           PY
           python3 scripts/clientHandoverRepair.py
+
+          # The previous launch contract hard-coded a four-stage flow. Outlook is
+          # now an explicit required onboarding step before CRM, so update that
+          # acceptance contract in the same tested product commit.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('server/finalLaunchAcceptance.test.ts')
+          text = p.read_text()
+          old_title = 'keeps exactly four user-facing onboarding stages and removes the dead automation render path'
+          new_title = 'keeps the five user-facing onboarding stages and removes the dead automation render path'
+          old_labels = 'const labels = ["Business", "Learn", "CRM", "Ready"]'
+          new_labels = 'const labels = ["Business", "Learn", "Outlook", "CRM", "Ready"]'
+          if text.count(old_title) != 1:
+              raise SystemExit(f'expected exactly one stale onboarding title, found {text.count(old_title)}')
+          if text.count(old_labels) != 1:
+              raise SystemExit(f'expected exactly one stale onboarding label contract, found {text.count(old_labels)}')
+          p.write_text(text.replace(old_title, new_title, 1).replace(old_labels, new_labels, 1))
+          PY
+
           if grep -Fq 'response.content || "I’m ready. What would you like to do next?"' client/src/pages/Assistant.tsx; then
             echo 'CANNED_ASSISTANT_FALLBACK_REMAINS=YES'
             exit 1
@@ -57,6 +76,7 @@ jobs:
             server/today.ts \
             server/personalCrmCustomers.ts \
             server/routers.ts \
+            server/finalLaunchAcceptance.test.ts \
             client/src/pages/Assistant.tsx \
             client/src/pages/Onboarding.tsx \
             client/src/pages/CrmWorkspace.tsx \
