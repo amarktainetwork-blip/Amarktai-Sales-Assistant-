@@ -1,0 +1,274 @@
+name: Urgent CRM onboarding recovery
+
+on:
+  push:
+    branches:
+      - fix/crm-onboarding-commissioning-recovery
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/crm-onboarding-commissioning-recovery
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.15.0
+          cache: pnpm
+
+      - name: Apply focused recovery patch
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one match, found {count}")
+              p.write_text(text.replace(old, new, 1))
+
+          auto = "server/crm/automaticCommissioning.ts"
+          replace_once(auto, '''const AUTOMATIC_CORE_BROWSER_OPERATIONS = [
+            "contact.search",
+            "contact.read",
+            "task.list",
+            "note.create",
+            "task.create_callback",
+            "opportunity.read",
+            "opportunity.update",
+          ] as const;''', '''const AUTOMATIC_CORE_BROWSER_OPERATIONS = [
+            "contact.search",
+            "contact.read",
+            "contact.sync",
+            "task.list",
+            "opportunity.read",
+          ] as const;''')
+
+          replace_once(auto, '''  return input.requestedMode === "read"
+            ? ["TEST_READY", "LIVE_PROVEN"].includes(input.status)
+            : input.status === "TEST_READY";''', '''  return input.requestedMode === "read"
+            ? ["TEST_READY", "LIVE_PROVEN", "BLOCKED", "DEGRADED"].includes(
+                input.status
+              )
+            : input.status === "TEST_READY";''')
+
+          replace_once(auto, '''    } catch (error) {
+              failedOperationKeys.push(operation.operationKey);
+              failures[operation.operationKey] = safeText(
+                error instanceof Error ? error.message : String(error),
+                500
+              );
+            }''', '''    } catch (error) {
+              const detail = safeText(
+                error instanceof Error ? error.message : String(error),
+                500
+              );
+              if (detail.includes("CRM_VIEWER_HUMAN_CONTROL_ACTIVE")) throw error;
+              failedOperationKeys.push(operation.operationKey);
+              failures[operation.operationKey] = detail;
+            }''')
+
+          replace_once(auto, '''        genieDiscoveryTargets = knownPack.needsDiscovery;
+              progress.placeholderOperationsRejected = knownPack.needsDiscovery;''', '''        const authorisedReadTargets = BROWSER_OPERATION_CATALOGUE.filter(
+                  operation =>
+                    operation.mode === "read" &&
+                    Boolean(operation.capability) &&
+                    system.allowedReadCapabilities.includes(operation.capability!)
+                )
+                  .map(operation => operation.key)
+                  .filter(operationKey => !knownPack.installed.includes(operationKey));
+                genieDiscoveryTargets = Array.from(
+                  new Set([...knownPack.needsDiscovery, ...authorisedReadTargets])
+                );
+                progress.placeholderOperationsRejected = knownPack.needsDiscovery;
+                progress.authorisedReadDiscoveryTargets = authorisedReadTargets;''')
+
+          replace_once(auto, '''      const hasWrites = matrix.operations.some(
+                operation =>
+                  operation.mode === "write" && operation.status === "TEST_READY"
+              );''', '''      const hasWrites =
+                system.allowedWriteCapabilities.length > 0 &&
+                matrix.operations.some(
+                  operation =>
+                    operation.mode === "write" && operation.status === "TEST_READY"
+                );''')
+
+          replace_once(auto, '''    await updateJob(job.id, {
+              status: "needs_attention",
+              lastError: detail,
+              leaseExpiresAt: null,
+              progress: { ...(job.progress || {}), humanStatus: "Needs setup" },
+            });''', '''    if (detail.includes("CRM_VIEWER_HUMAN_CONTROL_ACTIVE")) {
+              await updateJob(job.id, {
+                status: "queued",
+                lastError: null,
+                leaseExpiresAt: null,
+                progress: {
+                  ...(job.progress || {}),
+                  humanStatus: "Waiting for AmarktAI CRM control",
+                },
+              });
+              return;
+            }
+            await updateJob(job.id, {
+              status: "needs_attention",
+              lastError: detail,
+              leaseExpiresAt: null,
+              progress: { ...(job.progress || {}), humanStatus: "Needs setup" },
+            });''')
+
+          cap = "server/crm/capabilityAccounting.ts"
+          replace_once(cap, '''        row.status !== "LIVE_PROVEN"
+            )''', '''        row.status !== "LIVE_PROVEN" &&
+                row.status !== "NOT_AUTHORISED"
+            )''')
+
+          crm = "client/src/pages/CrmWorkspace.tsx"
+          replace_once(crm, '''            onToday={() => navigate("/today")}
+                    onAuthenticationState={setBrowserAuthenticationState}
+                  />''', '''            onToday={() => navigate("/today")}
+                    onAuthenticationState={setBrowserAuthenticationState}
+                    commissioningMode={canManage && !onboardingComplete}
+                  />''')
+
+          replace_once(crm, '''        {canManage &&
+                !onboardingComplete &&
+                browserAuthenticationState === "AUTHENTICATED" ? (''', '''        {canManage &&
+                !onboardingComplete &&
+                (browserAuthenticationState === "AUTHENTICATED" ||
+                  (commissioningJob && commissioningJob.state !== "AUTHENTICATE")) ? (''')
+
+          replace_once(crm, '''  onAuthenticationState,
+          }: {
+            connectedSystemId: number;
+            crmName: string;
+            systems: Array<{ id: number; displayName: string; baseUrl?: string | null }>;
+            onChoose: (id: number) => void;
+            onToday: () => void;
+            onAuthenticationState: (state: string) => void;
+          }) {''', '''  onAuthenticationState,
+            commissioningMode,
+          }: {
+            connectedSystemId: number;
+            crmName: string;
+            systems: Array<{ id: number; displayName: string; baseUrl?: string | null }>;
+            onChoose: (id: number) => void;
+            onToday: () => void;
+            onAuthenticationState: (state: string) => void;
+            commissioningMode: boolean;
+          }) {''')
+
+          replace_once(crm, '''        if (message.authenticationState === "AUTHENTICATED")
+                  setViewerPhase("authenticated");''', '''        if (message.authenticationState === "AUTHENTICATED") {
+                  setViewerPhase("authenticated");
+                  if (commissioningMode && controlRef.current !== "AGENT_CONTROL") {
+                    pendingAiControlRef.current = true;
+                    if (controlRef.current === "HUMAN_CONTROL")
+                      send({ type: "releaseHumanControl" });
+                    else void actuallyRequestAiControl();
+                  }
+                }''')
+
+          replace_once(crm, '''            onPointerEnter={() => requestHumanControl()}''', '''            onPointerEnter={() => {
+                      if (!commissioningMode) requestHumanControl();
+                    }}''')
+
+          test = "server/crm/automaticCommissioning.test.ts"
+          replace_once(test, '''    expect(
+              operationEligibleForCommissioningTest({
+                status: "LIVE_PROVEN",
+                definitionMode: "write",
+                requestedMode: "write",
+              })
+            ).toBe(false);''', '''    expect(
+              operationEligibleForCommissioningTest({
+                status: "LIVE_PROVEN",
+                definitionMode: "write",
+                requestedMode: "write",
+              })
+            ).toBe(false);
+            expect(
+              operationEligibleForCommissioningTest({
+                status: "BLOCKED",
+                definitionMode: "read",
+                requestedMode: "read",
+              })
+            ).toBe(true);''')
+
+          captest = "server/crm/capabilityAccounting.test.ts"
+          p = Path(captest)
+          text = p.read_text()
+          marker = '''  it("reports complete only when every critical operation is LIVE_PROVEN and authorised", () => {'''
+          addition = '''  it("does not block read-only onboarding on non-authorised write operations", () => {
+            const statuses = new Map<string, string>();
+            for (const key of REQUIRED_COMMISSIONED_OPERATIONS)
+              statuses.set(key, "LIVE_PROVEN");
+            statuses.set("note.create", "TEST_READY");
+            statuses.set("task.create_callback", "TEST_READY");
+            statuses.set("opportunity.update", "TEST_READY");
+            const result = accountBrowserCapabilities({
+              operationStatuses: statuses,
+              discoveredOperationKeys: [],
+              allowedReadCapabilities: [
+                "contacts.read",
+                "companies.read",
+                "tasks.read",
+                "activities.read",
+                "opportunities.read",
+                "owners.read",
+                "pipelines.read",
+              ],
+              allowedWriteCapabilities: [],
+            });
+            expect(result.criticalGaps).toEqual([]);
+            expect(result.complete).toBe(true);
+          });
+
+          '''
+          if text.count(marker) != 1:
+              raise SystemExit(f"{captest}: marker mismatch")
+          p.write_text(text.replace(marker, addition + marker, 1))
+          PY
+
+      - name: Format repaired files
+        run: pnpm exec prettier --write server/crm/automaticCommissioning.ts server/crm/automaticCommissioning.test.ts server/crm/capabilityAccounting.ts server/crm/capabilityAccounting.test.ts client/src/pages/CrmWorkspace.tsx
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Focused tests
+        run: pnpm exec vitest run server/crm/automaticCommissioning.test.ts server/crm/capabilityAccounting.test.ts
+
+      - name: TypeScript
+        run: pnpm check
+
+      - name: Production build
+        run: pnpm build
+
+      - name: Commit tested patch and remove helper workflow
+        shell: bash
+        run: |
+          rm -f .github/workflows/urgent-crm-onboarding-recovery.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "fix: make CRM onboarding self-driving and recoverable"
+          git push origin HEAD:fix/crm-onboarding-commissioning-recovery
