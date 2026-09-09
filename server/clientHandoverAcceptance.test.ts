@@ -10,6 +10,15 @@ const companySetup = fs.readFileSync(
   "utf8"
 );
 const routers = fs.readFileSync("server/routers.ts", "utf8");
+const db = fs.readFileSync("server/db.ts", "utf8");
+const approvalPolicy = fs.readFileSync(
+  "shared/companyKnowledgeApprovalPolicy.ts",
+  "utf8"
+);
+const companyLearningRuntime = fs.readFileSync(
+  "server/companyKnowledgePartialBatchRuntime.ts",
+  "utf8"
+);
 
 function compact(value: string) {
   return value.replace(/\s+/g, " ");
@@ -52,9 +61,27 @@ describe("client handover acceptance guards", () => {
     expect(crm).toContain("!crmIdentityMapped");
   });
 
-  it("keeps company knowledge review in the onboarding shell instead of exposing the dashboard sidebar", () => {
+  it("keeps company knowledge review in a standalone onboarding shell", () => {
     expect(companySetup).toContain("data-company-knowledge-review-shell");
-    expect(companySetup).toContain("fixed inset-0 z-[240]");
+    expect(companySetup).toContain("min-h-screen bg-[#F4F7FB]");
     expect(companySetup).toContain("data-company-knowledge-report");
+  });
+
+  it("does not force another paid crawl just to approve individually grounded facts", () => {
+    expect(db).not.toContain(
+      "This company-knowledge pack is incomplete. Retry company learning before approving any facts."
+    );
+    expect(db).toContain("const coverageIncomplete = completeness?.status");
+    expect(companySetup).toContain("you do not need to");
+    expect(companySetup).toContain("rerun the paid website crawl");
+  });
+
+  it("prioritises career programmes and rejects placeholder offering names", () => {
+    expect(approvalPolicy).toContain('type === "career_programme"');
+    expect(approvalPolicy).toContain("10_000");
+    expect(approvalPolicy).toContain("svg|image|icon|untitled|other|more");
+    expect(companyLearningRuntime).toContain(
+      "Career programmes are first-class sales entities"
+    );
   });
 });
