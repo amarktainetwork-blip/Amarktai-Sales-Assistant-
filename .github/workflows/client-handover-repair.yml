@@ -30,7 +30,25 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Apply focused repair
-        run: python3 scripts/clientHandoverRepair.py
+        shell: bash
+        run: |
+          # The Assistant has exactly two identical UI fallback occurrences.
+          # Let the repair helper consume them one at a time while still failing
+          # if an expected pattern is missing entirely.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/clientHandoverRepair.py')
+          text = p.read_text()
+          old = '    if count != 1:\n'
+          if old not in text:
+              raise SystemExit('repair helper guard not found')
+          p.write_text(text.replace(old, '    if count < 1:\n', 1))
+          PY
+          python3 scripts/clientHandoverRepair.py
+          if grep -Fq 'response.content || "I’m ready. What would you like to do next?"' client/src/pages/Assistant.tsx; then
+            echo 'CANNED_ASSISTANT_FALLBACK_REMAINS=YES'
+            exit 1
+          fi
 
       - name: Format changed product files
         run: |
