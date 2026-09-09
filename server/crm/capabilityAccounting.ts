@@ -3,11 +3,16 @@ import { CORE_BROWSER_OPERATIONS } from "./commissioningReadiness";
 
 export const REQUIRED_COMMISSIONED_OPERATIONS = [
   ...CORE_BROWSER_OPERATIONS,
-  "contact.sync",
+  "company.read",
   "company.sync",
+  "task.list",
   "task.sync",
+  "history.read",
+  "note.read",
+  "opportunity.read",
   "opportunity.sync",
   "activity.sync",
+  "owner.sync",
   "pipeline.list",
 ] as const;
 
@@ -50,6 +55,7 @@ export function accountBrowserCapabilities(input: {
           : ("read" as const),
       })),
   ];
+
   const rows = operations.map(operation => {
     const learned = input.operationStatuses.get(operation.key);
     const allowed = operation.capability
@@ -79,16 +85,32 @@ export function accountBrowserCapabilities(input: {
             : null,
     };
   });
+
+  const hardRequired = new Set<string>(CORE_BROWSER_OPERATIONS);
+  const expectedReads = new Set<string>(REQUIRED_COMMISSIONED_OPERATIONS);
   const criticalGaps = rows
-    .filter(
-      row =>
-        ((REQUIRED_COMMISSIONED_OPERATIONS as readonly string[]).includes(
-          row.operationKey
-        ) ||
-          (!standardKeys.has(row.operationKey) &&
-            discovered.has(row.operationKey))) &&
-        row.status !== "LIVE_PROVEN"
-    )
+    .filter(row => {
+      if (row.mode !== "read" || row.status === "LIVE_PROVEN") return false;
+      if (
+        row.status === "NOT_AUTHORISED" ||
+        row.status === "NOT_AVAILABLE_TO_ROLE"
+      )
+        return false;
+
+      const required = hardRequired.has(row.operationKey);
+      const expected = expectedReads.has(row.operationKey);
+      const discoveredCustom =
+        !standardKeys.has(row.operationKey) && discovered.has(row.operationKey);
+      if (!required && !expected && !discoveredCustom) return false;
+
+      // A CRM role can legitimately omit optional read surfaces. Missing optional
+      // surfaces are reported, but they must not trap first-time onboarding.
+      if (row.status === "UNSUPPORTED" && !required && !discoveredCustom)
+        return false;
+
+      return true;
+    })
     .map(row => ({ operationKey: row.operationKey, status: row.status }));
+
   return { rows, criticalGaps, complete: criticalGaps.length === 0 };
 }
