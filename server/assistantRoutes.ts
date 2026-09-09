@@ -11,6 +11,9 @@ import { routeSalesCommand } from "./supervisor";
 import { getTodayWork } from "./today";
 import { getWorkingContextForContact } from "./liveCalls/context";
 import { runGenxAgent, type ChatMessage } from "./genx";
+import { isGovernedEvidenceAgent } from "./governedEvidenceAgents";
+import { getSalesWatchtower } from "./salesCommsWatchtower";
+import { getManagerWatchtower } from "./managerWatchtower";
 import { listConnectedSystemsForUser } from "./connectedSystems";
 import { planAssistantCrmBatchInstruction } from "./crm/assistantBatchExecution";
 import { routeConnectedSystemActions } from "./crmRouter";
@@ -389,8 +392,9 @@ export function registerAssistantRoutes(app: Express) {
         }
       }
 
-      const direct =
-        directAssistantAction(query) || deterministicTodayAnswer(query, today);
+      // Navigation-only shortcuts may return without AI. Sales questions
+      // continue through governed evidence plus the GenX response path below.
+      const direct = directAssistantAction(query);
       if (direct) {
         await recordAudit({
           userId,
@@ -449,6 +453,19 @@ export function registerAssistantRoutes(app: Express) {
       }
 
       const route = routeSalesCommand(query);
+      const governedEvidence =
+        route.agentKey === "manager_watchtower"
+          ? await getManagerWatchtower({
+              userId,
+              organisationId: membership.organisationId,
+            })
+          : isGovernedEvidenceAgent(route.agentKey)
+            ? await getSalesWatchtower({
+                userId,
+                organisationId: membership.organisationId,
+                includePromises: route.agentKey === "promise_tracker",
+              })
+            : null;
       const contactContext = contactId
         ? await getWorkingContextForContact({
             organisationId: membership.organisationId,
@@ -538,10 +555,14 @@ export function registerAssistantRoutes(app: Express) {
             })),
         })),
         requestRoute: route.summary,
+        governedEvidence,
       });
 
       const response = await runGenxAgent({
-        agentKey: route.agentKey,
+        // Evidence specialists supply facts; GenX synthesizes the customer-facing answer.
+        agentKey: isGovernedEvidenceAgent(route.agentKey)
+          ? "supervisor"
+          : route.agentKey,
         messages,
         approvedKnowledge,
         workingContext,

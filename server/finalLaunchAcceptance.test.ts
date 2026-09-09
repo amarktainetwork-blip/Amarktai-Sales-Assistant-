@@ -72,13 +72,13 @@ describe("final launch acceptance safeguards", () => {
     ).rejects.toThrow("Retained raw page evidence is unavailable");
   });
 
-  it("keeps exactly four user-facing onboarding stages and removes the dead automation render path", () => {
+  it("keeps the five user-facing onboarding stages and removes the dead automation render path", () => {
     const source = readFileSync(
       new URL("../client/src/pages/Onboarding.tsx", import.meta.url),
       "utf8"
     );
     expect(source).toContain(
-      'const labels = ["Business", "Learn", "CRM", "Ready"]'
+      'const labels = ["Business", "Learn", "Outlook", "CRM", "Ready"]'
     );
     expect(source).not.toContain("{false && (");
     expect(source).not.toContain("Choose the first safe automation rule");

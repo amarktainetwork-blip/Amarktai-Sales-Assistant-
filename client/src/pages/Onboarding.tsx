@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   Globe2,
   Loader2,
+  Mail,
   Network,
   RefreshCw,
   ShieldCheck,
@@ -35,6 +36,16 @@ type ProviderOption = {
   label: string;
   url: string;
   method: "browser" | "oauth";
+};
+
+type MailboxStatus = {
+  configured: boolean;
+  connected: boolean;
+  mailbox: null | {
+    email: string;
+    displayName?: string | null;
+    status: string;
+  };
 };
 
 const providers: ProviderOption[] = [
@@ -240,6 +251,9 @@ export default function Onboarding() {
   const [provider, setProvider] = useState<ProviderOption>(providers[0]);
   const [customUrl, setCustomUrl] = useState("");
   const [error, setError] = useState("");
+  const [mailboxStatus, setMailboxStatus] = useState<MailboxStatus | null>(
+    null
+  );
 
   const canManage =
     organisation.data?.role === "owner" ||
@@ -249,6 +263,24 @@ export default function Onboarding() {
     const mode = organisation.data?.settings?.workspaceMode;
     if (mode === "individual" || mode === "team") setWorkspaceMode(mode);
   }, [organisation.data?.settings?.workspaceMode]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadMailbox = async () => {
+      const response = await fetch("/api/mailbox", { credentials: "include" });
+      if (!response.ok || cancelled) return;
+      const body = (await response
+        .json()
+        .catch(() => null)) as MailboxStatus | null;
+      if (body && !cancelled) setMailboxStatus(body);
+    };
+    void loadMailbox();
+    const timer = window.setInterval(() => void loadMailbox(), 4_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   useEffect(() => {
     const saved = setup.data?.profile;
@@ -272,6 +304,7 @@ export default function Onboarding() {
     setup.data?.profile?.discoveryStatus === "confirmed";
   const connectedSystems = systems.data ?? [];
   const crmConnected = connectedSystems.length > 0;
+  const mailboxConnected = Boolean(mailboxStatus?.connected);
   const learningRunning = ["queued", "running"].includes(
     learning.data?.status || ""
   );
@@ -290,9 +323,16 @@ export default function Onboarding() {
   const step = useMemo(() => {
     if (!workspaceMode || !profileSaved) return 1;
     if (!knowledgeConfirmed) return 2;
-    if (!crmConnected) return 3;
-    return 4;
-  }, [workspaceMode, profileSaved, knowledgeConfirmed, crmConnected]);
+    if (!mailboxConnected) return 3;
+    if (!crmConnected) return 4;
+    return 5;
+  }, [
+    workspaceMode,
+    profileSaved,
+    knowledgeConfirmed,
+    mailboxConnected,
+    crmConnected,
+  ]);
 
   async function chooseMode(mode: "individual" | "team") {
     try {
@@ -375,10 +415,11 @@ export default function Onboarding() {
         baseUrl: startUrl,
         connectionMethod: provider.method,
         allowedReadCapabilities,
-        allowedWriteCapabilities,
+        // Onboarding proves reads only. Writes require later explicit commissioning.
+        allowedWriteCapabilities: [],
       });
       await systems.refetch();
-      await updateOnboarding.mutateAsync({ step: 3 });
+      await updateOnboarding.mutateAsync({ step: 4 });
       if (provider.method === "oauth") {
         const result = await beginOAuth.mutateAsync({
           organisationId,
@@ -432,7 +473,7 @@ export default function Onboarding() {
       </SetupShell>
     );
 
-  const labels = ["Business", "Learn", "CRM", "Ready"];
+  const labels = ["Business", "Learn", "Outlook", "CRM", "Ready"];
 
   return (
     <SetupShell wide>
@@ -446,7 +487,7 @@ export default function Onboarding() {
           connect the CRM your team already uses. You can review everything as
           you go.
         </p>
-        <div className="mt-5 grid gap-3 sm:grid-cols-4">
+        <div className="mt-5 grid gap-3 sm:grid-cols-5">
           {labels.map((label, index) => (
             <StepDot
               key={label}
@@ -616,7 +657,8 @@ export default function Onboarding() {
           </h3>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-[#607086]">
             AmarktAI will read the public pages you’ve authorised and turn them
-            into a clear business summary. {"Nothing becomes trusted company knowledge until you confirm it."}
+            into a clear business summary.{" "}
+            {"Nothing becomes trusted company knowledge until you confirm it."}
           </p>
 
           {learningRunning ? (
@@ -708,7 +750,43 @@ export default function Onboarding() {
       {step === 3 ? (
         <section className="mt-7">
           <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#35516F]">
-            STEP 3 · YOUR CRM
+            STEP 3 · YOUR OUTLOOK MAILBOX
+          </p>
+          <h3 className="mt-2 text-2xl font-bold tracking-[-.035em] text-[#203047]">
+            Connect the mailbox you already use for sales.
+          </h3>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-[#607086]">
+            Connect Microsoft Outlook with the existing secure sign-in. AmarktAI
+            uses your own mailbox for customer context and reviewed follow-ups;
+            connecting it does not send anything.
+          </p>
+          {mailboxStatus?.configured === false ? (
+            <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              Microsoft mailbox connection is not configured on this
+              installation yet.
+            </div>
+          ) : null}
+          <Button
+            className="mt-5"
+            disabled={mailboxStatus?.configured === false}
+            onClick={() =>
+              window.location.assign("/api/mailbox/microsoft/start")
+            }
+          >
+            <Mail className="mr-2 h-4 w-4" /> Connect Outlook
+          </Button>
+          {mailboxStatus?.connected && mailboxStatus.mailbox ? (
+            <p className="mt-3 text-sm font-semibold text-emerald-700">
+              Connected as {mailboxStatus.mailbox.email}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
+      {step === 4 ? (
+        <section className="mt-7">
+          <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#35516F]">
+            STEP 4 · YOUR CRM
           </p>
           <h3 className="mt-2 text-2xl font-bold tracking-[-.035em] text-[#203047]">
             Connect the CRM your team already uses.
@@ -770,10 +848,10 @@ export default function Onboarding() {
         </section>
       ) : null}
 
-      {step === 4 ? (
+      {step === 5 ? (
         <section className="mt-7">
           <p className="text-[10px] font-black uppercase tracking-[.14em] text-emerald-700">
-            STEP 4 · FINISH SETUP
+            STEP 5 · FINISH SETUP
           </p>
           <h3 className="mt-2 text-3xl font-bold tracking-[-.04em] text-[#203047]">
             Sign in to your CRM and finish the connection.
