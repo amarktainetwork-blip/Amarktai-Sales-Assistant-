@@ -91,11 +91,7 @@ export function accountBrowserCapabilities(input: {
   const criticalGaps = rows
     .filter(row => {
       if (row.mode !== "read" || row.status === "LIVE_PROVEN") return false;
-      if (
-        row.status === "NOT_AUTHORISED" ||
-        row.status === "NOT_AVAILABLE_TO_ROLE"
-      )
-        return false;
+      if (row.status === "NOT_AUTHORISED") return false;
 
       const required = hardRequired.has(row.operationKey);
       const expected = expectedReads.has(row.operationKey);
