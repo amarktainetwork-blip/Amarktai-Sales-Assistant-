@@ -12,410 +12,54 @@ jobs:
   repair:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
           ref: fix/client-handover-onboarding-assistant-scope
           fetch-depth: 0
+
       - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22.15.0
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Apply focused handover repair
-        shell: bash
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply focused repair
+        run: python3 scripts/clientHandoverRepair.py
+
+      - name: Format changed product files
         run: |
-          python3 <<'PY'
-          from pathlib import Path
+          pnpm exec prettier --write \
+            server/assistantRoutes.ts \
+            server/today.ts \
+            server/personalCrmCustomers.ts \
+            server/routers.ts \
+            client/src/pages/Assistant.tsx \
+            client/src/pages/Onboarding.tsx \
+            client/src/pages/CrmWorkspace.tsx \
+            README.md
 
-          def replace_once(path: str, old: str, new: str):
-              p = Path(path)
-              text = p.read_text()
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f"Expected exactly one match in {path}, found {count}: {old[:120]!r}")
-              p.write_text(text.replace(old, new, 1))
-
-          # 1) Customer-facing Assistant: deterministic execution stays governed,
-          # but ordinary sales questions must reach real GenX instead of canned replies.
-          replace_once(
-              "server/assistantRoutes.ts",
-              'import { runGenxAgent, type ChatMessage } from "./genx";\n',
-              'import { runGenxAgent, type ChatMessage } from "./genx";\nimport { isGovernedEvidenceAgent } from "./governedEvidenceAgents";\nimport { getSalesWatchtower } from "./salesCommsWatchtower";\nimport { getManagerWatchtower } from "./managerWatchtower";\n',
-          )
-          replace_once(
-              "server/assistantRoutes.ts",
-              '      const direct =\n        directAssistantAction(query) || deterministicTodayAnswer(query, today);\n',
-              '      // Navigation-only shortcuts may return without AI. Sales questions\n      // continue through the governed evidence + GenX response path below.\n      const direct = directAssistantAction(query);\n',
-          )
-          replace_once(
-              "server/assistantRoutes.ts",
-              '      const route = routeSalesCommand(query);\n      const contactContext = contactId\n',
-              '      const route = routeSalesCommand(query);\n      const governedEvidence =\n        route.agentKey === "manager_watchtower"\n          ? await getManagerWatchtower({\n              userId,\n              organisationId: membership.organisationId,\n            })\n          : isGovernedEvidenceAgent(route.agentKey)\n            ? await getSalesWatchtower({\n                userId,\n                organisationId: membership.organisationId,\n                includePromises: route.agentKey === "promise_tracker",\n              })\n            : null;\n      const contactContext = contactId\n',
-          )
-          replace_once(
-              "server/assistantRoutes.ts",
-              '        requestRoute: route.summary,\n      });\n\n      const response = await runGenxAgent({\n        agentKey: route.agentKey,\n',
-              '        requestRoute: route.summary,\n        governedEvidence,\n      });\n\n      const response = await runGenxAgent({\n        // Evidence specialists provide factual context above; the customer-facing\n        // answer is synthesized by GenX so the Assistant remains conversational.\n        agentKey: isGovernedEvidenceAgent(route.agentKey)\n          ? "supervisor"\n          : route.agentKey,\n',
-          )
-
-          # Never hide an empty/broken provider response behind a generic canned answer.
-          replace_once(
-              "client/src/pages/Assistant.tsx",
-              '  if (!response.ok)\n    throw new Error(body.error || "AmarktAI could not respond.");\n  return body;\n',
-              '  if (!response.ok)\n    throw new Error(body.error || "AmarktAI could not respond.");\n  if (!body.content?.trim())\n    throw new Error("AmarktAI returned an empty intelligence response.");\n  return body;\n',
-          )
-          replace_once(
-              "client/src/pages/Assistant.tsx",
-              '          content:\n            response.content || "I’m ready. What would you like to do next?",\n',
-              '          content: response.content!,\n',
-          )
-          replace_once(
-              "client/src/pages/Assistant.tsx",
-              '          content:\n            response.content || "I’m ready. What would you like to do next?",\n',
-              '          content: response.content!,\n',
-          )
-
-          # 2) Personal workspace data is always scoped to the signed-in CRM identity.
-          # Management/team-wide visibility remains on explicit Team screens.
-          replace_once(
-              "server/today.ts",
-              'import { canViewTeamData, requireOrganisationMembership } from "./organisation";\n',
-              'import { requireOrganisationMembership } from "./organisation";\n',
-          )
-          replace_once(
-              "server/today.ts",
-              '  const ownerIds = new Set(mappings.map(mapping => mapping.externalUserId));\n  const unrestricted = canViewTeamData(membership.role);\n  const belongsToUser = (ownerExternalId: string | null) =>\n    unrestricted || ownerIds.has(ownerExternalId ?? "");\n',
-              '  const ownerIds = new Set(mappings.map(mapping => mapping.externalUserId));\n  const belongsToUser = (ownerExternalId: string | null) =>\n    ownerIds.has(ownerExternalId ?? "");\n',
-          )
-          replace_once(
-              "server/today.ts",
-              '      if (unrestricted) return true;\n      return belongsToUser(row.contactOwnerExternalId);\n',
-              '      return belongsToUser(row.contactOwnerExternalId);\n',
-          )
-          replace_once(
-              "server/today.ts",
-              '    .filter(item => unrestricted || item.salespersonUserId === input.userId)\n',
-              '    .filter(item => item.salespersonUserId === input.userId)\n',
-          )
-          replace_once(
-              "server/today.ts",
-              '    requiresOwnerMapping: !unrestricted && ownerIds.size === 0,\n',
-              '    requiresOwnerMapping: ownerIds.size === 0,\n',
-          )
-
-          Path("server/personalCrmCustomers.ts").write_text(r'''import { and, eq } from "drizzle-orm";
-import { crmContacts, externalUserMappings } from "../drizzle/schema";
-import { getDb, listCrmCustomers } from "./db";
-
-/**
- * The personal Customers/Assistant surface must never become organisation-wide
- * merely because the signed-in person is also a manager. Team-wide data belongs
- * on explicit management screens. A CRM owner identity must be mapped first.
- */
-export async function listPersonalCrmCustomers(input: {
-  userId: number;
-  organisationId: number;
-}) {
-  const db = await getDb();
-  if (!db) throw new Error("Database connection is unavailable.");
-
-  const owned = await db
-    .select({
-      connectedSystemId: crmContacts.connectedSystemId,
-      externalId: crmContacts.externalId,
-    })
-    .from(crmContacts)
-    .innerJoin(
-      externalUserMappings,
-      and(
-        eq(externalUserMappings.organisationId, input.organisationId),
-        eq(externalUserMappings.connectedSystemId, crmContacts.connectedSystemId),
-        eq(externalUserMappings.externalUserId, crmContacts.ownerExternalId),
-        eq(externalUserMappings.userId, input.userId),
-        eq(externalUserMappings.isActive, true)
-      )
-    )
-    .where(eq(crmContacts.organisationId, input.organisationId));
-
-  if (!owned.length) return [];
-  const allowed = new Set(
-    owned.map(contact => `${contact.connectedSystemId}:${contact.externalId}`)
-  );
-  const customers = await listCrmCustomers(input.organisationId);
-  return customers.filter(customer =>
-    allowed.has(`${customer.connectedSystemId}:${customer.externalId}`)
-  );
-}
-''')
-          replace_once(
-              "server/routers.ts",
-              '  listCrmCustomers,\n',
-              '',
-          )
-          replace_once(
-              "server/routers.ts",
-              'import { getTodayWork } from "./today";\n',
-              'import { getTodayWork } from "./today";\nimport { listPersonalCrmCustomers } from "./personalCrmCustomers";\n',
-          )
-          replace_once(
-              "server/routers.ts",
-              '    customers: secondFactorProcedure.query(({ ctx }) => {\n      if (!ctx.activeOrganisation)\n        throw new Error("Choose an organisation before loading customers.");\n      return listCrmCustomers(ctx.activeOrganisation.organisationId);\n    }),\n',
-              '    customers: secondFactorProcedure.query(({ ctx }) => {\n      if (!ctx.activeOrganisation)\n        throw new Error("Choose an organisation before loading customers.");\n      return listPersonalCrmCustomers({\n        userId: ctx.user.id,\n        organisationId: ctx.activeOrganisation.organisationId,\n      });\n    }),\n',
-          )
-
-          # 3) Onboarding: Outlook is an explicit existing connection step BEFORE CRM.
-          # Initial CRM commissioning is READ-ONLY so onboarding can finish safely
-          # without requiring an authorised production write test.
-          replace_once(
-              "client/src/pages/Onboarding.tsx",
-              '  Loader2,\n  Network,\n',
-              '  Loader2,\n  Mail,\n  Network,\n',
-          )
-          replace_once(
-              "client/src/pages/Onboarding.tsx",
-              'type ProviderOption = {\n  provider: Provider;\n  label: string;\n  url: string;\n  method: "browser" | "oauth";\n};\n',
-              'type ProviderOption = {\n  provider: Provider;\n  label: string;\n  url: string;\n  method: "browser" | "oauth";\n};\n\ntype MailboxStatus = {\n  configured: boolean;\n  connected: boolean;\n  mailbox: null | { email: string; displayName?: string | null; status: string };\n};\n',
-          )
-          replace_once(
-              "client/src/pages/Onboarding.tsx",
-              '  const [customUrl, setCustomUrl] = useState("");\n  const [error, setError] = useState("");\n',
-              '  const [customUrl, setCustomUrl] = useState("");\n  const [error, setError] = useState("");\n  const [mailboxStatus, setMailboxStatus] = useState<MailboxStatus | null>(null);\n',
-          )
-          replace_once(
-              "client/src/pages/Onboarding.tsx",
-              '  useEffect(() => {\n    const mode = organisation.data?.settings?.workspaceMode;\n    if (mode === "individual" || mode === "team") setWorkspaceMode(mode);\n  }, [organisation.data?.settings?.workspaceMode]);\n',
-              '  useEffect(() => {\n    const mode = organisation.data?.settings?.workspaceMode;\n    if (mode === "individual" || mode === "team") setWorkspaceMode(mode);\n  }, [organisation.data?.settings?.workspaceMode]);\n\n  useEffect(() => {\n    let cancelled = false;\n    const loadMailbox = async () => {\n      const response = await fetch("/api/mailbox", { credentials: "include" });\n      if (!response.ok || cancelled) return;\n      const body = (await response.json().catch(() => null)) as MailboxStatus | null;\n      if (body && !cancelled) setMailboxStatus(body);\n    };\n    void loadMailbox();\n    const timer = window.setInterval(() => void loadMailbox(), 4_000);\n    return () => {\n      cancelled = true;\n      window.clearInterval(timer);\n    };\n  }, []);\n',
-          )
-          replace_once(
-              "client/src/pages/Onboarding.tsx",
-              '  const connectedSystems = systems.data ?? [];\n  const crmConnected = connectedSystems.length > 0;\n',
-              '  const connectedSystems = systems.data ?? [];\n  const crmConnected = connectedSystems.length > 0;\n  const mailboxConnected = Boolean(mailboxStatus?.connected);\n',
-          )
-          replace_once(
-              "client/src/pages/Onboarding.tsx",
-              '    if (!knowledgeConfirmed) return 2;\n    if (!crmConnected) return 3;\n    return 4;\n  }, [workspaceMode, profileSaved, knowledgeConfirmed, crmConnected]);\n',
-              '    if (!knowledgeConfirmed) return 2;\n    if (!mailboxConnected) return 3;\n    if (!crmConnected) return 4;\n    return 5;\n  }, [workspaceMode, profileSaved, knowledgeConfirmed, mailboxConnected, crmConnected]);\n',
-          )
-          replace_once(
-              "client/src/pages/Onboarding.tsx",
-              '        allowedReadCapabilities,\n        allowedWriteCapabilities,\n',
-              '        allowedReadCapabilities,\n        // Onboarding proves reads only. CRM writes stay disabled until a manager\n        // explicitly enables and commissions them against an authorised test record.\n        allowedWriteCapabilities: [],\n',
-          )
-          replace_once(
-              "client/src/pages/Onboarding.tsx",
-              '      await updateOnboarding.mutateAsync({ step: 3 });\n',
-              '      await updateOnboarding.mutateAsync({ step: 4 });\n',
-          )
-          replace_once(
-              "client/src/pages/Onboarding.tsx",
-              '  const labels = ["Business", "Learn", "CRM", "Ready"];\n',
-              '  const labels = ["Business", "Learn", "Outlook", "CRM", "Ready"];\n',
-          )
-          replace_once(
-              "client/src/pages/Onboarding.tsx",
-              '        <div className="mt-5 grid gap-3 sm:grid-cols-4">\n',
-              '        <div className="mt-5 grid gap-3 sm:grid-cols-5">\n',
-          )
-          crm_marker = '      {step === 3 ? (\n        <section className="mt-7">\n          <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#35516F]">\n            STEP 3 · YOUR CRM\n'
-          email_block = '''      {step === 3 ? (\n        <section className="mt-7">\n          <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#35516F]">\n            STEP 3 · YOUR OUTLOOK MAILBOX\n          </p>\n          <h3 className="mt-2 text-2xl font-bold tracking-[-.035em] text-[#203047]">\n            Connect the mailbox you already use for sales.\n          </h3>\n          <p className="mt-3 max-w-2xl text-sm leading-6 text-[#607086]">\n            Connect Microsoft Outlook with the existing secure sign-in. AmarktAI uses your own mailbox for customer context and reviewed follow-ups; it does not send anything just because you connected it.\n          </p>\n          {mailboxStatus?.configured === false ? (\n            <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">\n              Microsoft mailbox connection is not configured on this installation yet.\n            </div>\n          ) : null}\n          <Button\n            className="mt-5"\n            disabled={mailboxStatus?.configured === false}\n            onClick={() => window.location.assign("/api/mailbox/microsoft/start")}\n          >\n            <Mail className="mr-2 h-4 w-4" /> Connect Outlook\n          </Button>\n          {mailboxStatus?.connected && mailboxStatus.mailbox ? (\n            <p className="mt-3 text-sm font-semibold text-emerald-700">\n              Connected as {mailboxStatus.mailbox.email}\n            </p>\n          ) : null}\n        </section>\n      ) : null}\n\n      {step === 4 ? (\n        <section className="mt-7">\n          <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#35516F]">\n            STEP 4 · YOUR CRM\n'''
-          replace_once("client/src/pages/Onboarding.tsx", crm_marker, email_block)
-          replace_once(
-              "client/src/pages/Onboarding.tsx",
-              '      {step === 4 ? (\n        <section className="mt-7">\n          <p className="text-[10px] font-black uppercase tracking-[.14em] text-emerald-700">\n            STEP 4 · FINISH SETUP\n',
-              '      {step === 5 ? (\n        <section className="mt-7">\n          <p className="text-[10px] font-black uppercase tracking-[.14em] text-emerald-700">\n            STEP 5 · FINISH SETUP\n',
-          )
-
-          # 4) CRM screen visibly shows commissioning instead of silently polling.
-          replace_once(
-              "client/src/pages/CrmWorkspace.tsx",
-              '  const [commissioningReady, setCommissioningReady] = useState(false);\n',
-              '  const [commissioningReady, setCommissioningReady] = useState(false);\n  const [commissioningJob, setCommissioningJob] = useState<{\n    state?: string;\n    status?: string;\n    humanStatus?: string;\n    lastError?: string | null;\n    progress?: { humanStatus?: string; safeReads?: { status?: string } };\n  } | null>(null);\n  const [crmIdentityMapped, setCrmIdentityMapped] = useState(false);\n',
-          )
-          replace_once(
-              "client/src/pages/CrmWorkspace.tsx",
-              '    setCommissioningReady(false);\n    setBrowserAuthenticationState("STARTING");\n',
-              '    setCommissioningReady(false);\n    setCommissioningJob(null);\n    setBrowserAuthenticationState("STARTING");\n',
-          )
-          replace_once(
-              "client/src/pages/CrmWorkspace.tsx",
-              '      const body = (await response.json().catch(() => ({}))) as {\n        job?: { state?: string; status?: string } | null;\n      };\n      setCommissioningReady(\n        body.job?.state === "READY" && body.job?.status === "ready"\n      );\n',
-              '      const body = (await response.json().catch(() => ({}))) as {\n        job?: {\n          state?: string;\n          status?: string;\n          humanStatus?: string;\n          lastError?: string | null;\n          progress?: { humanStatus?: string; safeReads?: { status?: string } };\n        } | null;\n      };\n      setCommissioningJob(body.job ?? null);\n      setCommissioningReady(\n        body.job?.state === "READY" && body.job?.status === "ready"\n      );\n',
-          )
-          replace_once(
-              "client/src/pages/CrmWorkspace.tsx",
-              '      !commissioningReady ||\n      !automationPolicyConfigured ||\n',
-              '      !commissioningReady ||\n      !crmIdentityMapped ||\n      !automationPolicyConfigured ||\n',
-          )
-          replace_once(
-              "client/src/pages/CrmWorkspace.tsx",
-              '    commissioningReady,\n    utils.organisation.current,\n',
-              '    commissioningReady,\n    crmIdentityMapped,\n    utils.organisation.current,\n',
-          )
-          replace_once(
-              "client/src/pages/CrmWorkspace.tsx",
-              '        {canManage &&\n        !onboardingComplete &&\n',
-              '''        {canManage && !onboardingComplete && browserAuthenticationState === "AUTHENTICATED" ? (\n          <div className="absolute left-1/2 top-3 z-30 w-[min(94%,760px)] -translate-x-1/2 rounded-2xl border border-[#C7D4E4] bg-white/95 p-4 shadow-[0_14px_40px_rgba(20,48,84,.16)] backdrop-blur">\n            <div className="flex items-start gap-3">\n              {commissioningReady ? (\n                <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-emerald-600" />\n              ) : (\n                <Loader2 className="mt-0.5 size-5 shrink-0 animate-spin text-[#2865C7]" />\n              )}\n              <div className="min-w-0">\n                <p className="font-bold text-[#203047]">\n                  {commissioningReady ? "CRM learning complete" : `AmarktAI is learning ${selected?.displayName || "your CRM"}`}\n                </p>\n                <p className="mt-1 text-sm text-[#607086]">\n                  {commissioningJob?.progress?.humanStatus || commissioningJob?.humanStatus || "Checking the signed-in CRM and finding safe read functions…"}\n                </p>\n                {commissioningJob?.lastError ? (\n                  <p className="mt-2 text-xs font-semibold text-amber-800">{commissioningJob.lastError}</p>\n                ) : null}\n                <p className="mt-2 text-xs text-[#718096]">\n                  Setup starts with read-only CRM access. No CRM record is changed during onboarding.\n                </p>\n              </div>\n            </div>\n            <CrmIdentitySetup\n              active={commissioningReady}\n              onMapped={setCrmIdentityMapped}\n            />\n          </div>\n        ) : null}\n        {canManage &&\n        !onboardingComplete &&\n''',
-          )
-          replace_once(
-              "client/src/pages/CrmWorkspace.tsx",
-              '  Sparkles,\n  X,\n',
-              '  Sparkles,\n  CheckCircle2,\n  X,\n',
-          )
-
-          # Inline identity gate: exact-email candidate from the existing secure endpoint.
-          marker = '\nfunction LiveWorkspace({\n'
-          identity_component = r'''
-function CrmIdentitySetup({
-  active,
-  onMapped,
-}: {
-  active: boolean;
-  onMapped: (mapped: boolean) => void;
-}) {
-  const [state, setState] = useState<{
-    mapped: boolean;
-    current: Array<{ id: number; displayName: string; email: string | null }>;
-    candidates: Array<{ id: number; displayName: string; email: string | null }>;
-  } | null>(null);
-  const [claiming, setClaiming] = useState(false);
-
-  useEffect(() => {
-    if (!active) {
-      onMapped(false);
-      return;
-    }
-    let cancelled = false;
-    const load = async () => {
-      const response = await fetch("/api/team/crm-identity", {
-        credentials: "include",
-      });
-      if (!response.ok || cancelled) return;
-      const body = (await response.json()) as NonNullable<typeof state>;
-      if (cancelled) return;
-      setState(body);
-      onMapped(body.mapped);
-    };
-    void load();
-    const timer = window.setInterval(() => void load(), 3_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [active, onMapped]);
-
-  if (!active || state?.mapped) return null;
-  const candidate = state?.candidates?.[0];
-  return (
-    <div className="mt-3 border-t border-[#E0E7F0] pt-3">
-      <p className="text-sm font-bold text-[#203047]">Confirm your salesperson identity</p>
-      <p className="mt-1 text-xs leading-5 text-[#607086]">
-        Your personal workspace only shows CRM records owned by your mapped salesperson identity. Team-wide records stay in management views.
-      </p>
-      {candidate ? (
-        <Button
-          size="sm"
-          className="mt-3"
-          disabled={claiming}
-          onClick={async () => {
-            setClaiming(true);
-            try {
-              const response = await fetch("/api/team/crm-identity", {
-                method: "PUT",
-                credentials: "include",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ mappingId: candidate.id }),
-              });
-              const body = (await response.json().catch(() => ({}))) as { error?: string };
-              if (!response.ok) throw new Error(body.error || "CRM identity could not be confirmed.");
-              onMapped(true);
-              setState(current => current ? { ...current, mapped: true } : current);
-            } catch (error) {
-              toast.error(friendlyError(error, "CRM identity could not be confirmed."));
-            } finally {
-              setClaiming(false);
-            }
-          }}
-        >
-          {claiming ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
-          Use {candidate.displayName}{candidate.email ? ` · ${candidate.email}` : ""}
-        </Button>
-      ) : (
-        <p className="mt-2 text-xs font-semibold text-amber-800">
-          Waiting for the CRM owner list to synchronize. AmarktAI will only offer an identity with the same signed-in email; it will not guess by name.
-        </p>
-      )}
-    </div>
-  );
-}
-'''
-          p = Path("client/src/pages/CrmWorkspace.tsx")
-          text = p.read_text()
-          if text.count(marker) != 1:
-              raise SystemExit("CrmWorkspace LiveWorkspace marker mismatch")
-          p.write_text(text.replace(marker, "\n" + identity_component + marker, 1))
-
-          # Static regression guards for the exact handover defects.
-          Path("server/clientHandoverAcceptance.test.ts").write_text(r'''import { describe, expect, it } from "vitest";
-import fs from "node:fs";
-
-const assistant = fs.readFileSync("server/assistantRoutes.ts", "utf8");
-const today = fs.readFileSync("server/today.ts", "utf8");
-const onboarding = fs.readFileSync("client/src/pages/Onboarding.tsx", "utf8");
-const crm = fs.readFileSync("client/src/pages/CrmWorkspace.tsx", "utf8");
-const routers = fs.readFileSync("server/routers.ts", "utf8");
-
-function compact(value: string) {
-  return value.replace(/\s+/g, " ");
-}
-
-describe("client handover acceptance guards", () => {
-  it("does not short-circuit ordinary sales questions through deterministic Today copy", () => {
-    expect(assistant).not.toContain("directAssistantAction(query) || deterministicTodayAnswer(query, today)");
-    expect(assistant).toContain("governedEvidence");
-    expect(assistant).toContain('agentKey: isGovernedEvidenceAgent(route.agentKey)');
-  });
-
-  it("never makes the personal Today workspace team-wide because of management role", () => {
-    expect(today).not.toContain("canViewTeamData");
-    expect(today).not.toContain("unrestricted || ownerIds.has");
-    expect(today).toContain("requiresOwnerMapping: ownerIds.size === 0");
-  });
-
-  it("scopes the personal Customers endpoint by signed-in user", () => {
-    expect(compact(routers)).toContain(compact("return listPersonalCrmCustomers({ userId: ctx.user.id"));
-  });
-
-  it("puts Outlook before read-only CRM commissioning", () => {
-    expect(onboarding).toContain('["Business", "Learn", "Outlook", "CRM", "Ready"]');
-    expect(onboarding).toContain('/api/mailbox/microsoft/start');
-    expect(compact(onboarding)).toContain("allowedWriteCapabilities: []");
-  });
-
-  it("shows CRM learning and requires a mapped salesperson identity", () => {
-    expect(crm).toContain("AmarktAI is learning");
-    expect(crm).toContain("/api/team/crm-identity");
-    expect(crm).toContain("!crmIdentityMapped");
-  });
-});
-''')
-          PY
-      - name: Format touched files
-        run: pnpm exec prettier --write server/assistantRoutes.ts server/today.ts server/personalCrmCustomers.ts server/routers.ts server/clientHandoverAcceptance.test.ts client/src/pages/Assistant.tsx client/src/pages/Onboarding.tsx client/src/pages/CrmWorkspace.tsx
-      - name: Focused acceptance tests
-        run: pnpm exec vitest run server/clientHandoverAcceptance.test.ts server/teamAdmin/routes.test.ts
       - name: TypeScript
         run: pnpm check
-      - name: Full tests
+
+      - name: Tests
         run: pnpm test
+
       - name: Production build
         run: pnpm build
-      - name: Commit repair
+
+      - name: Commit tested repair
         shell: bash
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add server/assistantRoutes.ts server/today.ts server/personalCrmCustomers.ts server/routers.ts server/clientHandoverAcceptance.test.ts client/src/pages/Assistant.tsx client/src/pages/Onboarding.tsx client/src/pages/CrmWorkspace.tsx
-          git commit -m "fix: complete client handover onboarding and personal AI flow"
+          rm -f scripts/clientHandoverRepair.py .github/workflows/client-handover-repair.yml
+          git add -A
+          git diff --cached --stat
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix: complete client handover onboarding and salesperson scope'
           git push origin HEAD:fix/client-handover-onboarding-assistant-scope
