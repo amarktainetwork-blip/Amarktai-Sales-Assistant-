@@ -165,6 +165,9 @@ export function websiteKnowledgePassesCommercialApprovalPolicy(
 function safeIdentityTitle(value: string) {
   const title = compactText(value);
   if (!title || containsCommercialKnowledge(title)) return null;
+  const semantic = title.replace(/[^A-Za-z0-9]+/g, "");
+  if (semantic.length < 3) return null;
+  if (/^(?:svg|image|icon|untitled|other|more)$/i.test(title)) return null;
   return title.slice(0, 220);
 }
 
@@ -305,7 +308,14 @@ export function buildSalesFocusSuggestions(
         Boolean(entry.item && entry.item.group === "offerings")
     )
     .map(({ candidate, item }) => {
-      const score = offeringRichness(candidate);
+      const type = candidate.offering?.type || "";
+      const typePriority =
+        type === "career_programme"
+          ? 10_000
+          : type === "individual_course"
+            ? 1_000
+            : 0;
+      const score = typePriority + offeringRichness(candidate);
       const sourceCount = new Set([
         ...(candidate.sourcePageIds || []),
         ...(candidate.offering?.sourcePageIds || []),
@@ -314,9 +324,13 @@ export function buildSalesFocusSuggestions(
         ...item,
         score,
         reason:
-          sourceCount > 1
-            ? `Strongly represented across ${sourceCount} website sources`
-            : "A clearly described company offering",
+          type === "career_programme"
+            ? sourceCount > 1
+              ? `Career programme evidenced across ${sourceCount} website sources`
+              : "Career programme identified from first-party website evidence"
+            : sourceCount > 1
+              ? `Strongly represented across ${sourceCount} website sources`
+              : "A clearly described company offering",
       };
     })
     .sort((left, right) => right.score - left.score || left.index - right.index)

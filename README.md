@@ -54,7 +54,7 @@ No CRM, mailbox, calendar, SMS, WhatsApp or speech provider is represented as li
 A new managed workspace follows one persistent, user-visible sequence:
 
 1. **Business** — choose individual/team mode and enter the essential company details.
-2. **Learn** — read the authorised public website, show factual page progress, review the evidence-backed company knowledge and explicitly confirm it.
+2. **Learn** — read the authorised public website, show factual page progress, review the evidence-backed company knowledge and explicitly confirm it. Career programmes are treated as first-class offerings and are prioritised in the review. If whole-site coverage reports gaps, a manager may still confirm only the individually source-grounded facts shown; missing or unselected facts remain untrusted and do not force another paid crawl just to continue onboarding.
 3. **Outlook** — connect the salesperson's existing Microsoft mailbox using delegated OAuth. Connecting a mailbox does not send customer communications.
 4. **CRM** — connect the existing CRM. Browser-based CRMs such as Genie open in the Secure CRM Browser so the user enters credentials, SSO and MFA directly with the provider.
 5. **Ready** — visibly commission safe CRM reads, run the initial normalized sync, confirm the signed-in salesperson's exact CRM identity, choose the automation preference and only then enter Today.

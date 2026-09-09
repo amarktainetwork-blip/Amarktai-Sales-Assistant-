@@ -157,12 +157,14 @@ describe("new-user browser CRM commissioning journey contract", () => {
     expect(companySetup).toContain("discovery.sourceUrl");
     expect(companySetup).toContain('target="_blank"');
     expect(companySetup).toContain("knowledgeIndexes: basics.map");
-    expect(onboarding).toMatch(/before any\s+information becomes trusted knowledge/);
+    expect(onboarding).toMatch(
+      /before any\s+information becomes trusted knowledge/
+    );
     expect(onboarding).toMatch(
       /Nothing becomes trusted\s+company knowledge until you confirm it/
     );
     expect(database).toContain('completeness?.status === "incomplete"');
-    expect(database).toContain(
+    expect(database).not.toContain(
       "Retry company learning before approving any facts"
     );
   });

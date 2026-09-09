@@ -2278,10 +2278,10 @@ export async function confirmWebsiteDiscovery(input: {
       completeness?: { status?: string };
     }
   ).completeness;
-  if (completeness?.status === "incomplete")
-    throw new Error(
-      "This company-knowledge pack is incomplete. Retry company learning before approving any facts."
-    );
+  // Whole-site coverage gaps do not invalidate individually source-grounded
+  // facts. Approval remains bounded to the explicitly selected candidates
+  // below; missing or unselected facts remain untrusted.
+  const coverageIncomplete = completeness?.status === "incomplete";
   const candidates = discovery.proposedKnowledge as Array<{
     title: string;
     content: string;
