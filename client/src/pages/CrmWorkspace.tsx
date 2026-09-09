@@ -19,6 +19,7 @@ import {
   RefreshCw,
   ShieldCheck,
   Sparkles,
+  CheckCircle2,
   X,
 } from "lucide-react";
 import {
@@ -123,6 +124,14 @@ export default function CrmWorkspace() {
   const [browserAuthenticationState, setBrowserAuthenticationState] =
     useState("STARTING");
   const [commissioningReady, setCommissioningReady] = useState(false);
+  const [commissioningJob, setCommissioningJob] = useState<{
+    state?: string;
+    status?: string;
+    humanStatus?: string;
+    lastError?: string | null;
+    progress?: { humanStatus?: string; safeReads?: { status?: string } };
+  } | null>(null);
+  const [crmIdentityMapped, setCrmIdentityMapped] = useState(false);
   const [savingAutomationPreset, setSavingAutomationPreset] =
     useState<AutomationPreset | null>(null);
   const completionAttemptedRef = useRef(false);
@@ -181,6 +190,7 @@ export default function CrmWorkspace() {
 
   useEffect(() => {
     setCommissioningReady(false);
+    setCommissioningJob(null);
     setBrowserAuthenticationState("STARTING");
     completionAttemptedRef.current = false;
     if (!selected || !canManage || onboardingComplete) return;
@@ -192,8 +202,15 @@ export default function CrmWorkspace() {
       );
       if (!response.ok || cancelled) return;
       const body = (await response.json().catch(() => ({}))) as {
-        job?: { state?: string; status?: string } | null;
+        job?: {
+          state?: string;
+          status?: string;
+          humanStatus?: string;
+          lastError?: string | null;
+          progress?: { humanStatus?: string; safeReads?: { status?: string } };
+        } | null;
       };
+      setCommissioningJob(body.job ?? null);
       setCommissioningReady(
         body.job?.state === "READY" && body.job?.status === "ready"
       );
@@ -213,6 +230,7 @@ export default function CrmWorkspace() {
       completionAttemptedRef.current ||
       browserAuthenticationState !== "AUTHENTICATED" ||
       !commissioningReady ||
+      !crmIdentityMapped ||
       !automationPolicyConfigured ||
       companySetup.data?.profile?.discoveryStatus !== "confirmed"
     )
@@ -243,6 +261,7 @@ export default function CrmWorkspace() {
     onboardingComplete,
     navigate,
     commissioningReady,
+    crmIdentityMapped,
     utils.organisation.current,
   ]);
 
@@ -277,6 +296,44 @@ export default function CrmWorkspace() {
         ) : (
           <NoBrowserCrm onConnections={() => navigate("/connections")} />
         )}
+        {canManage &&
+        !onboardingComplete &&
+        browserAuthenticationState === "AUTHENTICATED" ? (
+          <div className="absolute left-1/2 top-3 z-30 w-[min(94%,760px)] -translate-x-1/2 rounded-2xl border border-[#C7D4E4] bg-white/95 p-4 shadow-[0_14px_40px_rgba(20,48,84,.16)] backdrop-blur">
+            <div className="flex items-start gap-3">
+              {commissioningReady ? (
+                <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-emerald-600" />
+              ) : (
+                <Loader2 className="mt-0.5 size-5 shrink-0 animate-spin text-[#2865C7]" />
+              )}
+              <div className="min-w-0">
+                <p className="font-bold text-[#203047]">
+                  {commissioningReady
+                    ? "CRM learning complete"
+                    : `AmarktAI is learning ${selected?.displayName || "your CRM"}`}
+                </p>
+                <p className="mt-1 text-sm text-[#607086]">
+                  {commissioningJob?.progress?.humanStatus ||
+                    commissioningJob?.humanStatus ||
+                    "Checking the signed-in CRM and finding safe read functions…"}
+                </p>
+                {commissioningJob?.lastError ? (
+                  <p className="mt-2 text-xs font-semibold text-amber-800">
+                    {commissioningJob.lastError}
+                  </p>
+                ) : null}
+                <p className="mt-2 text-xs text-[#718096]">
+                  Setup starts with read-only CRM access. No CRM record is
+                  changed during onboarding.
+                </p>
+              </div>
+            </div>
+            <CrmIdentitySetup
+              active={commissioningReady}
+              onMapped={setCrmIdentityMapped}
+            />
+          </div>
+        ) : null}
         {canManage &&
         !onboardingComplete &&
         browserAuthenticationState === "AUTHENTICATED" &&
@@ -342,6 +399,107 @@ export default function CrmWorkspace() {
         ) : null}
       </div>
     </DashboardLayout>
+  );
+}
+
+function CrmIdentitySetup({
+  active,
+  onMapped,
+}: {
+  active: boolean;
+  onMapped: (mapped: boolean) => void;
+}) {
+  const [state, setState] = useState<{
+    mapped: boolean;
+    current: Array<{ id: number; displayName: string; email: string | null }>;
+    candidates: Array<{
+      id: number;
+      displayName: string;
+      email: string | null;
+    }>;
+  } | null>(null);
+  const [claiming, setClaiming] = useState(false);
+
+  useEffect(() => {
+    if (!active) {
+      onMapped(false);
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      const response = await fetch("/api/team/crm-identity", {
+        credentials: "include",
+      });
+      if (!response.ok || cancelled) return;
+      const body = (await response.json()) as NonNullable<typeof state>;
+      if (cancelled) return;
+      setState(body);
+      onMapped(body.mapped);
+    };
+    void load();
+    const timer = window.setInterval(() => void load(), 3_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [active, onMapped]);
+
+  if (!active || state?.mapped) return null;
+  const candidate = state?.candidates?.[0];
+  return (
+    <div className="mt-3 border-t border-[#E0E7F0] pt-3">
+      <p className="text-sm font-bold text-[#203047]">
+        Confirm your salesperson identity
+      </p>
+      <p className="mt-1 text-xs leading-5 text-[#607086]">
+        Your personal workspace only shows CRM records owned by your mapped
+        salesperson identity. Team-wide records stay in management views.
+      </p>
+      {candidate ? (
+        <Button
+          size="sm"
+          className="mt-3"
+          disabled={claiming}
+          onClick={async () => {
+            setClaiming(true);
+            try {
+              const response = await fetch("/api/team/crm-identity", {
+                method: "PUT",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ mappingId: candidate.id }),
+              });
+              const body = (await response.json().catch(() => ({}))) as {
+                error?: string;
+              };
+              if (!response.ok)
+                throw new Error(
+                  body.error || "CRM identity could not be confirmed."
+                );
+              onMapped(true);
+              setState(current =>
+                current ? { ...current, mapped: true } : current
+              );
+            } catch (error) {
+              toast.error(
+                friendlyError(error, "CRM identity could not be confirmed.")
+              );
+            } finally {
+              setClaiming(false);
+            }
+          }}
+        >
+          {claiming ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+          Use {candidate.displayName}
+          {candidate.email ? ` · ${candidate.email}` : ""}
+        </Button>
+      ) : (
+        <p className="mt-2 text-xs font-semibold text-amber-800">
+          Waiting for the CRM owner list to synchronize. AmarktAI only offers an
+          identity with the same signed-in email; it will not guess by name.
+        </p>
+      )}
+    </div>
   );
 }
 

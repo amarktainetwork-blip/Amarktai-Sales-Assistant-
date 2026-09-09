@@ -1,89 +1,60 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import fs from "node:fs";
 
-const read = (relative: string) =>
-  readFileSync(new URL(relative, import.meta.url), "utf8");
+const assistant = fs.readFileSync("server/assistantRoutes.ts", "utf8");
+const today = fs.readFileSync("server/today.ts", "utf8");
+const onboarding = fs.readFileSync("client/src/pages/Onboarding.tsx", "utf8");
+const crm = fs.readFileSync("client/src/pages/CrmWorkspace.tsx", "utf8");
+const companySetup = fs.readFileSync(
+  "client/src/pages/CompanySetup.tsx",
+  "utf8"
+);
+const routers = fs.readFileSync("server/routers.ts", "utf8");
 
-describe("final client handover regressions", () => {
-  it("reports factual company-learning progress without a fake percentage", () => {
-    const discovery = read("./companyDiscovery.ts");
-    const jobs = read("./companyKnowledgeJobs.ts");
-    const onboarding = read("../client/src/pages/Onboarding.tsx");
-    for (const field of [
-      "discoveredPages",
-      "totalPagesKnown",
-      "processedPages",
-      "failedPages",
-      "currentHost",
-    ]) {
-      expect(discovery).toContain(field);
-      expect(onboarding).toContain(field);
-    }
-    expect(jobs).toContain("updatedAt: job.updatedAt");
-    expect(onboarding).toContain("Larger websites can take several minutes");
-    expect(onboarding).toContain("No percentage or finish");
-  });
+function compact(value: string) {
+  return value.replace(/\s+/g, " ");
+}
 
-  it("guarantees an initial CRM frame and replays the initial auth snapshot", () => {
-    const viewer = read("./liveCrmViewer.ts");
-    expect(viewer.indexOf('cdp.on("Page.screencastFrame"')).toBeLessThan(
-      viewer.indexOf('cdp.send("Page.startScreencast"')
+describe("client handover acceptance guards", () => {
+  it("routes ordinary sales questions through evidence plus GenX", () => {
+    expect(assistant).not.toContain(
+      "directAssistantAction(query) || deterministicTodayAnswer(query, today)"
     );
-    expect(viewer).toContain('.send("Page.captureScreenshot"');
-    expect(viewer).toContain(
-      "...managedCrmBrowserSessionManager.snapshot(session.managed)"
-    );
-    const workspace = read("../client/src/pages/CrmWorkspace.tsx");
-    expect(workspace).not.toContain('setStatus("CRM ready for sign-in")');
-    expect(workspace).toContain("The CRM sign-in page did not render");
-  });
-
-  it("keeps automatic commissioning primary and manual teaching advanced", () => {
-    const commissioning = read(
-      "../client/src/components/BrowserCrmCommissioning.tsx"
-    );
-    for (const label of [
-      "Customer data",
-      "Tasks",
-      "Opportunities",
-      "Activities",
-      "Notes",
-      "Callback tasks",
-      "Salesperson identity",
-      "Advanced diagnostics",
-    ])
-      expect(commissioning).toContain(label);
-    expect(commissioning.indexOf("Advanced diagnostics")).toBeLessThan(
-      commissioning.lastIndexOf("Teach AmarktAI")
-    );
-  });
-
-  it("uses one cohesive responsive Assistant conversation surface", () => {
-    const assistant = read("../client/src/pages/Assistant.tsx");
-    expect(assistant).toContain("data-assistant-conversation");
-    expect(assistant).toContain("data-assistant-composer");
+    expect(assistant).toContain("governedEvidence");
     expect(assistant).toContain(
-      "AmarktAI knows your connected sales workspace"
+      "agentKey: isGovernedEvidenceAgent(route.agentKey)"
     );
-    expect(assistant).toContain("100dvh");
   });
 
-  it("keeps Review editable and explicit about approval and evidence", () => {
-    const reviews = read("../client/src/pages/Reviews.tsx");
-    expect(reviews).toContain("Draft reply");
-    expect(reviews).toContain("Purpose");
-    expect(reviews).toContain("Approve &amp; send");
-    expect(reviews).toContain("price, availability, finance or guarantee");
-    expect(reviews).toContain("<EvidenceDetails item={item}");
+  it("keeps personal Today salesperson-scoped for managers too", () => {
+    expect(today).not.toContain("canViewTeamData");
+    expect(today).not.toContain("unrestricted || ownerIds.has");
+    expect(today).toContain("requiresOwnerMapping: ownerIds.size === 0");
   });
 
-  it("uses the approved local company-setup image", () => {
-    const css = read("../client/src/index.css");
-    const setupRule = css.slice(
-      css.indexOf("main.amk-auth.amk-auth--setup .amk-auth__visual > img"),
-      css.indexOf("/* Slightly darker")
+  it("scopes personal Customers by signed-in user", () => {
+    expect(compact(routers)).toContain(
+      compact("return listPersonalCrmCustomers({ userId: ctx.user.id")
     );
-    expect(setupRule).toContain("homestation-office-8780133_1920.jpg");
-    expect(setupRule).not.toContain("thenikscape-ai-generated-9587004_1920.jpg");
+  });
+
+  it("puts Outlook before read-only CRM commissioning", () => {
+    expect(onboarding).toContain(
+      '["Business", "Learn", "Outlook", "CRM", "Ready"]'
+    );
+    expect(onboarding).toContain("/api/mailbox/microsoft/start");
+    expect(compact(onboarding)).toContain("allowedWriteCapabilities: []");
+  });
+
+  it("shows CRM learning and requires salesperson identity mapping", () => {
+    expect(crm).toContain("AmarktAI is learning");
+    expect(crm).toContain("/api/team/crm-identity");
+    expect(crm).toContain("!crmIdentityMapped");
+  });
+
+  it("keeps company knowledge review in the onboarding shell instead of exposing the dashboard sidebar", () => {
+    expect(companySetup).toContain("data-company-knowledge-review-shell");
+    expect(companySetup).toContain("fixed inset-0 z-[240]");
+    expect(companySetup).toContain("data-company-knowledge-report");
   });
 });

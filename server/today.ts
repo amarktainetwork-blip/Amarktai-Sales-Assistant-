@@ -12,7 +12,7 @@ import {
   salesWorkItems,
 } from "../drizzle/schema";
 import { getDb } from "./db";
-import { canViewTeamData, requireOrganisationMembership } from "./organisation";
+import { requireOrganisationMembership } from "./organisation";
 
 function dayEnd(now: Date) {
   const end = new Date(now);
@@ -181,9 +181,8 @@ export async function getTodayWork(input: {
       .limit(500),
   ]);
   const ownerIds = new Set(mappings.map(mapping => mapping.externalUserId));
-  const unrestricted = canViewTeamData(membership.role);
   const belongsToUser = (ownerExternalId: string | null) =>
-    unrestricted || ownerIds.has(ownerExternalId ?? "");
+    ownerIds.has(ownerExternalId ?? "");
   const scopedTasks = tasks.filter(task => belongsToUser(task.ownerExternalId));
   const scopedOpportunities = opportunities.filter(opportunity =>
     belongsToUser(opportunity.ownerExternalId)
@@ -211,7 +210,6 @@ export async function getTodayWork(input: {
     .filter(row => {
       if (row.message.mailboxUserId != null)
         return row.message.mailboxUserId === input.userId;
-      if (unrestricted) return true;
       return belongsToUser(row.contactOwnerExternalId);
     })
     .map(row => row.message);
@@ -219,7 +217,7 @@ export async function getTodayWork(input: {
     isCurrentActionableInbound(message, now)
   );
   const assignedWork = workItems
-    .filter(item => unrestricted || item.salespersonUserId === input.userId)
+    .filter(item => item.salespersonUserId === input.userId)
     .sort((a, b) => {
       const overdue = (value: Date | null) => (value && value < now ? 1 : 0);
       return (
@@ -286,7 +284,7 @@ export async function getTodayWork(input: {
         syncJobs.find(job => job.lastSucceededAt)?.lastSucceededAt ?? null,
     },
     role: membership.role,
-    requiresOwnerMapping: !unrestricted && ownerIds.size === 0,
+    requiresOwnerMapping: ownerIds.size === 0,
     metrics: {
       dueToday: dueToday.length + reminders.length + callbacks.length,
       overdue: overdueTasks.length,

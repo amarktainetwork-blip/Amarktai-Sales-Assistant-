@@ -54,6 +54,8 @@ async function askAssistant(input: {
   const body = (await response.json().catch(() => ({}))) as AssistantResponse;
   if (!response.ok)
     throw new Error(body.error || "AmarktAI could not respond.");
+  if (!body.content?.trim())
+    throw new Error("AmarktAI returned an empty intelligence response.");
   return body;
 }
 
@@ -123,8 +125,7 @@ export default function Assistant() {
         ...current,
         {
           role: "assistant",
-          content:
-            response.content || "I’m ready. What would you like to do next?",
+          content: response.content!,
           action: response.suggestedAction,
         },
       ]);
@@ -156,8 +157,7 @@ export default function Assistant() {
         ...current,
         {
           role: "assistant",
-          content:
-            response.content || "I’m ready. What would you like to do next?",
+          content: response.content!,
           action: response.suggestedAction,
         },
       ]);

@@ -23,7 +23,7 @@ Amarktai Sales Assistant is a self-hosted, multi-tenant sales operating layer fo
 
 The browser connector resolves CRM structure in one order: the versioned code-owned provider pack, the installed connector configuration, and finally the tenant-specific learned overlay. The Genie pack contains only stable navigation and field structure; customer values and credentials never belong in it. Discovery input is allowlisted, size-bounded structural metadata, and a successful discovery fingerprint is retained so an unchanged connection is not billed again.
 
-Missing functions are learned in one bounded initial batch rather than one model call per operation. Model output can create only a `TEST_READY` candidate. Exact-target deterministic reads, safe structural proof and write readback are required before that exact latest version can become `LIVE_PROVEN`; production never falls back to an older proven version while a newer version is unproven or degraded. Routine execution and verification record `modelUsed=false` and `providerCallCount=0`.
+Missing functions are learned in one bounded initial batch rather than one model call per operation. Model output can create only a `TEST_READY` candidate. Exact-target deterministic reads and safe structural proof are required before a read operation can become `LIVE_PROVEN`. Write operations are commissioned separately against an explicitly authorised test record and require deterministic write readback before becoming `LIVE_PROVEN`. Production never falls back to an older proven version while a newer version is unproven or degraded. Routine execution and verification record `modelUsed=false` and `providerCallCount=0`.
 
 The operation watchdog runs daily by default. An unchanged proven surface uses no GenX. Drift degrades only affected functions and permits at most one targeted repair batch for that affected set; unaffected operations remain available. Pack version, tenant-overlay version, fingerprints, affected operation keys and repair-call counts are retained in connection health evidence.
 
@@ -45,30 +45,38 @@ Delegated Microsoft mailbox/calendar sync and approved send/readback stay in the
 
 Native OAuth adapters are included for **HubSpot, Salesforce, Pipedrive and Zoho CRM**. **Genie** and other authorised web CRMs use the deterministic browser connector. The **Other CRM** path is designed for a company CRM that has a usable web interface but no dedicated Amarktai API adapter; selectors and operations must be calibrated and verified before the connection can become ready.
 
-Personal mailbox/calendar support is optional. Microsoft 365 is the first adapter and uses per-user delegated OAuth: every user connects and consents to their own account. There is no deployment-level shared sender or application-permission mailbox path. Reviewed email and calendar actions keep the same approval, ownership and evidence boundary. SMTP is reserved for platform mail: login second factor, password recovery, invitations and reports.
+The current guided sales onboarding includes a personal mailbox connection before CRM commissioning. Microsoft 365 is the first adapter and uses per-user delegated OAuth: every user connects and consents to their own account. There is no deployment-level shared sender or application-permission mailbox path. Reviewed email and calendar actions keep the same approval, ownership and evidence boundary. SMTP is reserved for platform mail: login second factor, password recovery, invitations and reports.
 
 No CRM, mailbox, calendar, SMS, WhatsApp or speech provider is represented as live merely because environment variables exist. Backend verification/capability results are the readiness source of truth.
+
+## Canonical client onboarding
+
+A new managed workspace follows one persistent, user-visible sequence:
+
+1. **Business** — choose individual/team mode and enter the essential company details.
+2. **Learn** — read the authorised public website, show factual page progress, review the evidence-backed company knowledge and explicitly confirm it.
+3. **Outlook** — connect the salesperson's existing Microsoft mailbox using delegated OAuth. Connecting a mailbox does not send customer communications.
+4. **CRM** — connect the existing CRM. Browser-based CRMs such as Genie open in the Secure CRM Browser so the user enters credentials, SSO and MFA directly with the provider.
+5. **Ready** — visibly commission safe CRM reads, run the initial normalized sync, confirm the signed-in salesperson's exact CRM identity, choose the automation preference and only then enter Today.
+
+Initial onboarding is deliberately **read-only for CRM commissioning**. It must not require a production CRM mutation just to let a new user finish setup. Contact/task/note/opportunity writes are commissioned later against an explicitly authorised test record, with deterministic readback, before those exact write operations may become `LIVE_PROVEN`.
+
+Personal Today, Customers and Assistant context are scoped to the signed-in user's confirmed CRM salesperson mapping, including when that user also has a manager/owner role. Team-wide visibility belongs on explicit management/team surfaces rather than leaking into the salesperson's personal workspace.
 
 ## Product areas
 
 - Secure local registration/login, signed sessions, email second factor and organisation switching.
 - Guided company onboarding with safe public-website discovery and explicit knowledge approval.
-- Connected-system onboarding, encrypted connection credentials, OAuth, deterministic browser connectors, authorised-domain restrictions, health verification and synchronisation.
+- Per-user delegated Outlook connection before CRM commissioning in the guided setup flow.
+- Connected-system onboarding, encrypted connection credentials, OAuth, deterministic browser connectors, authorised-domain restrictions, visible commissioning health and synchronisation.
 - HubSpot, Salesforce, Pipedrive, Zoho, Genie and Other CRM execution through normalized adapter contracts.
 - Review/approve/skip queues with atomic action claims, idempotency protection and retained evidence/audit history.
-- GenX-backed specialist sales agents grounded in confirmed company knowledge.
+- GenX-backed conversational sales assistance grounded in confirmed company knowledge and synchronized CRM evidence, while deterministic execution remains outside the model boundary.
 - Today workspace, pipeline/team intelligence, targets, management reporting and protected exports.
 - Live Call Companion with explicit microphone/consent flow and optional OpenAI-compatible STT.
 - Approved email/SMS/WhatsApp proposals, delegated personal mailbox/calendar support and CRM logging.
 - AI-credit accounting with concurrency-safe debits and monthly allowance grants.
 - Self-hosted Webdock package with Caddy, MariaDB, Valkey and internal Chromium/CDP.
-
-The client setup path is one persistent sequence: personal profile, business
-details, factual website-learning progress, manager review of deduplicated
-knowledge, CRM authentication, automatic operation commissioning, delegated
-personal mailbox where configured, and then Home. A connected CRM is not ready
-until the required reads and governed writes are independently `LIVE_PROVEN`;
-manual “Teach AmarktAI” controls are an advanced repair path, not normal setup.
 
 ## Canonical repository
 
@@ -109,7 +117,7 @@ The guided installer:
 - runs the internal smoke test automatically;
 - prints the exact public production-verifier command for the chosen domain.
 
-Optional HubSpot/Salesforce/Pipedrive/Zoho, delegated Microsoft mailbox, STT, SMS and WhatsApp configuration can be added after the core installation without rebuilding the product.
+Optional HubSpot/Salesforce/Pipedrive/Zoho, delegated Microsoft mailbox, STT, SMS and WhatsApp configuration can be added after the core installation without rebuilding the product. The guided sales onboarding requires a configured personal mailbox adapter before that mailbox step can complete.
 
 For delegated Microsoft mailbox/calendar support, register `${APP_PUBLIC_URL}/api/mailbox/microsoft/callback` and configure all four values together: `OUTLOOK_DELEGATED_TENANT_ID`, `OUTLOOK_DELEGATED_CLIENT_ID`, `OUTLOOK_DELEGATED_CLIENT_SECRET` and `OUTLOOK_DELEGATED_REDIRECT_URI`. Each user must then connect their own account in Amarktai; configuration alone is not consent or readiness. Provider expansion belongs behind the same personal-mailbox contract (tracked in Issue #89), not in another shared authentication or sender system.
 

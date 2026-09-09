@@ -43,7 +43,6 @@ import {
   appendLiveTranscript,
   completeLiveCallSession,
   recordAudit,
-  listCrmCustomers,
   updateDelegatedEmailDraft,
   returnClaimedActionForReview,
 } from "./db";
@@ -114,6 +113,7 @@ import { createCrmOAuthState } from "./crm/oauthState";
 import { crmOAuthCallbackUrl } from "./crm/oauthRoutes";
 import { syncConnectedSystem, syncConnectedSystemsForUser } from "./crm/sync";
 import { getTodayWork } from "./today";
+import { listPersonalCrmCustomers } from "./personalCrmCustomers";
 import {
   resolveSalesWorkAfterVerifiedAction,
   transitionSalesWorkItem,
@@ -1543,7 +1543,10 @@ export const appRouter = router({
     customers: secondFactorProcedure.query(({ ctx }) => {
       if (!ctx.activeOrganisation)
         throw new Error("Choose an organisation before loading customers.");
-      return listCrmCustomers(ctx.activeOrganisation.organisationId);
+      return listPersonalCrmCustomers({
+        userId: ctx.user.id,
+        organisationId: ctx.activeOrganisation.organisationId,
+      });
     }),
   }),
   memory: router({
