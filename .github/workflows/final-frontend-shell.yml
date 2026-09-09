@@ -1,0 +1,79 @@
+name: Final Onboarding Shell Repair
+
+on:
+  push:
+    branches:
+      - fix/final-complete-product
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.event.head_commit.message != 'Fix final onboarding shell layout'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/final-complete-product
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.15.0
+          cache: pnpm
+      - name: Isolate onboarding from dashboard shell
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path('client/src/pages/Onboarding.tsx')
+          text = path.read_text()
+          text = text.replace('import DashboardLayout from "@/components/DashboardLayout";\n', '', 1)
+          old_open = '''  return (\n    <DashboardLayout>\n      <main className="amk-auth amk-auth--setup fixed inset-0 z-[240] overflow-y-auto">'''
+          new_open = '''  return (\n    <main className="amk-auth amk-auth--setup fixed inset-0 z-[240] overflow-y-auto">'''
+          if text.count(old_open) != 1:
+              raise SystemExit(f'SetupShell opening: expected one match, found {text.count(old_open)}')
+          text = text.replace(old_open, new_open, 1)
+          old_close = '''        </section>\n      </main>\n    </DashboardLayout>\n  );\n}'''
+          new_close = '''      </section>\n    </main>\n  );\n}'''
+          if text.count(old_close) != 1:
+              raise SystemExit(f'SetupShell closing: expected one match, found {text.count(old_close)}')
+          text = text.replace(old_close, new_close, 1)
+          if '<DashboardLayout>' in text or 'import DashboardLayout' in text:
+              raise SystemExit('Onboarding still depends on DashboardLayout')
+          path.write_text(text)
+
+          test_path = Path('server/onboardingFlow.test.ts')
+          test = test_path.read_text()
+          marker = '''  it("contains no CRM credential form or old interactive-auth endpoint", () => {'''
+          addition = '''  it("renders onboarding as its own full-screen shell outside dashboard navigation", () => {\n    expect(onboarding).not.toContain("DashboardLayout");\n    expect(onboarding).toContain(\n      'className="amk-auth amk-auth--setup fixed inset-0 z-[240] overflow-y-auto"'\n    );\n  });\n\n'''
+          if addition not in test:
+              if test.count(marker) != 1:
+                  raise SystemExit(f'onboarding shell test marker: expected one match, found {test.count(marker)}')
+              test = test.replace(marker, addition + marker, 1)
+          test_path.write_text(test)
+          PY
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Focused frontend contract
+        run: pnpm exec vitest run server/onboardingFlow.test.ts server/dashboardVisualAcceptance.test.ts client/src/finalClientPolishAcceptance.test.ts
+      - name: TypeScript
+        run: pnpm check
+      - name: Full unit tests
+        run: pnpm test
+      - name: Production build
+        run: pnpm build
+      - name: Commit exact tested frontend repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/final-frontend-shell.yml
+          git config user.name "Amarktai Release Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add client/src/pages/Onboarding.tsx server/onboardingFlow.test.ts .github/workflows/final-frontend-shell.yml
+          git diff --cached --check
+          git commit -m "Fix final onboarding shell layout"
+          git push origin HEAD:fix/final-complete-product
