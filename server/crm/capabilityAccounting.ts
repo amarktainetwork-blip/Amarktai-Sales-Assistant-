@@ -3,11 +3,16 @@ import { CORE_BROWSER_OPERATIONS } from "./commissioningReadiness";
 
 export const REQUIRED_COMMISSIONED_OPERATIONS = [
   ...CORE_BROWSER_OPERATIONS,
-  "contact.sync",
+  "company.read",
   "company.sync",
+  "task.list",
   "task.sync",
+  "history.read",
+  "note.read",
+  "opportunity.read",
   "opportunity.sync",
   "activity.sync",
+  "owner.sync",
   "pipeline.list",
 ] as const;
 
@@ -50,6 +55,7 @@ export function accountBrowserCapabilities(input: {
           : ("read" as const),
       })),
   ];
+
   const rows = operations.map(operation => {
     const learned = input.operationStatuses.get(operation.key);
     const allowed = operation.capability
@@ -79,16 +85,23 @@ export function accountBrowserCapabilities(input: {
             : null,
     };
   });
+
+  const hardRequired = new Set<string>(CORE_BROWSER_OPERATIONS);
   const criticalGaps = rows
-    .filter(
-      row =>
-        ((REQUIRED_COMMISSIONED_OPERATIONS as readonly string[]).includes(
-          row.operationKey
-        ) ||
-          (!standardKeys.has(row.operationKey) &&
-            discovered.has(row.operationKey))) &&
-        row.status !== "LIVE_PROVEN"
-    )
+    .filter(row => {
+      if (row.mode !== "read" || row.status === "LIVE_PROVEN") return false;
+      if (row.status === "NOT_AUTHORISED") return false;
+
+      const required = hardRequired.has(row.operationKey);
+      const discoveredCustom =
+        !standardKeys.has(row.operationKey) && discovered.has(row.operationKey);
+
+      // Standard optional CRM reads remain visible in the capability matrix but
+      // do not trap onboarding. Only the canonical safe contact loop and a
+      // genuinely discovered custom read can block the connection being usable.
+      return required || discoveredCustom;
+    })
     .map(row => ({ operationKey: row.operationKey, status: row.status }));
+
   return { rows, criticalGaps, complete: criticalGaps.length === 0 };
 }

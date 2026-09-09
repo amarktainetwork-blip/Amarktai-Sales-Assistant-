@@ -27,6 +27,13 @@ describe("universal CRM onboarding", () => {
     expect(connections).toContain("https://crm.example.com/");
   });
 
+  it("renders onboarding as its own full-screen shell outside dashboard navigation", () => {
+    expect(onboarding).not.toContain("DashboardLayout");
+    expect(onboarding).toContain(
+      'className="amk-auth amk-auth--setup fixed inset-0 z-[240] overflow-y-auto"'
+    );
+  });
+
   it("contains no CRM credential form or old interactive-auth endpoint", () => {
     expect(onboarding).not.toContain('type="password"');
     expect(onboarding).not.toContain("/interactive-auth/");

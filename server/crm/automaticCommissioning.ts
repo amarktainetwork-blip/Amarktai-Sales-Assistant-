@@ -44,30 +44,14 @@ import type {
   NormalizedTask,
 } from "./types";
 import { accountBrowserCapabilities } from "./capabilityAccounting";
+import { coreBrowserCommissioningReady } from "./commissioningReadiness";
+export { coreBrowserCommissioningReady };
 import { ensureConnectionScopedCrmSyncJob } from "./syncWorker";
 import { syncConnectedSystem } from "./sync";
 import {
   GENIE_PROVIDER_PACK_VERSION,
   providerPackFingerprint,
 } from "./providerPacks";
-
-const AUTOMATIC_CORE_BROWSER_OPERATIONS = [
-  "contact.search",
-  "contact.read",
-  "task.list",
-  "note.create",
-  "task.create_callback",
-  "opportunity.read",
-  "opportunity.update",
-] as const;
-
-export function coreBrowserCommissioningReady(
-  statuses: ReadonlyMap<string, string>
-) {
-  return AUTOMATIC_CORE_BROWSER_OPERATIONS.every(
-    key => statuses.get(key) === "LIVE_PROVEN"
-  );
-}
 
 export const COMMISSIONING_STATES = [
   "AUTHENTICATE",
@@ -1244,6 +1228,7 @@ async function testOperations(input: {
   const failures = { ...(input.job.optionalFailures || {}) };
   const proven: string[] = [];
   const failedOperationKeys: string[] = [];
+  let transientControlBlocked = false;
   let repairGenxCalls = 0;
   let derivedContact:
     | { externalId: string; query: string; derivedFrom: string }
@@ -1336,11 +1321,16 @@ async function testOperations(input: {
       proven.push(operation.operationKey);
       delete failures[operation.operationKey];
     } catch (error) {
-      failedOperationKeys.push(operation.operationKey);
-      failures[operation.operationKey] = safeText(
+      const detail = safeText(
         error instanceof Error ? error.message : String(error),
         500
       );
+      failures[operation.operationKey] = detail;
+      if (isTransientBrowserControlError(error)) {
+        transientControlBlocked = true;
+      } else {
+        failedOperationKeys.push(operation.operationKey);
+      }
     }
   }
   // Selector drift in a genuinely installed Genie definition receives one
@@ -1388,6 +1378,7 @@ async function testOperations(input: {
     failures,
     attempted: selected.length,
     repairGenxCalls,
+    transientControlBlocked,
     modelUsedDuringVerification: false as const,
     providerCallCountDuringVerification: 0 as const,
   };
@@ -1400,8 +1391,15 @@ export function operationEligibleForCommissioningTest(input: {
 }) {
   if (input.definitionMode !== input.requestedMode) return false;
   return input.requestedMode === "read"
-    ? ["TEST_READY", "LIVE_PROVEN"].includes(input.status)
+    ? ["TEST_READY", "LIVE_PROVEN", "DEGRADED", "BLOCKED"].includes(
+        input.status
+      )
     : input.status === "TEST_READY";
+}
+
+export function isTransientBrowserControlError(error: unknown) {
+  const detail = error instanceof Error ? error.message : String(error || "");
+  return /CRM_VIEWER_(?:HUMAN|AGENT)_CONTROL_ACTIVE/.test(detail);
 }
 
 export function safeReadCommissioningPassed(input: {
@@ -1410,8 +1408,6 @@ export function safeReadCommissioningPassed(input: {
 }) {
   return input.attempted > 0 && input.proven.length > 0;
 }
-
-const activeJobs = new Set<number>();
 
 async function ownedCommissioningSecret(input: {
   userId: number | null;
@@ -1442,17 +1438,16 @@ async function ownedCommissioningSecret(input: {
 }
 
 function scheduleAutomaticCommissioning(jobId: number) {
-  if (activeJobs.has(jobId)) return;
-  activeJobs.add(jobId);
+  // The database lease is the only commissioning ownership source of truth.
+  // Competing schedulers are safe because advanceAutomaticCommissioning
+  // atomically claims an expired/null lease before any browser work begins.
   setImmediate(() => {
-    void advanceAutomaticCommissioning(jobId)
-      .catch(error =>
-        console.error("[crm-commissioning] background step failed", {
-          jobId,
-          detail: error instanceof Error ? error.message : String(error),
-        })
-      )
-      .finally(() => activeJobs.delete(jobId));
+    void advanceAutomaticCommissioning(jobId).catch(error =>
+      console.error("[crm-commissioning] background step failed", {
+        jobId,
+        detail: error instanceof Error ? error.message : String(error),
+      })
+    );
   });
 }
 
@@ -1861,7 +1856,20 @@ export async function advanceAutomaticCommissioning(jobId: number) {
       if (system.provider === "genie") {
         const knownPack = await installKnownGeniePack(job, system);
         discovered.push(...knownPack.installed);
-        genieDiscoveryTargets = knownPack.needsDiscovery;
+        const authorisedReadTargets = BROWSER_OPERATION_CATALOGUE.filter(
+          operation =>
+            operation.mode === "read" &&
+            (!operation.capability ||
+              system.allowedReadCapabilities.includes(operation.capability))
+        ).map(operation => operation.key);
+        genieDiscoveryTargets = Array.from(
+          new Set([
+            ...knownPack.needsDiscovery,
+            ...authorisedReadTargets.filter(
+              operationKey => !knownPack.installed.includes(operationKey)
+            ),
+          ])
+        );
         progress.placeholderOperationsRejected = knownPack.needsDiscovery;
       }
       const learningMemory =
@@ -1926,6 +1934,20 @@ export async function advanceAutomaticCommissioning(jobId: number) {
         mode: "read",
         secret: commissioningSecret,
       });
+      if (result.transientControlBlocked) {
+        await updateJob(job.id, {
+          status: "queued",
+          optionalFailures: result.failures,
+          leaseExpiresAt: new Date(Date.now() + 15_000),
+          lastError: null,
+          progress: {
+            ...progress,
+            humanStatus: "Waiting for secure CRM control",
+            browserControl: "retrying",
+          },
+        });
+        return;
+      }
       if (!safeReadCommissioningPassed(result))
         throw new Error(
           "No deterministic CRM safe-read operation passed commissioning."
@@ -1955,10 +1977,12 @@ export async function advanceAutomaticCommissioning(jobId: number) {
             operation.status === "LIVE_PROVEN"
         ),
       });
-      const hasWrites = matrix.operations.some(
-        operation =>
-          operation.mode === "write" && operation.status === "TEST_READY"
-      );
+      const hasWrites =
+        system.allowedWriteCapabilities.length > 0 &&
+        matrix.operations.some(
+          operation =>
+            operation.mode === "write" && operation.status === "TEST_READY"
+        );
       next = nextCommissioningState({ state: job.state, hasWrites });
     } else if (job.state === "TEST_CONTROLLED_WRITES") {
       if (!job.safeTestRecord)
@@ -2046,6 +2070,13 @@ export async function advanceAutomaticCommissioning(jobId: number) {
               eq(connectorSyncJobs.resourceType, "crm_reconciliation")
             )
           );
+        if (
+          initialSync.modelUsed !== false ||
+          Number(initialSync.providerCallCount || 0) !== 0
+        )
+          throw new Error(
+            "CRM_INITIAL_SYNC_MODEL_BOUNDARY_VIOLATION: routine CRM sync must remain model-free."
+          );
         initialSyncReady = true;
         progress.initialSync = initialSync;
       } catch (error) {
@@ -2094,6 +2125,19 @@ export async function advanceAutomaticCommissioning(jobId: number) {
       error instanceof Error ? error.message : String(error),
       2_000
     );
+    if (isTransientBrowserControlError(error)) {
+      await updateJob(job.id, {
+        status: "queued",
+        lastError: null,
+        leaseExpiresAt: new Date(Date.now() + 15_000),
+        progress: {
+          ...(job.progress || {}),
+          humanStatus: "Waiting for secure CRM control",
+          browserControl: "retrying",
+        },
+      });
+      return;
+    }
     await updateJob(job.id, {
       status: "needs_attention",
       lastError: detail,

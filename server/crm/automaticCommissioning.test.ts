@@ -7,6 +7,7 @@ import {
   controlledWritePayload,
   coreBrowserCommissioningReady,
   inferBrowserOperationCandidates,
+  isTransientBrowserControlError,
   nextCommissioningState,
   operationEligibleForCommissioningTest,
   resolveSafeTestContext,
@@ -81,6 +82,22 @@ describe("automatic CRM commissioning product contract", () => {
         requestedMode: "write",
       })
     ).toBe(false);
+    for (const status of ["BLOCKED", "DEGRADED"])
+      expect(
+        operationEligibleForCommissioningTest({
+          status,
+          definitionMode: "read",
+          requestedMode: "read",
+        })
+      ).toBe(true);
+    expect(
+      isTransientBrowserControlError(
+        new Error("CRM_VIEWER_HUMAN_CONTROL_ACTIVE: viewer owns the page")
+      )
+    ).toBe(true);
+    expect(isTransientBrowserControlError(new Error("selector drift"))).toBe(
+      false
+    );
     expect(safeReadCommissioningPassed({ attempted: 0, proven: [] })).toBe(
       false
     );
@@ -382,16 +399,13 @@ describe("automatic CRM commissioning product contract", () => {
     ).toBe("LIVE_PROVEN");
   });
 
-  it("keeps an optional failure from blocking the proven core selling loop", () => {
+  it("requires only the proven safe contact read loop for read-only onboarding", () => {
     const statuses = new Map([
       ["contact.search", "LIVE_PROVEN"],
       ["contact.read", "LIVE_PROVEN"],
-      ["task.list", "LIVE_PROVEN"],
-      ["note.create", "LIVE_PROVEN"],
-      ["task.create_callback", "LIVE_PROVEN"],
-      ["opportunity.read", "LIVE_PROVEN"],
-      ["opportunity.update", "LIVE_PROVEN"],
-      ["whatsapp.send", "DEGRADED"],
+      ["contact.sync", "LIVE_PROVEN"],
+      ["note.create", "NOT_LEARNED"],
+      ["opportunity.update", "NOT_LEARNED"],
     ]);
     expect(coreBrowserCommissioningReady(statuses)).toBe(true);
   });

@@ -30,6 +30,19 @@ import { normalizeCrmEmail, normalizeCrmPhone } from "./identity";
 import { runModelFreeOperation } from "../aiExecutionBoundary";
 import { upsertSalesWorkFromCrm } from "../salesWork";
 
+export function crmResourceSyncEligible(
+  connection: Pick<
+    AdapterConnection,
+    "allowedReadCapabilities" | "verifiedCapabilities"
+  >,
+  capability: string
+) {
+  return (
+    connection.allowedReadCapabilities.includes(capability) &&
+    connection.verifiedCapabilities.includes(capability)
+  );
+}
+
 async function cursorFor(systemId: number, resourceType: string) {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
@@ -346,13 +359,22 @@ async function syncConnectedSystemDeterministically(input: {
   const summary: Record<string, number> = {};
   const failures: Record<string, string> = {};
   const resources = [
-    ["companies", adapter.syncCompanies, upsertCompanies],
-    ["contacts", adapter.syncContacts, upsertContacts],
-    ["opportunities", adapter.syncOpportunities, upsertOpportunities],
-    ["tasks", adapter.syncTasks, upsertTasks],
-    ["activities", adapter.syncActivities, upsertActivities],
+    ["companies", "companies.read", adapter.syncCompanies, upsertCompanies],
+    ["contacts", "contacts.read", adapter.syncContacts, upsertContacts],
+    [
+      "opportunities",
+      "opportunities.read",
+      adapter.syncOpportunities,
+      upsertOpportunities,
+    ],
+    ["tasks", "tasks.read", adapter.syncTasks, upsertTasks],
+    ["activities", "activities.read", adapter.syncActivities, upsertActivities],
   ] as const;
-  for (const [resourceType, sync, persist] of resources) {
+  for (const [resourceType, capability, sync, persist] of resources) {
+    if (!crmResourceSyncEligible(connection, capability)) {
+      summary[resourceType] = 0;
+      continue;
+    }
     const existing = await cursorFor(system.id, resourceType);
     try {
       const result = await sync({

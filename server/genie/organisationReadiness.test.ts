@@ -5,20 +5,8 @@ vi.mock("../browserConnectors/learnedOperations", () => ({
   browserOperationReadinessForSystem: mocks.readiness,
 }));
 
+import { CORE_BROWSER_OPERATIONS } from "../crm/commissioningReadiness";
 import { getOrganisationGenieReadiness } from "./organisationReadiness";
-
-const coreOperations = [
-  "contact.search",
-  "contact.read",
-  "company.read",
-  "task.list",
-  "history.read",
-  "owner.sync",
-  "note.create",
-  "task.create_callback",
-  "opportunity.read",
-  "opportunity.update",
-] as const;
 
 function operation(key: string, status: string) {
   return {
@@ -43,7 +31,7 @@ function operation(key: string, status: string) {
 function matrix(live: string[], optionalStatus = "NOT_LEARNED") {
   return {
     operations: [
-      ...coreOperations.map(key =>
+      ...CORE_BROWSER_OPERATIONS.map(key =>
         operation(key, live.includes(key) ? "LIVE_PROVEN" : "NOT_LEARNED")
       ),
       operation("email.send", optionalStatus),
@@ -87,8 +75,8 @@ describe("organisation Genie readiness", () => {
     });
   });
 
-  it("becomes operational only after the existing core commissioning gate is proven", async () => {
-    mocks.readiness.mockResolvedValue(matrix([...coreOperations]));
+  it("becomes operational only after the canonical core commissioning gate is proven", async () => {
+    mocks.readiness.mockResolvedValue(matrix([...CORE_BROWSER_OPERATIONS]));
     const result = await getOrganisationGenieReadiness(7, [genieSystem()]);
 
     expect(result).toMatchObject({
@@ -99,7 +87,7 @@ describe("organisation Genie readiness", () => {
       operationalStatus: "operational_with_limits",
     });
     expect(result.liveOperations).toEqual(
-      expect.arrayContaining([...coreOperations])
+      expect.arrayContaining([...CORE_BROWSER_OPERATIONS])
     );
   });
 
