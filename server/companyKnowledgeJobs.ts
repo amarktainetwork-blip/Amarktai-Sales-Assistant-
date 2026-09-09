@@ -120,6 +120,28 @@ async function updateJob(
     .where(eq(companyKnowledgeJobs.id, jobId));
 }
 
+export function mergeCompanyKnowledgeProgress(
+  current: Record<string, unknown> | null | undefined,
+  patch: Record<string, unknown>
+) {
+  return { ...(current || {}), ...patch };
+}
+
+async function updateJobWithProgress(
+  job: CompanyKnowledgeJob,
+  values: Partial<typeof companyKnowledgeJobs.$inferInsert>,
+  progressPatch: Record<string, unknown>
+) {
+  const latest = await loadJob(job.id);
+  await updateJob(job.id, {
+    ...values,
+    progress: mergeCompanyKnowledgeProgress(
+      latest?.progress || job.progress || {},
+      progressPatch
+    ),
+  });
+}
+
 async function claimCompanyKnowledgeJob(jobId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
@@ -309,12 +331,11 @@ export async function retryCompanyKnowledgeJob(input: {
     leaseExpiresAt: null,
     completedAt: null,
     attempt: job.attempt + 1,
-    progress: {
-      ...(job.progress || {}),
+    progress: mergeCompanyKnowledgeProgress(job.progress, {
       humanStatus: job.discoverySnapshot
         ? "Resuming retained company evidence"
         : "Scanning website",
-    },
+    }),
   });
   return presentCompanyKnowledgeJob({
     ...job,
@@ -335,54 +356,60 @@ async function checkpoint(
     return;
   }
   if (value.kind === "corpus") {
-    await updateJob(job.id, {
-      ...common,
-      phase: "CLASSIFYING_PAGES",
-      corpusSnapshot: JSON.stringify(value.corpus),
-      corpusHash: value.corpus.corpusHash,
-      sourceHashes: value.corpus.sourceHashes,
-      pageInventory: value.corpus.pages.map(page => ({
-        pageId: page.pageId,
-        url: page.url,
-        contentHash: page.contentHash,
-        pageHint: page.pageHint,
-      })),
-      progress: {
-        ...(job.progress || {}),
+    await updateJobWithProgress(
+      job,
+      {
+        ...common,
+        phase: "CLASSIFYING_PAGES",
+        corpusSnapshot: JSON.stringify(value.corpus),
+        corpusHash: value.corpus.corpusHash,
+        sourceHashes: value.corpus.sourceHashes,
+        pageInventory: value.corpus.pages.map(page => ({
+          pageId: page.pageId,
+          url: page.url,
+          contentHash: page.contentHash,
+          pageHint: page.pageHint,
+        })),
+      },
+      {
         phase: "analysing",
         humanStatus: "Building company corpus",
         corpusPages: value.corpus.pageCount,
         corpusBytes: value.corpus.byteSize,
-      },
-    });
+      }
+    );
     return;
   }
   if (value.kind === "analysis") {
-    await updateJob(job.id, {
-      ...common,
-      phase: "REVIEWING_PRICING_POLICIES",
-      analysisDraft: JSON.stringify(value.draft),
-      analysisCalls: 1,
-      progress: {
-        ...(job.progress || {}),
+    await updateJobWithProgress(
+      job,
+      {
+        ...common,
+        phase: "REVIEWING_PRICING_POLICIES",
+        analysisDraft: JSON.stringify(value.draft),
+        analysisCalls: 1,
+      },
+      {
         phase: "analysing",
         humanStatus: "Checking products and pricing",
         analysisComplete: true,
-      },
-    });
+      }
+    );
     return;
   }
-  await updateJob(job.id, {
-    ...common,
-    phase: "RECONCILING_KNOWLEDGE",
-    auditDraft: JSON.stringify(value.audit),
-    progress: {
-      ...(job.progress || {}),
+  await updateJobWithProgress(
+    job,
+    {
+      ...common,
+      phase: "RECONCILING_KNOWLEDGE",
+      auditDraft: JSON.stringify(value.audit),
+    },
+    {
       phase: "auditing",
       humanStatus: "Auditing company knowledge",
       auditComplete: true,
-    },
-  });
+    }
+  );
 }
 
 async function advanceCompanyKnowledgeJob(jobId: number) {
@@ -395,15 +422,17 @@ async function advanceCompanyKnowledgeJob(jobId: number) {
     if (job.discoverySnapshot)
       discovery = JSON.parse(job.discoverySnapshot) as DiscoveryResult;
     else {
-      await updateJob(job.id, {
-        phase: "SCANNING_WEBSITE",
-        progress: { ...(job.progress || {}), humanStatus: "Scanning website" },
-      });
+      await updateJobWithProgress(
+        job,
+        { phase: "SCANNING_WEBSITE" },
+        { humanStatus: "Scanning website" }
+      );
       discovery = await discoverPublicWebsite(job.websiteUrl, {
         onProgress: async progress => {
-          await updateJob(job.id, {
-            progress: {
-              ...(job.progress || {}),
+          await updateJobWithProgress(
+            job,
+            { leaseExpiresAt: new Date(Date.now() + JOB_LEASE_MS) },
+            {
               ...progress,
               humanStatus:
                 progress.phase === "discovering"
@@ -413,16 +442,18 @@ async function advanceCompanyKnowledgeJob(jobId: number) {
                     : progress.phase === "extracting"
                       ? "Extracting useful company facts"
                       : "Removing duplicate website material",
-            },
-            leaseExpiresAt: new Date(Date.now() + JOB_LEASE_MS),
-          });
+            }
+          );
         },
       });
-      await updateJob(job.id, {
-        discoverySnapshot: JSON.stringify(discovery),
-        phase: "CLASSIFYING_PAGES",
-        progress: {
-          ...(job.progress || {}),
+      await updateJobWithProgress(
+        job,
+        {
+          discoverySnapshot: JSON.stringify(discovery),
+          phase: "CLASSIFYING_PAGES",
+          leaseExpiresAt: new Date(Date.now() + JOB_LEASE_MS),
+        },
+        {
           humanStatus: "Building company corpus",
           phase: "normalising",
           discoveredPages: discovery.pages.length,
@@ -430,9 +461,8 @@ async function advanceCompanyKnowledgeJob(jobId: number) {
           processedPages: discovery.pages.length,
           failedPages: 0,
           pagesScanned: discovery.pages.length,
-        },
-        leaseExpiresAt: new Date(Date.now() + JOB_LEASE_MS),
-      });
+        }
+      );
       job = { ...job, discoverySnapshot: JSON.stringify(discovery) };
     }
     const corpus = parseCheckpoint(
@@ -461,19 +491,21 @@ async function advanceCompanyKnowledgeJob(jobId: number) {
               : phase === "audit"
                 ? ("RECONCILING_KNOWLEDGE" as const)
                 : ("CHECKING_COMPLETENESS" as const);
-        await updateJob(job.id, {
-          phase: nextPhase,
-          progress: {
-            ...(job.progress || {}),
+        await updateJobWithProgress(
+          job,
+          {
+            phase: nextPhase,
+            leaseExpiresAt: new Date(Date.now() + JOB_LEASE_MS),
+          },
+          {
             phase:
               nextPhase === "RECONCILING_KNOWLEDGE" ||
               nextPhase === "CHECKING_COMPLETENESS"
                 ? "auditing"
                 : "analysing",
             humanStatus: humanPhase(nextPhase),
-          },
-          leaseExpiresAt: new Date(Date.now() + JOB_LEASE_MS),
-        });
+          }
+        );
       },
     });
     const canonical = buildReviewedCompanyDiscovery(discovery, review);
@@ -497,17 +529,23 @@ async function advanceCompanyKnowledgeJob(jobId: number) {
       reviewState: canonical.reviewState,
     });
     const ready = review.completeness.status !== "incomplete";
-    await updateJob(job.id, {
-      phase: ready ? "READY_FOR_REVIEW" : "CHECKING_COMPLETENESS",
-      status: ready ? "ready" : "needs_attention",
-      resultDiscoveryId: discoveryId,
-      validatedPack: JSON.stringify(review.pack),
-      analysisCalls: review.analysisCalls,
-      auditCalls: review.auditCalls,
-      normalizationEvents: review.normalizationEvents,
-      repairCalls: review.repairCalls,
-      temporaryResources: {},
-      progress: {
+    await updateJobWithProgress(
+      job,
+      {
+        phase: ready ? "READY_FOR_REVIEW" : "CHECKING_COMPLETENESS",
+        status: ready ? "ready" : "needs_attention",
+        resultDiscoveryId: discoveryId,
+        validatedPack: JSON.stringify(review.pack),
+        analysisCalls: review.analysisCalls,
+        auditCalls: review.auditCalls,
+        normalizationEvents: review.normalizationEvents,
+        repairCalls: review.repairCalls,
+        temporaryResources: {},
+        lastError: ready ? null : review.completeness.importantGaps.join(" "),
+        leaseExpiresAt: null,
+        completedAt: new Date(),
+      },
+      {
         phase: ready ? "ready" : "failed",
         humanStatus: ready
           ? "Ready for review"
@@ -524,11 +562,8 @@ async function advanceCompanyKnowledgeJob(jobId: number) {
         knowledgeApproved: false,
         crmTouched: false,
         genieTouched: false,
-      },
-      lastError: ready ? null : review.completeness.importantGaps.join(" "),
-      leaseExpiresAt: null,
-      completedAt: new Date(),
-    });
+      }
+    );
     await recordAudit({
       userId: job.userId,
       organisationId: job.organisationId,
@@ -555,16 +590,18 @@ async function advanceCompanyKnowledgeJob(jobId: number) {
         error instanceof Error ? error.message : String(error || "")
       );
     const retrying = transient && nextAttempt < MAX_AUTO_ATTEMPTS;
-    await updateJob(job.id, {
-      status: retrying ? "queued" : "failed",
-      attempt: nextAttempt,
-      lastError: detail,
-      leaseExpiresAt: retrying
-        ? new Date(Date.now() + RETRY_BASE_MS * 2 ** (nextAttempt - 1))
-        : null,
-      completedAt: retrying ? null : new Date(),
-      progress: {
-        ...(job.progress || {}),
+    await updateJobWithProgress(
+      job,
+      {
+        status: retrying ? "queued" : "failed",
+        attempt: nextAttempt,
+        lastError: detail,
+        leaseExpiresAt: retrying
+          ? new Date(Date.now() + RETRY_BASE_MS * 2 ** (nextAttempt - 1))
+          : null,
+        completedAt: retrying ? null : new Date(),
+      },
+      {
         phase: retrying ? "fetching" : "failed",
         retryState: retrying ? "scheduled" : "available",
         humanStatus: retrying
@@ -574,8 +611,8 @@ async function advanceCompanyKnowledgeJob(jobId: number) {
         knowledgeApproved: false,
         crmTouched: false,
         genieTouched: false,
-      },
-    });
+      }
+    );
   }
 }
 
