@@ -163,7 +163,8 @@ describe("final public website", () => {
     expect(css).toContain("min-width: 320px");
     expect(css).toContain("overflow: clip");
     expect(css).toContain("prefers-reduced-motion: reduce");
-    expect(css).toContain(".amk-auth");
+    expect(css).not.toContain(".amk-auth");
+    expect(readFileSync(path.resolve(process.cwd(), "client/src/index.css"), "utf8")).toContain(".amk-auth");
     expect(css).toContain(".amk-photo-frame");
     expect(css).toContain("--navy: #10233d");
     expect(existsSync(path.resolve(process.cwd(), "client/src/pages/final-auth.css"))).toBe(false);

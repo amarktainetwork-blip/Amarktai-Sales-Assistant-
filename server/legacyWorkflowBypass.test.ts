@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 describe("legacy workflow preparation boundary", () => {
@@ -23,9 +23,8 @@ describe("legacy workflow preparation boundary", () => {
 
   it("keeps legacy workflow pages redirected to the governed Assistant", () => {
     const app = readFileSync("client/src/App.tsx", "utf8");
-    const workspace = readFileSync("client/src/pages/Workspace.tsx", "utf8");
 
     expect(app).toContain('<LegacyRedirect to="/assistant" />');
-    expect(workspace).not.toContain("result.actionCount");
+    expect(existsSync("client/src/pages/Workspace.tsx")).toBe(false);
   });
 });

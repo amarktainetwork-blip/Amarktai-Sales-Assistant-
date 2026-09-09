@@ -22,7 +22,6 @@ describe("client navigation acceptance", () => {
     );
     const references = new Set<string>();
     for (const file of files(clientRoot)) {
-      if (file.endsWith("ComponentShowcase.tsx")) continue;
       const source = readFileSync(file, "utf8");
       for (const match of source.matchAll(
         /(?:href=|navigate\(|setLocation\(|window\.location\.assign\()\s*["'`]([^"'`]+)["'`]/g
