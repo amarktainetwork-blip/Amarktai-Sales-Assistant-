@@ -28,6 +28,7 @@ jobs:
         run: |
           python3 <<'PY'
           from pathlib import Path
+          import re
 
           path = Path('server/crm/automaticCommissioning.ts')
           text = path.read_text()
@@ -39,285 +40,325 @@ jobs:
                   raise SystemExit(f'{label}: expected exactly one match, found {count}')
               text = text.replace(old, new, 1)
 
-          replace_once(
-          '''import { accountBrowserCapabilities } from "./capabilityAccounting";''',
-          '''import { accountBrowserCapabilities } from "./capabilityAccounting";
-          import { coreBrowserCommissioningReady } from "./commissioningReadiness";
-          export { coreBrowserCommissioningReady } from "./commissioningReadiness";''',
-          'canonical readiness import')
+          def regex_once(pattern: str, repl: str, label: str):
+              global text
+              text2, count = re.subn(pattern, repl, text, count=1, flags=re.S)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly one regex match, found {count}')
+              text = text2
 
           replace_once(
-          '''const AUTOMATIC_CORE_BROWSER_OPERATIONS = [
-            "contact.search",
-            "contact.read",
-            "task.list",
-            "note.create",
-            "task.create_callback",
-            "opportunity.read",
-            "opportunity.update",
-          ] as const;
+              'import { accountBrowserCapabilities } from "./capabilityAccounting";',
+              'import { accountBrowserCapabilities } from "./capabilityAccounting";\nimport { coreBrowserCommissioningReady } from "./commissioningReadiness";\nexport { coreBrowserCommissioningReady };',
+              'canonical readiness import',
+          )
 
-          export function coreBrowserCommissioningReady(
-            statuses: ReadonlyMap<string, string>
-          ) {
-            return AUTOMATIC_CORE_BROWSER_OPERATIONS.every(
-              key => statuses.get(key) === "LIVE_PROVEN"
-            );
-          }
-
-          ''',
-          '',
-          'duplicate automatic readiness')
+          regex_once(
+              r'const AUTOMATIC_CORE_BROWSER_OPERATIONS = \[.*?\n\}\n\nexport const COMMISSIONING_STATES',
+              'export const COMMISSIONING_STATES',
+              'remove duplicate readiness',
+          )
 
           replace_once(
-          '''export function operationEligibleForCommissioningTest(input: {
-            status: string;
-            definitionMode: unknown;
-            requestedMode: BrowserOperationMode;
-          }) {
-            if (input.definitionMode !== input.requestedMode) return false;
-            return input.requestedMode === "read"
-              ? ["TEST_READY", "LIVE_PROVEN"].includes(input.status)
-              : input.status === "TEST_READY";
-          }
-          ''',
-          '''export function operationEligibleForCommissioningTest(input: {
-            status: string;
-            definitionMode: unknown;
-            requestedMode: BrowserOperationMode;
-          }) {
-            if (input.definitionMode !== input.requestedMode) return false;
-            return input.requestedMode === "read"
-              ? ["TEST_READY", "LIVE_PROVEN", "DEGRADED", "BLOCKED"].includes(
-                  input.status
-                )
-              : input.status === "TEST_READY";
-          }
+              '''export function operationEligibleForCommissioningTest(input: {
+  status: string;
+  definitionMode: unknown;
+  requestedMode: BrowserOperationMode;
+}) {
+  if (input.definitionMode !== input.requestedMode) return false;
+  return input.requestedMode === "read"
+    ? ["TEST_READY", "LIVE_PROVEN"].includes(input.status)
+    : input.status === "TEST_READY";
+}
+''',
+              '''export function operationEligibleForCommissioningTest(input: {
+  status: string;
+  definitionMode: unknown;
+  requestedMode: BrowserOperationMode;
+}) {
+  if (input.definitionMode !== input.requestedMode) return false;
+  return input.requestedMode === "read"
+    ? ["TEST_READY", "LIVE_PROVEN", "DEGRADED", "BLOCKED"].includes(
+        input.status
+      )
+    : input.status === "TEST_READY";
+}
 
-          export function isTransientBrowserControlError(error: unknown) {
-            const detail = error instanceof Error ? error.message : String(error || "");
-            return /CRM_VIEWER_(?:HUMAN|AGENT)_CONTROL_ACTIVE/.test(detail);
-          }
-          ''',
-          'retryable read eligibility')
-
-          replace_once(
-          '''const activeJobs = new Set<number>();
-
-          async function ownedCommissioningSecret''',
-          '''async function ownedCommissioningSecret''',
-          'remove process local active jobs')
+export function isTransientBrowserControlError(error: unknown) {
+  const detail = error instanceof Error ? error.message : String(error || "");
+  return /CRM_VIEWER_(?:HUMAN|AGENT)_CONTROL_ACTIVE/.test(detail);
+}
+''',
+              'retryable reads',
+          )
 
           replace_once(
-          '''function scheduleAutomaticCommissioning(jobId: number) {
-            if (activeJobs.has(jobId)) return;
-            activeJobs.add(jobId);
-            setImmediate(() => {
-              void advanceAutomaticCommissioning(jobId)
-                .catch(error =>
-                  console.error("[crm-commissioning] background step failed", {
-                    jobId,
-                    detail: error instanceof Error ? error.message : String(error),
-                  })
-                )
-                .finally(() => activeJobs.delete(jobId));
-            });
-          }
-          ''',
-          '''function scheduleAutomaticCommissioning(jobId: number) {
-            // The database lease is the only ownership source of truth. Multiple
-            // schedulers may race safely because advanceAutomaticCommissioning
-            // atomically claims an expired/null lease before doing any work.
-            setImmediate(() => {
-              void advanceAutomaticCommissioning(jobId).catch(error =>
-                console.error("[crm-commissioning] background step failed", {
-                  jobId,
-                  detail: error instanceof Error ? error.message : String(error),
-                })
-              );
-            });
-          }
-          ''',
-          'database lease scheduling')
+              'const activeJobs = new Set<number>();\n\n',
+              '',
+              'remove process local job lock',
+          )
+
+          regex_once(
+              r'function scheduleAutomaticCommissioning\(jobId: number\) \{.*?\n\}\n\nexport async function startAutomaticCommissioning',
+              '''function scheduleAutomaticCommissioning(jobId: number) {
+  // The DB lease is the only commissioning ownership source of truth.
+  // Competing schedulers are safe because advanceAutomaticCommissioning
+  // atomically claims an expired/null lease before any browser work begins.
+  setImmediate(() => {
+    void advanceAutomaticCommissioning(jobId).catch(error =>
+      console.error("[crm-commissioning] background step failed", {
+        jobId,
+        detail: error instanceof Error ? error.message : String(error),
+      })
+    );
+  });
+}
+
+export async function startAutomaticCommissioning''',
+              'database lease scheduler',
+          )
 
           replace_once(
-          '''  const failedOperationKeys: string[] = [];
-            let repairGenxCalls = 0;''',
-          '''  const failedOperationKeys: string[] = [];
-            let transientControlBlocked = false;
-            let repairGenxCalls = 0;''',
-          'transient control flag')
+              '  const failedOperationKeys: string[] = [];\n  let repairGenxCalls = 0;',
+              '  const failedOperationKeys: string[] = [];\n  let transientControlBlocked = false;\n  let repairGenxCalls = 0;',
+              'transient control flag',
+          )
 
           replace_once(
-          '''    } catch (error) {
-                failedOperationKeys.push(operation.operationKey);
-                failures[operation.operationKey] = safeText(
-                  error instanceof Error ? error.message : String(error),
-                  500
-                );
-              }
-            }
-            // Selector drift in a genuinely installed Genie definition receives one''',
-          '''    } catch (error) {
-                const detail = safeText(
-                  error instanceof Error ? error.message : String(error),
-                  500
-                );
-                failures[operation.operationKey] = detail;
-                if (isTransientBrowserControlError(error)) {
-                  transientControlBlocked = true;
-                } else {
-                  failedOperationKeys.push(operation.operationKey);
-                }
-              }
-            }
-            // Selector drift in a genuinely installed Genie definition receives one''',
-          'do not repair control collisions with GenX')
+              '''    } catch (error) {
+      failedOperationKeys.push(operation.operationKey);
+      failures[operation.operationKey] = safeText(
+        error instanceof Error ? error.message : String(error),
+        500
+      );
+    }
+''',
+              '''    } catch (error) {
+      const detail = safeText(
+        error instanceof Error ? error.message : String(error),
+        500
+      );
+      failures[operation.operationKey] = detail;
+      if (isTransientBrowserControlError(error)) {
+        transientControlBlocked = true;
+      } else {
+        failedOperationKeys.push(operation.operationKey);
+      }
+    }
+''',
+              'control collisions are not selector drift',
+          )
 
           replace_once(
-          '''    repairGenxCalls,
-              modelUsedDuringVerification: false as const,''',
-          '''    repairGenxCalls,
-              transientControlBlocked,
-              modelUsedDuringVerification: false as const,''',
-          'return transient control state')
+              '    repairGenxCalls,\n    modelUsedDuringVerification: false as const,',
+              '    repairGenxCalls,\n    transientControlBlocked,\n    modelUsedDuringVerification: false as const,',
+              'return transient control flag',
+          )
 
           replace_once(
-          '''      if (!safeReadCommissioningPassed(result))
-                throw new Error(
-                  "No deterministic CRM safe-read operation passed commissioning."
-                );
-              failures = result.failures;''',
-          '''      if (result.transientControlBlocked) {
-                await updateJob(job.id, {
-                  status: "queued",
-                  optionalFailures: result.failures,
-                  leaseExpiresAt: new Date(Date.now() + 15_000),
-                  lastError: null,
-                  progress: {
-                    ...progress,
-                    humanStatus: "Waiting for secure CRM control",
-                    browserControl: "retrying",
-                  },
-                });
-                return;
-              }
-              if (!safeReadCommissioningPassed(result))
-                throw new Error(
-                  "No deterministic CRM safe-read operation passed commissioning."
-                );
-              failures = result.failures;''',
-          'queue safe read control retry')
+              '      if (!safeReadCommissioningPassed(result))',
+              '''      if (result.transientControlBlocked) {
+        await updateJob(job.id, {
+          status: "queued",
+          optionalFailures: result.failures,
+          leaseExpiresAt: new Date(Date.now() + 15_000),
+          lastError: null,
+          progress: {
+            ...progress,
+            humanStatus: "Waiting for secure CRM control",
+            browserControl: "retrying",
+          },
+        });
+        return;
+      }
+      if (!safeReadCommissioningPassed(result))''',
+              'queue control retry',
+          )
 
           replace_once(
-          '''      const hasWrites = matrix.operations.some(
-                operation =>
-                  operation.mode === "write" && operation.status === "TEST_READY"
-              );''',
-          '''      const hasWrites =
-                system.allowedWriteCapabilities.length > 0 &&
-                matrix.operations.some(
-                  operation =>
-                    operation.mode === "write" && operation.status === "TEST_READY"
-                );''',
-          'authorised writes only')
+              '''      const hasWrites = matrix.operations.some(
+        operation =>
+          operation.mode === "write" && operation.status === "TEST_READY"
+      );''',
+              '''      const hasWrites =
+        system.allowedWriteCapabilities.length > 0 &&
+        matrix.operations.some(
+          operation =>
+            operation.mode === "write" && operation.status === "TEST_READY"
+        );''',
+              'authorised writes only',
+          )
 
           replace_once(
-          '''        genieDiscoveryTargets = knownPack.needsDiscovery;
-                progress.placeholderOperationsRejected = knownPack.needsDiscovery;''',
-          '''        const authorisedReadTargets = BROWSER_OPERATION_CATALOGUE.filter(
-                  operation =>
-                    operation.mode === "read" &&
-                    (!operation.capability ||
-                      system.allowedReadCapabilities.includes(operation.capability))
-                ).map(operation => operation.key);
-                genieDiscoveryTargets = Array.from(
-                  new Set([
-                    ...knownPack.needsDiscovery,
-                    ...authorisedReadTargets.filter(
-                      operationKey => !knownPack.installed.includes(operationKey)
-                    ),
-                  ])
-                );
-                progress.placeholderOperationsRejected = knownPack.needsDiscovery;''',
-          'authorised read discovery targets')
+              '''        genieDiscoveryTargets = knownPack.needsDiscovery;
+        progress.placeholderOperationsRejected = knownPack.needsDiscovery;''',
+              '''        const authorisedReadTargets = BROWSER_OPERATION_CATALOGUE.filter(
+          operation =>
+            operation.mode === "read" &&
+            (!operation.capability ||
+              system.allowedReadCapabilities.includes(operation.capability))
+        ).map(operation => operation.key);
+        genieDiscoveryTargets = Array.from(
+          new Set([
+            ...knownPack.needsDiscovery,
+            ...authorisedReadTargets.filter(
+              operationKey => !knownPack.installed.includes(operationKey)
+            ),
+          ])
+        );
+        progress.placeholderOperationsRejected = knownPack.needsDiscovery;''',
+              'authorised read discovery',
+          )
 
           replace_once(
-          '''        initialSyncReady = true;
-                progress.initialSync = initialSync;''',
-          '''        if (
-                  initialSync.modelUsed !== false ||
-                  Number(initialSync.providerCallCount || 0) !== 0
-                )
-                  throw new Error(
-                    "CRM_INITIAL_SYNC_MODEL_BOUNDARY_VIOLATION: routine CRM sync must remain model-free."
-                  );
-                initialSyncReady = true;
-                progress.initialSync = initialSync;''',
-          'model free initial sync proof')
+              '''        initialSyncReady = true;
+        progress.initialSync = initialSync;''',
+              '''        if (
+          initialSync.modelUsed !== false ||
+          Number(initialSync.providerCallCount || 0) !== 0
+        )
+          throw new Error(
+            "CRM_INITIAL_SYNC_MODEL_BOUNDARY_VIOLATION: routine CRM sync must remain model-free."
+          );
+        initialSyncReady = true;
+        progress.initialSync = initialSync;''',
+              'model-free sync proof',
+          )
 
           replace_once(
-          '''  } catch (error) {
-              const detail = safeText(
-                error instanceof Error ? error.message : String(error),
-                2_000
-              );
-              await updateJob(job.id, {
-                status: "needs_attention",
-                lastError: detail,
-                leaseExpiresAt: null,
-                progress: { ...(job.progress || {}), humanStatus: "Needs setup" },
-              });
-            }
-          }''',
-          '''  } catch (error) {
-              const detail = safeText(
-                error instanceof Error ? error.message : String(error),
-                2_000
-              );
-              if (isTransientBrowserControlError(error)) {
-                await updateJob(job.id, {
-                  status: "queued",
-                  lastError: null,
-                  leaseExpiresAt: new Date(Date.now() + 15_000),
-                  progress: {
-                    ...(job.progress || {}),
-                    humanStatus: "Waiting for secure CRM control",
-                    browserControl: "retrying",
-                  },
-                });
-                return;
-              }
-              await updateJob(job.id, {
-                status: "needs_attention",
-                lastError: detail,
-                leaseExpiresAt: null,
-                progress: { ...(job.progress || {}), humanStatus: "Needs setup" },
-              });
-            }
-          }''',
-          'transient outer control recovery')
+              '''    const detail = safeText(
+      error instanceof Error ? error.message : String(error),
+      2_000
+    );
+    await updateJob(job.id, {
+      status: "needs_attention",''',
+              '''    const detail = safeText(
+      error instanceof Error ? error.message : String(error),
+      2_000
+    );
+    if (isTransientBrowserControlError(error)) {
+      await updateJob(job.id, {
+        status: "queued",
+        lastError: null,
+        leaseExpiresAt: new Date(Date.now() + 15_000),
+        progress: {
+          ...(job.progress || {}),
+          humanStatus: "Waiting for secure CRM control",
+          browserControl: "retrying",
+        },
+      });
+      return;
+    }
+    await updateJob(job.id, {
+      status: "needs_attention",''',
+              'outer control recovery',
+          )
 
           path.write_text(text)
 
+          sync_path = Path('server/crm/sync.ts')
+          sync = sync_path.read_text()
+          old = '''  const resources = [
+    ["companies", adapter.syncCompanies, upsertCompanies],
+    ["contacts", adapter.syncContacts, upsertContacts],
+    ["opportunities", adapter.syncOpportunities, upsertOpportunities],
+    ["tasks", adapter.syncTasks, upsertTasks],
+    ["activities", adapter.syncActivities, upsertActivities],
+  ] as const;
+  for (const [resourceType, sync, persist] of resources) {'''
+          new = '''  const resources = [
+    ["companies", "companies.read", adapter.syncCompanies, upsertCompanies],
+    ["contacts", "contacts.read", adapter.syncContacts, upsertContacts],
+    [
+      "opportunities",
+      "opportunities.read",
+      adapter.syncOpportunities,
+      upsertOpportunities,
+    ],
+    ["tasks", "tasks.read", adapter.syncTasks, upsertTasks],
+    ["activities", "activities.read", adapter.syncActivities, upsertActivities],
+  ] as const;
+  for (const [resourceType, capability, sync, persist] of resources) {
+    if (!connection.allowedReadCapabilities.includes(capability)) {
+      summary[resourceType] = 0;
+      continue;
+    }'''
+          if sync.count(old) != 1:
+              raise SystemExit(f'authorised sync resources: expected one match, found {sync.count(old)}')
+          sync_path.write_text(sync.replace(old, new, 1))
+
           test_path = Path('server/crm/automaticCommissioning.test.ts')
           test = test_path.read_text()
-          old = '''    expect(\n      operationEligibleForCommissioningTest({\n        status: "LIVE_PROVEN",\n        definitionMode: "write",\n        requestedMode: "write",\n      })\n    ).toBe(false);'''
-          new = '''    expect(\n      operationEligibleForCommissioningTest({\n        status: "LIVE_PROVEN",\n        definitionMode: "write",\n        requestedMode: "write",\n      })\n    ).toBe(false);\n    for (const status of ["BLOCKED", "DEGRADED"])\n      expect(\n        operationEligibleForCommissioningTest({\n          status,\n          definitionMode: "read",\n          requestedMode: "read",\n        })\n      ).toBe(true);'''
+          test = test.replace(
+              '  inferBrowserOperationCandidates,\n  nextCommissioningState,',
+              '  inferBrowserOperationCandidates,\n  isTransientBrowserControlError,\n  nextCommissioningState,',
+              1,
+          )
+          old = '''    expect(
+      operationEligibleForCommissioningTest({
+        status: "LIVE_PROVEN",
+        definitionMode: "write",
+        requestedMode: "write",
+      })
+    ).toBe(false);'''
+          new = '''    expect(
+      operationEligibleForCommissioningTest({
+        status: "LIVE_PROVEN",
+        definitionMode: "write",
+        requestedMode: "write",
+      })
+    ).toBe(false);
+    for (const status of ["BLOCKED", "DEGRADED"])
+      expect(
+        operationEligibleForCommissioningTest({
+          status,
+          definitionMode: "read",
+          requestedMode: "read",
+        })
+      ).toBe(true);
+    expect(
+      isTransientBrowserControlError(
+        new Error("CRM_VIEWER_HUMAN_CONTROL_ACTIVE: viewer owns the page")
+      )
+    ).toBe(true);
+    expect(isTransientBrowserControlError(new Error("selector drift"))).toBe(
+      false
+    );'''
           if test.count(old) != 1:
-              raise SystemExit(f'automaticCommissioning.test retry contract: expected one match, found {test.count(old)}')
+              raise SystemExit(f'retry test: expected one match, found {test.count(old)}')
           test = test.replace(old, new, 1)
 
-          old = '''  it("keeps an optional failure from blocking the proven core selling loop", () => {\n    const statuses = new Map([\n      ["contact.search", "LIVE_PROVEN"],\n      ["contact.read", "LIVE_PROVEN"],\n      ["task.list", "LIVE_PROVEN"],\n      ["note.create", "LIVE_PROVEN"],\n      ["task.create_callback", "LIVE_PROVEN"],\n      ["opportunity.read", "LIVE_PROVEN"],\n      ["opportunity.update", "LIVE_PROVEN"],\n      ["whatsapp.send", "DEGRADED"],\n    ]);\n    expect(coreBrowserCommissioningReady(statuses)).toBe(true);\n  });'''
-          new = '''  it("requires only the proven safe contact read loop for read-only onboarding", () => {\n    const statuses = new Map([\n      ["contact.search", "LIVE_PROVEN"],\n      ["contact.read", "LIVE_PROVEN"],\n      ["contact.sync", "LIVE_PROVEN"],\n      ["note.create", "NOT_LEARNED"],\n      ["opportunity.update", "NOT_LEARNED"],\n    ]);\n    expect(coreBrowserCommissioningReady(statuses)).toBe(true);\n  });'''
+          old = '''  it("keeps an optional failure from blocking the proven core selling loop", () => {
+    const statuses = new Map([
+      ["contact.search", "LIVE_PROVEN"],
+      ["contact.read", "LIVE_PROVEN"],
+      ["task.list", "LIVE_PROVEN"],
+      ["note.create", "LIVE_PROVEN"],
+      ["task.create_callback", "LIVE_PROVEN"],
+      ["opportunity.read", "LIVE_PROVEN"],
+      ["opportunity.update", "LIVE_PROVEN"],
+      ["whatsapp.send", "DEGRADED"],
+    ]);
+    expect(coreBrowserCommissioningReady(statuses)).toBe(true);
+  });'''
+          new = '''  it("requires only the proven safe contact read loop for read-only onboarding", () => {
+    const statuses = new Map([
+      ["contact.search", "LIVE_PROVEN"],
+      ["contact.read", "LIVE_PROVEN"],
+      ["contact.sync", "LIVE_PROVEN"],
+      ["note.create", "NOT_LEARNED"],
+      ["opportunity.update", "NOT_LEARNED"],
+    ]);
+    expect(coreBrowserCommissioningReady(statuses)).toBe(true);
+  });'''
           if test.count(old) != 1:
-              raise SystemExit(f'automaticCommissioning.test core contract: expected one match, found {test.count(old)}')
-          test_path.write_text(test)
+              raise SystemExit(f'core readiness test: expected one match, found {test.count(old)}')
+          test_path.write_text(test.replace(old, new, 1))
           PY
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
       - name: Focused CRM tests
-        run: pnpm exec vitest run server/crm/automaticCommissioning.test.ts server/crm/capabilityAccounting.test.ts
+        run: pnpm exec vitest run server/crm/automaticCommissioning.test.ts server/crm/capabilityAccounting.test.ts server/crm/sync.test.ts
       - name: TypeScript
         run: pnpm check
       - name: Full unit tests
@@ -331,7 +372,7 @@ jobs:
           rm .github/workflows/final-product-backend-repair.yml
           git config user.name "Amarktai Release Bot"
           git config user.email "actions@users.noreply.github.com"
-          git add server/crm/automaticCommissioning.ts server/crm/automaticCommissioning.test.ts server/crm/commissioningReadiness.ts server/crm/capabilityAccounting.ts server/crm/capabilityAccounting.test.ts .github/workflows/final-product-backend-repair.yml
+          git add server/crm/automaticCommissioning.ts server/crm/automaticCommissioning.test.ts server/crm/commissioningReadiness.ts server/crm/capabilityAccounting.ts server/crm/capabilityAccounting.test.ts server/crm/sync.ts .github/workflows/final-product-backend-repair.yml
           git diff --cached --check
           git commit -m "Implement final CRM commissioning backend repair"
           git push origin HEAD:fix/final-complete-product
