@@ -5,6 +5,10 @@ const assistant = fs.readFileSync("server/assistantRoutes.ts", "utf8");
 const today = fs.readFileSync("server/today.ts", "utf8");
 const onboarding = fs.readFileSync("client/src/pages/Onboarding.tsx", "utf8");
 const crm = fs.readFileSync("client/src/pages/CrmWorkspace.tsx", "utf8");
+const companySetup = fs.readFileSync(
+  "client/src/pages/CompanySetup.tsx",
+  "utf8"
+);
 const routers = fs.readFileSync("server/routers.ts", "utf8");
 
 function compact(value: string) {
@@ -46,5 +50,11 @@ describe("client handover acceptance guards", () => {
     expect(crm).toContain("AmarktAI is learning");
     expect(crm).toContain("/api/team/crm-identity");
     expect(crm).toContain("!crmIdentityMapped");
+  });
+
+  it("keeps company knowledge review in the onboarding shell instead of exposing the dashboard sidebar", () => {
+    expect(companySetup).toContain("data-company-knowledge-review-shell");
+    expect(companySetup).toContain("fixed inset-0 z-[240]");
+    expect(companySetup).toContain("data-company-knowledge-report");
   });
 });
