@@ -87,24 +87,19 @@ export function accountBrowserCapabilities(input: {
   });
 
   const hardRequired = new Set<string>(CORE_BROWSER_OPERATIONS);
-  const expectedReads = new Set<string>(REQUIRED_COMMISSIONED_OPERATIONS);
   const criticalGaps = rows
     .filter(row => {
       if (row.mode !== "read" || row.status === "LIVE_PROVEN") return false;
       if (row.status === "NOT_AUTHORISED") return false;
 
       const required = hardRequired.has(row.operationKey);
-      const expected = expectedReads.has(row.operationKey);
       const discoveredCustom =
         !standardKeys.has(row.operationKey) && discovered.has(row.operationKey);
-      if (!required && !expected && !discoveredCustom) return false;
 
-      // A CRM role can legitimately omit optional read surfaces. Missing optional
-      // surfaces are reported, but they must not trap first-time onboarding.
-      if (row.status === "UNSUPPORTED" && !required && !discoveredCustom)
-        return false;
-
-      return true;
+      // Standard optional CRM reads remain visible in the capability matrix but
+      // do not trap onboarding. Only the canonical safe contact loop and a
+      // genuinely discovered custom read can block the connection being usable.
+      return required || discoveredCustom;
     })
     .map(row => ({ operationKey: row.operationKey, status: row.status }));
 
