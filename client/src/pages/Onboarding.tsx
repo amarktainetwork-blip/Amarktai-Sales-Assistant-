@@ -1,5 +1,4 @@
 import { BrandMark } from "@/components/BrandMark";
-import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -191,8 +190,7 @@ function SetupShell({
   wide?: boolean;
 }) {
   return (
-    <DashboardLayout>
-      <main className="amk-auth amk-auth--setup fixed inset-0 z-[240] overflow-y-auto">
+    <main className="amk-auth amk-auth--setup fixed inset-0 z-[240] overflow-y-auto">
         <SetupVisual />
         <section className="amk-auth__form-side amk-auth__form-side--setup">
           <div className="amk-auth__mobile-brand">
@@ -203,9 +201,8 @@ function SetupShell({
           >
             {children}
           </div>
-        </section>
-      </main>
-    </DashboardLayout>
+      </section>
+    </main>
   );
 }
 
