@@ -30,6 +30,19 @@ import { normalizeCrmEmail, normalizeCrmPhone } from "./identity";
 import { runModelFreeOperation } from "../aiExecutionBoundary";
 import { upsertSalesWorkFromCrm } from "../salesWork";
 
+export function crmResourceSyncEligible(
+  connection: Pick<
+    AdapterConnection,
+    "allowedReadCapabilities" | "verifiedCapabilities"
+  >,
+  capability: string
+) {
+  return (
+    connection.allowedReadCapabilities.includes(capability) &&
+    connection.verifiedCapabilities.includes(capability)
+  );
+}
+
 async function cursorFor(systemId: number, resourceType: string) {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
@@ -358,7 +371,7 @@ async function syncConnectedSystemDeterministically(input: {
     ["activities", "activities.read", adapter.syncActivities, upsertActivities],
   ] as const;
   for (const [resourceType, capability, sync, persist] of resources) {
-    if (!connection.allowedReadCapabilities.includes(capability)) {
+    if (!crmResourceSyncEligible(connection, capability)) {
       summary[resourceType] = 0;
       continue;
     }
