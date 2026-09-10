@@ -360,6 +360,67 @@ describe("configured workflow materialization", () => {
       answered.actions.some(action => action.actionType === "schedule_callback")
     ).toBe(false);
 
+    const answeredWithAgreedFollowUpConfig = {
+      ...base,
+      workflows: {
+        "post_consultation_follow_up:answered": {
+          ...(
+            mocks.getClientActionConfiguration.mock.results.length
+              ? {
+                  taskAliases: {
+                    post_follow_up: "Current Follow-up",
+                    agreed_follow_up: "Agreed Follow-up",
+                  },
+                  taskSequence: [],
+                  sequence: [
+                    "verify_contact_context:current_customer",
+                    "complete_active_task:post_follow_up",
+                    "append_contact_note:answered_notes",
+                    "update_current_opportunity:post_consultation",
+                  ],
+                  eligibilityStatuses: [],
+                  stopStatuses: ["Closed"],
+                  opportunityMappings: { post_consultation: "Considering" },
+                  statusMappings: {},
+                  templates: {},
+                  timingRules: {},
+                  duplicateRules: ["external_read_before_write"],
+                  requiredPostconditions: ["crm_readback"],
+                }
+              : {}
+          ),
+        },
+      },
+    };
+    mocks.getClientActionConfiguration.mockResolvedValue(
+      answeredWithAgreedFollowUpConfig
+    );
+    const answeredWithAgreedFollowUp = await buildConfiguredWorkflowPlan({
+      organisationId: 1,
+      request: {
+        workflowKey: "post_consultation_follow_up",
+        leadLabel: "Test Customer",
+        callOutcome: "answered",
+        conversationNotes: "Customer asked for a call Friday afternoon.",
+        agreedFollowUpAt: "2026-09-11T13:00:00.000Z",
+      },
+      customer: customer({ taskTitle: "Current Follow-up" }),
+    });
+    expect(
+      answeredWithAgreedFollowUp.actions.find(
+        action => action.actionType === "schedule_callback"
+      )?.payload
+    ).toMatchObject({
+      taskTitle: "Agreed Follow-up",
+      dueAt: "2026-09-11T13:00:00.000Z",
+      agreedFromConversation: true,
+    });
+    expect(
+      answeredWithAgreedFollowUp.actions.some(action =>
+        /^send_(?:email|sms|whatsapp)/.test(action.actionType)
+      )
+    ).toBe(false);
+
     const noAnswer = await buildConfiguredWorkflowPlan({
       organisationId: 1,
       request: {
