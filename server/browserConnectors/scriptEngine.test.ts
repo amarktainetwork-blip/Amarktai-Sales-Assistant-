@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { renderBrowserTemplate, validateSavedBrowserScript } from "./scriptEngine";
+import {
+  renderBrowserTemplate,
+  resolveBrowserNavigationTarget,
+  validateSavedBrowserScript,
+} from "./scriptEngine";
 
 describe("saved browser connector scripts", () => {
   it("accepts deterministic form and row-extraction actions", () => {
@@ -11,6 +15,31 @@ describe("saved browser connector scripts", () => {
     ] });
     expect(script.steps).toHaveLength(4);
     expect(renderBrowserTemplate("/contact/{{ externalId }}", { externalId: 42 })).toBe("/contact/42");
+  });
+
+  it("resolves relative record links against the current CRM page but rejects non-HTTP schemes", () => {
+    expect(
+      resolveBrowserNavigationTarget(
+        "/v2/location/location-1/contacts/detail/contact-7",
+        "https://crm.example.test/v2/location/location-1/contacts/"
+      )
+    ).toBe(
+      "https://crm.example.test/v2/location/location-1/contacts/detail/contact-7"
+    );
+    expect(
+      resolveBrowserNavigationTarget(
+        "https://crm.example.test/v2/location/location-1/contacts/detail/contact-8",
+        "https://crm.example.test/"
+      )
+    ).toBe(
+      "https://crm.example.test/v2/location/location-1/contacts/detail/contact-8"
+    );
+    expect(() =>
+      resolveBrowserNavigationTarget(
+        "javascript:alert(1)",
+        "https://crm.example.test/"
+      )
+    ).toThrow(/HTTP\(S\)/);
   });
 
   it("rejects executable selector or value content", () => {
