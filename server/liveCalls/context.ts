@@ -23,6 +23,8 @@ export type LiveCallCrmContext = {
   provider: string;
   contactExternalId: string;
   contactName: string;
+  firstName?: string;
+  lastName?: string;
   companyName?: string;
   email?: string;
   phone?: string;
@@ -203,6 +205,8 @@ async function contextForContact(input: {
     provider: system.provider,
     contactExternalId: input.contact.externalId,
     contactName,
+    firstName: input.contact.firstName || undefined,
+    lastName: input.contact.lastName || undefined,
     companyName: company?.name || undefined,
     email: input.contact.email || undefined,
     phone: input.contact.phone || undefined,
