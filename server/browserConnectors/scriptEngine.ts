@@ -110,6 +110,21 @@ export function renderBrowserTemplate(
   );
 }
 
+export function resolveBrowserNavigationTarget(
+  value: string,
+  currentUrl: string
+) {
+  let target: URL;
+  try {
+    target = new URL(value, currentUrl);
+  } catch {
+    throw new Error("Browser connector navigation only permits valid HTTP(S) URLs.");
+  }
+  if (!/^https?:$/.test(target.protocol))
+    throw new Error("Browser connector navigation only permits HTTP(S) URLs.");
+  return target.toString();
+}
+
 function validateSelector(value?: string) {
   if (value && (value.length > 2000 || forbiddenSelectorText.test(value)))
     throw new Error(
@@ -215,11 +230,10 @@ export async function executeSavedBrowserScript(input: {
     for (const step of script.steps) {
       input.assertControl?.();
       if (step.action === "goto") {
-        const target = renderBrowserTemplate(step.value, input.inputs);
-        if (!/^https?:\/\//i.test(target))
-          throw new Error(
-            "Browser connector navigation only permits HTTP(S) URLs."
-          );
+        const target = resolveBrowserNavigationTarget(
+          renderBrowserTemplate(step.value, input.inputs),
+          input.page.url()
+        );
         await input.authorizeNavigation?.(target);
         await input.page.goto(target, {
           waitUntil: "domcontentloaded",
