@@ -26,6 +26,8 @@ export type LiveCallCrmContext = {
   companyName?: string;
   email?: string;
   phone?: string;
+  /** Current normalized CRM lifecycle/status, used only for configured workflow eligibility. */
+  contactStatus?: string;
   taskExternalId?: string;
   taskTitle?: string;
   opportunityExternalId?: string;
@@ -204,6 +206,12 @@ async function contextForContact(input: {
     companyName: company?.name || undefined,
     email: input.contact.email || undefined,
     phone: input.contact.phone || undefined,
+    contactStatus: String(
+      input.contact.lifecycleStage ||
+        input.contact.raw?.status ||
+        input.contact.raw?.lifecycleStage ||
+        ""
+    ).trim() || undefined,
     taskExternalId: task?.externalId,
     taskTitle: task?.title,
     opportunityExternalId: opportunity?.externalId,
