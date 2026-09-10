@@ -1,5 +1,7 @@
 import { createWorkflowRun } from "./db";
 import { listConnectedSystemsForUser } from "./connectedSystems";
+import { getTodayWork } from "./today";
+import { findPersonalCrmContact } from "./liveCalls/context";
 import { routeConnectedSystemActionsForUser } from "./crmRouter";
 import { routeSalesCommand } from "./supervisor";
 import {
@@ -467,6 +469,192 @@ async function prepareCallback(input: GovernedAssistantEntryInput) {
   } satisfies LegacyResult;
 }
 
+export function configuredWorkflowBatchRequested(command: string) {
+  return (
+    /\b(?:process|work\s+through|handle|action|prepare)\b/i.test(command) &&
+    /\b(?:overdue|due[- ]?today|due\s+today|tasks?|leads?|callbacks?)\b/i.test(
+      command
+    )
+  );
+}
+
+function workflowTaskTitles(
+  configuration: Awaited<ReturnType<typeof getClientActionConfiguration>>,
+  workflowKey: WorkflowRequest["workflowKey"]
+) {
+  const workflow = configuration.workflows[workflowKey];
+  if (!workflow) return [];
+  return workflow.taskSequence.map(purpose => {
+    const title = workflow.taskAliases[purpose]?.trim();
+    if (!title)
+      throw new Error(
+        `WORKFLOW_TASK_ALIAS_REQUIRED: configured task sequence purpose '${purpose}' has no exact CRM title.`
+      );
+    return title;
+  });
+}
+
+/**
+ * Prepares one fully governed configured workflow per exact salesperson-owned
+ * due task. It never turns a complex client workflow into one bulk mutation.
+ */
+export async function prepareConfiguredWorkflowBatch(input: {
+  userId: number;
+  organisationId: number;
+  command: string;
+  workflowKey: WorkflowRequest["workflowKey"];
+}) {
+  const [today, configuration, systems] = await Promise.all([
+    getTodayWork({
+      userId: input.userId,
+      organisationId: input.organisationId,
+    }),
+    getClientActionConfiguration({ organisationId: input.organisationId }),
+    listConnectedSystemsForUser(input.userId, input.organisationId),
+  ]);
+  const configuredTitles = workflowTaskTitles(configuration, input.workflowKey);
+  if (!configuredTitles.length)
+    return {
+      state: "blocked" as const,
+      proposalCount: 0,
+      summary:
+        "This workflow has no configured task sequence, so Amarktai will not guess which due tasks belong to it.",
+      needsClarification: false,
+    };
+  const normalizedCommand = input.command.toLowerCase();
+  const wantsOverdue = /\boverdue\b/i.test(input.command);
+  const wantsToday = /\bdue[- ]?today\b|\bdue\s+today\b/i.test(input.command);
+  const sourceTasks = [
+    ...(wantsOverdue || (!wantsOverdue && !wantsToday)
+      ? today.queues.overdueTasks
+      : []),
+    ...(wantsToday || (!wantsOverdue && !wantsToday)
+      ? today.queues.dueToday
+      : []),
+  ];
+  const mentionedTitles = configuredTitles.filter(title =>
+    normalizedCommand.includes(title.toLowerCase())
+  );
+  const allowedTitles = new Set(
+    (mentionedTitles.length ? mentionedTitles : configuredTitles).map(title =>
+      title.trim().toLowerCase().replace(/\s+/g, " ")
+    )
+  );
+  const selected = sourceTasks
+    .filter(task =>
+      allowedTitles.has(task.title.trim().toLowerCase().replace(/\s+/g, " "))
+    )
+    .filter(
+      (task, index, all) =>
+        all.findIndex(candidate => candidate.externalId === task.externalId) ===
+        index
+    )
+    .slice(0, 50);
+  if (!selected.length)
+    return {
+      state: "completed" as const,
+      proposalCount: 0,
+      summary:
+        "There are no salesperson-owned overdue or due-today tasks matching this configured contact sequence right now.",
+      needsClarification: false,
+    };
+
+  const workflowRunIds: number[] = [];
+  const blocked: Array<{ taskExternalId: string; reason: string }> = [];
+  let proposalCount = 0;
+  for (const task of selected) {
+    try {
+      if (!task.contactExternalId)
+        throw new Error(
+          "TASK_CUSTOMER_REQUIRED: the due task has no exact normalized customer link."
+        );
+      const contact = await findPersonalCrmContact({
+        userId: input.userId,
+        organisationId: input.organisationId,
+        connectedSystemId: task.connectedSystemId,
+        externalId: task.contactExternalId,
+      });
+      if (!contact)
+        throw new Error(
+          "TASK_CUSTOMER_NOT_OWNED: the due task does not resolve to a customer owned by this salesperson."
+        );
+      const customer = await resolveAssistantCustomerContext({
+        userId: input.userId,
+        organisationId: input.organisationId,
+        contactId: contact.id,
+      });
+      if (!customer)
+        throw new Error(
+          "TASK_CUSTOMER_CONTEXT_REQUIRED: the exact customer context could not be resolved."
+        );
+      const plan = await buildConfiguredWorkflowPlan({
+        organisationId: input.organisationId,
+        request: {
+          workflowKey: input.workflowKey,
+          leadLabel: customer.contactName,
+        },
+        customer,
+      });
+      const unsafe = destructiveWorkflowBlock(plan.actions, customer);
+      if (unsafe) throw new Error(unsafe);
+      const bound = plan.actions.map(action =>
+        mergeActionVerification(action, customer)
+      );
+      const actions = await routeConnectedSystemActionsForUser({
+        userId: input.userId,
+        organisationId: input.organisationId,
+        actions: bound,
+        systems,
+      });
+      const unroutable = actions.find(
+        action =>
+          !(action.payload.crmRoute as { routable?: boolean } | undefined)
+            ?.routable
+      );
+      if (unroutable)
+        throw new Error(
+          (unroutable.payload.crmRoute as { reason?: string } | undefined)
+            ?.reason ||
+            "A required CRM capability is not live-proven for this workflow."
+        );
+      const workflowRunId = await createWorkflowRun({
+        userId: input.userId,
+        organisationId: input.organisationId,
+        workflowKey: `assistant_configured_batch:${input.workflowKey}`,
+        leadLabel: customer.contactName,
+        payload: {
+          source: "configured_due_task_batch",
+          instruction: input.command,
+          sourceTaskExternalId: task.externalId,
+          contactExternalId: customer.contactExternalId,
+          connectedSystemId: customer.connectedSystemId,
+        },
+        verificationSummary: plan.verificationSummary,
+        actions,
+      });
+      workflowRunIds.push(workflowRunId);
+      proposalCount += actions.length;
+    } catch (error) {
+      blocked.push({
+        taskExternalId: task.externalId,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  return {
+    state: workflowRunIds.length
+      ? ("prepared_for_review" as const)
+      : ("blocked" as const),
+    proposalCount,
+    summary: workflowRunIds.length
+      ? `Prepared ${workflowRunIds.length} exact customer workflow${workflowRunIds.length === 1 ? "" : "s"} for Review. ${blocked.length ? `${blocked.length} task${blocked.length === 1 ? "" : "s"} were safely skipped and flagged because their current CRM state was ambiguous or ineligible.` : "Every selected task passed preparation checks."}`
+      : "None of the selected due tasks could be prepared safely. Nothing was changed.",
+    needsClarification: false,
+    workflowRunIds,
+    blocked,
+  };
+}
+
 async function prepareConfiguredWorkflow(input: GovernedAssistantEntryInput) {
   const route = routeSalesCommand(input.command);
   if (route.intent !== "workflow" || !route.workflowKey) return undefined;
@@ -626,6 +814,19 @@ async function prepareConfiguredWorkflow(input: GovernedAssistantEntryInput) {
 export async function prepareGovernedAssistantRequest(
   input: GovernedAssistantEntryInput
 ): Promise<LegacyResult> {
+  const route = routeSalesCommand(input.command);
+  if (
+    route.intent === "workflow" &&
+    route.workflowKey &&
+    !input.contactId &&
+    configuredWorkflowBatchRequested(input.command)
+  )
+    return prepareConfiguredWorkflowBatch({
+      userId: input.userId,
+      organisationId: input.organisationId,
+      command: input.command,
+      workflowKey: route.workflowKey,
+    }) as Promise<LegacyResult>;
   const workflow = await prepareConfiguredWorkflow(input);
   if (workflow) return workflow;
   const callback = await prepareCallback(input);
