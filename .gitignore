@@ -49,6 +49,11 @@ pids
 company-learning-review.json
 company-learning-output/
 
+# Production-local deployment state
+deploy/webdock/backups/
+deploy/webdock/config/
+deploy/webdock/files/
+
 # Coverage directory used by tools like istanbul
 coverage/
 *.lcov
