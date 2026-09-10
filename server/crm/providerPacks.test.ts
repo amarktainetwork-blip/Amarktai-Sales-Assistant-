@@ -6,13 +6,12 @@ import {
 } from "./providerPacks";
 
 describe("canonical Genie provider pack", () => {
-  it("contains the reviewed reusable contact selectors without tenant data", () => {
+  it("contains reusable current contact selectors without tenant data", () => {
     const serialized = JSON.stringify(GENIE_PROVIDER_PACK);
     for (const selector of [
       "#sb_contacts",
-      "#list-view-record-search",
-      ".tabulator-row:not(.tabulator-headers)",
-      ".contact-name-link",
+      "/contacts/detail/",
+      "Search Contacts",
       "contact.first_name",
       "contact.last_name",
       "contact.email",
@@ -20,12 +19,13 @@ describe("canonical Genie provider pack", () => {
       "#owner-dropdown-trigger",
     ])
       expect(serialized).toContain(selector);
+    expect(serialized).not.toContain(".tabulator-row");
     expect(serialized).not.toMatch(/Course2Career|locationId|customer@/i);
     expect(GENIE_PROVIDER_PACK_VERSION).toMatch(/^genie-/);
     expect(providerPackFingerprint()).toMatch(/^[a-f0-9]{64}$/);
   });
 
-  it("waits for the Genie contact table before catalogue extraction", () => {
+  it("reads contact-detail anchors as records without depending on a table framework", () => {
     const definition = GENIE_PROVIDER_PACK.operationDefinitions?.["contact.sync"];
     const executeScript = (definition?.definition as { executeScript?: string })
       ?.executeScript;
@@ -39,8 +39,27 @@ describe("canonical Genie provider pack", () => {
     ]);
     expect(script?.steps[1]).toMatchObject({
       action: "expect_visible",
-      selector: ".tabulator-row:not(.tabulator-headers)",
+      selector: expect.stringContaining('/contacts/detail/'),
     });
+    expect(script?.steps[2]).toMatchObject({
+      action: "read_rows",
+      fields: {
+        externalId: { attribute: "href" },
+        name: {},
+      },
+    });
+  });
+
+  it("uses the visible current contact search control and the same durable record links", () => {
+    const definition = GENIE_PROVIDER_PACK.operationDefinitions?.["contact.search"];
+    const executeScript = (definition?.definition as { executeScript?: string })
+      ?.executeScript;
+    const script = executeScript
+      ? GENIE_PROVIDER_PACK.scripts[executeScript]
+      : undefined;
+    expect(JSON.stringify(script)).toContain("Search Contacts");
+    expect(JSON.stringify(script)).toContain("/contacts/detail/");
+    expect(JSON.stringify(script)).not.toContain(".tabulator-row");
   });
 
   it("ships only TEST_READY inputs for later deterministic certification", () => {

@@ -3,7 +3,16 @@ import type { SavedBrowserScript } from "../browserConnectors/scriptEngine";
 import type { BrowserProfile } from "../browserConnectors/browserCrmAdapter";
 
 /** Reusable provider structure only: never tenant IDs, credentials or customer values. */
-export const GENIE_PROVIDER_PACK_VERSION = "genie-2026.09.08.1";
+export const GENIE_PROVIDER_PACK_VERSION = "genie-2026.09.10.1";
+
+// The current Genie/HighLevel contacts workspace no longer uses the old
+// Tabulator row structure. Contact-detail links are the durable record identity:
+// /v2/location/<location>/contacts/detail/<contact>. Keep the legacy class in
+// the selector so older Genie workspaces continue to work during rollout.
+const GENIE_CONTACT_RECORD_LINK =
+  'a[href*="/contacts/detail/"], a.contact-name-link';
+const GENIE_CONTACT_SEARCH_INPUT =
+  '#list-view-record-search, input[placeholder*="Search Contacts" i]';
 
 const scripts: BrowserProfile["scripts"] = {
   genie_contact_sync: {
@@ -11,15 +20,15 @@ const scripts: BrowserProfile["scripts"] = {
       { action: "click", selector: "#sb_contacts" },
       {
         action: "expect_visible",
-        selector: ".tabulator-row:not(.tabulator-headers)",
+        selector: GENIE_CONTACT_RECORD_LINK,
       },
       {
         action: "read_rows",
-        selector: ".tabulator-row:not(.tabulator-headers)",
+        selector: GENIE_CONTACT_RECORD_LINK,
         key: "records",
         fields: {
-          externalId: { selector: ".contact-name-link", attribute: "href" },
-          name: { selector: ".contact-name-link" },
+          externalId: { attribute: "href" },
+          name: {},
         },
       },
     ],
@@ -27,20 +36,24 @@ const scripts: BrowserProfile["scripts"] = {
   genie_contact_search: {
     steps: [
       { action: "click", selector: "#sb_contacts" },
-      { action: "expect_visible", selector: "#list-view-record-search" },
+      { action: "expect_visible", selector: GENIE_CONTACT_SEARCH_INPUT },
       {
         action: "fill",
-        selector: "#list-view-record-search",
+        selector: GENIE_CONTACT_SEARCH_INPUT,
         value: "{{query}}",
       },
-      { action: "press", selector: "#list-view-record-search", value: "Enter" },
+      { action: "press", selector: GENIE_CONTACT_SEARCH_INPUT, value: "Enter" },
+      {
+        action: "expect_visible",
+        selector: GENIE_CONTACT_RECORD_LINK,
+      },
       {
         action: "read_rows",
-        selector: ".tabulator-row:not(.tabulator-headers)",
+        selector: GENIE_CONTACT_RECORD_LINK,
         key: "records",
         fields: {
-          externalId: { selector: ".contact-name-link", attribute: "href" },
-          name: { selector: ".contact-name-link" },
+          externalId: { attribute: "href" },
+          name: {},
         },
       },
     ],
