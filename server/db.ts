@@ -421,6 +421,8 @@ export async function createWorkflowRun(input: {
       automationDeduplicationWindowMinutes(storedPolicy);
     const recentProposals = await db
       .select({
+        userId: actionProposals.userId,
+        idempotencyKey: actionProposals.idempotencyKey,
         actionType: actionProposals.actionType,
         targetLabel: actionProposals.targetLabel,
         payload: actionProposals.payload,
@@ -436,6 +438,11 @@ export async function createWorkflowRun(input: {
         )
       )
       .limit(2_000);
+    const existingIdempotencyKeys = new Set(
+      recentProposals
+        .filter(proposal => proposal.userId === input.userId)
+        .map(proposal => proposal.idempotencyKey)
+    );
     const recentSignatures = new Set(
       recentProposals.map(proposal =>
         automationDeduplicationSignature({
@@ -445,8 +452,12 @@ export async function createWorkflowRun(input: {
         })
       )
     );
-    await db.insert(actionProposals).values(
-      input.actions.map((action, index) => {
+    const newActions = input.actions.filter(
+      action => !existingIdempotencyKeys.has(action.idempotencyKey)
+    );
+    if (newActions.length)
+      await db.insert(actionProposals).values(
+      newActions.map((action, index) => {
         const payload = action.payload as Record<string, unknown>;
         const signature = automationDeduplicationSignature({
           actionType: action.actionType,
