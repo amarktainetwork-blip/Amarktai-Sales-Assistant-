@@ -344,6 +344,8 @@ function configuredActionMetadata(input: {
   configuration: ClientActionConfiguration;
   workflow: WorkflowActionConfiguration;
   workflowKey: string;
+  request: WorkflowRequest;
+  customer: ResolvedAssistantCustomerContext;
   now: Date;
 }) {
   const payload = input.action.payload;
@@ -363,13 +365,78 @@ function configuredActionMetadata(input: {
     typeof payload.statusIntent === "string"
       ? payload.statusIntent
       : undefined;
-  const opportunityStage = transitionIntent
+  const sequencePurpose =
+    typeof payload.sequencePurpose === "string"
+      ? payload.sequencePurpose
+      : undefined;
+  const workflowPurpose =
+    typeof payload.workflowPurpose === "string"
+      ? payload.workflowPurpose
+      : undefined;
+  const stageTransitions = transitionIntent
+    ? input.workflow.opportunityStageTransitions?.[transitionIntent]
+    : undefined;
+  let opportunityStage = transitionIntent
     ? input.workflow.opportunityMappings[transitionIntent]
     : undefined;
+  if (stageTransitions && Object.keys(stageTransitions).length) {
+    const currentStage = input.customer.stage?.trim();
+    if (!currentStage && input.customer.opportunityExternalId)
+      throw new Error(
+        "WORKFLOW_OPPORTUNITY_STAGE_UNVERIFIED: the current open opportunity stage is not synchronized, so Amarktai will not guess the closure transition."
+      );
+    if (currentStage) {
+      const match = Object.entries(stageTransitions).find(
+        ([source]) => norm(source) === norm(currentStage)
+      );
+      if (!match)
+        throw new Error(
+          `WORKFLOW_OPPORTUNITY_STAGE_UNMAPPED: current stage '${currentStage}' has no configured transition for '${transitionIntent}'. Nothing was prepared.`
+        );
+      opportunityStage = match[1];
+    }
+  }
   const contactStatus = statusIntent
     ? input.workflow.statusMappings[statusIntent] ||
       input.configuration.closureMapping[statusIntent]
     : undefined;
+  const sequenceName = sequencePurpose
+    ? input.workflow.sequenceMappings?.[sequencePurpose]
+    : undefined;
+  const opportunityFields = transitionIntent
+    ? input.workflow.opportunityFieldMappings?.[transitionIntent] || {}
+    : {};
+  const contactFields = statusIntent
+    ? input.workflow.contactFieldMappings?.[statusIntent] || {}
+    : {};
+  const configuredNote = workflowPurpose
+    ? input.workflow.noteMappings?.[workflowPurpose]
+    : undefined;
+  const factualNote =
+    input.action.actionType === "append_contact_note"
+      ? input.request.callOutcome === "answered"
+        ? input.request.conversationNotes?.trim()
+        : input.request.callOutcome === "no_answer"
+          ? "Follow-up call attempted: no answer."
+          : input.request.callOutcome === "voicemail"
+            ? "Follow-up call attempted: voicemail."
+            : configuredNote
+      : undefined;
+  if (
+    input.action.actionType === "append_contact_note" &&
+    !String(payload.content || payload.note || factualNote || "").trim()
+  )
+    throw new Error(
+      "WORKFLOW_NOTE_CONTENT_REQUIRED: no factual or configured note content is available. Nothing was prepared."
+    );
+  if (
+    input.action.actionType === "apply_sequence" &&
+    sequencePurpose &&
+    !sequenceName
+  )
+    throw new Error(
+      `WORKFLOW_SEQUENCE_REQUIRED: sequence purpose '${sequencePurpose}' has no exact CRM sequence mapping.`
+    );
   const requiredPostconditions = uniqueStrings(
     input.workflow.requiredPostconditions,
     input.configuration.requiredPostconditions[input.action.actionType] || []
@@ -414,23 +481,27 @@ function configuredActionMetadata(input: {
     ...(taskTitle && !payload.taskTitle ? { taskTitle } : {}),
     ...(timingRule && !payload.timingRule ? { timingRule } : {}),
     ...(dueAt && !payload.dueAt ? { dueAt } : {}),
-    ...(opportunityStage
+    ...(opportunityStage || Object.keys(opportunityFields).length
       ? {
           patch: {
             ...(payload.patch as Record<string, unknown> | undefined),
-            stage: opportunityStage,
+            ...opportunityFields,
+            ...(opportunityStage ? { stage: opportunityStage } : {}),
           },
         }
       : {}),
-    ...(contactStatus
+    ...(contactStatus || Object.keys(contactFields).length
       ? {
           fields: {
             ...(payload.fields as Record<string, unknown> | undefined),
-            status: contactStatus,
+            ...contactFields,
+            ...(contactStatus ? { status: contactStatus } : {}),
           },
-          status: contactStatus,
+          ...(contactStatus ? { status: contactStatus } : {}),
         }
       : {}),
+    ...(sequenceName ? { sequence: sequenceName } : {}),
+    ...(factualNote && !payload.content ? { content: factualNote } : {}),
     duplicateRules,
     requiredPostconditions,
   };
@@ -607,6 +678,8 @@ export async function buildConfiguredWorkflowPlan(input: {
       configuration,
       workflow,
       workflowKey: variantKey,
+      request: input.request,
+      customer: input.customer,
       now: input.now || new Date(),
     });
     const configured: ProposedAction = {
