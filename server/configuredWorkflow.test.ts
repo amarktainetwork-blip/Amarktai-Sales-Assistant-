@@ -378,6 +378,95 @@ describe("configured workflow materialization", () => {
     ).rejects.toThrow("WORKFLOW_OPPORTUNITY_STAGE_UNMAPPED");
   });
 
+  it("skips only explicitly optional missing current-task and opportunity steps during final closure", async () => {
+    const base = firstContactConfiguration();
+    mocks.getClientActionConfiguration.mockResolvedValue({
+      ...base,
+      workflows: {
+        final_close: {
+          taskAliases: { final_follow_up: "Final attempt" },
+          taskSequence: [],
+          sequence: [
+            "verify_contact_context:current_customer",
+            "complete_active_task:final_follow_up",
+            "update_current_opportunity:close_or_lost",
+            "update_contact_status:closed_or_lost",
+          ],
+          optionalActions: [
+            "complete_active_task:final_follow_up",
+            "update_current_opportunity:close_or_lost",
+          ],
+          eligibilityStatuses: [],
+          stopStatuses: [],
+          opportunityMappings: { close_or_lost: "Lost" },
+          statusMappings: { closed_or_lost: "Lost" },
+          templates: {},
+          timingRules: {},
+          duplicateRules: [],
+          requiredPostconditions: [],
+        },
+      },
+    });
+
+    const noCurrentTargets = customer({ taskTitle: "Final attempt" });
+    noCurrentTargets.operationalRecordState.openTasks = [];
+    noCurrentTargets.operationalRecordState.currentActiveTaskExternalId = undefined;
+    noCurrentTargets.operationalRecordState.openOpportunities = [];
+    noCurrentTargets.operationalRecordState.currentActiveOpportunityExternalId = undefined;
+    noCurrentTargets.opportunityExternalId = undefined;
+    noCurrentTargets.stage = undefined;
+
+    const plan = await buildConfiguredWorkflowPlan({
+      organisationId: 1,
+      request: { workflowKey: "final_close", leadLabel: "Test Customer" },
+      customer: noCurrentTargets,
+    });
+
+    expect(plan.actions.map(action => action.actionType)).toEqual([
+      "verify_contact_context",
+      "update_contact_status",
+    ]);
+    expect(plan.verificationSummary).toContain("Optional steps skipped");
+  });
+
+  it("does not use optional-step configuration to guess between multiple current targets", async () => {
+    const base = firstContactConfiguration();
+    mocks.getClientActionConfiguration.mockResolvedValue({
+      ...base,
+      workflows: {
+        final_close: {
+          taskAliases: { final_follow_up: "Final attempt" },
+          taskSequence: [],
+          sequence: ["complete_active_task:final_follow_up"],
+          optionalActions: ["complete_active_task:final_follow_up"],
+          eligibilityStatuses: [],
+          stopStatuses: [],
+          opportunityMappings: {},
+          statusMappings: {},
+          templates: {},
+          timingRules: {},
+          duplicateRules: [],
+          requiredPostconditions: [],
+        },
+      },
+    });
+
+    const ambiguous = customer({ taskTitle: "Final attempt" });
+    ambiguous.operationalRecordState.openTasks = [
+      { externalId: "task-1", title: "Final attempt", status: "open" },
+      { externalId: "task-2", title: "Final attempt", status: "open" },
+    ];
+    ambiguous.operationalRecordState.currentActiveTaskExternalId = undefined;
+
+    await expect(
+      buildConfiguredWorkflowPlan({
+        organisationId: 1,
+        request: { workflowKey: "final_close", leadLabel: "Test Customer" },
+        customer: ambiguous,
+      })
+    ).rejects.toThrow("WORKFLOW_CURRENT_TASK_AMBIGUOUS");
+  });
+
   it("never creates a fifth attempt after the configured final attempt", async () => {
     mocks.getClientActionConfiguration.mockResolvedValue(firstContactConfiguration());
 
