@@ -1,30 +1,78 @@
 import { describe, expect, it } from "vitest";
-import { crmResourceSyncEligible } from "./sync";
+import { crmResourceSyncEligible } from "./syncEligibility";
 
 describe("CRM resource sync eligibility", () => {
-  const connection = {
-    allowedReadCapabilities: [
-      "contacts.read",
-      "companies.read",
-      "tasks.read",
-    ],
-    verifiedCapabilities: ["contacts.read"],
-  };
-
-  it("syncs only an authorised capability that is also LIVE_PROVEN/verified", () => {
-    expect(crmResourceSyncEligible(connection, "contacts.read")).toBe(true);
-    expect(crmResourceSyncEligible(connection, "companies.read")).toBe(false);
-    expect(crmResourceSyncEligible(connection, "tasks.read")).toBe(false);
-  });
-
-  it("never syncs a capability that was not authorised even if a stale verification value exists", () => {
+  it("allows a browser resource when its exact deterministic sync operation is LIVE_PROVEN", () => {
     expect(
       crmResourceSyncEligible(
         {
+          connectionMethod: "browser",
           allowedReadCapabilities: ["contacts.read"],
-          verifiedCapabilities: ["contacts.read", "opportunities.read"],
+          verifiedCapabilities: [],
         },
-        "opportunities.read"
+        "contacts.read",
+        "LIVE_PROVEN"
+      )
+    ).toBe(true);
+  });
+
+  it("fails closed for browser resources unless the exact sync operation is LIVE_PROVEN", () => {
+    for (const status of [
+      undefined,
+      "NOT_LEARNED",
+      "LEARNED",
+      "TEST_READY",
+      "DEGRADED",
+      "BLOCKED",
+    ]) {
+      expect(
+        crmResourceSyncEligible(
+          {
+            connectionMethod: "sidecar",
+            allowedReadCapabilities: ["contacts.read"],
+            verifiedCapabilities: ["contacts.read"],
+          },
+          "contacts.read",
+          status
+        )
+      ).toBe(false);
+    }
+  });
+
+  it("never syncs a browser resource that is not authorised even when its operation is LIVE_PROVEN", () => {
+    expect(
+      crmResourceSyncEligible(
+        {
+          connectionMethod: "browser",
+          allowedReadCapabilities: [],
+          verifiedCapabilities: ["contacts.read"],
+        },
+        "contacts.read",
+        "LIVE_PROVEN"
+      )
+    ).toBe(false);
+  });
+
+  it("preserves the verified-capability gate for native and oauth connectors", () => {
+    expect(
+      crmResourceSyncEligible(
+        {
+          connectionMethod: "oauth",
+          allowedReadCapabilities: ["contacts.read"],
+          verifiedCapabilities: ["contacts.read"],
+        },
+        "contacts.read"
+      )
+    ).toBe(true);
+
+    expect(
+      crmResourceSyncEligible(
+        {
+          connectionMethod: "oauth",
+          allowedReadCapabilities: ["contacts.read"],
+          verifiedCapabilities: [],
+        },
+        "contacts.read"
       )
     ).toBe(false);
   });
