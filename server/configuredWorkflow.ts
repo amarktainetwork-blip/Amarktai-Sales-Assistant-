@@ -355,9 +355,24 @@ function configuredActionMetadata(input: {
   const timingRule = taskPurpose
     ? input.workflow.timingRules[taskPurpose]
     : undefined;
-  const taskTitle = taskPurpose
+  let taskTitle = taskPurpose
     ? input.workflow.taskAliases[taskPurpose]
     : undefined;
+  if (
+    input.action.actionType === "complete_active_task" &&
+    taskPurpose &&
+    input.customer.operationalRecordState.openTasks.length === 1
+  ) {
+    const currentTitle =
+      input.customer.operationalRecordState.openTasks[0].title.trim();
+    const accepted = [
+      input.workflow.taskAliases[taskPurpose],
+      ...(input.workflow.taskAliasAlternatives?.[taskPurpose] || []),
+    ]
+      .filter((value): value is string => Boolean(value?.trim()))
+      .some(value => norm(value) === norm(currentTitle));
+    if (accepted) taskTitle = currentTitle;
+  }
   const transitionIntent =
     typeof payload.transitionIntent === "string"
       ? payload.transitionIntent
