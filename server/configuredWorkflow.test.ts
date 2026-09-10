@@ -421,6 +421,85 @@ describe("configured workflow materialization", () => {
       )
     ).toBe(false);
 
+    mocks.getClientActionConfiguration.mockResolvedValue({
+      ...base,
+      workflows: {
+        "post_consultation_follow_up:answered": {
+          taskAliases: { post_follow_up: "Current Follow-up" },
+          taskSequence: [],
+          sequence: [
+            "verify_contact_context:current_customer",
+            "complete_active_task:post_follow_up",
+            "append_contact_note:answered_notes",
+            "update_current_opportunity:post_consultation",
+          ],
+          eligibilityStatuses: [],
+          stopStatuses: ["Closed"],
+          opportunityMappings: { post_consultation: "Considering" },
+          statusMappings: {},
+          templates: {},
+          timingRules: {},
+          duplicateRules: ["external_read_before_write"],
+          requiredPostconditions: ["crm_readback"],
+        },
+        "post_consultation_follow_up:no_answer": {
+          taskAliases: {
+            post_follow_up: "Current Follow-up",
+            follow_up: "Final Follow-up",
+          },
+          taskSequence: [],
+          sequence: [
+            "verify_contact_context:current_customer",
+            "complete_active_task:post_follow_up",
+            "append_contact_note:no_answer_notes",
+            "update_current_opportunity:post_consultation",
+            "send_email_template:follow_up_email",
+            "send_sms_template:follow_up_sms",
+            "send_whatsapp_template:follow_up_whatsapp",
+            "schedule_callback:follow_up",
+          ],
+          eligibilityStatuses: [],
+          stopStatuses: ["Closed"],
+          opportunityMappings: { post_consultation: "Considering" },
+          statusMappings: {},
+          templates: {
+            follow_up_email: "follow-email",
+            follow_up_sms: "follow-sms",
+            follow_up_whatsapp: "follow-wa",
+          },
+          timingRules: { follow_up: "P1D" },
+          duplicateRules: ["external_read_before_write"],
+          requiredPostconditions: ["crm_readback"],
+        },
+      },
+      templates: {
+        "follow-email": {
+          key: "follow-email",
+          channel: "email",
+          source: "client_configuration",
+          templateName: "Follow-up email",
+          body: "Approved email body.",
+          requiredSubject: "Approved subject",
+        },
+        "follow-sms": {
+          key: "follow-sms",
+          channel: "sms",
+          source: "client_configuration",
+          templateName: "Follow-up SMS",
+          body: "Approved SMS body.",
+          senderIdentity: "+447700900999",
+        },
+        "follow-wa": {
+          key: "follow-wa",
+          channel: "whatsapp",
+          source: "client_configuration",
+          templateName: "Follow-up WhatsApp",
+          body: "Approved WhatsApp body.",
+          senderIdentity: "+447700900999",
+        },
+      },
+    });
+
     const noAnswer = await buildConfiguredWorkflowPlan({
       organisationId: 1,
       request: {
