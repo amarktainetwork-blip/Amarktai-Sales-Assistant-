@@ -133,6 +133,7 @@ function ManagementOnly({
       user &&
       security.data?.verified &&
       !organisation.isLoading &&
+      !organisation.isError &&
       !allowed
     )
       navigate("/assistant", { replace: true });
@@ -144,6 +145,22 @@ function ManagementOnly({
     security.data?.verified,
     user,
   ]);
+
+  if (security.isError || organisation.isError)
+    return (
+      <div role="alert" className="p-6">
+        Your workspace could not be loaded.{" "}
+        <button
+          type="button"
+          onClick={() => {
+            void security.refetch();
+            void organisation.refetch();
+          }}
+        >
+          Retry
+        </button>
+      </div>
+    );
 
   if (loading || security.isLoading || organisation.isLoading || !allowed)
     return <DashboardLayoutSkeleton />;
@@ -282,7 +299,7 @@ function App() {
         <TooltipProvider>
           <Toaster />
           <PersonalSetupBoundary />
-          <Router />
+          <div id="workspace-route"><Router /></div>
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>

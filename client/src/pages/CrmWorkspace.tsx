@@ -271,17 +271,6 @@ export default function CrmWorkspace() {
         data-crm-workspace-root
         className="relative h-[calc(100vh-66px)] min-h-0 overflow-hidden bg-[#EDF2F7]"
       >
-        <style>{`
-          main:has(> [data-crm-workspace-root]) {
-            height: calc(100vh - 66px) !important;
-            min-height: 0 !important;
-            overflow: hidden !important;
-            padding: 0 !important;
-          }
-          main:has(> [data-crm-workspace-root]) > div:not([data-crm-workspace-root]) {
-            display: none !important;
-          }
-        `}</style>
 
         {selected ? (
           <LiveWorkspace
@@ -973,13 +962,11 @@ function LiveWorkspace({
   const takeControl = async () => {
     try {
       if (controlRef.current === "AGENT_CONTROL" && session) {
-        await releaseAi.mutateAsync({
+        const result = await releaseAi.mutateAsync({
           viewerSessionId: session.viewerSessionId,
         });
-        // The mutation has synchronously released the server arbitration lock.
-        // Do not wait on a websocket IDLE frame before asking for human control.
-        controlRef.current = "IDLE";
-        setControl("IDLE");
+        controlRef.current = result.control;
+        setControl(result.control);
         humanControlRequestedRef.current = false;
       }
       requestHumanControl();

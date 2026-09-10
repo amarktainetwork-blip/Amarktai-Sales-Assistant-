@@ -39,7 +39,7 @@ export default function AboutPage() {
             </div>
           </div>
           <figure className="amk-photo-frame amk-photo-frame--page">
-            <img src={marketingImagery.focus.src} alt={marketingImagery.focus.alt} />
+            <img src={marketingImagery.aboutHero.src} alt={marketingImagery.aboutHero.alt} />
           </figure>
         </div>
       </section>
@@ -67,7 +67,7 @@ export default function AboutPage() {
         <div className="amk-shell amk-split">
           <div className="amk-split__media">
             <figure className="amk-photo-frame amk-photo-frame--story">
-              <img src={marketingImagery.team.src} alt={marketingImagery.team.alt} loading="lazy" />
+              <img src={marketingImagery.aboutTeam.src} alt={marketingImagery.aboutTeam.alt} loading="lazy" />
             </figure>
           </div>
           <div className="amk-split__copy">

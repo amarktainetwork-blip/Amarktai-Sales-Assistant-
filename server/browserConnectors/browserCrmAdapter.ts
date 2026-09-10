@@ -2,7 +2,6 @@ import { readFile } from "node:fs/promises";
 import {
   type Browser,
   type BrowserContext,
-  type Locator,
   type Page,
   type Route,
 } from "playwright-core";
@@ -31,6 +30,7 @@ import {
 import {
   browserOperationReadinessForSystem,
   browserShadowMode,
+  latestBrowserOperation,
   recordBrowserOperationResult,
   requireRuntimeBrowserOperation,
 } from "./learnedOperations";
@@ -51,6 +51,7 @@ import {
 } from "./browserSession";
 import {
   acquireAiBrowserControl,
+  assertBrowserOperationCanRun,
   releaseBrowserControl,
 } from "./browserControlArbitration";
 import { connectManagedCrmBrowser } from "./managedCrmBrowserSessionManager";
@@ -280,7 +281,7 @@ export async function resolveBrowserProfile(
     : undefined;
 }
 async function browserSecret(
-  connection: AdapterConnection,
+  _connection: AdapterConnection,
   supplied?: ConnectionSecretPayload
 ) {
   if (supplied && Object.keys(supplied).length) return supplied;
@@ -329,24 +330,95 @@ async function withPage<T>(
   secret: ConnectionSecretPayload,
   provider: string,
   profile: BrowserProfile,
-  run: (page: Page, context: BrowserContext) => Promise<T>
+  run: (
+    page: Page,
+    context: BrowserContext,
+    owner: Parameters<typeof assertBrowserOperationCanRun>[0]
+  ) => Promise<T>
 ) {
-  const browser: Browser = await connect(profile);
-  if (!secret.browserSession || !isBrowserSessionPackage(secret.browserSession))
-    throw new Error("Your CRM needs you to sign in again.");
-
-  const recovered = await findBrowserSessionPage({
-    browser,
-    browserSession: secret.browserSession,
+  const userId = Number(
+    secret.browserUserId || secret.commissioningUserId || 0
+  );
+  if (!Number.isInteger(userId) || userId <= 0)
+    throw new Error(
+      "CRM_BROWSER_IDENTITY_OWNER_REQUIRED: reopen the Secure CRM Browser to restore its existing owner identity."
+    );
+  const scope = {
     organisationId: connection.organisationId,
     connectedSystemId: connection.id,
-    authorise: url => authorizeNavigation(connection, url),
-  });
+    userId,
+  };
+  const owner = { ...scope, ...acquireAiBrowserControl(scope) };
+  try {
+    assertBrowserOperationCanRun(owner);
+    const browser: Browser = await connect(profile);
+    if (
+      !secret.browserSession ||
+      !isBrowserSessionPackage(secret.browserSession)
+    )
+      throw new Error("Your CRM needs you to sign in again.");
 
-  if (recovered) {
-    const { page, context } = recovered;
+    const recovered = await findBrowserSessionPage({
+      browser,
+      browserSession: secret.browserSession,
+      organisationId: connection.organisationId,
+      connectedSystemId: connection.id,
+      authorise: url => authorizeNavigation(connection, url),
+    });
+
+    if (recovered) {
+      const { page, context } = recovered;
+      let blocked: BlockedNavigation | undefined;
+      const routeHandler = async (route: Route) => {
+        const request = route.request();
+        if (
+          !request.isNavigationRequest() ||
+          request.frame() !== page.mainFrame()
+        )
+          return route.continue();
+        try {
+          await authorizeNavigation(connection, request.url());
+          return route.continue();
+        } catch (error) {
+          blocked = {
+            url: request.url(),
+            detail: error instanceof Error ? error.message : String(error),
+          };
+          return route.abort("blockedbyclient");
+        }
+      };
+      await page.route("**/*", routeHandler);
+      try {
+        await authorizeNavigation(connection, page.url());
+        if (blocked)
+          throw new Error(
+            "Your CRM redirected to a new sign-in service. A manager needs to approve it."
+          );
+        assertBrowserOperationCanRun(owner);
+        return await run(page, context, owner);
+      } finally {
+        await page.unroute("**/*", routeHandler).catch(() => undefined);
+      }
+    }
+
+    // Genie is proven to bind authentication to the live page/client state. A
+    // new page, even in the same BrowserContext, returns user_not_logged_in. Do
+    // not misclassify that as selector drift or burn AI trying to relearn it.
+    if (provider === "genie")
+      throw new Error(
+        "CRM_BROWSER_REAUTHENTICATION_REQUIRED: reopen the Secure CRM Browser and sign in once so autonomous actions can attach to the commissioned Genie tab."
+      );
+
+    // Custom browser connectors may still support ordinary storage-state replay.
+    const context = await createContextWithBrowserSession({
+      browser,
+      browserSession: secret.browserSession,
+      organisationId: connection.organisationId,
+      connectedSystemId: connection.id,
+    });
+    const page = await context.newPage();
     let blocked: BlockedNavigation | undefined;
-    const routeHandler = async (route: Route) => {
+    await page.route("**/*", async route => {
       const request = route.request();
       if (
         !request.isNavigationRequest() ||
@@ -363,66 +435,25 @@ async function withPage<T>(
         };
         return route.abort("blockedbyclient");
       }
-    };
-    await page.route("**/*", routeHandler);
+    });
     try {
-      await authorizeNavigation(connection, page.url());
+      const replayUrl = secret.browserSession.authenticatedUrl;
+      await authorizeNavigation(connection, replayUrl);
+      await page.goto(replayUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: 45_000,
+      });
       if (blocked)
         throw new Error(
           "Your CRM redirected to a new sign-in service. A manager needs to approve it."
         );
-      return await run(page, context);
+      assertBrowserOperationCanRun(owner);
+      return await run(page, context, owner);
     } finally {
-      await page.unroute("**/*", routeHandler).catch(() => undefined);
+      await context.close().catch(() => undefined);
     }
-  }
-
-  // Genie is proven to bind authentication to the live page/client state. A
-  // new page, even in the same BrowserContext, returns user_not_logged_in. Do
-  // not misclassify that as selector drift or burn AI trying to relearn it.
-  if (provider === "genie")
-    throw new Error(
-      "CRM_BROWSER_REAUTHENTICATION_REQUIRED: reopen the Secure CRM Browser and sign in once so autonomous actions can attach to the commissioned Genie tab."
-    );
-
-  // Custom browser connectors may still support ordinary storage-state replay.
-  const context = await createContextWithBrowserSession({
-    browser,
-    browserSession: secret.browserSession,
-    organisationId: connection.organisationId,
-    connectedSystemId: connection.id,
-  });
-  const page = await context.newPage();
-  let blocked: BlockedNavigation | undefined;
-  await page.route("**/*", async route => {
-    const request = route.request();
-    if (!request.isNavigationRequest() || request.frame() !== page.mainFrame())
-      return route.continue();
-    try {
-      await authorizeNavigation(connection, request.url());
-      return route.continue();
-    } catch (error) {
-      blocked = {
-        url: request.url(),
-        detail: error instanceof Error ? error.message : String(error),
-      };
-      return route.abort("blockedbyclient");
-    }
-  });
-  try {
-    const replayUrl = secret.browserSession.authenticatedUrl;
-    await authorizeNavigation(connection, replayUrl);
-    await page.goto(replayUrl, {
-      waitUntil: "domcontentloaded",
-      timeout: 45_000,
-    });
-    if (blocked)
-      throw new Error(
-        "Your CRM redirected to a new sign-in service. A manager needs to approve it."
-      );
-    return await run(page, context);
   } finally {
-    await context.close().catch(() => undefined);
+    releaseBrowserControl(owner);
   }
 }
 
@@ -459,7 +490,7 @@ export async function inspectBrowserCrmNavigation(input: {
     secret,
     input.provider,
     profile,
-    async page => {
+    async (page, _context, owner) => {
       if (page.url() === "about:blank" && input.connection.baseUrl) {
         await authorizeNavigation(input.connection, input.connection.baseUrl);
         await page.goto(input.connection.baseUrl, {
@@ -567,6 +598,7 @@ export async function inspectBrowserCrmNavigation(input: {
         )
         .slice(0, 12);
       for (const destination of destinations) {
+        assertBrowserOperationCanRun(owner);
         if (controls.length >= 250) break;
         await authorizeNavigation(input.connection, destination);
         await page.goto(destination, {
@@ -640,6 +672,7 @@ async function runDeterministicOperation(input: RunOperationInput) {
     });
   } catch (error) {
     if (catalogue?.mode !== "read") throw error;
+    if (await latestBrowserOperation({ organisationId: input.connection.organisationId, connectedSystemId: input.connection.id, operationKey })) throw error;
     const legacy = operationScript(profile, input.operation);
     if (!legacy) throw error;
   }
@@ -659,40 +692,28 @@ async function runDeterministicOperation(input: RunOperationInput) {
       });
     throw new Error(detail);
   }
-  const runScript = (
-    page: Page,
-    selected: SavedBrowserScript,
-    suffix: string
-  ) =>
-    executeSavedBrowserScript({
-      page,
-      script: selected,
-      inputs: payload,
-      artifactDirectory: artifactDirectory(profile, input.connection),
-      artifactPrefix: `${input.provider}-${operationKey}-${suffix}`,
-      authorizeNavigation: url => authorizeNavigation(input.connection, url),
-    });
-  const browserUserId = Number(
-    input.secret.browserUserId || input.secret.commissioningUserId || 0
-  );
-  if (!Number.isInteger(browserUserId) || browserUserId <= 0)
-    throw new Error(
-      "CRM_BROWSER_IDENTITY_OWNER_REQUIRED: reopen the Secure CRM Browser so this browser identity can be bound to its salesperson."
-    );
-  let acquiredControl = false;
   try {
-    acquireAiBrowserControl({
-      organisationId: input.connection.organisationId,
-      connectedSystemId: input.connection.id,
-      userId: browserUserId,
-    });
-    acquiredControl = true;
     const result = await withPage(
       input.connection,
       input.secret,
       input.provider,
       profile,
-      async page => {
+      async (page, _context, owner) => {
+        const runScript = (
+          page: Page,
+          selected: SavedBrowserScript,
+          suffix: string
+        ) =>
+          executeSavedBrowserScript({
+            page,
+            script: selected,
+            inputs: payload,
+            artifactDirectory: artifactDirectory(profile, input.connection),
+            artifactPrefix: `${input.provider}-${operationKey}-${suffix}`,
+            authorizeNavigation: url =>
+              authorizeNavigation(input.connection, url),
+            assertControl: () => assertBrowserOperationCanRun(owner),
+          });
         let guardian: ReturnType<typeof verifyBrowserTarget> | undefined;
         if (learned?.definition.mode === "write") {
           const targetRead = await runScript(
@@ -831,13 +852,6 @@ async function runDeterministicOperation(input: RunOperationInput) {
         detail,
       });
     throw error;
-  } finally {
-    if (acquiredControl)
-      releaseBrowserControl({
-        organisationId: input.connection.organisationId,
-        connectedSystemId: input.connection.id,
-        userId: browserUserId,
-      });
   }
 }
 
@@ -913,7 +927,7 @@ function rows(
 ) {
   const key = profile.resultKeys?.[operation] || "records";
   const raw = result.data[key];
-  if (!raw) return [] as Array<Record<string, string>>;
+  if (!raw) throw new Error(`STRUCTURED_RESULT_REQUIRED: ${operation} did not return its records result.`);
   const parsed = JSON.parse(raw) as unknown;
   if (!Array.isArray(parsed))
     throw new Error(
@@ -950,12 +964,13 @@ function externalId(row: Record<string, string>, resource: string) {
   return value;
 }
 function contact(row: Record<string, string>): NormalizedContact {
+  const nameParts = (row.name || "").trim().split(/\s+/).filter(Boolean);
   return {
     externalId: externalId(row, "contact"),
     companyExternalId: row.companyExternalId || undefined,
     ownerExternalId: row.ownerExternalId || undefined,
-    firstName: row.firstName || undefined,
-    lastName: row.lastName || undefined,
+    firstName: row.firstName || nameParts[0] || undefined,
+    lastName: row.lastName || nameParts.slice(1).join(" ") || undefined,
     email: row.email?.trim().toLowerCase() || undefined,
     phone: row.phone?.trim() || undefined,
     lifecycleStage: row.lifecycleStage || row.status || undefined,
@@ -1215,18 +1230,7 @@ export function browserCrmAdapter(
         execution.profile,
         "searchContacts"
       );
-      if (extracted.length) return extracted.map(contact);
-      return [
-        {
-          externalId: input.query,
-          firstName: input.query,
-          raw: {
-            browserText: Object.values(execution.result.data)
-              .join("\n")
-              .slice(0, 20_000),
-          },
-        },
-      ];
+      return extracted.map(contact);
     },
     getContact: async input => {
       const execution = await runOperation({
@@ -1237,19 +1241,10 @@ export function browserCrmAdapter(
         payload: { externalId: input.externalId, leadLabel: input.externalId },
       });
       const extracted = rows(execution.result, execution.profile, "getContact");
-      return extracted[0]
-        ? contact({
-            ...extracted[0],
-            externalId: extracted[0].externalId || input.externalId,
-          })
-        : {
-            externalId: input.externalId,
-            raw: {
-              browserText: Object.values(execution.result.data)
-                .join("\n")
-                .slice(0, 20_000),
-            },
-          };
+      if (!extracted[0]) return null;
+      const record = contact(extracted[0]);
+      if (record.externalId !== input.externalId) throw new Error("TARGET_MISMATCH: the CRM returned a different contact.");
+      return record;
     },
     getCompany: async input => {
       const execution = await runOperation({

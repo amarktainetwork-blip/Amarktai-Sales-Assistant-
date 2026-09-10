@@ -205,6 +205,7 @@ export async function executeSavedBrowserScript(input: {
   artifactDirectory: string;
   artifactPrefix: string;
   authorizeNavigation?: (url: string) => Promise<void>;
+  assertControl?: () => void;
 }): Promise<BrowserScriptResult> {
   assertCompleteBrowserDefinition(input.script);
   const script = validateSavedBrowserScript(input.script);
@@ -212,6 +213,7 @@ export async function executeSavedBrowserScript(input: {
   let screenshotPath: string | undefined;
   try {
     for (const step of script.steps) {
+      input.assertControl?.();
       if (step.action === "goto") {
         const target = renderBrowserTemplate(step.value, input.inputs);
         if (!/^https?:\/\//i.test(target))
@@ -274,6 +276,7 @@ export async function executeSavedBrowserScript(input: {
         const extracted: Array<Record<string, string>> = [];
         const maxPages = Math.min(100, Math.max(1, step.maxPages || 20));
         for (let pageNumber = 0; pageNumber < maxPages; pageNumber += 1) {
+          input.assertControl?.();
           extracted.push(
             ...(await extractedRows(input.page, {
               ...step,
@@ -291,6 +294,7 @@ export async function executeSavedBrowserScript(input: {
           )
             break;
           const before = input.page.url();
+          input.assertControl?.();
           await next.click();
           await input.page
             .waitForLoadState("domcontentloaded")
@@ -309,6 +313,7 @@ export async function executeSavedBrowserScript(input: {
         await input.page.screenshot({ path: screenshotPath, fullPage: true });
       }
     }
+    input.assertControl?.();
     return {
       success: true,
       completedAt: new Date().toISOString(),

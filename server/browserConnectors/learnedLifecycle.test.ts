@@ -3,9 +3,18 @@ import {
   browserOperationStatusAfterResult,
   CAPTURED_BROWSER_OPERATION_STATUS,
   REVIEWED_BROWSER_OPERATION_STATUS,
+  effectiveLatestBrowserOperation,
 } from "./learnedOperations";
 
 describe("guided learned-operation lifecycle", () => {
+  it("revalidates an old contention-only block without granting production readiness", () => {
+    const operation = { status: "BLOCKED" as const, prerequisites: {}, lastError: "execution_failure: CRM_VIEWER_AGENT_CONTROL_ACTIVE: deterministic browser operation failed." };
+    expect(effectiveLatestBrowserOperation(operation)?.status).toBe("TEST_READY");
+    expect(effectiveLatestBrowserOperation({ ...operation, lastError: "selector_drift: deterministic browser operation failed." })?.status).toBe("BLOCKED");
+  });
+  it.each(["TEST_READY", "LIVE_PROVEN", "DEGRADED"] as const)("preserves %s during infrastructure contention", currentStatus => {
+    expect(browserOperationStatusAfterResult({ currentStatus, success: false, publish: false, watchdog: true, transient: true })).toBe(currentStatus);
+  });
   it("records demonstrations as LEARNED and manager definitions as TEST_READY", () => {
     expect(CAPTURED_BROWSER_OPERATION_STATUS).toBe("LEARNED");
     expect(REVIEWED_BROWSER_OPERATION_STATUS).toBe("TEST_READY");

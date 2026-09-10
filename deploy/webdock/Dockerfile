@@ -18,6 +18,8 @@ RUN chmod +x scripts/run-genie-health-check.sh \
   && ! grep -F 'from "vite"' dist/_core/index.js
 
 FROM node:22.15.0-bookworm-slim AS runtime
+ARG VCS_REF=unknown
+LABEL org.opencontainers.image.revision=$VCS_REF
 ENV NODE_ENV=production
 WORKDIR /app
 RUN groupadd --system amarktai && useradd --system --gid amarktai --create-home amarktai

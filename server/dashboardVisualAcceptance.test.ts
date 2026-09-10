@@ -49,7 +49,7 @@ describe("final dashboard information architecture", () => {
     expect(layout).not.toContain('label: "Approvals"');
     expect(layout).not.toContain("DropdownMenuContent");
     expect(layout).toContain('aria-label="Sign out"');
-    expect(layout).toContain(">Sign out</span>");
+    expect(layout).toMatch(/>\s*Sign out\s*<\/span>/);
 
     expect(app).toContain('<Route path="/dashboard" component={Today} />');
     expect(app).toContain('<Route path="/settings">');
@@ -137,7 +137,7 @@ describe("final dashboard information architecture", () => {
     );
     expect(calls).toContain("data-call-workflow");
     expect(css).toContain('[class*="bg-[#0E2142]"]');
-    expect(css).toContain("background: var(--dash-paper) !important");
+    expect(css).toContain("background: var(--dash-paper)");
     for (const step of [
       "PRE-CALL BRIEF",
       "CALL AUDIO",

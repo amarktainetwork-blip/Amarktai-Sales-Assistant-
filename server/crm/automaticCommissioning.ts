@@ -24,6 +24,7 @@ import {
 } from "../browserConnectors/operationContracts";
 import {
   browserOperationReadinessForSystem,
+  effectiveLatestBrowserOperation,
   latestBrowserOperation,
   saveLearnedBrowserOperation,
 } from "../browserConnectors/learnedOperations";
@@ -47,6 +48,7 @@ import { accountBrowserCapabilities } from "./capabilityAccounting";
 import { coreBrowserCommissioningReady } from "./commissioningReadiness";
 export { coreBrowserCommissioningReady };
 import { ensureConnectionScopedCrmSyncJob } from "./syncWorker";
+import { isTransientBrowserExecutionFailure } from "../browserConnectors/runtimeFailure";
 import { syncConnectedSystem } from "./sync";
 import {
   GENIE_PROVIDER_PACK_VERSION,
@@ -1208,6 +1210,7 @@ async function testOperations(input: {
   for (const row of rows)
     if (!latest.has(row.operationKey)) latest.set(row.operationKey, row);
   const selected = Array.from(latest.values())
+    .map(row => effectiveLatestBrowserOperation(row)!)
     .filter(row => {
       const definition = row.definition as Record<string, unknown>;
       return operationEligibleForCommissioningTest({
@@ -1398,8 +1401,7 @@ export function operationEligibleForCommissioningTest(input: {
 }
 
 export function isTransientBrowserControlError(error: unknown) {
-  const detail = error instanceof Error ? error.message : String(error || "");
-  return /CRM_VIEWER_(?:HUMAN|AGENT)_CONTROL_ACTIVE/.test(detail);
+  return isTransientBrowserExecutionFailure(error);
 }
 
 export function safeReadCommissioningPassed(input: {

@@ -27,18 +27,14 @@ describe("personal setup after secure access", () => {
       "STEP 1 · ABOUT YOU",
       "STEP 2 · CRM IDENTITY",
       "STEP 3 · YOUR MAILBOX",
-      "START WITH REVIEW",
       "PERSONAL SETUP COMPLETE",
     ])
       expect(setup).toContain(step);
-    expect(setup).toContain("What should AmarktAI call you?");
-    expect(setup).toContain("main result you want from AmarktAI");
-    expect(setup).toContain("how you prefer to work");
+    expect(setup).toContain("Preferred name *");
+    expect(setup).toContain("Main sales goal *");
+    expect(setup).toContain("Working preferences (optional)");
     expect(setup).toContain("Connect Outlook");
-    expect(setup).toContain(
-      "Every customer-facing action waits for your confirmation at"
-    );
-    expect(setup).toContain("first. You can change that later in Settings.");
+    expect(setup).toContain("Review Everything");
     expect(setup).toContain("Assistant identity, memory, CRM context");
     expect(setup).toContain('className="amk-auth fixed inset-0');
     expect(setup).not.toContain('type="password"');

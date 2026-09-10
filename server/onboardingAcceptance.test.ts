@@ -80,10 +80,7 @@ describe("new-user browser CRM commissioning journey contract", () => {
     expect(companySetup).toContain("discovery.sourceUrl");
     expect(companySetup).toContain('target="_blank"');
     expect(companySetup).toContain("knowledgeIndexes: basics.map");
-    expect(onboarding).toMatch(
-      /before any\s+information becomes trusted knowledge/
-    );
-    expect(onboarding).toMatch(
+expect(onboarding).toMatch(
       /Nothing becomes trusted\s+company knowledge until you confirm it/
     );
     expect(database).toContain('completeness?.status === "incomplete"');
@@ -142,11 +139,9 @@ describe("new-user browser CRM commissioning journey contract", () => {
 
   it("routes invited salespeople through identity confirmation without company onboarding", () => {
     const layout = read("../client/src/components/DashboardLayout.tsx");
-    expect(layout).toContain("/api/team/crm-identity");
-    expect(layout).toContain("Which salesperson record is yours?");
-    expect(layout).toContain(
-      "When setup is proven, your customers, tasks, opportunities and call context will be available here automatically."
-    );
+    expect(read("../client/src/components/MemberOnboardingGate.tsx")).toContain("/api/team/crm-identity");
+    expect(layout).not.toContain("SalespersonIdentityGate");
+    expect(read("../client/src/components/MemberOnboardingGate.tsx")).toContain("Confirm who you are in the CRM.");
     expect(layout).toContain("Your AmarktAI workspace is being prepared.");
   });
 

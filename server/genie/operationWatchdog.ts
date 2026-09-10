@@ -5,7 +5,7 @@ import {
 } from "../../drizzle/schema";
 import { testLearnedBrowserOperation } from "../browserConnectors/browserCrmAdapter";
 import { BROWSER_OPERATION_CATALOGUE } from "../browserConnectors/operationContracts";
-import { recordBrowserOperationResult } from "../browserConnectors/learnedOperations";
+import { isTransientBrowserExecutionFailure } from "../browserConnectors/runtimeFailure";
 import { loadConnectionSecret, toAdapterConnection } from "../connectedSystems";
 import { getDb } from "../db";
 import { attemptBoundedAutomaticRepairBatch } from "../crm/automaticCommissioning";
@@ -17,7 +17,12 @@ import {
 export function watchdogRepairPlan(
   results: Array<{
     operationKey: string;
-    status: "live" | "degraded" | "awaiting_verification" | "blocked";
+    status:
+      | "live"
+      | "degraded"
+      | "awaiting_verification"
+      | "blocked"
+      | "retry_pending";
   }>
 ) {
   const affectedOperationKeys = Array.from(
@@ -82,7 +87,12 @@ export async function runGenieOperationWatchdog() {
   const results: Array<{
     connectedSystemId: number;
     operationKey: string;
-    status: "live" | "degraded" | "awaiting_verification" | "blocked";
+    status:
+      | "live"
+      | "degraded"
+      | "awaiting_verification"
+      | "blocked"
+      | "retry_pending";
     detail?: string;
   }> = [];
   let repairGenxCalls = 0;
@@ -158,20 +168,17 @@ export async function runGenieOperationWatchdog() {
         });
       } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);
-        await recordBrowserOperationResult({
-          organisationId: system.organisationId,
-          connectedSystemId: system.id,
-          operationKey: operation.operationKey,
-          version: operation.version,
-          success: false,
-          watchdog: true,
-          error: detail,
-          evidence: {
-            watchdog: true,
-            failure: detail.slice(0, 800),
-            checkedAt: new Date().toISOString(),
-          },
-        });
+        if (isTransientBrowserExecutionFailure(error)) {
+          results.push({
+            connectedSystemId: system.id,
+            operationKey: operation.operationKey,
+            status: "retry_pending",
+            detail:
+              "CRM access is temporarily busy or unavailable. The learned operation is unchanged.",
+          });
+          continue;
+        }
+        // The canonical adapter records the failure once. The watchdog only schedules repair.
         affectedOperationKeys.push(operation.operationKey);
         results.push({
           connectedSystemId: system.id,

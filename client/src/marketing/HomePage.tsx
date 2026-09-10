@@ -6,7 +6,6 @@ import {
   Clock3,
   MessageSquareText,
   ShieldCheck,
-  Sparkles,
   Users,
 } from "lucide-react";
 import { Link } from "wouter";
@@ -73,14 +72,8 @@ export default function HomePage() {
             <figure className="amk-photo-frame amk-photo-frame--hero">
               <img src={marketingImagery.hero.src} alt={marketingImagery.hero.alt} />
             </figure>
-            <div className="amk-float-card amk-float-card--top">
-              <Sparkles size={17} />
-              <div><strong>Next customer is clear</strong><span>CRM context + approved company knowledge</span></div>
-            </div>
-            <div className="amk-float-card amk-float-card--bottom">
-              <CheckCircle2 size={17} />
-              <div><strong>Follow-up prepared</strong><span>Review before anything important changes</span></div>
-            </div>
+
+
           </div>
         </div>
       </section>
@@ -118,7 +111,7 @@ export default function HomePage() {
             <figure className="amk-photo-frame amk-photo-frame--story">
               <img src={marketingImagery.customerCall.src} alt={marketingImagery.customerCall.alt} loading="lazy" />
             </figure>
-            <div className="amk-mini-stat"><strong>One customer story</strong><span>Before · during · after the call</span></div>
+
           </div>
           <div className="amk-split__copy">
             <p className="amk-eyebrow">BE READY BEFORE THE PHONE RINGS</p>

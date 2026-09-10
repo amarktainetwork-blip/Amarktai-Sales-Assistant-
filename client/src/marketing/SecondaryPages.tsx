@@ -48,7 +48,7 @@ export function HowItWorksPage() {
             </div>
           </div>
           <figure className="amk-photo-frame amk-photo-frame--page">
-            <img src={marketingImagery.hero.src} alt={marketingImagery.hero.alt} />
+            <img src={marketingImagery.howHero.src} alt={marketingImagery.howHero.alt} />
           </figure>
         </div>
       </section>
@@ -125,7 +125,7 @@ export function HowItWorksPage() {
             </div>
           </div>
           <figure className="amk-photo-frame amk-photo-frame--story">
-            <img src={marketingImagery.customerCall.src} alt={marketingImagery.customerCall.alt} loading="lazy" />
+            <img src={marketingImagery.howFollowUp.src} alt={marketingImagery.howFollowUp.alt} loading="lazy" />
           </figure>
         </div>
       </section>

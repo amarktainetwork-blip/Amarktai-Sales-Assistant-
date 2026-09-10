@@ -20,6 +20,12 @@ export function classifyBrowserRuntimeFailure(
   detail: string
 ): BrowserRuntimeFailureClassification {
   if (
+    /CRM_VIEWER_(?:HUMAN|AGENT)_CONTROL_ACTIVE|CRM_BROWSER_CONTROL_(?:LEASE_LOST|COORDINATION_UNAVAILABLE)|(?:BROWSER|SESSION|WORKER)[A-Z_]*(?:BUSY|CONTENTION)/i.test(
+      detail
+    )
+  )
+    return "transient_transport";
+  if (
     /REAUTHENTICATION_REQUIRED|AUTH(?:ENTICATION)?[_ ]?(?:EXPIRED|REQUIRED|FAILED)|\b401\b|login|session expired|username is not configured|password is not configured/i.test(
       detail
     )
@@ -49,6 +55,14 @@ export function classifyBrowserRuntimeFailure(
   )
     return "transient_transport";
   return "execution_failure";
+}
+
+export function isTransientBrowserExecutionFailure(error: unknown) {
+  return (
+    classifyBrowserRuntimeFailure(
+      error instanceof Error ? error.message : String(error || "")
+    ) === "transient_transport"
+  );
 }
 
 type FailureRecorder = typeof recordBrowserOperationResult;

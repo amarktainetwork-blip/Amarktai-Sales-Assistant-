@@ -10,7 +10,8 @@ describe("CRM workspace customer interaction contract", () => {
   it("keeps Amarktai navigation while removing redundant setup chrome inside CRM", () => {
     expect(source).toContain("<DashboardLayout>");
     expect(source).toContain("data-crm-workspace-root");
-    expect(source).toContain("main:has(> [data-crm-workspace-root])");
+    expect(readFileSync(new URL("../client/src/dashboard-final.css", import.meta.url),"utf8")).toContain("main:has(> [data-crm-workspace-root])");
+    expect(source).not.toContain("<style>");
     expect(source).not.toContain("Capability summary");
     expect(source).not.toContain("Latest CRM activity");
   });
