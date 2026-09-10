@@ -32,6 +32,7 @@ function customer(input?: {
   taskTitle?: string;
   taskExternalId?: string;
   stage?: string;
+  contactStatus?: string;
 }): ResolvedAssistantCustomerContext {
   const taskTitle = input?.taskTitle ?? "Attempt 1";
   const taskExternalId = input?.taskExternalId ?? "task-1";
@@ -43,6 +44,7 @@ function customer(input?: {
     contactName: "Test Customer",
     email: "customer@example.test",
     phone: "+447700900123",
+    contactStatus: input?.contactStatus ?? "New",
     opportunityExternalId: "opp-1",
     opportunityName: "Current opportunity",
     stage: input?.stage ?? "New",
@@ -151,6 +153,7 @@ describe("configured workflow materialization", () => {
       organisationId: 1,
       request: { workflowKey: "first_contact", leadLabel: "Test Customer" },
       customer: customer({ taskTitle: "Attempt 1", taskExternalId: "task-1" }),
+      now: new Date("2026-09-04T16:30:00.000Z"),
     });
 
     expect(attemptOne.actions.map(action => action.actionType)).toContain(
@@ -174,6 +177,7 @@ describe("configured workflow materialization", () => {
         maximum: 4,
         finalAttempt: false,
       },
+      dueAt: "2026-09-07T08:00:00.000Z",
     });
 
     const attemptTwo = await buildConfiguredWorkflowPlan({
@@ -189,6 +193,51 @@ describe("configured workflow materialization", () => {
       attemptTwo.actions.find(action => action.actionType === "schedule_callback")
         ?.payload
     ).toMatchObject({ taskPurpose: "attempt_3", taskTitle: "Attempt 3" });
+  });
+
+  it("blocks configured outreach before review when the current CRM status is a stop status", async () => {
+    mocks.getClientActionConfiguration.mockResolvedValue(firstContactConfiguration());
+
+    await expect(
+      buildConfiguredWorkflowPlan({
+        organisationId: 1,
+        request: { workflowKey: "first_contact", leadLabel: "Test Customer" },
+        customer: customer({ contactStatus: "Closed" }),
+      })
+    ).rejects.toThrow("WORKFLOW_STOP_STATUS");
+  });
+
+  it("requires the exact configured current task title before a destructive workflow can be prepared", async () => {
+    const base = firstContactConfiguration();
+    mocks.getClientActionConfiguration.mockResolvedValue({
+      ...base,
+      workflows: {
+        final_close: {
+          taskAliases: { final_follow_up: "Expected Final Task" },
+          taskSequence: [],
+          sequence: [
+            "verify_contact_context:current_customer",
+            "complete_active_task:final_follow_up",
+          ],
+          eligibilityStatuses: [],
+          stopStatuses: [],
+          opportunityMappings: {},
+          statusMappings: {},
+          templates: {},
+          timingRules: {},
+          duplicateRules: ["external_read_before_write"],
+          requiredPostconditions: ["crm_readback"],
+        },
+      },
+    });
+
+    await expect(
+      buildConfiguredWorkflowPlan({
+        organisationId: 1,
+        request: { workflowKey: "final_close", leadLabel: "Test Customer" },
+        customer: customer({ taskTitle: "Some Other Open Task" }),
+      })
+    ).rejects.toThrow("WORKFLOW_CURRENT_TASK_MISMATCH");
   });
 
   it("never creates a fifth attempt after the configured final attempt", async () => {
