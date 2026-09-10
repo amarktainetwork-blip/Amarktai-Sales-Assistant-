@@ -417,6 +417,10 @@ export async function tryPrepareDirectAssistantAction(input: {
       preferredConnectedSystemId: customer.connectedSystemId,
       preferredProvider: customer.provider,
       source: "shared_assistant_action_planner",
+      requireFreshCustomerContext: true,
+      workflowConfiguration: {
+        officeHours: configuration.officeHours || null,
+      },
       customerContext: {
         source: customer.targetVerification.source,
         connectedSystemId: customer.connectedSystemId,
