@@ -47,6 +47,7 @@ if (process.argv[2] === "owner") {
     executable,
     [
       "--headless=new",
+      ...(process.platform === "linux" && process.env.CI ? ["--no-sandbox"] : []),
       "--no-first-run",
       "--no-default-browser-check",
       "--remote-debugging-port=0",
