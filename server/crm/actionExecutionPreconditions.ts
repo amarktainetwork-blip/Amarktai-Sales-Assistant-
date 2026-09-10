@@ -304,8 +304,9 @@ export async function checkApprovedCrmExecutionPreconditions(input: {
   const workflow = object(input.payload.workflowConfiguration);
   if (
     contactExternalId &&
-    typeof workflow.workflowKey === "string" &&
-    workflow.workflowKey.trim()
+    (input.payload.requireFreshCustomerContext === true ||
+      (typeof workflow.workflowKey === "string" &&
+        Boolean(workflow.workflowKey.trim())))
   )
     await verifyFreshWorkflowContext({
       adapter: input.adapter,
