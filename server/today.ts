@@ -13,6 +13,10 @@ import {
 } from "../drizzle/schema";
 import { getDb } from "./db";
 import { requireOrganisationMembership } from "./organisation";
+import {
+  getClientActionConfiguration,
+  type ClientActionConfiguration,
+} from "./clientActionConfiguration";
 
 function dayEnd(now: Date) {
   const end = new Date(now);
@@ -26,6 +30,52 @@ function ageDays(value?: Date | null, now = new Date()) {
   return value
     ? Math.floor((now.valueOf() - value.valueOf()) / 86_400_000)
     : null;
+}
+
+function normalizedTaskTitle(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/** Ordered task titles that an organisation explicitly says should drive its contact sequence. */
+export function configuredTaskPriorityTitles(
+  configuration: ClientActionConfiguration
+) {
+  const entries = Object.entries(configuration.workflows).sort(([a], [b]) => {
+    if (a === "first_contact") return -1;
+    if (b === "first_contact") return 1;
+    return a.localeCompare(b);
+  });
+  const titles: string[] = [];
+  for (const [, workflow] of entries) {
+    for (const purpose of workflow.taskSequence) {
+      const title = workflow.taskAliases[purpose]?.trim();
+      if (
+        title &&
+        !titles.some(item => normalizedTaskTitle(item) === normalizedTaskTitle(title))
+      )
+        titles.push(title);
+    }
+  }
+  return titles;
+}
+
+export function sortTasksByConfiguredPriority<
+  T extends { title: string; dueAt: Date | null },
+>(tasks: T[], configuredTitles: string[]) {
+  const rank = new Map(
+    configuredTitles.map((title, index) => [normalizedTaskTitle(title), index])
+  );
+  const fallback = configuredTitles.length + 1;
+  return [...tasks].sort((a, b) => {
+    const aRank = rank.get(normalizedTaskTitle(a.title)) ?? fallback;
+    const bRank = rank.get(normalizedTaskTitle(b.title)) ?? fallback;
+    return (
+      aRank - bRank ||
+      (a.dueAt?.valueOf() ?? Number.MAX_SAFE_INTEGER) -
+        (b.dueAt?.valueOf() ?? Number.MAX_SAFE_INTEGER) ||
+      a.title.localeCompare(b.title)
+    );
+  });
 }
 
 export function isCurrentActionableInbound(
@@ -48,6 +98,10 @@ export async function getTodayWork(input: {
   );
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
+  const actionConfiguration = await getClientActionConfiguration({
+    organisationId: input.organisationId,
+  });
+  const taskPriorityTitles = configuredTaskPriorityTitles(actionConfiguration);
   const now = new Date();
   const [
     mappings,
@@ -195,9 +249,15 @@ export async function getTodayWork(input: {
     .filter(contact => belongsToUser(contact.ownerExternalId))
     .slice(0, 20);
   const openTasks = scopedTasks.filter(task => isOpen(task.status));
-  const overdueTasks = openTasks.filter(task => task.dueAt && task.dueAt < now);
-  const dueToday = openTasks.filter(
-    task => task.dueAt && task.dueAt >= now && task.dueAt <= dayEnd(now)
+  const overdueTasks = sortTasksByConfiguredPriority(
+    openTasks.filter(task => task.dueAt && task.dueAt < now),
+    taskPriorityTitles
+  );
+  const dueToday = sortTasksByConfiguredPriority(
+    openTasks.filter(
+      task => task.dueAt && task.dueAt >= now && task.dueAt <= dayEnd(now)
+    ),
+    taskPriorityTitles
   );
   const staleOpportunities = scopedOpportunities.filter(opportunity => {
     const age = ageDays(opportunity.lastActivityAt, now);
