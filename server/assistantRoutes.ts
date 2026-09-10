@@ -22,6 +22,10 @@ import { attachRuntimeOperationReadiness } from "./crm/runtimeCapabilities";
 import { syncConnectedSystemsForUser } from "./crm/sync";
 import { planAssistantSingleRecordAction } from "./crm/assistantSingleRecord";
 import {
+  configuredWorkflowBatchRequested,
+  prepareConfiguredWorkflowBatch,
+} from "./governedAssistantEntry";
+import {
   createAssistantMemory,
   isSafeAssistantMemory,
   listRelevantAssistantMemories,
@@ -99,12 +103,23 @@ export function shouldUseDeterministicTodayAnswer(input: {
   const normalized = input.query.trim().toLowerCase();
   if (!normalized) return false;
   return !(
-    /\b(send|draft|write|prepare|create|add|move|update|change|schedule|set|delete|remove|complete|close|mark|assign|log)\b/.test(
+    /\b(send|draft|write|prepare|process|handle|action|create|add|move|update|change|schedule|set|delete|remove|complete|close|mark|assign|log)\b/.test(
       normalized
     ) ||
     /\bremind me\b/.test(normalized) ||
     /^(?:please\s+)?call(?:\s+back)?\b/.test(normalized)
   );
+}
+
+function tasksMentionedByQuery<T extends { title: string }>(
+  query: string,
+  items: T[]
+) {
+  const normalized = query.trim().toLowerCase().replace(/\s+/g, " ");
+  const matches = items.filter(item =>
+    normalized.includes(item.title.trim().toLowerCase().replace(/\s+/g, " "))
+  );
+  return matches.length ? matches : items;
 }
 
 export function deterministicTodayAnswer(
@@ -124,7 +139,7 @@ export function deterministicTodayAnswer(
   }
 
   if (/overdue.*task|task.*overdue|what.*overdue|late task/.test(normalized)) {
-    const items = today.queues.overdueTasks;
+    const items = tasksMentionedByQuery(query, today.queues.overdueTasks);
     return {
       content: items.length
         ? `You have ${items.length} overdue CRM task${items.length === 1 ? "" : "s"}.\n\n${listLines(items, item => `• ${item.title} — ${dateLabel(item.dueAt)}`)}${items.length > 8 ? `\n\nAnd ${items.length - 8} more.` : ""}`
@@ -134,7 +149,7 @@ export function deterministicTodayAnswer(
   }
 
   if (/due today|today.*task|tasks? (?:for|due) today/.test(normalized)) {
-    const items = today.queues.dueToday;
+    const items = tasksMentionedByQuery(query, today.queues.dueToday);
     return {
       content: items.length
         ? `You have ${items.length} CRM task${items.length === 1 ? "" : "s"} due today.\n\n${listLines(items, item => `• ${item.title} — ${dateLabel(item.dueAt)}`)}${items.length > 8 ? `\n\nAnd ${items.length - 8} more.` : ""}`
@@ -423,6 +438,38 @@ export function registerAssistantRoutes(app: Express) {
           metadata: { responseMode: "workspace_truth", contentRetained: false },
         });
         return res.json(direct);
+      }
+
+      const configuredBatchRoute = routeSalesCommand(latestUserMessage);
+      if (
+        !contactId &&
+        configuredBatchRoute.intent === "workflow" &&
+        configuredBatchRoute.workflowKey &&
+        configuredWorkflowBatchRequested(latestUserMessage)
+      ) {
+        const prepared = await prepareConfiguredWorkflowBatch({
+          userId,
+          organisationId: membership.organisationId,
+          command: latestUserMessage,
+          workflowKey: configuredBatchRoute.workflowKey,
+        });
+        return res.json({
+          content: prepared.summary,
+          ...(prepared.proposalCount > 0
+            ? {
+                suggestedAction: {
+                  label: "Review proposed work",
+                  path: "/reviews",
+                },
+                reviewRequired: true,
+              }
+            : {
+                suggestedAction: {
+                  label: "Open today's work",
+                  path: "/today",
+                },
+              }),
+        });
       }
 
       if (
