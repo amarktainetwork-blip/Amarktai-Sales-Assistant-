@@ -378,6 +378,15 @@ function configuredActionMetadata(input: {
     input.configuration.duplicateRules,
     input.workflow.duplicateRules
   );
+  if (
+    input.action.actionType === "schedule_callback" &&
+    taskPurpose &&
+    !taskTitle &&
+    !(typeof payload.taskTitle === "string" && payload.taskTitle.trim())
+  )
+    throw new Error(
+      `WORKFLOW_TASK_ALIAS_REQUIRED: callback purpose '${taskPurpose}' has no exact CRM task alias.`
+    );
   const dueAt =
     input.action.actionType === "schedule_callback"
       ? typeof payload.dueAt === "string" && payload.dueAt.trim()
@@ -565,6 +574,26 @@ export async function buildConfiguredWorkflowPlan(input: {
     workflow,
     input.customer.contactName
   );
+  if (
+    input.request.callOutcome === "answered" &&
+    input.request.agreedFollowUpAt &&
+    !configuredSource.some(action => action.actionType === "schedule_callback")
+  ) {
+    const agreed = sequenceAction(
+      "schedule_callback:agreed_follow_up",
+      input.customer.contactName,
+      configuredSource.length
+    );
+    configuredSource.push({
+      ...agreed,
+      idempotencyKey: `${agreed.idempotencyKey}:${safeKey(input.request.agreedFollowUpAt)}`,
+      payload: {
+        ...agreed.payload,
+        dueAt: input.request.agreedFollowUpAt,
+        agreedFromConversation: true,
+      },
+    });
+  }
   const source = applyTaskProgression({
     request: input.request,
     workflow,
