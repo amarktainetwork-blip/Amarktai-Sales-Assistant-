@@ -7,6 +7,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { tmpdir } from "node:os";
 
 export type BrowserControlState = "AGENT_CONTROL" | "HUMAN_CONTROL" | "IDLE";
 
@@ -14,6 +15,7 @@ type ControlKey = {
   organisationId: number;
   connectedSystemId: number;
   userId: number;
+  leaseToken?: string;
 };
 
 type SharedLeaseRecord = {
@@ -21,6 +23,7 @@ type SharedLeaseRecord = {
   state: Exclude<BrowserControlState, "IDLE">;
   expiresAt: number;
   pid: number;
+  processIdentity: string;
 };
 
 type Lease = {
@@ -32,12 +35,13 @@ type Lease = {
 };
 
 const leases = new Map<string, Lease>();
+const PROCESS_IDENTITY = randomUUID();
 const DEFAULT_LEASE_MS = 8_000;
 const MIN_SHARED_LEASE_MS = 30_000;
 const SHARED_LEASE_ROOT =
   process.env.CRM_BROWSER_CONTROL_LEASE_DIR ||
   (process.env.NODE_ENV === "test"
-    ? join("/tmp", `amarktai-browser-control-${process.pid}`)
+    ? join(tmpdir(), `amarktai-browser-control-${process.pid}`)
     : "/app/data/connector-evidence/.browser-control-leases");
 
 function assertControlKey(input: ControlKey) {
@@ -131,7 +135,13 @@ function acquireSharedLease(
   const now = Date.now();
   const existing = readSharedLease(input);
 
-  if (existingToken && existing?.token === existingToken) {
+  if (existingToken) {
+    if (
+      existing?.token !== existingToken ||
+      existing.state !== state ||
+      existing.expiresAt <= now
+    )
+      throw new Error("CRM_BROWSER_CONTROL_LEASE_LOST");
     const renewed = { ...existing, state, expiresAt: now + ttlMs };
     writeFileSync(sharedRecordPath(input), JSON.stringify(renewed), {
       encoding: "utf8",
@@ -142,7 +152,7 @@ function acquireSharedLease(
 
   if (existing && existing.expiresAt > now)
     throw new Error(busyCode(state, existing.state));
-  if (existing) removeSharedLease(input);
+  if (existing) removeSharedLease(input, existing.token);
 
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   const token = randomUUID();
@@ -170,6 +180,7 @@ function acquireSharedLease(
     state,
     expiresAt: now + ttlMs,
     pid: process.pid,
+    processIdentity: PROCESS_IDENTITY,
   };
   try {
     writeFileSync(sharedRecordPath(input), JSON.stringify(record), {
@@ -219,6 +230,7 @@ function getLease(input: ControlKey) {
   }
   if (lease.expiresAt && lease.expiresAt <= Date.now())
     localRelease(input, key, lease);
+  leases.set(key, lease);
   return { key, lease };
 }
 
@@ -253,15 +265,15 @@ function acquire(
   ttlMs = DEFAULT_LEASE_MS
 ) {
   const { key, lease } = getLease(input);
-  if (lease.state !== "IDLE" && lease.state !== state)
+  if (
+    lease.state !== "IDLE" &&
+    (lease.state !== state ||
+      !input.leaseToken ||
+      input.leaseToken !== lease.sharedToken)
+  )
     throw new Error(busyCode(state, lease.state));
 
-  const shared = acquireSharedLease(
-    input,
-    state,
-    ttlMs,
-    lease.state === state ? lease.sharedToken : undefined
-  );
+  const shared = acquireSharedLease(input, state, ttlMs, input.leaseToken);
   lease.state = state;
   lease.sharedToken = shared.token;
   lease.expiresAt = shared.expiresAt;
@@ -269,6 +281,7 @@ function acquire(
   emit(lease);
   return {
     control: state,
+    leaseToken: shared.token,
     expiresAt: new Date(shared.expiresAt).toISOString(),
   };
 }
@@ -289,11 +302,12 @@ export function acquireAiBrowserControl(
 
 export function releaseBrowserControl(input: ControlKey) {
   const { key, lease } = getLease(input);
-  localRelease(input, key, lease);
-  return { control: "IDLE" as const };
+  if (input.leaseToken && input.leaseToken === lease.sharedToken)
+    localRelease(input, key, lease);
+  return { control: browserControlState(input) };
 }
 
-export function browserControlState(input: ControlKey) {
+export function browserControlState(input: ControlKey): BrowserControlState {
   const { key, lease } = getLease(input);
   if (lease.state !== "IDLE" && lease.sharedToken) {
     const shared = readSharedLease(input);
@@ -304,7 +318,8 @@ export function browserControlState(input: ControlKey) {
     )
       localRelease(input, key, lease, false);
   }
-  return lease.state;
+  const shared = readSharedLease(input);
+  return shared && shared.expiresAt > Date.now() ? shared.state : "IDLE";
 }
 
 export function subscribeBrowserControl(
@@ -313,8 +328,20 @@ export function subscribeBrowserControl(
 ) {
   const { key, lease } = getLease(input);
   lease.listeners.add(listener);
-  listener(lease.state);
+  let lastState = browserControlState(input);
+  listener(lastState);
+  // App and worker have separate module state. Observe the shared owner so a
+  // viewer never claims IDLE merely because the worker acquired the lease.
+  const observer = setInterval(() => {
+    const state = browserControlState(input);
+    if (state !== lastState) {
+      lastState = state;
+      listener(state);
+    }
+  }, 500);
+  observer.unref?.();
   return () => {
+    clearInterval(observer);
     lease.listeners.delete(listener);
     if (!lease.listeners.size && lease.state === "IDLE") leases.delete(key);
   };
@@ -324,8 +351,14 @@ export function assertBrowserOperationCanRun(input: ControlKey) {
   const state = browserControlState(input);
   if (state === "HUMAN_CONTROL")
     throw new Error("CRM_VIEWER_HUMAN_CONTROL_ACTIVE");
-  if (state === "AGENT_CONTROL")
+  const shared = readSharedLease(input);
+  if (
+    state === "AGENT_CONTROL" &&
+    (!input.leaseToken || shared?.token !== input.leaseToken)
+  )
     throw new Error("CRM_VIEWER_AGENT_CONTROL_ACTIVE");
+  if (state === "IDLE" && input.leaseToken)
+    throw new Error("CRM_BROWSER_CONTROL_LEASE_LOST");
 }
 
 export function resetBrowserControlArbitrationForTests() {

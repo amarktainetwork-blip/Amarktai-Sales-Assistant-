@@ -12,40 +12,20 @@ describe("final client-facing handover polish", () => {
     expect(app).not.toContain("handover-final.css");
   });
 
-  it("keeps onboarding hero legible inside the dashboard route shell", () => {
+  it("uses one auth shell with form priority on laptops", () => {
     const css = read("index.css");
-    expect(css).toContain(
-      'body:has([data-slot="sidebar-wrapper"]) .amk-auth--setup .amk-auth__visual .amk-auth__message h1'
-    );
-    expect(css).not.toContain(
-      '[data-slot="sidebar-inset"] > main.amk-auth--setup'
-    );
-    expect(css).toMatch(
-      /\.amk-auth--setup[\s\S]*\.amk-auth__message h1[\s\S]*color:\s*#ffffff\s*!important/
-    );
-  });
-
-  it("keeps onboarding viewport-fixed and confines longer setup overflow to the form pane", () => {
-    const css = read("index.css");
-    expect(css).toContain("main.amk-auth.amk-auth--setup {");
-    expect(css).toMatch(
-      /main\.amk-auth\.amk-auth--setup[\s\S]*overflow:\s*hidden\s*!important/
-    );
-    expect(css).toContain(
-      "@media (min-width: 981px) and (max-height: 860px)"
-    );
-    expect(css).toContain(
-      "main.amk-auth.fixed:not(.amk-auth--setup) .amk-auth__form-side"
-    );
-    expect(css).toContain("overflow-y: auto;");
-    expect(css).toContain("min-height: 64px !important;");
+    expect(css).toContain("@media (min-width: 1440px) and (min-height: 900px)");
+    expect(css).toMatch(/\.amk-auth__visual\s*\{\s*display: none/);
+    expect(css).toMatch(/\.amk-auth\.fixed\s*\{[^}]*overflow-y: auto/);
+    expect(css).not.toContain("color: #ffffff !important");
+    expect(css).not.toContain("content: url(");
   });
 
   it("keeps company setup in customer language", () => {
     const onboarding = read("pages/Onboarding.tsx");
-    expect(onboarding).toContain("Set up AmarktAI for your business.");
-    expect(onboarding).toContain("Let AmarktAI learn your public website.");
-    expect(onboarding).toContain("Sign in to your CRM and finish the connection.");
+    expect(onboarding).toContain("Tell us about your business.");
+    expect(onboarding).toContain("Learn about your company.");
+    expect(onboarding).toContain("Connect your CRM.");
     expect(onboarding).not.toContain("prove the required CRM reads");
     expect(onboarding).not.toContain("governed write operations");
     expect(onboarding).not.toContain("backend-verified");
@@ -63,25 +43,25 @@ describe("final client-facing handover polish", () => {
     expect(today).toContain('toast.success("Your sales day is up to date.")');
   });
 
-  it("keeps AmarktAI as one conversation surface", () => {
-    const css = read("dashboard-final.css");
-    expect(css).toContain("[data-assistant-workspace]");
-    expect(css).toContain('[data-assistant-workspace] > div[class*="grid"] > aside');
-    expect(css).toMatch(/aside[\s\S]*display:\s*none\s*!important/);
+  it("keeps customer context actions reachable in the conversation", () => {
+    const assistant = read("pages/Assistant.tsx");
+    expect(assistant).toContain("Customer details and actions");
+    expect(assistant).toContain("<details");
+    expect(assistant).toContain("data-assistant-conversation");
+    expect(read("dashboard-final.css")).not.toContain("display: none !important");
   });
 
   it("moves dashboard copyright into the sidebar footer", () => {
     const css = read("dashboard-final.css");
-    expect(css).toContain('body:has(.amarktai-dashboard-sidebar)::after');
     expect(css).toContain('body:has(.amarktai-dashboard-sidebar) [data-sidebar="footer"]::after');
     expect(css).toContain("Part of Amarktai Network");
-    expect(css).toMatch(/body:has\(\.amarktai-dashboard-sidebar\)::after[\s\S]*content:\s*none\s*!important/);
   });
 
   it("widens public pages and gives approved photography more presence", () => {
     const css = read("marketing/final-site.css");
     expect(css).toContain("width: min(1320px, calc(100% - 72px))");
-    expect(css).toContain(".amk-photo-frame--hero { height: 640px; }");
-    expect(css).toContain(".amk-photo-frame--page { height: 560px; }");
+    expect(css).toContain("aspect-ratio: 4 / 5");
+    expect(css).not.toContain(".amk-photo-frame::after");
+    expect(css).not.toContain(".amk-float-card");
   });
 });

@@ -92,7 +92,11 @@ async function scopedSystem(organisationId: number, connectedSystemId: number) {
 }
 
 export function effectiveLatestBrowserOperation<
-  T extends { status: BrowserOperationStatus; prerequisites: unknown },
+  T extends {
+    status: BrowserOperationStatus;
+    prerequisites: unknown;
+    lastError?: string | null;
+  },
 >(latest: T | undefined): T | undefined {
   if (!latest) return undefined;
   const prerequisites =
@@ -106,6 +110,16 @@ export function effectiveLatestBrowserOperation<
     prerequisites.providerPackVersion === GENIE_PROVIDER_PACK_VERSION;
   if (canonicalGeniePack && !currentPack)
     return { ...latest, status: "NOT_LEARNED" as const };
+  // Earlier releases classified lease contention as a broken definition. A
+  // known contention-only failure may be tested again, but never gains live
+  // execution permission without a fresh deterministic proof.
+  if (
+    ["BLOCKED", "DEGRADED"].includes(latest.status) &&
+    /^(?:execution_failure|transient_transport): CRM_VIEWER_(?:HUMAN|AGENT)_CONTROL_ACTIVE: deterministic browser operation failed\.$/.test(
+      latest.lastError || ""
+    )
+  )
+    return { ...latest, status: "TEST_READY" as const };
   return latest;
 }
 
@@ -444,12 +458,32 @@ export async function recordBrowserOperationResult(input: {
       "The learned browser operation was not found in this organisation and connected system."
     );
   const now = new Date();
+  const transient =
+    !input.success &&
+    input.evidence.failureClassification === "transient_transport";
   const status = browserOperationStatusAfterResult({
     currentStatus: operation.status,
     success: input.success,
     publish: Boolean(input.publishByUserId),
     watchdog: Boolean(input.watchdog),
+    transient,
   });
+  if (transient) {
+    await recordOperationalEvent({
+      organisationId: input.organisationId,
+      connectedSystemId: input.connectedSystemId,
+      severity: "warning",
+      category: "browser_crm_operation",
+      eventKey: "browser_operation_retryable",
+      summary: `${input.operationKey} could not run while browser infrastructure was unavailable. Its learned definition and proof are unchanged.`,
+      detail: {
+        operationKey: input.operationKey,
+        version: input.version,
+        ...input.evidence,
+      },
+    });
+    return { status };
+  }
   await db
     .update(browserLearnedOperations)
     .set({
@@ -493,7 +527,9 @@ export function browserOperationStatusAfterResult(input: {
   success: boolean;
   publish: boolean;
   watchdog: boolean;
+  transient?: boolean;
 }): BrowserOperationStatus {
+  if (!input.success && input.transient) return input.currentStatus;
   return input.success && input.publish
     ? "LIVE_PROVEN"
     : input.success

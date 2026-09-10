@@ -49,7 +49,7 @@ describe("client handover acceptance guards", () => {
 
   it("puts Outlook before read-only CRM commissioning", () => {
     expect(onboarding).toContain(
-      '["Business", "Learn", "Outlook", "CRM", "Ready"]'
+      '["Business", "Learn", "Email", "CRM", "Ready"]'
     );
     expect(onboarding).toContain("/api/mailbox/microsoft/start");
     expect(compact(onboarding)).toContain("allowedWriteCapabilities: []");

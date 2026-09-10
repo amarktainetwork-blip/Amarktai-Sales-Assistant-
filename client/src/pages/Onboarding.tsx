@@ -9,16 +9,14 @@ import {
   Bot,
   Building2,
   Check,
-  CheckCircle2,
   Globe2,
   Loader2,
   Mail,
   Network,
   RefreshCw,
-  ShieldCheck,
   Users,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 
@@ -96,18 +94,6 @@ const allowedReadCapabilities = [
   "owners.read",
   "pipelines.read",
 ];
-const allowedWriteCapabilities = [
-  "contacts.write",
-  "companies.write",
-  "opportunities.write",
-  "tasks.write",
-  "activities.write",
-  "notes.write",
-  "email.send",
-  "sms.send",
-  "whatsapp.send",
-  "sequences.apply",
-];
 
 function StepDot({
   number,
@@ -145,37 +131,18 @@ function StepDot({
 function SetupVisual() {
   return (
     <section className="amk-auth__visual amk-auth__visual--product">
-      <img src="/images/site-intelligence.svg" alt="AmarktAI sales workspace" />
+      <img
+        src="/images/people/homestation-office-8780133_1920.jpg"
+        alt="AmarktAI sales workspace"
+      />
       <div className="amk-auth__shade" />
       <div className="amk-auth__visual-inner">
         <div className="amk-auth__topline">
           <BrandMark inverse />
         </div>
         <div className="amk-auth__message">
-          <p className="amk-auth__eyebrow">
-            <ShieldCheck size={15} /> SET UP YOUR SALES WORKSPACE
-          </p>
-          <h1>
-            A few steps now.
-            <br />A simpler sales day after.
-          </h1>
-          <p>
-            Tell AmarktAI about your business, connect the tools your team
-            already uses, and then work from one clear daily sales workspace.
-          </p>
-          <div className="amk-auth__proof">
-            <span>
-              <CheckCircle2 size={16} /> Your business facts stay under your
-              control
-            </span>
-            <span>
-              <CheckCircle2 size={16} /> Connect the CRM you already use
-            </span>
-            <span>
-              <CheckCircle2 size={16} /> Review important actions before they
-              happen
-            </span>
-          </div>
+          <h1>A simpler sales day.</h1>
+          <p>Connect the business and tools you already use.</p>
         </div>
       </div>
     </section>
@@ -191,16 +158,16 @@ function SetupShell({
 }) {
   return (
     <main className="amk-auth amk-auth--setup fixed inset-0 z-[240] overflow-y-auto">
-        <SetupVisual />
-        <section className="amk-auth__form-side amk-auth__form-side--setup">
-          <div className="amk-auth__mobile-brand">
-            <BrandMark />
-          </div>
-          <div
-            className={`amk-auth__form-wrap ${wide ? "amk-auth__form-wrap--wide" : "amk-auth__form-wrap--setup"}`}
-          >
-            {children}
-          </div>
+      <SetupVisual />
+      <section className="amk-auth__form-side amk-auth__form-side--setup">
+        <div className="amk-auth__mobile-brand">
+          <BrandMark />
+        </div>
+        <div
+          className={`amk-auth__form-wrap ${wide ? "amk-auth__form-wrap--wide" : "amk-auth__form-wrap--setup"}`}
+        >
+          {children}
+        </div>
       </section>
     </main>
   );
@@ -246,6 +213,9 @@ export default function Onboarding() {
     brandVoice: "",
   });
   const [provider, setProvider] = useState<ProviderOption>(providers[0]);
+  const profileHydrated = useRef(false);
+  const [mailboxError, setMailboxError] = useState("");
+  const [editingBusiness, setEditingBusiness] = useState(false);
   const [customUrl, setCustomUrl] = useState("");
   const [error, setError] = useState("");
   const [mailboxStatus, setMailboxStatus] = useState<MailboxStatus | null>(
@@ -264,12 +234,29 @@ export default function Onboarding() {
   useEffect(() => {
     let cancelled = false;
     const loadMailbox = async () => {
-      const response = await fetch("/api/mailbox", { credentials: "include" });
-      if (!response.ok || cancelled) return;
-      const body = (await response
-        .json()
-        .catch(() => null)) as MailboxStatus | null;
-      if (body && !cancelled) setMailboxStatus(body);
+      try {
+        const response = await fetch("/api/mailbox", {
+          credentials: "include",
+          signal: AbortSignal.timeout(15000),
+        });
+        if (cancelled) return;
+        if (!response.ok)
+          throw new Error("Mailbox status could not be checked.");
+        const body = (await response
+          .json()
+          .catch(() => null)) as MailboxStatus | null;
+        if (!body || typeof body.connected !== "boolean")
+          throw new Error("Mailbox status could not be checked.");
+        if (!cancelled) {
+          setMailboxStatus(body);
+          setMailboxError("");
+        }
+      } catch {
+        if (!cancelled)
+          setMailboxError(
+            "Mailbox status is unavailable. We’ll try again shortly."
+          );
+      }
     };
     void loadMailbox();
     const timer = window.setInterval(() => void loadMailbox(), 4_000);
@@ -281,7 +268,8 @@ export default function Onboarding() {
 
   useEffect(() => {
     const saved = setup.data?.profile;
-    if (!saved) return;
+    if (!saved || profileHydrated.current) return;
+    profileHydrated.current = true;
     setProfile({
       companyName: saved.companyName,
       websiteUrl: saved.websiteUrl ?? "",
@@ -318,12 +306,13 @@ export default function Onboarding() {
   };
 
   const step = useMemo(() => {
-    if (!workspaceMode || !profileSaved) return 1;
+    if (editingBusiness || !workspaceMode || !profileSaved) return 1;
     if (!knowledgeConfirmed) return 2;
     if (!mailboxConnected) return 3;
     if (!crmConnected) return 4;
     return 5;
   }, [
+    editingBusiness,
     workspaceMode,
     profileSaved,
     knowledgeConfirmed,
@@ -358,6 +347,7 @@ export default function Onboarding() {
         utils.companySetup.get.invalidate(),
         utils.organisation.current.invalidate(),
       ]);
+      setEditingBusiness(false);
       toast.success("Business details saved.");
     } catch (cause) {
       setError(
@@ -449,6 +439,25 @@ export default function Onboarding() {
       </SetupShell>
     );
 
+  if (organisation.isError || setup.isError)
+    return (
+      <SetupShell>
+        <h2>Setup could not be loaded.</h2>
+        <p role="alert" className="amk-auth__muted">
+          Your saved progress is still available. Try again.
+        </p>
+        <Button
+          className="mt-5"
+          onClick={() => {
+            void organisation.refetch();
+            void setup.refetch();
+          }}
+        >
+          Retry
+        </Button>
+      </SetupShell>
+    );
+
   if (organisation.data && !canManage)
     return (
       <SetupShell>
@@ -470,20 +479,12 @@ export default function Onboarding() {
       </SetupShell>
     );
 
-  const labels = ["Business", "Learn", "Outlook", "CRM", "Ready"];
+  const labels = ["Business", "Learn", "Email", "CRM", "Ready"];
 
   return (
     <SetupShell wide>
       <div className="border-b border-[#C9D3DF] pb-5">
         <p className="amk-auth__panel-eyebrow">COMPANY SETUP</p>
-        <h2 className="!text-[clamp(34px,3vw,46px)]">
-          Set up AmarktAI for your business.
-        </h2>
-        <p className="amk-auth__muted !mt-3">
-          We’ll guide you through the basics, learn from your public website and
-          connect the CRM your team already uses. You can review everything as
-          you go.
-        </p>
         <div className="mt-5 grid gap-3 sm:grid-cols-5">
           {labels.map((label, index) => (
             <StepDot
@@ -519,7 +520,7 @@ export default function Onboarding() {
                 STEP 1 · WHO IS USING AMARKTAI?
               </p>
               <h3 className="mt-2 text-2xl font-bold tracking-[-.035em] text-[#203047]">
-                Who are we setting this up for?
+                Who is this for?
               </h3>
               <p className="mt-3 text-sm leading-6 text-[#607086]">
                 Start with yourself or set up the whole sales team. You can add
@@ -562,83 +563,115 @@ export default function Onboarding() {
                 Tell us about your business.
               </h3>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-[#607086]">
-                Start with the essentials. If you add your website, AmarktAI can
-                read the public pages in the next step and show you what it
-                found before any information becomes trusted knowledge.
+                Add your company name and website to prepare your company
+                knowledge.
               </p>
-              <div className="mt-6 grid gap-4 sm:grid-cols-2">
-                <Input
-                  value={profile.companyName}
-                  onChange={event =>
-                    setProfile(current => ({
-                      ...current,
-                      companyName: event.target.value,
-                    }))
-                  }
-                  placeholder="Company name"
-                  aria-label="Company name"
-                />
-                <Input
-                  value={profile.websiteUrl}
-                  onChange={event =>
-                    setProfile(current => ({
-                      ...current,
-                      websiteUrl: event.target.value,
-                    }))
-                  }
-                  placeholder="https://yourcompany.com"
-                  aria-label="Company website"
-                />
-                <Input
-                  value={profile.industry}
-                  onChange={event =>
-                    setProfile(current => ({
-                      ...current,
-                      industry: event.target.value,
-                    }))
-                  }
-                  placeholder="Industry (optional)"
-                  aria-label="Industry"
-                />
-                <Input
-                  value={profile.primarySalesObjective}
-                  onChange={event =>
-                    setProfile(current => ({
-                      ...current,
-                      primarySalesObjective: event.target.value,
-                    }))
-                  }
-                  placeholder="Main sales goal (optional)"
-                  aria-label="Main sales goal"
-                />
-              </div>
-              <Textarea
-                value={profile.productsServices}
-                onChange={event =>
-                  setProfile(current => ({
-                    ...current,
-                    productsServices: event.target.value,
-                  }))
-                }
-                placeholder="Anything important about what you sell? (optional)"
-                className="mt-4 min-h-24"
-              />
-              <div className="mt-5 flex flex-wrap gap-3">
-                <Button
-                  disabled={
-                    !profile.companyName.trim() || saveProfile.isPending
-                  }
-                  onClick={() => void saveBusiness()}
-                >
-                  {saveProfile.isPending ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : null}
-                  Save and continue
-                </Button>
-                <Button variant="ghost" onClick={() => setWorkspaceMode(null)}>
-                  Change who this is for
-                </Button>
-              </div>
+              <form
+                onSubmit={event => {
+                  event.preventDefault();
+                  void saveBusiness();
+                }}
+              >
+                <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                  <label className="amk-auth-field">
+                    <span>Company name *</span>
+                    <Input
+                      required
+                      autoComplete="organization"
+                      maxLength={200}
+                      value={profile.companyName}
+                      onChange={event =>
+                        setProfile(current => ({
+                          ...current,
+                          companyName: event.target.value,
+                        }))
+                      }
+                      placeholder="Company name"
+                      aria-label="Company name"
+                    />
+                  </label>
+                  <label className="amk-auth-field">
+                    <span>Company website</span>
+                    <Input
+                      type="url"
+                      autoComplete="url"
+                      value={profile.websiteUrl}
+                      onChange={event =>
+                        setProfile(current => ({
+                          ...current,
+                          websiteUrl: event.target.value,
+                        }))
+                      }
+                      placeholder="https://yourcompany.com"
+                      aria-label="Company website"
+                    />
+                  </label>
+                  <label className="amk-auth-field">
+                    <span>Industry (optional)</span>
+                    <Input
+                      maxLength={200}
+                      value={profile.industry}
+                      onChange={event =>
+                        setProfile(current => ({
+                          ...current,
+                          industry: event.target.value,
+                        }))
+                      }
+                      placeholder="Industry (optional)"
+                      aria-label="Industry"
+                    />
+                  </label>
+                  <label className="amk-auth-field">
+                    <span>Main sales goal (optional)</span>
+                    <Input
+                      maxLength={500}
+                      value={profile.primarySalesObjective}
+                      onChange={event =>
+                        setProfile(current => ({
+                          ...current,
+                          primarySalesObjective: event.target.value,
+                        }))
+                      }
+                      placeholder="Main sales goal (optional)"
+                      aria-label="Main sales goal"
+                    />
+                  </label>
+                </div>
+                <label className="amk-auth-field mt-4">
+                  <span>Products and services (optional)</span>
+                  <Textarea
+                    value={profile.productsServices}
+                    onChange={event =>
+                      setProfile(current => ({
+                        ...current,
+                        productsServices: event.target.value,
+                      }))
+                    }
+                    placeholder="Anything important about what you sell? (optional)"
+                    className="min-h-24"
+                  />
+                </label>
+                <div className="mt-5 flex flex-wrap gap-3">
+                  <Button
+                    disabled={
+                      !profile.companyName.trim() || saveProfile.isPending
+                    }
+                    type="submit"
+                  >
+                    {saveProfile.isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : null}
+                    Save and continue
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => setWorkspaceMode(null)}
+                  >
+                    Change who this is for
+                  </Button>
+                </div>
+              </form>
             </>
           )}
         </section>
@@ -650,7 +683,7 @@ export default function Onboarding() {
             STEP 2 · LEARN
           </p>
           <h3 className="mt-2 text-2xl font-bold tracking-[-.035em] text-[#203047]">
-            Let AmarktAI learn your public website.
+            Learn about your company.
           </h3>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-[#607086]">
             AmarktAI will read the public pages you’ve authorised and turn them
@@ -738,7 +771,10 @@ export default function Onboarding() {
           )}
           {!profile.websiteUrl.trim() ? (
             <p className="mt-3 text-xs text-amber-700">
-              Add your company website in the previous step first.
+              Add your company website to continue.
+              <Button variant="link" onClick={() => setEditingBusiness(true)}>
+                Edit company details
+              </Button>
             </p>
           ) : null}
         </section>
@@ -750,13 +786,18 @@ export default function Onboarding() {
             STEP 3 · YOUR OUTLOOK MAILBOX
           </p>
           <h3 className="mt-2 text-2xl font-bold tracking-[-.035em] text-[#203047]">
-            Connect the mailbox you already use for sales.
+            Connect your email.
           </h3>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-[#607086]">
             Connect Microsoft Outlook with the existing secure sign-in. AmarktAI
             uses your own mailbox for customer context and reviewed follow-ups;
             connecting it does not send anything.
           </p>
+          {mailboxError ? (
+            <p role="alert" className="mt-4 text-sm text-amber-800">
+              {mailboxError}
+            </p>
+          ) : null}
           {mailboxStatus?.configured === false ? (
             <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
               Microsoft mailbox connection is not configured on this
@@ -765,7 +806,11 @@ export default function Onboarding() {
           ) : null}
           <Button
             className="mt-5"
-            disabled={mailboxStatus?.configured === false}
+            disabled={
+              !mailboxStatus ||
+              Boolean(mailboxError) ||
+              mailboxStatus.configured === false
+            }
             onClick={() =>
               window.location.assign("/api/mailbox/microsoft/start")
             }
@@ -851,7 +896,7 @@ export default function Onboarding() {
             STEP 5 · FINISH SETUP
           </p>
           <h3 className="mt-2 text-3xl font-bold tracking-[-.04em] text-[#203047]">
-            Sign in to your CRM and finish the connection.
+            Connect your CRM.
           </h3>
           <p className="mt-4 max-w-2xl text-sm leading-6 text-[#607086]">
             Open the private CRM workspace and sign in directly with your CRM.

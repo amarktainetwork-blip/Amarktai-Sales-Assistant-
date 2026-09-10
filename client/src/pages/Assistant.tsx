@@ -180,7 +180,7 @@ export default function Assistant() {
     <DashboardLayout>
       <div
         data-assistant-workspace
-        className="mx-auto flex h-[calc(100dvh-90px)] min-h-[480px] max-w-[1180px] flex-col overflow-hidden text-[#24344A] sm:min-h-[560px]"
+        className="mx-auto flex h-[calc(100dvh-120px)] min-h-[400px] max-w-[1180px] flex-col overflow-hidden text-[#24344A] "
       >
         <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[#D7E0EA] pb-4">
           <div className="flex min-w-0 items-center gap-3">
@@ -218,8 +218,75 @@ export default function Assistant() {
             </select>
           </label>
         </header>
+        <details className="shrink-0 border-b border-border px-4 py-2">
+          <summary className="cursor-pointer text-sm font-semibold">
+            Customer details and actions
+          </summary>
+          <div className="max-h-60 overflow-y-auto">
+            <div className="handover-surface p-5">
+              <div className="flex items-center gap-2 text-[#2F6FED]">
+                <Sparkles className="h-4 w-4" />
+                <p className="text-[10px] font-black uppercase tracking-[.13em]">
+                  Active context
+                </p>
+              </div>
+              {selectedCustomer ? (
+                <div className="mt-4 space-y-4">
+                  <div>
+                    <h2 className="font-display text-2xl font-bold tracking-[-.04em] text-[#1D2D43]">
+                      {selectedCustomer.name}
+                    </h2>
+                    <p className="mt-1 flex items-center gap-2 text-xs text-[#718096]">
+                      <Building2 className="h-3.5 w-3.5" />
+                      {selectedCustomer.companyName || "No linked company"}
+                    </p>
+                  </div>
+                  <ContextFact
+                    icon={BriefcaseBusiness}
+                    label="Opportunity"
+                    value={
+                      selectedCustomer.openOpportunity?.name ||
+                      "No open opportunity"
+                    }
+                  />
+                  <ContextFact
+                    icon={CalendarClock}
+                    label="Next step"
+                    value={
+                      selectedCustomer.nextAction?.title ||
+                      "No next action recorded"
+                    }
+                  />
+                  <div className="grid gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        navigate(`/calls?contactId=${selectedCustomer.id}`)
+                      }
+                    >
+                      <Headphones className="mr-2 h-4 w-4" /> Open call
+                      companion
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={() => navigate("/customers")}
+                    >
+                      Open full customer record
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-4 rounded-2xl bg-[#F6F9FD] p-4 text-sm leading-6 text-[#66758A]">
+                  Choose a customer above when you want AmarktAI to keep the
+                  conversation tightly focused on one relationship. Leave it on
+                  All customers for prioritisation and day planning.
+                </div>
+              )}
+            </div>
+          </div>
+        </details>
 
-        <div className="mt-4 grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="flex min-h-0 flex-1 flex-col">
           <section
             data-assistant-conversation
             className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[#D7E0EA] bg-white"
@@ -365,69 +432,6 @@ export default function Assistant() {
               </div>
             </div>
           </section>
-
-          <aside className="hidden min-h-0 overflow-y-auto xl:block">
-            <div className="handover-surface p-5">
-              <div className="flex items-center gap-2 text-[#2F6FED]">
-                <Sparkles className="h-4 w-4" />
-                <p className="text-[10px] font-black uppercase tracking-[.13em]">
-                  Active context
-                </p>
-              </div>
-              {selectedCustomer ? (
-                <div className="mt-4 space-y-4">
-                  <div>
-                    <h2 className="font-display text-2xl font-bold tracking-[-.04em] text-[#1D2D43]">
-                      {selectedCustomer.name}
-                    </h2>
-                    <p className="mt-1 flex items-center gap-2 text-xs text-[#718096]">
-                      <Building2 className="h-3.5 w-3.5" />
-                      {selectedCustomer.companyName || "No linked company"}
-                    </p>
-                  </div>
-                  <ContextFact
-                    icon={BriefcaseBusiness}
-                    label="Opportunity"
-                    value={
-                      selectedCustomer.openOpportunity?.name ||
-                      "No open opportunity"
-                    }
-                  />
-                  <ContextFact
-                    icon={CalendarClock}
-                    label="Next step"
-                    value={
-                      selectedCustomer.nextAction?.title ||
-                      "No next action recorded"
-                    }
-                  />
-                  <div className="grid gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() =>
-                        navigate(`/calls?contactId=${selectedCustomer.id}`)
-                      }
-                    >
-                      <Headphones className="mr-2 h-4 w-4" /> Open call
-                      companion
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      onClick={() => navigate("/customers")}
-                    >
-                      Open full customer record
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="mt-4 rounded-2xl bg-[#F6F9FD] p-4 text-sm leading-6 text-[#66758A]">
-                  Choose a customer above when you want AmarktAI to keep the
-                  conversation tightly focused on one relationship. Leave it on
-                  All customers for prioritisation and day planning.
-                </div>
-              )}
-            </div>
-          </aside>
         </div>
       </div>
     </DashboardLayout>

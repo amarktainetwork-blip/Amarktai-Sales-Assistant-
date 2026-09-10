@@ -65,7 +65,7 @@ describe("final public website", () => {
     expect(combined).not.toMatch(/\bGenX\b/i);
   });
 
-  it("keeps semantic first-party visual fallbacks in markup while the final theme can supply curated photography", () => {
+  it("renders the selected local photographs directly in semantic markup", () => {
     const home = render("/", HomePage);
     const how = render("/how-it-works", HowItWorksPage);
     const about = render("/about", AboutPage);
@@ -74,10 +74,10 @@ describe("final public website", () => {
       expect(html).not.toContain("images.pexels.com");
       expect(html).not.toContain("images.unsplash.com");
     }
-    expect(home).toContain("/images/site-hero.svg");
-    expect(home).toContain("/images/site-calls.svg");
-    expect(home).toContain("/images/site-intelligence.svg");
-    expect(home).toContain("/images/site-team.svg");
+    expect(home).toContain("/images/people/focuspurely-business-8779718_1920.png");
+    expect(home).toContain("/images/people/thenikscape-ai-generated-9587004_1920.jpg");
+    expect(home).toContain("/images/people/pexels-pavel-danilyuk-7658351.jpg");
+    expect(home).toContain("/images/people/pexels-pavel-danilyuk-7658351.jpg");
     expect(home).toContain("amk-photo-frame");
   });
 
@@ -132,7 +132,7 @@ describe("final public website", () => {
     expect(contactReasons).toEqual(["Request a demo", "Sales", "Individual setup", "Team setup", "CRM compatibility", "Support"]);
     expect(html).toContain('aria-live="polite"');
     expect(html).toContain("/api/public/contact");
-    expect(html).toContain("/assets/amarktai-sales-trust.svg");
+    expect(html).toContain("/images/people/stocksnap-girl-2583442_1920.jpg");
     expect(html).not.toContain("images.pexels.com");
   });
 
@@ -163,7 +163,8 @@ describe("final public website", () => {
     expect(css).toContain("min-width: 320px");
     expect(css).toContain("overflow: clip");
     expect(css).toContain("prefers-reduced-motion: reduce");
-    expect(css).toContain(".amk-auth");
+    expect(css).not.toContain(".amk-auth");
+    expect(readFileSync(path.resolve(process.cwd(), "client/src/index.css"), "utf8")).toContain(".amk-auth");
     expect(css).toContain(".amk-photo-frame");
     expect(css).toContain("--navy: #10233d");
     expect(existsSync(path.resolve(process.cwd(), "client/src/pages/final-auth.css"))).toBe(false);

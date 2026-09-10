@@ -10,7 +10,6 @@ import {
 import { recordAudit } from "./db";
 import { requireLocalHttpContext } from "./httpAuth";
 import {
-  acquireAiBrowserControl,
   acquireHumanBrowserControl,
   browserControlState,
   releaseBrowserControl,
@@ -87,6 +86,8 @@ type LiveCrmSession = {
   unsubscribeControl?: () => void;
   unsubscribeSession?: () => void;
   interactive: boolean;
+  leaseToken?: string;
+  messageQueue?: Promise<void>;
 };
 
 const sessions = new Map<string, LiveCrmSession>();
@@ -220,7 +221,7 @@ function assertInput(event: ViewerInputEvent) {
 function controlScope(
   session: Pick<
     LiveCrmSession,
-    "organisationId" | "connectedSystemId" | "userId"
+    "organisationId" | "connectedSystemId" | "userId" | "leaseToken"
   >
 ) {
   // Control belongs to the user's isolated browser identity. Company connector
@@ -230,6 +231,7 @@ function controlScope(
     organisationId: session.organisationId,
     connectedSystemId: session.connectedSystemId,
     userId: session.userId,
+    leaseToken: session.leaseToken,
   };
 }
 
@@ -293,7 +295,10 @@ function pruneExpiredSessions() {
 }
 
 function setHumanLease(session: LiveCrmSession) {
-  acquireHumanBrowserControl(controlScope(session), IDLE_LEASE_MS);
+  session.leaseToken = acquireHumanBrowserControl(
+    controlScope(session),
+    IDLE_LEASE_MS
+  ).leaseToken;
 }
 
 function assertHumanControl(session: LiveCrmSession) {
@@ -303,7 +308,7 @@ function assertHumanControl(session: LiveCrmSession) {
   setHumanLease(session);
 }
 
-export function acquireAiControl(
+export async function acquireAiControl(
   sessionId: string,
   organisationId: number,
   userId: number
@@ -317,7 +322,12 @@ export function acquireAiControl(
   )
     throw new Error("CRM_VIEWER_SESSION_NOT_FOUND");
   touchViewerSession(session);
-  return acquireAiBrowserControl(controlScope(session), IDLE_LEASE_MS);
+  await session.messageQueue;
+  // Handoff permits the worker to acquire its own operation lease. The viewer
+  // must never reserve AGENT_CONTROL while waiting for that worker.
+  const result = releaseBrowserControl(controlScope(session));
+  session.leaseToken = undefined;
+  return result;
 }
 
 export function releaseAiControl(
@@ -333,7 +343,10 @@ export function releaseAiControl(
   )
     throw new Error("CRM_VIEWER_SESSION_NOT_FOUND");
   touchViewerSession(session);
-  return releaseBrowserControl(controlScope(session));
+  // Explicit takeover waits for the current operation to finish. Never revoke
+  // a worker lease while a CRM action may still be in flight.
+  setHumanLease(session);
+  return { control: browserControlState(controlScope(session)) };
 }
 
 async function startStream(session: LiveCrmSession) {
@@ -694,79 +707,98 @@ export function registerLiveCrmViewerSocket(server: Server) {
         });
 
       socket.on("message", (raw: RawData) => {
-        void (async () => {
-          try {
-            const message = parseMessage(raw);
-            touchViewerSession(session);
-            if (message.type === "input") {
-              await dispatchInput(session, message.event);
-            } else if (message.type === "visibility") {
-              session.visible = Boolean(message.visible);
-              if (!session.visible) await stopStream(session);
-              else await startStream(session);
-            } else if (message.type === "resize") {
-              if (
-                !boundedNumber(message.width, 240, 3_840) ||
-                !boundedNumber(message.height, 240, 2_400)
-              )
-                throw new Error("CRM_VIEWER_RESIZE_INVALID");
-              const width = Math.round(message.width);
-              const height = Math.round(message.height);
-              await session.cdp?.send("Emulation.setDeviceMetricsOverride", {
-                width,
-                height,
-                screenWidth: width,
-                screenHeight: height,
-                deviceScaleFactor:
-                  typeof message.deviceScaleFactor === "number" &&
-                  boundedNumber(message.deviceScaleFactor, 1, 2)
-                    ? message.deviceScaleFactor
-                    : 1,
-                mobile: false,
-                scale: 1,
-                positionX: 0,
-                positionY: 0,
-                dontSetVisibleSize: false,
-              });
-            } else if (message.type === "releaseHumanControl") {
-              releaseBrowserControl(controlScope(session));
-            } else if (message.type === "acquireHumanControl") {
-              acquireHumanBrowserControl(controlScope(session), VIEWER_TTL_MS);
-              await recordAudit({
-                userId: session.userId,
-                organisationId: session.organisationId,
-                eventType: "human_control_started",
-                entityType: "connected_system",
-                entityId: String(session.connectedSystemId),
-                summary: "The customer took control of the Secure CRM Browser.",
-                metadata: { identityScope: "user" },
-              });
-            } else if (message.type === "navigation") {
-              // Browser history/reload can submit forms or replay page state, so
-              // it is a human-controlled browser action just like clicking.
-              assertHumanControl(session);
-              await managedCrmBrowserSessionManager.navigate(
-                session.managed,
-                message.action
-              );
-            } else if (message.type === "customerFinishedSigningIn") {
-              await managedCrmBrowserSessionManager.customerFinishedSigningIn(
-                session.managed
-              );
-            } else if (message.type === "ping") {
+        session.messageQueue = (session.messageQueue || Promise.resolve()).then(
+          async () => {
+            try {
+              const message = parseMessage(raw);
+              touchViewerSession(session);
+              if (message.type === "input") {
+                await dispatchInput(session, message.event);
+              } else if (message.type === "visibility") {
+                session.visible = Boolean(message.visible);
+                if (!session.visible) await stopStream(session);
+                else await startStream(session);
+              } else if (message.type === "resize") {
+                if (
+                  !boundedNumber(message.width, 240, 3_840) ||
+                  !boundedNumber(message.height, 240, 2_400)
+                )
+                  throw new Error("CRM_VIEWER_RESIZE_INVALID");
+                if (
+                  browserControlState(controlScope(session)) === "AGENT_CONTROL"
+                )
+                  return;
+                const resizeOwner = {
+                  ...controlScope(session),
+                  ...acquireHumanBrowserControl(controlScope(session)),
+                };
+                try {
+                  const width = Math.round(message.width);
+                  const height = Math.round(message.height);
+                  await session.cdp?.send(
+                    "Emulation.setDeviceMetricsOverride",
+                    {
+                      width,
+                      height,
+                      screenWidth: width,
+                      screenHeight: height,
+                      deviceScaleFactor:
+                        typeof message.deviceScaleFactor === "number" &&
+                        boundedNumber(message.deviceScaleFactor, 1, 2)
+                          ? message.deviceScaleFactor
+                          : 1,
+                      mobile: false,
+                      scale: 1,
+                      positionX: 0,
+                      positionY: 0,
+                      dontSetVisibleSize: false,
+                    }
+                  );
+                } finally {
+                  if (!session.leaseToken) releaseBrowserControl(resizeOwner);
+                }
+              } else if (message.type === "releaseHumanControl") {
+                releaseBrowserControl(controlScope(session));
+                session.leaseToken = undefined;
+              } else if (message.type === "acquireHumanControl") {
+                setHumanLease(session);
+                await recordAudit({
+                  userId: session.userId,
+                  organisationId: session.organisationId,
+                  eventType: "human_control_started",
+                  entityType: "connected_system",
+                  entityId: String(session.connectedSystemId),
+                  summary:
+                    "The customer took control of the Secure CRM Browser.",
+                  metadata: { identityScope: "user" },
+                });
+              } else if (message.type === "navigation") {
+                // Browser history/reload can submit forms or replay page state, so
+                // it is a human-controlled browser action just like clicking.
+                assertHumanControl(session);
+                await managedCrmBrowserSessionManager.navigate(
+                  session.managed,
+                  message.action
+                );
+              } else if (message.type === "customerFinishedSigningIn") {
+                await managedCrmBrowserSessionManager.customerFinishedSigningIn(
+                  session.managed
+                );
+              } else if (message.type === "ping") {
+                socketPayload(socket, {
+                  type: "pong",
+                  expiresAt: new Date(session.expiresAt).toISOString(),
+                });
+              }
+            } catch (error) {
               socketPayload(socket, {
-                type: "pong",
-                expiresAt: new Date(session.expiresAt).toISOString(),
+                type: "error",
+                code: "CRM_BROWSER_ACTION_FAILED",
+                message: viewerMessage(error),
               });
             }
-          } catch (error) {
-            socketPayload(socket, {
-              type: "error",
-              code: "CRM_BROWSER_ACTION_FAILED",
-              message: viewerMessage(error),
-            });
           }
-        })();
+        );
       });
 
       socket.on("close", () => {
@@ -775,8 +807,12 @@ export function registerLiveCrmViewerSocket(server: Server) {
           // Heartbeats intentionally preserve a lease while its owner is
           // active. Once the final human viewer disconnects, release control
           // immediately so the autonomous worker can safely resume reads.
-          releaseBrowserControl(controlScope(session));
-          void stopStream(session);
+          void (session.messageQueue || Promise.resolve()).then(() => {
+            if (session.sockets.size) return;
+            releaseBrowserControl(controlScope(session));
+            session.leaseToken = undefined;
+            void stopStream(session);
+          });
         }
       });
     }

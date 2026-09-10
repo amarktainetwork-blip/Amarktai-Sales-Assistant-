@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { SavedBrowserScript } from "../browserConnectors/scriptEngine";
 import type { BrowserProfile } from "../browserConnectors/browserCrmAdapter";
 
 /** Reusable provider structure only: never tenant IDs, credentials or customer values. */
@@ -133,4 +134,51 @@ export function providerPackFingerprint() {
   return createHash("sha256")
     .update(JSON.stringify(GENIE_PROVIDER_PACK))
     .digest("hex");
+}
+
+/** Bind the reviewed entry click to this connection's observed Contacts route. */
+export function bindGenieContactNavigation(
+  script: SavedBrowserScript,
+  snapshot: unknown
+): SavedBrowserScript {
+  if (
+    script.steps[0]?.action !== "click" ||
+    script.steps[0]?.selector !== "#sb_contacts"
+  )
+    return script;
+  const controls =
+    snapshot &&
+    typeof snapshot === "object" &&
+    "controls" in snapshot &&
+    Array.isArray(snapshot.controls)
+      ? snapshot.controls
+      : [];
+  const hrefs = Array.from(
+    new Set(
+      controls
+        .filter(
+          (item: any) =>
+            item?.selector === "#sb_contacts" && typeof item.href === "string"
+        )
+        .map((item: any) => item.href as string)
+    )
+  );
+  if (hrefs.length !== 1)
+    throw new Error("GENIE_CONTACT_NAVIGATION_NOT_CAPTURED");
+  const url = new URL(hrefs[0]);
+  if (
+    url.protocol !== "https:" ||
+    url.username ||
+    url.password ||
+    url.search ||
+    url.hash ||
+    !/\/contacts\//.test(url.pathname)
+  )
+    throw new Error("GENIE_CONTACT_NAVIGATION_INVALID");
+  return {
+    steps: [
+      { action: "goto", value: url.toString() },
+      ...script.steps.slice(1),
+    ],
+  };
 }

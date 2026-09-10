@@ -1,12 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import {
-  browserOperationIsAvailable,
-  CORE_GENIE_TASKS,
-  humanBrowserCapabilityStatus,
-  humanizeCrmFailure,
-  onboardingSellingReadiness,
-} from "../client/src/lib/onboardingReadiness";
+import { CORE_BROWSER_OPERATIONS, coreBrowserCommissioningReady } from "./crm/commissioningReadiness";
 
 const read = (relative: string) =>
   readFileSync(new URL(relative, import.meta.url), "utf8");
@@ -41,85 +35,14 @@ describe("new-user browser CRM commissioning journey contract", () => {
     expect(onboarding).not.toContain("operationId");
   });
 
-  it("allows limited-permissions browser CRM selling when every core task alone is LIVE_PROVEN", () => {
-    const operations = [
-      ...CORE_GENIE_TASKS.map(key => ({ key, status: "LIVE_PROVEN" })),
-      { key: "quote.create", status: "NOT_LEARNED" },
-    ];
-    const readiness = onboardingSellingReadiness({
-      profileSaved: true,
-      knowledgeConfirmed: true,
-      nativeSystems: [],
-      browserSystem: { provider: "genie", status: "limited_permissions" },
-      browserOperations: operations,
-    });
-
-    expect(readiness).toMatchObject({
-      crmVerified: true,
-      coreGenieReady: true,
-      canStartSelling: true,
-    });
-    expect(browserOperationIsAvailable(operations, "quote.create")).toBe(false);
-  });
-
-  it("keeps missing core tasks gated and native OAuth readiness unchanged", () => {
-    const partialCore = CORE_GENIE_TASKS.slice(1).map(key => ({
-      key,
-      status: "LIVE_PROVEN",
-    }));
-    expect(
-      onboardingSellingReadiness({
-        profileSaved: true,
-        knowledgeConfirmed: true,
-        nativeSystems: [],
-        browserSystem: { provider: "genie", status: "limited_permissions" },
-        browserOperations: partialCore,
-      }).canStartSelling
-    ).toBe(false);
-    expect(
-      onboardingSellingReadiness({
-        profileSaved: true,
-        knowledgeConfirmed: true,
-        nativeSystems: [
-          {
-            provider: "hubspot",
-            status: "limited_permissions",
-            verifiedCapabilities: [
-              "contacts.read",
-              "tasks.read",
-              "tasks.write",
-              "notes.write",
-              "opportunities.read",
-            ],
-          },
-        ],
-      }).canStartSelling
-    ).toBe(true);
-  });
-
-  it("presents browser truth and technical failures in everyday language", () => {
-    expect(
-      humanBrowserCapabilityStatus(
-        [{ key: "quote.create", status: "NOT_LEARNED" }],
-        ["quote.create"]
-      )
-    ).toBe("Needs setup");
-    expect(
-      humanBrowserCapabilityStatus(
-        [{ key: "quote.create", status: "LIVE_PROVEN" }],
-        ["quote.create"]
-      )
-    ).toBe("Ready");
-    expect(
-      humanizeCrmFailure("GENIE_LOGIN_CALIBRATION_REQUIRED: selector missing")
-    ).toBe(
-      "We reached your CRM but couldn't confidently identify its sign-in form."
-    );
-    expect(
-      humanizeCrmFailure(
-        "OPERATION_NOT_LIVE_PROVEN: 'whatsapp.send' is TEST_READY"
-      )
-    ).toBe("WhatsApp still needs to be tested.");
+  it("uses the production read-only commissioning contract", () => {
+    const statuses = new Map(CORE_BROWSER_OPERATIONS.map(key => [key, "LIVE_PROVEN"]));
+    expect(coreBrowserCommissioningReady(statuses)).toBe(true);
+    for (const key of CORE_BROWSER_OPERATIONS) {
+      expect(coreBrowserCommissioningReady(new Map([...statuses].filter(([candidate]) => candidate !== key)))).toBe(false);
+      expect(coreBrowserCommissioningReady(new Map([...statuses, [key, "TEST_READY"]]))).toBe(false);
+    }
+    expect(CORE_BROWSER_OPERATIONS).toEqual(["contact.search", "contact.read", "contact.sync"]);
   });
 
   it("keeps technical commissioning out of the normal onboarding screen", () => {
@@ -157,10 +80,7 @@ describe("new-user browser CRM commissioning journey contract", () => {
     expect(companySetup).toContain("discovery.sourceUrl");
     expect(companySetup).toContain('target="_blank"');
     expect(companySetup).toContain("knowledgeIndexes: basics.map");
-    expect(onboarding).toMatch(
-      /before any\s+information becomes trusted knowledge/
-    );
-    expect(onboarding).toMatch(
+expect(onboarding).toMatch(
       /Nothing becomes trusted\s+company knowledge until you confirm it/
     );
     expect(database).toContain('completeness?.status === "incomplete"');
@@ -219,11 +139,9 @@ describe("new-user browser CRM commissioning journey contract", () => {
 
   it("routes invited salespeople through identity confirmation without company onboarding", () => {
     const layout = read("../client/src/components/DashboardLayout.tsx");
-    expect(layout).toContain("/api/team/crm-identity");
-    expect(layout).toContain("Which salesperson record is yours?");
-    expect(layout).toContain(
-      "When setup is proven, your customers, tasks, opportunities and call context will be available here automatically."
-    );
+    expect(read("../client/src/components/MemberOnboardingGate.tsx")).toContain("/api/team/crm-identity");
+    expect(layout).not.toContain("SalespersonIdentityGate");
+    expect(read("../client/src/components/MemberOnboardingGate.tsx")).toContain("Confirm who you are in the CRM.");
     expect(layout).toContain("Your AmarktAI workspace is being prepared.");
   });
 

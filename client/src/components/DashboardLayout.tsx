@@ -16,7 +16,6 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { startLogin } from "@/const";
-import { friendlyError } from "@/lib/friendlyError";
 import { trpc } from "@/lib/trpc";
 import {
   Building2,
@@ -39,15 +38,6 @@ import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 
 type NavItem = { icon: LucideIcon; label: string; path: string };
-type CrmIdentity = {
-  mapped: boolean;
-  candidates: Array<{
-    id: number;
-    displayName: string;
-    email: string | null;
-    connectedSystemId: number;
-  }>;
-};
 
 const dailyMenu: NavItem[] = [
   { icon: Home, label: "Home", path: "/today" },
@@ -63,9 +53,7 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const [location, navigate] = useLocation();
-  const [crmIdentity, setCrmIdentity] = useState<CrmIdentity | null>(null);
-  const [identityPending, setIdentityPending] = useState(false);
-  const { loading, user, logout } = useAuth();
+  const { loading, user, logout, error: authError, refresh } = useAuth();
   const security = trpc.security.status.useQuery(undefined, {
     enabled: Boolean(user),
   });
@@ -129,16 +117,11 @@ export default function DashboardLayout({
   const setupComplete = canManage
     ? Boolean(storedCompanyComplete && profileConfirmed && crmReady)
     : storedCompanyComplete;
-  const requiresSalespersonIdentity =
-    organisation.data?.role === "salesperson" &&
-    !canManage &&
-    storedCompanyComplete;
 
   useEffect(() => {
     if (
       !canManage ||
-      companySetup.isLoading ||
-      companySetup.isError ||
+      !companySetup.isSuccess ||
       companySetup.data?.profile ||
       location === "/company-setup"
     )
@@ -147,49 +130,10 @@ export default function DashboardLayout({
   }, [
     canManage,
     companySetup.data?.profile,
-    companySetup.isError,
-    companySetup.isLoading,
+    companySetup.isSuccess,
     location,
     navigate,
   ]);
-
-  useEffect(() => {
-    if (!requiresSalespersonIdentity) return;
-    fetch("/api/team/crm-identity", { credentials: "include" })
-      .then(async response => {
-        const body = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error("CRM identity could not be loaded.");
-        setCrmIdentity(body as CrmIdentity);
-      })
-      .catch(() => {
-        setCrmIdentity({ mapped: false, candidates: [] });
-        toast.error("Your CRM identity could not be checked.");
-      });
-  }, [requiresSalespersonIdentity]);
-
-  async function confirmCrmIdentity(mappingId: number) {
-    try {
-      setIdentityPending(true);
-      const response = await fetch("/api/team/crm-identity", {
-        method: "PUT",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mappingId }),
-      });
-      if (!response.ok) throw new Error("CRM identity could not be confirmed.");
-      setCrmIdentity({ mapped: true, candidates: [] });
-      toast.success("Your sales identity is connected.");
-    } catch (error) {
-      toast.error(
-        friendlyError(
-          error,
-          "Your sales identity could not be confirmed. Try again or ask your manager for help."
-        )
-      );
-    } finally {
-      setIdentityPending(false);
-    }
-  }
 
   const secondaryMenu = useMemo<NavItem[]>(() => {
     if (!canManage) return [];
@@ -203,6 +147,20 @@ export default function DashboardLayout({
   }, [canManage, workspaceMode]);
 
   if (loading || security.isLoading) return <DashboardLayoutSkeleton />;
+  if (authError || security.isError)
+    return (
+      <div role="alert" className="p-6">
+        Secure access could not be checked.{" "}
+        <Button
+          onClick={() => {
+            void refresh();
+            void security.refetch();
+          }}
+        >
+          Retry
+        </Button>
+      </div>
+    );
   if (!user) return <SignedOut />;
   if (!security.data?.verified)
     return (
@@ -227,18 +185,15 @@ export default function DashboardLayout({
       />
     );
 
-  if (!canManage && !storedCompanyComplete) return <WorkspaceSetupPending />;
-  if (requiresSalespersonIdentity && !crmIdentity)
-    return <DashboardLayoutSkeleton />;
-  if (requiresSalespersonIdentity && crmIdentity && !crmIdentity.mapped)
+  if (organisation.isError)
     return (
-      <SalespersonIdentityGate
-        candidates={crmIdentity.candidates}
-        pending={identityPending}
-        onConfirm={confirmCrmIdentity}
-      />
+      <div role="alert" className="p-6">
+        Your workspace could not be loaded.{" "}
+        <Button onClick={() => void organisation.refetch()}>Retry</Button>
+      </div>
     );
 
+  if (!canManage && !storedCompanyComplete) return <WorkspaceSetupPending />;
   const showManagementAccess =
     canManage &&
     (location === "/connections" ||
@@ -301,7 +256,9 @@ export default function DashboardLayout({
               className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-[#D7E0EA] bg-white px-2.5 text-xs font-semibold text-[#607086] transition hover:border-[#AFC1D8] hover:bg-[#F5F8FC] hover:text-[#26354A]"
             >
               <LogOut className="size-4" />
-              <span className="group-data-[collapsible=icon]:hidden">Sign out</span>
+              <span className="group-data-[collapsible=icon]:hidden">
+                Sign out
+              </span>
             </button>
           </div>
         </SidebarFooter>
@@ -310,10 +267,14 @@ export default function DashboardLayout({
       <SidebarInset className="bg-[#F4F7FA]">
         <AppTopbar title={pageTitle(location)} />
         <main className="min-h-[calc(100vh-58px)] p-4 sm:p-5 lg:p-6">
-          {canManage && !setupComplete && location !== "/company-setup" ? (
+          {canManage &&
+          !setupComplete &&
+          location !== "/company-setup" &&
+          !location.startsWith("/crm") ? (
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-950 shadow-sm">
               <span>
-                Workspace setup is not complete yet. Finish company knowledge and prove the required CRM operations before the team starts working here.
+                Finish company setup to bring your knowledge and CRM into the
+                workspace.
               </span>
               <Button size="sm" onClick={() => navigate("/company-setup")}>
                 Continue setup
@@ -357,56 +318,10 @@ function WorkspaceSetupPending() {
           Your AmarktAI workspace is being prepared.
         </h1>
         <p className="mt-3 text-sm leading-6 text-[#6C798B]">
-          Your manager is connecting company knowledge and the CRM. When setup is proven, your customers, tasks, opportunities and call context will be available here automatically.
+          Your manager is connecting company knowledge and the CRM. When setup
+          is proven, your customers, tasks, opportunities and call context will
+          be available here automatically.
         </p>
-      </div>
-    </div>
-  );
-}
-
-function SalespersonIdentityGate({
-  candidates,
-  pending,
-  onConfirm,
-}: {
-  candidates: CrmIdentity["candidates"];
-  pending: boolean;
-  onConfirm: (mappingId: number) => void;
-}) {
-  return (
-    <div className="grid min-h-screen place-items-center bg-[#F5F7FA] p-5 text-[#26354A]">
-      <div className="w-full max-w-xl rounded-2xl border border-[#DCE2E9] bg-white p-7 shadow-sm">
-        <BrandMark />
-        <h1 className="mt-8 text-3xl font-bold tracking-[-.04em]">
-          Which salesperson record is yours?
-        </h1>
-        <p className="mt-3 text-sm leading-6 text-[#6C798B]">
-          Confirm the match once so AmarktAI can bring the right customers, tasks and opportunities into your workspace.
-        </p>
-        {candidates.length ? (
-          <div className="mt-5 grid gap-3">
-            {candidates.map(candidate => (
-              <button
-                key={candidate.id}
-                disabled={pending}
-                onClick={() => onConfirm(candidate.id)}
-                className="rounded-xl border border-[#DCE2E9] bg-[#F8FAFC] p-4 text-left transition hover:border-[#8EACEB] hover:bg-[#EDF3FF]"
-              >
-                <p className="font-bold">{candidate.displayName}</p>
-                <p className="mt-1 text-xs text-[#6C798B]">
-                  {candidate.email || "Salesperson record"}
-                </p>
-                <span className="mt-3 inline-block text-sm font-bold text-[#3F70D8]">
-                  This is me
-                </span>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <p className="mt-5 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
-            We couldn’t find an exact match yet. Ask your manager to link your salesperson record to your AmarktAI account.
-          </p>
-        )}
       </div>
     </div>
   );
@@ -421,7 +336,8 @@ function SignedOut() {
           Sign in to your sales workspace.
         </h1>
         <p className="mt-3 leading-6 text-[#6C798B]">
-          Your customers, calls, priorities, follow-ups and connected CRM context live here with AmarktAI.
+          Your customers, calls, priorities, follow-ups and connected CRM
+          context live here with AmarktAI.
         </p>
         <Button
           onClick={() => startLogin()}

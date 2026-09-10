@@ -81,7 +81,7 @@ describe("commercial Sales Assistant product boundaries", () => {
   it("keeps CRM authentication between the customer and the real CRM", () => {
     const auth = read("../client/src/pages/Auth.tsx");
     const crm = read("../client/src/pages/CrmWorkspace.tsx");
-    expect(auth).toContain("CRM sign-in stays between you and your CRM");
+    expect(crm).toContain("Sign in directly to");
     expect(auth).not.toContain("CRM credentials stay server-side");
     expect(auth).not.toContain(
       "Credentials and connection secrets remain on the server"

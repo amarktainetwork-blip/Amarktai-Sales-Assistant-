@@ -24,6 +24,7 @@ import {
 } from "../browserConnectors/operationContracts";
 import {
   browserOperationReadinessForSystem,
+  effectiveLatestBrowserOperation,
   latestBrowserOperation,
   saveLearnedBrowserOperation,
 } from "../browserConnectors/learnedOperations";
@@ -47,10 +48,12 @@ import { accountBrowserCapabilities } from "./capabilityAccounting";
 import { coreBrowserCommissioningReady } from "./commissioningReadiness";
 export { coreBrowserCommissioningReady };
 import { ensureConnectionScopedCrmSyncJob } from "./syncWorker";
+import { isTransientBrowserExecutionFailure } from "../browserConnectors/runtimeFailure";
 import { syncConnectedSystem } from "./sync";
 import {
   GENIE_PROVIDER_PACK_VERSION,
   providerPackFingerprint,
+  bindGenieContactNavigation,
 } from "./providerPacks";
 
 export const COMMISSIONING_STATES = [
@@ -966,6 +969,27 @@ export async function installKnownGeniePack(
     return { installed: [] as string[], needsDiscovery: [] as string[] };
   const installed: string[] = [];
   const needsDiscovery: string[] = [];
+  // Older commissioning jobs compact their snapshot after installing candidates.
+  // Those candidates retain the exact observed navigation for this connection.
+  let navigationSnapshot: unknown = job.progress?.discoverySnapshot;
+  if (!navigationSnapshot) {
+    const db = await getDb();
+    if (!db) throw new Error("Database connection is unavailable.");
+    const candidates = await db
+      .select({ definition: browserLearnedOperations.definition })
+      .from(browserLearnedOperations)
+      .where(
+        and(
+          eq(browserLearnedOperations.organisationId, job.organisationId),
+          eq(browserLearnedOperations.connectedSystemId, job.connectedSystemId)
+        )
+      );
+    navigationSnapshot = {
+      controls: candidates
+        .map(row => row.definition.automaticDiscovery)
+        .filter(Boolean),
+    };
+  }
   for (const [operationKey, packed] of Object.entries(
     profile.operationDefinitions || {}
   )) {
@@ -997,12 +1021,24 @@ export async function installKnownGeniePack(
             }
           : packed.definition
       );
+      const contactNavigation =
+        ["contact.sync", "contact.search"].includes(operationKey) &&
+        definition.execute?.steps[0]?.selector === "#sb_contacts";
+      if (contactNavigation)
+        definition.execute = bindGenieContactNavigation(
+          definition.execute!,
+          navigationSnapshot
+        );
       const existing = await latestBrowserOperation({
         organisationId: job.organisationId,
         connectedSystemId: job.connectedSystemId,
         operationKey,
       });
-      if (existing && existing.status !== "NOT_LEARNED") {
+      const navigationUpgrade =
+        contactNavigation &&
+        existing?.prerequisites?.knownGeniePack === true &&
+        existing.prerequisites.contactNavigationVersion !== 1;
+      if (existing && existing.status !== "NOT_LEARNED" && !navigationUpgrade) {
         installed.push(operationKey);
         continue;
       }
@@ -1015,6 +1051,7 @@ export async function installKnownGeniePack(
         prerequisites: {
           ...(packed.prerequisites || {}),
           knownGeniePack: true,
+          ...(contactNavigation ? { contactNavigationVersion: 1 } : {}),
         },
         targetAssertions: packed.targetAssertions || {},
         postconditionAssertions: (packed.postconditionAssertions ||
@@ -1208,6 +1245,7 @@ async function testOperations(input: {
   for (const row of rows)
     if (!latest.has(row.operationKey)) latest.set(row.operationKey, row);
   const selected = Array.from(latest.values())
+    .map(row => effectiveLatestBrowserOperation(row)!)
     .filter(row => {
       const definition = row.definition as Record<string, unknown>;
       return operationEligibleForCommissioningTest({
@@ -1398,8 +1436,7 @@ export function operationEligibleForCommissioningTest(input: {
 }
 
 export function isTransientBrowserControlError(error: unknown) {
-  const detail = error instanceof Error ? error.message : String(error || "");
-  return /CRM_VIEWER_(?:HUMAN|AGENT)_CONTROL_ACTIVE/.test(detail);
+  return isTransientBrowserExecutionFailure(error);
 }
 
 export function safeReadCommissioningPassed(input: {
@@ -1929,6 +1966,7 @@ export async function advanceAutomaticCommissioning(jobId: number) {
       delete progress.discoverySnapshot;
       next = "TEST_SAFE_READS";
     } else if (job.state === "TEST_SAFE_READS") {
+      if (system.provider === "genie") await installKnownGeniePack(job, system);
       const result = await testOperations({
         job,
         mode: "read",

@@ -5,23 +5,27 @@ import { friendlyError } from "@/lib/friendlyError";
 import { trpc } from "@/lib/trpc";
 import {
   ArrowRight,
-  CheckCircle2,
   ChevronLeft,
   MailCheck,
-  ShieldCheck,
   UserPlus,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation, useSearch } from "wouter";
 
-const AUTH_VISUAL = "/images/site-hero.svg";
+const AUTH_VISUAL = "/images/people/thenikscape-ai-generated-9586971_1920.jpg";
 
 export default function Auth() {
   const search = useSearch();
   const [, navigate] = useLocation();
-  const { user, loading: authLoading, logout } = useAuth();
-  const mode = trpc.auth.mode.useQuery();
+  const {
+    user,
+    loading: authLoading,
+    logout,
+    error: authError,
+    refresh,
+  } = useAuth();
+  const mode = trpc.auth.mode.useQuery(undefined, { retry: false });
   const security = trpc.security.status.useQuery(undefined, {
     enabled: Boolean(user),
     retry: false,
@@ -93,29 +97,11 @@ export default function Auth() {
             <BrandMark inverse />
           </div>
           <div className="amk-auth__message">
-            <p className="amk-auth__eyebrow">
-              <ShieldCheck size={15} /> SECURE PERSONAL SALES WORKSPACE
-            </p>
-            <h1>
-              Your customer context.
-              <br />
-              Your sales day.
-            </h1>
+            <h1>Your sales day, together.</h1>
             <p>
               Secure access to company knowledge, CRM context, calls and
               follow-through.
             </p>
-            <div className="amk-auth__proof">
-              <span>
-                <CheckCircle2 size={16} /> Personal user account
-              </span>
-              <span>
-                <CheckCircle2 size={16} /> Verification stays on this secure page
-              </span>
-              <span>
-                <CheckCircle2 size={16} /> CRM sign-in stays between you and your CRM
-              </span>
-            </div>
           </div>
         </div>
       </section>
@@ -131,7 +117,22 @@ export default function Auth() {
             <>
               <p className="amk-auth__panel-eyebrow">{eyebrow}</p>
               <h2>{title}</h2>
-              {authLoading || (user && security.isLoading) ? (
+              {authError || mode.isError || security.isError ? (
+                <div role="alert" className="amk-auth-form">
+                  <p>Secure access could not be loaded. Please try again.</p>
+                  <button
+                    type="button"
+                    className="amk-auth__primary"
+                    onClick={() => {
+                      void refresh();
+                      void mode.refetch();
+                      if (user) void security.refetch();
+                    }}
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : authLoading || (user && security.isLoading) ? (
                 <p className="amk-auth__muted">Loading secure access…</p>
               ) : mode.isLoading ? (
                 <p className="amk-auth__muted">Loading secure access…</p>
@@ -658,19 +659,33 @@ function Field({
   type?: string;
   autoComplete?: string;
 }) {
+  const [visible, setVisible] = useState(false);
   return (
-    <label className="amk-auth-field" htmlFor={name}>
-      <span>{label}</span>
+    <div className="amk-auth-field">
+      <label htmlFor={name}>
+        {label} <span aria-hidden="true">*</span>
+      </label>
       <input
         id={name}
         name={name}
-        type={type}
+        type={type === "password" && visible ? "text" : type}
         value={value}
         onChange={event => onChange(event.target.value)}
         autoComplete={autoComplete}
         required
       />
-    </label>
+      {type === "password" ? (
+        <button
+          type="button"
+          className="text-sm text-left text-primary"
+          aria-controls={name}
+          aria-pressed={visible}
+          onClick={() => setVisible(value => !value)}
+        >
+          {visible ? "Hide password" : "Show password"}
+        </button>
+      ) : null}
+    </div>
   );
 }
 

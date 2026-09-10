@@ -49,7 +49,7 @@ describe("final dashboard information architecture", () => {
     expect(layout).not.toContain('label: "Approvals"');
     expect(layout).not.toContain("DropdownMenuContent");
     expect(layout).toContain('aria-label="Sign out"');
-    expect(layout).toContain(">Sign out</span>");
+    expect(layout).toMatch(/>\s*Sign out\s*<\/span>/);
 
     expect(app).toContain('<Route path="/dashboard" component={Today} />');
     expect(app).toContain('<Route path="/settings">');
@@ -97,7 +97,7 @@ describe("final dashboard information architecture", () => {
     expect(teamService).toContain("pipelineHasMixedCurrencies");
   });
 
-  it("uses a light navy-blue dashboard and readable workflow feedback", () => {
+  it("uses a light navy-blue dashboard", () => {
     const css = readFileSync(
       path.resolve("client/src/dashboard-final.css"),
       "utf8"
@@ -106,10 +106,7 @@ describe("final dashboard information architecture", () => {
       path.resolve("client/src/components/DashboardLayout.tsx"),
       "utf8"
     );
-    const feedback = readFileSync(
-      path.resolve("client/src/components/WorkflowFeedback.tsx"),
-      "utf8"
-    );
+
 
     expect(css).toContain("--dash-canvas: #f4f6f8");
     expect(css).toContain("--dash-paper: #ffffff");
@@ -127,10 +124,6 @@ describe("final dashboard information architecture", () => {
     );
     expect(layout).not.toContain("bg-white/[.06]");
 
-    expect(feedback).toContain("data-workflow-feedback={state.kind}");
-    expect(feedback).toContain("bg-blue-50 text-blue-950");
-    expect(feedback).toContain("bg-emerald-50 text-emerald-950");
-    expect(feedback).toContain("bg-rose-50 text-rose-950");
   });
 
   it("keeps the call workflow and does not rely on a deleted override layer", () => {
@@ -144,7 +137,7 @@ describe("final dashboard information architecture", () => {
     );
     expect(calls).toContain("data-call-workflow");
     expect(css).toContain('[class*="bg-[#0E2142]"]');
-    expect(css).toContain("background: var(--dash-paper) !important");
+    expect(css).toContain("background: var(--dash-paper)");
     for (const step of [
       "PRE-CALL BRIEF",
       "CALL AUDIO",

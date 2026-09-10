@@ -45,7 +45,8 @@ describe("AmarktAI customer-facing branding boundary", () => {
 
   it("uses only the twelve client-selected local photographs for visible photography placements", () => {
     const css = readFileSync(path.resolve(process.cwd(), "client/src/index.css"), "utf8");
-    const localPhotos = [...css.matchAll(/\/images\/people\/[^\")]+\.(?:jpg|png)/g)].map(match => match[0]);
+    const markup = clientFiles(path.resolve(process.cwd(), "client/src")).filter(file => /\.(ts|tsx)$/.test(file)).map(file => readFileSync(file,"utf8")).join("\n");
+    const localPhotos = [...markup.matchAll(/\/images\/people\/[^\")]+\.(?:jpg|png)/g)].map(match => match[0]);
     expect(localPhotos).toHaveLength(12);
     expect(new Set(localPhotos).size).toBe(12);
     for (const photo of localPhotos) {
@@ -55,7 +56,7 @@ describe("AmarktAI customer-facing branding boundary", () => {
     expect(css).not.toMatch(/images\.unsplash\.com/i);
     expect(css).toContain("Part of Amarktai Network");
     expect(css).toContain(".amk-auth__message h1");
-    expect(css).toContain("color: #ffffff !important");
+    expect(css).not.toContain("content: url(");
   });
 
   it("keeps second-factor verification on the secure auth route before workspace entry", () => {

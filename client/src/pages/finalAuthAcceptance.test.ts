@@ -42,7 +42,7 @@ describe("final account presentation", () => {
   it("keeps identity proof inside secure access and uses first-party visuals", () => {
     expect(auth).toContain('/auth?step=verify');
     expect(auth).toContain("Verify your email.");
-    expect(auth).toContain('/images/site-hero.svg');
+    expect(auth).toContain('/images/people/thenikscape-ai-generated-9586971_1920.jpg');
     expect(auth).not.toContain("images.pexels.com");
     expect(auth).not.toContain("images.unsplash.com");
     expect(auth).toContain('window.location.assign("/auth?step=verify")');

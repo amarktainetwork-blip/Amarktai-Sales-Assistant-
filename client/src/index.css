@@ -4,8 +4,8 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --font-display: "Space Grotesk", sans-serif;
-  --font-body: "DM Sans", sans-serif;
+  --font-heading: "Segoe UI", Inter, ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Segoe UI", Inter, ui-sans-serif, system-ui, sans-serif;
   --color-bg: #e8edf4;
   --color-surface: #ffffff;
   --color-surface-raised: #ffffff;
@@ -29,11 +29,22 @@
   --primary: var(--color-brand);
   --primary-foreground: #ffffff;
   --ring: var(--color-focus);
+  --input: var(--color-border);
+  --muted: #eef2f7;
+  --muted-foreground: var(--color-text-muted);
+  --accent: #eaf1ff;
+  --accent-foreground: var(--color-text);
+  --secondary: #edf2fa;
+  --secondary-foreground: var(--color-text);
+  --popover: var(--color-surface);
+  --popover-foreground: var(--color-text);
+  --destructive: var(--color-danger);
+  --destructive-foreground: #ffffff;
 }
 
 @theme inline {
-  --font-display: var(--font-display);
-  --font-body: var(--font-body);
+  --font-display: var(--font-heading);
+  --font-sans: var(--font-body);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -42,6 +53,17 @@
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -79,411 +101,259 @@ a {
   outline-offset: 3px;
 }
 
-/* First-party product illustrations remain valid fallbacks when photography is unavailable. */
-.amk-auth__visual > img[src$=".svg"] {
-  object-fit: contain !important;
-  object-position: center !important;
-  padding: clamp(68px, 8vw, 128px);
-  opacity: 0.46;
-  filter: saturate(0.82) contrast(1.04);
+/* Auth and onboarding share this single responsive form shell. */
+.amk-auth {
+  --auth-ink: var(--color-text);
+  --auth-soft: var(--color-text-muted);
+  --auth-blue: var(--color-brand);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 100dvh;
+  background: var(--color-bg);
+  color: var(--auth-ink);
+  font-family: var(--font-body);
 }
-.amk-photo-frame img[src$=".svg"] {
-  object-fit: contain !important;
-  object-position: center !important;
-  padding: clamp(18px, 2.4vw, 34px);
-  background: linear-gradient(145deg, #e9eef5, #edf2f6);
+.amk-auth.fixed {
+  min-height: 0;
+  overflow-y: auto;
 }
-
-/* Secure access and onboarding share one visual language. */
-body:has(.amk-auth--setup) [data-slot="sidebar-inset"] > main {
-  width: 100% !important;
-  max-width: none !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  background: transparent !important;
+body:has(.amk-auth.fixed) {
+  overflow: hidden;
 }
-.amk-auth--setup {
-  grid-template-columns: minmax(600px, 1.08fr) minmax(560px, 0.92fr);
-  background: #dfe6ee;
+.amk-auth__visual {
+  display: none;
+  position: relative;
+  overflow: hidden;
+  background: #173354;
 }
-.amk-auth__visual--product {
-  background: linear-gradient(145deg, #10233d 0%, #173d67 58%, #1c5d72 100%);
+.amk-auth__visual > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
 }
-.amk-auth__visual--product > img {
-  object-fit: cover !important;
-  object-position: center !important;
-  padding: 0 !important;
-  opacity: 1;
-  filter: none;
-}
-.amk-auth--setup .amk-auth__visual {
-  min-height: 100vh;
-}
-.amk-auth--setup .amk-auth__visual > img {
-  object-position: center 34% !important;
-}
-.amk-auth--setup .amk-auth__visual-inner {
-  padding: 46px clamp(42px, 5vw, 78px) 58px !important;
-}
-.amk-auth--setup .amk-auth__message {
-  max-width: 700px;
-}
-.amk-auth--setup .amk-auth__message h1 {
-  font-size: clamp(54px, 5vw, 76px) !important;
-  line-height: 0.98 !important;
-  text-shadow: 0 3px 24px rgba(0, 0, 0, 0.28) !important;
-}
-.amk-auth--setup .amk-auth__shade {
+.amk-auth__shade {
+  position: absolute;
+  inset: 0;
   background: linear-gradient(
-    110deg,
-    rgba(8, 25, 45, 0.8),
-    rgba(17, 48, 75, 0.58) 58%,
-    rgba(18, 64, 77, 0.4)
-  ) !important;
-}
-.amk-auth--setup .amk-auth__panel-eyebrow,
-.amk-auth--setup section > p[class*="text-[#2F6FED]"] {
-  color: #35516f !important;
-}
-.amk-auth--setup h2,
-.amk-auth--setup h3 {
-  color: #1d2d43 !important;
-}
-.amk-auth--setup .amk-auth__muted,
-.amk-auth--setup section > p[class*="text-[#607086]"] {
-  color: #53657a !important;
-}
-.amk-auth--setup input,
-.amk-auth--setup textarea,
-.amk-auth--setup button[class*="bg-[#FAFCFF]"] {
-  background: #f7f9fc !important;
-}
-.amk-auth__visual--product .amk-auth__shade,
-.amk-auth__visual .amk-auth__shade {
-  background: linear-gradient(
-    120deg,
-    rgba(10, 27, 48, 0.84),
-    rgba(19, 53, 84, 0.68) 58%,
-    rgba(14, 70, 83, 0.58)
+    180deg,
+    rgba(16, 35, 61, 0.28),
+    rgba(16, 35, 61, 0.82)
   );
 }
 .amk-auth__visual-inner {
-  color: #ffffff !important;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  padding: 40px;
+  color: #ffffff;
+}
+.amk-auth__topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+.amk-auth__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #ffffff;
+  font-size: 14px;
+  text-decoration: none;
+}
+.amk-auth__message {
+  margin-top: auto;
+  padding-top: 80px;
+  max-width: 480px;
 }
 .amk-auth__message h1 {
-  color: #ffffff !important;
-  text-shadow: 0 2px 22px rgba(0, 0, 0, 0.18);
+  color: #ffffff;
+  font-size: clamp(32px, 3vw, 46px);
+  font-weight: 650;
+  letter-spacing: -0.035em;
+  line-height: 1.12;
+  margin: 0;
 }
-.amk-auth__message > p:not(.amk-auth__eyebrow) {
-  color: #eef4fb !important;
+.amk-auth__message > p {
+  color: #eef4fb;
+  font-size: 16px;
+  line-height: 1.6;
+  margin: 16px 0 0;
 }
-.amk-auth__proof {
-  color: #f3f7fb !important;
+.amk-auth__form-side {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 32px 24px;
 }
-.amk-auth__visual .amk-auth__topline > a > span:first-child {
-  color: #ffffff !important;
-}
-.amk-auth__visual .amk-auth__topline > a > span:last-child {
-  color: rgba(255, 255, 255, 0.82) !important;
-}
-.amk-auth__form-side--setup {
-  place-items: start center !important;
-  overflow-y: auto;
-  background: #dfe6ee !important;
-  padding: clamp(44px, 6vh, 76px) clamp(38px, 4.8vw, 76px) 72px !important;
+.amk-auth__form-wrap {
+  width: min(100%, 480px);
 }
 .amk-auth__form-wrap--setup {
-  width: min(100%, 680px) !important;
+  width: min(100%, 640px);
 }
 .amk-auth__form-wrap--wide {
-  width: min(100%, 820px) !important;
+  width: min(100%, 800px);
 }
-
-/* Keep the full setup split fixed to the viewport. Longer steps scroll only in the form pane. */
-main.amk-auth.amk-auth--setup {
-  height: 100vh;
-  min-height: 0;
-  overflow: hidden !important;
+.amk-auth__mobile-brand {
+  width: min(100%, 480px);
+  margin-bottom: 32px;
 }
-main.amk-auth.amk-auth--setup .amk-auth__visual,
-main.amk-auth.amk-auth--setup .amk-auth__form-side--setup {
-  height: 100vh;
-  min-height: 0;
-}
-main.amk-auth.amk-auth--setup .amk-auth__form-side--setup {
-  overflow-y: auto;
-}
-
-/* Client-selected photography. Every visible placement uses a different local file. */
-body:has(.amk-hero) .amk-hero .amk-photo-frame--hero img {
-  content: url("/images/people/focuspurely-business-8779718_1920.png");
-}
-body:has(.amk-hero) .amk-section--ice .amk-photo-frame--story img {
-  content: url("/images/people/pexels-gustavo-fring-5621969.jpg");
-}
-body:has(.amk-hero) .amk-section--warm .amk-photo-frame--story img {
-  content: url("/images/people/thenikscape-ai-generated-9587004_1920.jpg");
-}
-body:has(.amk-hero) .amk-section--light .amk-split {
-  grid-template-columns: 1fr !important;
-}
-body:has(.amk-hero) .amk-section--light .amk-split__media {
-  display: none !important;
-}
-body:has(.amk-page-hero--photo)
-  .amk-page-hero--photo
-  .amk-photo-frame--page
-  img {
-  content: url("/images/people/pexels-mart-production-7709175.jpg");
-}
-body:has(.amk-page-hero--photo) .amk-section--ice .amk-photo-frame--story img {
-  content: url("/images/people/pexels-pavel-danilyuk-7658351.jpg");
-}
-body:has(.amk-page-hero--photo) .amk-section--warm .amk-photo-frame--story img {
-  content: url("/images/people/startupstockphotos-startup-849804_1920.jpg");
-}
-body:has(.amk-page-hero--about)
-  .amk-page-hero--about
-  .amk-photo-frame--page
-  img {
-  content: url("/images/people/sohag_hawlader-business-8788636_1920.jpg");
-}
-body:has(.amk-page-hero--about) .amk-section--ice .amk-photo-frame--story img {
-  content: url("/images/people/startupstockphotos-student-849828_1920.jpg");
-}
-body:has(.amk-page-hero--about) .amk-section--warm .amk-split {
-  grid-template-columns: 1fr !important;
-}
-body:has(.amk-page-hero--about) .amk-section--warm .amk-photo-frame--story {
-  display: none !important;
-}
-body:has(.amk-contact-hero) .amk-contact-hero .amk-photo-frame--contact img {
-  content: url("/images/people/stocksnap-girl-2583442_1920.jpg");
-}
-main.amk-auth:not(.fixed):not(.amk-auth--setup) .amk-auth__visual > img {
-  content: url("/images/people/thenikscape-ai-generated-9586971_1920.jpg");
-  object-fit: cover !important;
-  object-position: center !important;
-  padding: 0 !important;
-  opacity: 1 !important;
-  filter: none !important;
-}
-main.amk-auth.fixed:not(.amk-auth--setup) .amk-auth__visual > img {
-  content: url("/images/people/pexels-kampus-8204317.jpg");
-  object-fit: cover !important;
-  object-position: center !important;
-  padding: 0 !important;
-  opacity: 1 !important;
-  filter: none !important;
-}
-main.amk-auth.amk-auth--setup .amk-auth__visual > img {
-  content: url("/images/people/homestation-office-8780133_1920.jpg");
-  object-fit: cover !important;
-  object-position: center !important;
-  padding: 0 !important;
-  opacity: 1 !important;
-  filter: none !important;
-}
-
-/* Slightly darker, cool-neutral surfaces across public, auth, setup and dashboard pages. */
-.amk-site {
-  --ice: #e5ebf2 !important;
-  --lavender: #e8edf5 !important;
-  --warm: #e8edf4 !important;
-  --light: #e8edf4 !important;
-  --white: #eef2f6 !important;
-  background: #e8edf4 !important;
-}
-.amk-header {
-  background: rgba(238, 242, 246, 0.94) !important;
-}
-.amk-hero,
-.amk-page-hero,
-.amk-contact-hero,
-.amk-pricing-hero {
-  background: linear-gradient(
-    128deg,
-    #e5ebf2 0%,
-    #e8eef5 54%,
-    #e3ebf2 100%
-  ) !important;
-}
-.amk-section--white {
-  background: #edf1f5 !important;
-}
-.amk-section--light {
-  background: #e8edf4 !important;
-}
-.amk-section--ice {
-  background: #e5ebf2 !important;
-}
-.amk-section--warm {
-  background: #e8edf4 !important;
-}
-.amk-contact-section {
-  background: #e8edf4 !important;
-}
-.amk-auth,
-.amk-auth__form-side,
-.amk-auth--setup {
-  background: #e8edf4 !important;
-}
-.amk-auth--setup,
-.amk-auth--setup .amk-auth__form-side {
-  background: #dfe6ee !important;
-}
-[data-slot="sidebar-inset"] {
-  background: #e8edf4 !important;
-}
-
-/* Business knowledge review is still onboarding, not the daily dashboard. */
-[data-company-knowledge-report] {
-  position: fixed;
-  inset: 0;
-  z-index: 245;
-  max-width: none !important;
-  overflow-y: auto;
-  background:
-    radial-gradient(circle at 8% 4%, rgba(47, 111, 237, 0.1), transparent 30%),
-    #e8edf4;
-  width: min(1180px, calc(100% - 48px)) !important;
-  margin-inline: auto !important;
-  padding: 42px 0 72px;
-}
-[data-company-knowledge-report] > header {
-  border-color: #c8d4e2 !important;
-  box-shadow: 0 18px 55px rgba(38, 53, 74, 0.09) !important;
-}
-
-/* Copyright is visible throughout public, secure setup and logged-in workspaces. */
-main.amk-auth::after,
-body:has([data-company-knowledge-report])::after {
-  content: "© 2026 AmarktAI Sales Assistant · Part of Amarktai Network";
-  position: fixed;
-  right: 18px;
-  bottom: 10px;
-  z-index: 300;
-  color: #627287;
-  font-size: 10px;
+.amk-auth__panel-eyebrow {
+  margin: 0 0 12px;
+  color: var(--auth-blue);
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.025em;
-  pointer-events: none;
+  letter-spacing: 0.08em;
 }
-
-/* Dashboard normalization must never recolor the onboarding photography panel. */
-body:has([data-slot="sidebar-wrapper"]) .amk-auth--setup .amk-auth__visual .amk-auth__message h1 {
-  color: #ffffff !important;
-  text-shadow: 0 3px 24px rgba(0, 0, 0, 0.28) !important;
+.amk-auth__form-wrap h2 {
+  margin: 0;
+  color: var(--auth-ink);
+  font-size: clamp(26px, 3vw, 34px);
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+  font-weight: 650;
 }
-body:has([data-slot="sidebar-wrapper"])
-  .amk-auth--setup
-  .amk-auth__visual
-  .amk-auth__message
-  > p:not(.amk-auth__eyebrow) {
-  color: #eef4fb !important;
+.amk-auth__muted {
+  margin: 12px 0 0;
+  color: var(--auth-soft);
+  font-size: 15px;
+  line-height: 1.55;
 }
-body:has([data-slot="sidebar-wrapper"])
-  .amk-auth--setup
-  .amk-auth__visual
-  .amk-auth__proof {
-  color: #f3f7fb !important;
+.amk-auth-form {
+  display: grid;
+  gap: 16px;
+  margin-top: 24px;
 }
-
-/* Laptop-height onboarding should fit without a page-level scrollbar. */
-@media (min-width: 981px) and (max-height: 860px) {
-  main.amk-auth.fixed:not(.amk-auth--setup) {
-    height: 100vh;
-    min-height: 0;
-    overflow: hidden !important;
-  }
-  main.amk-auth.fixed:not(.amk-auth--setup) .amk-auth__visual,
-  main.amk-auth.fixed:not(.amk-auth--setup) .amk-auth__form-side {
-    height: 100vh;
-    min-height: 0;
-  }
-  main.amk-auth.fixed:not(.amk-auth--setup) .amk-auth__form-side {
-    place-items: center;
-    overflow-y: auto;
-    padding: 16px clamp(24px, 4vw, 60px) 34px !important;
-  }
-  main.amk-auth.fixed:not(.amk-auth--setup) .amk-auth__panel-eyebrow {
-    margin: 8px 0 0 !important;
-  }
-  main.amk-auth.fixed:not(.amk-auth--setup) .amk-auth__form-wrap h2 {
-    font-size: clamp(42px, 6vh, 50px) !important;
-    line-height: 0.98 !important;
-  }
-  main.amk-auth.fixed:not(.amk-auth--setup) .amk-auth__muted {
-    margin-top: 10px !important;
-    line-height: 1.45 !important;
-  }
-  main.amk-auth.fixed:not(.amk-auth--setup) .amk-auth__form-wrap > div.mt-6 {
-    margin-top: 12px !important;
-  }
-  main.amk-auth.fixed:not(.amk-auth--setup) .amk-auth-form {
-    gap: 9px !important;
-    margin-top: 14px !important;
-  }
-  main.amk-auth.fixed:not(.amk-auth--setup) .amk-auth-field {
-    gap: 5px !important;
-  }
-  main.amk-auth.fixed:not(.amk-auth--setup) .amk-auth-field input {
-    min-height: 42px !important;
-  }
-  main.amk-auth.fixed:not(.amk-auth--setup) .amk-auth-field textarea {
-    height: 64px !important;
-    min-height: 64px !important;
-  }
-  main.amk-auth.fixed:not(.amk-auth--setup) .amk-auth__form-wrap > button {
-    margin-top: 12px !important;
-  }
-  main.amk-auth.fixed:not(.amk-auth--setup) .amk-auth__message h1 {
-    font-size: clamp(48px, 7vh, 60px) !important;
-  }
-  main.amk-auth.fixed:not(.amk-auth--setup)
-    .amk-auth__message
-    > p:not(.amk-auth__eyebrow) {
-    margin-top: 16px;
-    line-height: 1.55;
-  }
-  main.amk-auth.fixed:not(.amk-auth--setup) .amk-auth__proof {
-    gap: 8px 18px;
-    margin-top: 18px;
-  }
-  main.amk-auth.fixed:not(.amk-auth--setup)::after {
-    bottom: 6px;
-    font-size: 9px;
-  }
+.amk-auth-field {
+  display: grid;
+  gap: 7px;
 }
-
-@media (max-width: 1100px) {
-  .amk-auth--setup {
-    grid-template-columns: 1fr;
+.amk-auth-field > span {
+  color: var(--auth-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+.amk-auth-field input {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--auth-ink);
+  padding: 0 12px;
+  font-size: 16px;
+}
+.amk-auth-field input:focus {
+  border-color: var(--auth-blue);
+}
+.amk-auth__primary,
+.amk-auth__secondary {
+  width: 100%;
+  min-height: 46px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.amk-auth__primary {
+  border: 0;
+  background: var(--auth-blue);
+  color: #fff;
+}
+.amk-auth__primary:hover {
+  background: #2459c2;
+}
+.amk-auth__primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.amk-auth__primary--spaced {
+  margin-top: 24px;
+}
+.amk-auth__secondary {
+  margin-top: 20px;
+  border: 1px solid var(--color-border);
+  background: #fff;
+  color: var(--auth-ink);
+}
+.amk-auth__forgot-row {
+  display: flex;
+  justify-content: flex-end;
+}
+.amk-auth__forgot-row a,
+.amk-auth__switch a {
+  color: var(--auth-blue);
+  font-weight: 600;
+}
+.amk-auth__switch {
+  margin: 0;
+  color: var(--auth-soft);
+  text-align: center;
+  font-size: 14px;
+}
+.amk-auth__fineprint {
+  margin: 16px 0 0;
+  color: var(--auth-soft);
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.amk-auth__icon {
+  width: 40px;
+  height: 40px;
+  margin-bottom: 16px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: #e8efff;
+  color: var(--auth-blue);
+}
+.amk-auth::after {
+  content: "© 2026 AmarktAI Sales Assistant · Part of Amarktai Network";
+  grid-column: 1 / -1;
+  padding: 12px 20px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  text-align: center;
+}
+[data-company-knowledge-report] {
+  max-width: 1120px;
+  margin-inline: auto;
+}
+@media (min-width: 1440px) and (min-height: 900px) {
+  .amk-auth {
+    grid-template-columns: minmax(0, 0.85fr) minmax(640px, 1.15fr);
   }
-  .amk-auth--setup .amk-auth__visual {
+  .amk-auth__visual {
+    display: block;
+  }
+  .amk-auth__form-side {
+    padding: 48px;
+  }
+  .amk-auth__mobile-brand {
     display: none;
   }
 }
-
-@media (max-width: 980px) {
-  .amk-auth__form-side--setup {
-    padding-top: 34px !important;
+@media (max-width: 560px) {
+  .amk-auth__form-side {
+    padding: 24px 20px;
   }
-  .amk-auth__form-wrap--wide,
-  .amk-auth__form-wrap--setup {
-    width: min(100%, 760px) !important;
+  .amk-auth__mobile-brand {
+    margin-bottom: 24px;
   }
 }
-
-@media (max-width: 640px) {
-  main.amk-auth::after,
-  body:has([data-company-knowledge-report])::after {
-    right: 10px;
-    bottom: 6px;
-    font-size: 9px;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
