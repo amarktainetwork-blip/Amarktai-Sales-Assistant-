@@ -306,6 +306,7 @@ export function registerAssistantRoutes(app: Express) {
 
       if (contactId) {
         const context = await getWorkingContextForContact({
+          userId,
           organisationId: membership.organisationId,
           contactId,
         });
@@ -468,6 +469,7 @@ export function registerAssistantRoutes(app: Express) {
             : null;
       const contactContext = contactId
         ? await getWorkingContextForContact({
+            userId,
             organisationId: membership.organisationId,
             contactId,
           })

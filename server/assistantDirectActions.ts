@@ -217,6 +217,7 @@ export async function tryPrepareDirectAssistantAction(input: {
 
   const currentReference = requestUsesCurrentCustomerReference(input.request);
   const customer = await resolveAssistantCustomerContext({
+    userId: input.userId,
     organisationId: input.organisationId,
     contactId: input.contactId,
     crmContext: input.crmContext,

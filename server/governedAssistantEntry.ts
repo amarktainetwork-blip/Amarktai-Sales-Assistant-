@@ -170,6 +170,7 @@ export function explicitCallbackTime(command: string) {
 async function prepareCallback(input: GovernedAssistantEntryInput) {
   if (!actionableCallback(input.command)) return undefined;
   const customer = await resolveAssistantCustomerContext({
+    userId: input.userId,
     organisationId: input.organisationId,
     contactId: input.contactId,
     crmContext: input.crmContext,
@@ -267,6 +268,7 @@ async function prepareConfiguredWorkflow(input: GovernedAssistantEntryInput) {
   const route = routeSalesCommand(input.command);
   if (route.intent !== "workflow" || !route.workflowKey) return undefined;
   const customer = await resolveAssistantCustomerContext({
+    userId: input.userId,
     organisationId: input.organisationId,
     contactId: input.contactId,
     crmContext: input.crmContext,
