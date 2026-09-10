@@ -579,6 +579,7 @@ export async function inspectBrowserCrmNavigation(input: {
           controls.push({ ...item, href, pageUrl: sourcePageUrl });
         }
       };
+      const initialNavigationUrl = page.url();
       const initialPageUrl =
         new URL(page.url()).origin + new URL(page.url()).pathname;
       await appendControls(raw, initialPageUrl);
@@ -597,18 +598,29 @@ export async function inspectBrowserCrmNavigation(input: {
             )
         )
         .slice(0, 12);
-      for (const destination of destinations) {
-        assertBrowserOperationCanRun(owner);
-        if (controls.length >= 250) break;
-        await authorizeNavigation(input.connection, destination);
-        await page.goto(destination, {
-          waitUntil: "domcontentloaded",
-          timeout: 20_000,
-        });
-        await authorizeNavigation(input.connection, page.url());
-        const sourcePageUrl =
-          new URL(page.url()).origin + new URL(page.url()).pathname;
-        await appendControls(await readControls(), sourcePageUrl);
+      try {
+        for (const destination of destinations) {
+          assertBrowserOperationCanRun(owner);
+          if (controls.length >= 250) break;
+          await authorizeNavigation(input.connection, destination);
+          await page.goto(destination, {
+            waitUntil: "domcontentloaded",
+            timeout: 20_000,
+          });
+          await authorizeNavigation(input.connection, page.url());
+          const sourcePageUrl =
+            new URL(page.url()).origin + new URL(page.url()).pathname;
+          await appendControls(await readControls(), sourcePageUrl);
+        }
+      } finally {
+        if (page.url() !== initialNavigationUrl) {
+          assertBrowserOperationCanRun(owner);
+          await authorizeNavigation(input.connection, initialNavigationUrl);
+          await page.goto(initialNavigationUrl, {
+            waitUntil: "domcontentloaded",
+            timeout: 20_000,
+          });
+        }
       }
       return {
         pageUrl: initialPageUrl,
@@ -672,7 +684,14 @@ async function runDeterministicOperation(input: RunOperationInput) {
     });
   } catch (error) {
     if (catalogue?.mode !== "read") throw error;
-    if (await latestBrowserOperation({ organisationId: input.connection.organisationId, connectedSystemId: input.connection.id, operationKey })) throw error;
+    if (
+      await latestBrowserOperation({
+        organisationId: input.connection.organisationId,
+        connectedSystemId: input.connection.id,
+        operationKey,
+      })
+    )
+      throw error;
     const legacy = operationScript(profile, input.operation);
     if (!legacy) throw error;
   }
@@ -927,7 +946,10 @@ function rows(
 ) {
   const key = profile.resultKeys?.[operation] || "records";
   const raw = result.data[key];
-  if (!raw) throw new Error(`STRUCTURED_RESULT_REQUIRED: ${operation} did not return its records result.`);
+  if (!raw)
+    throw new Error(
+      `STRUCTURED_RESULT_REQUIRED: ${operation} did not return its records result.`
+    );
   const parsed = JSON.parse(raw) as unknown;
   if (!Array.isArray(parsed))
     throw new Error(
@@ -1242,8 +1264,19 @@ export function browserCrmAdapter(
       });
       const extracted = rows(execution.result, execution.profile, "getContact");
       if (!extracted[0]) return null;
-      const record = contact(extracted[0]);
-      if (record.externalId !== input.externalId) throw new Error("TARGET_MISMATCH: the CRM returned a different contact.");
+      const row = extracted[0];
+      // The observed contact page is an identity source; the requested ID alone is not.
+      if (
+        !row.externalId &&
+        !row.id &&
+        execution.result.data.actualPageUrl === input.externalId
+      )
+        row.externalId = execution.result.data.actualPageUrl;
+      const record = contact(row);
+      if (record.externalId !== input.externalId)
+        throw new Error(
+          "TARGET_MISMATCH: the CRM returned a different contact."
+        );
       return record;
     },
     getCompany: async input => {

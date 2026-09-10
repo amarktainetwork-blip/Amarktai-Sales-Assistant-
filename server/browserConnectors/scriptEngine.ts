@@ -250,7 +250,7 @@ export async function executeSavedBrowserScript(input: {
       if (step.action === "uncheck") await locator.uncheck();
       if (step.action === "hover") await locator.hover();
       if (step.action === "expect_visible")
-        await locator.waitFor({ state: "visible", timeout: 30_000 });
+        await locator.first().waitFor({ state: "visible", timeout: 30_000 });
       if (step.action === "read_text")
         data[step.key || step.selector || "text"] = (
           await locator.allTextContents()

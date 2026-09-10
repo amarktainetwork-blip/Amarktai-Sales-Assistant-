@@ -160,3 +160,36 @@ describe("canonical deterministic execution ownership", () => {
     expect(browserControlState(scope)).toBe("IDLE");
   });
 });
+it("normalizes identity from the actual contact page without echoing a requested ID", async () => {
+  mocks.execute.mockResolvedValue({
+    ...result,
+    data: {
+      records: JSON.stringify([
+        { firstName: "Ada", email: "ada@example.invalid" },
+      ]),
+    },
+  });
+  const adapter = browserCrmAdapter("genie");
+  const record = await adapter.getContact({
+    ...input,
+    externalId: "https://crm.example.invalid/",
+  });
+  expect(record).toMatchObject({
+    externalId: "https://crm.example.invalid/",
+    firstName: "Ada",
+  });
+  mocks.execute.mockResolvedValue({
+    ...result,
+    data: {
+      records: JSON.stringify([
+        { firstName: "Ada", email: "ada@example.invalid" },
+      ]),
+    },
+  });
+  await expect(
+    adapter.getContact({
+      ...input,
+      externalId: "https://crm.example.invalid/other",
+    })
+  ).rejects.toThrow(/INVALID_EXTERNAL_ID|TARGET_MISMATCH/);
+});
