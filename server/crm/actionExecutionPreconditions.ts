@@ -98,14 +98,21 @@ function contactStatus(contact: NormalizedContact) {
 }
 
 export function withinConfiguredOfficeHours(value: unknown, now = new Date()) {
+  if (value == null) return true;
   const office = object(value);
   const start = typeof office.start === "string" ? office.start : "";
   const end = typeof office.end === "string" ? office.end : "";
   const days = Array.isArray(office.days)
     ? office.days.map(Number).filter(Number.isInteger)
     : [];
-  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(start) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(end) || !days.length)
-    return true;
+  if (
+    !/^([01]\d|2[0-3]):[0-5]\d$/.test(start) ||
+    !/^([01]\d|2[0-3]):[0-5]\d$/.test(end) ||
+    !days.length
+  )
+    throw new Error(
+      "WORKFLOW_OFFICE_HOURS_INVALID: configured outbound contact hours are incomplete or invalid."
+    );
   const timeZone =
     typeof office.timezone === "string" && office.timezone.trim()
       ? office.timezone.trim()
