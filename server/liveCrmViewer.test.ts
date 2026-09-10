@@ -132,6 +132,24 @@ describe("live CRM viewer reconnect", () => {
     );
   });
 
+  it("releases human control only after customer sign-in is verified authenticated", () => {
+    const source = readFileSync(
+      new URL("./liveCrmViewer.ts", import.meta.url),
+      "utf8"
+    );
+    const handler = source.match(
+      /else if \(message\.type === "customerFinishedSigningIn"\) \{([\s\S]*?)\n\s*\} else if \(message\.type === "ping"\)/
+    )?.[1];
+
+    expect(handler).toBeTruthy();
+    expect(handler).toMatch(
+      /if \(snapshot\.authenticationState === "AUTHENTICATED"\) \{[\s\S]*releaseBrowserControl\(controlScope\(session\)\);[\s\S]*session\.leaseToken = undefined;[\s\S]*\}/
+    );
+    expect(handler).not.toMatch(
+      /if \(snapshot\.authenticationState !== "AUTHENTICATED"\)[\s\S]*releaseBrowserControl/
+    );
+  });
+
   it("replaces a cached viewer only when reconnect is explicit", () => {
     expect(
       shouldReuseLiveCrmViewerSession({
