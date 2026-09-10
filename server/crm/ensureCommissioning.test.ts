@@ -21,18 +21,26 @@ describe("authenticated CRM commissioning recovery", () => {
     ).toBe("resume");
   });
 
-  it("may recover a needs-attention job while it is read-only or after terminal core-readiness failure", () => {
+  it("may recover a needs-attention job only while it remains in a read-only non-terminal state", () => {
     for (const state of [
       "AUTHENTICATE",
       "DISCOVER_NAVIGATION",
       "DISCOVER_CAPABILITIES",
       "TEST_SAFE_READS",
-      "READY",
     ] as const) {
       expect(
         commissioningRecoveryAction({ status: "needs_attention", state })
       ).toBe("restart_safe_reads");
     }
+  });
+
+  it("holds terminal READY even when some optional capabilities still need attention", () => {
+    expect(
+      commissioningRecoveryAction({ status: "needs_attention", state: "READY" })
+    ).toBe("hold");
+    expect(
+      commissioningRecoveryAction({ status: "ready", state: "READY" })
+    ).toBe("hold");
   });
 
   it("never restarts approval, controlled writes, readback or publication from browser reopen", () => {
@@ -51,9 +59,6 @@ describe("authenticated CRM commissioning recovery", () => {
         status: "waiting_for_approval",
         state: "AWAIT_SAFE_TEST_RECORD",
       })
-    ).toBe("hold");
-    expect(
-      commissioningRecoveryAction({ status: "ready", state: "READY" })
     ).toBe("hold");
   });
 
