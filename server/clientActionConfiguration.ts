@@ -26,8 +26,10 @@ export type ConfiguredTemplate = {
 };
 
 export type WorkflowActionConfiguration = {
-  /** Semantic task purpose -> exact client CRM task title/alias. */
+  /** Semantic task purpose -> primary exact client CRM task title/alias. */
   taskAliases: Record<string, string>;
+  /** Additional exact titles accepted for the same current-task purpose. */
+  taskAliasAlternatives?: Record<string, string[]>;
   /** Ordered semantic task purposes for attempt/follow-up progression. */
   taskSequence: string[];
   /** Ordered action tokens, e.g. send_sms_template:first_contact. */
@@ -156,6 +158,15 @@ function stringMap(value: unknown, maximum = 100) {
   );
 }
 
+function stringArrayMap(value: unknown, maximum = 100) {
+  return Object.fromEntries(
+    Object.entries(object(value))
+      .slice(0, maximum)
+      .map(([purpose, raw]) => [purpose.slice(0, 120), strings(raw, 40)])
+      .filter(([, values]) => (values as string[]).length)
+  ) as Record<string, string[]>;
+}
+
 function nestedStringMap(value: unknown, maximum = 100) {
   return Object.fromEntries(
     Object.entries(object(value))
@@ -218,6 +229,7 @@ function workflow(value: unknown): WorkflowActionConfiguration {
   return {
     ...EMPTY_WORKFLOW,
     taskAliases: stringMap(source.taskAliases),
+    taskAliasAlternatives: stringArrayMap(source.taskAliasAlternatives),
     taskSequence: strings(source.taskSequence),
     sequence: strings(source.sequence),
     optionalActions: strings(source.optionalActions),
@@ -509,6 +521,21 @@ export function validateClientActionConfigurationForCommissioning(
       throw new Error(
         `CLIENT_WORKFLOW_TASK_ALIAS_DUPLICATE: '${workflowKey}' contains duplicate task titles in its progression.`
       );
+    for (const [purpose, alternatives] of Object.entries(
+      workflow.taskAliasAlternatives || {}
+    )) {
+      if (!workflow.taskAliases[purpose])
+        throw new Error(
+          `CLIENT_WORKFLOW_TASK_ALIAS_REQUIRED: '${workflowKey}' alternative titles for '${purpose}' require one primary exact CRM task title.`
+        );
+      const all = [workflow.taskAliases[purpose], ...alternatives].map(
+        normalizedKey
+      );
+      if (new Set(all).size !== all.length)
+        throw new Error(
+          `CLIENT_WORKFLOW_TASK_ALIAS_DUPLICATE: '${workflowKey}' contains duplicate primary/alternative task titles for '${purpose}'.`
+        );
+    }
     const unknownOptional = (workflow.optionalActions || []).find(
       token => !workflow.sequence.includes(token)
     );
