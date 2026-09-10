@@ -179,15 +179,23 @@ function scalarFieldMap(value: unknown, maximum = 100) {
       0,
       80
     )) {
-      if (!/^[A-Za-z][A-Za-z0-9_.:-]{0,119}$/.test(field)) continue;
+      const exactField = field.trim().slice(0, 120);
+      if (
+        !exactField ||
+        /[\u0000-\u001f\u007f]/.test(exactField) ||
+        ["__proto__", "prototype", "constructor"].includes(
+          exactField.toLowerCase()
+        )
+      )
+        continue;
       if (
         rawValue === null ||
         typeof rawValue === "number" ||
         typeof rawValue === "boolean"
       )
-        fields[field] = rawValue;
+        fields[exactField] = rawValue;
       else if (typeof rawValue === "string" && rawValue.trim())
-        fields[field] = rawValue.trim().slice(0, 2_000);
+        fields[exactField] = rawValue.trim().slice(0, 2_000);
     }
     if (Object.keys(fields).length) output[purpose.slice(0, 120)] = fields;
   }
