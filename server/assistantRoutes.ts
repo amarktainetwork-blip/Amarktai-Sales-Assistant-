@@ -91,6 +91,22 @@ function listLines<T>(
   return items.slice(0, maximum).map(render).join("\n");
 }
 
+export function shouldUseDeterministicTodayAnswer(input: {
+  query: string;
+  contactId?: number;
+}) {
+  if (input.contactId) return false;
+  const normalized = input.query.trim().toLowerCase();
+  if (!normalized) return false;
+  return !(
+    /\b(send|draft|write|prepare|create|add|move|update|change|schedule|set|delete|remove|complete|close|mark|assign|log)\b/.test(
+      normalized
+    ) ||
+    /\bremind me\b/.test(normalized) ||
+    /^(?:please\s+)?call(?:\s+back)?\b/.test(normalized)
+  );
+}
+
 export function deterministicTodayAnswer(
   query: string,
   today: Awaited<ReturnType<typeof getTodayWork>>
@@ -393,8 +409,7 @@ export function registerAssistantRoutes(app: Express) {
         }
       }
 
-      // Navigation-only shortcuts may return without AI. Sales questions
-      // continue through governed evidence plus the GenX response path below.
+      // Navigation-only shortcuts may return without AI.
       const direct = directAssistantAction(query);
       if (direct) {
         await recordAudit({
@@ -408,6 +423,30 @@ export function registerAssistantRoutes(app: Express) {
           metadata: { responseMode: "workspace_truth", contentRetained: false },
         });
         return res.json(direct);
+      }
+
+      if (
+        shouldUseDeterministicTodayAnswer({ query: latestUserMessage, contactId })
+      ) {
+        const deterministic = deterministicTodayAnswer(latestUserMessage, today);
+        if (deterministic) {
+          await recordAudit({
+            userId,
+            organisationId: membership.organisationId,
+            eventType: "assistant_request_routed",
+            entityType: "assistant",
+            entityId: String(userId),
+            summary:
+              "The Sales Assistant answered directly from the signed-in salesperson's synchronized Today data.",
+            metadata: {
+              responseMode: "deterministic_today",
+              modelUsed: false,
+              providerCallCount: 0,
+              contentRetained: false,
+            },
+          });
+          return res.json(deterministic);
+        }
       }
 
       const batchAction = planAssistantCrmBatchInstruction(query);
