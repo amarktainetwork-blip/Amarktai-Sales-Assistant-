@@ -145,9 +145,17 @@ async function resolveExecutionSender(
   organisationId: number,
   message: SalesMessage
 ) {
-  if (message.channel === "email" || message.senderIdentity?.trim())
-    return message.senderIdentity?.trim();
+  if (message.channel === "email") return message.senderIdentity?.trim();
   const configuration = await getClientActionConfiguration({ organisationId });
+  const requested = message.senderIdentity?.trim();
+  if (requested) {
+    const approved = configuration.approvedSenders[message.channel] || [];
+    if (!approved.includes(requested))
+      throw new Error(
+        `SENDER_NOT_APPROVED: '${requested}' is not currently approved for this organisation's ${message.channel.toUpperCase()} channel.`
+      );
+    return requested;
+  }
   const template = message.templateName
     ? findConfiguredTemplate({
         configuration,
