@@ -19,8 +19,15 @@ import type {
   CrmAdapter,
   NormalizedActivity,
 } from "./types";
-import { checkApprovedCrmExecutionPreconditions } from "./actionExecutionPreconditions";
-import { sendSalesMessage } from "../communications";
+import {
+  checkApprovedCrmExecutionPreconditions,
+  withinConfiguredOfficeHours,
+  verifyFreshWorkflowContext,
+} from "./actionExecutionPreconditions";
+import {
+  getOutboundSuppressionStatus,
+  sendSalesMessage,
+} from "../communications";
 import {
   createDelegatedOutlookCalendarEvent,
   sendDelegatedOutlookMail,
@@ -192,6 +199,69 @@ async function executeMicrosoft(input: {
     input.proposal.actionType === "send_email" ||
     input.proposal.actionType === "send_email_template"
   ) {
+    const to = String(input.payload.to ?? input.payload.email ?? "").trim();
+    const subject = String(input.payload.subject ?? "").trim();
+    const body = String(input.payload.body ?? input.payload.message ?? "").trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to))
+      throw new Error("EMAIL_RECIPIENT_REQUIRED: the reviewed email has no exact valid recipient.");
+    if (!subject)
+      throw new Error("EMAIL_SUBJECT_REQUIRED: the reviewed email has no exact subject. Nothing was sent.");
+    if (!body)
+      throw new Error("EMAIL_BODY_REQUIRED: the reviewed email body is blank. Nothing was sent.");
+
+    const workflow = object(input.payload.workflowConfiguration);
+    if (!withinConfiguredOfficeHours(workflow.officeHours))
+      throw new Error(
+        "OUTSIDE_CONFIGURED_OFFICE_HOURS: this outbound email is outside the organisation's configured contact hours. Nothing was sent."
+      );
+
+    const contactExternalId = explicitExternalId(
+      input.payload,
+      "contactExternalId"
+    );
+    if (
+      contactExternalId &&
+      typeof workflow.workflowKey === "string" &&
+      workflow.workflowKey.trim()
+    ) {
+      const connectedSystemId =
+        typeof input.payload.preferredConnectedSystemId === "number"
+          ? input.payload.preferredConnectedSystemId
+          : undefined;
+      const provider =
+        typeof input.payload.preferredProvider === "string"
+          ? input.payload.preferredProvider
+          : "auto";
+      const system = await verifiedSystem({
+        organisationId: input.organisationId,
+        provider,
+        actionType: "verify_contact_context",
+        connectedSystemId,
+      });
+      const connection = toAdapterConnection(system);
+      const adapter = getCrmAdapter(system.provider);
+      const secret = await connectionSecret({
+        userId: input.proposal.userId,
+        organisationId: input.organisationId,
+        system,
+      });
+      const contact = await adapter.getContact({
+        connection,
+        secret,
+        externalId: contactExternalId,
+      });
+      if (!contact || contact.externalId !== contactExternalId)
+        throw new Error(
+          "EXECUTION_TARGET_STALE: the exact CRM customer could not be re-read before the email send. Nothing was sent."
+        );
+      await verifyFreshWorkflowContext({
+        adapter,
+        connection,
+        secret,
+        contactExternalId,
+      });
+    }
+
     const prior = await findDelegatedSentMailByReference({
       userId: input.proposal.userId,
       organisationId: input.organisationId,
@@ -210,12 +280,27 @@ async function executeMicrosoft(input: {
         providerResult: prior,
         retryable: false,
       };
+    const suppression = await getOutboundSuppressionStatus({
+      organisationId: input.organisationId,
+      message: {
+        channel: "email",
+        to,
+        subject,
+        body,
+        contactExternalId,
+      },
+    });
+    if (suppression.suppressed)
+      throw new Error(
+        "OUTBOUND_SUPPRESSED: this customer is now suppressed for email. Nothing was sent."
+      );
+
     await sendDelegatedOutlookMail({
       userId: input.proposal.userId,
       organisationId: input.organisationId,
-      to: String(input.payload.to ?? input.payload.email ?? ""),
-      subject: String(input.payload.subject ?? input.proposal.title),
-      body: String(input.payload.body ?? input.payload.message ?? ""),
+      to,
+      subject,
+      body,
       reviewReference: reference,
       contactExternalId:
         typeof input.payload.contactExternalId === "string"
@@ -315,12 +400,21 @@ async function verifyCrmPostcondition(input: {
       secret: input.secret,
       externalId: contactExternalId,
     });
-    const verified = Boolean(contact && contact.externalId === contactExternalId);
+    if (!contact || contact.externalId !== contactExternalId)
+      return {
+        verified: false,
+        detail: "Exact CRM contact context could not be proven.",
+      };
+    const context = await verifyFreshWorkflowContext({
+      adapter: input.adapter,
+      connection: input.connection,
+      secret: input.secret,
+      contactExternalId,
+    });
     return {
-      verified,
-      detail: verified
-        ? "Exact CRM contact context was read back immediately."
-        : "Exact CRM contact context could not be proven.",
+      verified: context.evidence.contextReadVerified === true,
+      detail:
+        "Exact customer, tasks, opportunity history and CRM activity/history were read back immediately.",
     };
   }
   if (input.actionType === "update_contact" || input.actionType === "update_contact_status") {
@@ -676,11 +770,17 @@ async function executeMutation(input: {
         throw new Error(
           "EXECUTION_TARGET_STALE: the exact customer could not be read from the CRM."
         );
+      const context = await verifyFreshWorkflowContext({
+        adapter: input.adapter,
+        connection: input.connection,
+        secret: input.secret,
+        contactExternalId,
+      });
       return {
         operation: "verify_contact_context",
         correlationId: input.correlationId,
         completedAt: new Date().toISOString(),
-        providerResult: { contact },
+        providerResult: { contact, context: context.evidence },
       } satisfies AdapterEvidence;
     }
     case "append_contact_note":
