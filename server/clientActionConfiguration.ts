@@ -32,6 +32,11 @@ export type WorkflowActionConfiguration = {
   taskSequence: string[];
   /** Ordered action tokens, e.g. send_sms_template:first_contact. */
   sequence: string[];
+  /**
+   * Exact sequence tokens that may be skipped only when their exact current
+   * target does not exist. Ambiguous multiple targets still fail closed.
+   */
+  optionalActions?: string[];
   eligibilityStatuses: string[];
   stopStatuses: string[];
   opportunityMappings: Record<string, string>;
@@ -207,6 +212,7 @@ function workflow(value: unknown): WorkflowActionConfiguration {
     taskAliases: stringMap(source.taskAliases),
     taskSequence: strings(source.taskSequence),
     sequence: strings(source.sequence),
+    optionalActions: strings(source.optionalActions),
     eligibilityStatuses: strings(source.eligibilityStatuses),
     stopStatuses: strings(source.stopStatuses),
     opportunityMappings: stringMap(source.opportunityMappings),
@@ -494,6 +500,13 @@ export function validateClientActionConfigurationForCommissioning(
     )
       throw new Error(
         `CLIENT_WORKFLOW_TASK_ALIAS_DUPLICATE: '${workflowKey}' contains duplicate task titles in its progression.`
+      );
+    const unknownOptional = (workflow.optionalActions || []).find(
+      token => !workflow.sequence.includes(token)
+    );
+    if (unknownOptional)
+      throw new Error(
+        `CLIENT_WORKFLOW_OPTIONAL_ACTION_INVALID: '${unknownOptional}' is not present in workflow '${workflowKey}' sequence.`
       );
     const stop = new Set(workflow.stopStatuses.map(normalizedKey));
     const overlap = workflow.eligibilityStatuses.find(status =>
