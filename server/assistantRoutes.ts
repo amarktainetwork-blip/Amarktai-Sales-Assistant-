@@ -24,6 +24,7 @@ import { planAssistantSingleRecordAction } from "./crm/assistantSingleRecord";
 import {
   configuredWorkflowBatchRequested,
   prepareConfiguredWorkflowBatch,
+  prepareGovernedAssistantRequest,
 } from "./governedAssistantEntry";
 import {
   createAssistantMemory,
@@ -326,6 +327,34 @@ export function registerAssistantRoutes(app: Express) {
         userId,
         organisationId: membership.organisationId,
       });
+
+      const sharedRoute = routeSalesCommand(latestUserMessage);
+      const selectedCustomerGovernedIntent =
+        Boolean(contactId) &&
+        (sharedRoute.intent === "workflow" ||
+          /\b(?:schedule|create|set)\s+(?:a\s+)?callback\b/i.test(
+            latestUserMessage
+          ));
+      if (selectedCustomerGovernedIntent) {
+        const prepared = await prepareGovernedAssistantRequest({
+          userId,
+          organisationId: membership.organisationId,
+          contactId,
+          command: latestUserMessage,
+        });
+        return res.json({
+          content: prepared.summary,
+          ...(prepared.proposalCount > 0
+            ? {
+                suggestedAction: {
+                  label: "Review proposed work",
+                  path: "/reviews",
+                },
+                reviewRequired: true,
+              }
+            : {}),
+        });
+      }
 
       const preparedCommunication = await tryPrepareDirectAssistantAction({
         userId,
