@@ -587,10 +587,29 @@ export async function prepareConfiguredWorkflowBatch(input: {
         throw new Error(
           "TASK_CUSTOMER_CONTEXT_REQUIRED: the exact customer context could not be resolved."
         );
+      const currentWorkflow = configuration.workflows[input.workflowKey];
+      const finalConfiguredTitle = currentWorkflow?.taskSequence.length
+        ? currentWorkflow.taskAliases[
+            currentWorkflow.taskSequence[currentWorkflow.taskSequence.length - 1]
+          ]
+        : undefined;
+      const effectiveWorkflowKey =
+        input.workflowKey === "first_contact" &&
+        finalConfiguredTitle &&
+        task.title.trim().toLowerCase() === finalConfiguredTitle.trim().toLowerCase()
+          ? "final_close"
+          : input.workflowKey;
+      if (
+        effectiveWorkflowKey === "final_close" &&
+        !configuration.workflows.final_close
+      )
+        throw new Error(
+          "FINAL_CLOSE_CONFIGURATION_REQUIRED: the final configured contact attempt has no final-close workflow. Nothing was prepared."
+        );
       const plan = await buildConfiguredWorkflowPlan({
         organisationId: input.organisationId,
         request: {
-          workflowKey: input.workflowKey,
+          workflowKey: effectiveWorkflowKey,
           leadLabel: customer.contactName,
         },
         customer,
@@ -620,12 +639,14 @@ export async function prepareConfiguredWorkflowBatch(input: {
       const workflowRunId = await createWorkflowRun({
         userId: input.userId,
         organisationId: input.organisationId,
-        workflowKey: `assistant_configured_batch:${input.workflowKey}`,
+        workflowKey: `assistant_configured_batch:${effectiveWorkflowKey}`,
         leadLabel: customer.contactName,
         payload: {
           source: "configured_due_task_batch",
           instruction: input.command,
           sourceTaskExternalId: task.externalId,
+          sourceWorkflowKey: input.workflowKey,
+          effectiveWorkflowKey,
           contactExternalId: customer.contactExternalId,
           connectedSystemId: customer.connectedSystemId,
         },
