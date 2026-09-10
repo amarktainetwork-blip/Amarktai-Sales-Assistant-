@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   deterministicTodayAnswer,
   shouldUseDeterministicTodayAnswer,
+  shouldUseSelectedCustomerGovernedIntent,
 } from "./assistantRoutes";
 
 describe("zero-model Assistant CRM answers", () => {
@@ -21,6 +22,33 @@ describe("zero-model Assistant CRM answers", () => {
     expect(
       shouldUseDeterministicTodayAnswer({
         query: "What tasks are overdue?",
+        contactId: 42,
+      })
+    ).toBe(false);
+  });
+
+  it("uses the same governed engine for selected-customer workflow and callback commands", () => {
+    expect(
+      shouldUseSelectedCustomerGovernedIntent({
+        query: "Close this candidate as lost",
+        contactId: 42,
+      })
+    ).toBe(true);
+    expect(
+      shouldUseSelectedCustomerGovernedIntent({
+        query: "Mark this candidate as answered. Notes: They want a call Friday.",
+        contactId: 42,
+      })
+    ).toBe(true);
+    expect(
+      shouldUseSelectedCustomerGovernedIntent({
+        query: "Schedule a callback for Friday at 2pm",
+        contactId: 42,
+      })
+    ).toBe(true);
+    expect(
+      shouldUseSelectedCustomerGovernedIntent({
+        query: "What happened with this customer?",
         contactId: 42,
       })
     ).toBe(false);
