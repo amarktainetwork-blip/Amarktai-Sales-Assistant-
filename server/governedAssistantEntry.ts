@@ -7,7 +7,11 @@ import {
   type AssistantCrmSurfaceContext,
   type ResolvedAssistantCustomerContext,
 } from "./assistantCustomerContext";
-import { buildConfiguredWorkflowPlan } from "./configuredWorkflow";
+import {
+  buildConfiguredWorkflowPlan,
+  withinConfiguredOfficeHours,
+} from "./configuredWorkflow";
+import { getClientActionConfiguration } from "./clientActionConfiguration";
 import type {
   CallOutcome,
   ProposedAction,
@@ -167,6 +171,188 @@ export function explicitCallbackTime(command: string) {
   return Number.isNaN(date.valueOf()) ? undefined : date.toISOString();
 }
 
+type ZonedDateParts = {
+  year: number;
+  month: number;
+  day: number;
+  weekday: number;
+  hour: number;
+  minute: number;
+};
+
+function zonedDateParts(value: Date, timeZone: string): ZonedDateParts {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(value);
+  const number = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find(part => part.type === type)?.value || "0");
+  const weekdayName = parts.find(part => part.type === "weekday")?.value || "";
+  const weekday = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(
+    weekdayName
+  );
+  return {
+    year: number("year"),
+    month: number("month"),
+    day: number("day"),
+    weekday,
+    hour: number("hour"),
+    minute: number("minute"),
+  };
+}
+
+function localDateTimeToIso(input: {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  timeZone: string;
+}) {
+  const desired = Date.UTC(
+    input.year,
+    input.month - 1,
+    input.day,
+    input.hour,
+    input.minute
+  );
+  let guess = desired;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const observed = zonedDateParts(new Date(guess), input.timeZone);
+    const represented = Date.UTC(
+      observed.year,
+      observed.month - 1,
+      observed.day,
+      observed.hour,
+      observed.minute
+    );
+    const adjustment = desired - represented;
+    guess += adjustment;
+    if (!adjustment) break;
+  }
+  const result = new Date(guess);
+  const observed = zonedDateParts(result, input.timeZone);
+  if (
+    observed.year !== input.year ||
+    observed.month !== input.month ||
+    observed.day !== input.day ||
+    observed.hour !== input.hour ||
+    observed.minute !== input.minute
+  )
+    return undefined;
+  return result.toISOString();
+}
+
+const WEEKDAY_INDEX: Record<string, number> = {
+  sunday: 0,
+  monday: 1,
+  tuesday: 2,
+  wednesday: 3,
+  thursday: 4,
+  friday: 5,
+  saturday: 6,
+};
+
+/** Parses common salesperson callback language without guessing an ambiguous date or time. */
+export function naturalCallbackTime(input: {
+  command: string;
+  timeZone?: string;
+  now?: Date;
+}) {
+  const exact = explicitCallbackTime(input.command);
+  if (exact) return exact;
+  if (!input.timeZone) return undefined;
+  const now = input.now || new Date();
+  let current: ZonedDateParts;
+  try {
+    current = zonedDateParts(now, input.timeZone);
+  } catch {
+    return undefined;
+  }
+
+  const twelveHour = input.command.match(
+    /\b(?:at|for)\s+(\d{1,2})(?::([0-5]\d))?\s*(am|pm)\b/i
+  );
+  const twentyFourHour = input.command.match(
+    /\b(?:at|for)\s+([01]?\d|2[0-3]):([0-5]\d)\b/i
+  );
+  if (!twelveHour && !twentyFourHour) return undefined;
+  let hour = twentyFourHour ? Number(twentyFourHour[1]) : Number(twelveHour![1]);
+  const minute = twentyFourHour
+    ? Number(twentyFourHour[2])
+    : Number(twelveHour![2] || 0);
+  if (twelveHour) {
+    if (hour < 1 || hour > 12) return undefined;
+    const meridiem = twelveHour[3].toLowerCase();
+    hour = hour % 12 + (meridiem === "pm" ? 12 : 0);
+  }
+
+  const exactDate = input.command.match(/\b(20\d{2})-(\d{2})-(\d{2})\b/);
+  const weekdayMatch = input.command.match(
+    /\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/i
+  );
+  const relative = /\btomorrow\b/i.test(input.command)
+    ? 1
+    : /\btoday\b/i.test(input.command)
+      ? 0
+      : undefined;
+  let targetBase: Date;
+  let weekdayTarget: number | undefined;
+  if (exactDate) {
+    targetBase = new Date(
+      Date.UTC(Number(exactDate[1]), Number(exactDate[2]) - 1, Number(exactDate[3]))
+    );
+  } else if (relative !== undefined) {
+    targetBase = new Date(Date.UTC(current.year, current.month - 1, current.day));
+    targetBase.setUTCDate(targetBase.getUTCDate() + relative);
+  } else if (weekdayMatch) {
+    weekdayTarget = WEEKDAY_INDEX[weekdayMatch[1].toLowerCase()];
+    let delta = (weekdayTarget - current.weekday + 7) % 7;
+    targetBase = new Date(Date.UTC(current.year, current.month - 1, current.day));
+    targetBase.setUTCDate(targetBase.getUTCDate() + delta);
+  } else {
+    return undefined;
+  }
+
+  const build = (base: Date) =>
+    localDateTimeToIso({
+      year: base.getUTCFullYear(),
+      month: base.getUTCMonth() + 1,
+      day: base.getUTCDate(),
+      hour,
+      minute,
+      timeZone: input.timeZone!,
+    });
+  let result = build(targetBase);
+  if (!result) return undefined;
+  if (new Date(result) <= now && weekdayTarget !== undefined) {
+    targetBase.setUTCDate(targetBase.getUTCDate() + 7);
+    result = build(targetBase);
+  }
+  if (!result || new Date(result) <= now) return undefined;
+  return result;
+}
+
+function mentionsAgreedFollowUpTime(command: string) {
+  return (
+    /\b(?:callback|call\s+(?:them|her|him|me)?\s*back|next\s+call|follow[- ]?up)\b/i.test(
+      command
+    ) &&
+    /\b(?:today|tomorrow|sunday|monday|tuesday|wednesday|thursday|friday|saturday|20\d{2}-\d{2}-\d{2})\b/i.test(
+      command
+    ) &&
+    /\b(?:at|for)\s+(?:\d{1,2}(?::[0-5]\d)?\s*(?:am|pm)|(?:[01]?\d|2[0-3]):[0-5]\d)\b/i.test(
+      command
+    )
+  );
+}
+
 async function prepareCallback(input: GovernedAssistantEntryInput) {
   if (!actionableCallback(input.command)) return undefined;
   const customer = await resolveAssistantCustomerContext({
@@ -185,13 +371,30 @@ async function prepareCallback(input: GovernedAssistantEntryInput) {
       needsClarification: true,
       route,
     } satisfies LegacyResult;
-  const dueAt = explicitCallbackTime(input.command);
+  const configuration = await getClientActionConfiguration({
+    organisationId: input.organisationId,
+  });
+  const dueAt = naturalCallbackTime({
+    command: input.command,
+    timeZone: configuration.officeHours?.timezone,
+  });
   if (!dueAt)
     return {
       state: "needs_clarification" as const,
       proposalCount: 0,
       summary:
-        "Provide the callback time as an exact ISO date/time with timezone, for example 2026-09-03T10:00+02:00. I will not guess the timezone for an external task.",
+        "Tell me the callback day and time, for example 'Friday at 2pm' or 'tomorrow at 10am'. If your organisation has no timezone configured, use a timezone-qualified time such as 2026-09-11T14:00+02:00.",
+      needsClarification: true,
+      route,
+    } satisfies LegacyResult;
+  if (
+    configuration.officeHours &&
+    !withinConfiguredOfficeHours(configuration.officeHours, new Date(dueAt))
+  )
+    return {
+      state: "needs_clarification" as const,
+      proposalCount: 0,
+      summary: `That callback falls outside the configured office hours (${configuration.officeHours.start}–${configuration.officeHours.end}, ${configuration.officeHours.timezone}). Choose a permitted time.`,
       needsClarification: true,
       route,
     } satisfies LegacyResult;
@@ -296,6 +499,42 @@ async function prepareConfiguredWorkflow(input: GovernedAssistantEntryInput) {
       route,
     } satisfies LegacyResult;
 
+  if (
+    parsed.request.callOutcome === "answered" &&
+    mentionsAgreedFollowUpTime(input.command)
+  ) {
+    const configuration = await getClientActionConfiguration({
+      organisationId: input.organisationId,
+    });
+    const agreedFollowUpAt = naturalCallbackTime({
+      command: input.command,
+      timeZone: configuration.officeHours?.timezone,
+    });
+    if (!agreedFollowUpAt)
+      return {
+        state: "needs_clarification" as const,
+        proposalCount: 0,
+        summary:
+          "I can see that a follow-up time was discussed, but I cannot resolve it safely. Give the agreed day and time explicitly, for example 'Friday at 2pm'.",
+        needsClarification: true,
+        route,
+      } satisfies LegacyResult;
+    if (
+      configuration.officeHours &&
+      !withinConfiguredOfficeHours(
+        configuration.officeHours,
+        new Date(agreedFollowUpAt)
+      )
+    )
+      return {
+        state: "needs_clarification" as const,
+        proposalCount: 0,
+        summary: `The agreed follow-up time is outside the configured office hours (${configuration.officeHours.start}–${configuration.officeHours.end}, ${configuration.officeHours.timezone}). Confirm a permitted time before I prepare a task.`,
+        needsClarification: true,
+        route,
+      } satisfies LegacyResult;
+    parsed.request.agreedFollowUpAt = agreedFollowUpAt;
+  }
   let plan;
   try {
     plan = await buildConfiguredWorkflowPlan({
