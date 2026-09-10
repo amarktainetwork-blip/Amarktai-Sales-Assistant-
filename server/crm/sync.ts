@@ -17,6 +17,7 @@ import {
   saveConnectionSecret,
   toAdapterConnection,
 } from "../connectedSystems";
+import { browserOperationReadinessForSystem } from "../browserConnectors/learnedOperations";
 import { getCrmAdapter } from "./adapterRegistry";
 import type {
   AdapterConnection,
@@ -29,19 +30,8 @@ import type {
 import { normalizeCrmEmail, normalizeCrmPhone } from "./identity";
 import { runModelFreeOperation } from "../aiExecutionBoundary";
 import { upsertSalesWorkFromCrm } from "../salesWork";
-
-export function crmResourceSyncEligible(
-  connection: Pick<
-    AdapterConnection,
-    "allowedReadCapabilities" | "verifiedCapabilities"
-  >,
-  capability: string
-) {
-  return (
-    connection.allowedReadCapabilities.includes(capability) &&
-    connection.verifiedCapabilities.includes(capability)
-  );
-}
+import { crmResourceSyncEligible } from "./syncEligibility";
+export { crmResourceSyncEligible } from "./syncEligibility";
 
 async function cursorFor(systemId: number, resourceType: string) {
   const db = await getDb();
@@ -356,22 +346,65 @@ async function syncConnectedSystemDeterministically(input: {
     organisationId: input.organisationId,
     connection,
   });
+  const browserOperationStatuses =
+    connection.connectionMethod === "browser" ||
+    connection.connectionMethod === "sidecar"
+      ? new Map(
+          (
+            await browserOperationReadinessForSystem({
+              organisationId: input.organisationId,
+              connectedSystemId: system.id,
+            })
+          ).operations.map(operation => [operation.key, operation.status])
+        )
+      : null;
   const summary: Record<string, number> = {};
   const failures: Record<string, string> = {};
   const resources = [
-    ["companies", "companies.read", adapter.syncCompanies, upsertCompanies],
-    ["contacts", "contacts.read", adapter.syncContacts, upsertContacts],
+    [
+      "companies",
+      "companies.read",
+      "company.sync",
+      adapter.syncCompanies,
+      upsertCompanies,
+    ],
+    [
+      "contacts",
+      "contacts.read",
+      "contact.sync",
+      adapter.syncContacts,
+      upsertContacts,
+    ],
     [
       "opportunities",
       "opportunities.read",
+      "opportunity.sync",
       adapter.syncOpportunities,
       upsertOpportunities,
     ],
-    ["tasks", "tasks.read", adapter.syncTasks, upsertTasks],
-    ["activities", "activities.read", adapter.syncActivities, upsertActivities],
+    ["tasks", "tasks.read", "task.sync", adapter.syncTasks, upsertTasks],
+    [
+      "activities",
+      "activities.read",
+      "activity.sync",
+      adapter.syncActivities,
+      upsertActivities,
+    ],
   ] as const;
-  for (const [resourceType, capability, sync, persist] of resources) {
-    if (!crmResourceSyncEligible(connection, capability)) {
+  for (const [
+    resourceType,
+    capability,
+    syncOperationKey,
+    sync,
+    persist,
+  ] of resources) {
+    if (
+      !crmResourceSyncEligible(
+        connection,
+        capability,
+        browserOperationStatuses?.get(syncOperationKey)
+      )
+    ) {
       summary[resourceType] = 0;
       continue;
     }
