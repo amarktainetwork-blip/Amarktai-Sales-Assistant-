@@ -123,6 +123,23 @@ export function effectiveLatestBrowserOperation<
   return latest;
 }
 
+export function browserOperationExecutionAllowed(input: {
+  status: BrowserOperationStatus | undefined;
+  definitionMode: unknown;
+  allowTestReady?: boolean;
+}) {
+  if (input.status === "LIVE_PROVEN") return true;
+  if (!input.allowTestReady) return false;
+  if (input.status === "TEST_READY") return true;
+  // Commissioning intentionally re-tests failed reads after authentication,
+  // selector repair, or infrastructure recovery. This must never become a
+  // route for a BLOCKED/DEGRADED write to execute without fresh manager proof.
+  return (
+    input.definitionMode === "read" &&
+    (input.status === "BLOCKED" || input.status === "DEGRADED")
+  );
+}
+
 export async function latestBrowserOperation(input: {
   organisationId: number;
   connectedSystemId: number;
@@ -162,23 +179,30 @@ export async function requireRuntimeBrowserOperation(input: {
   operationKey: string;
   allowTestReady?: boolean;
 }) {
-  const allowed: BrowserOperationStatus[] = input.allowTestReady
-    ? ["LIVE_PROVEN", "TEST_READY"]
-    : ["LIVE_PROVEN"];
   const operation = await latestBrowserOperation({
-    ...input,
-    allowedStatuses: allowed,
+    organisationId: input.organisationId,
+    connectedSystemId: input.connectedSystemId,
+    operationKey: input.operationKey,
   });
-  if (!operation) {
-    const latest = await latestBrowserOperation(input);
+  const definition = operation
+    ? validateLearnedOperationDefinition(operation.definition)
+    : undefined;
+  if (
+    !operation ||
+    !browserOperationExecutionAllowed({
+      status: operation.status,
+      definitionMode: definition?.mode,
+      allowTestReady: input.allowTestReady,
+    })
+  ) {
     try {
       assertBrowserOperationRuntimeStatus(
-        latest?.status,
+        operation?.status,
         Boolean(input.allowTestReady)
       );
     } catch (error) {
       throw new Error(
-        `${error instanceof Error ? error.message : String(error)}: '${input.operationKey}'${latest ? ` is ${latest.status}` : " has no organisation-scoped learned definition"}; production execution requires LIVE_PROVEN.`
+        `${error instanceof Error ? error.message : String(error)}: '${input.operationKey}'${operation ? ` is ${operation.status}` : " has no organisation-scoped learned definition"}; production execution requires LIVE_PROVEN.`
       );
     }
     throw new Error(`OPERATION_NOT_LIVE_PROVEN: '${input.operationKey}'.`);
@@ -186,7 +210,7 @@ export async function requireRuntimeBrowserOperation(input: {
   assertBrowserOperationScope(operation, input);
   return {
     ...operation,
-    definition: validateLearnedOperationDefinition(operation.definition),
+    definition: definition!,
     postconditionAssertions:
       operation.postconditionAssertions as BrowserPostcondition[],
   };
