@@ -18,6 +18,17 @@ vi.mock("./organisation", () => ({
   requireOrganisationMembership: mocks.requireOrganisationMembership,
   canViewTeamData: () => false,
 }));
+vi.mock("./clientActionConfiguration", () => ({
+  getClientActionConfiguration: vi.fn(async () => ({
+    workflows: {},
+    templates: {},
+    approvedSenders: { sms: [], whatsapp: [] },
+    duplicateRules: [],
+    closureMapping: {},
+    requiredPostconditions: {},
+    currentRecordRules: [],
+  })),
+}));
 
 import { getTodayWork } from "./today";
 
