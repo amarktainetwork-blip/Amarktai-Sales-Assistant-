@@ -7,6 +7,8 @@ export type WorkflowRequest = {
   leadLabel: string;
   callOutcome?: CallOutcome;
   conversationNotes?: string;
+  /** Exact timezone-qualified follow-up agreed in the real conversation. */
+  agreedFollowUpAt?: string;
 };
 
 export type ProposedAction = {
