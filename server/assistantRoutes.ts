@@ -96,6 +96,18 @@ function listLines<T>(
   return items.slice(0, maximum).map(render).join("\n");
 }
 
+export function shouldUseSelectedCustomerGovernedIntent(input: {
+  query: string;
+  contactId?: number;
+}) {
+  if (!input.contactId) return false;
+  const route = routeSalesCommand(input.query);
+  return (
+    route.intent === "workflow" ||
+    /\b(?:schedule|create|set)\s+(?:a\s+)?callback\b/i.test(input.query)
+  );
+}
+
 export function shouldUseDeterministicTodayAnswer(input: {
   query: string;
   contactId?: number;
@@ -328,14 +340,12 @@ export function registerAssistantRoutes(app: Express) {
         organisationId: membership.organisationId,
       });
 
-      const sharedRoute = routeSalesCommand(latestUserMessage);
-      const selectedCustomerGovernedIntent =
-        Boolean(contactId) &&
-        (sharedRoute.intent === "workflow" ||
-          /\b(?:schedule|create|set)\s+(?:a\s+)?callback\b/i.test(
-            latestUserMessage
-          ));
-      if (selectedCustomerGovernedIntent) {
+      if (
+        shouldUseSelectedCustomerGovernedIntent({
+          query: latestUserMessage,
+          contactId,
+        })
+      ) {
         const prepared = await prepareGovernedAssistantRequest({
           userId,
           organisationId: membership.organisationId,
