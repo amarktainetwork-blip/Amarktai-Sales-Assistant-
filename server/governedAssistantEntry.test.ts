@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  effectiveConfiguredBatchWorkflowKey,
   explicitCallbackTime,
   naturalCallbackTime,
   workflowRequestFromCommand,
@@ -88,6 +89,37 @@ describe("canonical governed Assistant entry", () => {
         now,
       })
     ).toBeUndefined();
+  });
+
+  it("hands the final configured contact attempt into the final-close workflow", () => {
+    const configuration = {
+      workflows: {
+        first_contact: {
+          taskAliases: {
+            attempt_1: "Initial Contact",
+            attempt_2: "Second Contact",
+            attempt_3: "Third Contact",
+            attempt_4: "Final Contact",
+          },
+          taskSequence: ["attempt_1", "attempt_2", "attempt_3", "attempt_4"],
+        },
+        final_close: {},
+      },
+    } as never;
+    expect(
+      effectiveConfiguredBatchWorkflowKey({
+        requestedWorkflowKey: "first_contact",
+        taskTitle: "Final Contact",
+        configuration,
+      })
+    ).toBe("final_close");
+    expect(
+      effectiveConfiguredBatchWorkflowKey({
+        requestedWorkflowKey: "first_contact",
+        taskTitle: "Second Contact",
+        configuration,
+      })
+    ).toBe("first_contact");
   });
 
   it("accepts only timezone-qualified callback timestamps", () => {
