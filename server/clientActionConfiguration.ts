@@ -1,6 +1,10 @@
 import { eq } from "drizzle-orm";
 import { organisations } from "../drizzle/schema";
 import { getDb } from "./db";
+import {
+  canManageOrganisationForUser,
+  requireOrganisationMembership,
+} from "./organisation";
 
 export type CommunicationChannel = "email" | "sms" | "whatsapp";
 export type TemplateSourceKind =
@@ -86,6 +90,21 @@ export const EMPTY_CLIENT_ACTION_CONFIGURATION: ClientActionConfiguration = {
   requiredPostconditions: {},
   currentRecordRules: [],
 };
+
+export const SUPPORTED_CONFIGURED_WORKFLOW_ACTIONS = new Set([
+  "verify_contact_context",
+  "append_contact_note",
+  "schedule_callback",
+  "complete_active_task",
+  "update_contact_status",
+  "update_contact",
+  "update_current_opportunity",
+  "update_opportunity",
+  "send_email_template",
+  "send_sms_template",
+  "send_whatsapp_template",
+  "apply_sequence",
+]);
 
 function object(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -276,6 +295,245 @@ export function normalizeClientActionConfiguration(
           .slice(0, 40)
       : [],
   };
+}
+
+function normalizedKey(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function workflowToken(token: string) {
+  const [rawAction, ...rest] = token.split(":");
+  return {
+    actionType: rawAction.trim(),
+    purpose: rest.join(":").trim() || rawAction.trim(),
+  };
+}
+
+function validateOfficeHoursSource(
+  rawValue: unknown,
+  normalized: ClientActionConfiguration["officeHours"]
+) {
+  if (rawValue == null) return;
+  const raw = object(rawValue);
+  if (!Object.keys(raw).length)
+    throw new Error(
+      "CLIENT_WORKFLOW_OFFICE_HOURS_INVALID: officeHours must be omitted or fully configured."
+    );
+  if (!normalized || !normalized.days.length || !normalized.timezone)
+    throw new Error(
+      "CLIENT_WORKFLOW_OFFICE_HOURS_INVALID: configure timezone, contact days and HH:MM start/end times."
+    );
+  const [startHour, startMinute] = normalized.start.split(":").map(Number);
+  const [endHour, endMinute] = normalized.end.split(":").map(Number);
+  if (startHour * 60 + startMinute >= endHour * 60 + endMinute)
+    throw new Error(
+      "CLIENT_WORKFLOW_OFFICE_HOURS_INVALID: end time must be later than start time on the same day."
+    );
+  try {
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone: normalized.timezone,
+    }).format(new Date());
+  } catch {
+    throw new Error(
+      `CLIENT_WORKFLOW_OFFICE_HOURS_INVALID: '${normalized.timezone}' is not a valid timezone.`
+    );
+  }
+}
+
+function expectedTemplateChannel(actionType: string): CommunicationChannel | undefined {
+  if (actionType === "send_email_template") return "email";
+  if (actionType === "send_sms_template") return "sms";
+  if (actionType === "send_whatsapp_template") return "whatsapp";
+  return undefined;
+}
+
+function validateWorkflowTemplate(input: {
+  workflowKey: string;
+  actionType: string;
+  purpose: string;
+  workflow: WorkflowActionConfiguration;
+  configuration: ClientActionConfiguration;
+}) {
+  const channel = expectedTemplateChannel(input.actionType);
+  if (!channel) return;
+  const templateKey = input.workflow.templates[input.purpose];
+  if (!templateKey)
+    throw new Error(
+      `CLIENT_WORKFLOW_TEMPLATE_MAPPING_REQUIRED: '${input.workflowKey}' must map '${input.purpose}' to an approved ${channel.toUpperCase()} template.`
+    );
+  const template = input.configuration.templates[templateKey];
+  if (!template)
+    throw new Error(
+      `CLIENT_WORKFLOW_TEMPLATE_REQUIRED: configured template '${templateKey}' does not exist.`
+    );
+  if (template.channel !== channel)
+    throw new Error(
+      `CLIENT_WORKFLOW_TEMPLATE_CHANNEL_MISMATCH: '${templateKey}' is ${template.channel}, not ${channel}.`
+    );
+  if (template.source !== "organisation_approved" && !template.body)
+    throw new Error(
+      `CLIENT_WORKFLOW_TEMPLATE_CONTENT_REQUIRED: '${templateKey}' must contain the exact commissioned template body.`
+    );
+  if (
+    channel === "email" &&
+    template.source !== "organisation_approved" &&
+    !template.requiredSubject
+  )
+    throw new Error(
+      `CLIENT_WORKFLOW_TEMPLATE_SUBJECT_REQUIRED: '${templateKey}' must preserve its exact approved email subject.`
+    );
+  if (channel !== "email") {
+    const approved = input.configuration.approvedSenders[channel] || [];
+    if (template.senderIdentity && !approved.includes(template.senderIdentity))
+      throw new Error(
+        `CLIENT_WORKFLOW_SENDER_NOT_APPROVED: '${template.senderIdentity}' is not an approved ${channel.toUpperCase()} sender.`
+      );
+    if (!template.senderIdentity && approved.length !== 1)
+      throw new Error(
+        `CLIENT_WORKFLOW_SENDER_REQUIRED: '${templateKey}' needs one unambiguous approved ${channel.toUpperCase()} sender.`
+      );
+  }
+}
+
+export function validateClientActionConfigurationForCommissioning(
+  value: unknown
+) {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error(
+      "CLIENT_WORKFLOW_CONFIGURATION_INVALID: configuration must be a JSON object."
+    );
+  const source = value as Record<string, unknown>;
+  const configuration = normalizeClientActionConfiguration(source);
+  validateOfficeHoursSource(source.officeHours, configuration.officeHours);
+
+  for (const [workflowKey, workflow] of Object.entries(
+    configuration.workflows
+  )) {
+    const sequenceTitles = workflow.taskSequence.map(purpose => {
+      const title = workflow.taskAliases[purpose]?.trim();
+      if (!title)
+        throw new Error(
+          `CLIENT_WORKFLOW_TASK_ALIAS_REQUIRED: '${workflowKey}' task purpose '${purpose}' has no exact CRM task title.`
+        );
+      return title;
+    });
+    if (
+      new Set(sequenceTitles.map(normalizedKey)).size !== sequenceTitles.length
+    )
+      throw new Error(
+        `CLIENT_WORKFLOW_TASK_ALIAS_DUPLICATE: '${workflowKey}' contains duplicate task titles in its progression.`
+      );
+    const stop = new Set(workflow.stopStatuses.map(normalizedKey));
+    const overlap = workflow.eligibilityStatuses.find(status =>
+      stop.has(normalizedKey(status))
+    );
+    if (overlap)
+      throw new Error(
+        `CLIENT_WORKFLOW_STATUS_CONFLICT: '${overlap}' is both eligible and a stop status in '${workflowKey}'.`
+      );
+
+    if (workflow.taskSequence.length > 1) {
+      for (const purpose of workflow.taskSequence.slice(1)) {
+        if (!workflow.timingRules[purpose] && !workflow.timingRules.follow_up)
+          throw new Error(
+            `CLIENT_WORKFLOW_TIMING_REQUIRED: '${workflowKey}' has no timing rule for next task purpose '${purpose}'.`
+          );
+      }
+    }
+
+    for (const token of workflow.sequence) {
+      const { actionType, purpose } = workflowToken(token);
+      if (!SUPPORTED_CONFIGURED_WORKFLOW_ACTIONS.has(actionType))
+        throw new Error(
+          `CLIENT_WORKFLOW_ACTION_INVALID: '${workflowKey}' uses unsupported action '${actionType}'.`
+        );
+      validateWorkflowTemplate({
+        workflowKey,
+        actionType,
+        purpose,
+        workflow,
+        configuration,
+      });
+      if (
+        actionType === "complete_active_task" &&
+        !workflow.taskAliases[purpose]
+      )
+        throw new Error(
+          `CLIENT_WORKFLOW_TASK_ALIAS_REQUIRED: '${workflowKey}' must map '${purpose}' to the exact current task title before it can complete a task.`
+        );
+      if (
+        actionType === "schedule_callback" &&
+        !workflow.taskSequence.length &&
+        !workflow.taskAliases[purpose]
+      )
+        throw new Error(
+          `CLIENT_WORKFLOW_TASK_ALIAS_REQUIRED: '${workflowKey}' must map callback purpose '${purpose}' to an exact CRM task title.`
+        );
+      if (
+        ["update_current_opportunity", "update_opportunity"].includes(
+          actionType
+        ) &&
+        !workflow.opportunityMappings[purpose]
+      )
+        throw new Error(
+          `CLIENT_WORKFLOW_OPPORTUNITY_MAPPING_REQUIRED: '${workflowKey}' must map '${purpose}' to an exact CRM opportunity stage.`
+        );
+      if (
+        actionType === "update_contact_status" &&
+        !workflow.statusMappings[purpose] &&
+        !configuration.closureMapping[purpose]
+      )
+        throw new Error(
+          `CLIENT_WORKFLOW_STATUS_MAPPING_REQUIRED: '${workflowKey}' must map '${purpose}' to an exact CRM contact status.`
+        );
+    }
+  }
+
+  return {
+    valid: true as const,
+    configuration,
+    workflowKeys: Object.keys(configuration.workflows),
+    templateKeys: Object.keys(configuration.templates),
+  };
+}
+
+export async function saveClientActionConfiguration(input: {
+  userId: number;
+  organisationId: number;
+  configuration: unknown;
+}) {
+  const membership = await requireOrganisationMembership(
+    input.userId,
+    input.organisationId
+  );
+  if (!(await canManageOrganisationForUser(input.userId, membership.role)))
+    throw new Error(
+      "Only organisation owners and managers can change client workflow rules."
+    );
+  const validated = validateClientActionConfigurationForCommissioning(
+    input.configuration
+  );
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const row = (
+    await db
+      .select({ settings: organisations.settings })
+      .from(organisations)
+      .where(eq(organisations.id, input.organisationId))
+      .limit(1)
+  )[0];
+  if (!row) throw new Error("Organisation was not found.");
+  const settings = object(row.settings);
+  await db
+    .update(organisations)
+    .set({
+      settings: {
+        ...settings,
+        salesAssistantConfig: validated.configuration,
+      },
+    })
+    .where(eq(organisations.id, input.organisationId));
+  return validated;
 }
 
 export async function getClientActionConfiguration(input: {
