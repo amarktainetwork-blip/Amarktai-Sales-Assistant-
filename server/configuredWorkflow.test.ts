@@ -240,6 +240,144 @@ describe("configured workflow materialization", () => {
     ).rejects.toThrow("WORKFLOW_CURRENT_TASK_MISMATCH");
   });
 
+  it("preserves factual outcome notes when tenant action order replaces the generic workflow plan", async () => {
+    const base = firstContactConfiguration();
+    mocks.getClientActionConfiguration.mockResolvedValue({
+      ...base,
+      workflows: {
+        "post_consultation_follow_up:no_answer": {
+          taskAliases: {},
+          taskSequence: [],
+          sequence: [
+            "verify_contact_context:current_customer",
+            "append_contact_note:follow_up_outcome",
+          ],
+          eligibilityStatuses: [],
+          stopStatuses: [],
+          opportunityMappings: {},
+          statusMappings: {},
+          templates: {},
+          timingRules: {},
+          duplicateRules: [],
+          requiredPostconditions: [],
+        },
+      },
+    });
+
+    const plan = await buildConfiguredWorkflowPlan({
+      organisationId: 1,
+      request: {
+        workflowKey: "post_consultation_follow_up",
+        leadLabel: "Test Customer",
+        callOutcome: "no_answer",
+      },
+      customer: customer(),
+    });
+
+    expect(
+      plan.actions.find(action => action.actionType === "append_contact_note")
+        ?.payload.content
+    ).toBe("Follow-up call attempted: no answer.");
+  });
+
+  it("materializes stage-aware closure fields and the exact configured CRM sequence", async () => {
+    const base = firstContactConfiguration();
+    mocks.getClientActionConfiguration.mockResolvedValue({
+      ...base,
+      workflows: {
+        final_close: {
+          taskAliases: { final_follow_up: "Final attempt" },
+          taskSequence: [],
+          sequence: [
+            "verify_contact_context:current_customer",
+            "complete_active_task:final_follow_up",
+            "update_current_opportunity:close_or_lost",
+            "update_contact_status:closed_or_lost",
+            "apply_sequence:closed_lost",
+          ],
+          eligibilityStatuses: [],
+          stopStatuses: [],
+          opportunityMappings: {},
+          opportunityStageTransitions: {
+            close_or_lost: {
+              "Attempting Contact": "Lost - No Contact",
+              "Considering": "Not a Fit",
+            },
+          },
+          opportunityFieldMappings: {
+            close_or_lost: { lostReason: "No successful contact", closed: true },
+          },
+          statusMappings: { closed_or_lost: "Lost" },
+          contactFieldMappings: {
+            closed_or_lost: { closureReason: "No successful contact" },
+          },
+          sequenceMappings: { closed_lost: "Tenant closed-lost sequence" },
+          templates: {},
+          timingRules: {},
+          duplicateRules: ["external_read_before_write"],
+          requiredPostconditions: ["crm_readback"],
+        },
+      },
+    });
+
+    const plan = await buildConfiguredWorkflowPlan({
+      organisationId: 1,
+      request: { workflowKey: "final_close", leadLabel: "Test Customer" },
+      customer: customer({
+        taskTitle: "Final attempt",
+        stage: "Attempting Contact",
+      }),
+    });
+
+    expect(
+      plan.actions.find(action => action.actionType === "update_current_opportunity")
+        ?.payload.patch
+    ).toMatchObject({
+      stage: "Lost - No Contact",
+      lostReason: "No successful contact",
+      closed: true,
+    });
+    expect(
+      plan.actions.find(action => action.actionType === "update_contact_status")
+        ?.payload.fields
+    ).toMatchObject({ status: "Lost", closureReason: "No successful contact" });
+    expect(
+      plan.actions.find(action => action.actionType === "apply_sequence")?.payload
+        .sequence
+    ).toBe("Tenant closed-lost sequence");
+  });
+
+  it("fails closed when the current opportunity stage has no configured closure transition", async () => {
+    const base = firstContactConfiguration();
+    mocks.getClientActionConfiguration.mockResolvedValue({
+      ...base,
+      workflows: {
+        final_close: {
+          taskAliases: { final_follow_up: "Final attempt" },
+          taskSequence: [],
+          sequence: ["update_current_opportunity:close_or_lost"],
+          opportunityMappings: {},
+          opportunityStageTransitions: {
+            close_or_lost: { "New Lead": "Lost - No Contact" },
+          },
+          statusMappings: {},
+          templates: {},
+          timingRules: {},
+          duplicateRules: [],
+          requiredPostconditions: [],
+        },
+      },
+    });
+
+    await expect(
+      buildConfiguredWorkflowPlan({
+        organisationId: 1,
+        request: { workflowKey: "final_close", leadLabel: "Test Customer" },
+        customer: customer({ taskTitle: "Final attempt", stage: "Unexpected Stage" }),
+      })
+    ).rejects.toThrow("WORKFLOW_OPPORTUNITY_STAGE_UNMAPPED");
+  });
+
   it("never creates a fifth attempt after the configured final attempt", async () => {
     mocks.getClientActionConfiguration.mockResolvedValue(firstContactConfiguration());
 
