@@ -781,9 +781,18 @@ export function registerLiveCrmViewerSocket(server: Server) {
                   message.action
                 );
               } else if (message.type === "customerFinishedSigningIn") {
-                await managedCrmBrowserSessionManager.customerFinishedSigningIn(
-                  session.managed
-                );
+                const snapshot =
+                  await managedCrmBrowserSessionManager.customerFinishedSigningIn(
+                    session.managed
+                  );
+                // A verified sign-in is the end of the human authentication
+                // step. Release that exact viewer lease so commissioning can
+                // safely acquire its own operation lease. If authentication is
+                // incomplete, keep HUMAN_CONTROL and let the customer continue.
+                if (snapshot.authenticationState === "AUTHENTICATED") {
+                  releaseBrowserControl(controlScope(session));
+                  session.leaseToken = undefined;
+                }
               } else if (message.type === "ping") {
                 socketPayload(socket, {
                   type: "pong",
