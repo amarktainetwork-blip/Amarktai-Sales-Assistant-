@@ -4,6 +4,7 @@ import {
   checkApprovedCrmExecutionPreconditions,
   opportunityIsHistorical,
   taskIsHistorical,
+  withinConfiguredOfficeHours,
 } from "./actionExecutionPreconditions";
 import type { AdapterConnection, CrmAdapter } from "./types";
 
@@ -58,6 +59,7 @@ function baseAdapter(overrides: Partial<CrmAdapter> = {}) {
       raw: { status: "Active" },
     })),
     syncTasks: vi.fn(async () => ({ records: [] })),
+    syncOpportunities: vi.fn(async () => ({ records: [] })),
     getOpportunity: vi.fn(async ({ externalId }: { externalId: string }) => ({
       externalId,
       contactExternalId: "contact-1",
@@ -155,6 +157,94 @@ describe("approved CRM execution preconditions", () => {
         },
       })
     ).rejects.toThrow("HISTORICAL_OPPORTUNITY_PROTECTED");
+  });
+
+  it("re-reads tasks opportunities and activity before a configured workflow mutation", async () => {
+    const adapter = baseAdapter({
+      syncTasks: vi.fn(async () => ({ records: [] })),
+      syncOpportunities: vi.fn(async () => ({
+        records: [
+          {
+            externalId: "opp-1",
+            contactExternalId: "contact-1",
+            name: "Current opportunity",
+            stage: "Open",
+            raw: { status: "open" },
+          },
+        ],
+      })),
+      syncActivities: vi.fn(async () => ({ records: [] })),
+    });
+    await checkApprovedCrmExecutionPreconditions({
+      actionType: "schedule_callback",
+      adapter,
+      connection,
+      secret: { browserSession: {} },
+      proposal: proposal("schedule_callback", {
+        contactExternalId: "contact-1",
+        taskTitle: "Next follow-up",
+        dueAt: "2026-09-11T09:00:00.000Z",
+        workflowConfiguration: { workflowKey: "configured_workflow" },
+      }),
+      payload: {
+        contactExternalId: "contact-1",
+        taskTitle: "Next follow-up",
+        dueAt: "2026-09-11T09:00:00.000Z",
+        workflowConfiguration: { workflowKey: "configured_workflow" },
+      },
+    });
+    expect(adapter.syncTasks).toHaveBeenCalled();
+    expect(adapter.syncOpportunities).toHaveBeenCalled();
+    expect(adapter.syncActivities).toHaveBeenCalled();
+  });
+
+  it("blocks task completion if the reviewed current task title changed", async () => {
+    const adapter = baseAdapter({
+      syncTasks: vi.fn(async () => ({
+        records: [
+          {
+            externalId: "task-1",
+            contactExternalId: "contact-1",
+            title: "Another Task",
+            status: "open",
+            raw: {},
+          },
+        ],
+      })),
+      syncOpportunities: vi.fn(async () => ({ records: [] })),
+      syncActivities: vi.fn(async () => ({ records: [] })),
+    });
+    await expect(
+      checkApprovedCrmExecutionPreconditions({
+        actionType: "complete_active_task",
+        adapter,
+        connection,
+        secret: { browserSession: {} },
+        proposal: proposal("complete_active_task", {
+          contactExternalId: "contact-1",
+          taskExternalId: "task-1",
+          taskTitle: "Expected Current Task",
+          workflowConfiguration: { workflowKey: "configured_workflow" },
+        }),
+        payload: {
+          contactExternalId: "contact-1",
+          taskExternalId: "task-1",
+          taskTitle: "Expected Current Task",
+          workflowConfiguration: { workflowKey: "configured_workflow" },
+        },
+      })
+    ).rejects.toThrow("EXECUTION_TASK_TITLE_MISMATCH");
+  });
+
+  it("fails closed for invalid configured office hours", () => {
+    expect(() =>
+      withinConfiguredOfficeHours({
+        timezone: "Europe/London",
+        days: [],
+        start: "09:00",
+        end: "18:00",
+      })
+    ).toThrow("WORKFLOW_OFFICE_HOURS_INVALID");
   });
 
   it("fails closed if the current exact customer can no longer be read", async () => {
