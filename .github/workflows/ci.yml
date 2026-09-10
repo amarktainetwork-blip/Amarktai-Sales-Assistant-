@@ -25,6 +25,10 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Unit tests
         run: pnpm test
+      - name: CRM browser restart and identity isolation
+        env:
+          CRM_TEST_CHROMIUM: google-chrome
+        run: node scripts/browser-session-lifecycle.mjs
       - name: TypeScript
         run: pnpm check
       - name: Enforce MariaDB identifier limit

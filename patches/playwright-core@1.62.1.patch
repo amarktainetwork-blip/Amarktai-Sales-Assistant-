@@ -1,0 +1,28 @@
+diff --git a/lib/coreBundle.js b/lib/coreBundle.js
+index d9041dd0f009072511a7d808dec83121ff29e127..47b46566c0288ebb67cab68b52f5e6abcec53917 100644
+--- a/lib/coreBundle.js
++++ b/lib/coreBundle.js
+@@ -38110,6 +38110,14 @@ var init_crBrowser = __esm({
+           return browser;
+         }
+         browser._defaultContext = new CRBrowserContext(browser, void 0, options.persistent);
++        if (process.env.AMARKTAI_PERSIST_CRM_CONTEXTS === "1") {
++          const { browserContextIds } = await session2.send("Target.getBrowserContexts");
++          for (const browserContextId of browserContextIds) {
++            const context2 = new CRBrowserContext(browser, browserContextId, options.persistent);
++            browser._contexts.set(browserContextId, context2);
++            await context2.initialize();
++          }
++        }
+         await Promise.all([
+           session2.send("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: true, flatten: true }).then(async () => {
+             await session2.send("Target.getTargetInfo");
+@@ -38129,7 +38137,7 @@ var init_crBrowser = __esm({
+             proxyBypassList = proxy.bypass;
+         }
+         const { browserContextId } = await this._session.send("Target.createBrowserContext", {
+-          disposeOnDetach: true,
++          disposeOnDetach: process.env.AMARKTAI_PERSIST_CRM_CONTEXTS !== "1",
+           proxyServer: proxy ? proxy.server : void 0,
+           proxyBypassList
+         });

@@ -1038,7 +1038,17 @@ export async function installKnownGeniePack(
         contactNavigation &&
         existing?.prerequisites?.knownGeniePack === true &&
         existing.prerequisites.contactNavigationVersion !== 1;
-      if (existing && existing.status !== "NOT_LEARNED" && !navigationUpgrade) {
+      const providerPackUpgrade =
+        existing?.prerequisites?.knownGeniePack === true &&
+        packed.prerequisites?.providerPack === "genie" &&
+        existing.prerequisites.providerPackVersion !==
+          packed.prerequisites.providerPackVersion;
+      if (
+        existing &&
+        existing.status !== "NOT_LEARNED" &&
+        !navigationUpgrade &&
+        !providerPackUpgrade
+      ) {
         installed.push(operationKey);
         continue;
       }

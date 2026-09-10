@@ -13,6 +13,9 @@ overrides:
   uuid: 11.1.1
 
 patchedDependencies:
+  playwright-core@1.62.1:
+    hash: 03cf688a781606c2d935be9b6f20d83cfd2eed8c7a41ef345f054b8996ba70dc
+    path: patches/playwright-core@1.62.1.patch
   wouter@3.7.1:
     hash: 4e16e6ff3fde7d6c1024d3e0c8605dc9eb6afb690d0d49958c2f449091813072
     path: patches/wouter@3.7.1.patch
@@ -182,7 +185,7 @@ importers:
         version: 9.1.1
       playwright-core:
         specifier: ^1.62.1
-        version: 1.62.1
+        version: 1.62.1(patch_hash=03cf688a781606c2d935be9b6f20d83cfd2eed8c7a41ef345f054b8996ba70dc)
       react:
         specifier: ^19.2.1
         version: 19.2.1
@@ -7693,7 +7696,7 @@ snapshots:
       exsolve: 1.0.7
       pathe: 2.0.3
 
-  playwright-core@1.62.1: {}
+  playwright-core@1.62.1(patch_hash=03cf688a781606c2d935be9b6f20d83cfd2eed8c7a41ef345f054b8996ba70dc): {}
 
   pnpm@10.18.1: {}
 
