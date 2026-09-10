@@ -494,6 +494,24 @@ function workflowTaskTitles(
   });
 }
 
+export function effectiveConfiguredBatchWorkflowKey(input: {
+  requestedWorkflowKey: WorkflowRequest["workflowKey"];
+  taskTitle: string;
+  configuration: Awaited<ReturnType<typeof getClientActionConfiguration>>;
+}) {
+  const currentWorkflow = input.configuration.workflows[input.requestedWorkflowKey];
+  const finalConfiguredTitle = currentWorkflow?.taskSequence.length
+    ? currentWorkflow.taskAliases[
+        currentWorkflow.taskSequence[currentWorkflow.taskSequence.length - 1]
+      ]
+    : undefined;
+  return input.requestedWorkflowKey === "first_contact" &&
+    finalConfiguredTitle &&
+    input.taskTitle.trim().toLowerCase() === finalConfiguredTitle.trim().toLowerCase()
+    ? ("final_close" as const)
+    : input.requestedWorkflowKey;
+}
+
 /**
  * Prepares one fully governed configured workflow per exact salesperson-owned
  * due task. It never turns a complex client workflow into one bulk mutation.
@@ -587,18 +605,11 @@ export async function prepareConfiguredWorkflowBatch(input: {
         throw new Error(
           "TASK_CUSTOMER_CONTEXT_REQUIRED: the exact customer context could not be resolved."
         );
-      const currentWorkflow = configuration.workflows[input.workflowKey];
-      const finalConfiguredTitle = currentWorkflow?.taskSequence.length
-        ? currentWorkflow.taskAliases[
-            currentWorkflow.taskSequence[currentWorkflow.taskSequence.length - 1]
-          ]
-        : undefined;
-      const effectiveWorkflowKey =
-        input.workflowKey === "first_contact" &&
-        finalConfiguredTitle &&
-        task.title.trim().toLowerCase() === finalConfiguredTitle.trim().toLowerCase()
-          ? "final_close"
-          : input.workflowKey;
+      const effectiveWorkflowKey = effectiveConfiguredBatchWorkflowKey({
+        requestedWorkflowKey: input.workflowKey,
+        taskTitle: task.title,
+        configuration,
+      });
       if (
         effectiveWorkflowKey === "final_close" &&
         !configuration.workflows.final_close
