@@ -165,6 +165,8 @@ function emit(
 }
 
 export async function connectManagedCrmBrowser(endpoint: string) {
+  // The pinned Playwright patch retains isolated CRM targets across app/worker exit.
+  process.env.AMARKTAI_PERSIST_CRM_CONTEXTS = "1";
   let pending = browserPool.get(endpoint);
   if (!pending) {
     pending = chromium
