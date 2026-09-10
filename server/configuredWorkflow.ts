@@ -554,6 +554,12 @@ async function materializeTemplateAction(input: {
     channel,
     to,
     template,
+    variables: {
+      firstName: input.customer.firstName,
+      lastName: input.customer.lastName,
+      fullName: input.customer.contactName,
+      companyName: input.customer.companyName,
+    },
   });
   const senderIdentity = resolveConfiguredSender({
     configuration: input.configuration,
