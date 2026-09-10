@@ -16,19 +16,16 @@ const SAFE_AUTOMATIC_RESTART_STATES = new Set<CommissioningState>([
   "DISCOVER_NAVIGATION",
   "DISCOVER_CAPABILITIES",
   "TEST_SAFE_READS",
-  // READY + needs_attention is a terminal failed-core-readiness result, not a
-  // successfully commissioned CRM. A fresh authenticated browser session may
-  // safely restart discovery/read proof from the beginning. Any discovered
-  // writes will still stop at AWAIT_SAFE_TEST_RECORD and require explicit
-  // manager authorisation before controlled execution.
-  "READY",
 ]);
 
 /**
  * Decide what an authenticated browser session may do to its durable
- * commissioning job. The important production boundary is that simply
- * reopening an authenticated CRM may recover discovery/read proof, but it
- * must never resume a controlled-write or readback phase automatically.
+ * commissioning job. Reopening an authenticated CRM may recover unfinished
+ * discovery/read proof, but a terminal READY result is never implicitly
+ * restarted. That prevents routine viewer/session checks from competing with
+ * normal background synchronization after useful operations are already live.
+ * A manager can still explicitly restart commissioning when further capability
+ * repair or controlled verification is intended.
  */
 export function commissioningRecoveryAction(
   job:
@@ -51,10 +48,10 @@ export function commissioningRecoveryAction(
 
 /**
  * Ensure an authenticated CRM has a commissioning lifecycle without turning
- * authentication into permission to write. Successful READY and
- * waiting-for-approval jobs are preserved exactly as they are. A
- * needs-attention job may restart automatically while it is in a read-only
- * state or when a previous terminal READY result failed core readiness. The
+ * authentication into permission to write. Successful READY,
+ * terminal READY+needs_attention, and waiting-for-approval jobs are preserved
+ * exactly as they are. A needs-attention job may restart automatically only
+ * while it remains in a read-only, non-terminal commissioning state. The
  * restarted lifecycle still stops before controlled writes until a manager
  * explicitly authorises a safe test record.
  */
