@@ -214,6 +214,7 @@ function sequenceAction(
     );
   const payload: Record<string, unknown> = {
     reviewRequired: true,
+    workflowToken: token,
     workflowPurpose: purpose,
     duplicateProtection:
       "Re-read the exact external record and skip when the configured postcondition is already satisfied.",
@@ -678,7 +679,40 @@ export async function buildConfiguredWorkflowPlan(input: {
     actions: configuredSource,
   });
   const actions: ProposedAction[] = [];
+  const skippedOptionalActions: string[] = [];
   for (const raw of source) {
+    const token =
+      typeof raw.payload.workflowToken === "string"
+        ? raw.payload.workflowToken
+        : "";
+    const optional = Boolean(
+      token && workflow.optionalActions?.includes(token)
+    );
+    if (optional && raw.actionType === "complete_active_task") {
+      if (!input.customer.operationalRecordState.openTasks.length) {
+        skippedOptionalActions.push(token);
+        continue;
+      }
+      if (input.customer.operationalRecordState.openTasks.length > 1)
+        throw new Error(
+          "WORKFLOW_CURRENT_TASK_AMBIGUOUS: more than one open task exists, so an optional current-task step cannot be guessed."
+        );
+    }
+    if (
+      optional &&
+      ["update_current_opportunity", "update_opportunity"].includes(
+        raw.actionType
+      )
+    ) {
+      if (!input.customer.operationalRecordState.openOpportunities.length) {
+        skippedOptionalActions.push(token);
+        continue;
+      }
+      if (input.customer.operationalRecordState.openOpportunities.length > 1)
+        throw new Error(
+          "WORKFLOW_CURRENT_OPPORTUNITY_AMBIGUOUS: more than one open opportunity exists, so an optional current-opportunity step cannot be guessed."
+        );
+    }
     const metadata = configuredActionMetadata({
       action: raw,
       configuration,
@@ -705,12 +739,13 @@ export async function buildConfiguredWorkflowPlan(input: {
   }
   return {
     verificationSummary:
-      `${base.verificationSummary} Client sequence, templates, task aliases, task progression, mappings, sender identities, timing, duplicate rules and postconditions were resolved from organisation configuration '${variantKey}'.`,
+      `${base.verificationSummary} Client sequence, templates, task aliases, task progression, mappings, sender identities, timing, duplicate rules and postconditions were resolved from organisation configuration '${variantKey}'.${skippedOptionalActions.length ? ` Optional steps skipped because no exact current target existed: ${skippedOptionalActions.join(", ")}.` : ""}`,
     actions,
     configuration: {
       workflowKey: variantKey,
       sequence: workflow.sequence,
       taskSequence: workflow.taskSequence,
+      optionalActions: workflow.optionalActions || [],
       eligibilityStatuses: workflow.eligibilityStatuses,
       stopStatuses: workflow.stopStatuses,
     },
