@@ -7,6 +7,8 @@ import {
   controlledWritePayload,
   coreBrowserCommissioningReady,
   inferBrowserOperationCandidates,
+  hasStructuredBrowserReadResult,
+  shouldInstallCanonicalGenieOperation,
   isTransientBrowserControlError,
   nextCommissioningState,
   operationEligibleForCommissioningTest,
@@ -158,6 +160,86 @@ describe("automatic CRM commissioning product contract", () => {
     expect(crmDiscoveryFingerprint(snapshot, "genie-pack-v2")).not.toBe(
       crmDiscoveryFingerprint(snapshot, "genie-pack-v1")
     );
+  });
+
+  it("rejects semantic read replacements that cannot emit structured rows", () => {
+    expect(
+      hasStructuredBrowserReadResult({
+        mode: "read",
+        execute: {
+          steps: [{ action: "read_text", selector: "body", key: "body" }],
+        },
+        resultKey: "body",
+      })
+    ).toBe(false);
+    expect(
+      hasStructuredBrowserReadResult({
+        mode: "read",
+        execute: {
+          steps: [
+            {
+              action: "read_rows",
+              selector: "[data-record]",
+              key: "records",
+              fields: { externalId: { attribute: "data-id" } },
+            },
+          ],
+        },
+        resultKey: "records",
+      })
+    ).toBe(true);
+    expect(
+      hasStructuredBrowserReadResult({
+        mode: "read",
+        execute: {
+          steps: [
+            {
+              action: "read_rows",
+              selector: "[data-record]",
+              key: "rows",
+              fields: { externalId: { attribute: "data-id" } },
+            },
+          ],
+        },
+        resultKey: "records",
+      })
+    ).toBe(false);
+  });
+
+  it("lets the canonical Genie pack recover a failed automatic semantic replacement without overwriting tenant work", () => {
+    expect(
+      shouldInstallCanonicalGenieOperation({
+        existing: {
+          status: "BLOCKED",
+          prerequisites: { automaticSemanticDiscovery: true },
+        },
+        packedPrerequisites: { providerPack: "genie" },
+        navigationUpgrade: false,
+        providerPackUpgrade: false,
+      })
+    ).toBe(true);
+    expect(
+      shouldInstallCanonicalGenieOperation({
+        existing: {
+          status: "BLOCKED",
+          prerequisites: { guidedReview: true },
+        },
+        packedPrerequisites: { providerPack: "genie" },
+        navigationUpgrade: false,
+        providerPackUpgrade: false,
+      })
+    ).toBe(false);
+    expect(
+      shouldInstallCanonicalGenieOperation({
+        existing: {
+          status: "LIVE_PROVEN",
+          prerequisites: { automaticSemanticDiscovery: true },
+        },
+        packedPrerequisites: { providerPack: "genie" },
+        navigationUpgrade: false,
+        providerPackUpgrade: false,
+      })
+    ).toBe(false);
   });
 
   it("waits for one authorised test record before controlled writes", () => {

@@ -206,6 +206,47 @@ function safeDiscoveryLabel(value: unknown) {
   return SAFE_DISCOVERY_LABEL.test(label) ? label : "";
 }
 
+export function hasStructuredBrowserReadResult(definition: {
+  mode: BrowserOperationMode;
+  execute: { steps: Array<{ action: string; key?: string; fields?: unknown }> };
+  resultKey?: string;
+}) {
+  if (definition.mode !== "read") return true;
+  const resultKey = safeText(definition.resultKey, 120);
+  if (!resultKey) return false;
+  return definition.execute.steps.some(step => {
+    if (!["read_rows", "paginate_rows"].includes(step.action)) return false;
+    if ((step.key || "rows") !== resultKey) return false;
+    return Boolean(
+      step.fields &&
+        typeof step.fields === "object" &&
+        !Array.isArray(step.fields) &&
+        Object.keys(step.fields as Record<string, unknown>).length
+    );
+  });
+}
+
+export function shouldInstallCanonicalGenieOperation(input: {
+  existing?: { status: string; prerequisites?: unknown };
+  packedPrerequisites?: Record<string, unknown>;
+  navigationUpgrade: boolean;
+  providerPackUpgrade: boolean;
+}) {
+  if (!input.existing || input.existing.status === "NOT_LEARNED") return true;
+  if (input.navigationUpgrade || input.providerPackUpgrade) return true;
+  const prerequisites =
+    input.existing.prerequisites &&
+    typeof input.existing.prerequisites === "object" &&
+    !Array.isArray(input.existing.prerequisites)
+      ? (input.existing.prerequisites as Record<string, unknown>)
+      : {};
+  return (
+    input.packedPrerequisites?.providerPack === "genie" &&
+    prerequisites.automaticSemanticDiscovery === true &&
+    ["BLOCKED", "DEGRADED"].includes(input.existing.status)
+  );
+}
+
 export function connectorClass(provider: string) {
   if (["hubspot", "salesforce", "pipedrive", "zoho"].includes(provider))
     return "native_api" as const;
@@ -1044,10 +1085,12 @@ export async function installKnownGeniePack(
         existing.prerequisites.providerPackVersion !==
           packed.prerequisites.providerPackVersion;
       if (
-        existing &&
-        existing.status !== "NOT_LEARNED" &&
-        !navigationUpgrade &&
-        !providerPackUpgrade
+        !shouldInstallCanonicalGenieOperation({
+          existing,
+          packedPrerequisites: packed.prerequisites,
+          navigationUpgrade,
+          providerPackUpgrade,
+        })
       ) {
         installed.push(operationKey);
         continue;
@@ -1191,6 +1234,11 @@ async function discoverSemanticOperationDefinitions(input: {
       const definition = validateLearnedOperationDefinition(
         candidate.definition
       );
+      if (
+        definition.mode === "read" &&
+        !hasStructuredBrowserReadResult(definition)
+      )
+        continue;
       const postconditionAssertions = Array.isArray(
         candidate.postconditionAssertions
       )
