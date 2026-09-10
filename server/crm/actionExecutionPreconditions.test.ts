@@ -198,6 +198,37 @@ describe("approved CRM execution preconditions", () => {
     expect(adapter.syncActivities).toHaveBeenCalled();
   });
 
+  it("re-reads full CRM context for a direct reviewed communication when requested", async () => {
+    const adapter = baseAdapter({
+      syncTasks: vi.fn(async () => ({ records: [] })),
+      syncOpportunities: vi.fn(async () => ({ records: [] })),
+      syncActivities: vi.fn(async () => ({ records: [] })),
+    });
+    await checkApprovedCrmExecutionPreconditions({
+      actionType: "send_sms_template",
+      adapter,
+      connection,
+      secret: { browserSession: {} },
+      proposal: proposal("send_sms_template", {
+        contactExternalId: "contact-1",
+        body: "Approved message",
+        senderIdentity: "+441234567890",
+        requireFreshCustomerContext: true,
+        workflowConfiguration: {},
+      }),
+      payload: {
+        contactExternalId: "contact-1",
+        body: "Approved message",
+        senderIdentity: "+441234567890",
+        requireFreshCustomerContext: true,
+        workflowConfiguration: {},
+      },
+    });
+    expect(adapter.syncTasks).toHaveBeenCalled();
+    expect(adapter.syncOpportunities).toHaveBeenCalled();
+    expect(adapter.syncActivities).toHaveBeenCalled();
+  });
+
   it("blocks task completion if the reviewed current task title changed", async () => {
     const adapter = baseAdapter({
       syncTasks: vi.fn(async () => ({
