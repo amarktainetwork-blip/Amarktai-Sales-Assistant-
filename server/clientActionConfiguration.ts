@@ -35,7 +35,23 @@ export type WorkflowActionConfiguration = {
   eligibilityStatuses: string[];
   stopStatuses: string[];
   opportunityMappings: Record<string, string>;
+  /** Optional current-stage -> target-stage maps for workflows whose outcome depends on the live current stage. */
+  opportunityStageTransitions?: Record<string, Record<string, string>>;
   statusMappings: Record<string, string>;
+  /** Semantic sequence purpose -> exact CRM sequence name. */
+  sequenceMappings?: Record<string, string>;
+  /** Extra reviewed fields to apply to the exact current opportunity for a semantic purpose. */
+  opportunityFieldMappings?: Record<
+    string,
+    Record<string, string | number | boolean | null>
+  >;
+  /** Extra reviewed fields to apply to the exact current contact for a semantic purpose. */
+  contactFieldMappings?: Record<
+    string,
+    Record<string, string | number | boolean | null>
+  >;
+  /** Static exact note text for a semantic purpose when no factual call outcome supplies the note. */
+  noteMappings?: Record<string, string>;
   /** Semantic template purpose -> configured template key. */
   templates: Record<string, string>;
   timingRules: Record<string, string>;
@@ -135,6 +151,55 @@ function stringMap(value: unknown, maximum = 100) {
   );
 }
 
+function nestedStringMap(value: unknown, maximum = 100) {
+  return Object.fromEntries(
+    Object.entries(object(value))
+      .slice(0, maximum)
+      .map(([purpose, mapping]) => [purpose.slice(0, 120), stringMap(mapping, 120)])
+      .filter(([, mapping]) => Object.keys(mapping as Record<string, string>).length)
+  ) as Record<string, Record<string, string>>;
+}
+
+function scalarFieldMap(value: unknown, maximum = 100) {
+  const output: Record<
+    string,
+    Record<string, string | number | boolean | null>
+  > = {};
+  for (const [purpose, rawFields] of Object.entries(object(value)).slice(
+    0,
+    maximum
+  )) {
+    const fields: Record<string, string | number | boolean | null> = {};
+    for (const [field, rawValue] of Object.entries(object(rawFields)).slice(
+      0,
+      80
+    )) {
+      if (!/^[A-Za-z][A-Za-z0-9_.:-]{0,119}$/.test(field)) continue;
+      if (
+        rawValue === null ||
+        typeof rawValue === "number" ||
+        typeof rawValue === "boolean"
+      )
+        fields[field] = rawValue;
+      else if (typeof rawValue === "string" && rawValue.trim())
+        fields[field] = rawValue.trim().slice(0, 2_000);
+    }
+    if (Object.keys(fields).length) output[purpose.slice(0, 120)] = fields;
+  }
+  return output;
+}
+
+function noteMap(value: unknown, maximum = 100) {
+  return Object.fromEntries(
+    Object.entries(object(value))
+      .filter((entry): entry is [string, string] =>
+        typeof entry[1] === "string" && Boolean(entry[1].trim())
+      )
+      .slice(0, maximum)
+      .map(([key, item]) => [key.slice(0, 120), item.trim().slice(0, 10_000)])
+  );
+}
+
 function workflow(value: unknown): WorkflowActionConfiguration {
   const source = object(value);
   return {
@@ -145,7 +210,14 @@ function workflow(value: unknown): WorkflowActionConfiguration {
     eligibilityStatuses: strings(source.eligibilityStatuses),
     stopStatuses: strings(source.stopStatuses),
     opportunityMappings: stringMap(source.opportunityMappings),
+    opportunityStageTransitions: nestedStringMap(
+      source.opportunityStageTransitions
+    ),
     statusMappings: stringMap(source.statusMappings),
+    sequenceMappings: stringMap(source.sequenceMappings),
+    opportunityFieldMappings: scalarFieldMap(source.opportunityFieldMappings),
+    contactFieldMappings: scalarFieldMap(source.contactFieldMappings),
+    noteMappings: noteMap(source.noteMappings),
     templates: stringMap(source.templates),
     timingRules: stringMap(source.timingRules),
     duplicateRules: strings(source.duplicateRules),
@@ -473,10 +545,11 @@ export function validateClientActionConfigurationForCommissioning(
         ["update_current_opportunity", "update_opportunity"].includes(
           actionType
         ) &&
-        !workflow.opportunityMappings[purpose]
+        !workflow.opportunityMappings[purpose] &&
+        !Object.keys(workflow.opportunityStageTransitions?.[purpose] || {}).length
       )
         throw new Error(
-          `CLIENT_WORKFLOW_OPPORTUNITY_MAPPING_REQUIRED: '${workflowKey}' must map '${purpose}' to an exact CRM opportunity stage.`
+          `CLIENT_WORKFLOW_OPPORTUNITY_MAPPING_REQUIRED: '${workflowKey}' must map '${purpose}' to an exact CRM opportunity stage or current-stage transition table.`
         );
       if (
         actionType === "update_contact_status" &&
@@ -485,6 +558,13 @@ export function validateClientActionConfigurationForCommissioning(
       )
         throw new Error(
           `CLIENT_WORKFLOW_STATUS_MAPPING_REQUIRED: '${workflowKey}' must map '${purpose}' to an exact CRM contact status.`
+        );
+      if (
+        actionType === "apply_sequence" &&
+        !workflow.sequenceMappings?.[purpose]
+      )
+        throw new Error(
+          `CLIENT_WORKFLOW_SEQUENCE_MAPPING_REQUIRED: '${workflowKey}' must map '${purpose}' to an exact CRM sequence name.`
         );
     }
   }
