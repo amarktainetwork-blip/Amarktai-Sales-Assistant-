@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   explicitCallbackTime,
+  naturalCallbackTime,
   workflowRequestFromCommand,
 } from "./governedAssistantEntry";
 
@@ -62,6 +63,31 @@ describe("canonical governed Assistant entry", () => {
         leadLabel: "Customer",
       }).request?.callOutcome
     ).toBe("voicemail");
+  });
+
+  it("resolves ordinary callback language in the organisation timezone without guessing ambiguous times", () => {
+    const now = new Date("2026-09-10T12:00:00.000Z");
+    expect(
+      naturalCallbackTime({
+        command: "Schedule her callback for Friday at 2pm",
+        timeZone: "Europe/London",
+        now,
+      })
+    ).toBe("2026-09-11T13:00:00.000Z");
+    expect(
+      naturalCallbackTime({
+        command: "Schedule the callback tomorrow at 10am",
+        timeZone: "Africa/Johannesburg",
+        now,
+      })
+    ).toBe("2026-09-11T08:00:00.000Z");
+    expect(
+      naturalCallbackTime({
+        command: "Schedule a callback Friday at 2",
+        timeZone: "Europe/London",
+        now,
+      })
+    ).toBeUndefined();
   });
 
   it("accepts only timezone-qualified callback timestamps", () => {
