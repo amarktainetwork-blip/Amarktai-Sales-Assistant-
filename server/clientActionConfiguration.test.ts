@@ -150,6 +150,66 @@ describe("client action configuration", () => {
     ).toThrow("CLIENT_WORKFLOW_SENDER_NOT_APPROVED");
   });
 
+  it("requires an exact tenant CRM sequence mapping before apply_sequence can be commissioned", () => {
+    expect(() =>
+      validateClientActionConfigurationForCommissioning({
+        workflows: {
+          final_close: {
+            taskAliases: {},
+            taskSequence: [],
+            sequence: ["apply_sequence:closed_lost"],
+            eligibilityStatuses: [],
+            stopStatuses: [],
+            opportunityMappings: {},
+            statusMappings: {},
+            sequenceMappings: {},
+            templates: {},
+            timingRules: {},
+            duplicateRules: [],
+            requiredPostconditions: [],
+          },
+        },
+      })
+    ).toThrow("CLIENT_WORKFLOW_SEQUENCE_MAPPING_REQUIRED");
+  });
+
+  it("accepts generic stage-dependent closure transitions and reviewed field mappings", () => {
+    const result = validateClientActionConfigurationForCommissioning({
+      workflows: {
+        final_close: {
+          taskAliases: { final_follow_up: "Final follow-up" },
+          taskSequence: [],
+          sequence: [
+            "complete_active_task:final_follow_up",
+            "update_current_opportunity:close_or_lost",
+            "update_contact_status:closed_or_lost",
+            "apply_sequence:closed_lost",
+          ],
+          opportunityStageTransitions: {
+            close_or_lost: {
+              "New Lead": "Lost - No Contact",
+              "Considering": "Not a Fit",
+            },
+          },
+          opportunityFieldMappings: {
+            close_or_lost: { lostReason: "No successful contact" },
+          },
+          statusMappings: { closed_or_lost: "Lost" },
+          contactFieldMappings: {
+            closed_or_lost: { closureReason: "No successful contact" },
+          },
+          sequenceMappings: { closed_lost: "Closed lost sequence" },
+        },
+      },
+    });
+    expect(result.valid).toBe(true);
+    expect(
+      result.configuration.workflows.final_close.opportunityStageTransitions
+    ).toMatchObject({
+      close_or_lost: { "New Lead": "Lost - No Contact" },
+    });
+  });
+
   it("accepts a complete generic four-attempt configuration without client constants", () => {
     const result = validateClientActionConfigurationForCommissioning({
       workflows: {
