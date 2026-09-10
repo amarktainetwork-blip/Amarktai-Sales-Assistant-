@@ -221,8 +221,9 @@ async function executeMicrosoft(input: {
     );
     if (
       contactExternalId &&
-      typeof workflow.workflowKey === "string" &&
-      workflow.workflowKey.trim()
+      (input.payload.requireFreshCustomerContext === true ||
+        (typeof workflow.workflowKey === "string" &&
+          Boolean(workflow.workflowKey.trim())))
     ) {
       const connectedSystemId =
         typeof input.payload.preferredConnectedSystemId === "number"
