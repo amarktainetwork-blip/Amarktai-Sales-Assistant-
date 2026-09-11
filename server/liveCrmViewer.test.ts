@@ -132,6 +132,21 @@ describe("live CRM viewer reconnect", () => {
     );
   });
 
+  it("does not acquire human control just to resize the authenticated viewer", () => {
+    const source = readFileSync(
+      new URL("./liveCrmViewer.ts", import.meta.url),
+      "utf8"
+    );
+    const resizeHandler = source.match(
+      /else if \(message\.type === "resize"\) \{([\s\S]*?)\n\s*\} else if \(message\.type === "releaseHumanControl"\)/
+    )?.[1];
+
+    expect(resizeHandler).toBeTruthy();
+    expect(resizeHandler).toContain("Emulation.setDeviceMetricsOverride");
+    expect(resizeHandler).not.toContain("acquireHumanBrowserControl");
+    expect(resizeHandler).toContain('if (control === "AGENT_CONTROL") return;');
+  });
+
   it("releases human control only after customer sign-in is verified authenticated", () => {
     const source = readFileSync(
       new URL("./liveCrmViewer.ts", import.meta.url),
