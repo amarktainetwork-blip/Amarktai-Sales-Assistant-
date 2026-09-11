@@ -266,6 +266,52 @@ export default function Today() {
           </div>
         ) : null}
 
+        {today.data?.paymentReview.enabled ? (
+          <section className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-amber-950">
+            <h2 className="font-display text-xl font-bold">Payment checks</h2>
+            <p className="mt-2 text-sm leading-6">
+              Check Payments / Transactions throughout the day for new enrolment
+              payments, monthly payments and failed payments. Automatic
+              transaction monitoring is not connected. Confirm the payment in
+              the source before requesting a CRM stage change.
+            </p>
+            <p className="mt-2 text-sm font-semibold">
+              {today.data.paymentReview.candidates.length} of your synced
+              opportunities are in a configured pending-payment stage.
+            </p>
+            {today.data.paymentReview.candidates.length ? (
+              <ul className="mt-3 space-y-2">
+                {today.data.paymentReview.candidates.map(item => (
+                  <li
+                    key={`${item.connectedSystemId}:${item.externalId}`}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-white/70 p-3 text-sm"
+                  >
+                    <span>
+                      {item.name} — {item.stage}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        ask(
+                          `Help me review payment status for ${item.name}. Do not mark it paid without source evidence; prepare any proposed change for review.`
+                        )
+                      }
+                    >
+                      Review with Assistant
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-sm">
+                This count does not confirm whether payments have arrived. Check
+                the source even when the queue is empty.
+              </p>
+            )}
+          </section>
+        ) : null}
+
         <section className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <MetricCard
             icon={AlarmClock}

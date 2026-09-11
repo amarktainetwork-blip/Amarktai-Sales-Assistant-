@@ -1162,6 +1162,8 @@ export async function returnClaimedActionForReview(input: {
       state: "review_required",
       governanceState: "READY_FOR_REVIEW",
       reviewedAt: null,
+      reviewedByUserId: null,
+      executionResult: null,
       executionClaimId: null,
       executionClaimedAt: null,
     })
@@ -1177,11 +1179,11 @@ export async function returnClaimedActionForReview(input: {
   await recordAudit({
     userId: input.userId,
     organisationId: input.organisationId,
-    eventType: "personal_mailbox_send_not_completed",
+    eventType: "action_returned_for_review",
     entityType: "action_proposal",
     entityId: String(input.proposalId),
     summary:
-      "The approved personal mailbox email was not sent and returned for review.",
+      "The action was not executed and returned for review.",
     metadata: { reason: input.reason.slice(0, 240) },
   });
 }

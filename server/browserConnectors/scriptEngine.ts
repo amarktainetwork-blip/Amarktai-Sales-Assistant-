@@ -22,7 +22,19 @@ export const BROWSER_SCRIPT_ACTIONS = [
 ] as const;
 export type BrowserScriptAction = (typeof BROWSER_SCRIPT_ACTIONS)[number];
 
-export type BrowserRowField = { selector?: string; attribute?: string };
+export type BrowserRowField = {
+  selector?: string;
+  attribute?: string;
+  /**
+   * Some CRMs expose the durable record ID only after opening a row in a
+   * same-page drawer. When configured, click the row target, read this query
+   * parameter from the resulting URL, then restore the list before continuing.
+   */
+  urlQueryParamAfterClick?: string;
+  /** Return one configured value when the selector exists and another when it does not. */
+  presentValue?: string;
+  absentValue?: string;
+};
 export type BrowserScriptStep = {
   action: BrowserScriptAction;
   selector?: string;
@@ -30,6 +42,10 @@ export type BrowserScriptStep = {
   key?: string;
   attribute?: string;
   fields?: Record<string, BrowserRowField>;
+  /** Literal text filter, rendered separately from CSS to prevent selector injection. */
+  textFilter?: string;
+  /** Authorised navigation fallback used only when a reviewed click target is absent. */
+  fallbackUrl?: string;
   nextSelector?: string;
   maxPages?: number;
 };
@@ -118,7 +134,9 @@ export function resolveBrowserNavigationTarget(
   try {
     target = new URL(value, currentUrl);
   } catch {
-    throw new Error("Browser connector navigation only permits valid HTTP(S) URLs.");
+    throw new Error(
+      "Browser connector navigation only permits valid HTTP(S) URLs."
+    );
   }
   if (!/^https?:$/.test(target.protocol))
     throw new Error("Browser connector navigation only permits HTTP(S) URLs.");
@@ -156,6 +174,26 @@ export function validateSavedBrowserScript(script: SavedBrowserScript) {
     validateSelector(step.selector);
     validateSelector(step.nextSelector);
     if (
+      step.textFilter !== undefined &&
+      (typeof step.textFilter !== "string" ||
+        step.textFilter.length > 2000 ||
+        !["read_rows", "paginate_rows", "expect_visible"].includes(step.action))
+    )
+      throw new Error(
+        "Browser text filters require a bounded string on a read action."
+      );
+    if (
+      step.fallbackUrl !== undefined &&
+      (step.action !== "click" ||
+        typeof step.fallbackUrl !== "string" ||
+        !step.fallbackUrl.trim() ||
+        step.fallbackUrl.length > 4000 ||
+        forbiddenSelectorText.test(step.fallbackUrl))
+    )
+      throw new Error(
+        "Browser navigation fallbacks require a bounded declarative URL on a click action."
+      );
+    if (
       step.value &&
       (step.value.length > 4000 || forbiddenSelectorText.test(step.value))
     )
@@ -183,31 +221,121 @@ export function validateSavedBrowserScript(script: SavedBrowserScript) {
           throw new Error(
             "Browser row attributes must be declarative HTML attribute names."
           );
+        if (
+          field.urlQueryParamAfterClick &&
+          !/^[a-zA-Z][a-zA-Z0-9_.-]{0,120}$/.test(field.urlQueryParamAfterClick)
+        )
+          throw new Error(
+            "Browser row URL query parameters must be declarative parameter names."
+          );
+        if (field.attribute && field.urlQueryParamAfterClick)
+          throw new Error(
+            "Browser row fields may read either an attribute or a URL query parameter after click, not both."
+          );
+        const hasPresenceMapping =
+          field.presentValue !== undefined || field.absentValue !== undefined;
+        if (
+          hasPresenceMapping &&
+          (field.presentValue === undefined || field.absentValue === undefined)
+        )
+          throw new Error(
+            "Browser row presence mappings require both presentValue and absentValue."
+          );
+        if (
+          hasPresenceMapping &&
+          (field.presentValue!.length > 500 || field.absentValue!.length > 500)
+        )
+          throw new Error("Browser row presence mapping values are too long.");
+        if (
+          hasPresenceMapping &&
+          (field.attribute || field.urlQueryParamAfterClick)
+        )
+          throw new Error(
+            "Browser row fields may use one extraction mode at a time."
+          );
       }
     }
   }
   return script;
 }
 
+async function restoreBrowserList(page: Page, beforeUrl: string) {
+  if (page.url() === beforeUrl) return;
+  await page
+    .goBack({ waitUntil: "domcontentloaded", timeout: 15_000 })
+    .catch(async () => {
+      await page.goto(beforeUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: 15_000,
+      });
+    });
+}
+
 async function rowValue(
+  page: Page,
   row: ReturnType<Page["locator"]>,
   field: BrowserRowField
 ) {
+  if (field.presentValue !== undefined && field.absentValue !== undefined) {
+    const matches = field.selector
+      ? await row.locator(field.selector).count()
+      : 1;
+    return matches > 0 ? field.presentValue : field.absentValue;
+  }
   const target = field.selector ? row.locator(field.selector).first() : row;
+  if (field.urlQueryParamAfterClick) {
+    const beforeUrl = page.url();
+    const queryParam = field.urlQueryParamAfterClick;
+    try {
+      await target.click();
+      await page.waitForURL(url => Boolean(url.searchParams.get(queryParam)), {
+        timeout: 10_000,
+      });
+      return new URL(page.url()).searchParams.get(queryParam) ?? "";
+    } finally {
+      await restoreBrowserList(page, beforeUrl);
+    }
+  }
   if (field.attribute)
     return (await target.getAttribute(field.attribute)) ?? "";
   return (await target.innerText()).trim();
 }
 
-async function extractedRows(page: Page, step: BrowserScriptStep) {
-  const rows = page.locator(renderBrowserTemplate(step.selector, {}));
+function scriptLocator(
+  page: Page,
+  step: BrowserScriptStep,
+  inputs: Record<string, unknown>
+) {
+  const locator = page.locator(renderBrowserTemplate(step.selector, inputs));
+  if (step.textFilter === undefined) return locator;
+  const text = renderBrowserTemplate(step.textFilter, inputs).trim();
+  if (!text)
+    throw new Error(
+      "BROWSER_TEXT_FILTER_EMPTY: refusing an unfiltered CRM search."
+    );
+  return locator.filter({ hasText: text });
+}
+
+async function extractedRows(
+  page: Page,
+  step: BrowserScriptStep,
+  inputs: Record<string, unknown>
+) {
+  const rows = scriptLocator(page, step, inputs);
   const count = Math.min(await rows.count(), 500);
   const extracted: Array<Record<string, string>> = [];
   for (let index = 0; index < count; index += 1) {
     const row = rows.nth(index);
     const record: Record<string, string> = {};
-    for (const [key, field] of Object.entries(step.fields || {}))
-      record[key] = (await rowValue(row, field)).slice(0, 10_000);
+    const fields = Object.entries(step.fields || {});
+    const stableFields = fields.filter(
+      ([, field]) => !field.urlQueryParamAfterClick
+    );
+    const navigationFields = fields.filter(([, field]) =>
+      Boolean(field.urlQueryParamAfterClick)
+    );
+    for (const [key, field] of [...stableFields, ...navigationFields])
+      record[key] = (await rowValue(page, row, field)).slice(0, 10_000);
     extracted.push(record);
   }
   return extracted;
@@ -248,9 +376,32 @@ export async function executeSavedBrowserScript(input: {
         await input.authorizeNavigation?.(input.page.url());
         continue;
       }
-      const locator = input.page.locator(
-        renderBrowserTemplate(step.selector, input.inputs)
-      );
+      if (step.action === "click" && step.fallbackUrl) {
+        let locator: ReturnType<Page["locator"]> | undefined;
+        let targetPresent = false;
+        try {
+          locator = scriptLocator(input.page, step, input.inputs);
+          targetPresent = (await locator.count()) > 0;
+        } catch {
+          targetPresent = false;
+        }
+        if (targetPresent && locator) {
+          await locator.click();
+        } else {
+          const target = resolveBrowserNavigationTarget(
+            renderBrowserTemplate(step.fallbackUrl, input.inputs),
+            input.page.url()
+          );
+          await input.authorizeNavigation?.(target);
+          await input.page.goto(target, {
+            waitUntil: "domcontentloaded",
+            timeout: 45_000,
+          });
+          await input.authorizeNavigation?.(input.page.url());
+        }
+        continue;
+      }
+      const locator = scriptLocator(input.page, step, input.inputs);
       if (step.action === "fill")
         await locator.fill(renderBrowserTemplate(step.value, input.inputs));
       if (step.action === "click") await locator.click();
@@ -280,10 +431,7 @@ export async function executeSavedBrowserScript(input: {
           (await locator.first().getAttribute(step.attribute || "value")) ?? "";
       if (step.action === "read_rows") {
         data[step.key || "rows"] = JSON.stringify(
-          await extractedRows(input.page, {
-            ...step,
-            selector: renderBrowserTemplate(step.selector, input.inputs),
-          })
+          await extractedRows(input.page, step, input.inputs)
         );
       }
       if (step.action === "paginate_rows") {
@@ -292,10 +440,7 @@ export async function executeSavedBrowserScript(input: {
         for (let pageNumber = 0; pageNumber < maxPages; pageNumber += 1) {
           input.assertControl?.();
           extracted.push(
-            ...(await extractedRows(input.page, {
-              ...step,
-              selector: renderBrowserTemplate(step.selector, input.inputs),
-            }))
+            ...(await extractedRows(input.page, step, input.inputs))
           );
           if (!step.nextSelector || extracted.length >= 10_000) break;
           const next = input.page

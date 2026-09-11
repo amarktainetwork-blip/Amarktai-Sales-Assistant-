@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   configuredTaskPriorityTitles,
+  paymentReviewCandidates,
   isCurrentActionableInbound,
   sortTasksByConfiguredPriority,
 } from "./today";
@@ -79,5 +80,32 @@ describe("current sales day relevance", () => {
       "Second Contact",
       "General Admin",
     ]);
+  });
+});
+
+describe("source-based payment checks", () => {
+  const opportunities = [
+    { id: 1, stage: "Awaiting settlement" },
+    { id: 2, stage: "Paid" },
+    { id: 3, stage: null },
+  ];
+  it("is disabled until the organisation configures the requirement", () => {
+    expect(paymentReviewCandidates(opportunities, undefined)).toEqual([]);
+  });
+  it("selects configured pending stages without inferring payment or modifying CRM state", () => {
+    const before = structuredClone(opportunities);
+    expect(
+      paymentReviewCandidates(opportunities, {
+        enabled: true,
+        pendingStages: ["awaiting settlement"],
+      })
+    ).toEqual([opportunities[0]]);
+    expect(opportunities).toEqual(before);
+    expect(
+      paymentReviewCandidates(opportunities, {
+        enabled: true,
+        pendingStages: [],
+      })
+    ).toEqual([]);
   });
 });

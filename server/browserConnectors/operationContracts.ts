@@ -52,7 +52,14 @@ export type GuidedReadOutput = {
   action: "read_text" | "read_value" | "read_rows";
   selector: string;
   key: string;
-  fields?: Array<{ key: string; selector?: string; attribute?: string }>;
+  fields?: Array<{
+    key: string;
+    selector?: string;
+    attribute?: string;
+    urlQueryParamAfterClick?: string;
+    presentValue?: string;
+    absentValue?: string;
+  }>;
 };
 export type GuidedTargetReview = {
   rowSelector: string;

@@ -34,6 +34,10 @@ export type WorkflowActionConfiguration = {
   taskSequence: string[];
   /** Ordered action tokens, e.g. send_sms_template:first_contact. */
   sequence: string[];
+  /** Optional exact action sequence by semantic current-task purpose. */
+  sequenceByTaskPurpose?: Record<string, string[]>;
+  /** Plain normalized substrings used to select a workflow variant from one current opportunity name. */
+  opportunityNameContains?: string[];
   /**
    * Exact sequence tokens that may be skipped only when their exact current
    * target does not exist. Ambiguous multiple targets still fail closed.
@@ -88,6 +92,8 @@ export type ClientActionConfiguration = {
   closureMapping: Record<string, string>;
   requiredPostconditions: Record<string, string[]>;
   currentRecordRules: CrmCurrentRecordRule[];
+  /** Source checks only: configured pending stages never prove a payment. */
+  paymentReview?: { enabled: boolean; pendingStages: string[] };
 };
 
 const EMPTY_WORKFLOW: WorkflowActionConfiguration = {
@@ -150,20 +156,21 @@ function strings(value: unknown, maximum = 80) {
 function stringMap(value: unknown, maximum = 100) {
   return Object.fromEntries(
     Object.entries(object(value))
-      .filter((entry): entry is [string, string] =>
-        typeof entry[1] === "string" && Boolean(entry[1].trim())
+      .filter(
+        (entry): entry is [string, string] =>
+          typeof entry[1] === "string" && Boolean(entry[1].trim())
       )
       .slice(0, maximum)
       .map(([key, item]) => [key.slice(0, 120), item.trim().slice(0, 240)])
   );
 }
 
-function stringArrayMap(value: unknown, maximum = 100) {
+function stringArrayMap(value: unknown, maximum = 100, preserveEmpty = false) {
   return Object.fromEntries(
     Object.entries(object(value))
       .slice(0, maximum)
       .map(([purpose, raw]) => [purpose.slice(0, 120), strings(raw, 40)])
-      .filter(([, values]) => (values as string[]).length)
+      .filter(([, values]) => preserveEmpty || (values as string[]).length)
   ) as Record<string, string[]>;
 }
 
@@ -171,8 +178,13 @@ function nestedStringMap(value: unknown, maximum = 100) {
   return Object.fromEntries(
     Object.entries(object(value))
       .slice(0, maximum)
-      .map(([purpose, mapping]) => [purpose.slice(0, 120), stringMap(mapping, 120)])
-      .filter(([, mapping]) => Object.keys(mapping as Record<string, string>).length)
+      .map(([purpose, mapping]) => [
+        purpose.slice(0, 120),
+        stringMap(mapping, 120),
+      ])
+      .filter(
+        ([, mapping]) => Object.keys(mapping as Record<string, string>).length
+      )
   ) as Record<string, Record<string, string>>;
 }
 
@@ -216,8 +228,9 @@ function scalarFieldMap(value: unknown, maximum = 100) {
 function noteMap(value: unknown, maximum = 100) {
   return Object.fromEntries(
     Object.entries(object(value))
-      .filter((entry): entry is [string, string] =>
-        typeof entry[1] === "string" && Boolean(entry[1].trim())
+      .filter(
+        (entry): entry is [string, string] =>
+          typeof entry[1] === "string" && Boolean(entry[1].trim())
       )
       .slice(0, maximum)
       .map(([key, item]) => [key.slice(0, 120), item.trim().slice(0, 10_000)])
@@ -232,6 +245,12 @@ function workflow(value: unknown): WorkflowActionConfiguration {
     taskAliasAlternatives: stringArrayMap(source.taskAliasAlternatives),
     taskSequence: strings(source.taskSequence),
     sequence: strings(source.sequence),
+    sequenceByTaskPurpose: stringArrayMap(
+      source.sequenceByTaskPurpose,
+      100,
+      true
+    ),
+    opportunityNameContains: strings(source.opportunityNameContains, 40),
     optionalActions: strings(source.optionalActions),
     eligibilityStatuses: strings(source.eligibilityStatuses),
     stopStatuses: strings(source.stopStatuses),
@@ -251,14 +270,21 @@ function workflow(value: unknown): WorkflowActionConfiguration {
   };
 }
 
-function optionalString(source: Record<string, unknown>, key: string, max: number) {
+function optionalString(
+  source: Record<string, unknown>,
+  key: string,
+  max: number
+) {
   const value = source[key];
   return typeof value === "string" && value.trim()
     ? value.trim().slice(0, max)
     : undefined;
 }
 
-function template(value: unknown, fallbackKey: string): ConfiguredTemplate | null {
+function template(
+  value: unknown,
+  fallbackKey: string
+): ConfiguredTemplate | null {
   const source = object(value);
   const channel = source.channel;
   const sourceKind = source.source;
@@ -383,6 +409,10 @@ export function normalizeClientActionConfiguration(
       whatsapp: strings(senderSource.whatsapp, 40),
     },
     officeHours: officeHours(source.officeHours),
+    paymentReview: {
+      enabled: object(source.paymentReview).enabled === true,
+      pendingStages: strings(object(source.paymentReview).pendingStages, 40),
+    },
     duplicateRules: strings(source.duplicateRules, 80),
     closureMapping: stringMap(source.closureMapping, 80),
     requiredPostconditions,
@@ -438,7 +468,9 @@ function validateOfficeHoursSource(
   }
 }
 
-function expectedTemplateChannel(actionType: string): CommunicationChannel | undefined {
+function expectedTemplateChannel(
+  actionType: string
+): CommunicationChannel | undefined {
   if (actionType === "send_email_template") return "email";
   if (actionType === "send_sms_template") return "sms";
   if (actionType === "send_whatsapp_template") return "whatsapp";
@@ -536,8 +568,42 @@ export function validateClientActionConfigurationForCommissioning(
           `CLIENT_WORKFLOW_TASK_ALIAS_DUPLICATE: '${workflowKey}' contains duplicate primary/alternative task titles for '${purpose}'.`
         );
     }
+    const progressionAliases = workflow.taskSequence.flatMap(purpose =>
+      [
+        workflow.taskAliases[purpose],
+        ...(workflow.taskAliasAlternatives?.[purpose] || []),
+      ].map(normalizedKey)
+    );
+    if (new Set(progressionAliases).size !== progressionAliases.length)
+      throw new Error(
+        `CLIENT_WORKFLOW_TASK_ALIAS_DUPLICATE: '${workflowKey}' maps one task title to multiple outreach purposes.`
+      );
+    for (const purpose of Object.keys(workflow.sequenceByTaskPurpose || {})) {
+      if (!workflow.taskSequence.includes(purpose))
+        throw new Error(
+          "CLIENT_WORKFLOW_TASK_SEQUENCE_PURPOSE_INVALID: '" +
+            workflowKey +
+            "' has an action sequence for unknown task purpose '" +
+            purpose +
+            "'."
+        );
+    }
+    if (
+      Object.values(workflow.sequenceByTaskPurpose || {}).some(
+        sequence => !sequence.length
+      )
+    )
+      throw new Error(
+        `CLIENT_WORKFLOW_TASK_SEQUENCE_EMPTY: '${workflowKey}' contains an empty attempt-specific sequence.`
+      );
+    const allActionTokens = Array.from(
+      new Set([
+        ...workflow.sequence,
+        ...Object.values(workflow.sequenceByTaskPurpose || {}).flat(),
+      ])
+    );
     const unknownOptional = (workflow.optionalActions || []).find(
-      token => !workflow.sequence.includes(token)
+      token => !allActionTokens.includes(token)
     );
     if (unknownOptional)
       throw new Error(
@@ -561,7 +627,7 @@ export function validateClientActionConfigurationForCommissioning(
       }
     }
 
-    for (const token of workflow.sequence) {
+    for (const token of allActionTokens) {
       const { actionType, purpose } = workflowToken(token);
       if (!SUPPORTED_CONFIGURED_WORKFLOW_ACTIONS.has(actionType))
         throw new Error(
@@ -594,7 +660,8 @@ export function validateClientActionConfigurationForCommissioning(
           actionType
         ) &&
         !workflow.opportunityMappings[purpose] &&
-        !Object.keys(workflow.opportunityStageTransitions?.[purpose] || {}).length
+        !Object.keys(workflow.opportunityStageTransitions?.[purpose] || {})
+          .length
       )
         throw new Error(
           `CLIENT_WORKFLOW_OPPORTUNITY_MAPPING_REQUIRED: '${workflowKey}' must map '${purpose}' to an exact CRM opportunity stage or current-stage transition table.`
@@ -708,7 +775,9 @@ export function resolveConfiguredCurrentContact(input: {
     if (rule.provider && input.provider && rule.provider !== input.provider)
       continue;
     if (rule.idQueryParam) {
-      const externalId = stableExternalId(url.searchParams.get(rule.idQueryParam));
+      const externalId = stableExternalId(
+        url.searchParams.get(rule.idQueryParam)
+      );
       if (externalId)
         return {
           entity: "contact" as const,
