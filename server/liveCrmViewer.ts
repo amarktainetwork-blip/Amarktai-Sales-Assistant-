@@ -724,39 +724,32 @@ export function registerLiveCrmViewerSocket(server: Server) {
                   !boundedNumber(message.height, 240, 2_400)
                 )
                   throw new Error("CRM_VIEWER_RESIZE_INVALID");
-                if (
-                  browserControlState(controlScope(session)) === "AGENT_CONTROL"
-                )
-                  return;
-                const resizeOwner = {
-                  ...controlScope(session),
-                  ...acquireHumanBrowserControl(controlScope(session)),
-                };
-                try {
-                  const width = Math.round(message.width);
-                  const height = Math.round(message.height);
-                  await session.cdp?.send(
-                    "Emulation.setDeviceMetricsOverride",
-                    {
-                      width,
-                      height,
-                      screenWidth: width,
-                      screenHeight: height,
-                      deviceScaleFactor:
-                        typeof message.deviceScaleFactor === "number" &&
-                        boundedNumber(message.deviceScaleFactor, 1, 2)
-                          ? message.deviceScaleFactor
-                          : 1,
-                      mobile: false,
-                      scale: 1,
-                      positionX: 0,
-                      positionY: 0,
-                      dontSetVisibleSize: false,
-                    }
-                  );
-                } finally {
-                  if (!session.leaseToken) releaseBrowserControl(resizeOwner);
-                }
+                const control = browserControlState(controlScope(session));
+                // Viewport layout is not a user CRM action. In particular, the
+                // ResizeObserver fires as soon as the viewer mounts; claiming a
+                // HUMAN_CONTROL lease here races with post-auth commissioning
+                // and can freeze onboarding at DISCOVER_NAVIGATION. Never take
+                // control just to resize. While an agent owns the browser, leave
+                // its viewport untouched until that operation completes.
+                if (control === "AGENT_CONTROL") return;
+                const width = Math.round(message.width);
+                const height = Math.round(message.height);
+                await session.cdp?.send("Emulation.setDeviceMetricsOverride", {
+                  width,
+                  height,
+                  screenWidth: width,
+                  screenHeight: height,
+                  deviceScaleFactor:
+                    typeof message.deviceScaleFactor === "number" &&
+                    boundedNumber(message.deviceScaleFactor, 1, 2)
+                      ? message.deviceScaleFactor
+                      : 1,
+                  mobile: false,
+                  scale: 1,
+                  positionX: 0,
+                  positionY: 0,
+                  dontSetVisibleSize: false,
+                });
               } else if (message.type === "releaseHumanControl") {
                 releaseBrowserControl(controlScope(session));
                 session.leaseToken = undefined;
