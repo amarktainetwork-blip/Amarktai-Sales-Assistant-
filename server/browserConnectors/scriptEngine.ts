@@ -44,6 +44,8 @@ export type BrowserScriptStep = {
   fields?: Record<string, BrowserRowField>;
   /** Literal text filter, rendered separately from CSS to prevent selector injection. */
   textFilter?: string;
+  /** Authorised navigation fallback used only when a reviewed click target is absent. */
+  fallbackUrl?: string;
   nextSelector?: string;
   maxPages?: number;
 };
@@ -179,6 +181,17 @@ export function validateSavedBrowserScript(script: SavedBrowserScript) {
     )
       throw new Error(
         "Browser text filters require a bounded string on a read action."
+      );
+    if (
+      step.fallbackUrl !== undefined &&
+      (step.action !== "click" ||
+        typeof step.fallbackUrl !== "string" ||
+        !step.fallbackUrl.trim() ||
+        step.fallbackUrl.length > 4000 ||
+        forbiddenSelectorText.test(step.fallbackUrl))
+    )
+      throw new Error(
+        "Browser navigation fallbacks require a bounded declarative URL on a click action."
       );
     if (
       step.value &&
@@ -361,6 +374,31 @@ export async function executeSavedBrowserScript(input: {
         const target = renderBrowserTemplate(step.value, input.inputs);
         await input.page.waitForURL(target, { timeout: 30_000 });
         await input.authorizeNavigation?.(input.page.url());
+        continue;
+      }
+      if (step.action === "click" && step.fallbackUrl) {
+        let locator: ReturnType<Page["locator"]> | undefined;
+        let targetPresent = false;
+        try {
+          locator = scriptLocator(input.page, step, input.inputs);
+          targetPresent = (await locator.count()) > 0;
+        } catch {
+          targetPresent = false;
+        }
+        if (targetPresent && locator) {
+          await locator.click();
+        } else {
+          const target = resolveBrowserNavigationTarget(
+            renderBrowserTemplate(step.fallbackUrl, input.inputs),
+            input.page.url()
+          );
+          await input.authorizeNavigation?.(target);
+          await input.page.goto(target, {
+            waitUntil: "domcontentloaded",
+            timeout: 45_000,
+          });
+          await input.authorizeNavigation?.(input.page.url());
+        }
         continue;
       }
       const locator = scriptLocator(input.page, step, input.inputs);

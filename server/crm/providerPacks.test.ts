@@ -104,6 +104,32 @@ describe("Genie read safety", () => {
     expect(fields?.ownerName).toEqual({ selector: "#owner-dropdown-trigger" });
     expect(fields?.ownerExternalId).toBeUndefined();
   });
+  it("preserves the authenticated Genie SPA click after validating the observed Contacts route", () => {
+    const script = {
+      steps: [
+        { action: "click" as const, selector: "#sb_contacts" },
+        {
+          action: "expect_visible" as const,
+          selector: "#list-view-record-search",
+        },
+      ],
+    };
+    const bound = bindGenieContactNavigation(script, {
+      controls: [
+        {
+          selector: "#sb_contacts",
+          href: "https://genie.example/v2/location/example/contacts/smart_list/All",
+        },
+      ],
+    });
+    expect(bound.steps[0]).toEqual({
+      action: "click",
+      selector: "#sb_contacts",
+      fallbackUrl:
+        "https://genie.example/v2/location/example/contacts/smart_list/All",
+    });
+    expect(bound.steps.slice(1)).toEqual(script.steps.slice(1));
+  });
   it("rejects a contact detail page as the catalogue navigation target", () => {
     expect(() =>
       bindGenieContactNavigation(
