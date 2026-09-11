@@ -92,6 +92,8 @@ export type ClientActionConfiguration = {
   closureMapping: Record<string, string>;
   requiredPostconditions: Record<string, string[]>;
   currentRecordRules: CrmCurrentRecordRule[];
+  /** Source checks only: configured pending stages never prove a payment. */
+  paymentReview?: { enabled: boolean; pendingStages: string[] };
 };
 
 const EMPTY_WORKFLOW: WorkflowActionConfiguration = {
@@ -407,6 +409,10 @@ export function normalizeClientActionConfiguration(
       whatsapp: strings(senderSource.whatsapp, 40),
     },
     officeHours: officeHours(source.officeHours),
+    paymentReview: {
+      enabled: object(source.paymentReview).enabled === true,
+      pendingStages: strings(object(source.paymentReview).pendingStages, 40),
+    },
     duplicateRules: strings(source.duplicateRules, 80),
     closureMapping: stringMap(source.closureMapping, 80),
     requiredPostconditions,

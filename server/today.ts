@@ -90,6 +90,18 @@ export function isCurrentActionableInbound(
   return age >= 0 && age <= maximumAgeDays * 86_400_000;
 }
 
+/** Read-only work queue. CRM stage labels are not payment confirmation. */
+export function paymentReviewCandidates<T extends { stage: string | null }>(
+  scopedOpportunities: T[],
+  review: ClientActionConfiguration["paymentReview"]
+) {
+  if (!review?.enabled) return [];
+  const pending = new Set(review.pendingStages.map(normalizedTaskTitle));
+  return scopedOpportunities.filter(
+    item => item.stage && pending.has(normalizedTaskTitle(item.stage))
+  );
+}
+
 export async function getTodayWork(input: {
   userId: number;
   organisationId: number;
@@ -364,6 +376,21 @@ export async function getTodayWork(input: {
           : "not_synchronized",
       lastSuccessfulAt:
         syncJobs.find(job => job.lastSucceededAt)?.lastSucceededAt ?? null,
+    },
+    paymentReview: {
+      enabled: actionConfiguration.paymentReview?.enabled === true,
+      status: "manual_source_check_required" as const,
+      candidates: paymentReviewCandidates(
+        scopedOpportunities,
+        actionConfiguration.paymentReview
+      ).map(item => ({
+        id: item.id,
+        connectedSystemId: item.connectedSystemId,
+        externalId: item.externalId,
+        contactExternalId: item.contactExternalId,
+        name: item.name,
+        stage: item.stage,
+      })),
     },
     role: membership.role,
     requiresOwnerMapping: ownerIds.size === 0,

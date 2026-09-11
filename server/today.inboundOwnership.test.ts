@@ -27,6 +27,7 @@ vi.mock("./clientActionConfiguration", () => ({
     closureMapping: {},
     requiredPostconditions: {},
     currentRecordRules: [],
+    paymentReview: { enabled: true, pendingStages: ["Awaiting settlement"] },
   })),
 }));
 
@@ -58,7 +59,43 @@ describe("Today inbound ownership lookup", () => {
           dueAt: new Date(Date.now() - 60000),
         })),
       ],
-      [crmOpportunities, []],
+      [
+        crmOpportunities,
+        [
+          {
+            id: 1,
+            connectedSystemId: 11,
+            externalId: "own",
+            ownerExternalId: "shared-id",
+            name: "Own opportunity",
+            stage: "Awaiting settlement",
+          },
+          {
+            id: 2,
+            connectedSystemId: 12,
+            externalId: "other-system",
+            ownerExternalId: "shared-id",
+            name: "Other connection",
+            stage: "Awaiting settlement",
+          },
+          {
+            id: 3,
+            connectedSystemId: 11,
+            externalId: "unknown",
+            ownerExternalId: null,
+            name: "Unknown owner",
+            stage: "Awaiting settlement",
+          },
+          {
+            id: 4,
+            connectedSystemId: 11,
+            externalId: "other-owner",
+            ownerExternalId: "other",
+            name: "Other owner",
+            stage: "Awaiting settlement",
+          },
+        ],
+      ],
       [inboundMessages, []],
       [assistantReminders, []],
       [callbackTasks, []],
@@ -83,6 +120,10 @@ describe("Today inbound ownership lookup", () => {
     });
     const result = await getTodayWork({ userId: 9, organisationId: 4 });
     expect(result.metrics.overdue).toBe(1);
+    expect(result.paymentReview.status).toBe("manual_source_check_required");
+    expect(
+      result.paymentReview.candidates.map(item => item.externalId)
+    ).toEqual(["own"]);
   });
   it("uses the exact joined contact identity instead of a 2,000-contact slice", async () => {
     const fromCalls: unknown[] = [];
