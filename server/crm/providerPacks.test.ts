@@ -3,6 +3,7 @@ import {
   GENIE_PROVIDER_PACK,
   GENIE_PROVIDER_PACK_VERSION,
   providerPackFingerprint,
+  bindGenieContactNavigation,
 } from "./providerPacks";
 
 describe("canonical Genie provider pack", () => {
@@ -26,7 +27,8 @@ describe("canonical Genie provider pack", () => {
   });
 
   it("reads contact-detail anchors as records without depending on a table framework", () => {
-    const definition = GENIE_PROVIDER_PACK.operationDefinitions?.["contact.sync"];
+    const definition =
+      GENIE_PROVIDER_PACK.operationDefinitions?.["contact.sync"];
     const executeScript = (definition?.definition as { executeScript?: string })
       ?.executeScript;
     const script = executeScript
@@ -39,7 +41,7 @@ describe("canonical Genie provider pack", () => {
     ]);
     expect(script?.steps[1]).toMatchObject({
       action: "expect_visible",
-      selector: expect.stringContaining('/contacts/detail/'),
+      selector: expect.stringContaining("/contacts/detail/"),
     });
     expect(script?.steps[2]).toMatchObject({
       action: "read_rows",
@@ -51,7 +53,8 @@ describe("canonical Genie provider pack", () => {
   });
 
   it("uses the visible current contact search control and the same durable record links", () => {
-    const definition = GENIE_PROVIDER_PACK.operationDefinitions?.["contact.search"];
+    const definition =
+      GENIE_PROVIDER_PACK.operationDefinitions?.["contact.search"];
     const executeScript = (definition?.definition as { executeScript?: string })
       ?.executeScript;
     const script = executeScript
@@ -80,5 +83,40 @@ describe("canonical Genie provider pack", () => {
     expect(definitions["contact.read"]?.prerequisites).toMatchObject({
       verificationInputRole: "derived_contact_external_id",
     });
+  });
+});
+
+describe("Genie read safety", () => {
+  it("filters contact-search results with literal input rather than injected CSS", () => {
+    const steps = GENIE_PROVIDER_PACK.scripts.genie_contact_search.steps;
+    expect(
+      steps
+        .filter(step => step.textFilter === "{{query}}")
+        .map(step => step.action)
+    ).toEqual(["expect_visible", "read_rows"]);
+    expect(steps.some(step => step.selector?.includes("{{query}}"))).toBe(
+      false
+    );
+  });
+  it("does not misrepresent a displayed owner name as an immutable owner ID", () => {
+    const fields =
+      GENIE_PROVIDER_PACK.scripts.genie_contact_read.steps.at(-1)?.fields;
+    expect(fields?.ownerName).toEqual({ selector: "#owner-dropdown-trigger" });
+    expect(fields?.ownerExternalId).toBeUndefined();
+  });
+  it("rejects a contact detail page as the catalogue navigation target", () => {
+    expect(() =>
+      bindGenieContactNavigation(
+        GENIE_PROVIDER_PACK.scripts.genie_contact_sync,
+        {
+          controls: [
+            {
+              selector: "#sb_contacts",
+              href: "https://crm.example.test/contacts/detail/one",
+            },
+          ],
+        }
+      )
+    ).toThrow("GENIE_CONTACT_NAVIGATION_INVALID");
   });
 });

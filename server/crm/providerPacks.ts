@@ -3,7 +3,7 @@ import type { SavedBrowserScript } from "../browserConnectors/scriptEngine";
 import type { BrowserProfile } from "../browserConnectors/browserCrmAdapter";
 
 /** Reusable provider structure only: never tenant IDs, credentials or customer values. */
-export const GENIE_PROVIDER_PACK_VERSION = "genie-2026.09.10.1";
+export const GENIE_PROVIDER_PACK_VERSION = "genie-2026.09.11.1";
 
 // The current Genie/HighLevel contacts workspace no longer uses the old
 // Tabulator row structure. Contact-detail links are the durable record identity:
@@ -46,10 +46,12 @@ const scripts: BrowserProfile["scripts"] = {
       {
         action: "expect_visible",
         selector: GENIE_CONTACT_RECORD_LINK,
+        textFilter: "{{query}}",
       },
       {
         action: "read_rows",
         selector: GENIE_CONTACT_RECORD_LINK,
+        textFilter: "{{query}}",
         key: "records",
         fields: {
           externalId: { attribute: "href" },
@@ -86,7 +88,8 @@ const scripts: BrowserProfile["scripts"] = {
             selector: '[id="contact.phone"] input[type="tel"]',
             attribute: "value",
           },
-          ownerExternalId: { selector: "#owner-dropdown-trigger" },
+          // Visible owner text is a label, never an immutable owner ID.
+          ownerName: { selector: "#owner-dropdown-trigger" },
         },
       },
     ],
@@ -185,7 +188,8 @@ export function bindGenieContactNavigation(
     url.password ||
     url.search ||
     url.hash ||
-    !/\/contacts\//.test(url.pathname)
+    !/\/contacts\//.test(url.pathname) ||
+    /\/contacts\/detail(?:\/|$)/.test(url.pathname)
   )
     throw new Error("GENIE_CONTACT_NAVIGATION_INVALID");
   return {
