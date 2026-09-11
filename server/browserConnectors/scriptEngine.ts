@@ -22,7 +22,16 @@ export const BROWSER_SCRIPT_ACTIONS = [
 ] as const;
 export type BrowserScriptAction = (typeof BROWSER_SCRIPT_ACTIONS)[number];
 
-export type BrowserRowField = { selector?: string; attribute?: string };
+export type BrowserRowField = {
+  selector?: string;
+  attribute?: string;
+  /**
+   * Some CRMs expose the durable record ID only after opening a row in a
+   * same-page drawer. When configured, click the row target, read this query
+   * parameter from the resulting URL, then restore the list before continuing.
+   */
+  urlQueryParamAfterClick?: string;
+};
 export type BrowserScriptStep = {
   action: BrowserScriptAction;
   selector?: string;
@@ -183,17 +192,57 @@ export function validateSavedBrowserScript(script: SavedBrowserScript) {
           throw new Error(
             "Browser row attributes must be declarative HTML attribute names."
           );
+        if (
+          field.urlQueryParamAfterClick &&
+          !/^[a-zA-Z][a-zA-Z0-9_.-]{0,120}$/.test(
+            field.urlQueryParamAfterClick
+          )
+        )
+          throw new Error(
+            "Browser row URL query parameters must be declarative parameter names."
+          );
+        if (field.attribute && field.urlQueryParamAfterClick)
+          throw new Error(
+            "Browser row fields may read either an attribute or a URL query parameter after click, not both."
+          );
       }
     }
   }
   return script;
 }
 
+async function restoreBrowserList(page: Page, beforeUrl: string) {
+  if (page.url() === beforeUrl) return;
+  await page
+    .goBack({ waitUntil: "domcontentloaded", timeout: 15_000 })
+    .catch(async () => {
+      await page.goto(beforeUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: 15_000,
+      });
+    });
+}
+
 async function rowValue(
+  page: Page,
   row: ReturnType<Page["locator"]>,
   field: BrowserRowField
 ) {
   const target = field.selector ? row.locator(field.selector).first() : row;
+  if (field.urlQueryParamAfterClick) {
+    const beforeUrl = page.url();
+    const queryParam = field.urlQueryParamAfterClick;
+    try {
+      await target.click();
+      await page.waitForURL(
+        url => Boolean(url.searchParams.get(queryParam)),
+        { timeout: 10_000 }
+      );
+      return new URL(page.url()).searchParams.get(queryParam) ?? "";
+    } finally {
+      await restoreBrowserList(page, beforeUrl);
+    }
+  }
   if (field.attribute)
     return (await target.getAttribute(field.attribute)) ?? "";
   return (await target.innerText()).trim();
@@ -206,8 +255,15 @@ async function extractedRows(page: Page, step: BrowserScriptStep) {
   for (let index = 0; index < count; index += 1) {
     const row = rows.nth(index);
     const record: Record<string, string> = {};
-    for (const [key, field] of Object.entries(step.fields || {}))
-      record[key] = (await rowValue(row, field)).slice(0, 10_000);
+    const fields = Object.entries(step.fields || {});
+    const stableFields = fields.filter(
+      ([, field]) => !field.urlQueryParamAfterClick
+    );
+    const navigationFields = fields.filter(
+      ([, field]) => Boolean(field.urlQueryParamAfterClick)
+    );
+    for (const [key, field] of [...stableFields, ...navigationFields])
+      record[key] = (await rowValue(page, row, field)).slice(0, 10_000);
     extracted.push(record);
   }
   return extracted;

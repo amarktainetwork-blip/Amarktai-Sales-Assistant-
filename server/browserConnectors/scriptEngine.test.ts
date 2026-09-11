@@ -14,6 +14,22 @@ describe("saved browser connector scripts", () => {
       { action: "read_rows", selector: "table tbody tr", key: "records", fields: { externalId: { selector: "a", attribute: "data-id" }, name: { selector: ".name" }, email: { selector: ".email" } } },
     ] });
     expect(script.steps).toHaveLength(4);
+    expect(
+      validateSavedBrowserScript({
+        steps: [
+          {
+            action: "read_rows",
+            selector: ".task-row",
+            fields: {
+              externalId: {
+                selector: ".task-title",
+                urlQueryParamAfterClick: "recordId",
+              },
+            },
+          },
+        ],
+      }).steps[0]?.fields?.externalId?.urlQueryParamAfterClick
+    ).toBe("recordId");
     expect(renderBrowserTemplate("/contact/{{ externalId }}", { externalId: 42 })).toBe("/contact/42");
   });
 
@@ -45,6 +61,22 @@ describe("saved browser connector scripts", () => {
   it("rejects executable selector or value content", () => {
     expect(() => validateSavedBrowserScript({ steps: [{ action: "click", selector: "javascript:alert(1)" }] })).toThrow(/declarative/i);
     expect(() => validateSavedBrowserScript({ steps: [{ action: "fill", selector: "input", value: "<script>alert(1)</script>" }] })).toThrow(/declarative/i);
+    expect(() =>
+      validateSavedBrowserScript({
+        steps: [
+          {
+            action: "read_rows",
+            selector: ".task-row",
+            fields: {
+              externalId: {
+                selector: ".task-title",
+                urlQueryParamAfterClick: "recordId&evil=1",
+              },
+            },
+          },
+        ],
+      })
+    ).toThrow(/query parameters/i);
   });
 
   it("rejects unbounded scripts", () => {
