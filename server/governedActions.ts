@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { ActionProposal } from "../drizzle/schema";
 import {
   automationPolicyDecision,
+  getAutomationPolicy,
   type AutomationPolicy,
 } from "./automationPolicy";
 import { executeGuardedApprovedCrmAction } from "./crm/guardedActionExecution";
@@ -15,6 +16,7 @@ import {
   claimApprovedActionProposal,
   recordActionExecution,
   reviewActionProposal,
+  returnClaimedActionForReview,
 } from "./db";
 import { resolveSalesWorkAfterVerifiedAction } from "./salesWork";
 
@@ -143,16 +145,31 @@ export async function executeAutoPreapprovedActions(input: {
   policy: AutomationPolicy;
 }) {
   const executions: Array<Record<string, unknown>> = [];
-  const autonomy = await getUserAutonomy({
-    userId: input.userId,
-    organisationId: input.organisationId,
-  });
+  // Permissions can be revoked while earlier actions in this run are executing.
+  // Re-read both layers for every action; a caller's snapshot is not authority.
+  const currentAuthority = async () => {
+    const [policy, autonomy] = await Promise.all([
+      getAutomationPolicy({
+        userId: input.userId,
+        organisationId: input.organisationId,
+      }),
+      getUserAutonomy({
+        userId: input.userId,
+        organisationId: input.organisationId,
+      }),
+    ]);
+    return { policy, autonomy };
+  };
   for (let index = 0; index < input.proposals.length; index += 1) {
     const proposal = input.proposals[index];
+    if (
+      proposal.userId !== input.userId ||
+      proposal.organisationId !== input.organisationId
+    )
+      throw new Error("AUTOMATION_PROPOSAL_SCOPE_MISMATCH");
     const decision = evaluateEffectiveAutoExecution({
       proposal,
-      policy: input.policy,
-      autonomy,
+      ...(await currentAuthority()),
       actionsInRun: index,
     });
     if (!decision.autoExecutable) {
@@ -189,6 +206,29 @@ export async function executeAutoPreapprovedActions(input: {
       continue;
     }
     try {
+      const executionDecision = evaluateEffectiveAutoExecution({
+        proposal: approved,
+        ...(await currentAuthority()),
+        actionsInRun: index,
+      });
+      if (!executionDecision.autoExecutable) {
+        await returnClaimedActionForReview({
+          userId: input.userId,
+          organisationId: input.organisationId,
+          proposalId: approved.id,
+          correlationId,
+          reason: executionDecision.reason,
+        });
+        executions.push({
+          proposalId: approved.id,
+          success: false,
+          attempted: false,
+          reviewRequired: true,
+          reason: executionDecision.reason,
+          effectivePermission: executionDecision,
+        });
+        continue;
+      }
       const result = await executeGuardedApprovedCrmAction({
         organisationId: input.organisationId,
         proposal: approved,
