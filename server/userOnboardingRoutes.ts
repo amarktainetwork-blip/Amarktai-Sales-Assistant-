@@ -56,6 +56,23 @@ function companyOnboarding(settings: Record<string, unknown>) {
   };
 }
 
+/**
+ * Shared company setup can be handed to a new salesperson once the manager has
+ * completed the company setup, confirmed company knowledge, and connected the
+ * CRM. Full CRM operation proof remains a separate crmReady signal and is
+ * completed with the salesperson's own authenticated CRM context during
+ * onboarding rather than being forged through the manager account.
+ */
+export function memberCompanySetupComplete(input: {
+  storedComplete: boolean;
+  companyKnowledgeReady: boolean;
+  crmConnected: boolean;
+}) {
+  return (
+    input.storedComplete && input.companyKnowledgeReady && input.crmConnected
+  );
+}
+
 function cleanPersona(
   value: unknown
 ): MemberOnboardingState["persona"] | undefined {
@@ -229,8 +246,11 @@ async function snapshotWithMembership(input: {
     input.membership.organisationId,
     systems
   );
-  const effectiveCompanyComplete =
-    storedCompany.complete && companyKnowledgeReady && crmReady;
+  const effectiveCompanyComplete = memberCompanySetupComplete({
+    storedComplete: storedCompany.complete,
+    companyKnowledgeReady,
+    crmConnected,
+  });
   const mailbox = await getDelegatedMailboxStatus({
     userId: input.userId,
     organisationId: input.membership.organisationId,
