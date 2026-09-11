@@ -69,6 +69,40 @@ describe("client action configuration", () => {
     });
   });
 
+  it("normalizes programme matchers and validates per-task action sequences", () => {
+    const result = validateClientActionConfigurationForCommissioning({
+      workflows: {
+        "first_contact:programme-alpha": {
+          opportunityNameContains: ["Alpha Programme"],
+          taskAliases: {
+            attempt_1: "First call",
+            attempt_2: "Second call",
+          },
+          taskSequence: ["attempt_1", "attempt_2"],
+          sequence: ["verify_contact_context:current_customer"],
+          sequenceByTaskPurpose: {
+            attempt_2: [
+              "append_contact_note:attempt_2_outcome",
+              "schedule_callback:attempt_2",
+            ],
+          },
+          timingRules: { attempt_2: "P1D" },
+        },
+      },
+    });
+    expect(
+      result.configuration.workflows["first_contact:programme-alpha"]
+    ).toMatchObject({
+      opportunityNameContains: ["Alpha Programme"],
+      sequenceByTaskPurpose: {
+        attempt_2: [
+          "append_contact_note:attempt_2_outcome",
+          "schedule_callback:attempt_2",
+        ],
+      },
+    });
+  });
+
   it("resolves current customer only from a configured stable URL identifier", () => {
     const configuration = normalizeClientActionConfiguration({
       currentRecordRules: [
@@ -188,7 +222,7 @@ describe("client action configuration", () => {
           opportunityStageTransitions: {
             close_or_lost: {
               "New Lead": "Lost - No Contact",
-              "Considering": "Not a Fit",
+              Considering: "Not a Fit",
             },
           },
           opportunityFieldMappings: {
@@ -220,12 +254,7 @@ describe("client action configuration", () => {
             attempt_3: "Third Contact",
             attempt_4: "Final Contact",
           },
-          taskSequence: [
-            "attempt_1",
-            "attempt_2",
-            "attempt_3",
-            "attempt_4",
-          ],
+          taskSequence: ["attempt_1", "attempt_2", "attempt_3", "attempt_4"],
           sequence: [
             "verify_contact_context:current_customer",
             "send_sms_template:first_contact",
@@ -261,5 +290,50 @@ describe("client action configuration", () => {
     });
     expect(result.valid).toBe(true);
     expect(result.workflowKeys).toEqual(["first_contact"]);
+  });
+});
+
+describe("attempt-specific configuration safety", () => {
+  const workflow = {
+    taskAliases: { one: "Call one", two: "Call two" },
+    taskSequence: ["one", "two"],
+    sequence: ["verify_contact_context:current_customer"],
+    timingRules: { two: "P1D" },
+  };
+  it("rejects aliases that map a task to two different attempts", () => {
+    expect(() =>
+      validateClientActionConfigurationForCommissioning({
+        workflows: {
+          first_contact: {
+            ...workflow,
+            taskAliasAlternatives: { two: ["Call one"] },
+          },
+        },
+      })
+    ).toThrow("CLIENT_WORKFLOW_TASK_ALIAS_DUPLICATE");
+  });
+  it("rejects attempt overrides outside the configured progression", () => {
+    expect(() =>
+      validateClientActionConfigurationForCommissioning({
+        workflows: {
+          first_contact: {
+            ...workflow,
+            taskAliases: { ...workflow.taskAliases, extra: "Extra" },
+            sequenceByTaskPurpose: {
+              extra: ["verify_contact_context:current_customer"],
+            },
+          },
+        },
+      })
+    ).toThrow("CLIENT_WORKFLOW_TASK_SEQUENCE_PURPOSE_INVALID");
+  });
+  it("rejects empty overrides instead of silently executing default actions", () => {
+    expect(() =>
+      validateClientActionConfigurationForCommissioning({
+        workflows: {
+          first_contact: { ...workflow, sequenceByTaskPurpose: { two: [] } },
+        },
+      })
+    ).toThrow("CLIENT_WORKFLOW_TASK_SEQUENCE_EMPTY");
   });
 });

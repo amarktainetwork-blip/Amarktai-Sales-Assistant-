@@ -6,9 +6,9 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("./clientActionConfiguration", async () => {
-  const actual = await vi.importActual<typeof import("./clientActionConfiguration")>(
-    "./clientActionConfiguration"
-  );
+  const actual = await vi.importActual<
+    typeof import("./clientActionConfiguration")
+  >("./clientActionConfiguration");
   return {
     ...actual,
     getClientActionConfiguration: mocks.getClientActionConfiguration,
@@ -16,9 +16,10 @@ vi.mock("./clientActionConfiguration", async () => {
 });
 
 vi.mock("./communications", async () => {
-  const actual = await vi.importActual<typeof import("./communications")>(
-    "./communications"
-  );
+  const actual =
+    await vi.importActual<typeof import("./communications")>(
+      "./communications"
+    );
   return {
     ...actual,
     getOutboundSuppressionStatus: mocks.getOutboundSuppressionStatus,
@@ -33,6 +34,7 @@ function customer(input?: {
   taskExternalId?: string;
   stage?: string;
   contactStatus?: string;
+  opportunityName?: string;
 }): ResolvedAssistantCustomerContext {
   const taskTitle = input?.taskTitle ?? "Attempt 1";
   const taskExternalId = input?.taskExternalId ?? "task-1";
@@ -46,7 +48,7 @@ function customer(input?: {
     phone: "+447700900123",
     contactStatus: input?.contactStatus ?? "New",
     opportunityExternalId: "opp-1",
-    opportunityName: "Current opportunity",
+    opportunityName: input?.opportunityName ?? "Current opportunity",
     stage: input?.stage ?? "New",
     reasons: [],
     targetVerification: {
@@ -67,7 +69,7 @@ function customer(input?: {
       openOpportunities: [
         {
           externalId: "opp-1",
-          name: "Current opportunity",
+          name: input?.opportunityName ?? "Current opportunity",
           stage: input?.stage ?? "New",
         },
       ],
@@ -147,7 +149,9 @@ beforeEach(() => {
 
 describe("configured workflow materialization", () => {
   it("sends the initial message only on attempt one and schedules the exact next configured attempt", async () => {
-    mocks.getClientActionConfiguration.mockResolvedValue(firstContactConfiguration());
+    mocks.getClientActionConfiguration.mockResolvedValue(
+      firstContactConfiguration()
+    );
 
     const attemptOne = await buildConfiguredWorkflowPlan({
       organisationId: 1,
@@ -160,15 +164,17 @@ describe("configured workflow materialization", () => {
       "send_sms_template"
     );
     expect(
-      attemptOne.actions.find(action => action.actionType === "send_sms_template")
-        ?.payload
+      attemptOne.actions.find(
+        action => action.actionType === "send_sms_template"
+      )?.payload
     ).toMatchObject({
       senderIdentity: "+447700900999",
       compliance: { suppressionVerified: true, optedOut: false },
     });
     expect(
-      attemptOne.actions.find(action => action.actionType === "schedule_callback")
-        ?.payload
+      attemptOne.actions.find(
+        action => action.actionType === "schedule_callback"
+      )?.payload
     ).toMatchObject({
       taskPurpose: "attempt_2",
       taskTitle: "Attempt 2",
@@ -190,13 +196,122 @@ describe("configured workflow materialization", () => {
       "send_sms_template"
     );
     expect(
-      attemptTwo.actions.find(action => action.actionType === "schedule_callback")
-        ?.payload
+      attemptTwo.actions.find(
+        action => action.actionType === "schedule_callback"
+      )?.payload
     ).toMatchObject({ taskPurpose: "attempt_3", taskTitle: "Attempt 3" });
   });
 
+  it("selects one programme-specific workflow from the exact current opportunity name", async () => {
+    const base = firstContactConfiguration();
+    const fallback = {
+      taskAliases: {},
+      taskSequence: [],
+      sequence: [
+        "verify_contact_context:current_customer",
+        "append_contact_note:fallback",
+      ],
+      eligibilityStatuses: [],
+      stopStatuses: [],
+      opportunityMappings: {},
+      statusMappings: {},
+      templates: {},
+      timingRules: {},
+      duplicateRules: [],
+      requiredPostconditions: [],
+    };
+    mocks.getClientActionConfiguration.mockResolvedValue({
+      ...base,
+      workflows: {
+        "post_consultation_follow_up:no_answer": fallback,
+        "post_consultation_follow_up:no_answer:programme-cyber": {
+          ...fallback,
+          opportunityNameContains: ["Cyber Security"],
+          sequence: [
+            "verify_contact_context:current_customer",
+            "append_contact_note:cyber_follow_up",
+          ],
+        },
+        "post_consultation_follow_up:no_answer:programme-data": {
+          ...fallback,
+          opportunityNameContains: ["Data Analyst"],
+          sequence: [
+            "verify_contact_context:current_customer",
+            "append_contact_note:data_follow_up",
+          ],
+        },
+      },
+    });
+
+    const plan = await buildConfiguredWorkflowPlan({
+      organisationId: 1,
+      request: {
+        workflowKey: "post_consultation_follow_up",
+        leadLabel: "Test Customer",
+        callOutcome: "no_answer",
+      },
+      customer: customer({
+        opportunityName: "Cyber Security Career Programme",
+      }),
+    });
+
+    expect(plan.configuration.workflowKey).toBe(
+      "post_consultation_follow_up:no_answer:programme-cyber"
+    );
+    expect(
+      plan.actions.find(action => action.actionType === "append_contact_note")
+        ?.payload.workflowPurpose
+    ).toBe("cyber_follow_up");
+  });
+
+  it("uses a configured later-attempt sequence without replaying the first-contact message", async () => {
+    const config: any = firstContactConfiguration();
+    config.workflows.first_contact.taskAliasAlternatives = {
+      attempt_2: ["Second call"],
+    };
+    config.workflows.first_contact.sequenceByTaskPurpose = {
+      attempt_2: [
+        "append_contact_note:attempt_2_failed_contact",
+        "schedule_callback:follow_up",
+      ],
+    };
+    config.workflows.first_contact.noteMappings = {
+      attempt_2_failed_contact: "Attempt 2 failed-contact outcome.",
+    };
+    mocks.getClientActionConfiguration.mockResolvedValue(config);
+
+    const plan = await buildConfiguredWorkflowPlan({
+      organisationId: 1,
+      request: { workflowKey: "first_contact", leadLabel: "Test Customer" },
+      customer: customer({
+        taskTitle: "Second call",
+        taskExternalId: "task-2",
+      }),
+    });
+
+    expect(plan.actions.map(action => action.actionType)).toEqual([
+      "verify_contact_context",
+      "append_contact_note",
+      "schedule_callback",
+    ]);
+    expect(
+      plan.actions.find(action => action.actionType === "append_contact_note")
+        ?.payload.workflowPurpose
+    ).toBe("attempt_2_failed_contact");
+    expect(
+      plan.actions.find(action => action.actionType === "schedule_callback")
+        ?.payload
+    ).toMatchObject({
+      taskPurpose: "attempt_3",
+      taskTitle: "Attempt 3",
+      workflowAttempt: { current: 2, maximum: 4, finalAttempt: false },
+    });
+  });
+
   it("blocks configured outreach before review when the current CRM status is a stop status", async () => {
-    mocks.getClientActionConfiguration.mockResolvedValue(firstContactConfiguration());
+    mocks.getClientActionConfiguration.mockResolvedValue(
+      firstContactConfiguration()
+    );
 
     await expect(
       buildConfiguredWorkflowPlan({
@@ -301,11 +416,14 @@ describe("configured workflow materialization", () => {
           opportunityStageTransitions: {
             close_or_lost: {
               "Attempting Contact": "Lost - No Contact",
-              "Considering": "Not a Fit",
+              Considering: "Not a Fit",
             },
           },
           opportunityFieldMappings: {
-            close_or_lost: { lostReason: "No successful contact", closed: true },
+            close_or_lost: {
+              lostReason: "No successful contact",
+              closed: true,
+            },
           },
           statusMappings: { closed_or_lost: "Lost" },
           contactFieldMappings: {
@@ -330,8 +448,9 @@ describe("configured workflow materialization", () => {
     });
 
     expect(
-      plan.actions.find(action => action.actionType === "update_current_opportunity")
-        ?.payload.patch
+      plan.actions.find(
+        action => action.actionType === "update_current_opportunity"
+      )?.payload.patch
     ).toMatchObject({
       stage: "Lost - No Contact",
       lostReason: "No successful contact",
@@ -342,8 +461,8 @@ describe("configured workflow materialization", () => {
         ?.payload.fields
     ).toMatchObject({ status: "Lost", closureReason: "No successful contact" });
     expect(
-      plan.actions.find(action => action.actionType === "apply_sequence")?.payload
-        .sequence
+      plan.actions.find(action => action.actionType === "apply_sequence")
+        ?.payload.sequence
     ).toBe("Tenant closed-lost sequence");
   });
 
@@ -375,7 +494,10 @@ describe("configured workflow materialization", () => {
       buildConfiguredWorkflowPlan({
         organisationId: 1,
         request: { workflowKey: "final_close", leadLabel: "Test Customer" },
-        customer: customer({ taskTitle: "Final attempt", stage: "Unexpected Stage" }),
+        customer: customer({
+          taskTitle: "Final attempt",
+          stage: "Unexpected Stage",
+        }),
       })
     ).rejects.toThrow("WORKFLOW_OPPORTUNITY_STAGE_UNMAPPED");
   });
@@ -412,9 +534,11 @@ describe("configured workflow materialization", () => {
 
     const noCurrentTargets = customer({ taskTitle: "Final attempt" });
     noCurrentTargets.operationalRecordState.openTasks = [];
-    noCurrentTargets.operationalRecordState.currentActiveTaskExternalId = undefined;
+    noCurrentTargets.operationalRecordState.currentActiveTaskExternalId =
+      undefined;
     noCurrentTargets.operationalRecordState.openOpportunities = [];
-    noCurrentTargets.operationalRecordState.currentActiveOpportunityExternalId = undefined;
+    noCurrentTargets.operationalRecordState.currentActiveOpportunityExternalId =
+      undefined;
     noCurrentTargets.opportunityExternalId = undefined;
     noCurrentTargets.stage = undefined;
 
@@ -470,7 +594,9 @@ describe("configured workflow materialization", () => {
   });
 
   it("never creates a fifth attempt after the configured final attempt", async () => {
-    mocks.getClientActionConfiguration.mockResolvedValue(firstContactConfiguration());
+    mocks.getClientActionConfiguration.mockResolvedValue(
+      firstContactConfiguration()
+    );
 
     const finalAttempt = await buildConfiguredWorkflowPlan({
       organisationId: 1,
@@ -593,31 +719,29 @@ describe("configured workflow materialization", () => {
       ...base,
       workflows: {
         "post_consultation_follow_up:answered": {
-          ...(
-            mocks.getClientActionConfiguration.mock.results.length
-              ? {
-                  taskAliases: {
-                    post_follow_up: "Current Follow-up",
-                    agreed_follow_up: "Agreed Follow-up",
-                  },
-                  taskSequence: [],
-                  sequence: [
-                    "verify_contact_context:current_customer",
-                    "complete_active_task:post_follow_up",
-                    "append_contact_note:answered_notes",
-                    "update_current_opportunity:post_consultation",
-                  ],
-                  eligibilityStatuses: [],
-                  stopStatuses: ["Closed"],
-                  opportunityMappings: { post_consultation: "Considering" },
-                  statusMappings: {},
-                  templates: {},
-                  timingRules: {},
-                  duplicateRules: ["external_read_before_write"],
-                  requiredPostconditions: ["crm_readback"],
-                }
-              : {}
-          ),
+          ...(mocks.getClientActionConfiguration.mock.results.length
+            ? {
+                taskAliases: {
+                  post_follow_up: "Current Follow-up",
+                  agreed_follow_up: "Agreed Follow-up",
+                },
+                taskSequence: [],
+                sequence: [
+                  "verify_contact_context:current_customer",
+                  "complete_active_task:post_follow_up",
+                  "append_contact_note:answered_notes",
+                  "update_current_opportunity:post_consultation",
+                ],
+                eligibilityStatuses: [],
+                stopStatuses: ["Closed"],
+                opportunityMappings: { post_consultation: "Considering" },
+                statusMappings: {},
+                templates: {},
+                timingRules: {},
+                duplicateRules: ["external_read_before_write"],
+                requiredPostconditions: ["crm_readback"],
+              }
+            : {}),
         },
       },
     };
@@ -746,5 +870,93 @@ describe("configured workflow materialization", () => {
         "schedule_callback",
       ])
     );
+  });
+});
+
+describe("programme and attempt fail-closed behavior", () => {
+  it("rejects competing programme matches", async () => {
+    const config: any = firstContactConfiguration();
+    config.workflows["first_contact:alpha"] = {
+      ...config.workflows.first_contact,
+      opportunityNameContains: ["Alpha"],
+    };
+    config.workflows["first_contact:beta"] = {
+      ...config.workflows.first_contact,
+      opportunityNameContains: ["Programme"],
+    };
+    mocks.getClientActionConfiguration.mockResolvedValue(config);
+    await expect(
+      buildConfiguredWorkflowPlan({
+        organisationId: 1,
+        request: { workflowKey: "first_contact", leadLabel: "Test Customer" },
+        customer: customer({ opportunityName: "Alpha Programme" }),
+      })
+    ).rejects.toThrow("WORKFLOW_VARIANT_AMBIGUOUS");
+  });
+  it("rejects multiple open opportunities before selecting a programme", async () => {
+    const config: any = firstContactConfiguration();
+    config.workflows["first_contact:alpha"] = {
+      ...config.workflows.first_contact,
+      opportunityNameContains: ["Alpha"],
+    };
+    mocks.getClientActionConfiguration.mockResolvedValue(config);
+    const context = customer({ opportunityName: "Alpha" });
+    context.operationalRecordState.openOpportunities.push({
+      externalId: "opp-2",
+      name: "Beta",
+      stage: "New",
+    });
+    await expect(
+      buildConfiguredWorkflowPlan({
+        organisationId: 1,
+        request: { workflowKey: "first_contact", leadLabel: "Test Customer" },
+        customer: context,
+      })
+    ).rejects.toThrow("WORKFLOW_VARIANT_OPPORTUNITY_AMBIGUOUS");
+  });
+  it("sends the configured failed-contact SMS on attempt two while suppressing the welcome SMS", async () => {
+    const config: any = firstContactConfiguration();
+    config.templates["failed-sms"] = {
+      ...config.templates["first-sms"],
+      key: "failed-sms",
+      body: "Approved failed-contact message.",
+    };
+    config.workflows.first_contact.templates.failed_contact = "failed-sms";
+    config.workflows.first_contact.sequenceByTaskPurpose = {
+      attempt_2: [
+        "send_sms_template:first_contact",
+        "send_sms_template:failed_contact",
+        "schedule_callback:follow_up",
+      ],
+    };
+    mocks.getClientActionConfiguration.mockResolvedValue(config);
+    const plan = await buildConfiguredWorkflowPlan({
+      organisationId: 1,
+      request: { workflowKey: "first_contact", leadLabel: "Test Customer" },
+      customer: customer({ taskTitle: "Attempt 2", taskExternalId: "task-2" }),
+    });
+    const messages = plan.actions.filter(
+      action => action.actionType === "send_sms_template"
+    );
+    expect(messages).toHaveLength(1);
+    expect(messages[0].payload.templatePurpose).toBe("failed_contact");
+    expect(
+      plan.actions.find(action => action.actionType === "schedule_callback")
+        ?.payload.taskTitle
+    ).toBe("Attempt 3");
+  });
+  it("rejects a task alias shared by two attempts even for legacy unvalidated configuration", async () => {
+    const config: any = firstContactConfiguration();
+    config.workflows.first_contact.taskAliasAlternatives = {
+      attempt_2: ["Attempt 1"],
+    };
+    mocks.getClientActionConfiguration.mockResolvedValue(config);
+    await expect(
+      buildConfiguredWorkflowPlan({
+        organisationId: 1,
+        request: { workflowKey: "first_contact", leadLabel: "Test Customer" },
+        customer: customer(),
+      })
+    ).rejects.toThrow("FIRST_CONTACT_TASK_PURPOSE_AMBIGUOUS");
   });
 });

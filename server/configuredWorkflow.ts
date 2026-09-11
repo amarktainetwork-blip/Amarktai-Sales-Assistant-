@@ -104,9 +104,7 @@ export function withinConfiguredOfficeHours(
 
 function timingDurationMs(rule: string) {
   const value = rule.trim();
-  const iso = value.match(
-    /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?)?$/i
-  );
+  const iso = value.match(/^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?)?$/i);
   if (iso && iso.slice(1).some(Boolean))
     return (
       Number(iso[1] || 0) * 86_400_000 +
@@ -123,7 +121,8 @@ export function resolveConfiguredTimingRule(input: {
   now?: Date;
 }) {
   const rule = input.rule.trim();
-  if (!rule) throw new Error("WORKFLOW_TIMING_REQUIRED: callback timing is empty.");
+  if (!rule)
+    throw new Error("WORKFLOW_TIMING_REQUIRED: callback timing is empty.");
   const now = input.now || new Date();
   const duration = timingDurationMs(rule);
   let candidate: Date;
@@ -245,16 +244,15 @@ function sequenceAction(
 function actionsFromConfiguration(
   base: WorkflowPlan,
   workflow: WorkflowActionConfiguration,
-  leadLabel: string
+  leadLabel: string,
+  sequence = workflow.sequence
 ) {
-  if (!workflow.sequence.length) return base.actions;
-  const configured = workflow.sequence.map((token, index) =>
+  if (!sequence.length) return base.actions;
+  const configured = sequence.map((token, index) =>
     sequenceAction(token, leadLabel, index)
   );
   if (
-    !configured.some(
-      action => action.actionType === "verify_contact_context"
-    )
+    !configured.some(action => action.actionType === "verify_contact_context")
   )
     configured.unshift(
       sequenceAction("verify_contact_context:current_customer", leadLabel, -1)
@@ -274,14 +272,17 @@ function applyTaskProgression(input: {
   )
     return input.actions;
   const purposes = input.workflow.taskSequence;
-  const titles = purposes.map(purpose => {
+  const titleOptions = purposes.map(purpose => {
     const title = input.workflow.taskAliases[purpose];
     if (!title)
       throw new Error(
-        `WORKFLOW_TASK_ALIAS_REQUIRED: task sequence purpose '${purpose}' has no exact CRM task alias.`
+        "WORKFLOW_TASK_ALIAS_REQUIRED: task sequence purpose '" +
+          purpose +
+          "' has no exact CRM task alias."
       );
-    return title;
+    return [title, ...(input.workflow.taskAliasAlternatives?.[purpose] || [])];
   });
+  const titles = titleOptions.map(options => options[0]);
   const openTasks = input.customer.operationalRecordState.openTasks;
   if (openTasks.length !== 1)
     throw new Error(
@@ -290,9 +291,14 @@ function applyTaskProgression(input: {
         : "FIRST_CONTACT_CURRENT_ATTEMPT_MISSING: no single open task proves the current outreach attempt."
     );
   const current = openTasks[0];
-  const attemptIndex = titles.findIndex(
-    title => norm(title) === norm(current.title)
+  const matchingAttempts = titleOptions.flatMap((options, index) =>
+    options.some(title => norm(title) === norm(current.title)) ? [index] : []
   );
+  if (matchingAttempts.length > 1)
+    throw new Error(
+      "FIRST_CONTACT_TASK_PURPOSE_AMBIGUOUS: current task matches more than one configured outreach purpose."
+    );
+  const attemptIndex = matchingAttempts[0] ?? -1;
   if (attemptIndex < 0)
     throw new Error(
       `FIRST_CONTACT_TASK_NOT_CONFIGURED: current task '${current.title}' is not one of the configured outreach attempts.`
@@ -304,10 +310,12 @@ function applyTaskProgression(input: {
     .filter(action => {
       if (
         attemptIndex > 0 &&
-        /^send_(?:email|sms|whatsapp)_template$/.test(action.actionType)
+        /^send_(?:email|sms|whatsapp)_template$/.test(action.actionType) &&
+        action.payload.templatePurpose === "first_contact"
       )
         return false;
-      if (finalAttempt && action.actionType === "schedule_callback") return false;
+      if (finalAttempt && action.actionType === "schedule_callback")
+        return false;
       return true;
     })
     .map(action => ({
@@ -321,7 +329,9 @@ function applyTaskProgression(input: {
           currentTaskTitle: current.title,
           finalAttempt,
         },
-        ...(action.actionType === "schedule_callback" && nextPurpose && nextTitle
+        ...(action.actionType === "schedule_callback" &&
+        nextPurpose &&
+        nextTitle
           ? {
               taskPurpose: nextPurpose,
               taskTitle: nextTitle,
@@ -336,7 +346,12 @@ function applyTaskProgression(input: {
 
 function uniqueStrings(...sets: string[][]) {
   return Array.from(
-    new Set(sets.flat().map(item => item.trim()).filter(Boolean))
+    new Set(
+      sets
+        .flat()
+        .map(item => item.trim())
+        .filter(Boolean)
+    )
   );
 }
 
@@ -378,9 +393,7 @@ function configuredActionMetadata(input: {
       ? payload.transitionIntent
       : undefined;
   const statusIntent =
-    typeof payload.statusIntent === "string"
-      ? payload.statusIntent
-      : undefined;
+    typeof payload.statusIntent === "string" ? payload.statusIntent : undefined;
   const sequencePurpose =
     typeof payload.sequencePurpose === "string"
       ? payload.sequencePurpose
@@ -544,9 +557,7 @@ async function materializeTemplateAction(input: {
       : typeof input.action.payload.workflowPurpose === "string"
         ? input.action.payload.workflowPurpose
         : "";
-  const templateKey = purpose
-    ? input.workflow.templates[purpose]
-    : undefined;
+  const templateKey = purpose ? input.workflow.templates[purpose] : undefined;
   if (!templateKey)
     throw new Error(
       `WORKFLOW_TEMPLATE_REQUIRED: configure the '${purpose || input.action.actionType}' ${channel.toUpperCase()} template for this workflow before it can be prepared.`
@@ -612,7 +623,10 @@ async function materializeTemplateAction(input: {
       executionOwner:
         channel === "email" ? "microsoft_delegated" : "commissioned_crm",
       actionVerification: {
-        ...((input.action.payload.actionVerification as Record<string, unknown>) || {}),
+        ...((input.action.payload.actionVerification as Record<
+          string,
+          unknown
+        >) || {}),
         recipientVerified: true,
         senderVerified: channel === "email" ? true : Boolean(senderIdentity),
       },
@@ -623,8 +637,7 @@ async function materializeTemplateAction(input: {
       },
       duplicateVerification: {
         state: "unknown",
-        rule:
-          "Canonical execution must re-read external activity or Microsoft Sent Items immediately before the irreversible send.",
+        rule: "Canonical execution must re-read external activity or Microsoft Sent Items immediately before the irreversible send.",
       },
     },
   };
@@ -632,8 +645,97 @@ async function materializeTemplateAction(input: {
 
 function workflowConfigurationKey(request: WorkflowRequest) {
   return request.callOutcome
-    ? `${request.workflowKey}:${request.callOutcome}`
+    ? request.workflowKey + ":" + request.callOutcome
     : request.workflowKey;
+}
+
+function workflowVariant(input: {
+  configuration: ClientActionConfiguration;
+  request: WorkflowRequest;
+  customer: ResolvedAssistantCustomerContext;
+}) {
+  const baseKey = workflowConfigurationKey(input.request);
+  const variants = Object.entries(input.configuration.workflows).filter(
+    ([key, workflow]) =>
+      key.startsWith(baseKey + ":") &&
+      Boolean(workflow.opportunityNameContains?.length)
+  );
+  if (!variants.length)
+    return {
+      key: input.configuration.workflows[baseKey]
+        ? baseKey
+        : input.request.workflowKey,
+      workflow:
+        input.configuration.workflows[baseKey] ||
+        input.configuration.workflows[input.request.workflowKey],
+    };
+  const opportunities = input.customer.operationalRecordState.openOpportunities;
+  if (opportunities.length > 1)
+    throw new Error(
+      "WORKFLOW_VARIANT_OPPORTUNITY_AMBIGUOUS: more than one current open opportunity exists, so Amarktai will not guess a programme-specific workflow."
+    );
+  const opportunityName = norm(opportunities[0]?.name || "");
+  const matches = opportunityName
+    ? variants.filter(([, workflow]) =>
+        (workflow.opportunityNameContains || []).some(fragment =>
+          opportunityName.includes(norm(fragment))
+        )
+      )
+    : [];
+  if (matches.length > 1)
+    throw new Error(
+      "WORKFLOW_VARIANT_AMBIGUOUS: more than one programme-specific workflow matches the current opportunity."
+    );
+  if (matches.length === 1)
+    return { key: matches[0][0], workflow: matches[0][1] };
+  return {
+    key: input.configuration.workflows[baseKey]
+      ? baseKey
+      : input.request.workflowKey,
+    workflow:
+      input.configuration.workflows[baseKey] ||
+      input.configuration.workflows[input.request.workflowKey],
+  };
+}
+
+function sequenceForCurrentTask(input: {
+  request: WorkflowRequest;
+  workflow: WorkflowActionConfiguration;
+  customer: ResolvedAssistantCustomerContext;
+}) {
+  if (
+    input.request.workflowKey !== "first_contact" ||
+    !Object.keys(input.workflow.sequenceByTaskPurpose || {}).length
+  )
+    return input.workflow.sequence;
+  const openTasks = input.customer.operationalRecordState.openTasks;
+  if (openTasks.length !== 1)
+    throw new Error(
+      openTasks.length
+        ? "FIRST_CONTACT_CURRENT_ATTEMPT_AMBIGUOUS: more than one open task exists, so Amarktai will not guess the current outreach attempt."
+        : "FIRST_CONTACT_CURRENT_ATTEMPT_MISSING: no single open task proves the current outreach attempt."
+    );
+  const currentTitle = norm(openTasks[0].title);
+  const matchedPurposes = input.workflow.taskSequence.filter(purpose =>
+    [
+      input.workflow.taskAliases[purpose],
+      ...(input.workflow.taskAliasAlternatives?.[purpose] || []),
+    ]
+      .filter(Boolean)
+      .some(title => norm(title) === currentTitle)
+  );
+  if (matchedPurposes.length !== 1)
+    throw new Error(
+      matchedPurposes.length
+        ? "FIRST_CONTACT_TASK_PURPOSE_AMBIGUOUS: current task matches more than one configured outreach purpose."
+        : "FIRST_CONTACT_TASK_NOT_CONFIGURED: current task '" +
+          openTasks[0].title +
+          "' is not one of the configured outreach attempts."
+    );
+  return (
+    input.workflow.sequenceByTaskPurpose?.[matchedPurposes[0]] ||
+    input.workflow.sequence
+  );
 }
 
 /**
@@ -652,20 +754,29 @@ export async function buildConfiguredWorkflowPlan(input: {
   const configuration = await getClientActionConfiguration({
     organisationId: input.organisationId,
   });
-  const variantKey = workflowConfigurationKey(input.request);
-  const workflow =
-    configuration.workflows[variantKey] ||
-    configuration.workflows[input.request.workflowKey];
+  const selected = workflowVariant({
+    configuration,
+    request: input.request,
+    customer: input.customer,
+  });
+  const variantKey = selected.key;
+  const workflow = selected.workflow;
   if (!workflow)
     throw new Error(
       `WORKFLOW_CONFIGURATION_REQUIRED: '${variantKey}' has not been commissioned for this organisation.`
     );
   assertWorkflowPreparationEligibility(workflow, input.customer);
   const base = buildWorkflowPlan(input.request);
+  const selectedSequence = sequenceForCurrentTask({
+    request: input.request,
+    workflow,
+    customer: input.customer,
+  });
   const configuredSource = actionsFromConfiguration(
     base,
     workflow,
-    input.customer.contactName
+    input.customer.contactName,
+    selectedSequence
   );
   if (
     input.request.callOutcome === "answered" &&
@@ -741,7 +852,10 @@ export async function buildConfiguredWorkflowPlan(input: {
       ...raw,
       payload: { ...raw.payload, ...metadata },
     };
-    assertConfiguredCurrentTask({ action: configured, customer: input.customer });
+    assertConfiguredCurrentTask({
+      action: configured,
+      customer: input.customer,
+    });
     actions.push(
       await materializeTemplateAction({
         organisationId: input.organisationId,
@@ -753,8 +867,7 @@ export async function buildConfiguredWorkflowPlan(input: {
     );
   }
   return {
-    verificationSummary:
-      `${base.verificationSummary} Client sequence, templates, task aliases, task progression, mappings, sender identities, timing, duplicate rules and postconditions were resolved from organisation configuration '${variantKey}'.${skippedOptionalActions.length ? ` Optional steps skipped because no exact current target existed: ${skippedOptionalActions.join(", ")}.` : ""}`,
+    verificationSummary: `${base.verificationSummary} Client sequence, templates, task aliases, task progression, mappings, sender identities, timing, duplicate rules and postconditions were resolved from organisation configuration '${variantKey}'.${skippedOptionalActions.length ? ` Optional steps skipped because no exact current target existed: ${skippedOptionalActions.join(", ")}.` : ""}`,
     actions,
     configuration: {
       workflowKey: variantKey,
