@@ -26,6 +26,28 @@ describe("provider-neutral browser CRM row normalization", () => {
     });
   });
 
+  it("canonicalizes provider record URLs to immutable source IDs", () => {
+    expect(
+      normalizeBrowserContactRow({
+        externalId:
+          "https://example.genie.test/v2/location/location-1/contacts/detail/contact-123",
+        name: "Example Lead",
+      }).externalId
+    ).toBe("contact-123");
+    expect(
+      normalizeBrowserTaskRow({
+        externalId:
+          "https://example.genie.test/v2/location/location-1/tasks?recordId=task-456",
+        contactExternalId:
+          "https://example.genie.test/v2/location/location-1/contacts/detail/contact-123",
+        title: "Follow up",
+      })
+    ).toMatchObject({
+      externalId: "task-456",
+      contactExternalId: "contact-123",
+    });
+  });
+
   it("normalizes tasks, opportunities and activities", () => {
     expect(
       normalizeBrowserTaskRow({
