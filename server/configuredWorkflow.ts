@@ -267,7 +267,7 @@ function applyTaskProgression(input: {
   workflow: WorkflowActionConfiguration;
   customer: ResolvedAssistantCustomerContext;
   actions: ProposedAction[];
-}) {
+}): ProposedAction[] {
   if (
     input.request.workflowKey !== "first_contact" ||
     !input.workflow.taskSequence.length

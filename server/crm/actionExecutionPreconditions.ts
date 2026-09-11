@@ -224,20 +224,20 @@ export async function verifyFreshWorkflowContext(input: {
   secret: ConnectionSecretPayload;
   contactExternalId: string;
 }) {
-  const [taskResult, opportunityResult, activityResult] = await Promise.all([
-    input.adapter.syncTasks({
+  // Browser adapters share one authenticated page and one control lease.
+  // Complete each read before the next resource navigates that page.
+  const taskResult = await input.adapter.syncTasks({
       connection: input.connection,
       secret: input.secret,
-    }),
-    input.adapter.syncOpportunities({
+    });
+  const opportunityResult = await input.adapter.syncOpportunities({
       connection: input.connection,
       secret: input.secret,
-    }),
-    input.adapter.syncActivities({
+    });
+  const activityResult = await input.adapter.syncActivities({
       connection: input.connection,
       secret: input.secret,
-    }),
-  ]);
+    });
   const opportunities = opportunityResult.records.filter(
     item => item.contactExternalId === input.contactExternalId
   );

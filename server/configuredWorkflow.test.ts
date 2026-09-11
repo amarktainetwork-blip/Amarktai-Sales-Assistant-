@@ -356,6 +356,8 @@ describe("configured workflow materialization", () => {
           taskAliases: { final_follow_up: "Final attempt" },
           taskSequence: [],
           sequence: ["update_current_opportunity:close_or_lost"],
+          eligibilityStatuses: [],
+          stopStatuses: [],
           opportunityMappings: {},
           opportunityStageTransitions: {
             close_or_lost: { "New Lead": "Lost - No Contact" },

@@ -5,6 +5,7 @@ import {
   opportunityIsHistorical,
   taskIsHistorical,
   withinConfiguredOfficeHours,
+  verifyFreshWorkflowContext,
 } from "./actionExecutionPreconditions";
 import type { AdapterConnection, CrmAdapter } from "./types";
 
@@ -73,6 +74,21 @@ function baseAdapter(overrides: Partial<CrmAdapter> = {}) {
 }
 
 describe("approved CRM execution preconditions", () => {
+  it("reads fresh workflow resources without overlapping control of a shared CRM page", async () => {
+    let active = false;
+    const calls: string[] = [];
+    const read = (resource: string) => async () => {
+      if (active) throw new Error("CRM_VIEWER_AGENT_CONTROL_ACTIVE");
+      active = true;
+      calls.push(resource);
+      await new Promise(resolve => setTimeout(resolve, 5));
+      active = false;
+      return { records: [] };
+    };
+    const adapter = baseAdapter({ syncTasks: read("tasks"), syncOpportunities: read("opportunities"), syncActivities: read("activities") });
+    await expect(verifyFreshWorkflowContext({ adapter, connection, secret: {}, contactExternalId: "contact-1" })).resolves.toMatchObject({ evidence: { contextReadVerified: true } });
+    expect(calls).toEqual(["tasks", "opportunities", "activities"]);
+  });
   it("classifies completed tasks and closed opportunities as historical", () => {
     expect(taskIsHistorical({ status: "completed", completedAt: undefined })).toBe(
       true
