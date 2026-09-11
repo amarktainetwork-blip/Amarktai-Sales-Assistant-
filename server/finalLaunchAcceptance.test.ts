@@ -85,16 +85,27 @@ describe("final launch acceptance safeguards", () => {
     expect(source).not.toContain("stored server evidence");
   });
 
-  it("requires a manager to save a conservative automation preset before setup completes", () => {
+  it("automatically applies the conservative review-first preset before setup completes", () => {
     const source = readFileSync(
       new URL("../client/src/pages/CrmWorkspace.tsx", import.meta.url),
       "utf8"
     );
     expect(source).toContain("automationPolicyConfigured");
     expect(source).toContain('fetch("/api/sales-automation/policy"');
-    expect(source).toContain('"assist_only"');
-    expect(source).toContain('"balanced"');
-    expect(source).toContain('"automated"');
-    expect(source).toContain("!automationPolicyConfigured");
+    expect(source).toContain(
+      'saveOnboardingAutomationPreset("assist_only", { silent: true })'
+    );
+    expect(source).not.toContain("FINAL SETUP · AUTOMATION PREFERENCE");
+    expect(source).toContain('navigate("/welcome")');
+  });
+
+  it("provides a dedicated completion welcome screen before Home", () => {
+    const welcome = readFileSync(
+      new URL("../client/src/pages/SetupWelcome.tsx", import.meta.url),
+      "utf8"
+    );
+    expect(welcome).toContain("Welcome to your Sales Assistant.");
+    expect(welcome).toContain("Open my Sales Assistant");
+    expect(welcome).toContain('navigate("/today")');
   });
 });

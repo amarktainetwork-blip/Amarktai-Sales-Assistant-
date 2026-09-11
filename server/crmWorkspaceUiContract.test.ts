@@ -10,7 +10,12 @@ describe("CRM workspace customer interaction contract", () => {
   it("keeps Amarktai navigation while removing redundant setup chrome inside CRM", () => {
     expect(source).toContain("<DashboardLayout>");
     expect(source).toContain("data-crm-workspace-root");
-    expect(readFileSync(new URL("../client/src/dashboard-final.css", import.meta.url),"utf8")).toContain("main:has(> [data-crm-workspace-root])");
+    expect(
+      readFileSync(
+        new URL("../client/src/dashboard-final.css", import.meta.url),
+        "utf8"
+      )
+    ).toContain("main:has(> [data-crm-workspace-root])");
     expect(source).not.toContain("<style>");
     expect(source).not.toContain("Capability summary");
     expect(source).not.toContain("Latest CRM activity");
@@ -21,6 +26,19 @@ describe("CRM workspace customer interaction contract", () => {
     expect(source).toContain('type: "acquireHumanControl"');
     expect(source).toContain("flushPendingInput");
     expect(source).toContain("Move here to take control");
+  });
+
+  it("automatically hands authenticated CRM control back for commissioning", () => {
+    expect(source).toContain("authenticationHandoffRef");
+    expect(source).toContain('type: "customerFinishedSigningIn"');
+    expect(source).toContain("Finishing your setup");
+    expect(source).toContain("page open — you do not need to click anything.");
+  });
+
+  it("automatically exact-email matches CRM identity during setup", () => {
+    expect(source).toContain("autoClaimAttemptedRef");
+    expect(source).toContain('fetch("/api/team/crm-identity"');
+    expect(source).toContain("state?.candidates?.length === 1");
   });
 
   it("maps the streamed browser image back to Chromium coordinates", () => {

@@ -134,6 +134,10 @@ export default function CrmWorkspace() {
   const [crmIdentityMapped, setCrmIdentityMapped] = useState(false);
   const [savingAutomationPreset, setSavingAutomationPreset] =
     useState<AutomationPreset | null>(null);
+  const [automationSetupError, setAutomationSetupError] = useState<
+    string | null
+  >(null);
+  const automationDefaultAttemptedRef = useRef(false);
   const completionAttemptedRef = useRef(false);
   const selected = useMemo(
     () =>
@@ -161,8 +165,12 @@ export default function CrmWorkspace() {
         !Array.isArray(organisation.data.settings.automationPolicy))
   );
 
-  async function saveOnboardingAutomationPreset(preset: AutomationPreset) {
+  async function saveOnboardingAutomationPreset(
+    preset: AutomationPreset,
+    options: { silent?: boolean } = {}
+  ) {
     setSavingAutomationPreset(preset);
+    setAutomationSetupError(null);
     try {
       const response = await fetch("/api/sales-automation/policy", {
         method: "PUT",
@@ -178,11 +186,17 @@ export default function CrmWorkspace() {
           body.error || "Automation preference could not be saved."
         );
       await utils.organisation.current.invalidate();
-      toast.success("Automation preference saved. Finishing setup…");
+      if (!options.silent)
+        toast.success("Automation preference saved. Finishing setup…");
+      return true;
     } catch (error) {
-      toast.error(
-        friendlyError(error, "Automation preference could not be saved.")
+      const detail = friendlyError(
+        error,
+        "Automation preference could not be saved."
       );
+      setAutomationSetupError(detail);
+      if (!options.silent) toast.error(detail);
+      return false;
     } finally {
       setSavingAutomationPreset(null);
     }
@@ -193,6 +207,8 @@ export default function CrmWorkspace() {
     setCommissioningJob(null);
     setBrowserAuthenticationState("STARTING");
     completionAttemptedRef.current = false;
+    automationDefaultAttemptedRef.current = false;
+    setAutomationSetupError(null);
     if (!selected || !canManage || onboardingComplete) return;
     let cancelled = false;
     const check = async () => {
@@ -227,6 +243,36 @@ export default function CrmWorkspace() {
     if (
       !canManage ||
       onboardingComplete ||
+      browserAuthenticationState !== "AUTHENTICATED" ||
+      !commissioningReady ||
+      !crmIdentityMapped ||
+      automationPolicyConfigured ||
+      companySetup.data?.profile?.discoveryStatus !== "confirmed" ||
+      savingAutomationPreset !== null ||
+      automationDefaultAttemptedRef.current
+    )
+      return;
+    automationDefaultAttemptedRef.current = true;
+    void saveOnboardingAutomationPreset("assist_only", { silent: true }).then(
+      saved => {
+        if (!saved) automationDefaultAttemptedRef.current = false;
+      }
+    );
+  }, [
+    automationPolicyConfigured,
+    browserAuthenticationState,
+    canManage,
+    commissioningReady,
+    companySetup.data?.profile?.discoveryStatus,
+    crmIdentityMapped,
+    onboardingComplete,
+    savingAutomationPreset,
+  ]);
+
+  useEffect(() => {
+    if (
+      !canManage ||
+      onboardingComplete ||
       completionAttemptedRef.current ||
       browserAuthenticationState !== "AUTHENTICATED" ||
       !commissioningReady ||
@@ -241,7 +287,7 @@ export default function CrmWorkspace() {
       .then(async () => {
         await utils.organisation.current.invalidate();
         toast.success("Setup complete. Your Assistant is ready.");
-        navigate("/today");
+        navigate("/welcome");
       })
       .catch(error => {
         completionAttemptedRef.current = false;
@@ -271,7 +317,6 @@ export default function CrmWorkspace() {
         data-crm-workspace-root
         className="relative h-[calc(100vh-66px)] min-h-0 overflow-hidden bg-[#EDF2F7]"
       >
-
         {selected ? (
           <LiveWorkspace
             key={selected.id}
@@ -288,101 +333,81 @@ export default function CrmWorkspace() {
         {canManage &&
         !onboardingComplete &&
         browserAuthenticationState === "AUTHENTICATED" ? (
-          <div className="absolute left-1/2 top-3 z-30 w-[min(94%,760px)] -translate-x-1/2 rounded-2xl border border-[#C7D4E4] bg-white/95 p-4 shadow-[0_14px_40px_rgba(20,48,84,.16)] backdrop-blur">
-            <div className="flex items-start gap-3">
-              {commissioningReady ? (
-                <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-emerald-600" />
-              ) : (
-                <Loader2 className="mt-0.5 size-5 shrink-0 animate-spin text-[#2865C7]" />
-              )}
-              <div className="min-w-0">
-                <p className="font-bold text-[#203047]">
-                  {commissioningReady
-                    ? "CRM learning complete"
-                    : `AmarktAI is learning ${selected?.displayName || "your CRM"}`}
-                </p>
-                <p className="mt-1 text-sm text-[#607086]">
-                  {commissioningJob?.progress?.humanStatus ||
-                    commissioningJob?.humanStatus ||
-                    "Checking the signed-in CRM and finding safe read functions…"}
-                </p>
-                {commissioningJob?.lastError ? (
-                  <p className="mt-2 text-xs font-semibold text-amber-800">
-                    {commissioningJob.lastError}
+          <div className="absolute inset-0 z-40 flex items-center justify-center bg-[#F4F7FB]/95 p-5 backdrop-blur-sm">
+            <div className="w-full max-w-2xl rounded-[28px] border border-[#D7E0EA] bg-white p-7 shadow-[0_24px_80px_rgba(20,48,84,.16)] sm:p-9">
+              <div className="flex items-start gap-4">
+                {commissioningReady &&
+                crmIdentityMapped &&
+                automationPolicyConfigured ? (
+                  <CheckCircle2 className="mt-1 size-7 shrink-0 text-emerald-600" />
+                ) : (
+                  <Loader2 className="mt-1 size-7 shrink-0 animate-spin text-[#2865C7]" />
+                )}
+                <div className="min-w-0">
+                  <p className="text-[11px] font-black uppercase tracking-[.16em] text-[#2865C7]">
+                    Finishing your setup
                   </p>
-                ) : null}
-                <p className="mt-2 text-xs text-[#718096]">
-                  Setup starts with read-only CRM access. No CRM record is
-                  changed during onboarding.
-                </p>
+                  <h2 className="mt-2 text-2xl font-bold text-[#203047]">
+                    AmarktAI is learning {selected?.displayName || "your CRM"}
+                  </h2>
+                  <p className="mt-2 text-sm leading-6 text-[#607086]">
+                    Your sign-in is complete. Give us a few minutes to learn the
+                    CRM navigation, prove the safe read functions, match your
+                    salesperson identity and prepare your workspace. Keep this
+                    page open — you do not need to click anything.
+                  </p>
+                  <p className="mt-2 text-xs font-semibold text-[#718096]">
+                    Setup is read-only. No CRM record, stage, note, task or
+                    customer message is changed while we learn.
+                  </p>
+                </div>
               </div>
-            </div>
-            <CrmIdentitySetup
-              active={commissioningReady}
-              onMapped={setCrmIdentityMapped}
-            />
-          </div>
-        ) : null}
-        {canManage &&
-        !onboardingComplete &&
-        browserAuthenticationState === "AUTHENTICATED" &&
-        commissioningReady &&
-        companySetup.data?.profile?.discoveryStatus === "confirmed" &&
-        !automationPolicyConfigured ? (
-          <div className="absolute inset-x-0 bottom-0 z-30 border-t border-[#C7D4E4] bg-white/95 p-4 shadow-[0_-18px_50px_rgba(20,48,84,.18)] backdrop-blur sm:p-6">
-            <div className="mx-auto max-w-5xl">
-              <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#2865C7]">
-                FINAL SETUP · AUTOMATION PREFERENCE
-              </p>
-              <h2 className="mt-1 text-xl font-bold text-[#203047]">
-                Choose how much AmarktAI may do automatically.
-              </h2>
-              <p className="mt-1 text-sm text-[#607086]">
-                Customer messages and important CRM changes still keep their
-                required safety checks. You can change this later in Management
-                Controls.
-              </p>
-              <div className="mt-4 grid gap-3 md:grid-cols-3">
-                {(
+
+              <div className="mt-7 grid gap-3">
+                {[
+                  ["CRM sign-in", true],
+                  ["Learn CRM navigation and safe reads", commissioningReady],
+                  ["Match your salesperson identity", crmIdentityMapped],
                   [
-                    [
-                      "assist_only",
-                      "Assist only",
-                      "Monitor and propose actions for you to approve.",
-                    ],
-                    [
-                      "balanced",
-                      "Balanced",
-                      "Run safe reminders; keep communications in review.",
-                    ],
-                    [
-                      "automated",
-                      "Automated",
-                      "Run approved deterministic categories automatically.",
-                    ],
-                  ] as const
-                ).map(([preset, title, detail]) => (
-                  <button
-                    key={preset}
-                    type="button"
-                    disabled={savingAutomationPreset !== null}
-                    onClick={() => void saveOnboardingAutomationPreset(preset)}
-                    className="rounded-2xl border border-[#C7D4E4] bg-[#F7F9FC] p-4 text-left transition hover:border-[#6D9DE8] hover:bg-[#EEF5FF] disabled:opacity-60"
+                    "Apply safe review-first settings",
+                    automationPolicyConfigured,
+                  ],
+                ].map(([label, done]) => (
+                  <div
+                    key={String(label)}
+                    className="flex items-center gap-3 rounded-2xl border border-[#E1E7EF] bg-[#F8FAFD] px-4 py-3"
                   >
-                    <span className="flex items-center gap-2 font-bold text-[#203047]">
-                      {savingAutomationPreset === preset ? (
-                        <Loader2 className="size-4 animate-spin" />
-                      ) : (
-                        <ShieldCheck className="size-4 text-[#2865C7]" />
-                      )}
-                      {title}
+                    {done ? (
+                      <CheckCircle2 className="size-5 shrink-0 text-emerald-600" />
+                    ) : (
+                      <Loader2 className="size-5 shrink-0 animate-spin text-[#2865C7]" />
+                    )}
+                    <span className="text-sm font-semibold text-[#314259]">
+                      {label}
                     </span>
-                    <span className="mt-1 block text-xs leading-5 text-[#607086]">
-                      {detail}
-                    </span>
-                  </button>
+                  </div>
                 ))}
               </div>
+
+              <div className="mt-5 rounded-2xl bg-[#EEF5FF] px-4 py-3 text-sm text-[#365577]">
+                {commissioningJob?.progress?.humanStatus ||
+                  commissioningJob?.humanStatus ||
+                  (commissioningReady
+                    ? crmIdentityMapped
+                      ? "Applying your safe review-first defaults…"
+                      : "Matching your CRM identity using your signed-in email…"
+                    : "Inspecting the authenticated CRM and learning its safe read paths…")}
+              </div>
+              {commissioningJob?.lastError || automationSetupError ? (
+                <p className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-xs font-semibold leading-5 text-amber-900">
+                  {commissioningJob?.lastError || automationSetupError}
+                </p>
+              ) : null}
+
+              <CrmIdentitySetup
+                active={commissioningReady}
+                onMapped={setCrmIdentityMapped}
+              />
             </div>
           </div>
         ) : null}
@@ -408,10 +433,12 @@ function CrmIdentitySetup({
     }>;
   } | null>(null);
   const [claiming, setClaiming] = useState(false);
+  const autoClaimAttemptedRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!active) {
       onMapped(false);
+      autoClaimAttemptedRef.current = null;
       return;
     }
     let cancelled = false;
@@ -433,61 +460,55 @@ function CrmIdentitySetup({
     };
   }, [active, onMapped]);
 
+  const candidate =
+    state?.candidates?.length === 1 ? state.candidates[0] : undefined;
+
+  useEffect(() => {
+    if (
+      !active ||
+      state?.mapped ||
+      !candidate ||
+      claiming ||
+      autoClaimAttemptedRef.current === candidate.id
+    )
+      return;
+    autoClaimAttemptedRef.current = candidate.id;
+    setClaiming(true);
+    void fetch("/api/team/crm-identity", {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mappingId: candidate.id }),
+    })
+      .then(async response => {
+        const body = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        if (!response.ok)
+          throw new Error(body.error || "CRM identity could not be confirmed.");
+        setState(current => (current ? { ...current, mapped: true } : current));
+        onMapped(true);
+      })
+      .catch(error => {
+        autoClaimAttemptedRef.current = null;
+        toast.error(
+          friendlyError(error, "CRM identity could not be confirmed.")
+        );
+      })
+      .finally(() => setClaiming(false));
+  }, [active, candidate, claiming, onMapped, state?.mapped]);
+
   if (!active || state?.mapped) return null;
-  const candidate = state?.candidates?.[0];
+
   return (
-    <div className="mt-3 border-t border-[#E0E7F0] pt-3">
-      <p className="text-sm font-bold text-[#203047]">
-        Confirm your salesperson identity
+    <div className="mt-4 rounded-2xl border border-[#E1E7EF] bg-white px-4 py-3">
+      <p className="text-xs font-semibold leading-5 text-[#607086]">
+        {claiming || candidate
+          ? "Matching your CRM salesperson identity to your signed-in email…"
+          : state && state.candidates.length > 1
+            ? "More than one CRM identity matches your email. Setup stopped safely so we do not guess."
+            : "Waiting for the CRM owner list to synchronize so we can match your exact signed-in email…"}
       </p>
-      <p className="mt-1 text-xs leading-5 text-[#607086]">
-        Your personal workspace only shows CRM records owned by your mapped
-        salesperson identity. Team-wide records stay in management views.
-      </p>
-      {candidate ? (
-        <Button
-          size="sm"
-          className="mt-3"
-          disabled={claiming}
-          onClick={async () => {
-            setClaiming(true);
-            try {
-              const response = await fetch("/api/team/crm-identity", {
-                method: "PUT",
-                credentials: "include",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ mappingId: candidate.id }),
-              });
-              const body = (await response.json().catch(() => ({}))) as {
-                error?: string;
-              };
-              if (!response.ok)
-                throw new Error(
-                  body.error || "CRM identity could not be confirmed."
-                );
-              onMapped(true);
-              setState(current =>
-                current ? { ...current, mapped: true } : current
-              );
-            } catch (error) {
-              toast.error(
-                friendlyError(error, "CRM identity could not be confirmed.")
-              );
-            } finally {
-              setClaiming(false);
-            }
-          }}
-        >
-          {claiming ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
-          Use {candidate.displayName}
-          {candidate.email ? ` · ${candidate.email}` : ""}
-        </Button>
-      ) : (
-        <p className="mt-2 text-xs font-semibold text-amber-800">
-          Waiting for the CRM owner list to synchronize. AmarktAI only offers an
-          identity with the same signed-in email; it will not guess by name.
-        </p>
-      )}
     </div>
   );
 }
@@ -540,6 +561,7 @@ function LiveWorkspace({
   const pendingNavigationRef = useRef<BrowserNavigationAction | null>(null);
   const humanControlRequestedRef = useRef(false);
   const pendingAiControlRef = useRef(false);
+  const authenticationHandoffRef = useRef<string | null>(null);
   const lastPointerMoveAtRef = useRef(0);
 
   useEffect(() => {
@@ -560,6 +582,7 @@ function LiveWorkspace({
       pendingNavigationRef.current = null;
       humanControlRequestedRef.current = false;
       pendingAiControlRef.current = false;
+      authenticationHandoffRef.current = null;
       setSession(null);
       setImage("");
       setFrameMetadata(null);
@@ -737,9 +760,13 @@ function LiveWorkspace({
         setCurrentUrl(message.currentUrl);
         setAuthenticationState(message.authenticationState);
         onAuthenticationState(message.authenticationState);
-        if (message.authenticationState === "AUTHENTICATED")
+        if (message.authenticationState === "AUTHENTICATED") {
           setViewerPhase("authenticated");
-        else if (message.authenticationState === "ERROR")
+          if (authenticationHandoffRef.current !== session.viewerSessionId) {
+            socket.send(JSON.stringify({ type: "customerFinishedSigningIn" }));
+            authenticationHandoffRef.current = session.viewerSessionId;
+          }
+        } else if (message.authenticationState === "ERROR")
           setViewerPhase("failed");
         setStatus(
           message.errorMessage ||

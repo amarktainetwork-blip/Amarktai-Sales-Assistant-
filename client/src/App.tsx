@@ -33,6 +33,7 @@ import LiveCalls from "./pages/LiveCalls";
 import Pricing from "./pages/Pricing";
 import Reviews from "./pages/Reviews";
 import Settings from "./pages/Settings";
+import SetupWelcome from "./pages/SetupWelcome";
 import TeamIntelligence from "./pages/TeamIntelligence";
 import TeamManagement from "./pages/TeamManagement";
 import Today from "./pages/Today";
@@ -49,6 +50,7 @@ const workspacePrefixes = [
   "/reviews",
   "/team",
   "/settings",
+  "/welcome",
   "/connections",
   "/company-setup",
   "/knowledge",
@@ -185,6 +187,7 @@ function Router() {
 
         <Route path="/dashboard" component={Today} />
         <Route path="/today" component={Today} />
+        <Route path="/welcome" component={SetupWelcome} />
         <Route path="/assistant" component={Assistant} />
         <Route path="/agents">{() => <LegacyRedirect to="/assistant" />}</Route>
         <Route path="/sell">{() => <LegacyRedirect to="/today" />}</Route>
@@ -299,7 +302,9 @@ function App() {
         <TooltipProvider>
           <Toaster />
           <PersonalSetupBoundary />
-          <div id="workspace-route"><Router /></div>
+          <div id="workspace-route">
+            <Router />
+          </div>
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>
