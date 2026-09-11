@@ -324,6 +324,26 @@ export async function updateOnboardingState(input: {
     .update(organisations)
     .set({ settings })
     .where(eq(organisations.id, input.membership.organisationId));
+
+  if (input.complete === true) {
+    const actor = (
+      await db
+        .select({ name: users.name })
+        .from(users)
+        .where(eq(users.id, input.userId))
+        .limit(1)
+    )[0];
+    await updateMemberOnboardingState({
+      userId: input.userId,
+      membership: input.membership,
+      step: 6,
+      complete: true,
+      persona: input.membership.role === "owner" ? "company_owner" : "manager",
+      ...(actor?.name ? { preferredName: actor.name } : {}),
+      crmCredentialsSaved: true,
+    });
+  }
+
   return {
     workspaceMode: settings.workspaceMode,
     onboarding: settings.onboarding,
