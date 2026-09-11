@@ -1007,11 +1007,29 @@ function asMinor(value?: string) {
     ? Math.round(number * 100)
     : undefined;
 }
+function sourceRecordId(value?: string) {
+  const raw = (value || "").trim();
+  if (!raw) return "";
+  try {
+    const url = new URL(raw, "https://crm.invalid");
+    for (const key of ["id", "contactId", "contact_id", "recordId"]) {
+      const candidate = url.searchParams.get(key);
+      if (candidate) return candidate;
+    }
+    const pathname = url.pathname.replace(/\/+$/, "");
+    const last = pathname.split("/").filter(Boolean).at(-1);
+    if (last && last !== "crm.invalid") return decodeURIComponent(last);
+  } catch {
+    // Preserve non-URL immutable provider identifiers exactly.
+  }
+  return raw;
+}
+
 function externalId(row: Record<string, string>, resource: string) {
-  const value = (row.externalId || row.id || "").trim();
+  const value = sourceRecordId(row.externalId || row.id);
   if (!value)
     throw new Error(
-      `INVALID_EXTERNAL_ID: Genie ${resource} extraction returned a row without an external record ID.`
+      "INVALID_EXTERNAL_ID: Genie " + resource + " extraction returned a row without an external record ID."
     );
   return value;
 }
@@ -1019,7 +1037,7 @@ function contact(row: Record<string, string>): NormalizedContact {
   const nameParts = (row.name || "").trim().split(/\s+/).filter(Boolean);
   return {
     externalId: externalId(row, "contact"),
-    companyExternalId: row.companyExternalId || undefined,
+    companyExternalId: sourceRecordId(row.companyExternalId) || undefined,
     ownerExternalId: row.ownerExternalId || undefined,
     firstName: row.firstName || nameParts[0] || undefined,
     lastName: row.lastName || nameParts.slice(1).join(" ") || undefined,
@@ -1045,8 +1063,8 @@ function company(row: Record<string, string>): NormalizedCompany {
 function opportunity(row: Record<string, string>): NormalizedOpportunity {
   return {
     externalId: externalId(row, "opportunity"),
-    companyExternalId: row.companyExternalId || undefined,
-    contactExternalId: row.contactExternalId || undefined,
+    companyExternalId: sourceRecordId(row.companyExternalId) || undefined,
+    contactExternalId: sourceRecordId(row.contactExternalId) || undefined,
     ownerExternalId: row.ownerExternalId || undefined,
     name: row.name || "Unnamed opportunity",
     pipeline: row.pipeline || undefined,
@@ -1064,8 +1082,8 @@ function opportunity(row: Record<string, string>): NormalizedOpportunity {
 function task(row: Record<string, string>): NormalizedTask {
   return {
     externalId: externalId(row, "task or Manual Action"),
-    contactExternalId: row.contactExternalId || undefined,
-    opportunityExternalId: row.opportunityExternalId || undefined,
+    contactExternalId: sourceRecordId(row.contactExternalId) || undefined,
+    opportunityExternalId: sourceRecordId(row.opportunityExternalId) || undefined,
     ownerExternalId: row.ownerExternalId || undefined,
     title: row.title || "Task",
     status: row.status || "open",
@@ -1079,8 +1097,8 @@ function task(row: Record<string, string>): NormalizedTask {
 function activity(row: Record<string, string>): NormalizedActivity {
   return {
     externalId: externalId(row, "activity"),
-    contactExternalId: row.contactExternalId || undefined,
-    opportunityExternalId: row.opportunityExternalId || undefined,
+    contactExternalId: sourceRecordId(row.contactExternalId) || undefined,
+    opportunityExternalId: sourceRecordId(row.opportunityExternalId) || undefined,
     ownerExternalId: row.ownerExternalId || undefined,
     activityType: row.activityType || row.type || "activity",
     occurredAt: asDate(row.occurredAt) || new Date(),

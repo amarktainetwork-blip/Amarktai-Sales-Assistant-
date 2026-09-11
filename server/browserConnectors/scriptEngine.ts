@@ -31,6 +31,9 @@ export type BrowserRowField = {
    * parameter from the resulting URL, then restore the list before continuing.
    */
   urlQueryParamAfterClick?: string;
+  /** Return one configured value when the selector exists and another when it does not. */
+  presentValue?: string;
+  absentValue?: string;
 };
 export type BrowserScriptStep = {
   action: BrowserScriptAction;
@@ -205,6 +208,29 @@ export function validateSavedBrowserScript(script: SavedBrowserScript) {
           throw new Error(
             "Browser row fields may read either an attribute or a URL query parameter after click, not both."
           );
+        const hasPresenceMapping =
+          field.presentValue !== undefined || field.absentValue !== undefined;
+        if (
+          hasPresenceMapping &&
+          (field.presentValue === undefined || field.absentValue === undefined)
+        )
+          throw new Error(
+            "Browser row presence mappings require both presentValue and absentValue."
+          );
+        if (
+          hasPresenceMapping &&
+          (field.presentValue!.length > 500 || field.absentValue!.length > 500)
+        )
+          throw new Error(
+            "Browser row presence mapping values are too long."
+          );
+        if (
+          hasPresenceMapping &&
+          (field.attribute || field.urlQueryParamAfterClick)
+        )
+          throw new Error(
+            "Browser row fields may use one extraction mode at a time."
+          );
       }
     }
   }
@@ -228,6 +254,10 @@ async function rowValue(
   row: ReturnType<Page["locator"]>,
   field: BrowserRowField
 ) {
+  if (field.presentValue !== undefined && field.absentValue !== undefined) {
+    const matches = field.selector ? await row.locator(field.selector).count() : 1;
+    return matches > 0 ? field.presentValue : field.absentValue;
+  }
   const target = field.selector ? row.locator(field.selector).first() : row;
   if (field.urlQueryParamAfterClick) {
     const beforeUrl = page.url();

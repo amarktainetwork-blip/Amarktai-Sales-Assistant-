@@ -14,22 +14,32 @@ describe("saved browser connector scripts", () => {
       { action: "read_rows", selector: "table tbody tr", key: "records", fields: { externalId: { selector: "a", attribute: "data-id" }, name: { selector: ".name" }, email: { selector: ".email" } } },
     ] });
     expect(script.steps).toHaveLength(4);
-    expect(
-      validateSavedBrowserScript({
-        steps: [
-          {
-            action: "read_rows",
-            selector: ".task-row",
-            fields: {
-              externalId: {
-                selector: ".task-title",
-                urlQueryParamAfterClick: "recordId",
-              },
+    const rowScript = validateSavedBrowserScript({
+      steps: [
+        {
+          action: "read_rows",
+          selector: ".task-row",
+          fields: {
+            externalId: {
+              selector: ".task-title",
+              urlQueryParamAfterClick: "recordId",
+            },
+            status: {
+              selector: ".completed-indicator",
+              presentValue: "completed",
+              absentValue: "pending",
             },
           },
-        ],
-      }).steps[0]?.fields?.externalId?.urlQueryParamAfterClick
-    ).toBe("recordId");
+        },
+      ],
+    });
+    expect(rowScript.steps[0]?.fields?.externalId?.urlQueryParamAfterClick).toBe(
+      "recordId"
+    );
+    expect(rowScript.steps[0]?.fields?.status).toMatchObject({
+      presentValue: "completed",
+      absentValue: "pending",
+    });
     expect(renderBrowserTemplate("/contact/{{ externalId }}", { externalId: 42 })).toBe("/contact/42");
   });
 

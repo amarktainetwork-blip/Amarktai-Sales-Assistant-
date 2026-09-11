@@ -57,6 +57,8 @@ export type GuidedReadOutput = {
     selector?: string;
     attribute?: string;
     urlQueryParamAfterClick?: string;
+    presentValue?: string;
+    absentValue?: string;
   }>;
 };
 export type GuidedTargetReview = {
