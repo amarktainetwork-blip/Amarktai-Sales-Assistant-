@@ -51,7 +51,9 @@ export function configuredTaskPriorityTitles(
       const title = workflow.taskAliases[purpose]?.trim();
       if (
         title &&
-        !titles.some(item => normalizedTaskTitle(item) === normalizedTaskTitle(title))
+        !titles.some(
+          item => normalizedTaskTitle(item) === normalizedTaskTitle(title)
+        )
       )
         titles.push(title);
     }
@@ -234,19 +236,34 @@ export async function getTodayWork(input: {
       .orderBy(desc(salesWorkItems.priority), desc(salesWorkItems.updatedAt))
       .limit(500),
   ]);
-  const ownerIds = new Set(mappings.map(mapping => mapping.externalUserId));
-  const belongsToUser = (ownerExternalId: string | null) =>
-    ownerIds.has(ownerExternalId ?? "");
-  const scopedTasks = tasks.filter(task => belongsToUser(task.ownerExternalId));
+  const ownerIds = new Set(
+    mappings
+      .filter(mapping => mapping.connectedSystemId && mapping.externalUserId)
+      .map(mapping => `${mapping.connectedSystemId}:${mapping.externalUserId}`)
+  );
+  const belongsToUser = (
+    ownerExternalId: string | null,
+    connectedSystemId: number | null
+  ) =>
+    Boolean(
+      ownerExternalId &&
+        connectedSystemId &&
+        ownerIds.has(`${connectedSystemId}:${ownerExternalId}`)
+    );
+  const scopedTasks = tasks.filter(task =>
+    belongsToUser(task.ownerExternalId, task.connectedSystemId)
+  );
   const scopedOpportunities = opportunities.filter(opportunity =>
-    belongsToUser(opportunity.ownerExternalId)
+    belongsToUser(opportunity.ownerExternalId, opportunity.connectedSystemId)
   );
   const newestLeads = contacts
     .map(row => row.contact)
     .filter((contact): contact is NonNullable<typeof contact> =>
       Boolean(contact)
     )
-    .filter(contact => belongsToUser(contact.ownerExternalId))
+    .filter(contact =>
+      belongsToUser(contact.ownerExternalId, contact.connectedSystemId)
+    )
     .slice(0, 20);
   const openTasks = scopedTasks.filter(task => isOpen(task.status));
   const overdueTasks = sortTasksByConfiguredPriority(
@@ -270,7 +287,10 @@ export async function getTodayWork(input: {
     .filter(row => {
       if (row.message.mailboxUserId != null)
         return row.message.mailboxUserId === input.userId;
-      return belongsToUser(row.contactOwnerExternalId);
+      return belongsToUser(
+        row.contactOwnerExternalId,
+        row.message.connectedSystemId
+      );
     })
     .map(row => row.message);
   const currentInbound = actionableInbound.filter(message =>
@@ -297,12 +317,14 @@ export async function getTodayWork(input: {
       const dueTasks = openTasks.filter(
         task =>
           task.opportunityExternalId === opportunity.externalId &&
+          task.connectedSystemId === opportunity.connectedSystemId &&
           task.dueAt &&
           task.dueAt <= dayEnd(now)
       );
       const inboundForContact = currentInbound.filter(
         message =>
           message.contactExternalId &&
+          message.connectedSystemId === opportunity.connectedSystemId &&
           message.contactExternalId === opportunity.contactExternalId
       );
       const score =
