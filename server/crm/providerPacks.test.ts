@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   GENIE_PROVIDER_PACK,
   GENIE_PROVIDER_PACK_VERSION,
+  bindGenieContactNavigation,
   providerPackFingerprint,
 } from "./providerPacks";
 
@@ -60,6 +61,28 @@ describe("canonical Genie provider pack", () => {
     expect(JSON.stringify(script)).toContain("Search Contacts");
     expect(JSON.stringify(script)).toContain("/contacts/detail/");
     expect(JSON.stringify(script)).not.toContain(".tabulator-row");
+  });
+
+  it("preserves the authenticated Genie SPA click after validating the observed Contacts route", () => {
+    const script = {
+      steps: [
+        { action: "click" as const, selector: "#sb_contacts" },
+        { action: "expect_visible" as const, selector: "#list-view-record-search" },
+      ],
+    };
+    const bound = bindGenieContactNavigation(script, {
+      controls: [
+        {
+          selector: "#sb_contacts",
+          href: "https://genie.example/v2/location/example/contacts/smart_list/All",
+        },
+      ],
+    });
+    expect(bound).toEqual(script);
+    expect(bound.steps[0]).toEqual({
+      action: "click",
+      selector: "#sb_contacts",
+    });
   });
 
   it("ships only TEST_READY inputs for later deterministic certification", () => {
