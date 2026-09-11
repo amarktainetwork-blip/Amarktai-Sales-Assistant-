@@ -481,23 +481,21 @@ export const ADAPTER_OPERATION_KEYS: Record<string, string> = {
   applySequence: "sequence.apply",
 };
 
-const CAPABILITY_REQUIREMENTS: Record<string, string[]> = {
+export const BROWSER_CAPABILITY_REQUIREMENTS: Record<string, string[]> = {
   "home.read": ["home.open"],
   "next_prospect.read": ["prospect.next"],
   "contacts.read": ["contact.search", "contact.read", "contact.sync"],
   "contacts.write": ["contact.create", "contact.update"],
-  "companies.read": ["company.read", "company.sync"],
+  // Collection capabilities are proven by the deterministic sync/read path that
+  // powers the local workspace. Requiring a record-detail read as well would
+  // make an otherwise healthy, legitimately-empty CRM impossible to onboard.
+  "companies.read": ["company.sync"],
   "companies.write": ["company.create"],
-  "opportunities.read": ["opportunity.read", "opportunity.sync"],
+  "opportunities.read": ["opportunity.sync"],
   "opportunities.write": ["opportunity.create", "opportunity.update"],
-  "tasks.read": ["task.list", "task.read", "task.sync"],
+  "tasks.read": ["task.sync"],
   "tasks.write": ["task.create", "task.complete", "task.create_callback"],
-  "activities.read": [
-    "history.read",
-    "interaction.latest",
-    "communication.context",
-    "activity.sync",
-  ],
+  "activities.read": ["activity.sync"],
   "activities.write": ["activity.create"],
   "notes.read": ["note.read"],
   "notes.write": ["note.create"],
@@ -627,6 +625,29 @@ export function browserProofPolicy(
   };
 }
 
+function verifiedEmptyCollection(input: {
+  operationKey: string;
+  data: Record<string, string>;
+  policy: BrowserProofPolicy;
+}) {
+  if (!input.policy.allowEmptyBusinessValue) return false;
+  const rawRecords = input.data.records?.trim();
+  if (rawRecords !== "[]") return false;
+  const evidence = input.data.collectionEvidence?.trim() || "";
+  if (!evidence) return false;
+  if (input.operationKey === "company.sync")
+    return /Company Name/i.test(evidence);
+  if (input.operationKey === "opportunity.sync") {
+    const counts = Array.from(
+      evidence.matchAll(/([0-9][0-9,]*)\s+opportunit(?:y|ies)/gi)
+    ).map(match => Number(match[1].replace(/,/g, "")));
+    return counts.length > 0 && counts.every(count => count === 0);
+  }
+  if (input.operationKey === "activity.sync")
+    return /conversation|all/i.test(evidence);
+  return false;
+}
+
 function proofRows(data: Record<string, string>) {
   const rows: Array<Record<string, unknown>> = [];
   for (const serialized of Object.values(data)) {
@@ -715,12 +736,26 @@ export function verifyBrowserReadProof(input: {
 }) {
   const policy = input.policy || browserProofPolicy(input.operationKey, "read");
   const rows = proofRows(input.data);
-  if (policy.requiresStructuredResult && !rows.length)
+  if (policy.requiresStructuredResult && !rows.length) {
+    if (
+      verifiedEmptyCollection({
+        operationKey: input.operationKey,
+        data: input.data,
+        policy,
+      })
+    )
+      return {
+        ok: true,
+        code: "READ_PROOF_VERIFIED" as const,
+        detail: "Deterministic empty CRM collection proof passed.",
+        rowCount: 0,
+      };
     return {
       ok: false,
       code: "STRUCTURED_RESULT_REQUIRED" as const,
       detail: "Generic page or body text is not deterministic read proof.",
     };
+  }
   if (policy.requiresExactSearchMatch) {
     const query = clean(input.payload.query || input.payload.externalId);
     if (!query)
@@ -958,7 +993,7 @@ export function deriveBrowserCapabilityReadiness(
   statuses: Record<string, BrowserOperationStatus>,
   capability: string
 ) {
-  const required = CAPABILITY_REQUIREMENTS[capability] ?? [];
+  const required = BROWSER_CAPABILITY_REQUIREMENTS[capability] ?? [];
   const live = required.filter(key => statuses[key] === "LIVE_PROVEN");
   return {
     capability,
@@ -972,6 +1007,21 @@ export function deriveBrowserCapabilityReadiness(
     liveOperations: live,
     missingOperations: required.filter(key => statuses[key] !== "LIVE_PROVEN"),
   };
+}
+
+export function requestedBrowserReadCapabilitiesReady(
+  capabilities: Array<{ capability: string; state: string }>,
+  allowedReadCapabilities: string[]
+) {
+  const requested = new Set(allowedReadCapabilities);
+  return (
+    requested.size > 0 &&
+    Array.from(requested).every(capability =>
+      capabilities.some(
+        item => item.capability === capability && item.state === "FULL"
+      )
+    )
+  );
 }
 
 const secretName =

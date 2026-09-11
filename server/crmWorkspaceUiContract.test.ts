@@ -32,13 +32,16 @@ describe("CRM workspace customer interaction contract", () => {
     expect(source).toContain("authenticationHandoffRef");
     expect(source).toContain('type: "customerFinishedSigningIn"');
     expect(source).toContain("Finishing your setup");
-    expect(source).toContain("page open — you do not need to click anything.");
+    expect(source.replace(/\s+/g, " ")).toContain(
+      "Keep this page open — you do not need to click anything."
+    );
   });
 
-  it("automatically exact-email matches CRM identity during setup", () => {
-    expect(source).toContain("autoClaimAttemptedRef");
-    expect(source).toContain('fetch("/api/team/crm-identity"');
-    expect(source).toContain("state?.candidates?.length === 1");
+  it("does not make shared owner setup depend on claiming a salesperson identity", () => {
+    expect(source).not.toContain("!crmIdentityMapped");
+    expect(source).not.toContain("<CrmIdentitySetup");
+    expect(source).toContain("capabilityAccounting");
+    expect(source).toContain("criticalGaps");
   });
 
   it("maps the streamed browser image back to Chromium coordinates", () => {
