@@ -124,6 +124,7 @@ type ManagedCrmBrowserSession = {
   listeners: Set<(snapshot: CrmBrowserSessionSnapshot) => void>;
   customerConfirmed: boolean;
   authenticatedPersisted: boolean;
+  commissioningEnsuredForAuthentication: boolean;
   restoredSession: boolean;
   canCommission: boolean;
   reauthenticationRecorded?: boolean;
@@ -431,6 +432,12 @@ async function persistAuthenticatedSession(
     }
   }
 
+  // Commission/recover once per authenticated browser lifecycle. DOM loads and
+  // navigation can re-evaluate authentication many times; they must not start
+  // repeated repair cycles or consume repeated model calls.
+  if (session.commissioningEnsuredForAuthentication) return;
+  session.commissioningEnsuredForAuthentication = true;
+
   // A restored personal browser package means persistence has already happened,
   // not that automatic capability commissioning has happened. Only managers can
   // resume the company-level commissioning job; ordinary salespeople keep a
@@ -465,8 +472,10 @@ async function evaluate(session: ManagedCrmBrowserSession) {
         ["LOGIN_REQUIRED", "MFA_OR_SSO", "REAUTHENTICATION_REQUIRED"].includes(
           state
         )
-      )
+      ) {
         session.authenticatedPersisted = false;
+        session.commissioningEnsuredForAuthentication = false;
+      }
 
       if (
         state === "REAUTHENTICATION_REQUIRED" &&
@@ -708,6 +717,7 @@ export const managedCrmBrowserSessionManager = {
       listeners: new Set(),
       customerConfirmed: false,
       authenticatedPersisted: Boolean(recovered && restored?.pageTargetId),
+      commissioningEnsuredForAuthentication: false,
       restoredSession: Boolean(restored),
       canCommission,
     };
