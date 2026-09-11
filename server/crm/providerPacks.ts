@@ -3,7 +3,7 @@ import type { SavedBrowserScript } from "../browserConnectors/scriptEngine";
 import type { BrowserProfile } from "../browserConnectors/browserCrmAdapter";
 
 /** Reusable provider structure only: never tenant IDs, credentials or customer values. */
-export const GENIE_PROVIDER_PACK_VERSION = "genie-2026.09.10.1";
+export const GENIE_PROVIDER_PACK_VERSION = "genie-2026.09.11.1";
 
 // The current Genie/HighLevel contacts workspace no longer uses the old
 // Tabulator row structure. Contact-detail links are the durable record identity:
@@ -149,7 +149,13 @@ export function providerPackFingerprint() {
     .digest("hex");
 }
 
-/** Bind the reviewed entry click to this connection's observed Contacts route. */
+/**
+ * Validate that the observed Genie sidebar control really points at Contacts,
+ * but preserve the in-app click. Some Genie/HighLevel workspaces keep auth and
+ * workspace state in the active SPA tab; replacing the click with a direct
+ * navigation can load an unauthenticated/empty shell and make a valid selector
+ * look like drift.
+ */
 export function bindGenieContactNavigation(
   script: SavedBrowserScript,
   snapshot: unknown
@@ -188,10 +194,5 @@ export function bindGenieContactNavigation(
     !/\/contacts\//.test(url.pathname)
   )
     throw new Error("GENIE_CONTACT_NAVIGATION_INVALID");
-  return {
-    steps: [
-      { action: "goto", value: url.toString() },
-      ...script.steps.slice(1),
-    ],
-  };
+  return script;
 }
