@@ -200,6 +200,7 @@ async function performSafeRead(input: {
   const request = readIntent(input.command);
   if (!request.intent) return null;
   const exactCustomer = await resolveAssistantCustomerContext({
+    userId: input.userId,
     organisationId: input.organisationId,
     contactId: input.contactId,
     crmContext: input.crmContext,
@@ -687,6 +688,7 @@ export async function prepareGovernedAssistantRequest(input: {
 
   const currentReference = requestUsesCurrentCustomerReference(command);
   const exactCustomer = await resolveAssistantCustomerContext({
+    userId: input.userId,
     organisationId: input.organisationId,
     contactId: input.contactId,
     crmContext: input.crmContext,

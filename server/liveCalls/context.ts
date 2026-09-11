@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, like, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, like, or } from "drizzle-orm";
 import {
   callSessions,
   connectedSystems,
@@ -7,6 +7,7 @@ import {
   crmContacts,
   crmOpportunities,
   crmTasks,
+  externalUserMappings,
   inboundMessages,
 } from "../../drizzle/schema";
 import { createLiveCallSession, getDb, recordAudit } from "../db";
@@ -22,9 +23,13 @@ export type LiveCallCrmContext = {
   provider: string;
   contactExternalId: string;
   contactName: string;
+  firstName?: string;
+  lastName?: string;
   companyName?: string;
   email?: string;
   phone?: string;
+  /** Current normalized CRM lifecycle/status, used only for configured workflow eligibility. */
+  contactStatus?: string;
   taskExternalId?: string;
   taskTitle?: string;
   opportunityExternalId?: string;
@@ -54,6 +59,7 @@ async function dbOrThrow() {
 }
 
 async function contextForContact(input: {
+  userId: number;
   organisationId: number;
   contact: typeof crmContacts.$inferSelect;
   source: LiveCallCrmContext["source"];
@@ -61,6 +67,29 @@ async function contextForContact(input: {
   opportunity?: typeof crmOpportunities.$inferSelect;
 }) {
   const db = await dbOrThrow();
+  const ownerRows = await db
+    .select({ externalUserId: externalUserMappings.externalUserId })
+    .from(externalUserMappings)
+    .where(
+      and(
+        eq(externalUserMappings.organisationId, input.organisationId),
+        eq(
+          externalUserMappings.connectedSystemId,
+          input.contact.connectedSystemId
+        ),
+        eq(externalUserMappings.userId, input.userId),
+        eq(externalUserMappings.isActive, true)
+      )
+    )
+    .limit(100);
+  const ownerIds = ownerRows.map(row => row.externalUserId);
+  if (
+    !input.contact.ownerExternalId ||
+    !ownerIds.includes(input.contact.ownerExternalId)
+  )
+    throw new Error(
+      "The selected CRM contact is not available to this user and organisation."
+    );
   const opportunity =
     input.opportunity ||
     (
@@ -74,7 +103,8 @@ async function contextForContact(input: {
               crmOpportunities.connectedSystemId,
               input.contact.connectedSystemId
             ),
-            eq(crmOpportunities.contactExternalId, input.contact.externalId)
+            eq(crmOpportunities.contactExternalId, input.contact.externalId),
+            inArray(crmOpportunities.ownerExternalId, ownerIds)
           )
         )
         .orderBy(desc(crmOpportunities.updatedAt))
@@ -121,7 +151,8 @@ async function contextForContact(input: {
             opportunity
               ? eq(crmTasks.opportunityExternalId, opportunity.externalId)
               : eq(crmTasks.contactExternalId, input.contact.externalId)
-          )
+          ),
+          inArray(crmTasks.ownerExternalId, ownerIds)
         )
       )
       .orderBy(asc(crmTasks.dueAt))
@@ -134,7 +165,8 @@ async function contextForContact(input: {
         and(
           eq(crmActivities.organisationId, input.organisationId),
           eq(crmActivities.connectedSystemId, input.contact.connectedSystemId),
-          eq(crmActivities.contactExternalId, input.contact.externalId)
+          eq(crmActivities.contactExternalId, input.contact.externalId),
+          inArray(crmActivities.ownerExternalId, ownerIds)
         )
       )
       .orderBy(desc(crmActivities.occurredAt))
@@ -150,7 +182,8 @@ async function contextForContact(input: {
             inboundMessages.connectedSystemId,
             input.contact.connectedSystemId
           ),
-          eq(inboundMessages.contactExternalId, input.contact.externalId)
+          eq(inboundMessages.contactExternalId, input.contact.externalId),
+          eq(inboundMessages.mailboxUserId, input.userId)
         )
       )
       .orderBy(desc(inboundMessages.receivedAt))
@@ -172,9 +205,17 @@ async function contextForContact(input: {
     provider: system.provider,
     contactExternalId: input.contact.externalId,
     contactName,
+    firstName: input.contact.firstName || undefined,
+    lastName: input.contact.lastName || undefined,
     companyName: company?.name || undefined,
     email: input.contact.email || undefined,
     phone: input.contact.phone || undefined,
+    contactStatus: String(
+      input.contact.lifecycleStage ||
+        input.contact.raw?.status ||
+        input.contact.raw?.lifecycleStage ||
+        ""
+    ).trim() || undefined,
     taskExternalId: task?.externalId,
     taskTitle: task?.title,
     opportunityExternalId: opportunity?.externalId,
@@ -205,6 +246,46 @@ async function contextForContact(input: {
   } satisfies LiveCallCrmContext;
 }
 
+export async function findPersonalCrmContact(input: {
+  userId: number;
+  organisationId: number;
+  contactId?: number;
+  connectedSystemId?: number;
+  externalId?: string;
+}) {
+  const db = await dbOrThrow();
+  const exactIdentity = input.contactId
+    ? eq(crmContacts.id, input.contactId)
+    : input.externalId
+      ? input.connectedSystemId
+        ? and(
+            eq(crmContacts.connectedSystemId, input.connectedSystemId),
+            eq(crmContacts.externalId, input.externalId)
+          )
+        : eq(crmContacts.externalId, input.externalId)
+      : undefined;
+  if (!exactIdentity) throw new Error("An exact CRM contact identity is required.");
+  const rows = await db
+    .select({ contact: crmContacts })
+    .from(crmContacts)
+    .innerJoin(
+      externalUserMappings,
+      and(
+        eq(externalUserMappings.organisationId, input.organisationId),
+        eq(
+          externalUserMappings.connectedSystemId,
+          crmContacts.connectedSystemId
+        ),
+        eq(externalUserMappings.externalUserId, crmContacts.ownerExternalId),
+        eq(externalUserMappings.userId, input.userId),
+        eq(externalUserMappings.isActive, true)
+      )
+    )
+    .where(and(eq(crmContacts.organisationId, input.organisationId), exactIdentity))
+    .limit(2);
+  return rows.length === 1 ? rows[0].contact : undefined;
+}
+
 export async function startLiveCallFromToday(input: {
   userId: number;
   organisationId: number;
@@ -222,21 +303,15 @@ export async function startLiveCallFromToday(input: {
   const db = await dbOrThrow();
   if (!priority.contactExternalId)
     throw new Error("The selected opportunity has no normalized CRM contact.");
-  const contact = (
-    await db
-      .select()
-      .from(crmContacts)
-      .where(
-        and(
-          eq(crmContacts.organisationId, input.organisationId),
-          eq(crmContacts.connectedSystemId, priority.connectedSystemId),
-          eq(crmContacts.externalId, priority.contactExternalId)
-        )
-      )
-      .limit(1)
-  )[0];
+  const contact = await findPersonalCrmContact({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    connectedSystemId: priority.connectedSystemId,
+    externalId: priority.contactExternalId,
+  });
   if (!contact) throw new Error("The normalized CRM contact was not found.");
   const context: LiveCallCrmContext = await contextForContact({
+    userId: input.userId,
     organisationId: input.organisationId,
     contact,
     opportunity: priority,
@@ -345,6 +420,7 @@ export async function startLiveCallFromToday(input: {
 }
 
 export async function searchLiveCallContacts(input: {
+  userId: number;
   organisationId: number;
   query: string;
 }) {
@@ -353,8 +429,21 @@ export async function searchLiveCallContacts(input: {
   const email = query.includes("@") ? query.toLowerCase() : "";
   const escaped = query.replace(/[\\%_]/g, value => `\\${value}`);
   const rows = await db
-    .select()
+    .select({ contact: crmContacts })
     .from(crmContacts)
+    .innerJoin(
+      externalUserMappings,
+      and(
+        eq(externalUserMappings.organisationId, input.organisationId),
+        eq(
+          externalUserMappings.connectedSystemId,
+          crmContacts.connectedSystemId
+        ),
+        eq(externalUserMappings.externalUserId, crmContacts.ownerExternalId),
+        eq(externalUserMappings.userId, input.userId),
+        eq(externalUserMappings.isActive, true)
+      )
+    )
     .where(
       and(
         eq(crmContacts.organisationId, input.organisationId),
@@ -369,7 +458,7 @@ export async function searchLiveCallContacts(input: {
       )
     )
     .limit(10);
-  return rows.map(contact => ({
+  return rows.map(({ contact }) => ({
     id: contact.id,
     name:
       [contact.firstName, contact.lastName].filter(Boolean).join(" ") ||
@@ -385,24 +474,17 @@ export async function startLiveCallForContact(input: {
   organisationId: number;
   contactId: number;
 }) {
-  const db = await dbOrThrow();
-  const contact = (
-    await db
-      .select()
-      .from(crmContacts)
-      .where(
-        and(
-          eq(crmContacts.id, input.contactId),
-          eq(crmContacts.organisationId, input.organisationId)
-        )
-      )
-      .limit(1)
-  )[0];
+  const contact = await findPersonalCrmContact({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    contactId: input.contactId,
+  });
   if (!contact)
     throw new Error(
-      "The selected CRM contact is outside the active organisation."
+      "The selected CRM contact is not available to this user and organisation."
     );
   const context = await contextForContact({
+    userId: input.userId,
     organisationId: input.organisationId,
     contact,
     source: "manual_resolved",
@@ -417,27 +499,21 @@ export async function startLiveCallForContact(input: {
 }
 
 export async function getWorkingContextForContact(input: {
+  userId: number;
   organisationId: number;
   contactId: number;
 }) {
-  const db = await dbOrThrow();
-  const contact = (
-    await db
-      .select()
-      .from(crmContacts)
-      .where(
-        and(
-          eq(crmContacts.id, input.contactId),
-          eq(crmContacts.organisationId, input.organisationId)
-        )
-      )
-      .limit(1)
-  )[0];
+  const contact = await findPersonalCrmContact({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    contactId: input.contactId,
+  });
   if (!contact)
     throw new Error(
-      "The selected CRM contact is outside the active organisation."
+      "The selected CRM contact is not available to this user and organisation."
     );
   return contextForContact({
+    userId: input.userId,
     organisationId: input.organisationId,
     contact,
     source: "manual_resolved",
@@ -475,6 +551,7 @@ export async function getLiveCallContext(input: {
 }
 
 export async function resolveLiveCallCloseoutIdentity(input: {
+  userId: number;
   organisationId: number;
   session: typeof callSessions.$inferSelect;
   advanced?: {
@@ -489,27 +566,37 @@ export async function resolveLiveCallCloseoutIdentity(input: {
   const contactExternalId = input.advanced?.contactExternalId?.trim();
   if (!contactExternalId) return undefined;
   const db = await dbOrThrow();
-  const contacts = await db
-    .select()
-    .from(crmContacts)
-    .where(
-      and(
-        eq(crmContacts.organisationId, input.organisationId),
-        eq(crmContacts.externalId, contactExternalId)
-      )
-    )
-    .limit(2);
-  if (contacts.length !== 1)
+  const contact = await findPersonalCrmContact({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    externalId: contactExternalId,
+  });
+  if (!contact)
     throw new Error(
-      contacts.length > 1
-        ? "AMBIGUOUS_TARGET: choose the normalized CRM contact before closeout."
-        : "TARGET_MISMATCH: the supplied contact is not in the active organisation."
+      "TARGET_MISMATCH: the supplied contact is not available to this user and organisation."
     );
   const context = await contextForContact({
+    userId: input.userId,
     organisationId: input.organisationId,
-    contact: contacts[0],
+    contact,
     source: "manual_resolved",
   });
+  const ownerIds = (
+    await db
+      .select({ externalUserId: externalUserMappings.externalUserId })
+      .from(externalUserMappings)
+      .where(
+        and(
+          eq(externalUserMappings.organisationId, input.organisationId),
+          eq(externalUserMappings.connectedSystemId, context.connectedSystemId),
+          eq(externalUserMappings.userId, input.userId),
+          eq(externalUserMappings.isActive, true)
+        )
+      )
+      .limit(100)
+  ).map(row => row.externalUserId);
+  if (!ownerIds.length)
+    throw new Error("TARGET_MISMATCH: no active CRM owner mapping exists for this user.");
   if (input.advanced?.taskExternalId) {
     const task = (
       await db
@@ -519,7 +606,8 @@ export async function resolveLiveCallCloseoutIdentity(input: {
           and(
             eq(crmTasks.organisationId, input.organisationId),
             eq(crmTasks.connectedSystemId, context.connectedSystemId),
-            eq(crmTasks.externalId, input.advanced.taskExternalId)
+            eq(crmTasks.externalId, input.advanced.taskExternalId),
+            inArray(crmTasks.ownerExternalId, ownerIds)
           )
         )
         .limit(1)
@@ -541,7 +629,8 @@ export async function resolveLiveCallCloseoutIdentity(input: {
             eq(
               crmOpportunities.externalId,
               input.advanced.opportunityExternalId
-            )
+            ),
+            inArray(crmOpportunities.ownerExternalId, ownerIds)
           )
         )
         .limit(1)

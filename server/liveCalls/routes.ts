@@ -286,6 +286,7 @@ export function registerLiveCallRoutes(app: Express) {
               : "unchanged",
           };
           const identity = await resolveLiveCallCloseoutIdentity({
+            userId: user.id,
             organisationId: user.membership.organisationId,
             session,
             advanced: {

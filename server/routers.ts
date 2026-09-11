@@ -1062,6 +1062,7 @@ export const appRouter = router({
             }),
             input.contactId
               ? getWorkingContextForContact({
+                  userId: ctx.user.id,
                   organisationId: ctx.activeOrganisation.organisationId,
                   contactId: input.contactId,
                 })
@@ -2035,6 +2036,7 @@ export const appRouter = router({
             "Choose an organisation before resolving a CRM contact."
           );
         return searchLiveCallContacts({
+          userId: ctx.user.id,
           organisationId: ctx.activeOrganisation.organisationId,
           query: input.query,
         });

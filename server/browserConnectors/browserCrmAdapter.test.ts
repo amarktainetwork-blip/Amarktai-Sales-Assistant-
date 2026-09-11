@@ -98,6 +98,83 @@ describe("browser profile", () => {
     expect(JSON.stringify(profile)).not.toMatch(/credential|passcode|secret/i);
   });
 
+  it("uses the current canonical definition instead of a stale installed known-Genie definition", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "amarktai-genie-profile-"));
+    const path = join(directory, "genie-scripts.json");
+    const previous = process.env.GENIE_SCRIPTS_CONFIG_PATH;
+    await writeFile(
+      path,
+      JSON.stringify({
+        scripts: {},
+        operationDefinitions: {
+          "contact.search": {
+            definition: {
+              mode: "read",
+              execute: {
+                steps: [
+                  { action: "read_text", selector: "body", key: "legacyBody" },
+                ],
+              },
+            },
+            prerequisites: { knownGeniePack: true },
+          },
+          "custom.read.customer_view": {
+            definition: {
+              mode: "read",
+              execute: {
+                steps: [
+                  {
+                    action: "read_rows",
+                    selector: "[data-row]",
+                    key: "records",
+                    fields: { externalId: { attribute: "data-id" } },
+                  },
+                ],
+              },
+              resultKey: "records",
+            },
+          },
+        },
+      })
+    );
+    process.env.GENIE_SCRIPTS_CONFIG_PATH = path;
+    try {
+      const profile = await resolveBrowserProfile(
+        {
+          id: 10,
+          organisationId: 7,
+          provider: "genie",
+          displayName: "Genie",
+          baseUrl: "https://genie.customer.example/",
+          connectionMethod: "browser",
+          allowedReadCapabilities: [],
+          allowedWriteCapabilities: [],
+          verifiedCapabilities: [],
+          scopes: [],
+          configuration: {},
+        },
+        "genie"
+      );
+      expect(profile?.operationDefinitions?.["contact.search"]).toMatchObject({
+        definition: {
+          executeScript: "genie_contact_search",
+          resultKey: "records",
+        },
+        prerequisites: {
+          providerPack: "genie",
+          providerPackVersion: expect.stringMatching(/^genie-/),
+        },
+      });
+      expect(
+        profile?.operationDefinitions?.["custom.read.customer_view"]
+      ).toBeDefined();
+    } finally {
+      if (previous === undefined) delete process.env.GENIE_SCRIPTS_CONFIG_PATH;
+      else process.env.GENIE_SCRIPTS_CONFIG_PATH = previous;
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("retains installed operation definitions for a fresh Genie baseUrl profile", async () => {
     const directory = await mkdtemp(join(tmpdir(), "amarktai-genie-profile-"));
     const path = join(directory, "genie-scripts.json");

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   normalizeClientActionConfiguration,
   resolveConfiguredCurrentContact,
+  validateClientActionConfigurationForCommissioning,
 } from "./clientActionConfiguration";
 
 describe("client action configuration", () => {
@@ -99,5 +100,166 @@ describe("client action configuration", () => {
         configuration,
       })
     ).toBeNull();
+  });
+
+  it("rejects a CRM-saved email workflow when its exact approved subject was not commissioned", () => {
+    expect(() =>
+      validateClientActionConfigurationForCommissioning({
+        workflows: {
+          follow_up: {
+            taskAliases: {},
+            taskSequence: [],
+            sequence: ["send_email_template:follow_up"],
+            templates: { follow_up: "follow-email" },
+          },
+        },
+        templates: {
+          "follow-email": {
+            channel: "email",
+            source: "crm_saved",
+            templateName: "Approved follow-up",
+            body: "Exact saved body.",
+          },
+        },
+      })
+    ).toThrow("CLIENT_WORKFLOW_TEMPLATE_SUBJECT_REQUIRED");
+  });
+
+  it("rejects an SMS template whose sender is not approved for the organisation", () => {
+    expect(() =>
+      validateClientActionConfigurationForCommissioning({
+        workflows: {
+          first_contact: {
+            taskAliases: { attempt_1: "Initial Contact" },
+            taskSequence: ["attempt_1"],
+            sequence: ["send_sms_template:first_contact"],
+            templates: { first_contact: "initial-sms" },
+          },
+        },
+        templates: {
+          "initial-sms": {
+            channel: "sms",
+            source: "client_configuration",
+            templateName: "Initial outreach",
+            body: "Exact approved SMS.",
+            senderIdentity: "+441111111111",
+          },
+        },
+        approvedSenders: { sms: ["+442222222222"] },
+      })
+    ).toThrow("CLIENT_WORKFLOW_SENDER_NOT_APPROVED");
+  });
+
+  it("requires an exact tenant CRM sequence mapping before apply_sequence can be commissioned", () => {
+    expect(() =>
+      validateClientActionConfigurationForCommissioning({
+        workflows: {
+          final_close: {
+            taskAliases: {},
+            taskSequence: [],
+            sequence: ["apply_sequence:closed_lost"],
+            eligibilityStatuses: [],
+            stopStatuses: [],
+            opportunityMappings: {},
+            statusMappings: {},
+            sequenceMappings: {},
+            templates: {},
+            timingRules: {},
+            duplicateRules: [],
+            requiredPostconditions: [],
+          },
+        },
+      })
+    ).toThrow("CLIENT_WORKFLOW_SEQUENCE_MAPPING_REQUIRED");
+  });
+
+  it("accepts generic stage-dependent closure transitions and reviewed field mappings", () => {
+    const result = validateClientActionConfigurationForCommissioning({
+      workflows: {
+        final_close: {
+          taskAliases: { final_follow_up: "Final follow-up" },
+          taskSequence: [],
+          sequence: [
+            "complete_active_task:final_follow_up",
+            "update_current_opportunity:close_or_lost",
+            "update_contact_status:closed_or_lost",
+            "apply_sequence:closed_lost",
+          ],
+          opportunityStageTransitions: {
+            close_or_lost: {
+              "New Lead": "Lost - No Contact",
+              "Considering": "Not a Fit",
+            },
+          },
+          opportunityFieldMappings: {
+            close_or_lost: { lostReason: "No successful contact" },
+          },
+          statusMappings: { closed_or_lost: "Lost" },
+          contactFieldMappings: {
+            closed_or_lost: { closureReason: "No successful contact" },
+          },
+          sequenceMappings: { closed_lost: "Closed lost sequence" },
+        },
+      },
+    });
+    expect(result.valid).toBe(true);
+    expect(
+      result.configuration.workflows.final_close.opportunityStageTransitions
+    ).toMatchObject({
+      close_or_lost: { "New Lead": "Lost - No Contact" },
+    });
+  });
+
+  it("accepts a complete generic four-attempt configuration without client constants", () => {
+    const result = validateClientActionConfigurationForCommissioning({
+      workflows: {
+        first_contact: {
+          taskAliases: {
+            attempt_1: "Initial Contact",
+            attempt_2: "Second Contact",
+            attempt_3: "Third Contact",
+            attempt_4: "Final Contact",
+          },
+          taskSequence: [
+            "attempt_1",
+            "attempt_2",
+            "attempt_3",
+            "attempt_4",
+          ],
+          sequence: [
+            "verify_contact_context:current_customer",
+            "send_sms_template:first_contact",
+            "schedule_callback:follow_up",
+          ],
+          eligibilityStatuses: ["New"],
+          stopStatuses: ["Closed", "Converted"],
+          templates: { first_contact: "initial-sms" },
+          timingRules: {
+            attempt_2: "P1D",
+            attempt_3: "P1D",
+            attempt_4: "P1D",
+            follow_up: "P1D",
+          },
+        },
+      },
+      templates: {
+        "initial-sms": {
+          channel: "sms",
+          source: "client_configuration",
+          templateName: "Initial outreach",
+          body: "Exact approved SMS.",
+          senderIdentity: "+441111111111",
+        },
+      },
+      approvedSenders: { sms: ["+441111111111"] },
+      officeHours: {
+        timezone: "Europe/London",
+        days: [1, 2, 3, 4, 5],
+        start: "09:00",
+        end: "18:00",
+      },
+    });
+    expect(result.valid).toBe(true);
+    expect(result.workflowKeys).toEqual(["first_contact"]);
   });
 });

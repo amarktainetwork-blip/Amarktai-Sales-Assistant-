@@ -12,17 +12,22 @@ export function nextRequiredOnboardingPath(
 ) {
   if (snapshot.canManage && !snapshot.company.complete)
     return "/company-setup";
+
+  // CRM identity and mailbox completion are first-class steps inside the
+  // MemberOnboardingGate. Route back to Today so that gate stays in control of
+  // the setup journey instead of dropping a new user into the general
+  // Assistant and expecting them to discover the missing setup action there.
   if (
     snapshot.role === "salesperson" &&
     snapshot.identity.mappingsExist &&
     !snapshot.identity.mapped
   )
-    return "/assistant";
+    return "/today";
   if (
     snapshot.company.complete &&
     snapshot.mailbox.configured &&
     !snapshot.mailbox.connected
   )
-    return "/assistant";
+    return "/today";
   return "/today";
 }

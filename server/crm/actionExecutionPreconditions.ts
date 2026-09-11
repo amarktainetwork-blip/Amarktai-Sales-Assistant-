@@ -97,15 +97,22 @@ function contactStatus(contact: NormalizedContact) {
   ).trim();
 }
 
-function withinOfficeHours(value: unknown, now = new Date()) {
+export function withinConfiguredOfficeHours(value: unknown, now = new Date()) {
+  if (value == null) return true;
   const office = object(value);
   const start = typeof office.start === "string" ? office.start : "";
   const end = typeof office.end === "string" ? office.end : "";
   const days = Array.isArray(office.days)
     ? office.days.map(Number).filter(Number.isInteger)
     : [];
-  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(start) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(end) || !days.length)
-    return true;
+  if (
+    !/^([01]\d|2[0-3]):[0-5]\d$/.test(start) ||
+    !/^([01]\d|2[0-3]):[0-5]\d$/.test(end) ||
+    !days.length
+  )
+    throw new Error(
+      "WORKFLOW_OFFICE_HOURS_INVALID: configured outbound contact hours are incomplete or invalid."
+    );
   const timeZone =
     typeof office.timezone === "string" && office.timezone.trim()
       ? office.timezone.trim()
@@ -211,6 +218,64 @@ function assertWorkflowEligibility(
   }
 }
 
+export async function verifyFreshWorkflowContext(input: {
+  adapter: CrmAdapter;
+  connection: AdapterConnection;
+  secret: ConnectionSecretPayload;
+  contactExternalId: string;
+}) {
+  // Browser adapters share one authenticated page and one control lease.
+  // Complete each read before the next resource navigates that page.
+  const taskResult = await input.adapter.syncTasks({
+      connection: input.connection,
+      secret: input.secret,
+    });
+  const opportunityResult = await input.adapter.syncOpportunities({
+      connection: input.connection,
+      secret: input.secret,
+    });
+  const activityResult = await input.adapter.syncActivities({
+      connection: input.connection,
+      secret: input.secret,
+    });
+  const opportunities = opportunityResult.records.filter(
+    item => item.contactExternalId === input.contactExternalId
+  );
+  const opportunityIds = new Set(opportunities.map(item => item.externalId));
+  const tasks = taskResult.records.filter(
+    item =>
+      item.contactExternalId === input.contactExternalId ||
+      Boolean(
+        item.opportunityExternalId &&
+          opportunityIds.has(item.opportunityExternalId)
+      )
+  );
+  const activities = activityResult.records.filter(
+    item =>
+      item.contactExternalId === input.contactExternalId ||
+      Boolean(
+        item.opportunityExternalId &&
+          opportunityIds.has(item.opportunityExternalId)
+      )
+  );
+  return {
+    tasks,
+    opportunities,
+    activities,
+    evidence: {
+      contactExternalId: input.contactExternalId,
+      tasksReviewed: tasks.length,
+      openTasksReviewed: tasks.filter(task => !taskIsHistorical(task)).length,
+      opportunitiesReviewed: opportunities.length,
+      openOpportunitiesReviewed: opportunities.filter(
+        opportunity => !opportunityIsHistorical(opportunity)
+      ).length,
+      activitiesReviewed: activities.length,
+      contextReadVerified: true,
+    },
+  };
+}
+
 /**
  * Re-reads the external system immediately before a reviewed write. The result
  * is intentionally deterministic: either the exact current target remains safe,
@@ -237,7 +302,22 @@ export async function checkApprovedCrmExecutionPreconditions(input: {
   }
 
   const workflow = object(input.payload.workflowConfiguration);
-  if (OUTBOUND_ACTIONS.has(input.actionType) && !withinOfficeHours(workflow.officeHours))
+  if (
+    contactExternalId &&
+    (input.payload.requireFreshCustomerContext === true ||
+      (typeof workflow.workflowKey === "string" &&
+        Boolean(workflow.workflowKey.trim())))
+  )
+    await verifyFreshWorkflowContext({
+      adapter: input.adapter,
+      connection: input.connection,
+      secret: input.secret,
+      contactExternalId,
+    });
+  if (
+    OUTBOUND_ACTIONS.has(input.actionType) &&
+    !withinConfiguredOfficeHours(workflow.officeHours)
+  )
     throw new Error(
       "OUTSIDE_CONFIGURED_OFFICE_HOURS: this outbound action is outside the organisation's configured contact hours. Nothing was sent."
     );
@@ -253,8 +333,21 @@ export async function checkApprovedCrmExecutionPreconditions(input: {
     const task = tasks.find(item => item.externalId === taskExternalId);
     if (!task)
       throw new Error("EXECUTION_TASK_STALE: the exact current task no longer exists. Nothing was changed.");
-    if (contactExternalId && task.contactExternalId && task.contactExternalId !== contactExternalId)
-      throw new Error("EXECUTION_TASK_TARGET_MISMATCH: the task no longer belongs to the exact customer. Nothing was changed.");
+    if (
+      contactExternalId &&
+      task.contactExternalId &&
+      task.contactExternalId !== contactExternalId
+    )
+      throw new Error(
+        "EXECUTION_TASK_TARGET_MISMATCH: the task no longer belongs to the exact customer. Nothing was changed."
+      );
+    const expectedTaskTitle = String(
+      input.payload.expectedCurrentTaskTitle || input.payload.taskTitle || ""
+    ).trim();
+    if (expectedTaskTitle && norm(task.title) !== norm(expectedTaskTitle))
+      throw new Error(
+        `EXECUTION_TASK_TITLE_MISMATCH: expected current task '${expectedTaskTitle}' but the exact CRM task is now '${task.title}'. Nothing was changed.`
+      );
     const opportunityExternalId = explicitExternalId(input.payload, "opportunityExternalId");
     if (opportunityExternalId && task.opportunityExternalId && task.opportunityExternalId !== opportunityExternalId)
       throw new Error("EXECUTION_TASK_OPPORTUNITY_MISMATCH: the task no longer belongs to the reviewed opportunity. Nothing was changed.");

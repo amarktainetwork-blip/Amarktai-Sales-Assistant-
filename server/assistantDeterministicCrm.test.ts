@@ -1,7 +1,59 @@
 import { describe, expect, it } from "vitest";
-import { deterministicTodayAnswer } from "./assistantRoutes";
+import {
+  deterministicTodayAnswer,
+  shouldUseDeterministicTodayAnswer,
+  shouldUseSelectedCustomerGovernedIntent,
+} from "./assistantRoutes";
 
 describe("zero-model Assistant CRM answers", () => {
+  it("routes ordinary Today questions to deterministic truth but leaves write-like commands governed", () => {
+    expect(
+      shouldUseDeterministicTodayAnswer({ query: "Show me my new leads" })
+    ).toBe(true);
+    expect(
+      shouldUseDeterministicTodayAnswer({ query: "Who should I call next?" })
+    ).toBe(true);
+    expect(
+      shouldUseDeterministicTodayAnswer({ query: "Create a callback for Jamie" })
+    ).toBe(false);
+    expect(
+      shouldUseDeterministicTodayAnswer({ query: "Remind me to call Jamie" })
+    ).toBe(false);
+    expect(
+      shouldUseDeterministicTodayAnswer({
+        query: "What tasks are overdue?",
+        contactId: 42,
+      })
+    ).toBe(false);
+  });
+
+  it("uses the same governed engine for selected-customer workflow and callback commands", () => {
+    expect(
+      shouldUseSelectedCustomerGovernedIntent({
+        query: "Close this candidate as lost",
+        contactId: 42,
+      })
+    ).toBe(true);
+    expect(
+      shouldUseSelectedCustomerGovernedIntent({
+        query: "Mark this candidate as answered. Notes: They want a call Friday.",
+        contactId: 42,
+      })
+    ).toBe(true);
+    expect(
+      shouldUseSelectedCustomerGovernedIntent({
+        query: "Schedule a callback for Friday at 2pm",
+        contactId: 42,
+      })
+    ).toBe(true);
+    expect(
+      shouldUseSelectedCustomerGovernedIntent({
+        query: "What happened with this customer?",
+        contactId: 42,
+      })
+    ).toBe(false);
+  });
+
   it("answers newest-lead requests directly from synchronized CRM truth", () => {
     const response = deterministicTodayAnswer("Show my newest leads", {
       queues: {

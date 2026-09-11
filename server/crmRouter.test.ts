@@ -57,6 +57,34 @@ describe("canonical connected-system capability router", () => {
     );
   });
 
+  it("requires complete customer context reads before a configured workflow can be verified", () => {
+    const incomplete = {
+      id: 2,
+      provider: "genie",
+      displayName: "Genie",
+      status: "ready",
+      connectionMethod: "browser",
+      verifiedCapabilities: ["contacts.read", "tasks.read"],
+    };
+    expect(connectedSystemSupportsAction(incomplete, "verify_contact_context")).toBe(
+      false
+    );
+    expect(
+      connectedSystemSupportsAction(
+        {
+          ...incomplete,
+          verifiedCapabilities: [
+            "contacts.read",
+            "tasks.read",
+            "opportunities.read",
+            "activities.read",
+          ],
+        },
+        "verify_contact_context"
+      )
+    ).toBe(true);
+  });
+
   it("does not route an SMS send without the activity read capability needed for duplicate preflight", () => {
     const system = {
       id: 2,

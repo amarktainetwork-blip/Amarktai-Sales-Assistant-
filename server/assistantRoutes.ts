@@ -22,6 +22,11 @@ import { attachRuntimeOperationReadiness } from "./crm/runtimeCapabilities";
 import { syncConnectedSystemsForUser } from "./crm/sync";
 import { planAssistantSingleRecordAction } from "./crm/assistantSingleRecord";
 import {
+  configuredWorkflowBatchRequested,
+  prepareConfiguredWorkflowBatch,
+  prepareGovernedAssistantRequest,
+} from "./governedAssistantEntry";
+import {
   createAssistantMemory,
   isSafeAssistantMemory,
   listRelevantAssistantMemories,
@@ -91,6 +96,45 @@ function listLines<T>(
   return items.slice(0, maximum).map(render).join("\n");
 }
 
+export function shouldUseSelectedCustomerGovernedIntent(input: {
+  query: string;
+  contactId?: number;
+}) {
+  if (!input.contactId) return false;
+  const route = routeSalesCommand(input.query);
+  return (
+    route.intent === "workflow" ||
+    /\b(?:schedule|create|set)\s+(?:a\s+)?callback\b/i.test(input.query)
+  );
+}
+
+export function shouldUseDeterministicTodayAnswer(input: {
+  query: string;
+  contactId?: number;
+}) {
+  if (input.contactId) return false;
+  const normalized = input.query.trim().toLowerCase();
+  if (!normalized) return false;
+  return !(
+    /\b(send|draft|write|prepare|process|handle|action|create|add|move|update|change|schedule|set|delete|remove|complete|close|mark|assign|log)\b/.test(
+      normalized
+    ) ||
+    /\bremind me\b/.test(normalized) ||
+    /^(?:please\s+)?call(?:\s+back)?\b/.test(normalized)
+  );
+}
+
+function tasksMentionedByQuery<T extends { title: string }>(
+  query: string,
+  items: T[]
+) {
+  const normalized = query.trim().toLowerCase().replace(/\s+/g, " ");
+  const matches = items.filter(item =>
+    normalized.includes(item.title.trim().toLowerCase().replace(/\s+/g, " "))
+  );
+  return matches.length ? matches : items;
+}
+
 export function deterministicTodayAnswer(
   query: string,
   today: Awaited<ReturnType<typeof getTodayWork>>
@@ -108,7 +152,7 @@ export function deterministicTodayAnswer(
   }
 
   if (/overdue.*task|task.*overdue|what.*overdue|late task/.test(normalized)) {
-    const items = today.queues.overdueTasks;
+    const items = tasksMentionedByQuery(query, today.queues.overdueTasks);
     return {
       content: items.length
         ? `You have ${items.length} overdue CRM task${items.length === 1 ? "" : "s"}.\n\n${listLines(items, item => `• ${item.title} — ${dateLabel(item.dueAt)}`)}${items.length > 8 ? `\n\nAnd ${items.length - 8} more.` : ""}`
@@ -118,7 +162,7 @@ export function deterministicTodayAnswer(
   }
 
   if (/due today|today.*task|tasks? (?:for|due) today/.test(normalized)) {
-    const items = today.queues.dueToday;
+    const items = tasksMentionedByQuery(query, today.queues.dueToday);
     return {
       content: items.length
         ? `You have ${items.length} CRM task${items.length === 1 ? "" : "s"} due today.\n\n${listLines(items, item => `• ${item.title} — ${dateLabel(item.dueAt)}`)}${items.length > 8 ? `\n\nAnd ${items.length - 8} more.` : ""}`
@@ -296,6 +340,32 @@ export function registerAssistantRoutes(app: Express) {
         organisationId: membership.organisationId,
       });
 
+      if (
+        shouldUseSelectedCustomerGovernedIntent({
+          query: latestUserMessage,
+          contactId,
+        })
+      ) {
+        const prepared = await prepareGovernedAssistantRequest({
+          userId,
+          organisationId: membership.organisationId,
+          contactId,
+          command: latestUserMessage,
+        });
+        return res.json({
+          content: prepared.summary,
+          ...(prepared.proposalCount > 0
+            ? {
+                suggestedAction: {
+                  label: "Review proposed work",
+                  path: "/reviews",
+                },
+                reviewRequired: true,
+              }
+            : {}),
+        });
+      }
+
       const preparedCommunication = await tryPrepareDirectAssistantAction({
         userId,
         organisationId: membership.organisationId,
@@ -306,6 +376,7 @@ export function registerAssistantRoutes(app: Express) {
 
       if (contactId) {
         const context = await getWorkingContextForContact({
+          userId,
           organisationId: membership.organisationId,
           contactId,
         });
@@ -392,8 +463,7 @@ export function registerAssistantRoutes(app: Express) {
         }
       }
 
-      // Navigation-only shortcuts may return without AI. Sales questions
-      // continue through governed evidence plus the GenX response path below.
+      // Navigation-only shortcuts may return without AI.
       const direct = directAssistantAction(query);
       if (direct) {
         await recordAudit({
@@ -407,6 +477,62 @@ export function registerAssistantRoutes(app: Express) {
           metadata: { responseMode: "workspace_truth", contentRetained: false },
         });
         return res.json(direct);
+      }
+
+      const configuredBatchRoute = routeSalesCommand(latestUserMessage);
+      if (
+        !contactId &&
+        configuredBatchRoute.intent === "workflow" &&
+        configuredBatchRoute.workflowKey &&
+        configuredWorkflowBatchRequested(latestUserMessage)
+      ) {
+        const prepared = await prepareConfiguredWorkflowBatch({
+          userId,
+          organisationId: membership.organisationId,
+          command: latestUserMessage,
+          workflowKey: configuredBatchRoute.workflowKey,
+        });
+        return res.json({
+          content: prepared.summary,
+          ...(prepared.proposalCount > 0
+            ? {
+                suggestedAction: {
+                  label: "Review proposed work",
+                  path: "/reviews",
+                },
+                reviewRequired: true,
+              }
+            : {
+                suggestedAction: {
+                  label: "Open today's work",
+                  path: "/today",
+                },
+              }),
+        });
+      }
+
+      if (
+        shouldUseDeterministicTodayAnswer({ query: latestUserMessage, contactId })
+      ) {
+        const deterministic = deterministicTodayAnswer(latestUserMessage, today);
+        if (deterministic) {
+          await recordAudit({
+            userId,
+            organisationId: membership.organisationId,
+            eventType: "assistant_request_routed",
+            entityType: "assistant",
+            entityId: String(userId),
+            summary:
+              "The Sales Assistant answered directly from the signed-in salesperson's synchronized Today data.",
+            metadata: {
+              responseMode: "deterministic_today",
+              modelUsed: false,
+              providerCallCount: 0,
+              contentRetained: false,
+            },
+          });
+          return res.json(deterministic);
+        }
       }
 
       const batchAction = planAssistantCrmBatchInstruction(query);
@@ -468,6 +594,7 @@ export function registerAssistantRoutes(app: Express) {
             : null;
       const contactContext = contactId
         ? await getWorkingContextForContact({
+            userId,
             organisationId: membership.organisationId,
             contactId,
           })

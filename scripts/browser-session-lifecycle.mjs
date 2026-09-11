@@ -54,12 +54,22 @@ if (process.argv[2] === "owner") {
       `--user-data-dir=${profile}`,
       "about:blank",
     ],
-    { stdio: "ignore", windowsHide: true }
+    { stdio: ["ignore", "ignore", "pipe"], windowsHide: true }
   );
+  let launchError;
+  let launchDiagnostics = "";
+  chrome.on("error", error => { launchError = error; });
+  chrome.stderr.on("data", chunk => {
+    launchDiagnostics = (launchDiagnostics + chunk.toString()).slice(-4000);
+  });
   let owner, browser;
   try {
     let port;
-    for (let attempt = 0; attempt < 100; attempt++) {
+    const launchDeadline = Date.now() + 30_000;
+    while (Date.now() < launchDeadline) {
+      if (launchError) throw launchError;
+      if (chrome.exitCode !== null)
+        throw new Error(`Local fixture Chromium exited (${chrome.exitCode}): ${launchDiagnostics}`);
       try {
         port = (
           await readFile(path.join(profile, "DevToolsActivePort"), "utf8")
@@ -69,7 +79,7 @@ if (process.argv[2] === "owner") {
         await new Promise(r => setTimeout(r, 100));
       }
     }
-    assert(port, "Local fixture Chromium did not start");
+    assert(port, `Local fixture Chromium did not start within 30 seconds: ${launchDiagnostics}`);
     const endpoint = `http://127.0.0.1:${port}`;
     owner = fork(fileURLToPath(import.meta.url), ["owner", endpoint, url], {
       stdio: ["ignore", "ignore", "inherit", "ipc"],

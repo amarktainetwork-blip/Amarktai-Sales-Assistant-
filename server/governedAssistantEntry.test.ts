@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  effectiveConfiguredBatchWorkflowKey,
   explicitCallbackTime,
+  naturalCallbackTime,
   workflowRequestFromCommand,
 } from "./governedAssistantEntry";
 
@@ -62,6 +64,62 @@ describe("canonical governed Assistant entry", () => {
         leadLabel: "Customer",
       }).request?.callOutcome
     ).toBe("voicemail");
+  });
+
+  it("resolves ordinary callback language in the organisation timezone without guessing ambiguous times", () => {
+    const now = new Date("2026-09-10T12:00:00.000Z");
+    expect(
+      naturalCallbackTime({
+        command: "Schedule her callback for Friday at 2pm",
+        timeZone: "Europe/London",
+        now,
+      })
+    ).toBe("2026-09-11T13:00:00.000Z");
+    expect(
+      naturalCallbackTime({
+        command: "Schedule the callback tomorrow at 10am",
+        timeZone: "Africa/Johannesburg",
+        now,
+      })
+    ).toBe("2026-09-11T08:00:00.000Z");
+    expect(
+      naturalCallbackTime({
+        command: "Schedule a callback Friday at 2",
+        timeZone: "Europe/London",
+        now,
+      })
+    ).toBeUndefined();
+  });
+
+  it("hands the final configured contact attempt into the final-close workflow", () => {
+    const configuration = {
+      workflows: {
+        first_contact: {
+          taskAliases: {
+            attempt_1: "Initial Contact",
+            attempt_2: "Second Contact",
+            attempt_3: "Third Contact",
+            attempt_4: "Final Contact",
+          },
+          taskSequence: ["attempt_1", "attempt_2", "attempt_3", "attempt_4"],
+        },
+        final_close: {},
+      },
+    } as never;
+    expect(
+      effectiveConfiguredBatchWorkflowKey({
+        requestedWorkflowKey: "first_contact",
+        taskTitle: "Final Contact",
+        configuration,
+      })
+    ).toBe("final_close");
+    expect(
+      effectiveConfiguredBatchWorkflowKey({
+        requestedWorkflowKey: "first_contact",
+        taskTitle: "Second Contact",
+        configuration,
+      })
+    ).toBe("first_contact");
   });
 
   it("accepts only timezone-qualified callback timestamps", () => {

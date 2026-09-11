@@ -29,6 +29,71 @@ export function findConfiguredTemplate(input: {
   );
 }
 
+export type ConfiguredTemplateVariables = {
+  firstName?: string;
+  lastName?: string;
+  fullName?: string;
+  companyName?: string;
+};
+
+const TEMPLATE_MERGE_FIELDS: Array<{
+  patterns: RegExp[];
+  key: keyof ConfiguredTemplateVariables;
+}> = [
+  {
+    key: "firstName",
+    patterns: [
+      /\[\s*first\s*name\s*\]/gi,
+      /\{\{\s*first_?name\s*\}\}/gi,
+    ],
+  },
+  {
+    key: "lastName",
+    patterns: [
+      /\[\s*last\s*name\s*\]/gi,
+      /\{\{\s*last_?name\s*\}\}/gi,
+    ],
+  },
+  {
+    key: "fullName",
+    patterns: [
+      /\[\s*(?:full\s*name|name)\s*\]/gi,
+      /\{\{\s*(?:full_?name|name)\s*\}\}/gi,
+    ],
+  },
+  {
+    key: "companyName",
+    patterns: [
+      /\[\s*(?:company|company\s*name)\s*\]/gi,
+      /\{\{\s*company_?name\s*\}\}/gi,
+    ],
+  },
+];
+
+export function renderConfiguredTemplateText(
+  text: string,
+  variables: ConfiguredTemplateVariables = {}
+) {
+  let output = text;
+  for (const field of TEMPLATE_MERGE_FIELDS) {
+    const present = field.patterns.some(pattern => {
+      pattern.lastIndex = 0;
+      return pattern.test(output);
+    });
+    if (!present) continue;
+    const value = String(variables[field.key] || "").trim();
+    if (!value)
+      throw new Error(
+        `TEMPLATE_VARIABLE_REQUIRED: approved template requires '${field.key}' but the normalized customer record does not provide it.`
+      );
+    for (const pattern of field.patterns) {
+      pattern.lastIndex = 0;
+      output = output.replace(pattern, value);
+    }
+  }
+  return output;
+}
+
 function configuredSourceEvidence(template: ConfiguredTemplate) {
   return {
     ...(template.sourceReference
@@ -50,6 +115,7 @@ export async function materializeConfiguredCommunication(input: {
   channel: SalesChannel;
   to: string;
   template: ConfiguredTemplate;
+  variables?: ConfiguredTemplateVariables;
 }) {
   if (input.template.channel !== input.channel)
     throw new Error(
@@ -65,13 +131,16 @@ export async function materializeConfiguredCommunication(input: {
     });
     const subject =
       input.channel === "email"
-        ? input.template.requiredSubject || resolved.subject
+        ? renderConfiguredTemplateText(
+            input.template.requiredSubject || resolved.subject || "",
+            input.variables
+          )
         : undefined;
     const validated = prepareCustomCommunication({
       channel: input.channel,
       to: input.to,
       subject,
-      body: resolved.body,
+      body: renderConfiguredTemplateText(resolved.body, input.variables),
     });
     return {
       ...validated,
@@ -102,8 +171,13 @@ export async function materializeConfiguredCommunication(input: {
     channel: input.channel,
     to: input.to,
     subject:
-      input.channel === "email" ? input.template.requiredSubject : undefined,
-    body: input.template.body,
+      input.channel === "email"
+        ? renderConfiguredTemplateText(
+            input.template.requiredSubject || "",
+            input.variables
+          )
+        : undefined,
+    body: renderConfiguredTemplateText(input.template.body, input.variables),
   });
   return {
     ...validated,

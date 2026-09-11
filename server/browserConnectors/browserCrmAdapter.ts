@@ -59,7 +59,10 @@ import {
   currentModelSpendBoundary,
   runModelFreeOperation,
 } from "../aiExecutionBoundary";
-import { GENIE_PROVIDER_PACK } from "../crm/providerPacks";
+import {
+  GENIE_PROVIDER_PACK,
+  GENIE_PROVIDER_PACK_VERSION,
+} from "../crm/providerPacks";
 
 const DEFAULT_GENIE_OPERATION_MAP: Record<string, string> = {
   searchContacts: "search_candidate",
@@ -205,6 +208,31 @@ async function genieProfile(): Promise<BrowserProfile | undefined> {
   }
 }
 
+export function mergeGenieOperationDefinitions(
+  current: BrowserProfile["operationDefinitions"],
+  installed: BrowserProfile["operationDefinitions"]
+) {
+  const merged: NonNullable<BrowserProfile["operationDefinitions"]> = {
+    ...(installed || {}),
+  };
+  for (const [operationKey, canonical] of Object.entries(current || {})) {
+    const legacy = installed?.[operationKey];
+    const prerequisites =
+      legacy?.prerequisites &&
+      typeof legacy.prerequisites === "object" &&
+      !Array.isArray(legacy.prerequisites)
+        ? legacy.prerequisites
+        : {};
+    const isInstalledKnownPack = prerequisites.knownGeniePack === true;
+    const isCurrentInstalledPack =
+      prerequisites.providerPack === "genie" &&
+      prerequisites.providerPackVersion === GENIE_PROVIDER_PACK_VERSION;
+    if (!legacy || (isInstalledKnownPack && !isCurrentInstalledPack))
+      merged[operationKey] = canonical;
+  }
+  return merged;
+}
+
 export async function resolveBrowserProfile(
   connection: AdapterConnection,
   provider: Extract<CrmProvider, "genie" | "custom_browser">
@@ -234,8 +262,10 @@ export async function resolveBrowserProfile(
           ...(configured.operationMap || {}),
         },
         operationDefinitions: {
-          ...(providerPack.operationDefinitions || {}),
-          ...(installed?.operationDefinitions || {}),
+          ...mergeGenieOperationDefinitions(
+            providerPack.operationDefinitions,
+            installed?.operationDefinitions
+          ),
           ...(configured.operationDefinitions || {}),
         },
         resultKeys: {
@@ -255,10 +285,10 @@ export async function resolveBrowserProfile(
           ...(providerPack.resultKeys || {}),
           ...(installed?.resultKeys || {}),
         },
-        operationDefinitions: {
-          ...(providerPack.operationDefinitions || {}),
-          ...(installed?.operationDefinitions || {}),
-        },
+        operationDefinitions: mergeGenieOperationDefinitions(
+          providerPack.operationDefinitions,
+          installed?.operationDefinitions
+        ),
         artifactDirectory: installed?.artifactDirectory,
       } satisfies BrowserProfile;
     if (installed)
@@ -269,10 +299,10 @@ export async function resolveBrowserProfile(
           ...(providerPack.resultKeys || {}),
           ...(installed.resultKeys || {}),
         },
-        operationDefinitions: {
-          ...(providerPack.operationDefinitions || {}),
-          ...(installed.operationDefinitions || {}),
-        },
+        operationDefinitions: mergeGenieOperationDefinitions(
+          providerPack.operationDefinitions,
+          installed.operationDefinitions
+        ),
       };
   }
   if (configured) return configured;

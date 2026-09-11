@@ -6,6 +6,7 @@ import {
   crmContacts,
   crmOpportunities,
   crmTasks,
+  externalUserMappings,
   inboundMessages,
 } from "../../drizzle/schema";
 
@@ -36,14 +37,22 @@ vi.mock("../crm/adapterRegistry", () => ({
   getCrmAdapter: () => ({ executeCustomAction: mocks.executeCustomAction }),
 }));
 
-import { startLiveCallFromToday } from "./context";
+import {
+  getWorkingContextForContact,
+  startLiveCallFromToday,
+} from "./context";
 
 function databaseWith(rows: Map<unknown, unknown[]>) {
   return {
-    select: vi.fn(() => ({
+    select: vi.fn((selection?: Record<string, unknown>) => ({
       from: vi.fn((table: unknown) => {
-        const result = rows.get(table) || [];
+        const source = rows.get(table) || [];
+        const result =
+          table === crmContacts && selection && "contact" in selection
+            ? source.map(contact => ({ contact }))
+            : source;
         const chain = {
+          innerJoin: vi.fn(() => chain),
           where: vi.fn(() => chain),
           orderBy: vi.fn(() => chain),
           limit: vi.fn(async (count: number) => result.slice(0, count)),
@@ -103,12 +112,13 @@ describe("Today to Live Call verified CRM context", () => {
               },
             ],
           ],
+          [externalUserMappings, [{ externalUserId: "owner-8" }]],
           [crmOpportunities, [opportunity]],
           [connectedSystems, [{ id: 8, organisationId: 7, provider: "genie" }]],
           [crmCompanies, [{ name: "Example Company" }]],
           [crmTasks, [{ externalId: "task-8", title: "Pricing callback" }]],
           [crmActivities, [{ activityType: "email", body: "Sent pricing" }]],
-          [inboundMessages, [{ subject: "Re: pricing", body: "Please call" }]],
+          [inboundMessages, [{ mailboxUserId: 2, subject: "Re: pricing", body: "Please call" }]],
         ])
       )
     );
@@ -177,7 +187,8 @@ describe("Today to Live Call verified CRM context", () => {
     };
     mocks.getTodayWork.mockResolvedValue({ queues: { priority: [opportunity] } });
     mocks.getDb.mockResolvedValue(databaseWith(new Map([
-      [crmContacts, [{ id: 3, organisationId: 7, connectedSystemId: 8, externalId: "contact-8", firstName: "Dummy", lastName: "Customer", phone: "+27000000000" }]],
+      [crmContacts, [{ id: 3, organisationId: 7, connectedSystemId: 8, externalId: "contact-8", ownerExternalId: "owner-8", firstName: "Dummy", lastName: "Customer", phone: "+27000000000" }]],
+      [externalUserMappings, [{ externalUserId: "owner-8" }]],
       [crmOpportunities, [opportunity]],
       [connectedSystems, [genie]],
       [crmCompanies, []],
@@ -197,11 +208,44 @@ describe("Today to Live Call verified CRM context", () => {
     expect(mocks.recordAudit).toHaveBeenCalledWith(expect.objectContaining({ eventType: "genie_dialler_launched", metadata: expect.objectContaining({ executionResult: "success" }) }));
   });
 
+  it("rejects direct customer context when the signed-in CRM owner mapping belongs to someone else", async () => {
+    mocks.getDb.mockResolvedValue(
+      databaseWith(
+        new Map([
+          [
+            crmContacts,
+            [
+              {
+                id: 3,
+                organisationId: 7,
+                connectedSystemId: 8,
+                externalId: "contact-other-user",
+                ownerExternalId: "owner-other-user",
+                firstName: "Other",
+                lastName: "Customer",
+              },
+            ],
+          ],
+          [externalUserMappings, [{ externalUserId: "owner-current-user" }]],
+        ])
+      )
+    );
+
+    await expect(
+      getWorkingContextForContact({
+        userId: 2,
+        organisationId: 7,
+        contactId: 3,
+      })
+    ).rejects.toThrow("not available to this user and organisation");
+  });
+
   it("does not create a call session when dialler.launch is not LIVE_PROVEN", async () => {
     const opportunity = { id: 44, organisationId: 7, connectedSystemId: 8, externalId: "opportunity-8", contactExternalId: "contact-8", name: "Renewal", reasons: [], raw: {} };
     mocks.getTodayWork.mockResolvedValue({ queues: { priority: [opportunity] } });
     mocks.getDb.mockResolvedValue(databaseWith(new Map([
-      [crmContacts, [{ id: 3, organisationId: 7, connectedSystemId: 8, externalId: "contact-8", firstName: "Dummy", lastName: "Customer" }]],
+      [crmContacts, [{ id: 3, organisationId: 7, connectedSystemId: 8, externalId: "contact-8", ownerExternalId: "owner-8", firstName: "Dummy", lastName: "Customer" }]],
+      [externalUserMappings, [{ externalUserId: "owner-8" }]],
       [crmOpportunities, [opportunity]],
       [connectedSystems, [{ id: 8, organisationId: 7, provider: "genie", connectionMethod: "browser", status: "limited_permissions", configuration: {} }]],
       [crmCompanies, []], [crmTasks, []], [crmActivities, []], [inboundMessages, []],

@@ -24,6 +24,7 @@ import {
   resolveApprovedCommunicationTemplate,
 } from "./approvedTemplates";
 import { getOutboundSuppressionStatus } from "./communications";
+import { renderConfiguredTemplateText } from "./communicationContent";
 import {
   buildGroundedDraftInstruction,
   groundedDraftIssues,
@@ -126,6 +127,12 @@ async function materializeConfiguredTemplate(input: {
   channel: Channel;
   to: string;
   template: ConfiguredTemplate;
+  variables?: {
+    firstName?: string;
+    lastName?: string;
+    fullName?: string;
+    companyName?: string;
+  };
 }) {
   if (input.template.source === "organisation_approved") {
     const resolved = await resolveApprovedCommunicationTemplate({
@@ -135,10 +142,13 @@ async function materializeConfiguredTemplate(input: {
       to: input.to,
     });
     return {
-      body: resolved.body,
+      body: renderConfiguredTemplateText(resolved.body, input.variables),
       subject:
         input.channel === "email"
-          ? input.template.requiredSubject || resolved.subject
+          ? renderConfiguredTemplateText(
+              input.template.requiredSubject || resolved.subject || "",
+              input.variables
+            )
           : undefined,
       templateName: resolved.templateName || input.template.templateName,
       contentSource: {
@@ -164,8 +174,13 @@ async function materializeConfiguredTemplate(input: {
     channel: input.channel,
     to: input.to,
     subject:
-      input.channel === "email" ? input.template.requiredSubject : undefined,
-    body: input.template.body,
+      input.channel === "email"
+        ? renderConfiguredTemplateText(
+            input.template.requiredSubject || "",
+            input.variables
+          )
+        : undefined,
+    body: renderConfiguredTemplateText(input.template.body, input.variables),
   });
   return {
     body: message.body,
@@ -217,6 +232,7 @@ export async function tryPrepareDirectAssistantAction(input: {
 
   const currentReference = requestUsesCurrentCustomerReference(input.request);
   const customer = await resolveAssistantCustomerContext({
+    userId: input.userId,
     organisationId: input.organisationId,
     contactId: input.contactId,
     crmContext: input.crmContext,
@@ -256,6 +272,12 @@ export async function tryPrepareDirectAssistantAction(input: {
       channel,
       to: destination,
       template: configuredTemplate,
+      variables: {
+        firstName: customer.firstName,
+        lastName: customer.lastName,
+        fullName: customer.contactName,
+        companyName: customer.companyName,
+      },
     });
     body = materialized.body;
     subject = materialized.subject;
@@ -416,6 +438,10 @@ export async function tryPrepareDirectAssistantAction(input: {
       preferredConnectedSystemId: customer.connectedSystemId,
       preferredProvider: customer.provider,
       source: "shared_assistant_action_planner",
+      requireFreshCustomerContext: true,
+      workflowConfiguration: {
+        officeHours: configuration.officeHours || null,
+      },
       customerContext: {
         source: customer.targetVerification.source,
         connectedSystemId: customer.connectedSystemId,

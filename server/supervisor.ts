@@ -251,7 +251,14 @@ export function routeSalesCommand(command: string): SupervisorRoute {
       guardrails,
     };
 
-  if (/final.*(close|follow.?up)|close.*(final|file|record)|last try/.test(normalized))
+  if (
+    /final.*(close|follow.?up)|close.*(final|file|record)|last try/.test(
+      normalized
+    ) ||
+    /\bclose\s+(?:this|the)?\s*(?:candidate|customer|lead|record)\b.*\b(?:lost|closed)\b/.test(
+      normalized
+    )
+  )
     return {
       intent: "workflow",
       agentKey: "supervisor",
@@ -261,7 +268,14 @@ export function routeSalesCommand(command: string): SupervisorRoute {
       guardrails,
     };
 
-  if (/post.?consultation|follow.?up.*(call|consultation)|call outcome/.test(normalized))
+  if (
+    /post.?consultation|follow.?up.*(call|consultation)|call outcome/.test(
+      normalized
+    ) ||
+    /\b(?:update|mark)\b.*\b(?:candidate|customer|lead)\b.*\b(?:answered|no answer|voicemail)\b/.test(
+      normalized
+    )
+  )
     return {
       intent: "workflow",
       agentKey: "supervisor",

@@ -30,7 +30,12 @@ export type PersonalMicrosoftRouteContext = {
  * cannot be governed safely at execution time.
  */
 export const ACTION_CONNECTED_CAPABILITIES: Record<string, string[][]> = {
-  verify_contact_context: [["contacts.read"]],
+  verify_contact_context: [[
+    "contacts.read",
+    "tasks.read",
+    "opportunities.read",
+    "activities.read",
+  ]],
   append_contact_note: [
     ["notes.read", "notes.write"],
     ["activities.read", "activities.write"],

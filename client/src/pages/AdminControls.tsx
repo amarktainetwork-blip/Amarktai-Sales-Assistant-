@@ -129,6 +129,9 @@ export default function AdminControls() {
   const [members, setMembers] = useState<Member[]>([]);
   const [targets, setTargets] = useState<TargetRow[]>([]);
   const [currency, setCurrency] = useState("USD");
+  const [workflowConfigText, setWorkflowConfigText] = useState("");
+  const [workflowConfigLoaded, setWorkflowConfigLoaded] = useState(false);
+  const [workflowConfigStatus, setWorkflowConfigStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
 
@@ -285,6 +288,74 @@ export default function AdminControls() {
       );
     } finally {
       setSaving(null);
+    }
+  }
+
+  async function loadWorkflowConfiguration() {
+    try {
+      setSaving("workflow-load");
+      const result = await request<{
+        configuration: Record<string, unknown>;
+        validation: { valid: boolean; workflowKeys?: string[]; error?: string };
+      }>("/api/client-workflow-configuration");
+      setWorkflowConfigText(JSON.stringify(result.configuration, null, 2));
+      setWorkflowConfigLoaded(true);
+      setWorkflowConfigStatus(
+        result.validation.valid
+          ? `Validated · ${result.validation.workflowKeys?.length || 0} workflow${result.validation.workflowKeys?.length === 1 ? "" : "s"}`
+          : result.validation.error || "Configuration needs attention."
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Client workflow rules could not be loaded."
+      );
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function saveWorkflowConfiguration() {
+    try {
+      setSaving("workflow-config");
+      const configuration = JSON.parse(workflowConfigText) as Record<
+        string,
+        unknown
+      >;
+      const result = await request<{
+        configuration: Record<string, unknown>;
+        validation: { valid: true; workflowKeys: string[]; templateKeys: string[] };
+      }>("/api/client-workflow-configuration", {
+        method: "PUT",
+        body: JSON.stringify({ configuration }),
+      });
+      setWorkflowConfigText(JSON.stringify(result.configuration, null, 2));
+      setWorkflowConfigLoaded(true);
+      setWorkflowConfigStatus(
+        `Validated and saved · ${result.validation.workflowKeys.length} workflow${result.validation.workflowKeys.length === 1 ? "" : "s"} · ${result.validation.templateKeys.length} template${result.validation.templateKeys.length === 1 ? "" : "s"}`
+      );
+      toast.success("Client workflow rules validated and saved.");
+    } catch (error) {
+      toast.error(
+        error instanceof SyntaxError
+          ? "Client workflow rules must be valid JSON."
+          : error instanceof Error
+            ? error.message
+            : "Client workflow rules could not be saved."
+      );
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function copyWorkflowConfiguration() {
+    if (!workflowConfigText) return;
+    try {
+      await navigator.clipboard.writeText(workflowConfigText);
+      toast.success("Client workflow configuration copied.");
+    } catch {
+      toast.error("Copy failed. Select the configuration text manually.");
     }
   }
 
@@ -1014,6 +1085,90 @@ export default function AdminControls() {
             Amarktai compares actual CRM ownership/activity with these explicit
             targets. It does not generate a hidden AI employee score.
           </p>
+        </section>
+
+        <section className="rounded-[1.75rem] border border-white/10 bg-[#0E2142] p-6">
+          <div className="flex flex-col gap-4 border-b border-white/10 pb-5 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#7FAAF8]">
+                CLIENT WORKFLOW COMMISSIONING
+              </p>
+              <h2 className="mt-2 font-display text-3xl font-bold text-white">
+                Keep each client's CRM rules separate from the product.
+              </h2>
+              <p className="mt-2 max-w-4xl text-sm leading-6 text-[#A9BFDF]">
+                Advanced management only. Export the active organisation's exact
+                task progression, approved templates, senders, office hours,
+                status mappings and duplicate rules before a reset, then validate
+                and restore them to the intended client workspace. Salespeople do
+                not edit this configuration.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={loadWorkflowConfiguration}
+                disabled={saving === "workflow-load"}
+                className="border-white/15 bg-[#08172F] text-white hover:bg-[#102A56]"
+              >
+                {saving === "workflow-load" ? "Loading…" : "Load / refresh rules"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={copyWorkflowConfiguration}
+                disabled={!workflowConfigLoaded || !workflowConfigText}
+                className="border-white/15 bg-[#08172F] text-white hover:bg-[#102A56]"
+              >
+                Copy export
+              </Button>
+              <Button
+                type="button"
+                onClick={saveWorkflowConfiguration}
+                disabled={saving === "workflow-config" || !workflowConfigLoaded}
+                className="bg-[#1B64F2] hover:bg-[#2B76FF]"
+              >
+                <Save className="mr-2 size-4" />
+                {saving === "workflow-config" ? "Validating…" : "Validate & save"}
+              </Button>
+            </div>
+          </div>
+          {workflowConfigLoaded ? (
+            <div className="mt-5 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-bold text-[#A9BFDF]">
+                  Active organisation workflow configuration
+                </p>
+                {workflowConfigStatus ? (
+                  <p className="rounded-full border border-white/10 bg-[#08172F] px-3 py-1 text-[11px] text-[#9FC2FF]">
+                    {workflowConfigStatus}
+                  </p>
+                ) : null}
+              </div>
+              <textarea
+                aria-label="Client workflow configuration JSON"
+                value={workflowConfigText}
+                onChange={event => {
+                  setWorkflowConfigText(event.target.value);
+                  setWorkflowConfigStatus("Unsaved changes");
+                }}
+                spellCheck={false}
+                className="min-h-[420px] w-full rounded-xl border border-white/15 bg-[#061329] p-4 font-mono text-xs leading-5 text-[#DCE9FF] outline-none focus:border-[#6EA3FF]"
+              />
+              <p className="text-xs leading-5 text-[#829CC4]">
+                Invalid task aliases, template channels, sender identities,
+                email subjects, status rules, timing rules or office hours are
+                rejected before they can replace the active configuration.
+              </p>
+            </div>
+          ) : (
+            <p className="mt-5 rounded-xl bg-[#08172F] p-4 text-sm text-[#9DB3D5]">
+              Use <strong className="text-white">Load / refresh rules</strong>{" "}
+              after management verification to inspect or export this
+              organisation's current workflow configuration.
+            </p>
+          )}
         </section>
 
         <section className="rounded-[1.5rem] border border-[#3D69AD]/30 bg-[#102A56] p-5">

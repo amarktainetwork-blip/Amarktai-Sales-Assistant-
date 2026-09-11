@@ -1,7 +1,12 @@
-import { and, desc, eq } from "drizzle-orm";
-import { crmContacts, crmOpportunities, crmTasks } from "../drizzle/schema";
+import { and, desc, eq, inArray } from "drizzle-orm";
+import {
+  crmOpportunities,
+  crmTasks,
+  externalUserMappings,
+} from "../drizzle/schema";
 import { getDb } from "./db";
 import {
+  findPersonalCrmContact,
   getWorkingContextForContact,
   type LiveCallCrmContext,
 } from "./liveCalls/context";
@@ -65,12 +70,28 @@ function closedOpportunity(input: { stage?: string | null; raw?: unknown }) {
 }
 
 async function operationalRecordState(input: {
+  userId: number;
   organisationId: number;
   connectedSystemId: number;
   contactExternalId: string;
 }): Promise<AssistantOperationalRecordState> {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
+  const ownerRows = await db
+    .select({ externalUserId: externalUserMappings.externalUserId })
+    .from(externalUserMappings)
+    .where(
+      and(
+        eq(externalUserMappings.organisationId, input.organisationId),
+        eq(externalUserMappings.connectedSystemId, input.connectedSystemId),
+        eq(externalUserMappings.userId, input.userId),
+        eq(externalUserMappings.isActive, true)
+      )
+    )
+    .limit(100);
+  const ownerIds = ownerRows.map(row => row.externalUserId);
+  if (!ownerIds.length)
+    throw new Error("The selected CRM customer is not available to this user.");
   const [tasks, opportunities] = await Promise.all([
     db
       .select()
@@ -79,7 +100,8 @@ async function operationalRecordState(input: {
         and(
           eq(crmTasks.organisationId, input.organisationId),
           eq(crmTasks.connectedSystemId, input.connectedSystemId),
-          eq(crmTasks.contactExternalId, input.contactExternalId)
+          eq(crmTasks.contactExternalId, input.contactExternalId),
+          inArray(crmTasks.ownerExternalId, ownerIds)
         )
       )
       .orderBy(desc(crmTasks.updatedAt))
@@ -91,7 +113,8 @@ async function operationalRecordState(input: {
         and(
           eq(crmOpportunities.organisationId, input.organisationId),
           eq(crmOpportunities.connectedSystemId, input.connectedSystemId),
-          eq(crmOpportunities.contactExternalId, input.contactExternalId)
+          eq(crmOpportunities.contactExternalId, input.contactExternalId),
+          inArray(crmOpportunities.ownerExternalId, ownerIds)
         )
       )
       .orderBy(desc(crmOpportunities.updatedAt))
@@ -129,11 +152,13 @@ async function operationalRecordState(input: {
 }
 
 async function decorateContext(input: {
+  userId: number;
   organisationId: number;
   context: LiveCallCrmContext;
   source: ResolvedAssistantCustomerContext["targetVerification"]["source"];
 }): Promise<ResolvedAssistantCustomerContext> {
   const operational = await operationalRecordState({
+    userId: input.userId,
     organisationId: input.organisationId,
     connectedSystemId: input.context.connectedSystemId,
     contactExternalId: input.context.contactExternalId,
@@ -151,35 +176,29 @@ async function decorateContext(input: {
 }
 
 async function contextFromExternalId(input: {
+  userId: number;
   organisationId: number;
   connectedSystemId: number;
   contactExternalId: string;
   source: ResolvedAssistantCustomerContext["targetVerification"]["source"];
 }) {
-  const db = await getDb();
-  if (!db) throw new Error("Database connection is unavailable.");
-  const rows = await db
-    .select({ id: crmContacts.id })
-    .from(crmContacts)
-    .where(
-      and(
-        eq(crmContacts.organisationId, input.organisationId),
-        eq(crmContacts.connectedSystemId, input.connectedSystemId),
-        eq(crmContacts.externalId, input.contactExternalId)
-      )
-    )
-    .limit(2);
-  if (rows.length !== 1)
+  const contact = await findPersonalCrmContact({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    connectedSystemId: input.connectedSystemId,
+    externalId: input.contactExternalId,
+  });
+  if (!contact)
     throw new Error(
-      rows.length > 1
-        ? "AMBIGUOUS_TARGET: the current CRM external record does not resolve to one normalized customer. Nothing was prepared."
-        : "CURRENT_CRM_CUSTOMER_NOT_SYNCED: the exact current CRM record is not available in the normalized customer store yet. Nothing was prepared."
+      "CURRENT_CRM_CUSTOMER_NOT_SYNCED: the exact current CRM record is not available to this user in the normalized customer store yet. Nothing was prepared."
     );
   const context = await getWorkingContextForContact({
+    userId: input.userId,
     organisationId: input.organisationId,
-    contactId: rows[0].id,
+    contactId: contact.id,
   });
   return decorateContext({
+    userId: input.userId,
     organisationId: input.organisationId,
     context,
     source: input.source,
@@ -193,16 +212,19 @@ async function contextFromExternalId(input: {
  * page titles and displayed names are never identity evidence.
  */
 export async function resolveAssistantCustomerContext(input: {
+  userId: number;
   organisationId: number;
   contactId?: number;
   crmContext?: AssistantCrmSurfaceContext;
 }): Promise<ResolvedAssistantCustomerContext | null> {
   if (input.contactId) {
     const context = await getWorkingContextForContact({
+      userId: input.userId,
       organisationId: input.organisationId,
       contactId: input.contactId,
     });
     return decorateContext({
+      userId: input.userId,
       organisationId: input.organisationId,
       context,
       source: "assistant_customer_selector",
@@ -214,6 +236,7 @@ export async function resolveAssistantCustomerContext(input: {
   const explicitExternalId = crmContext.currentContactExternalId?.trim();
   if (explicitExternalId)
     return contextFromExternalId({
+      userId: input.userId,
       organisationId: input.organisationId,
       connectedSystemId: crmContext.connectedSystemId,
       contactExternalId: explicitExternalId,
@@ -231,6 +254,7 @@ export async function resolveAssistantCustomerContext(input: {
   });
   if (!current) return null;
   return contextFromExternalId({
+    userId: input.userId,
     organisationId: input.organisationId,
     connectedSystemId: crmContext.connectedSystemId,
     contactExternalId: current.externalId,
