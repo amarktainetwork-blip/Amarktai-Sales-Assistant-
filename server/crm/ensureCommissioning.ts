@@ -21,17 +21,32 @@ const SAFE_AUTOMATIC_RESTART_STATES = new Set<CommissioningState>([
 /**
  * Decide what an authenticated browser session may do to its durable
  * commissioning job. Reopening an authenticated CRM may recover unfinished
- * discovery/read proof, but a terminal READY result is never implicitly
- * restarted. That prevents routine viewer/session checks from competing with
- * normal background synchronization after useful operations are already live.
- * A manager can still explicitly restart commissioning when further capability
- * repair or controlled verification is intended.
+ * discovery/read proof. A terminal READY + needs_attention result may also
+ * restart automatically, but only when its stored capability accounting still
+ * contains critical safe-read gaps. That lets first-time onboarding repair
+ * selector drift without turning ordinary CRM viewer opens into endless
+ * recommissioning. Fully ready jobs and every write/approval stage remain held.
  */
+function hasCriticalSafeReadGaps(progress: unknown) {
+  if (!progress || typeof progress !== "object" || Array.isArray(progress))
+    return false;
+  const accounting = (progress as Record<string, unknown>).capabilityAccounting;
+  if (
+    !accounting ||
+    typeof accounting !== "object" ||
+    Array.isArray(accounting)
+  )
+    return false;
+  const gaps = (accounting as Record<string, unknown>).criticalGaps;
+  return Array.isArray(gaps) && gaps.length > 0;
+}
+
 export function commissioningRecoveryAction(
   job:
     | {
         status: string;
         state: CommissioningState;
+        progress?: unknown;
       }
     | null
     | undefined
@@ -40,7 +55,8 @@ export function commissioningRecoveryAction(
   if (job.status === "queued" || job.status === "running") return "resume";
   if (
     job.status === "needs_attention" &&
-    SAFE_AUTOMATIC_RESTART_STATES.has(job.state)
+    (SAFE_AUTOMATIC_RESTART_STATES.has(job.state) ||
+      (job.state === "READY" && hasCriticalSafeReadGaps(job.progress)))
   )
     return "restart_safe_reads";
   return "hold";

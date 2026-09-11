@@ -34,10 +34,29 @@ describe("authenticated CRM commissioning recovery", () => {
     }
   });
 
-  it("holds terminal READY even when some optional capabilities still need attention", () => {
+  it("restarts terminal READY only when required safe reads are still incomplete", () => {
     expect(
-      commissioningRecoveryAction({ status: "needs_attention", state: "READY" })
+      commissioningRecoveryAction({
+        status: "needs_attention",
+        state: "READY",
+        progress: {
+          capabilityAccounting: {
+            criticalGaps: [
+              { operationKey: "contact.read", status: "NEEDS_REPAIR" },
+            ],
+          },
+        },
+      })
+    ).toBe("restart_safe_reads");
+
+    expect(
+      commissioningRecoveryAction({
+        status: "needs_attention",
+        state: "READY",
+        progress: { capabilityAccounting: { criticalGaps: [] } },
+      })
     ).toBe("hold");
+
     expect(
       commissioningRecoveryAction({ status: "ready", state: "READY" })
     ).toBe("hold");
