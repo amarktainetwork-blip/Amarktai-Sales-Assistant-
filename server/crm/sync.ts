@@ -325,6 +325,32 @@ async function upsertActivities(
   }
 }
 
+export async function drainCrmPages<T>(input: {
+  initialCursor?: string;
+  maxPages?: number;
+  fetchPage: (cursor?: string) => Promise<{ records: T[]; cursor?: string }>;
+  onPage: (records: T[]) => Promise<void>;
+}) {
+  let cursor = input.initialCursor;
+  let total = 0;
+  let pageCount = 0;
+  const maxPages = Math.max(1, input.maxPages ?? 100);
+  do {
+    const result = await input.fetchPage(cursor);
+    await input.onPage(result.records);
+    total += result.records.length;
+    pageCount += 1;
+    if (result.cursor && result.cursor === cursor)
+      throw new Error("CRM_SYNC_CURSOR_STALLED: provider returned the same cursor twice.");
+    cursor = result.cursor;
+    if (cursor && pageCount >= maxPages)
+      throw new Error(
+        `CRM_SYNC_PAGE_LIMIT_REACHED: provider still has more records after ${maxPages} pages.`
+      );
+  } while (cursor);
+  return { total, pageCount };
+}
+
 async function syncConnectedSystemDeterministically(input: {
   userId: number;
   organisationId: number;
@@ -346,9 +372,15 @@ async function syncConnectedSystemDeterministically(input: {
     organisationId: input.organisationId,
     connection,
   });
-  const browserOperationStatuses =
+  const browserPersonalScopeRequired =
     connection.connectionMethod === "browser" ||
-    connection.connectionMethod === "sidecar"
+    connection.connectionMethod === "sidecar";
+  const sessionApi = connection.provider === "genie" && browserPersonalScopeRequired;
+  const hasExactBrowserUserScope = Boolean(
+    secret.crmUserExternalId && secret.crmUserDisplayName && secret.crmUserEmail
+  );
+  const browserOperationStatuses =
+    browserPersonalScopeRequired && !sessionApi
       ? new Map(
           (
             await browserOperationReadinessForSystem({
@@ -398,11 +430,30 @@ async function syncConnectedSystemDeterministically(input: {
     sync,
     persist,
   ] of resources) {
+    const personalResource = [
+      "contacts",
+      "opportunities",
+      "tasks",
+      "activities",
+    ].includes(resourceType);
+    const browserSourceScopedResource = sessionApi
+      ? personalResource
+      : ["contacts", "tasks"].includes(resourceType);
+    if (browserPersonalScopeRequired && personalResource) {
+      if (!hasExactBrowserUserScope || !browserSourceScopedResource) {
+        summary[resourceType] = 0;
+        continue;
+      }
+    }
     if (
       !crmResourceSyncEligible(
         connection,
         capability,
-        browserOperationStatuses?.get(syncOperationKey)
+        sessionApi
+          ? connection.verifiedCapabilities.includes(capability)
+            ? "LIVE_PROVEN"
+            : undefined
+          : browserOperationStatuses?.get(syncOperationKey)
       )
     ) {
       summary[resourceType] = 0;
@@ -410,34 +461,34 @@ async function syncConnectedSystemDeterministically(input: {
     }
     const existing = await cursorFor(system.id, resourceType);
     try {
-      const result = await sync({
-        connection,
-        secret,
-        cursor: existing?.cursor ?? undefined,
+      const drained = await drainCrmPages({
+        initialCursor: existing?.cursor ?? undefined,
+        fetchPage: cursor => sync({ connection, secret, cursor }),
+        onPage: async records => {
+          const contactBaseline =
+            resourceType === "contacts"
+              ? {
+                  baselineComplete: Boolean(existing?.lastSuccessfulAt),
+                  existingExternalIds: await existingContactIds(
+                    input.organisationId,
+                    system.id,
+                    records.map(record => record.externalId)
+                  ),
+                }
+              : undefined;
+          await persist(input.organisationId, system.id, records as never[]);
+          await upsertSalesWorkFromCrm({
+            organisationId: input.organisationId,
+            connectedSystemId: system.id,
+            resource: { type: resourceType, records } as Parameters<
+              typeof upsertSalesWorkFromCrm
+            >[0]["resource"],
+            contactBaseline,
+          });
+        },
       });
-      const contactBaseline =
-        resourceType === "contacts"
-          ? {
-              baselineComplete: Boolean(existing?.lastSuccessfulAt),
-              existingExternalIds: await existingContactIds(
-                input.organisationId,
-                system.id,
-                result.records.map(record => record.externalId)
-              ),
-            }
-          : undefined;
-      await persist(input.organisationId, system.id, result.records as never[]);
-      await upsertSalesWorkFromCrm({
-        organisationId: input.organisationId,
-        connectedSystemId: system.id,
-        resource: {
-          type: resourceType,
-          records: result.records,
-        } as Parameters<typeof upsertSalesWorkFromCrm>[0]["resource"],
-        contactBaseline,
-      });
-      await saveCursor(system.id, resourceType, result.cursor);
-      summary[resourceType] = result.records.length;
+      await saveCursor(system.id, resourceType, undefined);
+      summary[resourceType] = drained.total;
     } catch (error) {
       const detail =
         error instanceof Error

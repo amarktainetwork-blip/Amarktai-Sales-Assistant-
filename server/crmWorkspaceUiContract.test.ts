@@ -37,6 +37,31 @@ describe("CRM workspace customer interaction contract", () => {
     );
   });
 
+  it("keeps the CRM learning screen latched through polling and viewer reconnects", () => {
+    expect(source).toContain(
+      "const [learningStarted, setLearningStarted] = useState(false)"
+    );
+    expect(source).toContain(
+      'if (browserAuthenticationState === "AUTHENTICATED")'
+    );
+    expect(source).toContain(
+      'if (body.job?.state && body.job.state !== "AUTHENTICATE")'
+    );
+    expect(source).toContain(
+      "}, [canManage, onboardingComplete, selectedSystemId]);"
+    );
+    expect(source).not.toContain(
+      "}, [canManage, onboardingComplete, selected]);"
+    );
+    expect(source).toContain(
+      "{canManage && !onboardingComplete && learningStarted ? ("
+    );
+    expect(source).toContain("Find CRM navigation");
+    expect(source).toContain("Discover CRM functions");
+    expect(source).toContain("Prove required CRM reads");
+    expect(source).toContain("Prepare synchronized workspace");
+  });
+
   it("does not make shared owner setup depend on claiming a salesperson identity", () => {
     expect(source).not.toContain("!crmIdentityMapped");
     expect(source).not.toContain("<CrmIdentitySetup");

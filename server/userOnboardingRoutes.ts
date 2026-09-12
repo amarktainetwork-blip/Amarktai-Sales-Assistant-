@@ -191,6 +191,16 @@ async function commissionedCrmReady(
       return true;
     if (!browser || !["ready", "limited_permissions"].includes(system.status))
       continue;
+    if (system.provider === "genie") {
+      const verified = new Set(system.verifiedCapabilities ?? []);
+      if (
+        (system.allowedReadCapabilities ?? []).every(capability =>
+          verified.has(capability)
+        )
+      )
+        return true;
+      continue;
+    }
     const matrix = await browserOperationReadinessForSystem({
       organisationId,
       connectedSystemId: system.id,

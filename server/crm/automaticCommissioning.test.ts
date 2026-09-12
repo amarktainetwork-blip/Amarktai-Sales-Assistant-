@@ -14,6 +14,8 @@ import {
   operationEligibleForCommissioningTest,
   resolveSafeTestContext,
   safeReadCommissioningPassed,
+  shouldRetryAutomaticSafeReads,
+  MAX_AUTOMATIC_SAFE_READ_RETRIES,
   crmDiscoveryFingerprint,
 } from "./automaticCommissioning";
 import { runDeterministicCrmBatch } from "./deterministicBatch";
@@ -106,6 +108,49 @@ describe("automatic CRM commissioning product contract", () => {
     expect(
       safeReadCommissioningPassed({ attempted: 1, proven: ["contact.read"] })
     ).toBe(true);
+  });
+
+  it("retries incomplete onboarding reads only within the bounded read-only budget", () => {
+    expect(
+      shouldRetryAutomaticSafeReads({
+        connectionMethod: "browser",
+        allowedWriteCapabilities: [],
+        retryCount: 0,
+        ready: false,
+        criticalGapCount: 2,
+        initialSyncReady: false,
+      })
+    ).toBe(true);
+    expect(
+      shouldRetryAutomaticSafeReads({
+        connectionMethod: "browser",
+        allowedWriteCapabilities: [],
+        retryCount: MAX_AUTOMATIC_SAFE_READ_RETRIES,
+        ready: false,
+        criticalGapCount: 1,
+        initialSyncReady: false,
+      })
+    ).toBe(false);
+    expect(
+      shouldRetryAutomaticSafeReads({
+        connectionMethod: "browser",
+        allowedWriteCapabilities: ["tasks.write"],
+        retryCount: 0,
+        ready: false,
+        criticalGapCount: 1,
+        initialSyncReady: false,
+      })
+    ).toBe(false);
+    expect(
+      shouldRetryAutomaticSafeReads({
+        connectionMethod: "browser",
+        allowedWriteCapabilities: [],
+        retryCount: 0,
+        ready: true,
+        criticalGapCount: 0,
+        initialSyncReady: true,
+      })
+    ).toBe(false);
   });
 
   it("creates bounded Other CRM candidates without making a CRM write", () => {

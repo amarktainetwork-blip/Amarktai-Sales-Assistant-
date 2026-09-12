@@ -96,8 +96,10 @@ const allowedReadCapabilities = [
 ];
 
 function readCapabilitiesForProvider(provider: string) {
+  // Genie company setup proves only shared CRM structure. Personal workload
+  // reads are enabled only after an exact salesperson CRM identity mapping.
   return provider === "genie"
-    ? allowedReadCapabilities.filter(capability => capability !== "notes.read")
+    ? ["companies.read", "owners.read", "pipelines.read"]
     : allowedReadCapabilities;
 }
 

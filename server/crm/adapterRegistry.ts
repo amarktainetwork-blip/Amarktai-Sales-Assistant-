@@ -8,6 +8,7 @@ import { salesforceAdapter } from "./salesforce";
 import { pipedriveAdapter } from "./pipedrive";
 import { zohoAdapter } from "./zoho";
 import { browserCrmAdapter } from "../browserConnectors/browserCrmAdapter";
+import { genieSessionApiAdapter } from "./genieSessionApi";
 
 function browserAdapter(
   provider: Extract<CrmProvider, "genie" | "custom_browser">
@@ -59,7 +60,7 @@ const adapters: Partial<Record<CrmProvider, CrmAdapter>> = {
   salesforce: salesforceAdapter,
   pipedrive: pipedriveAdapter,
   zoho: zohoAdapter,
-  genie: browserAdapter("genie"),
+  genie: genieSessionApiAdapter,
   custom_browser: browserAdapter("custom_browser"),
 };
 

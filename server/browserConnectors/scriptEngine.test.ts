@@ -121,6 +121,24 @@ describe("saved browser connector scripts", () => {
     ).toThrow(/query parameters/i);
   });
 
+  it("allows only bounded declarative waits", () => {
+    expect(
+      validateSavedBrowserScript({
+        steps: [{ action: "wait", value: "2000" }],
+      }).steps[0]
+    ).toMatchObject({ action: "wait", value: "2000" });
+    expect(() =>
+      validateSavedBrowserScript({
+        steps: [{ action: "wait", value: "5001" }],
+      })
+    ).toThrow(/0-5000 milliseconds/i);
+    expect(() =>
+      validateSavedBrowserScript({
+        steps: [{ action: "wait", value: "forever" }],
+      })
+    ).toThrow(/0-5000 milliseconds/i);
+  });
+
   it("rejects unbounded scripts", () => {
     expect(() =>
       validateSavedBrowserScript({

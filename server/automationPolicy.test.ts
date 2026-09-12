@@ -18,7 +18,7 @@ describe("organisation automation policy", () => {
     expect(policy.requireReviewForCommunications).toBe(true);
     expect(policy.requireReviewForStageChanges).toBe(true);
   });
-  it("only auto-executes explicit allowlisted actions in auto mode", () => {
+  it("keeps organisation policy fail-closed without an explicit runtime execution context", () => {
     const policy = normalizeAutomationPolicy({
       mode: "auto_preapproved",
       autoActionTypes: [
@@ -27,19 +27,19 @@ describe("organisation automation policy", () => {
         "update_opportunity",
       ],
     });
-    expect(mayAutoExecute(policy, "append_contact_note")).toBe(true);
+    expect(mayAutoExecute(policy, "append_contact_note")).toBe(false);
     expect(mayAutoExecute(policy, "send_email")).toBe(false);
     expect(mayAutoExecute(policy, "update_opportunity")).toBe(false);
   });
-  it("allows management to explicitly relax communication/stage review requirements", () => {
+  it("does not treat relaxed organisation review settings as user execution authority", () => {
     const policy = normalizeAutomationPolicy({
       mode: "auto_preapproved",
       autoActionTypes: ["send_email", "update_opportunity"],
       requireReviewForCommunications: false,
       requireReviewForStageChanges: false,
     });
-    expect(mayAutoExecute(policy, "send_email")).toBe(true);
-    expect(mayAutoExecute(policy, "update_opportunity")).toBe(true);
+    expect(mayAutoExecute(policy, "send_email")).toBe(false);
+    expect(mayAutoExecute(policy, "update_opportunity")).toBe(false);
   });
 
   it("provides conservative onboarding presets and never silently automates communications", () => {

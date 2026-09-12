@@ -5,6 +5,7 @@ import {
   connectedSystems,
   connectorSyncJobs,
   crmCommissioningJobs,
+  externalUserMappings,
   type CrmCommissioningJob,
 } from "../../drizzle/schema";
 import {
@@ -784,6 +785,44 @@ export function automaticRepairStatusAfterProof(input: {
   return "LIVE_PROVEN" as const;
 }
 
+async function persistDiscoveredCrmUsers(input: {
+  job: CrmCommissioningJob;
+  adapter: CrmAdapter;
+  connection: AdapterConnection;
+  secret: ConnectionSecretPayload;
+}) {
+  if (!input.adapter.discoverUsers) return 0;
+  const users = await input.adapter.discoverUsers({
+    connection: input.connection,
+    secret: input.secret,
+  });
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  let saved = 0;
+  for (const user of users) {
+    const externalUserId = safeText(user.externalId, 180);
+    const displayName = safeText(user.displayName, 220);
+    const email = safeText(user.email, 320).trim().toLowerCase() || null;
+    if (!externalUserId || !displayName) continue;
+    await db
+      .insert(externalUserMappings)
+      .values({
+        organisationId: input.job.organisationId,
+        connectedSystemId: input.job.connectedSystemId,
+        userId: null,
+        externalUserId,
+        displayName,
+        email,
+        isActive: true,
+      })
+      .onDuplicateKeyUpdate({
+        set: { displayName, email, isActive: true },
+      });
+    saved += 1;
+  }
+  return saved;
+}
+
 async function loadJob(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
@@ -1497,6 +1536,25 @@ export function isTransientBrowserControlError(error: unknown) {
   return isTransientBrowserExecutionFailure(error);
 }
 
+export const MAX_AUTOMATIC_SAFE_READ_RETRIES = 3;
+
+export function shouldRetryAutomaticSafeReads(input: {
+  connectionMethod: string;
+  allowedWriteCapabilities: string[];
+  retryCount: number;
+  ready: boolean;
+  criticalGapCount: number;
+  initialSyncReady: boolean;
+}) {
+  return (
+    input.connectionMethod !== "oauth" &&
+    input.allowedWriteCapabilities.length === 0 &&
+    !input.ready &&
+    (input.criticalGapCount > 0 || !input.initialSyncReady) &&
+    input.retryCount < MAX_AUTOMATIC_SAFE_READ_RETRIES
+  );
+}
+
 export function safeReadCommissioningPassed(input: {
   attempted: number;
   proven: string[];
@@ -1589,12 +1647,15 @@ export async function startAutomaticCommissioning(input: {
         secretKind: "browser",
       })
     : undefined;
-  const initialState =
+  const authenticatedBrowserSession =
     approvedBrowserSecret?.browserSession &&
     Number(approvedBrowserSecret.commissioningUserId || 0) === input.userId &&
-    isBrowserSessionPackage(approvedBrowserSecret.browserSession)
-      ? ("DISCOVER_NAVIGATION" as const)
-      : ("AUTHENTICATE" as const);
+    isBrowserSessionPackage(approvedBrowserSecret.browserSession);
+  const initialState = authenticatedBrowserSession
+    ? system.provider === "genie"
+      ? ("PUBLISH_PROVEN_OPERATIONS" as const)
+      : ("DISCOVER_NAVIGATION" as const)
+    : ("AUTHENTICATE" as const);
   const values = {
     organisationId: input.organisationId,
     connectedSystemId: input.connectedSystemId,
@@ -1604,14 +1665,16 @@ export async function startAutomaticCommissioning(input: {
     status: "queued" as const,
     progress: {
       humanStatus:
-        initialState === "DISCOVER_NAVIGATION"
-          ? "CRM sign-in complete; finding available navigation"
-          : "Connecting",
+        initialState === "PUBLISH_PROVEN_OPERATIONS"
+          ? "CRM sign-in complete; verifying stable API access"
+          : initialState === "DISCOVER_NAVIGATION"
+            ? "CRM sign-in complete; finding available navigation"
+            : "Connecting",
       steps:
-        initialState === "DISCOVER_NAVIGATION"
+        authenticatedBrowserSession
           ? { authentication: "complete", secureSession: "complete" }
           : {},
-      ...(initialState === "DISCOVER_NAVIGATION"
+      ...(authenticatedBrowserSession
         ? { authentication: "complete", secureSession: "complete" }
         : {}),
       learningMemory:
@@ -1887,8 +1950,14 @@ export async function advanceAutomaticCommissioning(jobId: number) {
         test,
       });
       progress.authentication = "Ready";
+      progress.identityCandidates = await persistDiscoveredCrmUsers({
+        job,
+        adapter,
+        connection: toAdapterConnection(system),
+        secret: commissioningSecret,
+      }).catch(() => 0);
       next =
-        job.connectorClass === "native_api"
+        job.connectorClass === "native_api" || system.provider === "genie"
           ? "PUBLISH_PROVEN_OPERATIONS"
           : "DISCOVER_NAVIGATION";
     } else if (job.state === "DISCOVER_NAVIGATION") {
@@ -2113,30 +2182,48 @@ export async function advanceAutomaticCommissioning(jobId: number) {
         correlationId,
         test,
       });
-      const matrix =
-        system.connectionMethod === "oauth"
+      progress.identityCandidates = await persistDiscoveredCrmUsers({
+        job,
+        adapter,
+        connection: toAdapterConnection(system),
+        secret: commissioningSecret,
+      }).catch(() => Number(progress.identityCandidates || 0));
+      const sessionApi = system.provider === "genie";
+      let matrix =
+        system.connectionMethod === "oauth" || sessionApi
           ? null
           : await browserOperationReadinessForSystem({
               organisationId: job.organisationId,
               connectedSystemId: job.connectedSystemId,
             });
-      const statuses = new Map(
+      let statuses = new Map(
         matrix?.operations.map(operation => [
           operation.key,
           operation.status,
         ]) || []
       );
-      const coreReady =
+      let coreReady =
         system.connectionMethod === "oauth" ||
+        sessionApi ||
         coreBrowserCommissioningReady(statuses);
-      const capabilityAccounting = matrix
+      let capabilityAccounting = matrix
         ? accountBrowserCapabilities({
             operationStatuses: statuses,
             discoveredOperationKeys: discovered,
             allowedReadCapabilities: system.allowedReadCapabilities,
             allowedWriteCapabilities: system.allowedWriteCapabilities,
           })
-        : { rows: [], criticalGaps: [], complete: true };
+        : {
+            rows: test.capabilities.map(item => ({
+              capability: item.capability,
+              state: item.available ? "FULL" : "NONE",
+              missingOperations: item.available ? [] : [item.capability],
+            })),
+            criticalGaps: test.capabilities
+              .filter(item => !item.available)
+              .map(item => ({ operationKey: item.capability, status: "NEEDS_REPAIR" })),
+            complete: test.status === "ready",
+          };
       let initialSyncReady = false;
       let initialSyncError: string | null = null;
       try {
@@ -2185,9 +2272,57 @@ export async function advanceAutomaticCommissioning(jobId: number) {
           error: initialSyncError,
         };
       }
+      // Runtime sync can discover selector drift after the pre-sync readiness
+      // snapshot. Re-read truth before deciding that onboarding is complete.
+      if (system.connectionMethod !== "oauth" && !sessionApi) {
+        matrix = await browserOperationReadinessForSystem({
+          organisationId: job.organisationId,
+          connectedSystemId: job.connectedSystemId,
+        });
+        statuses = new Map(
+          matrix.operations.map(operation => [operation.key, operation.status])
+        );
+        coreReady = coreBrowserCommissioningReady(statuses);
+        capabilityAccounting = accountBrowserCapabilities({
+          operationStatuses: statuses,
+          discoveredOperationKeys: discovered,
+          allowedReadCapabilities: system.allowedReadCapabilities,
+          allowedWriteCapabilities: system.allowedWriteCapabilities,
+        });
+      }
       const ready =
         coreReady && capabilityAccounting.complete && initialSyncReady;
       progress.capabilityAccounting = capabilityAccounting;
+      const retryCount = Number(progress.automaticSafeReadRetries || 0);
+      if (
+        !sessionApi &&
+        shouldRetryAutomaticSafeReads({
+          connectionMethod: system.connectionMethod,
+          allowedWriteCapabilities: system.allowedWriteCapabilities,
+          retryCount,
+          ready,
+          criticalGapCount: capabilityAccounting.criticalGaps.length,
+          initialSyncReady,
+        })
+      ) {
+        const nextRetry = retryCount + 1;
+        progress.automaticSafeReadRetries = nextRetry;
+        await updateJob(job.id, {
+          state: "TEST_SAFE_READS",
+          status: "queued",
+          progress: {
+            ...progress,
+            humanStatus: `Repairing required CRM reads (${nextRetry}/${MAX_AUTOMATIC_SAFE_READ_RETRIES})`,
+          },
+          optionalFailures: failures,
+          discoveredOperationKeys: discovered,
+          completedAt: null,
+          leaseExpiresAt: null,
+          lastError: initialSyncError,
+        });
+        scheduleAutomaticCommissioning(job.id);
+        return;
+      }
       progress.published = "Ready";
       next = "READY";
       await updateJob(job.id, {

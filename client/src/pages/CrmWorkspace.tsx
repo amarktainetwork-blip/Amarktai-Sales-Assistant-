@@ -71,6 +71,30 @@ type BrowserInputEvent =
 type BrowserNavigationAction = "back" | "forward" | "refresh";
 type AutomationPreset = "assist_only" | "balanced" | "automated";
 
+const COMMISSIONING_STAGE_ORDER = [
+  "AUTHENTICATE",
+  "DISCOVER_NAVIGATION",
+  "DISCOVER_CAPABILITIES",
+  "TEST_SAFE_READS",
+  "AWAIT_SAFE_TEST_RECORD",
+  "TEST_CONTROLLED_WRITES",
+  "VERIFY_READBACK",
+  "PUBLISH_PROVEN_OPERATIONS",
+  "READY",
+] as const;
+
+function commissioningStageComplete(
+  current: string | undefined,
+  target: (typeof COMMISSIONING_STAGE_ORDER)[number]
+) {
+  if (!current) return false;
+  const currentIndex = COMMISSIONING_STAGE_ORDER.indexOf(
+    current as (typeof COMMISSIONING_STAGE_ORDER)[number]
+  );
+  const targetIndex = COMMISSIONING_STAGE_ORDER.indexOf(target);
+  return currentIndex > targetIndex;
+}
+
 type StreamMessage =
   | { type: "ready"; url: string; control: string; expiresAt: string }
   | { type: "frame"; data: string; url: string; metadata?: FrameMetadata }
@@ -124,6 +148,7 @@ export default function CrmWorkspace() {
   const [browserAuthenticationState, setBrowserAuthenticationState] =
     useState("STARTING");
   const [commissioningReady, setCommissioningReady] = useState(false);
+  const [learningStarted, setLearningStarted] = useState(false);
   const [commissioningJob, setCommissioningJob] = useState<{
     state?: string;
     status?: string;
@@ -152,7 +177,14 @@ export default function CrmWorkspace() {
 
   useEffect(() => {
     if (selected && selected.id !== selectedId) setSelectedId(selected.id);
-  }, [selected, selectedId]);
+  }, [selected?.id, selectedId]);
+
+  const selectedSystemId = selected?.id ?? null;
+
+  useEffect(() => {
+    if (browserAuthenticationState === "AUTHENTICATED")
+      setLearningStarted(true);
+  }, [browserAuthenticationState]);
 
   const onboarding = organisation.data?.settings?.onboarding;
   const onboardingComplete = Boolean(
@@ -209,14 +241,15 @@ export default function CrmWorkspace() {
     setCommissioningReady(false);
     setCommissioningJob(null);
     setBrowserAuthenticationState("STARTING");
+    setLearningStarted(false);
     completionAttemptedRef.current = false;
     automationDefaultAttemptedRef.current = false;
     setAutomationSetupError(null);
-    if (!selected || !canManage || onboardingComplete) return;
+    if (!selectedSystemId || !canManage || onboardingComplete) return;
     let cancelled = false;
     const check = async () => {
       const response = await fetch(
-        `/api/connected-system-admin/${selected.id}/commissioning`,
+        `/api/connected-system-admin/${selectedSystemId}/commissioning`,
         { credentials: "include" }
       );
       if (!response.ok || cancelled) return;
@@ -234,6 +267,8 @@ export default function CrmWorkspace() {
         } | null;
       };
       setCommissioningJob(body.job ?? null);
+      if (body.job?.state && body.job.state !== "AUTHENTICATE")
+        setLearningStarted(true);
       setCommissioningReady(
         body.job?.state === "READY" &&
           body.job?.status === "ready" &&
@@ -247,13 +282,13 @@ export default function CrmWorkspace() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [canManage, onboardingComplete, selected]);
+  }, [canManage, onboardingComplete, selectedSystemId]);
 
   useEffect(() => {
     if (
       !canManage ||
       onboardingComplete ||
-      browserAuthenticationState !== "AUTHENTICATED" ||
+      !learningStarted ||
       !commissioningReady ||
       automationPolicyConfigured ||
       companySetup.data?.profile?.discoveryStatus !== "confirmed" ||
@@ -269,7 +304,7 @@ export default function CrmWorkspace() {
     );
   }, [
     automationPolicyConfigured,
-    browserAuthenticationState,
+    learningStarted,
     canManage,
     commissioningReady,
     companySetup.data?.profile?.discoveryStatus,
@@ -282,7 +317,7 @@ export default function CrmWorkspace() {
       !canManage ||
       onboardingComplete ||
       completionAttemptedRef.current ||
-      browserAuthenticationState !== "AUTHENTICATED" ||
+      !learningStarted ||
       !commissioningReady ||
       !automationPolicyConfigured ||
       companySetup.data?.profile?.discoveryStatus !== "confirmed"
@@ -306,7 +341,7 @@ export default function CrmWorkspace() {
         );
       });
   }, [
-    browserAuthenticationState,
+    learningStarted,
     automationPolicyConfigured,
     canManage,
     companySetup.data?.profile?.discoveryStatus,
@@ -336,9 +371,7 @@ export default function CrmWorkspace() {
         ) : (
           <NoBrowserCrm onConnections={() => navigate("/connections")} />
         )}
-        {canManage &&
-        !onboardingComplete &&
-        browserAuthenticationState === "AUTHENTICATED" ? (
+        {canManage && !onboardingComplete && learningStarted ? (
           <div className="absolute inset-0 z-40 flex items-center justify-center bg-[#F4F7FB]/95 p-5 backdrop-blur-sm">
             <div className="w-full max-w-2xl rounded-[28px] border border-[#D7E0EA] bg-white p-7 shadow-[0_24px_80px_rgba(20,48,84,.16)] sm:p-9">
               <div className="flex items-start gap-4">
@@ -369,8 +402,30 @@ export default function CrmWorkspace() {
 
               <div className="mt-7 grid gap-3">
                 {[
-                  ["CRM sign-in", true],
-                  ["Learn CRM navigation and safe reads", commissioningReady],
+                  ["CRM sign-in", learningStarted],
+                  [
+                    "Find CRM navigation",
+                    commissioningStageComplete(
+                      commissioningJob?.state,
+                      "DISCOVER_NAVIGATION"
+                    ),
+                  ],
+                  [
+                    "Discover CRM functions",
+                    commissioningStageComplete(
+                      commissioningJob?.state,
+                      "DISCOVER_CAPABILITIES"
+                    ),
+                  ],
+                  [
+                    "Prove required CRM reads",
+                    commissioningReady ||
+                      commissioningStageComplete(
+                        commissioningJob?.state,
+                        "TEST_SAFE_READS"
+                      ),
+                  ],
+                  ["Prepare synchronized workspace", commissioningReady],
                   [
                     "Apply safe review-first settings",
                     automationPolicyConfigured,
@@ -397,7 +452,22 @@ export default function CrmWorkspace() {
                   commissioningJob?.humanStatus ||
                   (commissioningReady
                     ? "Applying your safe review-first defaults…"
-                    : "Inspecting the authenticated CRM and learning its safe read paths…")}
+                    : browserAuthenticationState === "AUTHENTICATED"
+                      ? "Inspecting the authenticated CRM and learning its safe read paths…"
+                      : "Keeping your setup open while the secure CRM session reconnects…")}
+                {Array.isArray(
+                  commissioningJob?.progress?.capabilityAccounting?.criticalGaps
+                ) &&
+                commissioningJob.progress.capabilityAccounting.criticalGaps
+                  .length > 0 ? (
+                  <span className="ml-2 font-semibold">
+                    {
+                      commissioningJob.progress.capabilityAccounting
+                        .criticalGaps.length
+                    }{" "}
+                    required read check(s) remaining.
+                  </span>
+                ) : null}
               </div>
               {commissioningJob?.lastError || automationSetupError ? (
                 <p className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-xs font-semibold leading-5 text-amber-900">

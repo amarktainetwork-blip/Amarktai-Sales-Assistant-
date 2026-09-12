@@ -5,6 +5,8 @@ import {
   connectionSecrets,
   connectorVerificationRuns,
   crmCommissioningJobs,
+  externalUserMappings,
+  users,
 } from "../drizzle/schema";
 import { getDb, recordAudit } from "./db";
 import {
@@ -772,6 +774,44 @@ export async function loadConnectionSecret(input: {
     : undefined;
 }
 
+export async function verifiedUserCrmScope(input: {
+  userId: number;
+  organisationId: number;
+  connectedSystemId: number;
+}) {
+  await requireOrganisationMembership(input.userId, input.organisationId);
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const rows = await db
+    .select({
+      externalUserId: externalUserMappings.externalUserId,
+      displayName: externalUserMappings.displayName,
+      mappingEmail: externalUserMappings.email,
+      userEmail: users.email,
+    })
+    .from(externalUserMappings)
+    .innerJoin(users, eq(users.id, externalUserMappings.userId))
+    .where(
+      and(
+        eq(externalUserMappings.organisationId, input.organisationId),
+        eq(externalUserMappings.connectedSystemId, input.connectedSystemId),
+        eq(externalUserMappings.userId, input.userId),
+        eq(externalUserMappings.isActive, true)
+      )
+    );
+  const exact = rows.filter(row => {
+    const mappingEmail = row.mappingEmail?.trim().toLowerCase();
+    const userEmail = row.userEmail?.trim().toLowerCase();
+    return Boolean(mappingEmail && userEmail && mappingEmail === userEmail);
+  });
+  if (exact.length !== 1) return null;
+  return {
+    externalUserId: exact[0].externalUserId,
+    displayName: exact[0].displayName,
+    email: exact[0].mappingEmail!.trim().toLowerCase(),
+  };
+}
+
 export async function loadUserConnectionSecret(input: {
   userId: number;
   organisationId: number;
@@ -800,9 +840,19 @@ export async function loadUserConnectionSecret(input: {
     )
     .limit(1);
   const secret = rows[0]?.secret;
-  return secret
-    ? decryptConnectionSecret<ConnectionSecretPayload>(secret)
-    : undefined;
+  if (!secret) return undefined;
+  const scope = await verifiedUserCrmScope(input);
+  return {
+    ...decryptConnectionSecret<ConnectionSecretPayload>(secret),
+    browserUserId: input.userId,
+    ...(scope
+      ? {
+          crmUserExternalId: scope.externalUserId,
+          crmUserDisplayName: scope.displayName,
+          crmUserEmail: scope.email,
+        }
+      : {}),
+  };
 }
 
 export async function hasUserConnectionSecret(input: {
