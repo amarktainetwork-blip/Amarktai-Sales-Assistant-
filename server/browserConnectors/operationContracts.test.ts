@@ -4,6 +4,7 @@ import {
   assertBrowserOperationRuntimeStatus,
   assertBrowserOperationScope,
   deriveBrowserCapabilityReadiness,
+  requestedBrowserReadCapabilitiesReady,
   compileGuidedBrowserOperation,
   proposeGuidedBrowserSteps,
   sanitizeTrainingCapture,
@@ -231,6 +232,33 @@ describe("browser CRM read proof", () => {
     ).toMatchObject({ ok: false, code: "TARGET_IDENTITY_REQUIRED" });
   });
 
+  it("accepts only deterministic empty collection evidence for sync reads", () => {
+    expect(
+      verifyBrowserReadProof({
+        operationKey: "company.sync",
+        payload: {},
+        data: { records: "[]", collectionEvidence: "Company Name" },
+      })
+    ).toMatchObject({ ok: true, rowCount: 0 });
+    expect(
+      verifyBrowserReadProof({
+        operationKey: "opportunity.sync",
+        payload: {},
+        data: {
+          records: "[]",
+          collectionEvidence: "0 Opportunities 0 Opportunities",
+        },
+      })
+    ).toMatchObject({ ok: true, rowCount: 0 });
+    expect(
+      verifyBrowserReadProof({
+        operationKey: "opportunity.sync",
+        payload: {},
+        data: { records: "[]", collectionEvidence: "1 Opportunity" },
+      })
+    ).toMatchObject({ ok: false, code: "STRUCTURED_RESULT_REQUIRED" });
+  });
+
   it("keeps optional empty phone valid when immutable identity matches", () => {
     expect(
       verifyBrowserReadProof({
@@ -285,8 +313,29 @@ describe("operation truth and training privacy", () => {
       },
       "tasks.read"
     );
-    expect(result.state).toBe("LIMITED");
-    expect(result.missingOperations).toEqual(["task.read", "task.sync"]);
+    expect(result.state).toBe("NOT_READY");
+    expect(result.missingOperations).toEqual(["task.sync"]);
+  });
+
+  it("requires every requested browser read capability to be FULL", () => {
+    const capabilities = [
+      { capability: "contacts.read", state: "FULL" },
+      { capability: "tasks.read", state: "FULL" },
+      { capability: "pipelines.read", state: "LIMITED" },
+    ];
+    expect(
+      requestedBrowserReadCapabilitiesReady(capabilities, [
+        "contacts.read",
+        "tasks.read",
+      ])
+    ).toBe(true);
+    expect(
+      requestedBrowserReadCapabilitiesReady(capabilities, [
+        "contacts.read",
+        "pipelines.read",
+      ])
+    ).toBe(false);
+    expect(requestedBrowserReadCapabilitiesReady(capabilities, [])).toBe(false);
   });
 
   it("masks password and token fields and replaces ordinary input values", () => {

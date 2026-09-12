@@ -11,7 +11,7 @@ import { getDb, getUserById, recordAudit } from "./db";
 import { requireLocalHttpContext } from "./httpAuth";
 import { getDelegatedMailboxStatus } from "./delegatedMailbox";
 import { browserOperationReadinessForSystem } from "./browserConnectors/learnedOperations";
-import { coreBrowserCommissioningReady } from "./crm/commissioningReadiness";
+import { requestedBrowserReadCapabilitiesReady } from "./browserConnectors/operationContracts";
 import {
   canManageOrganisation,
   updateMemberOnboardingState,
@@ -195,10 +195,13 @@ async function commissionedCrmReady(
       organisationId,
       connectedSystemId: system.id,
     });
-    const statuses = new Map(
-      matrix.operations.map(operation => [operation.key, operation.status])
-    );
-    if (coreBrowserCommissioningReady(statuses)) return true;
+    if (
+      requestedBrowserReadCapabilitiesReady(
+        matrix.capabilities,
+        system.allowedReadCapabilities ?? []
+      )
+    )
+      return true;
   }
   return false;
 }

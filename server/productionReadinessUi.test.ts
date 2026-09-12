@@ -47,7 +47,7 @@ describe("commercial Sales Assistant product boundaries", () => {
     expect(layout).toContain("if (!canManage) return []");
   });
 
-  it("completes setup only after final CRM commissioning READY and server core-operation proof", () => {
+  it("completes setup only after final CRM commissioning READY and full requested-read proof", () => {
     const crm = read("../client/src/pages/CrmWorkspace.tsx");
     const organisation = read("./organisation.ts");
     expect(crm).toContain('browserAuthenticationState !== "AUTHENTICATED"');
@@ -59,7 +59,8 @@ describe("commercial Sales Assistant product boundaries", () => {
     expect(crm).toContain("mutateAsync({ step: 4, complete: true })");
     expect(organisation).toContain('profile.discoveryStatus === "confirmed"');
     expect(organisation).toContain("browserOperationReadinessForSystem");
-    expect(organisation).toContain("coreBrowserCommissioningReady(statuses)");
+    expect(organisation).toContain("requestedBrowserReadCapabilitiesReady");
+    expect(organisation).toContain("allowedReadCapabilities");
     expect(organisation).not.toContain("safeReadConnections.has(system.id)");
   });
 

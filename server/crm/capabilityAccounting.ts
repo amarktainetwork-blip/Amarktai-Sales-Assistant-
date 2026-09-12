@@ -1,20 +1,23 @@
-import { BROWSER_OPERATION_CATALOGUE } from "../browserConnectors/operationContracts";
+import {
+  BROWSER_CAPABILITY_REQUIREMENTS,
+  BROWSER_OPERATION_CATALOGUE,
+} from "../browserConnectors/operationContracts";
 import { CORE_BROWSER_OPERATIONS } from "./commissioningReadiness";
 
-export const REQUIRED_COMMISSIONED_OPERATIONS = [
-  ...CORE_BROWSER_OPERATIONS,
-  "company.read",
-  "company.sync",
-  "task.list",
-  "task.sync",
-  "history.read",
-  "note.read",
-  "opportunity.read",
-  "opportunity.sync",
-  "activity.sync",
-  "owner.sync",
-  "pipeline.list",
-] as const;
+export const REQUIRED_COMMISSIONED_OPERATIONS = Array.from(
+  new Set([
+    ...CORE_BROWSER_OPERATIONS,
+    ...[
+      "companies.read",
+      "opportunities.read",
+      "tasks.read",
+      "activities.read",
+      "notes.read",
+      "owners.read",
+      "pipelines.read",
+    ].flatMap(capability => BROWSER_CAPABILITY_REQUIREMENTS[capability] ?? []),
+  ])
+);
 
 export const CAPABILITY_ACCOUNTING_STATUSES = [
   "DISCOVERED",
@@ -86,19 +89,23 @@ export function accountBrowserCapabilities(input: {
     };
   });
 
-  const hardRequired = new Set<string>(CORE_BROWSER_OPERATIONS);
+  const requiredReadOperations = new Set<string>(
+    input.allowedReadCapabilities.flatMap(
+      capability => BROWSER_CAPABILITY_REQUIREMENTS[capability] ?? []
+    )
+  );
   const criticalGaps = rows
     .filter(row => {
       if (row.mode !== "read" || row.status === "LIVE_PROVEN") return false;
       if (row.status === "NOT_AUTHORISED") return false;
 
-      const required = hardRequired.has(row.operationKey);
+      const required = requiredReadOperations.has(row.operationKey);
       const discoveredCustom =
         !standardKeys.has(row.operationKey) && discovered.has(row.operationKey);
 
-      // Standard optional CRM reads remain visible in the capability matrix but
-      // do not trap onboarding. Only the canonical safe contact loop and a
-      // genuinely discovered custom read can block the connection being usable.
+      // Every requested read capability must have its production operation
+      // LIVE_PROVEN before onboarding can finish. Custom discovered reads remain
+      // blocking as well because they were explicitly learned for this CRM.
       return required || discoveredCustom;
     })
     .map(row => ({ operationKey: row.operationKey, status: row.status }));

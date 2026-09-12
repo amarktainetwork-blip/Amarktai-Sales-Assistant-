@@ -20,8 +20,13 @@ describe("canonical Genie provider pack", () => {
       "#owner-dropdown-trigger",
     ])
       expect(serialized).toContain(selector);
-    expect(serialized).not.toContain(".tabulator-row");
-    expect(serialized).not.toMatch(/Course2Career|locationId|customer@/i);
+    const contactScripts = JSON.stringify({
+      sync: GENIE_PROVIDER_PACK.scripts.genie_contact_sync,
+      search: GENIE_PROVIDER_PACK.scripts.genie_contact_search,
+      read: GENIE_PROVIDER_PACK.scripts.genie_contact_read,
+    });
+    expect(contactScripts).not.toContain(".tabulator-row");
+    expect(serialized).not.toMatch(/Course2Career|X46Nx9|customer@/i);
     expect(GENIE_PROVIDER_PACK_VERSION).toMatch(/^genie-/);
     expect(providerPackFingerprint()).toMatch(/^[a-f0-9]{64}$/);
   });
@@ -67,9 +72,40 @@ describe("canonical Genie provider pack", () => {
 
   it("ships only TEST_READY inputs for later deterministic certification", () => {
     expect(Object.keys(GENIE_PROVIDER_PACK.operationDefinitions || {})).toEqual(
-      ["contact.sync", "contact.search", "contact.read"]
+      expect.arrayContaining([
+        "contact.sync",
+        "contact.search",
+        "contact.read",
+        "company.sync",
+        "task.sync",
+        "owner.sync",
+        "opportunity.sync",
+        "pipeline.list",
+        "activity.sync",
+      ])
     );
     expect(JSON.stringify(GENIE_PROVIDER_PACK)).not.toContain("LIVE_PROVEN");
+  });
+
+  it("ships deterministic read scripts for the live Genie workspace surfaces", () => {
+    expect(
+      JSON.stringify(GENIE_PROVIDER_PACK.scripts.genie_company_sync)
+    ).toContain("properties.name");
+    expect(
+      JSON.stringify(GENIE_PROVIDER_PACK.scripts.genie_task_sync)
+    ).toContain("recordId");
+    expect(
+      JSON.stringify(GENIE_PROVIDER_PACK.scripts.genie_owner_sync)
+    ).toContain("data-id");
+    expect(
+      JSON.stringify(GENIE_PROVIDER_PACK.scripts.genie_opportunity_sync)
+    ).toContain("crm-opportunities-stage-count");
+    expect(
+      JSON.stringify(GENIE_PROVIDER_PACK.scripts.genie_pipeline_list)
+    ).toContain("pipelineDropdDown-listview");
+    expect(
+      JSON.stringify(GENIE_PROVIDER_PACK.scripts.genie_activity_sync)
+    ).toContain("MESSAGE_DETAILS");
   });
 
   it("derives tenant verification targets rather than embedding customer data", () => {

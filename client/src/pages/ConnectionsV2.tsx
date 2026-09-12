@@ -82,6 +82,12 @@ const readCapabilities = [
   "owners.read",
   "pipelines.read",
 ];
+
+function readCapabilitiesForProvider(provider: string) {
+  return provider === "genie"
+    ? readCapabilities.filter(capability => capability !== "notes.read")
+    : readCapabilities;
+}
 const writeCapabilities = [
   "contacts.write",
   "companies.write",
@@ -192,7 +198,7 @@ export default function ConnectionsV2() {
         displayName: selected.label,
         baseUrl: startUrl,
         connectionMethod: selected.transport,
-        allowedReadCapabilities: readCapabilities,
+        allowedReadCapabilities: readCapabilitiesForProvider(selected.provider),
         allowedWriteCapabilities: writeCapabilities,
       });
       await systems.refetch();

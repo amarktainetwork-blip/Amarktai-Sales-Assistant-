@@ -3,7 +3,7 @@ import type { SavedBrowserScript } from "../browserConnectors/scriptEngine";
 import type { BrowserProfile } from "../browserConnectors/browserCrmAdapter";
 
 /** Reusable provider structure only: never tenant IDs, credentials or customer values. */
-export const GENIE_PROVIDER_PACK_VERSION = "genie-2026.09.11.1";
+export const GENIE_PROVIDER_PACK_VERSION = "genie-2026.09.11.2";
 
 // The current Genie/HighLevel contacts workspace no longer uses the old
 // Tabulator row structure. Contact-detail links are the durable record identity:
@@ -94,6 +94,165 @@ const scripts: BrowserProfile["scripts"] = {
       },
     ],
   },
+  genie_company_sync: {
+    steps: [
+      { action: "click", selector: "#sb_contacts" },
+      { action: "click", selector: "#tb_business" },
+      {
+        action: "expect_visible",
+        selector: '[role="columnheader"][tabulator-field="properties.name"]',
+      },
+      {
+        action: "read_text",
+        selector: '[role="columnheader"]',
+        key: "collectionEvidence",
+      },
+      {
+        action: "read_rows",
+        selector: ".tabulator-row",
+        key: "records",
+        fields: {
+          externalId: {
+            selector: '[tabulator-field="properties.name"] a',
+            attribute: "href",
+          },
+          name: { selector: '[tabulator-field="properties.name"]' },
+          website: { selector: '[tabulator-field="properties.website"]' },
+          sourceUpdatedAt: { selector: '[tabulator-field="updatedAt"]' },
+        },
+      },
+    ],
+  },
+  genie_task_sync: {
+    steps: [
+      { action: "click", selector: "#sb_contacts" },
+      { action: "click", selector: "#tb_tasks" },
+      {
+        action: "expect_visible",
+        selector: ".tabulator-row",
+      },
+      {
+        action: "read_rows",
+        selector: ".tabulator-row",
+        key: "records",
+        fields: {
+          externalId: {
+            selector: '[tabulator-field="properties.title"]',
+            urlQueryParamAfterClick: "recordId",
+          },
+          title: { selector: '[tabulator-field="properties.title"]' },
+          description: {
+            selector: '[tabulator-field="properties.description"]',
+          },
+          contactExternalId: {
+            selector:
+              '[tabulator-field="relations.TASK_CONTACT_ASSOCIATION"] a[href*="/contacts/detail/"]',
+            attribute: "href",
+          },
+          ownerExternalId: {
+            selector: '[tabulator-field="owners"] [data-id]',
+            attribute: "data-id",
+          },
+          dueAt: { selector: '[tabulator-field="properties.dueDate"]' },
+        },
+      },
+    ],
+  },
+  genie_owner_sync: {
+    steps: [
+      { action: "click", selector: "#sb_contacts" },
+      { action: "click", selector: "#tb_tasks" },
+      {
+        action: "expect_visible",
+        selector: '[tabulator-field="owners"] [data-id]',
+      },
+      {
+        action: "read_rows",
+        selector: '[tabulator-field="owners"] [data-id]',
+        key: "records",
+        fields: {
+          externalId: { attribute: "data-id" },
+          name: { attribute: "tooltip" },
+        },
+      },
+    ],
+  },
+  genie_opportunity_sync: {
+    steps: [
+      { action: "click", selector: "#sb_opportunities" },
+      {
+        action: "expect_visible",
+        selector: ".crm-opportunities-stage-name",
+      },
+      {
+        action: "read_rows",
+        selector: ".crm-opportunities-stage-count",
+        key: "collectionEvidence",
+        fields: { count: {} },
+      },
+      {
+        action: "read_rows",
+        selector: '[id^="data-opportunity-name-"]',
+        key: "records",
+        fields: {
+          externalId: { attribute: "id" },
+          name: {},
+        },
+      },
+    ],
+  },
+  genie_pipeline_list: {
+    steps: [
+      { action: "click", selector: "#sb_opportunities" },
+      {
+        action: "expect_visible",
+        selector: "#pipelineDropdDown-listview",
+      },
+      { action: "click", selector: "#pipelineDropdDown-listview" },
+      {
+        action: "expect_visible",
+        selector: ".hr-base-select-option__content",
+      },
+      {
+        action: "read_rows",
+        selector:
+          ".hr-base-select-option:not(.hr-base-select-option--disabled) .hr-base-select-option__content",
+        key: "records",
+        fields: {
+          externalId: {},
+          label: {},
+        },
+      },
+      { action: "click", selector: "#pipelineDropdDown-listview" },
+    ],
+  },
+  genie_activity_sync: {
+    steps: [
+      { action: "click", selector: "#sb_conversations" },
+      {
+        action: "expect_visible",
+        selector: '[data-testid="ASSERT_LC_LEFTPANEL"]',
+      },
+      {
+        action: "read_text",
+        selector: '[aria-label="All"]',
+        key: "collectionEvidence",
+      },
+      {
+        action: "read_rows",
+        selector: '.message-item:has([data-testid="MESSAGE_DETAILS"])',
+        key: "records",
+        fields: {
+          externalId: {
+            selector: '[data-testid="MESSAGE_DETAILS"]',
+            attribute: "id",
+          },
+          body: {},
+          activityType: { attribute: "data-testid" },
+        },
+      },
+    ],
+  },
 };
 
 export const GENIE_PROVIDER_PACK: Pick<
@@ -105,6 +264,11 @@ export const GENIE_PROVIDER_PACK: Pick<
     syncContacts: "records",
     searchContacts: "records",
     getContact: "records",
+    syncCompanies: "records",
+    syncOpportunities: "records",
+    syncTasks: "records",
+    syncActivities: "records",
+    listPipelines: "records",
   },
   operationDefinitions: {
     "contact.sync": {
@@ -141,6 +305,72 @@ export const GENIE_PROVIDER_PACK: Pick<
         providerPack: "genie",
         providerPackVersion: GENIE_PROVIDER_PACK_VERSION,
         verificationInputRole: "derived_contact_external_id",
+      },
+    },
+    "company.sync": {
+      definition: {
+        mode: "read",
+        executeScript: "genie_company_sync",
+        resultKey: "records",
+      },
+      prerequisites: {
+        providerPack: "genie",
+        providerPackVersion: GENIE_PROVIDER_PACK_VERSION,
+      },
+    },
+    "task.sync": {
+      definition: {
+        mode: "read",
+        executeScript: "genie_task_sync",
+        resultKey: "records",
+      },
+      prerequisites: {
+        providerPack: "genie",
+        providerPackVersion: GENIE_PROVIDER_PACK_VERSION,
+      },
+    },
+    "owner.sync": {
+      definition: {
+        mode: "read",
+        executeScript: "genie_owner_sync",
+        resultKey: "records",
+      },
+      prerequisites: {
+        providerPack: "genie",
+        providerPackVersion: GENIE_PROVIDER_PACK_VERSION,
+      },
+    },
+    "opportunity.sync": {
+      definition: {
+        mode: "read",
+        executeScript: "genie_opportunity_sync",
+        resultKey: "records",
+      },
+      prerequisites: {
+        providerPack: "genie",
+        providerPackVersion: GENIE_PROVIDER_PACK_VERSION,
+      },
+    },
+    "pipeline.list": {
+      definition: {
+        mode: "read",
+        executeScript: "genie_pipeline_list",
+        resultKey: "records",
+      },
+      prerequisites: {
+        providerPack: "genie",
+        providerPackVersion: GENIE_PROVIDER_PACK_VERSION,
+      },
+    },
+    "activity.sync": {
+      definition: {
+        mode: "read",
+        executeScript: "genie_activity_sync",
+        resultKey: "records",
+      },
+      prerequisites: {
+        providerPack: "genie",
+        providerPackVersion: GENIE_PROVIDER_PACK_VERSION,
       },
     },
   },

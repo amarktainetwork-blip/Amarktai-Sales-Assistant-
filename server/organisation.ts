@@ -7,7 +7,7 @@ import {
   users,
 } from "../drizzle/schema";
 import { browserOperationReadinessForSystem } from "./browserConnectors/learnedOperations";
-import { coreBrowserCommissioningReady } from "./crm/commissioningReadiness";
+import { requestedBrowserReadCapabilitiesReady } from "./browserConnectors/operationContracts";
 import { getDb } from "./db";
 import {
   canManageOrganisation,
@@ -258,6 +258,7 @@ export async function updateOnboardingState(input: {
           id: connectedSystems.id,
           status: connectedSystems.status,
           connectionMethod: connectedSystems.connectionMethod,
+          allowedReadCapabilities: connectedSystems.allowedReadCapabilities,
         })
         .from(connectedSystems)
         .where(eq(connectedSystems.organisationId, organisationId)),
@@ -283,12 +284,12 @@ export async function updateOnboardingState(input: {
         })
       )
     );
-    const browserReady = browserMatrices.some(matrix => {
-      const statuses = new Map(
-        matrix.operations.map(operation => [operation.key, operation.status])
-      );
-      return coreBrowserCommissioningReady(statuses);
-    });
+    const browserReady = browserMatrices.some((matrix, index) =>
+      requestedBrowserReadCapabilitiesReady(
+        matrix.capabilities,
+        browserCandidates[index]?.allowedReadCapabilities ?? []
+      )
+    );
 
     if (!nativeReady && !browserReady)
       throw new Error(

@@ -129,9 +129,12 @@ export default function CrmWorkspace() {
     status?: string;
     humanStatus?: string;
     lastError?: string | null;
-    progress?: { humanStatus?: string; safeReads?: { status?: string } };
+    progress?: {
+      humanStatus?: string;
+      safeReads?: { status?: string };
+      capabilityAccounting?: { criticalGaps?: unknown[] };
+    };
   } | null>(null);
-  const [crmIdentityMapped, setCrmIdentityMapped] = useState(false);
   const [savingAutomationPreset, setSavingAutomationPreset] =
     useState<AutomationPreset | null>(null);
   const [automationSetupError, setAutomationSetupError] = useState<
@@ -223,12 +226,19 @@ export default function CrmWorkspace() {
           status?: string;
           humanStatus?: string;
           lastError?: string | null;
-          progress?: { humanStatus?: string; safeReads?: { status?: string } };
+          progress?: {
+            humanStatus?: string;
+            safeReads?: { status?: string };
+            capabilityAccounting?: { criticalGaps?: unknown[] };
+          };
         } | null;
       };
       setCommissioningJob(body.job ?? null);
       setCommissioningReady(
-        body.job?.state === "READY" && body.job?.status === "ready"
+        body.job?.state === "READY" &&
+          body.job?.status === "ready" &&
+          (body.job?.progress?.capabilityAccounting?.criticalGaps?.length ??
+            1) === 0
       );
     };
     void check();
@@ -245,7 +255,6 @@ export default function CrmWorkspace() {
       onboardingComplete ||
       browserAuthenticationState !== "AUTHENTICATED" ||
       !commissioningReady ||
-      !crmIdentityMapped ||
       automationPolicyConfigured ||
       companySetup.data?.profile?.discoveryStatus !== "confirmed" ||
       savingAutomationPreset !== null ||
@@ -264,7 +273,6 @@ export default function CrmWorkspace() {
     canManage,
     commissioningReady,
     companySetup.data?.profile?.discoveryStatus,
-    crmIdentityMapped,
     onboardingComplete,
     savingAutomationPreset,
   ]);
@@ -276,7 +284,6 @@ export default function CrmWorkspace() {
       completionAttemptedRef.current ||
       browserAuthenticationState !== "AUTHENTICATED" ||
       !commissioningReady ||
-      !crmIdentityMapped ||
       !automationPolicyConfigured ||
       companySetup.data?.profile?.discoveryStatus !== "confirmed"
     )
@@ -307,7 +314,6 @@ export default function CrmWorkspace() {
     onboardingComplete,
     navigate,
     commissioningReady,
-    crmIdentityMapped,
     utils.organisation.current,
   ]);
 
@@ -336,9 +342,7 @@ export default function CrmWorkspace() {
           <div className="absolute inset-0 z-40 flex items-center justify-center bg-[#F4F7FB]/95 p-5 backdrop-blur-sm">
             <div className="w-full max-w-2xl rounded-[28px] border border-[#D7E0EA] bg-white p-7 shadow-[0_24px_80px_rgba(20,48,84,.16)] sm:p-9">
               <div className="flex items-start gap-4">
-                {commissioningReady &&
-                crmIdentityMapped &&
-                automationPolicyConfigured ? (
+                {commissioningReady && automationPolicyConfigured ? (
                   <CheckCircle2 className="mt-1 size-7 shrink-0 text-emerald-600" />
                 ) : (
                   <Loader2 className="mt-1 size-7 shrink-0 animate-spin text-[#2865C7]" />
@@ -352,9 +356,9 @@ export default function CrmWorkspace() {
                   </h2>
                   <p className="mt-2 text-sm leading-6 text-[#607086]">
                     Your sign-in is complete. Give us a few minutes to learn the
-                    CRM navigation, prove the safe read functions, match your
-                    salesperson identity and prepare your workspace. Keep this
-                    page open — you do not need to click anything.
+                    CRM navigation, prove the safe read functions and prepare
+                    your shared workspace. Keep this page open — you do not need
+                    to click anything.
                   </p>
                   <p className="mt-2 text-xs font-semibold text-[#718096]">
                     Setup is read-only. No CRM record, stage, note, task or
@@ -367,7 +371,6 @@ export default function CrmWorkspace() {
                 {[
                   ["CRM sign-in", true],
                   ["Learn CRM navigation and safe reads", commissioningReady],
-                  ["Match your salesperson identity", crmIdentityMapped],
                   [
                     "Apply safe review-first settings",
                     automationPolicyConfigured,
@@ -393,9 +396,7 @@ export default function CrmWorkspace() {
                 {commissioningJob?.progress?.humanStatus ||
                   commissioningJob?.humanStatus ||
                   (commissioningReady
-                    ? crmIdentityMapped
-                      ? "Applying your safe review-first defaults…"
-                      : "Matching your CRM identity using your signed-in email…"
+                    ? "Applying your safe review-first defaults…"
                     : "Inspecting the authenticated CRM and learning its safe read paths…")}
               </div>
               {commissioningJob?.lastError || automationSetupError ? (
@@ -403,113 +404,11 @@ export default function CrmWorkspace() {
                   {commissioningJob?.lastError || automationSetupError}
                 </p>
               ) : null}
-
-              <CrmIdentitySetup
-                active={commissioningReady}
-                onMapped={setCrmIdentityMapped}
-              />
             </div>
           </div>
         ) : null}
       </div>
     </DashboardLayout>
-  );
-}
-
-function CrmIdentitySetup({
-  active,
-  onMapped,
-}: {
-  active: boolean;
-  onMapped: (mapped: boolean) => void;
-}) {
-  const [state, setState] = useState<{
-    mapped: boolean;
-    current: Array<{ id: number; displayName: string; email: string | null }>;
-    candidates: Array<{
-      id: number;
-      displayName: string;
-      email: string | null;
-    }>;
-  } | null>(null);
-  const [claiming, setClaiming] = useState(false);
-  const autoClaimAttemptedRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (!active) {
-      onMapped(false);
-      autoClaimAttemptedRef.current = null;
-      return;
-    }
-    let cancelled = false;
-    const load = async () => {
-      const response = await fetch("/api/team/crm-identity", {
-        credentials: "include",
-      });
-      if (!response.ok || cancelled) return;
-      const body = (await response.json()) as NonNullable<typeof state>;
-      if (cancelled) return;
-      setState(body);
-      onMapped(body.mapped);
-    };
-    void load();
-    const timer = window.setInterval(() => void load(), 3_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [active, onMapped]);
-
-  const candidate =
-    state?.candidates?.length === 1 ? state.candidates[0] : undefined;
-
-  useEffect(() => {
-    if (
-      !active ||
-      state?.mapped ||
-      !candidate ||
-      claiming ||
-      autoClaimAttemptedRef.current === candidate.id
-    )
-      return;
-    autoClaimAttemptedRef.current = candidate.id;
-    setClaiming(true);
-    void fetch("/api/team/crm-identity", {
-      method: "PUT",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mappingId: candidate.id }),
-    })
-      .then(async response => {
-        const body = (await response.json().catch(() => ({}))) as {
-          error?: string;
-        };
-        if (!response.ok)
-          throw new Error(body.error || "CRM identity could not be confirmed.");
-        setState(current => (current ? { ...current, mapped: true } : current));
-        onMapped(true);
-      })
-      .catch(error => {
-        autoClaimAttemptedRef.current = null;
-        toast.error(
-          friendlyError(error, "CRM identity could not be confirmed.")
-        );
-      })
-      .finally(() => setClaiming(false));
-  }, [active, candidate, claiming, onMapped, state?.mapped]);
-
-  if (!active || state?.mapped) return null;
-
-  return (
-    <div className="mt-4 rounded-2xl border border-[#E1E7EF] bg-white px-4 py-3">
-      <p className="text-xs font-semibold leading-5 text-[#607086]">
-        {claiming || candidate
-          ? "Matching your CRM salesperson identity to your signed-in email…"
-          : state && state.candidates.length > 1
-            ? "More than one CRM identity matches your email. Setup stopped safely so we do not guess."
-            : "Waiting for the CRM owner list to synchronize so we can match your exact signed-in email…"}
-      </p>
-    </div>
   );
 }
 

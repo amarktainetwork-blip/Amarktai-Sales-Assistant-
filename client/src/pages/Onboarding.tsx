@@ -95,6 +95,12 @@ const allowedReadCapabilities = [
   "pipelines.read",
 ];
 
+function readCapabilitiesForProvider(provider: string) {
+  return provider === "genie"
+    ? allowedReadCapabilities.filter(capability => capability !== "notes.read")
+    : allowedReadCapabilities;
+}
+
 function StepDot({
   number,
   label,
@@ -401,7 +407,7 @@ export default function Onboarding() {
         displayName: provider.label,
         baseUrl: startUrl,
         connectionMethod: provider.method,
-        allowedReadCapabilities,
+        allowedReadCapabilities: readCapabilitiesForProvider(provider.provider),
         // Onboarding proves reads only. Writes require later explicit commissioning.
         allowedWriteCapabilities: [],
       });

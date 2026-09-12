@@ -5,6 +5,10 @@ const assistant = fs.readFileSync("server/assistantRoutes.ts", "utf8");
 const today = fs.readFileSync("server/today.ts", "utf8");
 const onboarding = fs.readFileSync("client/src/pages/Onboarding.tsx", "utf8");
 const crm = fs.readFileSync("client/src/pages/CrmWorkspace.tsx", "utf8");
+const memberOnboarding = fs.readFileSync(
+  "client/src/components/MemberOnboardingGate.tsx",
+  "utf8"
+);
 const companySetup = fs.readFileSync(
   "client/src/pages/CompanySetup.tsx",
   "utf8"
@@ -55,10 +59,12 @@ describe("client handover acceptance guards", () => {
     expect(compact(onboarding)).toContain("allowedWriteCapabilities: []");
   });
 
-  it("shows CRM learning and requires salesperson identity mapping", () => {
+  it("lets owners finish shared CRM learning without claiming a salesperson identity", () => {
     expect(crm).toContain("AmarktAI is learning");
-    expect(crm).toContain("/api/team/crm-identity");
-    expect(crm).toContain("!crmIdentityMapped");
+    expect(crm).not.toContain("!crmIdentityMapped");
+    expect(crm).not.toContain("<CrmIdentitySetup");
+    expect(memberOnboarding).toContain('snapshot?.role === "salesperson"');
+    expect(memberOnboarding).toContain("/api/team/crm-identity");
   });
 
   it("keeps company knowledge review in a standalone onboarding shell", () => {
