@@ -1,11 +1,12 @@
-import { and, asc, eq, inArray, isNull, lt, or } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
 import {
   connectedSystems,
   connectorSyncJobs,
+  externalUserMappings,
   organisationMembers,
+  users,
 } from "../../drizzle/schema";
 import { getDb } from "../db";
-import { loadConnectionSecret } from "../connectedSystems";
 import { runModelFreeOperation } from "../aiExecutionBoundary";
 import { syncConnectedSystem } from "./sync";
 
@@ -53,22 +54,47 @@ export async function ensureConnectionScopedCrmSyncJob(input: {
     });
 }
 
-async function synchronizationUser(input: {
+async function synchronizationUsers(input: {
   organisationId: number;
   connectedSystemId: number;
   connectionMethod: string;
 }) {
-  if (["browser", "sidecar"].includes(input.connectionMethod)) {
-    const marker = await loadConnectionSecret({
-      organisationId: input.organisationId,
-      connectedSystemId: input.connectedSystemId,
-      secretKind: "browser",
-    });
-    const userId = Number(marker?.commissioningUserId || 0);
-    if (userId) return userId;
-  }
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
+  if (["browser", "sidecar"].includes(input.connectionMethod)) {
+    const mapped = await db
+      .select({
+        userId: externalUserMappings.userId,
+        mappingEmail: externalUserMappings.email,
+        userEmail: users.email,
+      })
+      .from(externalUserMappings)
+      .innerJoin(users, eq(users.id, externalUserMappings.userId))
+      .where(
+        and(
+          eq(externalUserMappings.organisationId, input.organisationId),
+          eq(externalUserMappings.connectedSystemId, input.connectedSystemId),
+          eq(externalUserMappings.isActive, true),
+          isNotNull(externalUserMappings.userId)
+        )
+      );
+    return Array.from(
+      new Set(
+        mapped
+          .filter(row => {
+            const mappingEmail = row.mappingEmail?.trim().toLowerCase();
+            const userEmail = row.userEmail?.trim().toLowerCase();
+            return Boolean(
+              row.userId &&
+                mappingEmail &&
+                userEmail &&
+                mappingEmail === userEmail
+            );
+          })
+          .map(row => Number(row.userId))
+      )
+    );
+  }
   const member = (
     await db
       .select({ userId: organisationMembers.userId })
@@ -82,11 +108,7 @@ async function synchronizationUser(input: {
       .orderBy(asc(organisationMembers.id))
       .limit(1)
   )[0];
-  if (!member)
-    throw new Error(
-      "No active organisation member can run CRM synchronization."
-    );
-  return member.userId;
+  return member ? [member.userId] : [];
 }
 
 /** One bounded reconciliation cycle. Each connection retains independent failure state. */
@@ -161,17 +183,18 @@ export async function runConnectionScopedCrmSyncCycle(now = new Date()) {
       );
     if (Number(claim[0].affectedRows || 0) !== 1) continue;
     try {
-      const userId = await synchronizationUser({
+      const userIds = await synchronizationUsers({
         organisationId: row.system.organisationId,
         connectedSystemId: row.system.id,
         connectionMethod: row.system.connectionMethod,
       });
-      await syncConnectedSystem({
-        userId,
-        organisationId: row.system.organisationId,
-        connectedSystemId: row.system.id,
-      });
-      synchronized += 1;
+      for (const userId of userIds)
+        await syncConnectedSystem({
+          userId,
+          organisationId: row.system.organisationId,
+          connectedSystemId: row.system.id,
+        });
+      if (userIds.length) synchronized += 1;
       await db
         .update(connectorSyncJobs)
         .set({ status: "ready", lastSucceededAt: new Date(), lastError: null })

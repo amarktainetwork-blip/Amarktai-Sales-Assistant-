@@ -250,6 +250,38 @@ export function registerTeamAdminRoutes(app: Express) {
       )[0];
       if (!confirmed)
         throw new Error("That CRM identity was claimed by another team member. Refresh and choose again.");
+      const system = (
+        await db
+          .select({ allowedReadCapabilities: connectedSystems.allowedReadCapabilities })
+          .from(connectedSystems)
+          .where(
+            and(
+              eq(connectedSystems.id, mapping.connectedSystemId),
+              eq(connectedSystems.organisationId, membership.organisationId)
+            )
+          )
+          .limit(1)
+      )[0];
+      if (system) {
+        const allowedReadCapabilities = Array.from(
+          new Set([
+            ...system.allowedReadCapabilities,
+            "contacts.read",
+            "tasks.read",
+            "opportunities.read",
+            "activities.read",
+          ])
+        );
+        await db
+          .update(connectedSystems)
+          .set({ allowedReadCapabilities })
+          .where(
+            and(
+              eq(connectedSystems.id, mapping.connectedSystemId),
+              eq(connectedSystems.organisationId, membership.organisationId)
+            )
+          );
+      }
       await recordAudit({
         userId,
         organisationId: membership.organisationId,

@@ -58,6 +58,10 @@ export type ConnectionSecretPayload = {
    * be persisted in the encrypted secret.
    */
   browserUserId?: number;
+  /** Runtime-only exact CRM identity scope; never persisted in encrypted secrets. */
+  crmUserExternalId?: string;
+  crmUserDisplayName?: string;
+  crmUserEmail?: string;
 };
 
 export type AdapterEvidence = {
@@ -109,6 +113,7 @@ export type CrmAdapter = {
   refreshAuthentication: (input: { connection: AdapterConnection; secret: ConnectionSecretPayload; correlationId: string }) => Promise<ConnectionSecretPayload>;
   testConnection: (input: { connection: AdapterConnection; secret?: ConnectionSecretPayload; correlationId: string }) => Promise<ConnectionTest>;
   discoverCapabilities: (input: { connection: AdapterConnection; secret?: ConnectionSecretPayload; correlationId: string }) => Promise<CapabilityResult[]>;
+  discoverUsers?: (input: { connection: AdapterConnection; secret: ConnectionSecretPayload }) => Promise<NormalizedCrmUser[]>;
   syncContacts: (input: { connection: AdapterConnection; secret: ConnectionSecretPayload; cursor?: string }) => Promise<{ records: NormalizedContact[]; cursor?: string }>;
   syncCompanies: (input: { connection: AdapterConnection; secret: ConnectionSecretPayload; cursor?: string }) => Promise<{ records: NormalizedCompany[]; cursor?: string }>;
   syncOpportunities: (input: { connection: AdapterConnection; secret: ConnectionSecretPayload; cursor?: string }) => Promise<{ records: NormalizedOpportunity[]; cursor?: string }>;
@@ -135,6 +140,8 @@ export type CrmAdapter = {
   listPipelines: (input: { connection: AdapterConnection; secret: ConnectionSecretPayload }) => Promise<Array<{ externalId: string; label: string; stages: Array<{ externalId: string; label: string }> }>>;
   healthCheck: (input: { connection: AdapterConnection; secret?: ConnectionSecretPayload; correlationId: string }) => Promise<ConnectionTest>;
 };
+
+export type NormalizedCrmUser = { externalId: string; displayName: string; email?: string; raw: Record<string, unknown> };
 
 export type NormalizedContact = { externalId: string; companyExternalId?: string; ownerExternalId?: string; firstName?: string; lastName?: string; email?: string; phone?: string; lifecycleStage?: string; sourceUpdatedAt?: Date; sourceRevision?: string; raw: Record<string, unknown> };
 export type NormalizedCompany = { externalId: string; name: string; website?: string; ownerExternalId?: string; sourceUpdatedAt?: Date; sourceRevision?: string; raw: Record<string, unknown> };

@@ -487,6 +487,25 @@ async function withPage<T>(
   }
 }
 
+export async function withAuthenticatedBrowserSessionPage<T>(input: {
+  connection: AdapterConnection;
+  secret: ConnectionSecretPayload;
+  provider: Extract<CrmProvider, "genie" | "custom_browser">;
+  run: (page: Page, context: BrowserContext) => Promise<T>;
+}) {
+  const profile = await resolveBrowserProfile(input.connection, input.provider);
+  if (!profile)
+    throw new Error("No browser connector profile is available for this CRM.");
+  const secret = await browserSecret(input.connection, input.secret);
+  return withPage(
+    input.connection,
+    secret,
+    input.provider,
+    profile,
+    async (page, context) => input.run(page, context)
+  );
+}
+
 export type BrowserDiscoveryControl = {
   tag: string;
   role: string;
