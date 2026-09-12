@@ -41,14 +41,16 @@ describe("canonical Genie provider pack", () => {
       : undefined;
     expect(script?.steps.map(step => step.action)).toEqual([
       "click",
+      "wait_for_url",
+      "wait",
       "expect_visible",
       "read_rows",
     ]);
-    expect(script?.steps[1]).toMatchObject({
+    expect(script?.steps[3]).toMatchObject({
       action: "expect_visible",
       selector: expect.stringContaining("/contacts/detail/"),
     });
-    expect(script?.steps[2]).toMatchObject({
+    expect(script?.steps[4]).toMatchObject({
       action: "read_rows",
       fields: {
         externalId: { attribute: "href" },

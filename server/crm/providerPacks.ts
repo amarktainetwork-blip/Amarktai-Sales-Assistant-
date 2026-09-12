@@ -3,7 +3,7 @@ import type { SavedBrowserScript } from "../browserConnectors/scriptEngine";
 import type { BrowserProfile } from "../browserConnectors/browserCrmAdapter";
 
 /** Reusable provider structure only: never tenant IDs, credentials or customer values. */
-export const GENIE_PROVIDER_PACK_VERSION = "genie-2026.09.11.2";
+export const GENIE_PROVIDER_PACK_VERSION = "genie-2026.09.12.1";
 
 // The current Genie/HighLevel contacts workspace no longer uses the old
 // Tabulator row structure. Contact-detail links are the durable record identity:
@@ -18,6 +18,8 @@ const scripts: BrowserProfile["scripts"] = {
   genie_contact_sync: {
     steps: [
       { action: "click", selector: "#sb_contacts" },
+      { action: "wait_for_url", value: "**/contacts/smart_list/**" },
+      { action: "wait", value: "2000" },
       {
         action: "expect_visible",
         selector: GENIE_CONTACT_RECORD_LINK,
@@ -36,6 +38,8 @@ const scripts: BrowserProfile["scripts"] = {
   genie_contact_search: {
     steps: [
       { action: "click", selector: "#sb_contacts" },
+      { action: "wait_for_url", value: "**/contacts/smart_list/**" },
+      { action: "wait", value: "2000" },
       { action: "expect_visible", selector: GENIE_CONTACT_SEARCH_INPUT },
       {
         action: "fill",
@@ -97,7 +101,11 @@ const scripts: BrowserProfile["scripts"] = {
   genie_company_sync: {
     steps: [
       { action: "click", selector: "#sb_contacts" },
+      { action: "wait_for_url", value: "**/contacts/smart_list/**" },
+      { action: "wait", value: "2000" },
       { action: "click", selector: "#tb_business" },
+      { action: "wait_for_url", value: "**/businesses/list**" },
+      { action: "wait", value: "2000" },
       {
         action: "expect_visible",
         selector: '[role="columnheader"][tabulator-field="properties.name"]',
@@ -117,8 +125,6 @@ const scripts: BrowserProfile["scripts"] = {
             attribute: "href",
           },
           name: { selector: '[tabulator-field="properties.name"]' },
-          website: { selector: '[tabulator-field="properties.website"]' },
-          sourceUpdatedAt: { selector: '[tabulator-field="updatedAt"]' },
         },
       },
     ],
@@ -126,10 +132,19 @@ const scripts: BrowserProfile["scripts"] = {
   genie_task_sync: {
     steps: [
       { action: "click", selector: "#sb_contacts" },
+      { action: "wait_for_url", value: "**/contacts/smart_list/**" },
+      { action: "wait", value: "2000" },
       { action: "click", selector: "#tb_tasks" },
+      { action: "wait_for_url", value: "**/tasks**" },
+      { action: "wait", value: "2000" },
       {
         action: "expect_visible",
-        selector: ".tabulator-row",
+        selector: '[role="columnheader"][tabulator-field="properties.title"]',
+      },
+      {
+        action: "read_text",
+        selector: '[role="columnheader"]',
+        key: "collectionEvidence",
       },
       {
         action: "read_rows",
@@ -141,19 +156,6 @@ const scripts: BrowserProfile["scripts"] = {
             urlQueryParamAfterClick: "recordId",
           },
           title: { selector: '[tabulator-field="properties.title"]' },
-          description: {
-            selector: '[tabulator-field="properties.description"]',
-          },
-          contactExternalId: {
-            selector:
-              '[tabulator-field="relations.TASK_CONTACT_ASSOCIATION"] a[href*="/contacts/detail/"]',
-            attribute: "href",
-          },
-          ownerExternalId: {
-            selector: '[tabulator-field="owners"] [data-id]',
-            attribute: "data-id",
-          },
-          dueAt: { selector: '[tabulator-field="properties.dueDate"]' },
         },
       },
     ],
@@ -161,7 +163,11 @@ const scripts: BrowserProfile["scripts"] = {
   genie_owner_sync: {
     steps: [
       { action: "click", selector: "#sb_contacts" },
+      { action: "wait_for_url", value: "**/contacts/smart_list/**" },
+      { action: "wait", value: "2000" },
       { action: "click", selector: "#tb_tasks" },
+      { action: "wait_for_url", value: "**/tasks**" },
+      { action: "wait", value: "2000" },
       {
         action: "expect_visible",
         selector: '[tabulator-field="owners"] [data-id]',
@@ -172,7 +178,6 @@ const scripts: BrowserProfile["scripts"] = {
         key: "records",
         fields: {
           externalId: { attribute: "data-id" },
-          name: { attribute: "tooltip" },
         },
       },
     ],
@@ -180,6 +185,8 @@ const scripts: BrowserProfile["scripts"] = {
   genie_opportunity_sync: {
     steps: [
       { action: "click", selector: "#sb_opportunities" },
+      { action: "wait_for_url", value: "**/opportunities**" },
+      { action: "wait", value: "2000" },
       {
         action: "expect_visible",
         selector: ".crm-opportunities-stage-name",
@@ -204,6 +211,8 @@ const scripts: BrowserProfile["scripts"] = {
   genie_pipeline_list: {
     steps: [
       { action: "click", selector: "#sb_opportunities" },
+      { action: "wait_for_url", value: "**/opportunities**" },
+      { action: "wait", value: "2000" },
       {
         action: "expect_visible",
         selector: "#pipelineDropdDown-listview",
@@ -229,6 +238,8 @@ const scripts: BrowserProfile["scripts"] = {
   genie_activity_sync: {
     steps: [
       { action: "click", selector: "#sb_conversations" },
+      { action: "wait_for_url", value: "**/conversations/**" },
+      { action: "wait", value: "2000" },
       {
         action: "expect_visible",
         selector: '[data-testid="ASSERT_LC_LEFTPANEL"]',
@@ -240,15 +251,18 @@ const scripts: BrowserProfile["scripts"] = {
       },
       {
         action: "read_rows",
-        selector: '.message-item:has([data-testid="MESSAGE_DETAILS"])',
+        selector: '[data-testid="MESSAGE_DETAILS"][id]',
         key: "records",
         fields: {
-          externalId: {
-            selector: '[data-testid="MESSAGE_DETAILS"]',
-            attribute: "id",
+          externalId: { attribute: "id" },
+          body: {
+            selector:
+              'xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " message-item ")][1]',
           },
-          body: {},
-          activityType: { attribute: "data-testid" },
+          activityType: {
+            presentValue: "conversation",
+            absentValue: "conversation",
+          },
         },
       },
     ],

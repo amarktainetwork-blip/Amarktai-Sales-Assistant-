@@ -1497,6 +1497,25 @@ export function isTransientBrowserControlError(error: unknown) {
   return isTransientBrowserExecutionFailure(error);
 }
 
+export const MAX_AUTOMATIC_SAFE_READ_RETRIES = 3;
+
+export function shouldRetryAutomaticSafeReads(input: {
+  connectionMethod: string;
+  allowedWriteCapabilities: string[];
+  retryCount: number;
+  ready: boolean;
+  criticalGapCount: number;
+  initialSyncReady: boolean;
+}) {
+  return (
+    input.connectionMethod !== "oauth" &&
+    input.allowedWriteCapabilities.length === 0 &&
+    !input.ready &&
+    (input.criticalGapCount > 0 || !input.initialSyncReady) &&
+    input.retryCount < MAX_AUTOMATIC_SAFE_READ_RETRIES
+  );
+}
+
 export function safeReadCommissioningPassed(input: {
   attempted: number;
   proven: string[];
@@ -2113,23 +2132,23 @@ export async function advanceAutomaticCommissioning(jobId: number) {
         correlationId,
         test,
       });
-      const matrix =
+      let matrix =
         system.connectionMethod === "oauth"
           ? null
           : await browserOperationReadinessForSystem({
               organisationId: job.organisationId,
               connectedSystemId: job.connectedSystemId,
             });
-      const statuses = new Map(
+      let statuses = new Map(
         matrix?.operations.map(operation => [
           operation.key,
           operation.status,
         ]) || []
       );
-      const coreReady =
+      let coreReady =
         system.connectionMethod === "oauth" ||
         coreBrowserCommissioningReady(statuses);
-      const capabilityAccounting = matrix
+      let capabilityAccounting = matrix
         ? accountBrowserCapabilities({
             operationStatuses: statuses,
             discoveredOperationKeys: discovered,
@@ -2185,9 +2204,56 @@ export async function advanceAutomaticCommissioning(jobId: number) {
           error: initialSyncError,
         };
       }
+      // Runtime sync can discover selector drift after the pre-sync readiness
+      // snapshot. Re-read truth before deciding that onboarding is complete.
+      if (system.connectionMethod !== "oauth") {
+        matrix = await browserOperationReadinessForSystem({
+          organisationId: job.organisationId,
+          connectedSystemId: job.connectedSystemId,
+        });
+        statuses = new Map(
+          matrix.operations.map(operation => [operation.key, operation.status])
+        );
+        coreReady = coreBrowserCommissioningReady(statuses);
+        capabilityAccounting = accountBrowserCapabilities({
+          operationStatuses: statuses,
+          discoveredOperationKeys: discovered,
+          allowedReadCapabilities: system.allowedReadCapabilities,
+          allowedWriteCapabilities: system.allowedWriteCapabilities,
+        });
+      }
       const ready =
         coreReady && capabilityAccounting.complete && initialSyncReady;
       progress.capabilityAccounting = capabilityAccounting;
+      const retryCount = Number(progress.automaticSafeReadRetries || 0);
+      if (
+        shouldRetryAutomaticSafeReads({
+          connectionMethod: system.connectionMethod,
+          allowedWriteCapabilities: system.allowedWriteCapabilities,
+          retryCount,
+          ready,
+          criticalGapCount: capabilityAccounting.criticalGaps.length,
+          initialSyncReady,
+        })
+      ) {
+        const nextRetry = retryCount + 1;
+        progress.automaticSafeReadRetries = nextRetry;
+        await updateJob(job.id, {
+          state: "TEST_SAFE_READS",
+          status: "queued",
+          progress: {
+            ...progress,
+            humanStatus: `Repairing required CRM reads (${nextRetry}/${MAX_AUTOMATIC_SAFE_READ_RETRIES})`,
+          },
+          optionalFailures: failures,
+          discoveredOperationKeys: discovered,
+          completedAt: null,
+          leaseExpiresAt: null,
+          lastError: initialSyncError,
+        });
+        scheduleAutomaticCommissioning(job.id);
+        return;
+      }
       progress.published = "Ready";
       next = "READY";
       await updateJob(job.id, {

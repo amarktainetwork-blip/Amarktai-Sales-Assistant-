@@ -462,8 +462,8 @@ export default function CrmWorkspace() {
                   .length > 0 ? (
                   <span className="ml-2 font-semibold">
                     {
-                      commissioningJob.progress.capabilityAccounting.criticalGaps
-                        .length
+                      commissioningJob.progress.capabilityAccounting
+                        .criticalGaps.length
                     }{" "}
                     required read check(s) remaining.
                   </span>

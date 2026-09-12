@@ -42,7 +42,7 @@ describe("CRM workspace customer interaction contract", () => {
       "const [learningStarted, setLearningStarted] = useState(false)"
     );
     expect(source).toContain(
-      "if (browserAuthenticationState === \"AUTHENTICATED\")"
+      'if (browserAuthenticationState === "AUTHENTICATED")'
     );
     expect(source).toContain(
       'if (body.job?.state && body.job.state !== "AUTHENTICATE")'

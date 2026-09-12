@@ -50,7 +50,9 @@ describe("commercial Sales Assistant product boundaries", () => {
   it("completes setup only after final CRM commissioning READY and full requested-read proof", () => {
     const crm = read("../client/src/pages/CrmWorkspace.tsx");
     const organisation = read("./organisation.ts");
-    expect(crm).toContain('browserAuthenticationState !== "AUTHENTICATED"');
+    expect(crm).toContain("learningStarted");
+    expect(crm).toContain("selectedSystemId");
+    expect(crm).not.toContain("}, [canManage, onboardingComplete, selected]);");
     expect(crm).toContain('body.job?.state === "READY"');
     expect(crm).toContain('body.job?.status === "ready"');
     expect(crm).toContain("!commissioningReady");

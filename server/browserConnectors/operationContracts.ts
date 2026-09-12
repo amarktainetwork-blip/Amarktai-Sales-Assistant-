@@ -643,6 +643,8 @@ function verifiedEmptyCollection(input: {
     ).map(match => Number(match[1].replace(/,/g, "")));
     return counts.length > 0 && counts.every(count => count === 0);
   }
+  if (input.operationKey === "task.sync")
+    return /task|due date|title/i.test(evidence);
   if (input.operationKey === "activity.sync")
     return /conversation|all/i.test(evidence);
   return false;

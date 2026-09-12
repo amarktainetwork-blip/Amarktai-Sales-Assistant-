@@ -8,6 +8,7 @@ import {
   normalizeBrowserOpportunityRow,
   normalizeBrowserTaskRow,
   resolveBrowserProfile,
+  isRetryableReadBrowserFailure,
 } from "./browserCrmAdapter";
 
 describe("provider-neutral browser CRM row normalization", () => {
@@ -85,6 +86,31 @@ describe("provider-neutral browser CRM row normalization", () => {
     expect(() => normalizeBrowserTaskRow({ title: "No ID" })).toThrow(
       "INVALID_EXTERNAL_ID"
     );
+  });
+});
+
+describe("read-only runtime retry policy", () => {
+  it("retries only transient browser locator timing failures", () => {
+    expect(
+      isRetryableReadBrowserFailure(
+        new Error(
+          "locator.waitFor: Timeout 30000ms exceeded. waiting for locator('a.contact')"
+        )
+      )
+    ).toBe(true);
+    expect(
+      isRetryableReadBrowserFailure(
+        new Error("Element is not attached to the DOM")
+      )
+    ).toBe(true);
+    expect(isRetryableReadBrowserFailure(new Error("TARGET_MISMATCH"))).toBe(
+      false
+    );
+    expect(
+      isRetryableReadBrowserFailure(
+        new Error("Your CRM needs you to sign in again.")
+      )
+    ).toBe(false);
   });
 });
 

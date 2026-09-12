@@ -13,6 +13,7 @@ export const BROWSER_SCRIPT_ACTIONS = [
   "hover",
   "expect_visible",
   "wait_for_url",
+  "wait",
   "read_text",
   "read_value",
   "read_attribute",
@@ -99,7 +100,7 @@ export function findIncompleteBrowserDefinition(
     )
       findings.push({ path: `${path}.value`, reason: "missing_url" });
     if (
-      !["goto", "wait_for_url"].includes(record.action) &&
+      !["goto", "wait_for_url", "wait"].includes(record.action) &&
       (typeof record.selector !== "string" || !record.selector.trim())
     )
       findings.push({ path: `${path}.selector`, reason: "missing_selector" });
@@ -167,7 +168,10 @@ export function validateSavedBrowserScript(script: SavedBrowserScript) {
       throw new Error(
         `Unsupported browser script action '${String(step.action)}'.`
       );
-    if (!["goto", "wait_for_url"].includes(step.action) && !step.selector)
+    if (
+      !["goto", "wait_for_url", "wait"].includes(step.action) &&
+      !step.selector
+    )
       throw new Error(
         `Browser script action '${step.action}' requires a selector.`
       );
@@ -193,6 +197,15 @@ export function validateSavedBrowserScript(script: SavedBrowserScript) {
       throw new Error(
         "Browser navigation fallbacks require a bounded declarative URL on a click action."
       );
+    if (step.action === "wait") {
+      const milliseconds = Number(step.value);
+      if (
+        !Number.isInteger(milliseconds) ||
+        milliseconds < 0 ||
+        milliseconds > 5_000
+      )
+        throw new Error("Browser wait actions must be 0-5000 milliseconds.");
+    }
     if (
       step.value &&
       (step.value.length > 4000 || forbiddenSelectorText.test(step.value))
@@ -374,6 +387,10 @@ export async function executeSavedBrowserScript(input: {
         const target = renderBrowserTemplate(step.value, input.inputs);
         await input.page.waitForURL(target, { timeout: 30_000 });
         await input.authorizeNavigation?.(input.page.url());
+        continue;
+      }
+      if (step.action === "wait") {
+        await input.page.waitForTimeout(Number(step.value));
         continue;
       }
       if (step.action === "click" && step.fallbackUrl) {

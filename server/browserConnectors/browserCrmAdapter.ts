@@ -660,6 +660,13 @@ export async function inspectBrowserCrmNavigation(input: {
     }
   );
 }
+export function isRetryableReadBrowserFailure(error: unknown) {
+  const detail = error instanceof Error ? error.message : String(error);
+  return /(?:Timeout \d+ms exceeded|waiting for locator|Element is not attached|locator\.(?:waitFor|click|innerText|getAttribute|allTextContents))/i.test(
+    detail
+  );
+}
+
 type RunOperationInput = {
   connection: AdapterConnection;
   secret: ConnectionSecretPayload;
@@ -742,105 +749,123 @@ async function runDeterministicOperation(input: RunOperationInput) {
     throw new Error(detail);
   }
   try {
-    const result = await withPage(
-      input.connection,
-      input.secret,
-      input.provider,
-      profile,
-      async (page, _context, owner) => {
-        const runScript = (
-          page: Page,
-          selected: SavedBrowserScript,
-          suffix: string
-        ) =>
-          executeSavedBrowserScript({
-            page,
-            script: selected,
-            inputs: payload,
-            artifactDirectory: artifactDirectory(profile, input.connection),
-            artifactPrefix: `${input.provider}-${operationKey}-${suffix}`,
-            authorizeNavigation: url =>
-              authorizeNavigation(input.connection, url),
-            assertControl: () => assertBrowserOperationCanRun(owner),
-          });
-        let guardian: ReturnType<typeof verifyBrowserTarget> | undefined;
-        if (learned?.definition.mode === "write") {
-          const targetRead = await runScript(
-            page,
-            learned.definition.targetRead!,
-            "target"
-          );
-          if (!targetRead.success)
-            throw new Error(`TARGET_VERIFICATION_FAILED: ${targetRead.detail}`);
-          const rawTargets =
-            targetRead.data.targets ||
-            targetRead.data.target ||
-            targetRead.data.records;
-          const parsed = rawTargets
-            ? (JSON.parse(rawTargets) as unknown)
-            : [targetRead.data];
-          const candidates = (Array.isArray(parsed) ? parsed : [parsed])
-            .filter(isObject)
-            .map(item => item as BrowserTargetIdentity);
-          const destination =
-            typeof payload.to === "string" ? payload.to.trim() : "";
-          const expected = Object.fromEntries(
-            Object.entries({
-              externalId: payload.externalId || payload.contactExternalId,
-              taskId: payload.taskExternalId,
-              opportunityId: payload.opportunityExternalId,
-              name: payload.contactName || payload.name || payload.leadLabel,
-              email:
-                payload.email || (destination.includes("@") ? destination : ""),
-              phone:
-                payload.phone || (destination.includes("@") ? "" : destination),
-              company: payload.company,
-            }).filter(([, value]) => typeof value === "string" && value.trim())
-          ) as BrowserTargetIdentity;
-          guardian =
-            learned.targetAssertions.mode === "must_not_exist"
-              ? verifyBrowserCreateTarget(expected, candidates)
-              : verifyBrowserTarget(expected, candidates);
-          if (!guardian.ok)
-            throw new Error(`${guardian.code}: ${guardian.detail}`);
-          if (browserShadowMode(input.connection.configuration))
-            return {
-              success: true,
-              completedAt: new Date().toISOString(),
-              detail:
-                "SHADOW_MODE: target verified; external write was not executed.",
-              data: { shadowMode: "true", guardian: JSON.stringify(guardian) },
-              screenshotPath: targetRead.screenshotPath,
-            };
-        }
-        const execution = await runScript(page, script, "execute");
-        if (!execution.success) throw new Error(execution.detail);
-        execution.data.actualPageUrl = page.url();
-        if (learned?.definition.mode === "write") {
-          const readback = await runScript(
-            page,
-            learned.definition.postconditionRead!,
-            "postcondition"
-          );
-          if (!readback.success)
-            throw new Error(`EXECUTION_UNVERIFIED: ${readback.detail}`);
-          const verification = verifyBrowserPostconditions(
-            learned.postconditionAssertions,
-            readback.data,
-            payload
-          );
-          if (!verification.ok)
-            throw new Error(
-              `EXECUTION_UNVERIFIED: ${verification.failures.join(" ")}`
+    const executeOnce = () =>
+      withPage(
+        input.connection,
+        input.secret,
+        input.provider,
+        profile,
+        async (page, _context, owner) => {
+          const runScript = (
+            page: Page,
+            selected: SavedBrowserScript,
+            suffix: string
+          ) =>
+            executeSavedBrowserScript({
+              page,
+              script: selected,
+              inputs: payload,
+              artifactDirectory: artifactDirectory(profile, input.connection),
+              artifactPrefix: `${input.provider}-${operationKey}-${suffix}`,
+              authorizeNavigation: url =>
+                authorizeNavigation(input.connection, url),
+              assertControl: () => assertBrowserOperationCanRun(owner),
+            });
+          let guardian: ReturnType<typeof verifyBrowserTarget> | undefined;
+          if (learned?.definition.mode === "write") {
+            const targetRead = await runScript(
+              page,
+              learned.definition.targetRead!,
+              "target"
             );
-          execution.data.guardian = JSON.stringify(guardian);
-          execution.data.postcondition = JSON.stringify(verification);
-          if (readback.screenshotPath)
-            execution.screenshotPath = readback.screenshotPath;
+            if (!targetRead.success)
+              throw new Error(
+                `TARGET_VERIFICATION_FAILED: ${targetRead.detail}`
+              );
+            const rawTargets =
+              targetRead.data.targets ||
+              targetRead.data.target ||
+              targetRead.data.records;
+            const parsed = rawTargets
+              ? (JSON.parse(rawTargets) as unknown)
+              : [targetRead.data];
+            const candidates = (Array.isArray(parsed) ? parsed : [parsed])
+              .filter(isObject)
+              .map(item => item as BrowserTargetIdentity);
+            const destination =
+              typeof payload.to === "string" ? payload.to.trim() : "";
+            const expected = Object.fromEntries(
+              Object.entries({
+                externalId: payload.externalId || payload.contactExternalId,
+                taskId: payload.taskExternalId,
+                opportunityId: payload.opportunityExternalId,
+                name: payload.contactName || payload.name || payload.leadLabel,
+                email:
+                  payload.email ||
+                  (destination.includes("@") ? destination : ""),
+                phone:
+                  payload.phone ||
+                  (destination.includes("@") ? "" : destination),
+                company: payload.company,
+              }).filter(
+                ([, value]) => typeof value === "string" && value.trim()
+              )
+            ) as BrowserTargetIdentity;
+            guardian =
+              learned.targetAssertions.mode === "must_not_exist"
+                ? verifyBrowserCreateTarget(expected, candidates)
+                : verifyBrowserTarget(expected, candidates);
+            if (!guardian.ok)
+              throw new Error(`${guardian.code}: ${guardian.detail}`);
+            if (browserShadowMode(input.connection.configuration))
+              return {
+                success: true,
+                completedAt: new Date().toISOString(),
+                detail:
+                  "SHADOW_MODE: target verified; external write was not executed.",
+                data: {
+                  shadowMode: "true",
+                  guardian: JSON.stringify(guardian),
+                },
+                screenshotPath: targetRead.screenshotPath,
+              };
+          }
+          const execution = await runScript(page, script, "execute");
+          if (!execution.success) throw new Error(execution.detail);
+          execution.data.actualPageUrl = page.url();
+          if (learned?.definition.mode === "write") {
+            const readback = await runScript(
+              page,
+              learned.definition.postconditionRead!,
+              "postcondition"
+            );
+            if (!readback.success)
+              throw new Error(`EXECUTION_UNVERIFIED: ${readback.detail}`);
+            const verification = verifyBrowserPostconditions(
+              learned.postconditionAssertions,
+              readback.data,
+              payload
+            );
+            if (!verification.ok)
+              throw new Error(
+                `EXECUTION_UNVERIFIED: ${verification.failures.join(" ")}`
+              );
+            execution.data.guardian = JSON.stringify(guardian);
+            execution.data.postcondition = JSON.stringify(verification);
+            if (readback.screenshotPath)
+              execution.screenshotPath = readback.screenshotPath;
+          }
+          return execution;
         }
-        return execution;
-      }
-    );
+      );
+    let result;
+    try {
+      result = await executeOnce();
+    } catch (error) {
+      const readOnly = (learned?.definition.mode || catalogue?.mode) === "read";
+      if (!readOnly || !isRetryableReadBrowserFailure(error)) throw error;
+      result = await executeOnce();
+    }
     if (!result.success) throw new Error(result.detail);
     const readProof =
       learned?.definition.mode === "read" && input.publishByUserId
@@ -1029,7 +1054,9 @@ function externalId(row: Record<string, string>, resource: string) {
   const value = sourceRecordId(row.externalId || row.id);
   if (!value)
     throw new Error(
-      "INVALID_EXTERNAL_ID: Genie " + resource + " extraction returned a row without an external record ID."
+      "INVALID_EXTERNAL_ID: Genie " +
+        resource +
+        " extraction returned a row without an external record ID."
     );
   return value;
 }
@@ -1083,7 +1110,8 @@ function task(row: Record<string, string>): NormalizedTask {
   return {
     externalId: externalId(row, "task or Manual Action"),
     contactExternalId: sourceRecordId(row.contactExternalId) || undefined,
-    opportunityExternalId: sourceRecordId(row.opportunityExternalId) || undefined,
+    opportunityExternalId:
+      sourceRecordId(row.opportunityExternalId) || undefined,
     ownerExternalId: row.ownerExternalId || undefined,
     title: row.title || "Task",
     status: row.status || "open",
@@ -1098,7 +1126,8 @@ function activity(row: Record<string, string>): NormalizedActivity {
   return {
     externalId: externalId(row, "activity"),
     contactExternalId: sourceRecordId(row.contactExternalId) || undefined,
-    opportunityExternalId: sourceRecordId(row.opportunityExternalId) || undefined,
+    opportunityExternalId:
+      sourceRecordId(row.opportunityExternalId) || undefined,
     ownerExternalId: row.ownerExternalId || undefined,
     activityType: row.activityType || row.type || "activity",
     occurredAt: asDate(row.occurredAt) || new Date(),

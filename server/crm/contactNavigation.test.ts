@@ -16,6 +16,11 @@ describe("Genie contact reads from another CRM area", () => {
       goto: vi.fn(async (url: string) => {
         current = url;
       }),
+      waitForURL: vi.fn(async (target: string) => {
+        if (!target.includes("contacts/smart_list") || current !== href)
+          throw Error("Wrong CRM URL");
+      }),
+      waitForTimeout: vi.fn(async () => {}),
       locator: vi.fn((selector: string) => {
         if (selector === "#sb_contacts")
           throw Error("Settings has no Contacts sidebar");
