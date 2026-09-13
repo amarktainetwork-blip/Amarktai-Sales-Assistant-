@@ -1652,9 +1652,7 @@ export async function startAutomaticCommissioning(input: {
     Number(approvedBrowserSecret.commissioningUserId || 0) === input.userId &&
     isBrowserSessionPackage(approvedBrowserSecret.browserSession);
   const initialState = authenticatedBrowserSession
-    ? system.provider === "genie"
-      ? ("PUBLISH_PROVEN_OPERATIONS" as const)
-      : ("DISCOVER_NAVIGATION" as const)
+    ? ("DISCOVER_NAVIGATION" as const)
     : ("AUTHENTICATE" as const);
   const values = {
     organisationId: input.organisationId,
@@ -1665,11 +1663,9 @@ export async function startAutomaticCommissioning(input: {
     status: "queued" as const,
     progress: {
       humanStatus:
-        initialState === "PUBLISH_PROVEN_OPERATIONS"
-          ? "CRM sign-in complete; verifying stable API access"
-          : initialState === "DISCOVER_NAVIGATION"
-            ? "CRM sign-in complete; finding available navigation"
-            : "Connecting",
+        initialState === "DISCOVER_NAVIGATION"
+          ? "CRM sign-in complete; finding available navigation"
+          : "Connecting",
       steps:
         authenticatedBrowserSession
           ? { authentication: "complete", secureSession: "complete" }
@@ -1957,7 +1953,7 @@ export async function advanceAutomaticCommissioning(jobId: number) {
         secret: commissioningSecret,
       }).catch(() => 0);
       next =
-        job.connectorClass === "native_api" || system.provider === "genie"
+        job.connectorClass === "native_api"
           ? "PUBLISH_PROVEN_OPERATIONS"
           : "DISCOVER_NAVIGATION";
     } else if (job.state === "DISCOVER_NAVIGATION") {
@@ -2188,9 +2184,8 @@ export async function advanceAutomaticCommissioning(jobId: number) {
         connection: toAdapterConnection(system),
         secret: commissioningSecret,
       }).catch(() => Number(progress.identityCandidates || 0));
-      const sessionApi = system.provider === "genie";
       let matrix =
-        system.connectionMethod === "oauth" || sessionApi
+        system.connectionMethod === "oauth"
           ? null
           : await browserOperationReadinessForSystem({
               organisationId: job.organisationId,
@@ -2204,7 +2199,6 @@ export async function advanceAutomaticCommissioning(jobId: number) {
       );
       let coreReady =
         system.connectionMethod === "oauth" ||
-        sessionApi ||
         coreBrowserCommissioningReady(statuses);
       let capabilityAccounting = matrix
         ? accountBrowserCapabilities({
@@ -2274,7 +2268,7 @@ export async function advanceAutomaticCommissioning(jobId: number) {
       }
       // Runtime sync can discover selector drift after the pre-sync readiness
       // snapshot. Re-read truth before deciding that onboarding is complete.
-      if (system.connectionMethod !== "oauth" && !sessionApi) {
+      if (system.connectionMethod !== "oauth") {
         matrix = await browserOperationReadinessForSystem({
           organisationId: job.organisationId,
           connectedSystemId: job.connectedSystemId,
@@ -2295,7 +2289,6 @@ export async function advanceAutomaticCommissioning(jobId: number) {
       progress.capabilityAccounting = capabilityAccounting;
       const retryCount = Number(progress.automaticSafeReadRetries || 0);
       if (
-        !sessionApi &&
         shouldRetryAutomaticSafeReads({
           connectionMethod: system.connectionMethod,
           allowedWriteCapabilities: system.allowedWriteCapabilities,

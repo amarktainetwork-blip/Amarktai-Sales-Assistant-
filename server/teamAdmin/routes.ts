@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { jwtVerify, SignJWT } from "jose";
 import { COOKIE_NAME } from "@shared/const";
 import {
@@ -9,6 +9,7 @@ import {
   connectedSystems,
   connectorSyncJobs,
   connectorWebhookReceipts,
+  crmCommissioningJobs,
   crmPipelineStageMappings,
   dataSubjectRequests,
   enterpriseIdentityConnections,
@@ -281,6 +282,44 @@ export function registerTeamAdminRoutes(app: Express) {
               eq(connectedSystems.organisationId, membership.organisationId)
             )
           );
+
+        const commissioning = (
+          await db
+            .select({
+              id: crmCommissioningJobs.id,
+              progress: crmCommissioningJobs.progress,
+            })
+            .from(crmCommissioningJobs)
+            .where(
+              and(
+                eq(
+                  crmCommissioningJobs.connectedSystemId,
+                  mapping.connectedSystemId
+                ),
+                eq(
+                  crmCommissioningJobs.organisationId,
+                  membership.organisationId
+                )
+              )
+            )
+            .orderBy(desc(crmCommissioningJobs.id))
+            .limit(1)
+        )[0];
+        if (commissioning)
+          await db
+            .update(crmCommissioningJobs)
+            .set({
+              state: "TEST_SAFE_READS",
+              status: "queued",
+              progress: {
+                ...((commissioning.progress || {}) as Record<string, unknown>),
+                humanStatus: "Verifying salesperson CRM reads",
+              },
+              completedAt: null,
+              leaseExpiresAt: null,
+              lastError: null,
+            })
+            .where(eq(crmCommissioningJobs.id, commissioning.id));
       }
       await recordAudit({
         userId,

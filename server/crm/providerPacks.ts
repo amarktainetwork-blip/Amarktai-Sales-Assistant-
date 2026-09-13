@@ -3,7 +3,7 @@ import type { SavedBrowserScript } from "../browserConnectors/scriptEngine";
 import type { BrowserProfile } from "../browserConnectors/browserCrmAdapter";
 
 /** Reusable provider structure only: never tenant IDs, credentials or customer values. */
-export const GENIE_PROVIDER_PACK_VERSION = "genie-2026.09.12.1";
+export const GENIE_PROVIDER_PACK_VERSION = "genie-2026.09.13.1";
 
 // The current Genie/HighLevel contacts workspace no longer uses the old
 // Tabulator row structure. Contact-detail links are the durable record identity:
@@ -107,10 +107,6 @@ const scripts: BrowserProfile["scripts"] = {
       { action: "wait_for_url", value: "**/businesses/list**" },
       { action: "wait", value: "2000" },
       {
-        action: "expect_visible",
-        selector: '[role="columnheader"][tabulator-field="properties.name"]',
-      },
-      {
         action: "read_text",
         selector: '[role="columnheader"]',
         key: "collectionEvidence",
@@ -147,15 +143,32 @@ const scripts: BrowserProfile["scripts"] = {
         key: "collectionEvidence",
       },
       {
-        action: "read_rows",
+        action: "paginate_rows",
         selector: ".tabulator-row",
         key: "records",
+        nextSelector: 'button.tabulator-page[aria-label="Next Page"]',
+        maxPages: 100,
         fields: {
           externalId: {
             selector: '[tabulator-field="properties.title"]',
             urlQueryParamAfterClick: "recordId",
+            dismissSelectorBeforeClick:
+              '.hr-drawer-container button[aria-label="close"]',
           },
           title: { selector: '[tabulator-field="properties.title"]' },
+          description: {
+            selector: '[tabulator-field="properties.description"]',
+          },
+          contactExternalId: {
+            selector:
+              '[tabulator-field="relations.TASK_CONTACT_ASSOCIATION"] a[href*="/contacts/detail/"]',
+            attribute: "href",
+          },
+          ownerExternalId: {
+            selector: '[tabulator-field="owners"] [data-id]',
+            attribute: "data-id",
+          },
+          dueAt: { selector: '[tabulator-field="properties.dueDate"]' },
         },
       },
     ],
@@ -173,11 +186,14 @@ const scripts: BrowserProfile["scripts"] = {
         selector: '[tabulator-field="owners"] [data-id]',
       },
       {
-        action: "read_rows",
+        action: "paginate_rows",
         selector: '[tabulator-field="owners"] [data-id]',
         key: "records",
+        nextSelector: 'button.tabulator-page[aria-label="Next Page"]',
+        maxPages: 100,
         fields: {
           externalId: { attribute: "data-id" },
+          name: { attribute: "tooltip" },
         },
       },
     ],

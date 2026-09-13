@@ -93,12 +93,41 @@ describe("canonical Genie provider pack", () => {
     expect(
       JSON.stringify(GENIE_PROVIDER_PACK.scripts.genie_company_sync)
     ).toContain("properties.name");
+    const taskScript = GENIE_PROVIDER_PACK.scripts.genie_task_sync;
+    expect(JSON.stringify(taskScript)).toContain("recordId");
+    expect(taskScript.steps.at(-1)).toMatchObject({
+      action: "paginate_rows",
+      nextSelector: 'button.tabulator-page[aria-label="Next Page"]',
+      maxPages: 100,
+      fields: {
+        externalId: {
+          urlQueryParamAfterClick: "recordId",
+          dismissSelectorBeforeClick:
+            '.hr-drawer-container button[aria-label="close"]',
+        },
+        description: {},
+        contactExternalId: { attribute: "href" },
+        ownerExternalId: { attribute: "data-id" },
+        dueAt: {},
+      },
+    });
     expect(
-      JSON.stringify(GENIE_PROVIDER_PACK.scripts.genie_task_sync)
-    ).toContain("recordId");
+      GENIE_PROVIDER_PACK.scripts.genie_company_sync.steps.some(
+        step => step.action === "expect_visible" &&
+          step.selector?.includes("properties.name")
+      )
+    ).toBe(false);
     expect(
-      JSON.stringify(GENIE_PROVIDER_PACK.scripts.genie_owner_sync)
-    ).toContain("data-id");
+      GENIE_PROVIDER_PACK.scripts.genie_owner_sync.steps.at(-1)
+    ).toMatchObject({
+      action: "paginate_rows",
+      nextSelector: 'button.tabulator-page[aria-label="Next Page"]',
+      maxPages: 100,
+      fields: {
+        externalId: { attribute: "data-id" },
+        name: { attribute: "tooltip" },
+      },
+    });
     expect(
       JSON.stringify(GENIE_PROVIDER_PACK.scripts.genie_opportunity_sync)
     ).toContain("crm-opportunities-stage-count");

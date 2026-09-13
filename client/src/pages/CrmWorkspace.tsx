@@ -371,7 +371,10 @@ export default function CrmWorkspace() {
         ) : (
           <NoBrowserCrm onConnections={() => navigate("/connections")} />
         )}
-        {canManage && !onboardingComplete && learningStarted ? (
+        {canManage &&
+        !onboardingComplete &&
+        learningStarted &&
+        browserAuthenticationState === "AUTHENTICATED" ? (
           <div className="absolute inset-0 z-40 flex items-center justify-center bg-[#F4F7FB]/95 p-5 backdrop-blur-sm">
             <div className="w-full max-w-2xl rounded-[28px] border border-[#D7E0EA] bg-white p-7 shadow-[0_24px_80px_rgba(20,48,84,.16)] sm:p-9">
               <div className="flex items-start gap-4">

@@ -375,12 +375,11 @@ async function syncConnectedSystemDeterministically(input: {
   const browserPersonalScopeRequired =
     connection.connectionMethod === "browser" ||
     connection.connectionMethod === "sidecar";
-  const sessionApi = connection.provider === "genie" && browserPersonalScopeRequired;
   const hasExactBrowserUserScope = Boolean(
     secret.crmUserExternalId && secret.crmUserDisplayName && secret.crmUserEmail
   );
   const browserOperationStatuses =
-    browserPersonalScopeRequired && !sessionApi
+    browserPersonalScopeRequired
       ? new Map(
           (
             await browserOperationReadinessForSystem({
@@ -436,9 +435,7 @@ async function syncConnectedSystemDeterministically(input: {
       "tasks",
       "activities",
     ].includes(resourceType);
-    const browserSourceScopedResource = sessionApi
-      ? personalResource
-      : ["contacts", "tasks"].includes(resourceType);
+    const browserSourceScopedResource = ["contacts", "tasks"].includes(resourceType);
     if (browserPersonalScopeRequired && personalResource) {
       if (!hasExactBrowserUserScope || !browserSourceScopedResource) {
         summary[resourceType] = 0;
@@ -449,11 +446,7 @@ async function syncConnectedSystemDeterministically(input: {
       !crmResourceSyncEligible(
         connection,
         capability,
-        sessionApi
-          ? connection.verifiedCapabilities.includes(capability)
-            ? "LIVE_PROVEN"
-            : undefined
-          : browserOperationStatuses?.get(syncOperationKey)
+        browserOperationStatuses?.get(syncOperationKey)
       )
     ) {
       summary[resourceType] = 0;
