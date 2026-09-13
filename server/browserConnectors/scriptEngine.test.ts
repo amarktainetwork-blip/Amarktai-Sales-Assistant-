@@ -39,6 +39,7 @@ describe("saved browser connector scripts", () => {
             externalId: {
               selector: ".task-title",
               urlQueryParamAfterClick: "recordId",
+              dismissSelectorBeforeClick: ".drawer-close",
             },
             status: {
               selector: ".completed-indicator",
@@ -52,6 +53,9 @@ describe("saved browser connector scripts", () => {
     expect(
       rowScript.steps[0]?.fields?.externalId?.urlQueryParamAfterClick
     ).toBe("recordId");
+    expect(
+      rowScript.steps[0]?.fields?.externalId?.dismissSelectorBeforeClick
+    ).toBe(".drawer-close");
     expect(rowScript.steps[0]?.fields?.status).toMatchObject({
       presentValue: "completed",
       absentValue: "pending",

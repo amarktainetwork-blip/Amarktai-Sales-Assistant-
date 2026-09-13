@@ -32,6 +32,8 @@ export type BrowserRowField = {
    * parameter from the resulting URL, then restore the list before continuing.
    */
   urlQueryParamAfterClick?: string;
+  /** Optional declarative close/dismiss target used before a read-only row click. */
+  dismissSelectorBeforeClick?: string;
   /** Return one configured value when the selector exists and another when it does not. */
   presentValue?: string;
   absentValue?: string;
@@ -227,6 +229,7 @@ export function validateSavedBrowserScript(script: SavedBrowserScript) {
         );
       for (const field of Object.values(step.fields)) {
         validateSelector(field.selector);
+        validateSelector(field.dismissSelectorBeforeClick);
         if (
           field.attribute &&
           !/^[a-zA-Z_:][-a-zA-Z0-9_:.]{0,120}$/.test(field.attribute)
@@ -300,6 +303,13 @@ async function rowValue(
     const beforeUrl = page.url();
     const queryParam = field.urlQueryParamAfterClick;
     try {
+      if (field.dismissSelectorBeforeClick) {
+        const dismiss = page.locator(field.dismissSelectorBeforeClick).first();
+        if ((await dismiss.count()) && (await dismiss.isVisible())) {
+          await dismiss.click();
+          await page.waitForTimeout(100);
+        }
+      }
       await target.click();
       await page.waitForURL(url => Boolean(url.searchParams.get(queryParam)), {
         timeout: 10_000,

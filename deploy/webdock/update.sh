@@ -10,8 +10,9 @@ AMARKTAI_DEPLOY_PROFILE="$PROFILE" sh deploy/webdock/preflight.sh .env
 AMARKTAI_DEPLOY_PROFILE="$PROFILE" sh deploy/webdock/backup.sh
 
 COMPOSE="docker compose -f $COMPOSE_FILE --env-file .env"
+VCS_REF="$(git rev-parse HEAD 2>/dev/null || printf unknown)"
 $COMPOSE config >/dev/null
-$COMPOSE build
+$COMPOSE build --build-arg VCS_REF="$VCS_REF"
 $COMPOSE run --rm app node dist/migrate.js
 $COMPOSE up -d --remove-orphans
 AMARKTAI_DEPLOY_PROFILE="$PROFILE" sh deploy/webdock/smoke-test.sh
