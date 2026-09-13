@@ -143,6 +143,49 @@ describe("saved browser connector scripts", () => {
     ).toThrow(/0-5000 milliseconds/i);
   });
 
+  it("uses an authorised click fallback when a reviewed SPA control is present but inert", async () => {
+    let current = "https://crm.example.test/v2/location/location-1/contacts/detail/contact-1";
+    const fallback =
+      "https://crm.example.test/v2/location/location-1/contacts/smart_list/All";
+    const click = vi.fn(async () => undefined);
+    const page = {
+      url: () => current,
+      waitForTimeout: vi.fn(async () => undefined),
+      goto: vi.fn(async (url: string) => {
+        current = url;
+      }),
+      locator: vi.fn(() => ({
+        count: vi.fn(async () => 1),
+        click,
+      })),
+    };
+    const authorizeNavigation = vi.fn(async () => undefined);
+    const result = await executeSavedBrowserScript({
+      page: page as any,
+      script: {
+        steps: [
+          {
+            action: "click",
+            selector: "#sb_contacts",
+            fallbackUrl: fallback,
+          },
+        ],
+      },
+      inputs: {},
+      artifactDirectory: "/tmp",
+      artifactPrefix: "inert-navigation",
+      authorizeNavigation,
+    });
+    expect(result.success, result.detail).toBe(true);
+    expect(click).toHaveBeenCalledOnce();
+    expect(page.goto).toHaveBeenCalledWith(
+      fallback,
+      expect.objectContaining({ waitUntil: "domcontentloaded" })
+    );
+    expect(authorizeNavigation).toHaveBeenCalledWith(fallback);
+    expect(current).toBe(fallback);
+  });
+
   it("rejects unbounded scripts", () => {
     expect(() =>
       validateSavedBrowserScript({

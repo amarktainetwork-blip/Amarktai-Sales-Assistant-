@@ -1102,7 +1102,6 @@ export async function installKnownGeniePack(
           : packed.definition
       );
       const contactNavigation =
-        ["contact.sync", "contact.search"].includes(operationKey) &&
         definition.execute?.steps[0]?.selector === "#sb_contacts";
       if (contactNavigation)
         definition.execute = bindGenieContactNavigation(
@@ -1117,7 +1116,7 @@ export async function installKnownGeniePack(
       const navigationUpgrade =
         contactNavigation &&
         existing?.prerequisites?.knownGeniePack === true &&
-        existing.prerequisites.contactNavigationVersion !== 1;
+        existing.prerequisites.contactNavigationVersion !== 2;
       const providerPackUpgrade =
         existing?.prerequisites?.knownGeniePack === true &&
         packed.prerequisites?.providerPack === "genie" &&
@@ -1143,7 +1142,7 @@ export async function installKnownGeniePack(
         prerequisites: {
           ...(packed.prerequisites || {}),
           knownGeniePack: true,
-          ...(contactNavigation ? { contactNavigationVersion: 1 } : {}),
+          ...(contactNavigation ? { contactNavigationVersion: 2 } : {}),
         },
         targetAssertions: packed.targetAssertions || {},
         postconditionAssertions: (packed.postconditionAssertions ||
