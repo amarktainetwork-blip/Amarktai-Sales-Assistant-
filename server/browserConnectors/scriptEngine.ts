@@ -345,21 +345,75 @@ async function extractedRows(
   inputs: Record<string, unknown>
 ) {
   const rows = scriptLocator(page, step, inputs);
-  const count = Math.min(await rows.count(), 500);
-  const extracted: Array<Record<string, string>> = [];
-  for (let index = 0; index < count; index += 1) {
-    const row = rows.nth(index);
-    const record: Record<string, string> = {};
-    const fields = Object.entries(step.fields || {});
-    const stableFields = fields.filter(
-      ([, field]) => !field.urlQueryParamAfterClick
-    );
-    const navigationFields = fields.filter(([, field]) =>
-      Boolean(field.urlQueryParamAfterClick)
-    );
-    for (const [key, field] of [...stableFields, ...navigationFields])
-      record[key] = (await rowValue(page, row, field)).slice(0, 10_000);
-    extracted.push(record);
+  const fields = Object.entries(step.fields || {});
+  const stableFields = fields.filter(
+    ([, field]) => !field.urlQueryParamAfterClick
+  );
+  const navigationFields = fields.filter(([, field]) =>
+    Boolean(field.urlQueryParamAfterClick)
+  );
+
+  // Virtualized grids such as Genie/Tabulator can recycle DOM rows between
+  // separate awaited nth(index) reads. Snapshot every non-navigation field in
+  // one browser evaluation so one render produces one internally consistent
+  // page of records.
+  const stableRecords = stableFields.length
+    ? await rows.evaluateAll(
+        (elements, fieldEntries) =>
+          elements.slice(0, 500).map(row => {
+            const record: Record<string, string> = {};
+            for (const [key, field] of fieldEntries) {
+              const target = field.selector
+                ? row.querySelector(field.selector)
+                : row;
+              if (
+                field.presentValue !== undefined &&
+                field.absentValue !== undefined
+              ) {
+                record[key] = target
+                  ? field.presentValue
+                  : field.absentValue;
+                continue;
+              }
+              if (!target) {
+                record[key] = "";
+                continue;
+              }
+              record[key] = field.attribute
+                ? target.getAttribute(field.attribute) || ""
+                : (target.textContent || "").trim();
+            }
+            return record;
+          }),
+        stableFields
+      )
+    : Array.from(
+        { length: Math.min(await rows.count(), 500) },
+        () => ({}) as Record<string, string>
+      );
+
+  const extracted = stableRecords.map(record =>
+    Object.fromEntries(
+      Object.entries(record).map(([key, value]) => [
+        key,
+        String(value).slice(0, 10_000),
+      ])
+    )
+  );
+
+  // Resolve fields that require opening a same-page drawer only after the
+  // stable snapshot is complete. Re-query the row for every navigation field
+  // because restoring the list can cause the virtualized grid to rerender.
+  for (let index = 0; index < extracted.length; index += 1) {
+    for (const [key, field] of navigationFields) {
+      const currentRows = scriptLocator(page, step, inputs);
+      const row = currentRows.nth(index);
+      await row.waitFor({ state: "visible", timeout: 15_000 });
+      extracted[index][key] = (await rowValue(page, row, field)).slice(
+        0,
+        10_000
+      );
+    }
   }
   return extracted;
 }

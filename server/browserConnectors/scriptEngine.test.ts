@@ -205,7 +205,13 @@ describe("literal CRM result filtering", () => {
       getAttribute: vi.fn(async () => "/contacts/detail/one"),
       innerText: vi.fn(async () => query),
     };
-    const filtered = { count: vi.fn(async () => 1), nth: vi.fn(() => row) };
+    const filtered = {
+      count: vi.fn(async () => 1),
+      nth: vi.fn(() => row),
+      evaluateAll: vi.fn(async () => [
+        { externalId: "/contacts/detail/one", name: query },
+      ]),
+    };
     const locator = { filter: vi.fn(() => filtered) };
     const page = { locator: vi.fn(() => locator) };
     const result = await executeSavedBrowserScript({
@@ -234,6 +240,53 @@ describe("literal CRM result filtering", () => {
       { externalId: "/contacts/detail/one", name: query },
     ]);
   });
+  it("snapshots stable fields atomically without indexed reads on a virtualized grid", async () => {
+    const nth = vi.fn(() => {
+      throw new Error("stable extraction must not use nth()");
+    });
+    const rows = {
+      count: vi.fn(async () => 20),
+      nth,
+      evaluateAll: vi.fn(async () => [
+        {
+          externalId: "owner-1",
+          name: "Amelia De Beer",
+        },
+        {
+          externalId: "owner-2",
+          name: "Another Owner",
+        },
+      ]),
+    };
+    const page = { locator: vi.fn(() => rows) };
+    const result = await executeSavedBrowserScript({
+      page: page as any,
+      script: {
+        steps: [
+          {
+            action: "read_rows",
+            selector: '[tabulator-field="owners"] [data-id]',
+            key: "records",
+            fields: {
+              externalId: { attribute: "data-id" },
+              name: { attribute: "tooltip" },
+            },
+          },
+        ],
+      },
+      inputs: {},
+      artifactDirectory: "/tmp",
+      artifactPrefix: "virtual-grid",
+    });
+    expect(result.success, result.detail).toBe(true);
+    expect(JSON.parse(result.data.records)).toEqual([
+      { externalId: "owner-1", name: "Amelia De Beer" },
+      { externalId: "owner-2", name: "Another Owner" },
+    ]);
+    expect(rows.evaluateAll).toHaveBeenCalledOnce();
+    expect(nth).not.toHaveBeenCalled();
+  });
+
   it("fails closed if a required search input is missing", async () => {
     const page = { locator: vi.fn(() => ({})) };
     const result = await executeSavedBrowserScript({
