@@ -636,7 +636,7 @@ function verifiedEmptyCollection(input: {
   const evidence = input.data.collectionEvidence?.trim() || "";
   if (!evidence) return false;
   if (input.operationKey === "company.sync")
-    return /Company Name/i.test(evidence);
+    return /Company Name|\bCompanies\b|\bBusinesses\b/i.test(evidence);
   if (input.operationKey === "opportunity.sync") {
     const counts = Array.from(
       evidence.matchAll(/([0-9][0-9,]*)\s+opportunit(?:y|ies)/gi)

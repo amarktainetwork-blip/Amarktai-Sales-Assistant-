@@ -3,7 +3,7 @@ import type { SavedBrowserScript } from "../browserConnectors/scriptEngine";
 import type { BrowserProfile } from "../browserConnectors/browserCrmAdapter";
 
 /** Reusable provider structure only: never tenant IDs, credentials or customer values. */
-export const GENIE_PROVIDER_PACK_VERSION = "genie-2026.09.13.1";
+export const GENIE_PROVIDER_PACK_VERSION = "genie-2026.09.13.2";
 
 // The current Genie/HighLevel contacts workspace no longer uses the old
 // Tabulator row structure. Contact-detail links are the durable record identity:
@@ -108,7 +108,7 @@ const scripts: BrowserProfile["scripts"] = {
       { action: "wait", value: "2000" },
       {
         action: "read_text",
-        selector: '[role="columnheader"]',
+        selector: '#tb_business, h1, h2, [role="heading"]',
         key: "collectionEvidence",
       },
       {
@@ -435,7 +435,7 @@ export function bindGenieContactNavigation(
     Array.isArray(snapshot.controls)
       ? snapshot.controls
       : [];
-  const hrefs = Array.from(
+  const observed = Array.from(
     new Set(
       controls
         .filter(
@@ -445,19 +445,28 @@ export function bindGenieContactNavigation(
         .map((item: any) => item.href as string)
     )
   );
-  if (hrefs.length !== 1)
+  const hrefs = observed.filter(href => {
+    try {
+      const url = new URL(href);
+      return (
+        url.protocol === "https:" &&
+        !url.username &&
+        !url.password &&
+        !url.search &&
+        !url.hash &&
+        /\/contacts\/smart_list(?:\/|$)/.test(url.pathname)
+      );
+    } catch {
+      return false;
+    }
+  });
+  if (hrefs.length > 1)
     throw new Error("GENIE_CONTACT_NAVIGATION_NOT_CAPTURED");
+  if (!hrefs.length) {
+    if (observed.length) throw new Error("GENIE_CONTACT_NAVIGATION_INVALID");
+    throw new Error("GENIE_CONTACT_NAVIGATION_NOT_CAPTURED");
+  }
   const url = new URL(hrefs[0]);
-  if (
-    url.protocol !== "https:" ||
-    url.username ||
-    url.password ||
-    url.search ||
-    url.hash ||
-    !/\/contacts\//.test(url.pathname) ||
-    /\/contacts\/detail(?:\/|$)/.test(url.pathname)
-  )
-    throw new Error("GENIE_CONTACT_NAVIGATION_INVALID");
   return {
     ...script,
     steps: [

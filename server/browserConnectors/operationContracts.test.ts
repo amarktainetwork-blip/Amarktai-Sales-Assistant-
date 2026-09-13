@@ -242,6 +242,13 @@ describe("browser CRM read proof", () => {
     ).toMatchObject({ ok: true, rowCount: 0 });
     expect(
       verifyBrowserReadProof({
+        operationKey: "company.sync",
+        payload: {},
+        data: { records: "[]", collectionEvidence: `Companies\nNo records` },
+      })
+    ).toMatchObject({ ok: true, rowCount: 0 });
+    expect(
+      verifyBrowserReadProof({
         operationKey: "opportunity.sync",
         payload: {},
         data: {
