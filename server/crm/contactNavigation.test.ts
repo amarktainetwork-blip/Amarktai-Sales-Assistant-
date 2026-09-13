@@ -34,6 +34,7 @@ describe("Genie contact reads from another CRM area", () => {
             if (current !== href) throw Error("Wrong CRM area");
           }),
           count: vi.fn(async () => 0),
+          evaluateAll: vi.fn(async () => []),
         };
       }),
     } as unknown as Page;
