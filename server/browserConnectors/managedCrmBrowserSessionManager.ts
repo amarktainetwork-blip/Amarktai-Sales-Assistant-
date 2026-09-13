@@ -678,6 +678,7 @@ export const managedCrmBrowserSessionManager = {
           browserSession: restored,
           organisationId: input.connection.organisationId,
           connectedSystemId: input.connection.id,
+          allowSameScopedPageRecovery: input.connection.provider === "genie",
           authorise: rawUrl =>
             assertAuthorisedConnectionUrl({
               organisationId: input.connection.organisationId,
