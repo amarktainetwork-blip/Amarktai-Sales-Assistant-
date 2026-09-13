@@ -41,6 +41,18 @@ describe("client handover recovery contract", () => {
     expect(source).toContain("Verifying salesperson CRM reads");
   });
 
+  it("binds captured Contacts navigation to every canonical Genie read that starts through Contacts", () => {
+    const source = read("./automaticCommissioning.ts");
+    expect(source).toContain(
+      'definition.execute?.steps[0]?.selector === "#sb_contacts"'
+    );
+    expect(source).not.toContain(
+      '["contact.sync", "contact.search"].includes(operationKey)'
+    );
+    expect(source).toContain("contactNavigationVersion !== 2");
+    expect(source).toContain("contactNavigationVersion: 2");
+  });
+
   it("passes the exact Git revision into the existing Docker image label", () => {
     const update = read("../../deploy/webdock/update.sh");
     const dockerfile = read("../../deploy/webdock/Dockerfile");

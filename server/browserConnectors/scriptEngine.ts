@@ -412,15 +412,25 @@ export async function executeSavedBrowserScript(input: {
         } catch {
           targetPresent = false;
         }
+        const fallbackTarget = resolveBrowserNavigationTarget(
+          renderBrowserTemplate(step.fallbackUrl, input.inputs),
+          input.page.url()
+        );
         if (targetPresent && locator) {
+          const before = input.page.url();
           await locator.click();
+          await input.page.waitForTimeout(1_200);
+          if (input.page.url() === before && fallbackTarget !== before) {
+            await input.authorizeNavigation?.(fallbackTarget);
+            await input.page.goto(fallbackTarget, {
+              waitUntil: "domcontentloaded",
+              timeout: 45_000,
+            });
+            await input.authorizeNavigation?.(input.page.url());
+          }
         } else {
-          const target = resolveBrowserNavigationTarget(
-            renderBrowserTemplate(step.fallbackUrl, input.inputs),
-            input.page.url()
-          );
-          await input.authorizeNavigation?.(target);
-          await input.page.goto(target, {
+          await input.authorizeNavigation?.(fallbackTarget);
+          await input.page.goto(fallbackTarget, {
             waitUntil: "domcontentloaded",
             timeout: 45_000,
           });
