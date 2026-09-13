@@ -394,6 +394,7 @@ async function withPage<T>(
       organisationId: connection.organisationId,
       connectedSystemId: connection.id,
       authorise: url => authorizeNavigation(connection, url),
+      allowSameScopedPageRecovery: provider === "genie",
     });
 
     if (recovered) {

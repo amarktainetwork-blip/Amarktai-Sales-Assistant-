@@ -160,10 +160,30 @@ export async function browserPageTargetId(page: Page) {
   }
 }
 
+function sameScopedWorkspacePage(currentUrl: string, authenticatedUrl: string) {
+  try {
+    const current = new URL(currentUrl);
+    const authenticated = new URL(authenticatedUrl);
+    if (current.protocol !== "https:" || current.origin !== authenticated.origin)
+      return false;
+    const scoped = authenticated.pathname.match(
+      /^\/v2\/location\/([^/]+)(?:\/|$)/
+    );
+    if (!scoped) return false;
+    const currentScope = current.pathname.match(
+      /^\/v2\/location\/([^/]+)(?:\/|$)/
+    );
+    return currentScope?.[1] === scoped[1];
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Reattach to the exact still-live page that was authenticated previously.
- * This is deliberately target-id based: URL-only selection could cross user or
- * tenant browser identities when several people use the same CRM host.
+ * Genie may keep part of authentication in live page/client state. When its
+ * persisted target is stale, callers may opt into a fail-closed recovery that
+ * accepts exactly one authorised page in the same /v2/location/<id>/ scope.
  */
 export async function findBrowserSessionPage(input: {
   browser: Browser;
@@ -171,6 +191,7 @@ export async function findBrowserSessionPage(input: {
   organisationId: number;
   connectedSystemId: number;
   authorise?: (url: string) => Promise<void>;
+  allowSameScopedPageRecovery?: boolean;
 }) {
   if (!isBrowserSessionPackage(input.browserSession)) return undefined;
   const complete = validateBrowserSessionPackage(input.browserSession, {
@@ -179,16 +200,33 @@ export async function findBrowserSessionPage(input: {
   });
   if (!complete.pageTargetId) return undefined;
 
+  const scopedCandidates: Array<{
+    context: BrowserContext;
+    page: Page;
+    targetId?: string;
+  }> = [];
   for (const context of input.browser.contexts()) {
     for (const page of context.pages()) {
       if (page.isClosed() || page.url() === "about:blank") continue;
       const targetId = await browserPageTargetId(page).catch(() => undefined);
-      if (targetId !== complete.pageTargetId) continue;
-      if (input.authorise) await input.authorise(page.url());
-      return { context, page, targetId };
+      if (targetId === complete.pageTargetId) {
+        if (input.authorise) await input.authorise(page.url());
+        if (
+          !input.allowSameScopedPageRecovery ||
+          sameScopedWorkspacePage(page.url(), complete.authenticatedUrl)
+        )
+          return { context, page, targetId };
+      }
+      if (
+        input.allowSameScopedPageRecovery &&
+        sameScopedWorkspacePage(page.url(), complete.authenticatedUrl)
+      ) {
+        if (input.authorise) await input.authorise(page.url());
+        scopedCandidates.push({ context, page, targetId });
+      }
     }
   }
-  return undefined;
+  return scopedCandidates.length === 1 ? scopedCandidates[0] : undefined;
 }
 
 export async function captureBrowserSessionPackage(input: {
