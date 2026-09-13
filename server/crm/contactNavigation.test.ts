@@ -54,6 +54,21 @@ describe("Genie contact reads from another CRM area", () => {
     expect(page.goto).toHaveBeenCalledWith(href, expect.anything());
     expect(authorizeNavigation).toHaveBeenCalledWith(href);
   });
+  it("ignores stale task navigation evidence when one exact Contacts catalogue URL exists", () => {
+    const script = GENIE_PROVIDER_PACK.scripts.genie_contact_sync;
+    const bound = bindGenieContactNavigation(script, {
+      controls: [
+        ...snapshot.controls,
+        {
+          selector: "#sb_contacts",
+          href: "https://crm.example/v2/location/test/tasks",
+        },
+      ],
+    });
+    expect(bound.steps[0]).toMatchObject({
+      fallbackUrl: href,
+    });
+  });
   it("refuses missing or ambiguous tenant navigation instead of guessing a location", () => {
     const script = GENIE_PROVIDER_PACK.scripts.genie_contact_sync;
     expect(() => bindGenieContactNavigation(script, {})).toThrow(

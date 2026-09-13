@@ -1154,6 +1154,9 @@ export async function installKnownGeniePack(
       needsDiscovery.push(operationKey);
     }
   }
+  const canonicalOperationKeys = new Set(
+    Object.keys(profile.operationDefinitions || {})
+  );
   for (const [adapterOperation, scriptName] of Object.entries(
     profile.operationMap || {}
   )) {
@@ -1162,7 +1165,13 @@ export async function installKnownGeniePack(
       item => item.key === operationKey
     );
     const script = profile.scripts[scriptName];
-    if (!operationKey || metadata?.mode !== "read" || !script) continue;
+    if (
+      !operationKey ||
+      metadata?.mode !== "read" ||
+      !script ||
+      canonicalOperationKeys.has(operationKey)
+    )
+      continue;
     try {
       validateLearnedOperationDefinition({ mode: "read", execute: script });
     } catch {

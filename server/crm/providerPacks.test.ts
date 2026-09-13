@@ -93,6 +93,15 @@ describe("canonical Genie provider pack", () => {
     expect(
       JSON.stringify(GENIE_PROVIDER_PACK.scripts.genie_company_sync)
     ).toContain("properties.name");
+    expect(
+      GENIE_PROVIDER_PACK.scripts.genie_company_sync.steps
+    ).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        action: "read_text",
+        selector: '#tb_business, h1, h2, [role="heading"]',
+        key: "collectionEvidence",
+      }),
+    ]));
     const taskScript = GENIE_PROVIDER_PACK.scripts.genie_task_sync;
     expect(JSON.stringify(taskScript)).toContain("recordId");
     expect(taskScript.steps.at(-1)).toMatchObject({
