@@ -328,6 +328,32 @@ export async function getAutomationPolicy(input: {
   );
 }
 
+export async function ensureDefaultReviewFirstPolicy(input: {
+  userId: number;
+  organisationId: number;
+}) {
+  await requireOrganisationMembership(input.userId, input.organisationId);
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const organisation = (
+    await db
+      .select()
+      .from(organisations)
+      .where(eq(organisations.id, input.organisationId))
+      .limit(1)
+  )[0];
+  if (!organisation) throw new Error("Organisation was not found.");
+  const stored = (organisation.settings as Record<string, unknown>)
+    ?.automationPolicy;
+  if (stored && typeof stored === "object" && !Array.isArray(stored))
+    return normalizeAutomationPolicy(stored);
+  return saveAutomationPolicy({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    policy: automationPolicyFromPreset("assist_only"),
+  });
+}
+
 export async function saveAutomationPolicy(input: {
   userId: number;
   organisationId: number;
