@@ -408,6 +408,11 @@ export function automationPolicyDecision(
   } as const;
 }
 
-export function mayAutoExecute(policy: AutomationPolicy, actionType: string) {
-  return automationPolicyDecision(policy, actionType).mayAutoExecute;
+export function mayAutoExecute(
+  _policy: AutomationPolicy,
+  _actionType: string
+) {
+  // Organisation policy alone is never runtime execution authority. Callers
+  // that have an explicit execution context must use automationPolicyDecision.
+  return false;
 }
