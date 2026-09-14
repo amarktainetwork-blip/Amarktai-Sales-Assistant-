@@ -869,13 +869,11 @@ async function executeGenieTaskGridRead(input: {
     steps: input.script.steps.filter((_, index) => index !== paginateIndex),
   };
   const firstPagePromise = waitForGenieTaskGridPage(input.page);
-  const execution = await input.runScript(
-    input.page,
-    navigationScript,
-    "execute"
-  );
+  const [execution, firstPage] = await Promise.all([
+    input.runScript(input.page, navigationScript, "execute"),
+    firstPagePromise,
+  ]);
   if (!execution.success) return execution;
-  const firstPage = await firstPagePromise;
   const byId = new Map(
     firstPage.records.map(record => [record.externalId, record] as const)
   );
