@@ -287,6 +287,78 @@ describe("literal CRM result filtering", () => {
     expect(nth).not.toHaveBeenCalled();
   });
 
+  it("keeps Playwright-only xpath field selectors on locator() while snapshotting CSS fields atomically", async () => {
+    const bodyTarget = {
+      innerText: vi.fn(async () => "Conversation body"),
+    };
+    const row = {
+      waitFor: vi.fn(async () => undefined),
+      locator: vi.fn((selector: string) => {
+        expect(selector).toBe(
+          'xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " message-item ")][1]'
+        );
+        return { first: vi.fn(() => bodyTarget) };
+      }),
+    };
+    const rows = {
+      count: vi.fn(async () => 1),
+      nth: vi.fn(() => row),
+      evaluateAll: vi.fn(async (_fn, fieldEntries) => {
+        expect(fieldEntries).toEqual([
+          ["externalId", { attribute: "id" }],
+          [
+            "activityType",
+            { presentValue: "conversation", absentValue: "conversation" },
+          ],
+        ]);
+        return [
+          {
+            externalId: "message-1",
+            activityType: "conversation",
+          },
+        ];
+      }),
+    };
+    const page = { locator: vi.fn(() => rows) };
+    const result = await executeSavedBrowserScript({
+      page: page as any,
+      script: {
+        steps: [
+          {
+            action: "read_rows",
+            selector: '[data-testid="MESSAGE_DETAILS"][id]',
+            key: "records",
+            fields: {
+              externalId: { attribute: "id" },
+              body: {
+                selector:
+                  'xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " message-item ")][1]',
+              },
+              activityType: {
+                presentValue: "conversation",
+                absentValue: "conversation",
+              },
+            },
+          },
+        ],
+      },
+      inputs: {},
+      artifactDirectory: "/tmp",
+      artifactPrefix: "xpath-field",
+    });
+    expect(result.success, result.detail).toBe(true);
+    expect(JSON.parse(result.data.records)).toEqual([
+      {
+        externalId: "message-1",
+        activityType: "conversation",
+        body: "Conversation body",
+      },
+    ]);
+    expect(rows.evaluateAll).toHaveBeenCalledOnce();
+    expect(rows.nth).toHaveBeenCalledWith(0);
+    expect(row.locator).toHaveBeenCalledOnce();
+  });
+
   it("fails closed if a required search input is missing", async () => {
     const page = { locator: vi.fn(() => ({})) };
     const result = await executeSavedBrowserScript({

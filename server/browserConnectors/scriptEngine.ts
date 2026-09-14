@@ -352,12 +352,20 @@ async function extractedRows(
   const navigationFields = fields.filter(([, field]) =>
     Boolean(field.urlQueryParamAfterClick)
   );
+  const domStableFields = stableFields.filter(([, field]) => {
+    const selector = field.selector?.trim();
+    return !selector || !/^[a-z][a-z0-9_-]*=/i.test(selector);
+  });
+  const locatorStableFields = stableFields.filter(
+    ([entryKey]) => !domStableFields.some(([key]) => key === entryKey)
+  );
 
   // Virtualized grids such as Genie/Tabulator can recycle DOM rows between
-  // separate awaited nth(index) reads. Snapshot every non-navigation field in
-  // one browser evaluation so one render produces one internally consistent
-  // page of records.
-  const stableRecords = stableFields.length
+  // separate awaited nth(index) reads. Snapshot CSS-compatible stable fields
+  // in one browser evaluation so one render produces one internally consistent
+  // page of records. Playwright-only selector engines such as xpath= must stay
+  // on locator(), because DOM querySelector() cannot parse them.
+  const stableRecords = domStableFields.length
     ? await rows.evaluateAll(
         (elements, fieldEntries) =>
           elements.slice(0, 500).map(row => {
@@ -385,7 +393,7 @@ async function extractedRows(
             }
             return record;
           }),
-        stableFields
+        domStableFields
       )
     : Array.from(
         { length: Math.min(await rows.count(), 500) },
@@ -400,6 +408,21 @@ async function extractedRows(
       ])
     )
   );
+
+  // Resolve stable fields that require Playwright selector engines after the
+  // atomic CSS snapshot. These are not navigation fields, so they do not
+  // mutate page state.
+  for (let index = 0; index < extracted.length; index += 1) {
+    for (const [key, field] of locatorStableFields) {
+      const currentRows = scriptLocator(page, step, inputs);
+      const row = currentRows.nth(index);
+      await row.waitFor({ state: "visible", timeout: 15_000 });
+      extracted[index][key] = (await rowValue(page, row, field)).slice(
+        0,
+        10_000
+      );
+    }
+  }
 
   // Resolve fields that require opening a same-page drawer only after the
   // stable snapshot is complete. Re-query the row for every navigation field
