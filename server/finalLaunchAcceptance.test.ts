@@ -99,6 +99,24 @@ describe("final launch acceptance safeguards", () => {
     expect(source).toContain('navigate("/welcome")');
   });
 
+  it("also applies the conservative review-first preset server-side when commissioning reaches ready", () => {
+    const commissioning = readFileSync(
+      new URL("./crm/automaticCommissioning.ts", import.meta.url),
+      "utf8"
+    );
+    const policy = readFileSync(
+      new URL("./automationPolicy.ts", import.meta.url),
+      "utf8"
+    );
+    expect(commissioning).toContain("ensureDefaultReviewFirstPolicy");
+    expect(commissioning).toContain("if (ready && job.requestedByUserId)");
+    expect(policy).toContain("ensureDefaultReviewFirstPolicy");
+    expect(policy).toContain('automationPolicyFromPreset("assist_only")');
+    expect(policy).toContain(
+      'if (stored && typeof stored === "object" && !Array.isArray(stored))'
+    );
+  });
+
   it("provides a dedicated completion welcome screen before Home", () => {
     const welcome = readFileSync(
       new URL("../client/src/pages/SetupWelcome.tsx", import.meta.url),
