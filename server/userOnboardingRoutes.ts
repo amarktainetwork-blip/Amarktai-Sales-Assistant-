@@ -6,7 +6,11 @@ import {
   crmCommissioningJobs,
   externalUserMappings,
 } from "../drizzle/schema";
-import { listConnectedSystemsForUser } from "./connectedSystems";
+import {
+  listConnectedSystemsForUser,
+  loadUserConnectionSecret,
+  verifiedUserCrmScope,
+} from "./connectedSystems";
 import { getDb, getUserById, recordAudit } from "./db";
 import { requireLocalHttpContext } from "./httpAuth";
 import { getDelegatedMailboxStatus } from "./delegatedMailbox";
@@ -87,6 +91,18 @@ function cleanPersona(
     : undefined;
 }
 
+export function exactMappedIdentityRows<
+  T extends { userId: number | null; email: string | null },
+>(input: { rows: T[]; userId: number; userEmail: string | null | undefined }) {
+  const email = input.userEmail?.trim().toLowerCase();
+  if (!email) return [];
+  const current = input.rows.filter(
+    row =>
+      row.userId === input.userId && row.email?.trim().toLowerCase() === email
+  );
+  return current.length === 1 ? current : [];
+}
+
 async function identityState(input: {
   userId: number;
   organisationId: number;
@@ -110,8 +126,12 @@ async function identityState(input: {
         eq(externalUserMappings.isActive, true)
       )
     );
-  const current = mappings.filter(mapping => mapping.userId === input.userId);
   const email = user?.email?.trim().toLowerCase();
+  const current = exactMappedIdentityRows({
+    rows: mappings,
+    userId: input.userId,
+    userEmail: email,
+  });
   const candidates = email
     ? mappings.filter(
         mapping =>
@@ -121,7 +141,7 @@ async function identityState(input: {
     : [];
   return {
     mappingsExist: mappings.length > 0,
-    mapped: current.length > 0,
+    mapped: current.length === 1,
     current,
     candidates,
   };
@@ -254,10 +274,60 @@ async function snapshotWithMembership(input: {
     companyKnowledgeReady,
     crmConnected,
   });
-  const mailbox = await getDelegatedMailboxStatus({
+  const identity = await identityState({
     userId: input.userId,
     organisationId: input.membership.organisationId,
   });
+  const microsoftMailbox = await getDelegatedMailboxStatus({
+    userId: input.userId,
+    organisationId: input.membership.organisationId,
+  });
+  const genieSystem = browserSystems.find(
+    system => system.provider === "genie"
+  );
+  const genieScope = genieSystem
+    ? await verifiedUserCrmScope({
+        userId: input.userId,
+        organisationId: input.membership.organisationId,
+        connectedSystemId: genieSystem.id,
+      })
+    : null;
+  const genieSecret =
+    genieSystem && genieScope
+      ? await loadUserConnectionSecret({
+          userId: input.userId,
+          organisationId: input.membership.organisationId,
+          connectedSystemId: genieSystem.id,
+          secretKind: "browser",
+        })
+      : undefined;
+  const genieConnected = Boolean(
+    genieScope &&
+      genieSecret?.browserSession &&
+      genieSecret.crmUserExternalId === genieScope.externalUserId &&
+      genieSecret.crmUserEmail === genieScope.email
+  );
+  const selectedEmailSource =
+    input.membership.memberOnboarding.emailSource ||
+    (microsoftMailbox.connected ? "microsoft" : undefined);
+  const mailbox = {
+    configured: microsoftMailbox.configured || Boolean(genieSystem),
+    connected:
+      selectedEmailSource === "genie"
+        ? genieConnected
+        : selectedEmailSource === "microsoft"
+          ? microsoftMailbox.connected
+          : false,
+    source: selectedEmailSource ?? null,
+    mailbox: microsoftMailbox.mailbox,
+    microsoft: microsoftMailbox,
+    genie: {
+      available: Boolean(genieSystem && genieScope),
+      connected: genieConnected,
+      requiresCrmSignIn: Boolean(genieSystem && genieScope && !genieConnected),
+      connectedSystemId: genieSystem?.id ?? null,
+    },
+  };
 
   return {
     member: input.membership.memberOnboarding,
@@ -282,10 +352,7 @@ async function snapshotWithMembership(input: {
       crmReady,
     },
     personalCrm,
-    identity: await identityState({
-      userId: input.userId,
-      organisationId: input.membership.organisationId,
-    }),
+    identity,
     mailbox,
   };
 }
@@ -327,6 +394,11 @@ export function registerUserOnboardingRoutes(app: Express) {
           typeof req.body?.workingStyle === "string"
             ? req.body.workingStyle
             : undefined,
+        emailSource:
+          req.body?.emailSource === "genie" ||
+          req.body?.emailSource === "microsoft"
+            ? req.body.emailSource
+            : undefined,
       });
       return res.json({ ok: true, member: state });
     } catch (error) {
@@ -366,11 +438,7 @@ export function registerUserOnboardingRoutes(app: Express) {
 
       // Only a known salesperson mapping is a legitimate per-user blocker. CRM
       // sign-in itself happens naturally inside that user's private CRM browser.
-      if (
-        membership.role === "salesperson" &&
-        current.identity.mappingsExist &&
-        !current.identity.mapped
-      )
+      if (membership.role === "salesperson" && !current.identity.mapped)
         throw new Error("Confirm your salesperson identity in the CRM first.");
 
       const state = await updateMemberOnboardingState({
@@ -381,6 +449,7 @@ export function registerUserOnboardingRoutes(app: Express) {
         crmCredentialsSaved: true,
         crmIdentityConfirmed:
           current.identity.mapped || current.member.crmIdentityConfirmed,
+        emailSource: current.mailbox.source || undefined,
       });
       await recordAudit({
         userId,
@@ -394,6 +463,7 @@ export function registerUserOnboardingRoutes(app: Express) {
           companySetupInherited: !current.canManage,
           personalCrmSignInDeferred: true,
           crmIdentityConfirmed: Boolean(current.identity.mapped),
+          emailSource: current.mailbox.source,
         },
       });
       return res.json({ ok: true, member: state });

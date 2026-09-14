@@ -16,24 +16,29 @@ const onboardingRoutes = readFileSync(
 
 describe("personal setup after secure access", () => {
   it("is mounted across the authenticated workspace so identity cannot be skipped", () => {
-    expect(app).toContain('import MemberOnboardingGate from "@/components/MemberOnboardingGate"');
+    expect(app).toContain(
+      'import MemberOnboardingGate from "@/components/MemberOnboardingGate"'
+    );
     expect(app).toContain("function PersonalSetupBoundary()");
     expect(app).toContain("<MemberOnboardingGate />");
     expect(app).toContain("<PersonalSetupBoundary />");
   });
 
-  it("guides the user through identity, CRM, Outlook and safe autonomy in the secure setup visual system", () => {
+  it("guides the user through identity, CRM, email source choice and safe autonomy in the secure setup visual system", () => {
     for (const step of [
       "STEP 1 · ABOUT YOU",
       "STEP 2 · CRM IDENTITY",
-      "STEP 3 · YOUR MAILBOX",
+      "STEP 3 · YOUR EMAIL",
       "PERSONAL SETUP COMPLETE",
     ])
       expect(setup).toContain(step);
     expect(setup).toContain("Preferred name *");
     expect(setup).toContain("Main sales goal *");
     expect(setup).toContain("Working preferences (optional)");
+    expect(setup).toContain("Use email from Genie");
     expect(setup).toContain("Connect Outlook");
+    expect(setup).toContain("Genie email does not require Microsoft");
+    expect(setup).toContain("exact user email is ignored");
     expect(setup).toContain("Review Everything");
     expect(setup).toContain("Assistant identity, memory, CRM context");
     expect(setup).toContain('className="amk-auth fixed inset-0');

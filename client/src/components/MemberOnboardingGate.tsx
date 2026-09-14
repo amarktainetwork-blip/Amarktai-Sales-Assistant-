@@ -29,6 +29,7 @@ type MemberState = {
   preferredName?: string;
   primaryGoal?: string;
   workingStyle?: string;
+  emailSource?: "genie" | "microsoft";
   crmIdentityConfirmed?: boolean;
   crmCredentialsSaved?: boolean;
 };
@@ -72,10 +73,26 @@ type Snapshot = {
   mailbox: {
     configured: boolean;
     connected: boolean;
+    source: "genie" | "microsoft" | null;
     mailbox: null | {
       email: string;
       displayName: string | null;
       status: string;
+    };
+    microsoft: {
+      configured: boolean;
+      connected: boolean;
+      mailbox: null | {
+        email: string;
+        displayName: string | null;
+        status: string;
+      };
+    };
+    genie: {
+      available: boolean;
+      connected: boolean;
+      requiresCrmSignIn: boolean;
+      connectedSystemId: number | null;
     };
   };
 };
@@ -201,9 +218,7 @@ export default function MemberOnboardingGate() {
   }, []);
 
   const needsIdentity = Boolean(
-    snapshot?.role === "salesperson" &&
-      snapshot.identity.mappingsExist &&
-      !snapshot.identity.mapped
+    snapshot?.role === "salesperson" && !snapshot.identity.mapped
   );
   const needsMailbox = Boolean(
     snapshot?.company.complete &&
@@ -213,6 +228,11 @@ export default function MemberOnboardingGate() {
   const pathname =
     typeof window === "undefined" ? "" : window.location.pathname;
   const companySetupAllowed = pathname === "/company-setup";
+  const genieSignInAllowed = Boolean(
+    pathname.startsWith("/crm") &&
+      snapshot?.mailbox.source === "genie" &&
+      snapshot.mailbox.genie.requiresCrmSignIn
+  );
 
   const shouldBlock = useMemo(() => {
     if (loading) return true;
@@ -224,7 +244,10 @@ export default function MemberOnboardingGate() {
       !companySetupAllowed
     )
       return true;
-    if (snapshot.company.complete && (needsIdentity || needsMailbox))
+    if (
+      snapshot.company.complete &&
+      (needsIdentity || (needsMailbox && !genieSignInAllowed))
+    )
       return true;
     return false;
   }, [
@@ -234,6 +257,7 @@ export default function MemberOnboardingGate() {
     companySetupAllowed,
     needsIdentity,
     needsMailbox,
+    genieSignInAllowed,
   ]);
 
   useEffect(() => {
@@ -287,6 +311,30 @@ export default function MemberOnboardingGate() {
         cause instanceof Error
           ? cause.message
           : "Your CRM identity could not be confirmed."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function chooseEmailSource(source: "genie" | "microsoft") {
+    try {
+      setSaving(true);
+      setError("");
+      await api("/api/user-onboarding", {
+        method: "PUT",
+        body: JSON.stringify({ step: 3, emailSource: source }),
+      });
+      if (source === "microsoft") {
+        window.location.assign("/api/mailbox/microsoft/start");
+        return;
+      }
+      await refresh();
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Your email source could not be saved."
       );
     } finally {
       setSaving(false);
@@ -529,19 +577,103 @@ export default function MemberOnboardingGate() {
               <StepIcon>
                 <KeyRound size={19} />
               </StepIcon>
-              <p className="amk-auth__panel-eyebrow">STEP 3 · YOUR MAILBOX</p>
-              <h2>Connect your Outlook mailbox.</h2>
-              <p className="amk-auth__muted">
-                Sign in with Microsoft to connect your sales email.
-              </p>
-              <Button
-                className={`mt-6 ${blueButton}`}
-                onClick={() =>
-                  window.location.assign("/api/mailbox/microsoft/start")
-                }
-              >
-                Connect Outlook <ArrowRight className="ml-2 size-4" />
-              </Button>
+              <p className="amk-auth__panel-eyebrow">STEP 3 · YOUR EMAIL</p>
+              {!snapshot.mailbox.source ? (
+                <>
+                  <h2>How should AmarktAI receive your email?</h2>
+                  <p className="amk-auth__muted">
+                    Use the email already available in Genie, or connect your
+                    own Outlook mailbox. Genie email does not require Microsoft
+                    approval.
+                  </p>
+                  <div className="mt-6 grid gap-3">
+                    <button
+                      type="button"
+                      disabled={!snapshot.mailbox.genie.available || saving}
+                      onClick={() => void chooseEmailSource("genie")}
+                      className="rounded-xl border border-[#DCE4EE] bg-white p-4 text-left transition enabled:hover:border-[#8EACEB] enabled:hover:bg-[#F2F6FF] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <strong className="block text-sm text-[#26354A]">
+                        Use email from Genie
+                      </strong>
+                      <span className="mt-1 block text-xs leading-5 text-[#718096]">
+                        Incoming email is read from your own mapped Genie
+                        identity. Shared Team-inbox email that does not match
+                        your exact user email is ignored.
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!snapshot.mailbox.microsoft.configured || saving}
+                      onClick={() => void chooseEmailSource("microsoft")}
+                      className="rounded-xl border border-[#DCE4EE] bg-white p-4 text-left transition enabled:hover:border-[#8EACEB] enabled:hover:bg-[#F2F6FF] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <strong className="block text-sm text-[#26354A]">
+                        Connect Outlook
+                      </strong>
+                      <span className="mt-1 block text-xs leading-5 text-[#718096]">
+                        Sign in with Microsoft and use your personal delegated
+                        mailbox when your organisation permits it.
+                      </span>
+                    </button>
+                  </div>
+                </>
+              ) : snapshot.mailbox.source === "genie" ? (
+                <>
+                  <h2>Use email from Genie.</h2>
+                  <p className="amk-auth__muted">
+                    Your CRM identity is matched. Sign in to Genie once in the
+                    Secure CRM Browser so AmarktAI can read only email addressed
+                    to your exact mapped user.
+                  </p>
+                  <Button
+                    className={`mt-6 ${blueButton}`}
+                    onClick={() =>
+                      window.location.assign(
+                        snapshot.mailbox.genie.connectedSystemId
+                          ? `/crm/${snapshot.mailbox.genie.connectedSystemId}`
+                          : "/crm"
+                      )
+                    }
+                  >
+                    Open Secure CRM Browser
+                    <ArrowRight className="ml-2 size-4" />
+                  </Button>
+                  <button
+                    type="button"
+                    className="mt-4 block text-sm font-semibold text-[#2F6FED]"
+                    onClick={() => void chooseEmailSource("microsoft")}
+                    disabled={!snapshot.mailbox.microsoft.configured || saving}
+                  >
+                    Use Outlook instead
+                  </button>
+                </>
+              ) : (
+                <>
+                  <h2>Connect your Outlook mailbox.</h2>
+                  <p className="amk-auth__muted">
+                    Sign in with Microsoft to connect your sales email.
+                  </p>
+                  <Button
+                    className={`mt-6 ${blueButton}`}
+                    onClick={() =>
+                      window.location.assign("/api/mailbox/microsoft/start")
+                    }
+                  >
+                    Connect Outlook <ArrowRight className="ml-2 size-4" />
+                  </Button>
+                  {snapshot.mailbox.genie.available ? (
+                    <button
+                      type="button"
+                      className="mt-4 block text-sm font-semibold text-[#2F6FED]"
+                      onClick={() => void chooseEmailSource("genie")}
+                      disabled={saving}
+                    >
+                      Use Genie instead
+                    </button>
+                  ) : null}
+                </>
+              )}
             </>
           ) : (
             <>

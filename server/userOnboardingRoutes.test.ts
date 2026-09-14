@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { memberCompanySetupComplete } from "./userOnboardingRoutes";
+import {
+  exactMappedIdentityRows,
+  memberCompanySetupComplete,
+} from "./userOnboardingRoutes";
 
 describe("member handover company readiness", () => {
   it("allows member onboarding after shared company setup and CRM connection without pre-proving CRM operations", () => {
@@ -18,5 +21,62 @@ describe("member handover company readiness", () => {
     { storedComplete: true, companyKnowledgeReady: true, crmConnected: false },
   ])("still fails closed when shared setup is incomplete: %o", input => {
     expect(memberCompanySetupComplete(input)).toBe(false);
+  });
+});
+
+describe("personal email source choice", () => {
+  it("keeps Genie and Microsoft as per-member onboarding choices", async () => {
+    const { readFileSync } = await import("node:fs");
+    const organisation = readFileSync(
+      new URL("./organisation.ts", import.meta.url),
+      "utf8"
+    );
+    const routes = readFileSync(
+      new URL("./userOnboardingRoutes.ts", import.meta.url),
+      "utf8"
+    );
+    expect(organisation).toContain('emailSource?: "genie" | "microsoft"');
+    expect(routes).toContain('req.body?.emailSource === "genie"');
+    expect(routes).toContain('req.body?.emailSource === "microsoft"');
+    expect(routes).toContain("genieConnected");
+    expect(routes).toContain("requiresCrmSignIn");
+  });
+});
+
+
+describe("salesperson CRM email identity isolation", () => {
+  const rows = [
+    { userId: 7, email: "amelia@example.com", id: 1 },
+    { userId: 8, email: "other@example.com", id: 2 },
+  ];
+
+  it("accepts exactly one mapping whose email equals the signed-in user email", () => {
+    expect(
+      exactMappedIdentityRows({
+        rows,
+        userId: 7,
+        userEmail: " AMELIA@example.com ",
+      })
+    ).toEqual([rows[0]]);
+  });
+
+  it("fails closed for an email mismatch", () => {
+    expect(
+      exactMappedIdentityRows({
+        rows,
+        userId: 7,
+        userEmail: "wrong@example.com",
+      })
+    ).toEqual([]);
+  });
+
+  it("fails closed for duplicate exact mappings", () => {
+    expect(
+      exactMappedIdentityRows({
+        rows: [...rows, { userId: 7, email: "amelia@example.com", id: 3 }],
+        userId: 7,
+        userEmail: "amelia@example.com",
+      })
+    ).toEqual([]);
   });
 });
