@@ -847,14 +847,21 @@ async function waitForGenieTaskGridPage(page: Page) {
 }
 
 export function isCanonicalGenieTaskGridScript(script: SavedBrowserScript) {
-  const paginate = script.steps.find(step => step.action === "paginate_rows");
-  return Boolean(
-    paginate &&
-      paginate.selector === ".tabulator-row" &&
-      paginate.nextSelector ===
-        'button.tabulator-page[aria-label="Next Page"]' &&
-      paginate.fields?.externalId?.urlQueryParamAfterClick === "recordId"
-  );
+  const canonical = GENIE_PROVIDER_PACK.scripts.genie_task_sync;
+  if (!canonical || script.steps.length !== canonical.steps.length) return false;
+  return script.steps.every((step, index) => {
+    const expected = canonical.steps[index];
+    return (
+      step.action === expected.action &&
+      step.selector === expected.selector &&
+      step.value === expected.value &&
+      step.key === expected.key &&
+      step.attribute === expected.attribute &&
+      step.nextSelector === expected.nextSelector &&
+      step.maxPages === expected.maxPages &&
+      JSON.stringify(step.fields || {}) === JSON.stringify(expected.fields || {})
+    );
+  });
 }
 
 async function executeGenieTaskGridRead(input: {
