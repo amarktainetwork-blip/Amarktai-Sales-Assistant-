@@ -687,6 +687,231 @@ export function isRetryableReadBrowserFailure(error: unknown) {
   );
 }
 
+const GENIE_TASK_GRID_PATH = "/objects/task/records/search";
+const GENIE_TASK_GRID_HOST = "services.leadconnectorhq.com";
+
+function scalarText(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  if (!isObject(value)) return "";
+  for (const key of ["value", "label", "name", "text"]) {
+    const nested = scalarText(value[key]);
+    if (nested) return nested;
+  }
+  return "";
+}
+
+function identityText(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const nested = identityText(item);
+      if (nested) return nested;
+    }
+    return "";
+  }
+  if (!isObject(value)) return "";
+  for (const key of [
+    "id",
+    "recordId",
+    "externalId",
+    "userId",
+    "ownerId",
+    "contactId",
+  ]) {
+    const nested = identityText(value[key]);
+    if (nested) return nested;
+  }
+  return "";
+}
+
+function contactIdentityFromRelations(value: unknown, depth = 0): string {
+  if (depth > 5) return "";
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const nested = contactIdentityFromRelations(item, depth + 1);
+      if (nested) return nested;
+    }
+    return "";
+  }
+  if (!isObject(value)) return "";
+  for (const [key, child] of Object.entries(value)) {
+    if (/contact/i.test(key)) {
+      const nested = identityText(child);
+      if (nested) return nested;
+    }
+  }
+  const objectKey = scalarText(
+    value.objectKey || value.relationKey || value.associationKey || value.type
+  );
+  if (/contact/i.test(objectKey)) {
+    const nested = identityText(value);
+    if (nested) return nested;
+  }
+  for (const child of Object.values(value)) {
+    const nested = contactIdentityFromRelations(child, depth + 1);
+    if (nested) return nested;
+  }
+  return "";
+}
+
+export function normalizeGenieTaskGridPage(value: unknown) {
+  if (!isObject(value) || !Array.isArray(value.customObjectRecords))
+    throw new Error(
+      "GENIE_TASK_GRID_INVALID: Tasks grid returned no structured record collection."
+    );
+  const topRelations = Array.isArray(value.topRelations)
+    ? value.topRelations.filter(isObject)
+    : [];
+  const relationByTaskId = new Map(
+    topRelations
+      .map(item => [identityText(item.recordId), item] as const)
+      .filter(([recordId]) => Boolean(recordId))
+  );
+  const records = value.customObjectRecords.map((raw, index) => {
+    if (!isObject(raw))
+      throw new Error(
+        `GENIE_TASK_GRID_INVALID: task record ${index + 1} was not structured.`
+      );
+    const externalId = identityText(raw.id);
+    if (!externalId)
+      throw new Error(
+        `INVALID_EXTERNAL_ID: Genie task grid record ${index + 1} had no immutable ID.`
+      );
+    const properties = isObject(raw.properties) ? raw.properties : {};
+    const relation = relationByTaskId.get(externalId);
+    const contactExternalId =
+      contactIdentityFromRelations(raw.relations) ||
+      contactIdentityFromRelations(relation?.associations);
+    return {
+      externalId,
+      title:
+        scalarText(properties.title) ||
+        scalarText(properties.name) ||
+        "Task",
+      description: scalarText(properties.description),
+      status:
+        scalarText(properties.status) ||
+        scalarText(properties.taskStatus) ||
+        "open",
+      dueAt:
+        scalarText(properties.dueDate) ||
+        scalarText(properties.dueAt) ||
+        scalarText(properties.due_date),
+      completedAt:
+        scalarText(properties.completedAt) ||
+        scalarText(properties.closedAt),
+      contactExternalId,
+      ownerExternalId: identityText(raw.owners),
+      sourceUpdatedAt: scalarText(raw.updatedAt),
+      sourceRevision: scalarText(raw.updatedAt),
+      sourceKind: "task",
+    };
+  });
+  const numericTotal = Number(value.total);
+  return {
+    records,
+    total:
+      Number.isFinite(numericTotal) && numericTotal >= 0
+        ? numericTotal
+        : undefined,
+  };
+}
+
+function isGenieTaskGridResponse(urlText: string) {
+  try {
+    const url = new URL(urlText);
+    return (
+      url.protocol === "https:" &&
+      url.hostname === GENIE_TASK_GRID_HOST &&
+      url.pathname === GENIE_TASK_GRID_PATH
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function waitForGenieTaskGridPage(page: Page) {
+  const response = await page.waitForResponse(
+    candidate =>
+      candidate.request().method() === "POST" &&
+      isGenieTaskGridResponse(candidate.url()),
+    { timeout: 30_000 }
+  );
+  if (response.status() < 200 || response.status() >= 300)
+    throw new Error(
+      `GENIE_TASK_GRID_HTTP_ERROR: Tasks grid returned HTTP ${response.status()}.`
+    );
+  return normalizeGenieTaskGridPage(await response.json());
+}
+
+async function executeGenieTaskGridRead(input: {
+  page: Page;
+  script: SavedBrowserScript;
+  runScript: (
+    page: Page,
+    selected: SavedBrowserScript,
+    suffix: string
+  ) => ReturnType<typeof executeSavedBrowserScript>;
+  assertControl: () => void;
+}) {
+  const paginateIndex = input.script.steps.findIndex(
+    step => step.action === "paginate_rows"
+  );
+  if (paginateIndex < 0)
+    throw new Error(
+      "GENIE_TASK_GRID_INVALID: canonical task sync has no bounded pagination step."
+    );
+  const paginate = input.script.steps[paginateIndex];
+  const navigationScript: SavedBrowserScript = {
+    ...input.script,
+    steps: input.script.steps.filter((_, index) => index !== paginateIndex),
+  };
+  const firstPagePromise = waitForGenieTaskGridPage(input.page);
+  const execution = await input.runScript(
+    input.page,
+    navigationScript,
+    "execute"
+  );
+  if (!execution.success) return execution;
+  const firstPage = await firstPagePromise;
+  const byId = new Map(
+    firstPage.records.map(record => [record.externalId, record] as const)
+  );
+  const total = firstPage.total;
+  const maxPages = Math.max(1, Math.min(Number(paginate.maxPages || 1), 100));
+  const nextSelector = String(paginate.nextSelector || "").trim();
+  if (!nextSelector && maxPages > 1)
+    throw new Error(
+      "GENIE_TASK_GRID_INVALID: canonical task sync has no reviewed next-page selector."
+    );
+
+  for (let pageNumber = 1; pageNumber < maxPages; pageNumber += 1) {
+    if (total !== undefined && byId.size >= total) break;
+    input.assertControl();
+    const next = input.page.locator(nextSelector).first();
+    if ((await next.count()) === 0) break;
+    const disabled =
+      (await next.isDisabled().catch(() => false)) ||
+      (await next.getAttribute("aria-disabled")) === "true" ||
+      (await next.getAttribute("disabled")) !== null;
+    if (disabled) break;
+    const nextPagePromise = waitForGenieTaskGridPage(input.page);
+    await next.click();
+    const nextPage = await nextPagePromise;
+    if (!nextPage.records.length) break;
+    for (const record of nextPage.records) byId.set(record.externalId, record);
+  }
+
+  execution.data.records = JSON.stringify(Array.from(byId.values()));
+  if (total === 0)
+    execution.data.collectionEvidence = "Genie Tasks grid verified zero records.";
+  else if (byId.size)
+    execution.data.collectionEvidence = `Genie Tasks grid returned ${byId.size} structured record(s).`;
+  return execution;
+}
+
 type RunOperationInput = {
   connection: AdapterConnection;
   secret: ConnectionSecretPayload;
@@ -850,7 +1075,15 @@ async function runDeterministicOperation(input: RunOperationInput) {
                 screenshotPath: targetRead.screenshotPath,
               };
           }
-          const execution = await runScript(page, script, "execute");
+          const execution =
+            input.provider === "genie" && operationKey === "task.sync"
+              ? await executeGenieTaskGridRead({
+                  page,
+                  script,
+                  runScript,
+                  assertControl: () => assertBrowserOperationCanRun(owner),
+                })
+              : await runScript(page, script, "execute");
           if (!execution.success) throw new Error(execution.detail);
           execution.data.actualPageUrl = page.url();
           if (learned?.definition.mode === "write") {
