@@ -345,6 +345,10 @@ async function ownsSharedCommissioningSession(
   return Number(shared?.commissioningUserId || 0) === session.openedByUserId;
 }
 
+export function shouldDemoteConnectionForAuthenticatedSession(status: string) {
+  return !["ready", "limited_permissions"].includes(status);
+}
+
 async function persistAuthenticatedSession(
   session: ManagedCrmBrowserSession,
   force = false
@@ -371,23 +375,43 @@ async function persistAuthenticatedSession(
 
       if (session.canCommission) {
         const db = await getDb();
-        if (db)
-          await db
-            .update(connectedSystems)
-            .set({
-              status: "testing",
-              lastHealthSummary:
-                "Secure CRM session ready. Discovering available functions.",
-            })
-            .where(
-              and(
-                eq(connectedSystems.id, session.connection.id),
-                eq(
-                  connectedSystems.organisationId,
-                  session.connection.organisationId
+        if (db) {
+          const current = (
+            await db
+              .select({ status: connectedSystems.status })
+              .from(connectedSystems)
+              .where(
+                and(
+                  eq(connectedSystems.id, session.connection.id),
+                  eq(
+                    connectedSystems.organisationId,
+                    session.connection.organisationId
+                  )
                 )
               )
-            );
+              .limit(1)
+          )[0];
+          if (
+            current &&
+            shouldDemoteConnectionForAuthenticatedSession(current.status)
+          )
+            await db
+              .update(connectedSystems)
+              .set({
+                status: "testing",
+                lastHealthSummary:
+                  "Secure CRM session ready. Discovering available functions.",
+              })
+              .where(
+                and(
+                  eq(connectedSystems.id, session.connection.id),
+                  eq(
+                    connectedSystems.organisationId,
+                    session.connection.organisationId
+                  )
+                )
+              );
+        }
       }
       await recordAudit({
         userId: session.openedByUserId,

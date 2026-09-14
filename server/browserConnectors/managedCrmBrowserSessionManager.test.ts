@@ -6,6 +6,7 @@ import {
   resolvedAuthenticationState,
   shouldRetainCommissionedBrowserPage,
   shouldReuseManagedCrmBrowserSession,
+  shouldDemoteConnectionForAuthenticatedSession,
   type BrowserAuthenticationEvidence,
 } from "./managedCrmBrowserSessionManager";
 
@@ -176,6 +177,17 @@ describe("managed CRM browser recovery", () => {
         snapshot: { authenticationState: "LOGIN_REQUIRED" },
       })
     ).toBe(false);
+  });
+
+  it("does not demote a proven-ready connector when its authenticated session is persisted again", () => {
+    expect(shouldDemoteConnectionForAuthenticatedSession("ready")).toBe(false);
+    expect(
+      shouldDemoteConnectionForAuthenticatedSession("limited_permissions")
+    ).toBe(false);
+    expect(shouldDemoteConnectionForAuthenticatedSession("testing")).toBe(true);
+    expect(
+      shouldDemoteConnectionForAuthenticatedSession("needs_attention")
+    ).toBe(true);
   });
 
   it("exposes an explicit manager-owned keep-alive boundary", () => {
