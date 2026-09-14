@@ -8,6 +8,7 @@ import {
   normalizeBrowserOpportunityRow,
   normalizeBrowserTaskRow,
   normalizeGenieTaskGridPage,
+  isCanonicalGenieTaskGridScript,
   resolveBrowserProfile,
   isRetryableReadBrowserFailure,
 } from "./browserCrmAdapter";
@@ -48,6 +49,39 @@ describe("provider-neutral browser CRM row normalization", () => {
       externalId: "task-456",
       contactExternalId: "contact-123",
     });
+  });
+
+  it("uses grid interception only for the canonical Genie task pagination shape", () => {
+    expect(
+      isCanonicalGenieTaskGridScript({
+        steps: [
+          {
+            action: "paginate_rows",
+            selector: ".tabulator-row",
+            nextSelector: 'button.tabulator-page[aria-label="Next Page"]',
+            maxPages: 100,
+            fields: {
+              externalId: {
+                selector: '[tabulator-field="properties.title"]',
+                urlQueryParamAfterClick: "recordId",
+              },
+            },
+          },
+        ],
+      })
+    ).toBe(true);
+
+    expect(
+      isCanonicalGenieTaskGridScript({
+        steps: [
+          {
+            action: "read_rows",
+            selector: "[data-task-row]",
+            fields: { externalId: { attribute: "data-task-id" } },
+          },
+        ],
+      })
+    ).toBe(false);
   });
 
   it("maps authenticated Genie task-grid records without opening row drawers", () => {
@@ -184,6 +218,7 @@ describe("browser profile", () => {
       "utf8"
     );
     expect(source).toContain('operationKey === "task.sync"');
+    expect(source).toContain("isCanonicalGenieTaskGridScript(script)");
     expect(source).toContain('GENIE_TASK_GRID_PATH = "/objects/task/records/search"');
     expect(source).toContain("executeGenieTaskGridRead");
   });
