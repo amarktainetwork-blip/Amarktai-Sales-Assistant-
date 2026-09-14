@@ -846,6 +846,17 @@ async function waitForGenieTaskGridPage(page: Page) {
   return normalizeGenieTaskGridPage(await response.json());
 }
 
+export function isCanonicalGenieTaskGridScript(script: SavedBrowserScript) {
+  const paginate = script.steps.find(step => step.action === "paginate_rows");
+  return Boolean(
+    paginate &&
+      paginate.selector === ".tabulator-row" &&
+      paginate.nextSelector ===
+        'button.tabulator-page[aria-label="Next Page"]' &&
+      paginate.fields?.externalId?.urlQueryParamAfterClick === "recordId"
+  );
+}
+
 async function executeGenieTaskGridRead(input: {
   page: Page;
   script: SavedBrowserScript;
@@ -896,8 +907,7 @@ async function executeGenieTaskGridRead(input: {
       (await next.getAttribute("disabled")) !== null;
     if (disabled) break;
     const nextPagePromise = waitForGenieTaskGridPage(input.page);
-    await next.click();
-    const nextPage = await nextPagePromise;
+    const [, nextPage] = await Promise.all([next.click(), nextPagePromise]);
     if (!nextPage.records.length) break;
     for (const record of nextPage.records) byId.set(record.externalId, record);
   }
@@ -1074,7 +1084,9 @@ async function runDeterministicOperation(input: RunOperationInput) {
               };
           }
           const execution =
-            input.provider === "genie" && operationKey === "task.sync"
+            input.provider === "genie" &&
+            operationKey === "task.sync" &&
+            isCanonicalGenieTaskGridScript(script)
               ? await executeGenieTaskGridRead({
                   page,
                   script,
