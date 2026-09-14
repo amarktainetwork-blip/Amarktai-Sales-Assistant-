@@ -345,6 +345,10 @@ async function ownsSharedCommissioningSession(
   return Number(shared?.commissioningUserId || 0) === session.openedByUserId;
 }
 
+export function shouldDemoteConnectionForAuthenticatedSession(status: string) {
+  return !["ready", "limited_permissions"].includes(status);
+}
+
 async function persistAuthenticatedSession(
   session: ManagedCrmBrowserSession,
   force = false
@@ -369,7 +373,10 @@ async function persistAuthenticatedSession(
       await persistPersonalSession(session, browserSession);
       await persistSharedCommissioningSession(session, browserSession);
 
-      if (session.canCommission) {
+      if (
+        session.canCommission &&
+        shouldDemoteConnectionForAuthenticatedSession(session.connection.status)
+      ) {
         const db = await getDb();
         if (db)
           await db
