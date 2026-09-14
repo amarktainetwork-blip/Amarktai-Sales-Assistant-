@@ -7,6 +7,7 @@ import {
   normalizeBrowserContactRow,
   normalizeBrowserOpportunityRow,
   normalizeBrowserTaskRow,
+  normalizeGenieTaskGridPage,
   resolveBrowserProfile,
   isRetryableReadBrowserFailure,
 } from "./browserCrmAdapter";
@@ -47,6 +48,68 @@ describe("provider-neutral browser CRM row normalization", () => {
       externalId: "task-456",
       contactExternalId: "contact-123",
     });
+  });
+
+  it("maps authenticated Genie task-grid records without opening row drawers", () => {
+    const page = normalizeGenieTaskGridPage({
+      customObjectRecords: [
+        {
+          id: "task-123",
+          updatedAt: "2026-09-13T19:00:00Z",
+          owners: [{ id: "owner-456", name: "Salesperson" }],
+          properties: {
+            title: "Follow up",
+            description: "Call customer",
+            status: "pending",
+            dueDate: "2026-09-14T08:00:00Z",
+          },
+          relations: {
+            TASK_CONTACT_ASSOCIATION: [{ recordId: "contact-789" }],
+          },
+        },
+      ],
+      topRelations: [
+        {
+          recordId: "task-123",
+          associations: [],
+        },
+      ],
+      total: 1,
+    });
+
+    expect(page).toEqual({
+      records: [
+        {
+          externalId: "task-123",
+          title: "Follow up",
+          description: "Call customer",
+          status: "pending",
+          dueAt: "2026-09-14T08:00:00Z",
+          completedAt: "",
+          contactExternalId: "contact-789",
+          ownerExternalId: "owner-456",
+          sourceUpdatedAt: "2026-09-13T19:00:00Z",
+          sourceRevision: "2026-09-13T19:00:00Z",
+          sourceKind: "task",
+        },
+      ],
+      total: 1,
+    });
+  });
+
+  it("fails closed when a Genie task-grid row has no immutable task ID", () => {
+    expect(() =>
+      normalizeGenieTaskGridPage({
+        customObjectRecords: [
+          {
+            owners: [{ id: "owner-456" }],
+            properties: { title: "Missing identity" },
+          },
+        ],
+        topRelations: [],
+        total: 1,
+      })
+    ).toThrow("INVALID_EXTERNAL_ID");
   });
 
   it("normalizes tasks, opportunities and activities", () => {
@@ -115,6 +178,16 @@ describe("read-only runtime retry policy", () => {
 });
 
 describe("browser profile", () => {
+  it("routes only Genie task.sync through the authenticated Tasks-grid response path", async () => {
+    const source = await readFile(
+      new URL("./browserCrmAdapter.ts", import.meta.url),
+      "utf8"
+    );
+    expect(source).toContain('operationKey === "task.sync"');
+    expect(source).toContain('GENIE_TASK_GRID_PATH = "/objects/task/records/search"');
+    expect(source).toContain("executeGenieTaskGridRead");
+  });
+
   it("keeps repeated browser CRM reads, sync and writes behind the hard zero-model boundary", async () => {
     const source = await readFile(
       new URL("./browserCrmAdapter.ts", import.meta.url),
