@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { GENIE_PROVIDER_PACK } from "../crm/providerPacks";
 import {
   normalizeBrowserActivityRow,
   normalizeBrowserContactRow,
@@ -53,22 +54,9 @@ describe("provider-neutral browser CRM row normalization", () => {
 
   it("uses grid interception only for the canonical Genie task pagination shape", () => {
     expect(
-      isCanonicalGenieTaskGridScript({
-        steps: [
-          {
-            action: "paginate_rows",
-            selector: ".tabulator-row",
-            nextSelector: 'button.tabulator-page[aria-label="Next Page"]',
-            maxPages: 100,
-            fields: {
-              externalId: {
-                selector: '[tabulator-field="properties.title"]',
-                urlQueryParamAfterClick: "recordId",
-              },
-            },
-          },
-        ],
-      })
+      isCanonicalGenieTaskGridScript(
+        GENIE_PROVIDER_PACK.scripts.genie_task_sync
+      )
     ).toBe(true);
 
     expect(
