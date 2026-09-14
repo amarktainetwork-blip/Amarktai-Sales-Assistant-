@@ -373,28 +373,45 @@ async function persistAuthenticatedSession(
       await persistPersonalSession(session, browserSession);
       await persistSharedCommissioningSession(session, browserSession);
 
-      if (
-        session.canCommission &&
-        shouldDemoteConnectionForAuthenticatedSession(session.connection.status)
-      ) {
+      if (session.canCommission) {
         const db = await getDb();
-        if (db)
-          await db
-            .update(connectedSystems)
-            .set({
-              status: "testing",
-              lastHealthSummary:
-                "Secure CRM session ready. Discovering available functions.",
-            })
-            .where(
-              and(
-                eq(connectedSystems.id, session.connection.id),
-                eq(
-                  connectedSystems.organisationId,
-                  session.connection.organisationId
+        if (db) {
+          const current = (
+            await db
+              .select({ status: connectedSystems.status })
+              .from(connectedSystems)
+              .where(
+                and(
+                  eq(connectedSystems.id, session.connection.id),
+                  eq(
+                    connectedSystems.organisationId,
+                    session.connection.organisationId
+                  )
                 )
               )
-            );
+              .limit(1)
+          )[0];
+          if (
+            current &&
+            shouldDemoteConnectionForAuthenticatedSession(current.status)
+          )
+            await db
+              .update(connectedSystems)
+              .set({
+                status: "testing",
+                lastHealthSummary:
+                  "Secure CRM session ready. Discovering available functions.",
+              })
+              .where(
+                and(
+                  eq(connectedSystems.id, session.connection.id),
+                  eq(
+                    connectedSystems.organisationId,
+                    session.connection.organisationId
+                  )
+                )
+              );
+        }
       }
       await recordAudit({
         userId: session.openedByUserId,
