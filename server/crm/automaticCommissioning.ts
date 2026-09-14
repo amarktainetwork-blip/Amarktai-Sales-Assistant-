@@ -56,6 +56,7 @@ import {
   providerPackFingerprint,
   bindGenieContactNavigation,
 } from "./providerPacks";
+import { ensureDefaultReviewFirstPolicy } from "../automationPolicy";
 
 export const COMMISSIONING_STATES = [
   "AUTHENTICATE",
@@ -2323,6 +2324,16 @@ export async function advanceAutomaticCommissioning(jobId: number) {
         });
         scheduleAutomaticCommissioning(job.id);
         return;
+      }
+      if (ready && job.requestedByUserId) {
+        const policy = await ensureDefaultReviewFirstPolicy({
+          userId: job.requestedByUserId,
+          organisationId: job.organisationId,
+        });
+        progress.automationPolicy = {
+          preset: policy.preset,
+          mode: policy.mode,
+        };
       }
       progress.published = "Ready";
       next = "READY";
