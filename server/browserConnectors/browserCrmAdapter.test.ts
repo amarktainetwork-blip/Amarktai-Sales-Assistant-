@@ -10,6 +10,7 @@ import {
   normalizeBrowserTaskRow,
   normalizeGenieTaskGridPage,
   isCanonicalGenieTaskGridScript,
+  genieTaskPickerLabelMatches,
   resolveBrowserProfile,
   isRetryableReadBrowserFailure,
 } from "./browserCrmAdapter";
@@ -199,6 +200,21 @@ describe("read-only runtime retry policy", () => {
   });
 });
 
+describe("Genie task owner picker safety", () => {
+  it("accepts only an exact picker-line display-name match", () => {
+    expect(
+      genieTaskPickerLabelMatches(
+        "Amelia De Beer\namelia@example.test",
+        "Amelia De Beer"
+      )
+    ).toBe(true);
+    expect(
+      genieTaskPickerLabelMatches("Amelia De Beer Team", "Amelia De Beer")
+    ).toBe(false);
+    expect(genieTaskPickerLabelMatches("", "Amelia De Beer")).toBe(false);
+  });
+});
+
 describe("browser profile", () => {
   it("routes only Genie task.sync through the authenticated Tasks-grid response path", async () => {
     const source = await readFile(
@@ -211,6 +227,8 @@ describe("browser profile", () => {
     expect(source).toContain("executeGenieTaskGridRead");
     expect(source).toContain('locator("div.quick-filter.button")');
     expect(source).toContain("Assignee\\s*:");
+    expect(source).toContain(".hr-popover__content .item.default:visible");
+    expect(source).toContain("matchingRows.length !== 1");
   });
 
   it("keeps repeated browser CRM reads, sync and writes behind the hard zero-model boundary", async () => {

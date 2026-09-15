@@ -186,6 +186,26 @@ async function fetchOwnerScopedContactPage(input: {
     input.ownerExternalId
   );
 }
+export function ownerScopedGenieContactNavigation(
+  script: SavedBrowserScript
+): SavedBrowserScript {
+  return {
+    ...script,
+    steps: script.steps
+      .filter(
+        step =>
+          !["expect_visible", "read_rows", "paginate_rows"].includes(
+            step.action
+          )
+      )
+      .map(step =>
+        step.action === "click" && step.fallbackUrl
+          ? { action: "goto" as const, value: step.fallbackUrl }
+          : step
+      ),
+  };
+}
+
 export async function executeOwnerScopedGenieContactRead(input: {
   page: Page;
   script: SavedBrowserScript;
@@ -198,15 +218,7 @@ export async function executeOwnerScopedGenieContactRead(input: {
   assertControl: () => void;
 }) {
   const owner = input.ownerExternalId.trim();
-  const navigation: SavedBrowserScript = {
-    ...input.script,
-    steps: input.script.steps.filter(
-      step =>
-        !["expect_visible", "read_rows", "paginate_rows"].includes(
-          step.action
-        )
-    ),
-  };
+  const navigation = ownerScopedGenieContactNavigation(input.script);
 
   const execution = await input.runScript(
     input.page,
