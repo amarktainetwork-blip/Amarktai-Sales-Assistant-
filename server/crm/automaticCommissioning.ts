@@ -1118,6 +1118,10 @@ export async function installKnownGeniePack(
         contactNavigation &&
         existing?.prerequisites?.knownGeniePack === true &&
         existing.prerequisites.contactNavigationVersion !== 2;
+      const activityUpgrade =
+        operationKey === "activity.sync" &&
+        existing?.prerequisites?.knownGeniePack === true &&
+        existing.prerequisites.activitySyncVersion !== 2;
       const providerPackUpgrade =
         existing?.prerequisites?.knownGeniePack === true &&
         packed.prerequisites?.providerPack === "genie" &&
@@ -1127,7 +1131,7 @@ export async function installKnownGeniePack(
         !shouldInstallCanonicalGenieOperation({
           existing,
           packedPrerequisites: packed.prerequisites,
-          navigationUpgrade,
+          navigationUpgrade: navigationUpgrade || activityUpgrade,
           providerPackUpgrade,
         })
       ) {
@@ -1350,7 +1354,7 @@ async function testOperations(input: {
   const latest = new Map<string, (typeof rows)[number]>();
   for (const row of rows)
     if (!latest.has(row.operationKey)) latest.set(row.operationKey, row);
-  const selected = Array.from(latest.values())
+  const candidates = Array.from(latest.values())
     .map(row => effectiveLatestBrowserOperation(row)!)
     .filter(row => {
       const definition = row.definition as Record<string, unknown>;
@@ -1369,8 +1373,24 @@ async function testOperations(input: {
         (rightIndex < 0 ? order.length : rightIndex)
       );
     });
+  const retainedProven =
+    input.mode === "read"
+      ? candidates
+          .filter(row =>
+            operationProvenDuringCommissioning({
+              status: row.status,
+              lastSuccessAt: row.lastSuccessAt,
+              jobStartedAt: input.job.startedAt,
+            })
+          )
+          .map(row => row.operationKey)
+      : [];
+  const selected = candidates.filter(
+    row => !retainedProven.includes(row.operationKey)
+  );
   const failures = { ...(input.job.optionalFailures || {}) };
-  const proven: string[] = [];
+  for (const operationKey of retainedProven) delete failures[operationKey];
+  const proven: string[] = [...retainedProven];
   const failedOperationKeys: string[] = [];
   let transientControlBlocked = false;
   let repairGenxCalls = 0;
@@ -1539,6 +1559,18 @@ export function operationEligibleForCommissioningTest(input: {
         input.status
       )
     : input.status === "TEST_READY";
+}
+
+export function operationProvenDuringCommissioning(input: {
+  status: string;
+  lastSuccessAt?: Date | string | null;
+  jobStartedAt?: Date | string | null;
+}) {
+  if (input.status !== "LIVE_PROVEN" || !input.lastSuccessAt || !input.jobStartedAt)
+    return false;
+  const success = new Date(input.lastSuccessAt).getTime();
+  const started = new Date(input.jobStartedAt).getTime();
+  return Number.isFinite(success) && Number.isFinite(started) && success >= started;
 }
 
 export function isTransientBrowserControlError(error: unknown) {

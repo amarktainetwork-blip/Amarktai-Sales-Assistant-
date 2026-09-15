@@ -258,7 +258,7 @@ const scripts: BrowserProfile["scripts"] = {
       { action: "wait", value: "2000" },
       {
         action: "expect_visible",
-        selector: '[data-testid="ASSERT_LC_LEFTPANEL"]',
+        selector: "#conversations-list",
       },
       {
         action: "read_text",
@@ -267,14 +267,10 @@ const scripts: BrowserProfile["scripts"] = {
       },
       {
         action: "read_rows",
-        selector: '[data-testid="MESSAGE_DETAILS"][id]',
+        selector: '[id^="conversation-card-checkbox-"]',
         key: "records",
         fields: {
           externalId: { attribute: "id" },
-          body: {
-            selector:
-              'xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " message-item ")][1]',
-          },
           activityType: {
             presentValue: "conversation",
             absentValue: "conversation",
@@ -401,6 +397,7 @@ export const GENIE_PROVIDER_PACK: Pick<
       prerequisites: {
         providerPack: "genie",
         providerPackVersion: GENIE_PROVIDER_PACK_VERSION,
+        activitySyncVersion: 2,
       },
     },
   },
