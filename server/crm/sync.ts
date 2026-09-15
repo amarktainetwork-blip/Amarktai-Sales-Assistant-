@@ -31,6 +31,7 @@ import { normalizeCrmEmail, normalizeCrmPhone } from "./identity";
 import { runModelFreeOperation } from "../aiExecutionBoundary";
 import { upsertSalesWorkFromCrm } from "../salesWork";
 import { crmResourceSyncEligible } from "./syncEligibility";
+import { assertPersonalBrowserOwnerScope } from "./personalOwnerScope";
 export { crmResourceSyncEligible } from "./syncEligibility";
 
 async function cursorFor(systemId: number, resourceType: string) {
@@ -454,10 +455,26 @@ async function syncConnectedSystemDeterministically(input: {
     }
     const existing = await cursorFor(system.id, resourceType);
     try {
-      const drained = await drainCrmPages({
+      type SyncRecord =
+        | NormalizedCompany
+        | NormalizedContact
+        | NormalizedOpportunity
+        | NormalizedTask
+        | NormalizedActivity;
+      const drained = await drainCrmPages<SyncRecord>({
         initialCursor: existing?.cursor ?? undefined,
-        fetchPage: cursor => sync({ connection, secret, cursor }),
+        fetchPage: cursor =>
+          sync({ connection, secret, cursor }) as Promise<{
+            records: SyncRecord[];
+            cursor?: string;
+          }>,
         onPage: async records => {
+          if (browserPersonalScopeRequired && personalResource)
+            assertPersonalBrowserOwnerScope({
+              resourceType,
+              expectedOwnerExternalId: secret.crmUserExternalId || "",
+              records,
+            });
           const contactBaseline =
             resourceType === "contacts"
               ? {
