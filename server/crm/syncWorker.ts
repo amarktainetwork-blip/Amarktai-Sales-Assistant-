@@ -8,6 +8,7 @@ import {
 } from "../../drizzle/schema";
 import { getDb } from "../db";
 import { runModelFreeOperation } from "../aiExecutionBoundary";
+import { connectedSystemHasActiveCommissioning } from "./backgroundReadCommissioningGuard";
 import { syncConnectedSystem } from "./sync";
 
 export const DEFAULT_CRM_SYNC_INTERVAL_MS = 120_000;
@@ -163,6 +164,14 @@ export async function runConnectionScopedCrmSyncCycle(now = new Date()) {
   let synchronized = 0;
   let failed = 0;
   for (const row of rows) {
+    if (
+      await connectedSystemHasActiveCommissioning({
+        organisationId: row.system.organisationId,
+        connectedSystemId: row.system.id,
+      })
+    )
+      continue;
+
     const claim = await db
       .update(connectorSyncJobs)
       .set({ status: "running", lastStartedAt: now, lastError: null })
