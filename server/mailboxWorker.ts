@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { userMailboxConnections } from "../drizzle/schema";
 import { getDb } from "./db";
 import { syncDelegatedMailbox } from "./delegatedMailbox";
+import { syncReadyGenieMailboxes } from "./genieMailbox";
 
 const MAX_MAILBOXES_PER_CYCLE = 50;
 
@@ -60,12 +61,22 @@ export async function syncReadyDelegatedMailboxes() {
     }
   }
 
+  const genie = await syncReadyGenieMailboxes();
+
   return {
-    checked: connections.length,
-    synced,
-    failed,
-    received,
-    draftsPrepared,
+    checked: connections.length + genie.checked,
+    synced: synced + genie.synced,
+    failed: failed + genie.failed,
+    received: received + genie.received,
+    draftsPrepared: draftsPrepared + genie.draftsPrepared,
+    microsoft: {
+      checked: connections.length,
+      synced,
+      failed,
+      received,
+      draftsPrepared,
+    },
+    genie,
     boundedAt: MAX_MAILBOXES_PER_CYCLE,
   };
 }

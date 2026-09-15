@@ -30,6 +30,7 @@ export type MemberOnboardingState = {
   primaryGoal?: string;
   preferredName?: string;
   workingStyle?: string;
+  emailSource?: "genie" | "microsoft";
   crmIdentityConfirmed?: boolean;
   crmCredentialsSaved?: boolean;
   updatedAt?: string;
@@ -114,6 +115,9 @@ export function memberOnboardingFor(
       : {}),
     ...(typeof row.workingStyle === "string"
       ? { workingStyle: row.workingStyle }
+      : {}),
+    ...(row.emailSource === "genie" || row.emailSource === "microsoft"
+      ? { emailSource: row.emailSource }
       : {}),
     ...(typeof row.crmIdentityConfirmed === "boolean"
       ? { crmIdentityConfirmed: row.crmIdentityConfirmed }
@@ -361,6 +365,7 @@ export async function updateMemberOnboardingState(input: {
   primaryGoal?: string;
   preferredName?: string;
   workingStyle?: string;
+  emailSource?: "genie" | "microsoft";
   crmIdentityConfirmed?: boolean;
   crmCredentialsSaved?: boolean;
 }) {
@@ -391,6 +396,9 @@ export async function updateMemberOnboardingState(input: {
       : {}),
     ...(input.workingStyle !== undefined
       ? { workingStyle: input.workingStyle.trim().slice(0, 500) }
+      : {}),
+    ...(input.emailSource !== undefined
+      ? { emailSource: input.emailSource }
       : {}),
     ...(input.crmIdentityConfirmed !== undefined
       ? { crmIdentityConfirmed: input.crmIdentityConfirmed }
