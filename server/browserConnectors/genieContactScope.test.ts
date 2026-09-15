@@ -9,20 +9,26 @@ describe("Genie owner-scoped contact search", () => {
     expect(
       scopeGenieContactSearchBody(
         {
+          locationId: "loc-1",
           page: 1,
+          pageLimit: 100,
+          sort: [],
+          query: "",
           filters: [
-            { field: "status", operator: "eq", value: "open" },
-            { field: "assignedTo", operator: "eq", value: "other" },
+            { field: "assigned_to", operator: "eq", value: "other" },
           ],
         },
         "owner-amelia"
       )
     ).toEqual({
+      locationId: "loc-1",
       page: 1,
+      pageLimit: 100,
+      sort: [],
+      query: "",
       filters: [
-        { field: "status", operator: "eq", value: "open" },
         {
-          field: "assignedTo",
+          field: "assigned_to",
           operator: "eq",
           value: "owner-amelia",
         },
