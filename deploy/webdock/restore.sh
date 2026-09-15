@@ -51,7 +51,7 @@ gunzip -c "$SQL_BACKUP" | $COMPOSE exec -T db sh -eu -c 'mariadb -uroot -p"$MARI
 
 if [ -n "$FILES_BACKUP" ]; then
   mkdir -p deploy/webdock/config deploy/webdock/files/connector-evidence
-  tar -xzf "$FILES_BACKUP" -C deploy/webdock
+  tar --keep-directory-symlink -xzf "$FILES_BACKUP" -C deploy/webdock
 fi
 
 AMARKTAI_DEPLOY_PROFILE="$PROFILE" sh deploy/webdock/align-runtime-state.sh

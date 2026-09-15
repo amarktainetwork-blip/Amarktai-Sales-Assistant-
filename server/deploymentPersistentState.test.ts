@@ -50,6 +50,7 @@ describe("persistent Webdock release state", () => {
     expect(backup).toContain("$COMPOSE run --no-deps --rm -T --entrypoint sh app");
     expect(restore).toContain("sh deploy/webdock/use-persistent-state.sh");
     expect(restore).toContain("sh deploy/webdock/align-runtime-state.sh");
+    expect(restore).toContain("tar --keep-directory-symlink -xzf");
     expect(align).toContain("chown -R '$APP_RUNTIME_IDS' /app/data/connector-evidence");
     expect(align).toContain("chmod 700 /app/data/connector-evidence");
   });
