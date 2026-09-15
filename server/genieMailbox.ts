@@ -36,8 +36,32 @@ type GenieEmailRecord = {
   recipient: string;
   subject?: string;
   body: string;
+  receivedAt: Date;
   contactExternalId?: string;
 };
+
+export function parseGenieReceivedAt(value: string | null | undefined) {
+  const raw = value?.trim();
+  if (!raw) return null;
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+async function restoreUnreadState(
+  page: Parameters<
+    Parameters<typeof withAuthenticatedBrowserSessionPage>[0]["run"]
+  >[0]
+) {
+  const toggle = page.locator("#read-toggle").first();
+  if (!(await toggle.count())) return;
+  const label = (
+    (await toggle.getAttribute("aria-label").catch(() => null)) || ""
+  ).trim();
+  if (label === "Mark as unread") {
+    await toggle.click({ force: true }).catch(() => undefined);
+    await page.waitForTimeout(80);
+  }
+}
 
 async function readCurrentConversationEmails(
   page: Parameters<
@@ -76,6 +100,22 @@ async function readCurrentConversationEmails(
       await currentMail.click({ force: true }).catch(() => undefined);
       await page.waitForTimeout(100);
     }
+
+    const receivedTime = currentMail
+      .locator("p.text-md.text-gray-600.font-inter.cursor-default.shrink-0")
+      .last();
+    if (!(await receivedTime.count())) continue;
+    await receivedTime.hover().catch(() => undefined);
+    await page.waitForTimeout(80);
+    const receivedLabel = (
+      (await page
+        .locator('[id^="mail-header-time-"]:visible')
+        .last()
+        .textContent()
+        .catch(() => "")) || ""
+    ).trim();
+    const receivedAt = parseGenieReceivedAt(receivedLabel);
+    if (!receivedAt) continue;
 
     const parsed = await currentMail
       .evaluate(element => {
@@ -145,6 +185,7 @@ async function readCurrentConversationEmails(
       recipient,
       subject: subject || undefined,
       body: parsed.body,
+      receivedAt,
       contactExternalId: input.contactExternalId,
     });
   }
@@ -188,7 +229,8 @@ export async function syncGenieMailboxForUser(input: {
   const system = systems.find(
     candidate =>
       candidate.provider === "genie" &&
-      ["browser", "sidecar"].includes(candidate.connectionMethod)
+      ["browser", "sidecar"].includes(candidate.connectionMethod) &&
+      ["ready", "limited_permissions"].includes(candidate.status)
   );
   if (!system)
     return {
@@ -262,33 +304,37 @@ export async function syncGenieMailboxForUser(input: {
         await card.click({ force: true }).catch(() => undefined);
         await page.waitForTimeout(180);
 
-        const messages = await readCurrentConversationEmails(page, {
-          mappedEmail: scope.email,
-          contactExternalId,
-        });
-        for (const message of messages) {
-          if (
-            !exactGenieMailboxIdentity({
-              appEmail: scope.email,
-              mappingEmail: secret.crmUserEmail,
-              recipientEmail: message.recipient,
-            })
-          )
-            continue;
-          const result = await ingestInboundMessage({
-            organisationId: input.organisationId,
-            mailboxUserId: input.userId,
-            connectedSystemId: system.id,
-            envelope: {
-              externalMessageId: message.emailId,
-              channel: "email",
-              senderReference: message.sender,
-              subject: message.subject,
-              body: message.body,
-              receivedAt: new Date(),
-            },
+        try {
+          const messages = await readCurrentConversationEmails(page, {
+            mappedEmail: scope.email,
+            contactExternalId,
           });
-          if (!result.duplicate) received += 1;
+          for (const message of messages) {
+            if (
+              !exactGenieMailboxIdentity({
+                appEmail: scope.email,
+                mappingEmail: secret.crmUserEmail,
+                recipientEmail: message.recipient,
+              })
+            )
+              continue;
+            const result = await ingestInboundMessage({
+              organisationId: input.organisationId,
+              mailboxUserId: input.userId,
+              connectedSystemId: system.id,
+              envelope: {
+                externalMessageId: message.emailId,
+                channel: "email",
+                senderReference: message.sender,
+                subject: message.subject,
+                body: message.body,
+                receivedAt: message.receivedAt,
+              },
+            });
+            if (!result.duplicate) received += 1;
+          }
+        } finally {
+          await restoreUnreadState(page);
         }
       }
     },
@@ -331,8 +377,7 @@ export async function syncReadyGenieMailboxes() {
       organisations,
       eq(organisationMembers.organisationId, organisations.id)
     )
-    .where(eq(organisationMembers.isActive, true))
-    .limit(MAX_GENIE_MAILBOXES_PER_CYCLE * 4);
+    .where(eq(organisationMembers.isActive, true));
 
   const selected = rows
     .filter(
