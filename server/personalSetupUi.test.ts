@@ -45,6 +45,15 @@ describe("personal setup after secure access", () => {
     expect(setup).not.toContain('type="password"');
   });
 
+  it("allows an owner or manager into the connected CRM to finish company commissioning", () => {
+    expect(setup).toContain("const companyCrmSetupAllowed = Boolean(");
+    expect(setup).toContain('pathname.startsWith("/crm")');
+    expect(setup).toContain("snapshot?.canManage");
+    expect(setup).toContain("!snapshot.company.complete");
+    expect(setup).toContain("snapshot.company.crmConnected");
+    expect(setup).toContain("!companyCrmSetupAllowed");
+  });
+
   it("does not require a personal mailbox before shared company setup is complete", () => {
     expect(setup).toMatch(
       /snapshot\?\.company\.complete\s*&&\s*snapshot\.mailbox\.configured\s*&&\s*!snapshot\.mailbox\.connected/

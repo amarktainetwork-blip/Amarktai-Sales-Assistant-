@@ -62,6 +62,7 @@ type Snapshot = {
     complete: boolean;
     step: number;
     workspaceMode: "individual" | "team" | null;
+    crmConnected: boolean;
   };
   personalCrm: PersonalCrm[];
   identity: {
@@ -231,6 +232,12 @@ export default function MemberOnboardingGate() {
   const pathname =
     typeof window === "undefined" ? "" : window.location.pathname;
   const companySetupAllowed = pathname === "/company-setup";
+  const companyCrmSetupAllowed = Boolean(
+    pathname.startsWith("/crm") &&
+      snapshot?.canManage &&
+      !snapshot.company.complete &&
+      snapshot.company.crmConnected
+  );
   const genieSignInAllowed = Boolean(
     pathname.startsWith("/crm") &&
       snapshot?.mailbox.source === "genie" &&
@@ -244,7 +251,8 @@ export default function MemberOnboardingGate() {
     if (
       snapshot.canManage &&
       !snapshot.company.complete &&
-      !companySetupAllowed
+      !companySetupAllowed &&
+      !companyCrmSetupAllowed
     )
       return true;
     if (
@@ -258,6 +266,7 @@ export default function MemberOnboardingGate() {
     snapshot,
     error,
     companySetupAllowed,
+    companyCrmSetupAllowed,
     needsIdentity,
     needsMailbox,
     genieSignInAllowed,
