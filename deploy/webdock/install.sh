@@ -36,6 +36,7 @@ if [ "$PROFILE" = "pilot" ]; then
   COMPOSE_FILE="deploy/webdock/docker-compose.pilot.yml"
 fi
 
+sh deploy/webdock/use-persistent-state.sh
 AMARKTAI_DEPLOY_PROFILE="$PROFILE" sh deploy/webdock/preflight.sh .env
 
 # Compose bind-mount paths are relative to deploy/webdock, not the repository root.

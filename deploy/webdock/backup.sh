@@ -6,6 +6,7 @@ COMPOSE_FILE="deploy/webdock/docker-compose.yml"
 [ "$PROFILE" = "pilot" ] && COMPOSE_FILE="deploy/webdock/docker-compose.pilot.yml"
 [ "$PROFILE" = "pilot" ] || [ "$PROFILE" = "full" ] || { echo "AMARKTAI_DEPLOY_PROFILE must be pilot or full" >&2; exit 1; }
 [ -f .env ] || { echo ".env is missing" >&2; exit 1; }
+sh deploy/webdock/use-persistent-state.sh
 
 BACKUP_DIR="deploy/webdock/backups"
 mkdir -p "$BACKUP_DIR"
@@ -22,11 +23,11 @@ test -s "$SQL_DEST" || { rm -f "$SQL_DEST"; echo "Backup was empty; removed it."
 # Connector selectors/profile files and retained evidence live outside MariaDB.
 # They are deliberately owned by the unprivileged application UID and may not
 # be readable by the host deployment user. Stream the archive through the
-# running app container, which has read access to both bind mounts, without
-# widening host permissions. Never archive .env, deployment secrets, Caddy data
+# transient app container using the current Compose mounts, which has read
+# access to both bind mounts without widening host permissions. Never archive .env, deployment secrets, Caddy data
 # or database volumes.
 mkdir -p deploy/webdock/config deploy/webdock/files/connector-evidence
-$COMPOSE exec -T app sh -eu -c '
+$COMPOSE run --no-deps --rm -T --entrypoint sh app -eu -c '
   staging="$(mktemp -d /tmp/amarktai-backup.XXXXXX)"
   case "$staging" in /tmp/amarktai-backup.*) ;; *) echo "Unsafe backup staging path." >&2; exit 1 ;; esac
   mkdir -p "$staging/files"
