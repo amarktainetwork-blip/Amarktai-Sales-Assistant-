@@ -141,7 +141,12 @@ expect(onboarding).toMatch(
     const layout = read("../client/src/components/DashboardLayout.tsx");
     expect(read("../client/src/components/MemberOnboardingGate.tsx")).toContain("/api/team/crm-identity");
     expect(layout).not.toContain("SalespersonIdentityGate");
-    expect(read("../client/src/components/MemberOnboardingGate.tsx")).toContain("Confirm who you are in the CRM.");
+    const memberGate = read("../client/src/components/MemberOnboardingGate.tsx");
+    expect(memberGate).toContain("Confirm who you are in the CRM.");
+    expect(memberGate).toContain("/api/user-onboarding/refresh-crm-identity");
+    expect(memberGate).toContain("Refresh my CRM identity");
+    expect(memberGate).toContain("Open Genie");
+    expect(memberGate).toContain("identityCrmSignInAllowed");
     expect(layout).toContain("Your AmarktAI workspace is being prepared.");
   });
 
