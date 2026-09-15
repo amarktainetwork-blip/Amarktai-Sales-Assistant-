@@ -63,6 +63,7 @@ import {
   GENIE_PROVIDER_PACK,
   GENIE_PROVIDER_PACK_VERSION,
 } from "../crm/providerPacks";
+import { executeOwnerScopedGenieContactRead } from "./genieContactScope";
 
 const DEFAULT_GENIE_OPERATION_MAP: Record<string, string> = {
   searchContacts: "search_candidate",
@@ -864,6 +865,80 @@ export function isCanonicalGenieTaskGridScript(script: SavedBrowserScript) {
   });
 }
 
+async function applyGenieTaskOwnerFilter(input: {
+  page: Page;
+  ownerExternalId: string;
+  ownerDisplayName: string;
+}) {
+  const owner = input.ownerExternalId.trim();
+  const displayName = input.ownerDisplayName.trim().toLowerCase();
+  if (!/^[A-Za-z0-9_-]{1,180}$/.test(owner) || !displayName)
+    throw new Error(
+      "CRM_OWNER_SCOPE_REQUIRED: Genie task filtering requires the exact mapped salesperson identity."
+    );
+
+  const assignee = input.page
+    .locator('button, [role="button"]')
+    .filter({ hasText: /Assignee/i })
+    .first();
+  if (!(await assignee.count()) || !(await assignee.isVisible()))
+    throw new Error(
+      "CRM_OWNER_SCOPE_REQUIRED: Genie task Assignee filter was not available."
+    );
+  await assignee.click();
+
+  const candidates = input.page.locator(`[data-id="${owner}"]`);
+  let selected = -1;
+  for (let index = 0; index < (await candidates.count()); index += 1) {
+    const candidate = candidates.nth(index);
+    if (!(await candidate.isVisible().catch(() => false))) continue;
+    const inPicker = await candidate
+      .evaluate(element =>
+        Boolean(
+          element.closest(
+            '[role="listbox"],[role="menu"],[role="option"],[role="dialog"],.v-popper__popper,.dropdown-menu'
+          )
+        )
+      )
+      .catch(() => false);
+    if (!inPicker) continue;
+    const label = [
+      await candidate.innerText().catch(() => ""),
+      (await candidate.getAttribute("title")) || "",
+      (await candidate.getAttribute("tooltip")) || "",
+      (await candidate.getAttribute("aria-label")) || "",
+    ]
+      .join(" ")
+      .toLowerCase();
+    if (!label.includes(displayName)) continue;
+    selected = index;
+    break;
+  }
+  if (selected < 0)
+    throw new Error(
+      "CRM_OWNER_SCOPE_REQUIRED: Genie task Assignee option did not match the mapped salesperson."
+    );
+  await candidates.nth(selected).click();
+}
+
+function assertGenieTaskOwnerPage(
+  page: ReturnType<typeof normalizeGenieTaskGridPage>,
+  ownerExternalId: string
+) {
+  if (!ownerExternalId) return page;
+  for (const record of page.records) {
+    if (!record.ownerExternalId)
+      throw new Error(
+        "CRM_OWNER_SCOPE_REQUIRED: Genie task search returned a task without immutable owner identity."
+      );
+    if (record.ownerExternalId !== ownerExternalId)
+      throw new Error(
+        "CRM_OWNER_SCOPE_VIOLATION: Genie task search returned another salesperson's task."
+      );
+  }
+  return page;
+}
+
 async function executeGenieTaskGridRead(input: {
   page: Page;
   script: SavedBrowserScript;
@@ -873,6 +948,8 @@ async function executeGenieTaskGridRead(input: {
     suffix: string
   ) => ReturnType<typeof executeSavedBrowserScript>;
   assertControl: () => void;
+  ownerExternalId?: string;
+  ownerDisplayName?: string;
 }) {
   const paginateIndex = input.script.steps.findIndex(
     step => step.action === "paginate_rows"
@@ -886,17 +963,45 @@ async function executeGenieTaskGridRead(input: {
     ...input.script,
     steps: input.script.steps.filter((_, index) => index !== paginateIndex),
   };
-  const firstPagePromise = waitForGenieTaskGridPage(input.page);
-  const [execution, firstPage] = await Promise.all([
-    input.runScript(input.page, navigationScript, "execute"),
-    firstPagePromise,
-  ]);
-  if (!execution.success) return execution;
+  const ownerExternalId = input.ownerExternalId?.trim() || "";
+  let execution: Awaited<ReturnType<typeof executeSavedBrowserScript>>;
+  let firstPage: ReturnType<typeof normalizeGenieTaskGridPage>;
+
+  if (ownerExternalId) {
+    execution = await input.runScript(
+      input.page,
+      navigationScript,
+      "execute-owner-navigation"
+    );
+    if (!execution.success) return execution;
+    const firstPagePromise = waitForGenieTaskGridPage(input.page);
+    await applyGenieTaskOwnerFilter({
+      page: input.page,
+      ownerExternalId,
+      ownerDisplayName: input.ownerDisplayName || "",
+    });
+    firstPage = assertGenieTaskOwnerPage(
+      await firstPagePromise,
+      ownerExternalId
+    );
+  } else {
+    const firstPagePromise = waitForGenieTaskGridPage(input.page);
+    [execution, firstPage] = await Promise.all([
+      input.runScript(input.page, navigationScript, "execute"),
+      firstPagePromise,
+    ]);
+    if (!execution.success) return execution;
+  }
+
   const byId = new Map(
     firstPage.records.map(record => [record.externalId, record] as const)
   );
   const total = firstPage.total;
-  const maxPages = Math.max(1, Math.min(Number(paginate.maxPages || 1), 100));
+  const configuredMaxPages = Math.max(
+    1,
+    Math.min(Number(paginate.maxPages || 1), 100)
+  );
+  const maxPages = ownerExternalId ? configuredMaxPages : 1;
   const nextSelector = String(paginate.nextSelector || "").trim();
   if (!nextSelector && maxPages > 1)
     throw new Error(
@@ -914,16 +1019,29 @@ async function executeGenieTaskGridRead(input: {
       (await next.getAttribute("disabled")) !== null;
     if (disabled) break;
     const nextPagePromise = waitForGenieTaskGridPage(input.page);
-    const [, nextPage] = await Promise.all([next.click(), nextPagePromise]);
+    const [, rawNextPage] = await Promise.all([next.click(), nextPagePromise]);
+    const nextPage = assertGenieTaskOwnerPage(
+      rawNextPage,
+      ownerExternalId
+    );
     if (!nextPage.records.length) break;
-    for (const record of nextPage.records) byId.set(record.externalId, record);
+    for (const record of nextPage.records)
+      byId.set(record.externalId, record);
   }
+
+  if (ownerExternalId && total !== undefined && byId.size < total)
+    throw new Error(
+      `CRM_SYNC_PAGE_LIMIT_REACHED: owner-scoped Genie task search still has records after the bounded browser drain (${byId.size}/${total}).`
+    );
 
   execution.data.records = JSON.stringify(Array.from(byId.values()));
   if (total === 0)
-    execution.data.collectionEvidence = "Genie Tasks grid verified zero records.";
+    execution.data.collectionEvidence =
+      "Owner-scoped Genie Tasks grid verified zero records.";
   else if (byId.size)
-    execution.data.collectionEvidence = `Genie Tasks grid returned ${byId.size} structured record(s).`;
+    execution.data.collectionEvidence = ownerExternalId
+      ? `Owner-scoped Genie Tasks grid returned ${byId.size} structured record(s).`
+      : `Genie Tasks commissioning probe returned ${byId.size} structured record(s).`;
   return execution;
 }
 
@@ -1090,17 +1208,37 @@ async function runDeterministicOperation(input: RunOperationInput) {
                 screenshotPath: targetRead.screenshotPath,
               };
           }
+          const ownerExternalId =
+            typeof payload.ownerExternalId === "string"
+              ? payload.ownerExternalId.trim()
+              : "";
+          const ownerDisplayName =
+            typeof payload.ownerDisplayName === "string"
+              ? payload.ownerDisplayName.trim()
+              : "";
           const execution =
             input.provider === "genie" &&
-            operationKey === "task.sync" &&
-            isCanonicalGenieTaskGridScript(script)
-              ? await executeGenieTaskGridRead({
+            operationKey === "contact.sync" &&
+            ownerExternalId
+              ? await executeOwnerScopedGenieContactRead({
                   page,
                   script,
+                  ownerExternalId,
                   runScript,
                   assertControl: () => assertBrowserOperationCanRun(owner),
                 })
-              : await runScript(page, script, "execute");
+              : input.provider === "genie" &&
+                  operationKey === "task.sync" &&
+                  isCanonicalGenieTaskGridScript(script)
+                ? await executeGenieTaskGridRead({
+                    page,
+                    script,
+                    runScript,
+                    assertControl: () => assertBrowserOperationCanRun(owner),
+                    ownerExternalId,
+                    ownerDisplayName,
+                  })
+                : await runScript(page, script, "execute");
           if (!execution.success) throw new Error(execution.detail);
           execution.data.actualPageUrl = page.url();
           if (learned?.definition.mode === "write") {
@@ -1562,7 +1700,11 @@ export function browserCrmAdapter(
       provider,
       operation,
       correlationId: `sync-${operation}`,
-      payload: { cursor: input.cursor || "" },
+      payload: {
+        cursor: input.cursor || "",
+        ownerExternalId: input.secret.crmUserExternalId || "",
+        ownerDisplayName: input.secret.crmUserDisplayName || "",
+      },
     });
     return {
       records: rows(execution.result, execution.profile, operation).map(mapper),
