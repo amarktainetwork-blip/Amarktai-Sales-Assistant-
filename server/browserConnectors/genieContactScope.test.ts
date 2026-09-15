@@ -2,10 +2,44 @@ import { describe, expect, it } from "vitest";
 import {
   genieContactDrainIncomplete,
   normalizeGenieContactSearchPage,
+  ownerScopedGenieContactNavigation,
   scopeGenieContactSearchBody,
 } from "./genieContactScope";
 
 describe("Genie owner-scoped contact search", () => {
+  it("uses the reviewed fallback URL instead of an obstructable Contacts menu click", () => {
+    expect(
+      ownerScopedGenieContactNavigation({
+        steps: [
+          {
+            action: "click",
+            selector: "#sb_contacts",
+            fallbackUrl:
+              "https://genie.example/v2/location/location-1/contacts/smart_list/All",
+          },
+          { action: "wait_for_url", value: "**/contacts/smart_list/**" },
+          { action: "wait", value: "2000" },
+          { action: "expect_visible", selector: "a.contact-name-link" },
+          {
+            action: "read_rows",
+            selector: "a.contact-name-link",
+            key: "records",
+          },
+        ],
+      })
+    ).toEqual({
+      steps: [
+        {
+          action: "goto",
+          value:
+            "https://genie.example/v2/location/location-1/contacts/smart_list/All",
+        },
+        { action: "wait_for_url", value: "**/contacts/smart_list/**" },
+        { action: "wait", value: "2000" },
+      ],
+    });
+  });
+
   it("forces the immutable mapped owner into the outgoing search", () => {
     expect(
       scopeGenieContactSearchBody(

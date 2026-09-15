@@ -865,6 +865,18 @@ export function isCanonicalGenieTaskGridScript(script: SavedBrowserScript) {
   });
 }
 
+export function genieTaskPickerLabelMatches(
+  label: string,
+  ownerDisplayName: string
+) {
+  const expected = ownerDisplayName.trim().toLowerCase();
+  if (!expected) return false;
+  return label
+    .split(/\r?\n/)
+    .map(part => part.trim().toLowerCase())
+    .some(part => part === expected);
+}
+
 async function applyGenieTaskOwnerFilter(input: {
   page: Page;
   ownerExternalId: string;
@@ -885,10 +897,11 @@ async function applyGenieTaskOwnerFilter(input: {
     throw new Error(
       "CRM_OWNER_SCOPE_REQUIRED: Genie task Assignee filter was not available."
     );
-  await assignee.click();
+
+  const currentPicker = input.page.locator(".hr-popover__content:visible").first();
+  if (!(await currentPicker.count())) await assignee.click();
 
   const candidates = input.page.locator(`[data-id="${owner}"]`);
-  let selected = -1;
   for (let index = 0; index < (await candidates.count()); index += 1) {
     const candidate = candidates.nth(index);
     if (!(await candidate.isVisible().catch(() => false))) continue;
@@ -896,7 +909,7 @@ async function applyGenieTaskOwnerFilter(input: {
       .evaluate(element =>
         Boolean(
           element.closest(
-            '[role="listbox"],[role="menu"],[role="option"],[role="dialog"],.v-popper__popper,.dropdown-menu'
+            '[role="listbox"],[role="menu"],[role="option"],[role="dialog"],.v-popper__popper,.dropdown-menu,.hr-popover__content,.ui-advanced-select__container'
           )
         )
       )
@@ -907,18 +920,33 @@ async function applyGenieTaskOwnerFilter(input: {
       (await candidate.getAttribute("title")) || "",
       (await candidate.getAttribute("tooltip")) || "",
       (await candidate.getAttribute("aria-label")) || "",
-    ]
-      .join(" ")
-      .toLowerCase();
-    if (!label.includes(displayName)) continue;
-    selected = index;
-    break;
+    ].join("\n");
+    if (!genieTaskPickerLabelMatches(label, displayName)) continue;
+    await candidate.click();
+    return;
   }
-  if (selected < 0)
+
+  const pickerRows = input.page.locator(
+    ".hr-popover__content .item.default:visible"
+  );
+  const matchingRows: number[] = [];
+  for (let index = 0; index < (await pickerRows.count()); index += 1) {
+    const row = pickerRows.nth(index);
+    if (
+      genieTaskPickerLabelMatches(
+        await row.innerText().catch(() => ""),
+        displayName
+      )
+    )
+      matchingRows.push(index);
+  }
+  if (matchingRows.length !== 1)
     throw new Error(
-      "CRM_OWNER_SCOPE_REQUIRED: Genie task Assignee option did not match the mapped salesperson."
+      matchingRows.length > 1
+        ? "CRM_OWNER_SCOPE_AMBIGUOUS: Genie task Assignee picker contained multiple exact salesperson-name matches."
+        : "CRM_OWNER_SCOPE_REQUIRED: Genie task Assignee option did not match the mapped salesperson."
     );
-  await candidates.nth(selected).click();
+  await pickerRows.nth(matchingRows[0]).click();
 }
 
 function assertGenieTaskOwnerPage(
