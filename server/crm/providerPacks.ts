@@ -258,8 +258,10 @@ const scripts: BrowserProfile["scripts"] = {
       { action: "wait", value: "2000" },
       {
         action: "expect_visible",
-        selector: '[data-testid="ASSERT_LC_LEFTPANEL"]',
+        selector: "#conversations-layout",
       },
+      { action: "click", selector: '[aria-label="All"]' },
+      { action: "wait", value: "500" },
       {
         action: "read_text",
         selector: '[aria-label="All"]',
@@ -267,14 +269,10 @@ const scripts: BrowserProfile["scripts"] = {
       },
       {
         action: "read_rows",
-        selector: '[data-testid="MESSAGE_DETAILS"][id]',
+        selector: '[id^="conversation-card-checkbox-"]',
         key: "records",
         fields: {
           externalId: { attribute: "id" },
-          body: {
-            selector:
-              'xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " message-item ")][1]',
-          },
           activityType: {
             presentValue: "conversation",
             absentValue: "conversation",
