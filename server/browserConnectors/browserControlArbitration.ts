@@ -264,6 +264,11 @@ function acquire(
   state: Extract<BrowserControlState, "AGENT_CONTROL" | "HUMAN_CONTROL">,
   ttlMs = DEFAULT_LEASE_MS
 ) {
+  // Reconcile process-local state with the shared cross-process lease before
+  // treating the browser as busy. A crashed/restarted peer can legitimately
+  // remove or replace the shared lease while this process still has a stale
+  // local state entry.
+  browserControlState(input);
   const { key, lease } = getLease(input);
   if (
     lease.state !== "IDLE" &&

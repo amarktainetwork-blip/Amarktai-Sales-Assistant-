@@ -121,6 +121,32 @@ describe("shared browser control arbitration", () => {
     );
   });
 
+  it("reconciles stale local agent state when the shared lease disappeared", async () => {
+    const root = await mkdtemp(join(tmpdir(), "amarktai-local-lease-recovery-"));
+    const previous = process.env.CRM_BROWSER_CONTROL_LEASE_DIR;
+    process.env.CRM_BROWSER_CONTROL_LEASE_DIR = root;
+    vi.resetModules();
+    try {
+      const isolated = await import("./browserControlArbitration");
+      isolated.acquireAiBrowserControl(scope, 8_000);
+      await rm(join(root, "11", "22", "33"), {
+        recursive: true,
+        force: true,
+      });
+      const recovered = {
+        ...scope,
+        ...isolated.acquireAiBrowserControl(scope, 8_000),
+      };
+      expect(recovered.control).toBe("AGENT_CONTROL");
+      isolated.releaseBrowserControl(recovered);
+    } finally {
+      if (previous === undefined)
+        delete process.env.CRM_BROWSER_CONTROL_LEASE_DIR;
+      else process.env.CRM_BROWSER_CONTROL_LEASE_DIR = previous;
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("recovers an old record-less claim left by a crashed process", async () => {
     const root = await mkdtemp(join(tmpdir(), "amarktai-lease-recovery-"));
     const previous = process.env.CRM_BROWSER_CONTROL_LEASE_DIR;
