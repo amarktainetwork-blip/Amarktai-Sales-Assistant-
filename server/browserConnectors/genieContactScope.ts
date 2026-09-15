@@ -1,20 +1,31 @@
-import type { Page, Route } from "playwright-core";
+import type { Page } from "playwright-core";
 import type {
   BrowserScriptResult,
   SavedBrowserScript,
 } from "./scriptEngine";
 
-const CONTACT_HOST = "services.leadconnectorhq.com";
-const CONTACT_PATH = "/contacts/search";
+const CONTACT_SEARCH_URL =
+  "https://backend.leadconnectorhq.com/contacts/search/2";
+const PAGE_LIMIT = 100;
+const MAX_PAGES = 100;
+
+export function genieContactDrainIncomplete(input: {
+  total?: number;
+  uniqueRecords: number;
+  lastPageRecords: number;
+  pagesRead: number;
+}) {
+  if (input.total !== undefined) return input.uniqueRecords < input.total;
+  return (
+    input.pagesRead >= MAX_PAGES &&
+    input.lastPageRecords >= PAGE_LIMIT
+  );
+}
 
 function object(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
-}
-
-function list(value: unknown) {
-  return Array.isArray(value) ? value : [];
 }
 
 function text(value: unknown) {
@@ -37,18 +48,21 @@ function identity(value: unknown): string {
   }
   return "";
 }
-
-export function isGenieContactSearchUrl(rawUrl: string) {
-  try {
-    const url = new URL(rawUrl);
-    return (
-      url.protocol === "https:" &&
-      url.hostname === CONTACT_HOST &&
-      url.pathname === CONTACT_PATH
-    );
-  } catch {
-    return false;
+function contactLocationId(script: SavedBrowserScript, page: Page) {
+  const candidates = [
+    page.url(),
+    ...script.steps.flatMap(step => [
+      typeof step.value === "string" ? step.value : "",
+      typeof step.fallbackUrl === "string" ? step.fallbackUrl : "",
+    ]).filter(Boolean),
+  ];
+  for (const raw of candidates) {
+    const match = raw.match(/\/v2\/location\/([^/]+)/i);
+    if (match?.[1]) return match[1];
   }
+  throw new Error(
+    "GENIE_CONTACT_SEARCH_INVALID: could not resolve the Genie location ID."
+  );
 }
 
 export function scopeGenieContactSearchBody(
@@ -61,37 +75,25 @@ export function scopeGenieContactSearchBody(
       "CRM_OWNER_SCOPE_REQUIRED: Genie contact search requires the mapped salesperson owner ID."
     );
   const body = object(value);
-  const filters = list(body.filters).filter(item => {
-    const filter = object(item);
-    return text(filter.field).toLowerCase() !== "assignedto";
-  });
   return {
     ...body,
     filters: [
-      ...filters,
-      { field: "assignedTo", operator: "eq", value: owner },
+      { field: "assigned_to", operator: "eq", value: owner },
     ],
   };
 }
-
 export function normalizeGenieContactSearchPage(
   value: unknown,
   ownerExternalId: string
 ) {
   const owner = ownerExternalId.trim();
   const root = object(value);
-  const data = object(root.data);
-  const source = Array.isArray(root.contacts)
-    ? root.contacts
-    : Array.isArray(data.contacts)
-      ? data.contacts
-      : Array.isArray(root.records)
-        ? root.records
-        : null;
+  const source = Array.isArray(root.contacts) ? root.contacts : null;
   if (!source)
     throw new Error(
-      "GENIE_CONTACT_SEARCH_INVALID: Contacts search returned no structured record collection."
+      "GENIE_CONTACT_SEARCH_INVALID: Contacts search returned no structured contact collection."
     );
+
   const records = source.map((item, index) => {
     const raw = object(item);
     const externalId = text(raw.id || raw.contactId);
@@ -99,7 +101,9 @@ export function normalizeGenieContactSearchPage(
       throw new Error(
         `INVALID_EXTERNAL_ID: Genie contact search record ${index + 1} had no immutable ID.`
       );
-    const recordOwner = identity(raw.assignedTo || raw.owner || raw.ownerId);
+    const recordOwner = identity(
+      raw.assignedTo || raw.assigned_to || raw.owner || raw.ownerId
+    );
     if (!recordOwner)
       throw new Error(
         "CRM_OWNER_SCOPE_REQUIRED: Genie contact search returned a contact without immutable owner identity."
@@ -121,20 +125,57 @@ export function normalizeGenieContactSearchPage(
       sourceRevision: text(raw.dateUpdated || raw.updatedAt),
     };
   });
-  const totalValue = Number(root.total ?? root.count ?? data.total);
+
+  const totalValue = Number(root.total ?? root.totalCount ?? root.count);
   return {
     records,
     total:
-      Number.isFinite(totalValue) && totalValue >= 0 ? totalValue : undefined,
+      Number.isFinite(totalValue) && totalValue >= 0
+        ? totalValue
+        : undefined,
   };
 }
 
-async function waitForContactPage(page: Page, ownerExternalId: string) {
-  const response = await page.waitForResponse(
-    candidate =>
-      candidate.request().method() === "POST" &&
-      isGenieContactSearchUrl(candidate.url()),
-    { timeout: 30_000 }
+async function browserToken(page: Page) {
+  const token = await page.evaluate(async () => {
+    const getToken = (window as Window & { getToken?: () => unknown }).getToken;
+    if (typeof getToken !== "function") return "";
+    return String(await getToken());
+  });
+  if (!token)
+    throw new Error(
+      "CRM_BROWSER_REAUTHENTICATION_REQUIRED: Genie session token is unavailable."
+    );
+  return token;
+}
+async function fetchOwnerScopedContactPage(input: {
+  page: Page;
+  token: string;
+  locationId: string;
+  ownerExternalId: string;
+  pageNumber: number;
+}) {
+  const response = await input.page.context().request.post(
+    CONTACT_SEARCH_URL,
+    {
+      headers: {
+        "content-type": "application/json",
+        channel: "APP",
+        source: "WEB_USER",
+        version: "2021-07-28",
+        "token-id": input.token,
+      },
+      data: scopeGenieContactSearchBody(
+        {
+          locationId: input.locationId,
+          page: input.pageNumber,
+          pageLimit: PAGE_LIMIT,
+          sort: [],
+          query: "",
+        },
+        input.ownerExternalId
+      ),
+    }
   );
   if (!response.ok())
     throw new Error(
@@ -142,10 +183,9 @@ async function waitForContactPage(page: Page, ownerExternalId: string) {
     );
   return normalizeGenieContactSearchPage(
     await response.json(),
-    ownerExternalId
+    input.ownerExternalId
   );
 }
-
 export async function executeOwnerScopedGenieContactRead(input: {
   page: Page;
   script: SavedBrowserScript;
@@ -158,89 +198,67 @@ export async function executeOwnerScopedGenieContactRead(input: {
   assertControl: () => void;
 }) {
   const owner = input.ownerExternalId.trim();
-  const routeHandler = async (route: Route) => {
-    const request = route.request();
-    if (request.method() !== "POST") return route.continue();
-    let body: unknown = {};
-    const raw = request.postData();
-    if (raw) {
-      try {
-        body = JSON.parse(raw);
-      } catch {
-        throw new Error(
-          "GENIE_CONTACT_SEARCH_INVALID: Contacts search request body was not JSON."
-        );
-      }
-    }
-    const scoped = scopeGenieContactSearchBody(body, owner);
-    await route.continue({
-      postData: JSON.stringify(scoped),
-      headers: {
-        ...request.headers(),
-        "content-type": "application/json",
-      },
-    });
+  const navigation: SavedBrowserScript = {
+    ...input.script,
+    steps: input.script.steps.filter(
+      step =>
+        !["expect_visible", "read_rows", "paginate_rows"].includes(
+          step.action
+        )
+    ),
   };
 
-  await input.page.route(
-    "https://services.leadconnectorhq.com/contacts/search*",
-    routeHandler
+  const execution = await input.runScript(
+    input.page,
+    navigation,
+    "execute-owner-scoped"
   );
-  try {
-    const navigation: SavedBrowserScript = {
-      ...input.script,
-      steps: input.script.steps.filter(
-        step =>
-          !["expect_visible", "read_rows", "paginate_rows"].includes(
-            step.action
-          )
-      ),
-    };
-    const firstPagePromise = waitForContactPage(input.page, owner);
-    const [execution, firstPage] = await Promise.all([
-      input.runScript(input.page, navigation, "execute-owner-scoped"),
-      firstPagePromise,
-    ]);
-    if (!execution.success) return execution;
+  if (!execution.success) return execution;
 
-    const byId = new Map(
-      firstPage.records.map(record => [record.externalId, record] as const)
-    );
-    const total = firstPage.total;
-    for (let pageNumber = 1; pageNumber < 100; pageNumber += 1) {
-      if (total !== undefined && byId.size >= total) break;
-      input.assertControl();
-      const next = input.page
-        .getByRole("button", { name: /^Next$/i })
-        .last();
-      if (!(await next.count()) || !(await next.isVisible())) break;
-      const disabled =
-        (await next.isDisabled().catch(() => false)) ||
-        (await next.getAttribute("aria-disabled")) === "true";
-      if (disabled) break;
-      const pagePromise = waitForContactPage(input.page, owner);
-      const [, nextPage] = await Promise.all([next.click(), pagePromise]);
-      if (!nextPage.records.length) break;
-      for (const record of nextPage.records)
-        byId.set(record.externalId, record);
-    }
+  const token = await browserToken(input.page);
+  const locationId = contactLocationId(input.script, input.page);
+  const byId = new Map<string, ReturnType<
+    typeof normalizeGenieContactSearchPage
+  >["records"][number]>();
+  let total: number | undefined;
+  let pagesRead = 0;
+  let lastPageRecords = 0;
+  for (let pageNumber = 1; pageNumber <= MAX_PAGES; pageNumber += 1) {
+    input.assertControl();
+    const pageResult = await fetchOwnerScopedContactPage({
+      page: input.page,
+      token,
+      locationId,
+      ownerExternalId: owner,
+      pageNumber,
+    });
+    pagesRead = pageNumber;
+    lastPageRecords = pageResult.records.length;
+    if (total === undefined) total = pageResult.total;
+    for (const record of pageResult.records)
+      byId.set(record.externalId, record);
 
-    if (total !== undefined && byId.size < total)
-      throw new Error(
-        `CRM_SYNC_PAGE_LIMIT_REACHED: owner-scoped Genie contact search still has records after the bounded browser drain (${byId.size}/${total}).`
-      );
-    execution.data.records = JSON.stringify(Array.from(byId.values()));
-    execution.data.collectionEvidence =
-      total === 0
-        ? "Owner-scoped Genie contacts verified zero records."
-        : `Owner-scoped Genie contacts returned ${byId.size} structured record(s).`;
-    return execution;
-  } finally {
-    await input.page
-      .unroute(
-        "https://services.leadconnectorhq.com/contacts/search*",
-        routeHandler
-      )
-      .catch(() => undefined);
+    if (!pageResult.records.length) break;
+    if (pageResult.records.length < PAGE_LIMIT) break;
+    if (total !== undefined && byId.size >= total) break;
   }
+
+  if (
+    genieContactDrainIncomplete({
+      total,
+      uniqueRecords: byId.size,
+      lastPageRecords,
+      pagesRead,
+    })
+  )
+    throw new Error(
+      `CRM_SYNC_PAGE_LIMIT_REACHED: owner-scoped Genie contact search may still have records after the bounded API drain (${byId.size}${total === undefined ? "" : `/${total}`}).`
+    );
+
+  execution.data.records = JSON.stringify(Array.from(byId.values()));
+  execution.data.collectionEvidence =
+    total === 0 || byId.size === 0
+      ? "Owner-scoped Genie contacts verified zero records."
+      : `Owner-scoped Genie contacts returned ${byId.size} structured record(s).`;
+  return execution;
 }

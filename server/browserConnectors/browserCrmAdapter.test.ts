@@ -209,6 +209,8 @@ describe("browser profile", () => {
     expect(source).toContain("isCanonicalGenieTaskGridScript(script)");
     expect(source).toContain('GENIE_TASK_GRID_PATH = "/objects/task/records/search"');
     expect(source).toContain("executeGenieTaskGridRead");
+    expect(source).toContain('locator("div.quick-filter.button")');
+    expect(source).toContain("Assignee\\s*:");
   });
 
   it("keeps repeated browser CRM reads, sync and writes behind the hard zero-model boundary", async () => {

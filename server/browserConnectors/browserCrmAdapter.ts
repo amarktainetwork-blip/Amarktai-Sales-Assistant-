@@ -878,8 +878,8 @@ async function applyGenieTaskOwnerFilter(input: {
     );
 
   const assignee = input.page
-    .locator('button, [role="button"]')
-    .filter({ hasText: /Assignee/i })
+    .locator("div.quick-filter.button")
+    .filter({ hasText: /^\s*Assignee\s*:/i })
     .first();
   if (!(await assignee.count()) || !(await assignee.isVisible()))
     throw new Error(

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  genieContactDrainIncomplete,
   normalizeGenieContactSearchPage,
   scopeGenieContactSearchBody,
 } from "./genieContactScope";
@@ -9,26 +10,33 @@ describe("Genie owner-scoped contact search", () => {
     expect(
       scopeGenieContactSearchBody(
         {
+          locationId: "loc-1",
           page: 1,
+          pageLimit: 100,
+          sort: [],
+          query: "",
           filters: [
-            { field: "status", operator: "eq", value: "open" },
-            { field: "assignedTo", operator: "eq", value: "other" },
+            { field: "assigned_to", operator: "eq", value: "other" },
           ],
         },
         "owner-amelia"
       )
     ).toEqual({
+      locationId: "loc-1",
       page: 1,
+      pageLimit: 100,
+      sort: [],
+      query: "",
       filters: [
-        { field: "status", operator: "eq", value: "open" },
         {
-          field: "assignedTo",
+          field: "assigned_to",
           operator: "eq",
           value: "owner-amelia",
         },
       ],
     });
   });
+
   it("keeps only exact-owner structured contacts", () => {
     expect(
       normalizeGenieContactSearchPage(
@@ -68,5 +76,27 @@ describe("Genie owner-scoped contact search", () => {
         "owner-amelia"
       )
     ).toThrow("CRM_OWNER_SCOPE_REQUIRED");
+  });
+
+  it("fails closed when an unknown-total final allowed page is still full", () => {
+    expect(
+      genieContactDrainIncomplete({
+        total: undefined,
+        uniqueRecords: 10_000,
+        lastPageRecords: 100,
+        pagesRead: 100,
+      })
+    ).toBe(true);
+  });
+
+  it("allows an unknown-total bounded drain when the final page is short", () => {
+    expect(
+      genieContactDrainIncomplete({
+        total: undefined,
+        uniqueRecords: 9_950,
+        lastPageRecords: 50,
+        pagesRead: 100,
+      })
+    ).toBe(false);
   });
 });
