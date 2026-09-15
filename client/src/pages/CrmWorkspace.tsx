@@ -199,6 +199,12 @@ export default function CrmWorkspace() {
         typeof organisation.data.settings.automationPolicy === "object" &&
         !Array.isArray(organisation.data.settings.automationPolicy))
   );
+  const commissioningOverlayActive = Boolean(
+    canManage &&
+      !onboardingComplete &&
+      learningStarted &&
+      browserAuthenticationState === "AUTHENTICATED"
+  );
 
   async function saveOnboardingAutomationPreset(
     preset: AutomationPreset,
@@ -358,7 +364,7 @@ export default function CrmWorkspace() {
         data-crm-workspace-root
         className="relative h-[calc(100vh-66px)] min-h-0 overflow-hidden bg-[#EDF2F7]"
       >
-        {selected ? (
+        {selected && !commissioningOverlayActive ? (
           <LiveWorkspace
             key={selected.id}
             connectedSystemId={selected.id}
@@ -368,13 +374,12 @@ export default function CrmWorkspace() {
             onToday={() => navigate("/today")}
             onAuthenticationState={setBrowserAuthenticationState}
           />
+        ) : selected ? (
+          <div className="h-full w-full bg-[#EDF2F7]" aria-hidden="true" />
         ) : (
           <NoBrowserCrm onConnections={() => navigate("/connections")} />
         )}
-        {canManage &&
-        !onboardingComplete &&
-        learningStarted &&
-        browserAuthenticationState === "AUTHENTICATED" ? (
+        {commissioningOverlayActive ? (
           <div className="absolute inset-0 z-40 flex items-center justify-center bg-[#F4F7FB]/95 p-5 backdrop-blur-sm">
             <div className="w-full max-w-2xl rounded-[28px] border border-[#D7E0EA] bg-white p-7 shadow-[0_24px_80px_rgba(20,48,84,.16)] sm:p-9">
               <div className="flex items-start gap-4">

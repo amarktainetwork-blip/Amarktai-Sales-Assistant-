@@ -1545,6 +1545,15 @@ export function isTransientBrowserControlError(error: unknown) {
   return isTransientBrowserExecutionFailure(error);
 }
 
+export function transientCommissioningHumanStatus(error: unknown) {
+  const detail = error instanceof Error ? error.message : String(error || "");
+  return /CRM_VIEWER_(?:HUMAN|AGENT)_CONTROL_ACTIVE|CRM_BROWSER_CONTROL_(?:LEASE_LOST|COORDINATION_UNAVAILABLE)|(?:BROWSER|SESSION|WORKER)[A-Z_]*(?:BUSY|CONTENTION)/i.test(
+    detail
+  )
+    ? "Waiting for secure CRM control"
+    : "Secure CRM connection paused; retrying safely";
+}
+
 export const MAX_AUTOMATIC_SAFE_READ_RETRIES = 3;
 
 export function shouldRetryAutomaticSafeReads(input: {
@@ -2369,13 +2378,21 @@ export async function advanceAutomaticCommissioning(jobId: number) {
       2_000
     );
     if (isTransientBrowserControlError(error)) {
+      console.warn(
+        JSON.stringify({
+          event: "crm_commissioning_transient_retry",
+          jobId: job.id,
+          state: job.state,
+          detail: detail.slice(0, 500),
+        })
+      );
       await updateJob(job.id, {
         status: "queued",
         lastError: null,
         leaseExpiresAt: new Date(Date.now() + 15_000),
         progress: {
           ...(job.progress || {}),
-          humanStatus: "Waiting for secure CRM control",
+          humanStatus: transientCommissioningHumanStatus(error),
           browserControl: "retrying",
         },
       });

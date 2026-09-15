@@ -53,9 +53,9 @@ describe("CRM workspace customer interaction contract", () => {
     expect(source).not.toContain(
       "}, [canManage, onboardingComplete, selected]);"
     );
-    expect(source.replace(/\s+/g, " ")).toContain(
-      '{canManage && !onboardingComplete && learningStarted && browserAuthenticationState === "AUTHENTICATED" ? ('
-    );
+    expect(source).toContain("const commissioningOverlayActive = Boolean(");
+    expect(source).toContain("selected && !commissioningOverlayActive");
+    expect(source).toContain("{commissioningOverlayActive ? (");
     expect(source).toContain("Find CRM navigation");
     expect(source).toContain("Discover CRM functions");
     expect(source).toContain("Prove required CRM reads");

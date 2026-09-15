@@ -10,6 +10,7 @@ import {
   hasStructuredBrowserReadResult,
   shouldInstallCanonicalGenieOperation,
   isTransientBrowserControlError,
+  transientCommissioningHumanStatus,
   nextCommissioningState,
   operationEligibleForCommissioningTest,
   resolveSafeTestContext,
@@ -102,6 +103,16 @@ describe("automatic CRM commissioning product contract", () => {
     expect(isTransientBrowserControlError(new Error("selector drift"))).toBe(
       false
     );
+    expect(
+      transientCommissioningHumanStatus(
+        new Error("CRM_VIEWER_HUMAN_CONTROL_ACTIVE: viewer owns the page")
+      )
+    ).toBe("Waiting for secure CRM control");
+    expect(
+      transientCommissioningHumanStatus(
+        new Error("CDP websocket transport closed unexpectedly")
+      )
+    ).toBe("Secure CRM connection paused; retrying safely");
     expect(safeReadCommissioningPassed({ attempted: 0, proven: [] })).toBe(
       false
     );
