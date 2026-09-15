@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  genieContactDrainIncomplete,
   normalizeGenieContactSearchPage,
   scopeGenieContactSearchBody,
 } from "./genieContactScope";
@@ -35,6 +36,7 @@ describe("Genie owner-scoped contact search", () => {
       ],
     });
   });
+
   it("keeps only exact-owner structured contacts", () => {
     expect(
       normalizeGenieContactSearchPage(
@@ -74,5 +76,27 @@ describe("Genie owner-scoped contact search", () => {
         "owner-amelia"
       )
     ).toThrow("CRM_OWNER_SCOPE_REQUIRED");
+  });
+
+  it("fails closed when an unknown-total final allowed page is still full", () => {
+    expect(
+      genieContactDrainIncomplete({
+        total: undefined,
+        uniqueRecords: 10_000,
+        lastPageRecords: 100,
+        pagesRead: 100,
+      })
+    ).toBe(true);
+  });
+
+  it("allows an unknown-total bounded drain when the final page is short", () => {
+    expect(
+      genieContactDrainIncomplete({
+        total: undefined,
+        uniqueRecords: 9_950,
+        lastPageRecords: 50,
+        pagesRead: 100,
+      })
+    ).toBe(false);
   });
 });

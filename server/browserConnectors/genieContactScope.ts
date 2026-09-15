@@ -9,6 +9,19 @@ const CONTACT_SEARCH_URL =
 const PAGE_LIMIT = 100;
 const MAX_PAGES = 100;
 
+export function genieContactDrainIncomplete(input: {
+  total?: number;
+  uniqueRecords: number;
+  lastPageRecords: number;
+  pagesRead: number;
+}) {
+  if (input.total !== undefined) return input.uniqueRecords < input.total;
+  return (
+    input.pagesRead >= MAX_PAGES &&
+    input.lastPageRecords >= PAGE_LIMIT
+  );
+}
+
 function object(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -208,6 +221,8 @@ export async function executeOwnerScopedGenieContactRead(input: {
     typeof normalizeGenieContactSearchPage
   >["records"][number]>();
   let total: number | undefined;
+  let pagesRead = 0;
+  let lastPageRecords = 0;
   for (let pageNumber = 1; pageNumber <= MAX_PAGES; pageNumber += 1) {
     input.assertControl();
     const pageResult = await fetchOwnerScopedContactPage({
@@ -217,6 +232,8 @@ export async function executeOwnerScopedGenieContactRead(input: {
       ownerExternalId: owner,
       pageNumber,
     });
+    pagesRead = pageNumber;
+    lastPageRecords = pageResult.records.length;
     if (total === undefined) total = pageResult.total;
     for (const record of pageResult.records)
       byId.set(record.externalId, record);
@@ -226,9 +243,16 @@ export async function executeOwnerScopedGenieContactRead(input: {
     if (total !== undefined && byId.size >= total) break;
   }
 
-  if (total !== undefined && byId.size < total)
+  if (
+    genieContactDrainIncomplete({
+      total,
+      uniqueRecords: byId.size,
+      lastPageRecords,
+      pagesRead,
+    })
+  )
     throw new Error(
-      `CRM_SYNC_PAGE_LIMIT_REACHED: owner-scoped Genie contact search still has records after the bounded API drain (${byId.size}/${total}).`
+      `CRM_SYNC_PAGE_LIMIT_REACHED: owner-scoped Genie contact search may still have records after the bounded API drain (${byId.size}${total === undefined ? "" : `/${total}`}).`
     );
 
   execution.data.records = JSON.stringify(Array.from(byId.values()));
