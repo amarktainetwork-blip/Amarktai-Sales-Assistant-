@@ -13,6 +13,7 @@ import {
   transientCommissioningHumanStatus,
   nextCommissioningState,
   operationEligibleForCommissioningTest,
+  operationProvenDuringCommissioning,
   resolveSafeTestContext,
   safeReadCommissioningPassed,
   shouldRetryAutomaticSafeReads,
@@ -119,6 +120,31 @@ describe("automatic CRM commissioning product contract", () => {
     expect(
       safeReadCommissioningPassed({ attempted: 1, proven: ["contact.read"] })
     ).toBe(true);
+  });
+
+  it("retains reads already proven during the same commissioning job but retests older proof", () => {
+    const started = new Date("2026-09-15T20:00:00Z");
+    expect(
+      operationProvenDuringCommissioning({
+        status: "LIVE_PROVEN",
+        lastSuccessAt: new Date("2026-09-15T20:05:00Z"),
+        jobStartedAt: started,
+      })
+    ).toBe(true);
+    expect(
+      operationProvenDuringCommissioning({
+        status: "LIVE_PROVEN",
+        lastSuccessAt: new Date("2026-09-15T19:55:00Z"),
+        jobStartedAt: started,
+      })
+    ).toBe(false);
+    expect(
+      operationProvenDuringCommissioning({
+        status: "BLOCKED",
+        lastSuccessAt: new Date("2026-09-15T20:05:00Z"),
+        jobStartedAt: started,
+      })
+    ).toBe(false);
   });
 
   it("retries incomplete onboarding reads only within the bounded read-only budget", () => {
