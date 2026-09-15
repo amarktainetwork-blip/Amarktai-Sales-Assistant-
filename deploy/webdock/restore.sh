@@ -4,6 +4,7 @@ set -eu
 [ "$#" -ge 1 ] || { echo "Usage: AMARKTAI_CONFIRM_RESTORE=YES $0 <database.sql.gz> [connector-files.tar.gz]" >&2; exit 2; }
 [ "${AMARKTAI_CONFIRM_RESTORE:-}" = "YES" ] || { echo "Restore is destructive. Set AMARKTAI_CONFIRM_RESTORE=YES explicitly." >&2; exit 2; }
 [ -f .env ] || { echo ".env is missing." >&2; exit 1; }
+sh deploy/webdock/use-persistent-state.sh
 
 SQL_BACKUP="$1"
 FILES_BACKUP="${2:-}"
@@ -53,6 +54,7 @@ if [ -n "$FILES_BACKUP" ]; then
   tar -xzf "$FILES_BACKUP" -C deploy/webdock
 fi
 
+AMARKTAI_DEPLOY_PROFILE="$PROFILE" sh deploy/webdock/align-runtime-state.sh
 $COMPOSE up -d --remove-orphans
 AMARKTAI_DEPLOY_PROFILE="$PROFILE" sh deploy/webdock/smoke-test.sh
 printf 'RESTORE=PASS\nDatabase=%s\nProfile=%s\n' "$SQL_BACKUP" "$PROFILE"
