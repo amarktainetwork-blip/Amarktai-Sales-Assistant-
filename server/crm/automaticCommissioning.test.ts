@@ -262,6 +262,16 @@ describe("automatic CRM commissioning product contract", () => {
     ).toBe(false);
   });
 
+  it("upgrades the current Genie activity navigation independently of other proven operations", () => {
+    const service = readFileSync(
+      new URL("./automaticCommissioning.ts", import.meta.url),
+      "utf8"
+    );
+    expect(service).toContain('operationKey === "activity.sync"');
+    expect(service).toContain("activityNavigationVersion !== 2");
+    expect(service).toContain("activityNavigationVersion: 2");
+  });
+
   it("lets the canonical Genie pack recover a failed automatic semantic replacement without overwriting tenant work", () => {
     expect(
       shouldInstallCanonicalGenieOperation({
