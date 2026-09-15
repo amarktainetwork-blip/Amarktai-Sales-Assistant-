@@ -51,19 +51,24 @@ describe("client handover acceptance guards", () => {
     );
   });
 
-  it("puts Outlook before read-only CRM commissioning", () => {
+  it("puts CRM before the personal email choice and keeps commissioning read-only", () => {
     expect(onboarding).toContain(
-      '["Business", "Learn", "Email", "CRM", "Ready"]'
+      '["Business", "Learn", "CRM", "Email", "Ready"]'
     );
-    expect(onboarding).toContain("/api/mailbox/microsoft/start");
+    expect(onboarding).not.toContain("STEP 3 · YOUR OUTLOOK MAILBOX");
+    expect(onboarding).toContain("to receive your email from Genie or Outlook");
     expect(compact(onboarding)).toContain("allowedWriteCapabilities: []");
   });
 
-  it("lets owners finish shared CRM learning without claiming a salesperson identity", () => {
+  it("keeps shared CRM commissioning separate and requires identity for an individual owner", () => {
     expect(crm).toContain("AmarktAI is learning");
     expect(crm).not.toContain("!crmIdentityMapped");
     expect(crm).not.toContain("<CrmIdentitySetup");
     expect(memberOnboarding).toContain('snapshot?.role === "salesperson"');
+    expect(memberOnboarding).toContain('snapshot?.role === "owner"');
+    expect(memberOnboarding).toContain(
+      'snapshot.company.workspaceMode === "individual"'
+    );
     expect(memberOnboarding).toContain("/api/team/crm-identity");
   });
 

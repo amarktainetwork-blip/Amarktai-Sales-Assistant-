@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   exactMappedIdentityRows,
   memberCompanySetupComplete,
+  personalCrmIdentityRequired,
 } from "./userOnboardingRoutes";
 
 describe("member handover company readiness", () => {
@@ -21,6 +22,38 @@ describe("member handover company readiness", () => {
     { storedComplete: true, companyKnowledgeReady: true, crmConnected: false },
   ])("still fails closed when shared setup is incomplete: %o", input => {
     expect(memberCompanySetupComplete(input)).toBe(false);
+  });
+});
+
+describe("personal CRM identity timing", () => {
+  it("does not require an individual owner identity before company CRM setup exists", () => {
+    expect(
+      personalCrmIdentityRequired({
+        role: "owner",
+        workspaceMode: "individual",
+        companyComplete: false,
+      })
+    ).toBe(false);
+  });
+
+  it("requires an individual owner identity after company CRM setup completes", () => {
+    expect(
+      personalCrmIdentityRequired({
+        role: "owner",
+        workspaceMode: "individual",
+        companyComplete: true,
+      })
+    ).toBe(true);
+  });
+
+  it("continues to require a salesperson identity", () => {
+    expect(
+      personalCrmIdentityRequired({
+        role: "salesperson",
+        workspaceMode: "team",
+        companyComplete: true,
+      })
+    ).toBe(true);
   });
 });
 

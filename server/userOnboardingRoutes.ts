@@ -77,6 +77,19 @@ export function memberCompanySetupComplete(input: {
   );
 }
 
+export function personalCrmIdentityRequired(input: {
+  role: "owner" | "manager" | "salesperson" | "auditor";
+  workspaceMode: string | null;
+  companyComplete: boolean;
+}) {
+  return (
+    input.role === "salesperson" ||
+    (input.role === "owner" &&
+      input.workspaceMode === "individual" &&
+      input.companyComplete)
+  );
+}
+
 function cleanPersona(
   value: unknown
 ): MemberOnboardingState["persona"] | undefined {
@@ -438,7 +451,12 @@ export function registerUserOnboardingRoutes(app: Express) {
 
       // Only a known salesperson mapping is a legitimate per-user blocker. CRM
       // sign-in itself happens naturally inside that user's private CRM browser.
-      if (membership.role === "salesperson" && !current.identity.mapped)
+      const personalSalesUser = personalCrmIdentityRequired({
+        role: membership.role,
+        workspaceMode: current.company.workspaceMode,
+        companyComplete: current.company.complete,
+      });
+      if (personalSalesUser && !current.identity.mapped)
         throw new Error("Confirm your salesperson identity in the CRM first.");
 
       const state = await updateMemberOnboardingState({

@@ -343,7 +343,13 @@ export async function updateOnboardingState(input: {
       membership: input.membership,
       step: 6,
       complete: true,
-      persona: input.membership.role === "owner" ? "company_owner" : "manager",
+      persona:
+        input.membership.role === "owner" &&
+        input.membership.settings.workspaceMode === "individual"
+          ? "individual"
+          : input.membership.role === "owner"
+            ? "company_owner"
+            : "manager",
       ...(actor?.name ? { preferredName: actor.name } : {}),
       crmCredentialsSaved: true,
     });
