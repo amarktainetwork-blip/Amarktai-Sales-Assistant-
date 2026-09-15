@@ -143,16 +143,13 @@ describe("canonical Genie provider pack", () => {
     expect(
       JSON.stringify(GENIE_PROVIDER_PACK.scripts.genie_pipeline_list)
     ).toContain("pipelineDropdDown-listview");
-    const activityScript = JSON.stringify(
-      GENIE_PROVIDER_PACK.scripts.genie_activity_sync
+    const activityScript = GENIE_PROVIDER_PACK.scripts.genie_activity_sync;
+    expect(JSON.stringify(activityScript)).toContain("conversations-layout");
+    expect(JSON.stringify(activityScript)).toContain(
+      "conversation-card-checkbox-"
     );
-    expect(activityScript).toContain("#conversations-list");
-    expect(activityScript).toContain("conversation-card-checkbox-");
-    expect(activityScript).not.toContain("ASSERT_LC_LEFTPANEL");
-    expect(activityScript).not.toContain("MESSAGE_DETAILS");
-    expect(
-      GENIE_PROVIDER_PACK.operationDefinitions?.["activity.sync"]?.prerequisites
-    ).toMatchObject({ activitySyncVersion: 2 });
+    expect(JSON.stringify(activityScript)).not.toContain("MESSAGE_DETAILS");
+    expect(JSON.stringify(activityScript)).not.toContain('"body"');
   });
 
   it("derives tenant verification targets rather than embedding customer data", () => {

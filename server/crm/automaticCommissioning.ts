@@ -1118,10 +1118,10 @@ export async function installKnownGeniePack(
         contactNavigation &&
         existing?.prerequisites?.knownGeniePack === true &&
         existing.prerequisites.contactNavigationVersion !== 2;
-      const activityUpgrade =
+      const activityNavigationUpgrade =
         operationKey === "activity.sync" &&
         existing?.prerequisites?.knownGeniePack === true &&
-        existing.prerequisites.activitySyncVersion !== 2;
+        existing.prerequisites.activityNavigationVersion !== 2;
       const providerPackUpgrade =
         existing?.prerequisites?.knownGeniePack === true &&
         packed.prerequisites?.providerPack === "genie" &&
@@ -1131,7 +1131,7 @@ export async function installKnownGeniePack(
         !shouldInstallCanonicalGenieOperation({
           existing,
           packedPrerequisites: packed.prerequisites,
-          navigationUpgrade: navigationUpgrade || activityUpgrade,
+          navigationUpgrade: navigationUpgrade || activityNavigationUpgrade,
           providerPackUpgrade,
         })
       ) {
@@ -1148,6 +1148,9 @@ export async function installKnownGeniePack(
           ...(packed.prerequisites || {}),
           knownGeniePack: true,
           ...(contactNavigation ? { contactNavigationVersion: 2 } : {}),
+          ...(operationKey === "activity.sync"
+            ? { activityNavigationVersion: 2 }
+            : {}),
         },
         targetAssertions: packed.targetAssertions || {},
         postconditionAssertions: (packed.postconditionAssertions ||

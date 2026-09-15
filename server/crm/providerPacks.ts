@@ -258,8 +258,10 @@ const scripts: BrowserProfile["scripts"] = {
       { action: "wait", value: "2000" },
       {
         action: "expect_visible",
-        selector: "#conversations-list",
+        selector: "#conversations-layout",
       },
+      { action: "click", selector: '[aria-label="All"]' },
+      { action: "wait", value: "500" },
       {
         action: "read_text",
         selector: '[aria-label="All"]',
@@ -397,7 +399,6 @@ export const GENIE_PROVIDER_PACK: Pick<
       prerequisites: {
         providerPack: "genie",
         providerPackVersion: GENIE_PROVIDER_PACK_VERSION,
-        activitySyncVersion: 2,
       },
     },
   },
