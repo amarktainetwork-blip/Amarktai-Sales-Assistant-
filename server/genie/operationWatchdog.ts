@@ -9,6 +9,7 @@ import { isTransientBrowserExecutionFailure } from "../browserConnectors/runtime
 import { loadConnectionSecret, toAdapterConnection } from "../connectedSystems";
 import { getDb } from "../db";
 import { attemptBoundedAutomaticRepairBatch } from "../crm/automaticCommissioning";
+import { connectedSystemHasActiveCommissioning } from "../crm/backgroundReadCommissioningGuard";
 import {
   GENIE_PROVIDER_PACK_VERSION,
   providerPackFingerprint,
@@ -97,6 +98,22 @@ export async function runGenieOperationWatchdog() {
   }> = [];
   let repairGenxCalls = 0;
   for (const system of systems) {
+    if (
+      await connectedSystemHasActiveCommissioning({
+        organisationId: system.organisationId,
+        connectedSystemId: system.id,
+      })
+    ) {
+      results.push({
+        connectedSystemId: system.id,
+        operationKey: "commissioning-active",
+        status: "retry_pending",
+        detail:
+          "CRM commissioning is active; background Genie drift checks are paused.",
+      });
+      continue;
+    }
+
     const affectedOperationKeys: string[] = [];
     const rows = await db
       .select()
