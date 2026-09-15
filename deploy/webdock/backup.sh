@@ -23,8 +23,8 @@ test -s "$SQL_DEST" || { rm -f "$SQL_DEST"; echo "Backup was empty; removed it."
 # Connector selectors/profile files and retained evidence live outside MariaDB.
 # They are deliberately owned by the unprivileged application UID and may not
 # be readable by the host deployment user. Stream the archive through the
-# running app container, which has read access to both bind mounts, without
-# widening host permissions. Never archive .env, deployment secrets, Caddy data
+# transient app container using the current Compose mounts, which has read
+# access to both bind mounts without widening host permissions. Never archive .env, deployment secrets, Caddy data
 # or database volumes.
 mkdir -p deploy/webdock/config deploy/webdock/files/connector-evidence
 $COMPOSE run --no-deps --rm -T --entrypoint sh app -eu -c '
