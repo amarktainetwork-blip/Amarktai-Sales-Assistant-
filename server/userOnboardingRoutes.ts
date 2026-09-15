@@ -7,6 +7,7 @@ import {
   externalUserMappings,
 } from "../drizzle/schema";
 import {
+  getConnectedSystemForUser,
   listConnectedSystemsForUser,
   loadUserConnectionSecret,
   verifiedUserCrmScope,
@@ -14,6 +15,7 @@ import {
 import { getDb, getUserById, recordAudit } from "./db";
 import { requireLocalHttpContext } from "./httpAuth";
 import { getDelegatedMailboxStatus } from "./delegatedMailbox";
+import { genieSessionApiAdapter } from "./crm/genieSessionApi";
 import { browserOperationReadinessForSystem } from "./browserConnectors/learnedOperations";
 import { requestedBrowserReadCapabilitiesReady } from "./browserConnectors/operationContracts";
 import {
@@ -30,6 +32,15 @@ function sendError(res: Response, error: unknown) {
     return res
       .status(403)
       .json({ error: "Second-factor verification is required." });
+  if (detail.startsWith("CRM_IDENTITY_REFRESH_SIGN_IN_REQUIRED"))
+    return res.status(409).json({
+      error: "Open Genie and sign in again, then refresh your CRM identity.",
+    });
+  if (detail.startsWith("CRM_IDENTITY_EXACT_MATCH_NOT_FOUND"))
+    return res.status(409).json({
+      error:
+        "We could not find exactly one Genie user with the same email as your AmarktAI account. Check the email used in Genie, then try again.",
+    });
   console.error(
     JSON.stringify({
       event: "user_onboarding_error",
@@ -158,6 +169,130 @@ async function identityState(input: {
     current,
     candidates,
   };
+}
+
+export function exactDiscoveredCrmIdentityCandidates<
+  T extends { externalId: string; displayName: string; email?: string },
+>(input: { users: T[]; accountEmail: string | null | undefined }) {
+  const accountEmail = input.accountEmail?.trim().toLowerCase();
+  if (!accountEmail) return [] as T[];
+  return input.users.filter(
+    user => user.email?.trim().toLowerCase() === accountEmail
+  );
+}
+
+async function refreshCrmIdentityCandidates(input: {
+  userId: number;
+  organisationId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const user = await getUserById(input.userId);
+  const accountEmail = user?.email?.trim().toLowerCase();
+  if (!accountEmail)
+    throw new Error(
+      "CRM_IDENTITY_EXACT_MATCH_NOT_FOUND: AmarktAI account email is unavailable."
+    );
+
+  const systems = await listConnectedSystemsForUser(
+    input.userId,
+    input.organisationId
+  );
+  const system = systems.find(
+    row =>
+      row.provider === "genie" &&
+      (row.connectionMethod === "browser" || row.connectionMethod === "sidecar")
+  );
+  if (!system)
+    throw new Error(
+      "CRM_IDENTITY_REFRESH_SIGN_IN_REQUIRED: Genie connection is unavailable."
+    );
+
+  const fullSystem = await getConnectedSystemForUser(
+    input.userId,
+    input.organisationId,
+    system.id
+  );
+  const secret = await loadUserConnectionSecret({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    connectedSystemId: system.id,
+    secretKind: "browser",
+  });
+  if (!secret?.browserSession)
+    throw new Error(
+      "CRM_IDENTITY_REFRESH_SIGN_IN_REQUIRED: authenticated Genie session is unavailable."
+    );
+
+  const discoverUsers = genieSessionApiAdapter.discoverUsers;
+  if (!discoverUsers)
+    throw new Error(
+      "CRM_IDENTITY_EXACT_MATCH_NOT_FOUND: Genie identity discovery is unavailable."
+    );
+  const discovered = await discoverUsers({
+    connection: {
+      id: fullSystem.id,
+      organisationId: fullSystem.organisationId,
+      provider: fullSystem.provider,
+      displayName: fullSystem.displayName,
+      baseUrl: fullSystem.baseUrl,
+      connectionMethod: fullSystem.connectionMethod,
+      allowedReadCapabilities: fullSystem.allowedReadCapabilities ?? [],
+      allowedWriteCapabilities: fullSystem.allowedWriteCapabilities ?? [],
+      verifiedCapabilities: fullSystem.verifiedCapabilities ?? [],
+      scopes: fullSystem.scopes ?? [],
+      configuration: fullSystem.configuration ?? {},
+    },
+    secret,
+  });
+  const exact = exactDiscoveredCrmIdentityCandidates({
+    users: discovered,
+    accountEmail,
+  });
+  if (exact.length !== 1)
+    throw new Error(
+      `CRM_IDENTITY_EXACT_MATCH_NOT_FOUND: expected one exact Genie identity match, received ${exact.length}.`
+    );
+
+  const candidate = exact[0];
+  if (!candidate.externalId?.trim() || !candidate.displayName?.trim())
+    throw new Error(
+      "CRM_IDENTITY_EXACT_MATCH_NOT_FOUND: Genie identity is incomplete."
+    );
+
+  await db
+    .insert(externalUserMappings)
+    .values({
+      organisationId: input.organisationId,
+      connectedSystemId: system.id,
+      userId: null,
+      externalUserId: candidate.externalId.trim().slice(0, 180),
+      displayName: candidate.displayName.trim().slice(0, 220),
+      email: accountEmail.slice(0, 320),
+      isActive: true,
+    })
+    .onDuplicateKeyUpdate({
+      set: {
+        displayName: candidate.displayName.trim().slice(0, 220),
+        email: accountEmail.slice(0, 320),
+        isActive: true,
+      },
+    });
+
+  await recordAudit({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    eventType: "crm_identity_candidate_refreshed",
+    entityType: "connected_system",
+    entityId: String(system.id),
+    summary:
+      "The signed-in CRM identity was refreshed for onboarding confirmation.",
+    metadata: {
+      provider: system.provider,
+      exactEmailMatch: true,
+    },
+  });
+  return identityState(input);
 }
 
 async function confirmedCompanyProfile(organisationId: number) {
@@ -375,6 +510,19 @@ export function registerUserOnboardingRoutes(app: Express) {
     try {
       const { userId, membership } = await requireLocalHttpContext(req);
       return res.json(await snapshotWithMembership({ userId, membership }));
+    } catch (error) {
+      return sendError(res, error);
+    }
+  });
+
+  app.post("/api/user-onboarding/refresh-crm-identity", async (req, res) => {
+    try {
+      const { userId, membership } = await requireLocalHttpContext(req);
+      const identity = await refreshCrmIdentityCandidates({
+        userId,
+        organisationId: membership.organisationId,
+      });
+      return res.json({ ok: true, identity });
     } catch (error) {
       return sendError(res, error);
     }

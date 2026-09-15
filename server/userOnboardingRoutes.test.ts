@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  exactDiscoveredCrmIdentityCandidates,
   exactMappedIdentityRows,
   memberCompanySetupComplete,
   personalCrmIdentityRequired,
@@ -76,6 +77,39 @@ describe("personal email source choice", () => {
   });
 });
 
+
+describe("CRM identity refresh exact-email isolation", () => {
+  const discovered = [
+    {
+      externalId: "owner-1",
+      displayName: "Amelia De Beer",
+      email: "amelia@example.com",
+    },
+    {
+      externalId: "owner-2",
+      displayName: "Other User",
+      email: "other@example.com",
+    },
+  ];
+
+  it("keeps only the signed-in account's exact CRM email match", () => {
+    expect(
+      exactDiscoveredCrmIdentityCandidates({
+        users: discovered,
+        accountEmail: " AMELIA@example.com ",
+      })
+    ).toEqual([discovered[0]]);
+  });
+
+  it("returns no candidate when the signed-in account email does not match", () => {
+    expect(
+      exactDiscoveredCrmIdentityCandidates({
+        users: discovered,
+        accountEmail: "missing@example.com",
+      })
+    ).toEqual([]);
+  });
+});
 
 describe("salesperson CRM email identity isolation", () => {
   const rows = [

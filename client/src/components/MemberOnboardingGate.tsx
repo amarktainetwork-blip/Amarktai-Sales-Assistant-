@@ -187,6 +187,8 @@ export default function MemberOnboardingGate() {
   const [preferredName, setPreferredName] = useState("");
   const [primaryGoal, setPrimaryGoal] = useState("");
   const [workingStyle, setWorkingStyle] = useState("");
+  const [identityRefreshAttempted, setIdentityRefreshAttempted] =
+    useState(false);
 
   async function refresh() {
     try {
@@ -236,6 +238,9 @@ export default function MemberOnboardingGate() {
       snapshot?.mailbox.source === "genie" &&
       snapshot.mailbox.genie.requiresCrmSignIn
   );
+  const identityCrmSignInAllowed = Boolean(
+    pathname.startsWith("/crm") && needsIdentity
+  );
 
   const shouldBlock = useMemo(() => {
     if (loading) return true;
@@ -249,7 +254,8 @@ export default function MemberOnboardingGate() {
       return true;
     if (
       snapshot.company.complete &&
-      (needsIdentity || (needsMailbox && !genieSignInAllowed))
+      ((needsIdentity && !identityCrmSignInAllowed) ||
+        (needsMailbox && !genieSignInAllowed))
     )
       return true;
     return false;
@@ -261,14 +267,29 @@ export default function MemberOnboardingGate() {
     needsIdentity,
     needsMailbox,
     genieSignInAllowed,
+    identityCrmSignInAllowed,
   ]);
 
   useEffect(() => {
     const route = document.getElementById("workspace-route");
     if (!route) return;
     route.inert = shouldBlock;
-    return () => { route.inert = false; };
+    return () => {
+      route.inert = false;
+    };
   }, [shouldBlock]);
+
+  useEffect(() => {
+    if (
+      !snapshot ||
+      !needsIdentity ||
+      snapshot.identity.candidates.length > 0 ||
+      identityRefreshAttempted
+    )
+      return;
+    setIdentityRefreshAttempted(true);
+    void refreshIdentity();
+  }, [snapshot, needsIdentity, identityRefreshAttempted]);
 
   if (!shouldBlock) return null;
 
@@ -294,6 +315,26 @@ export default function MemberOnboardingGate() {
         cause instanceof Error
           ? cause.message
           : "Your onboarding details were not saved."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function refreshIdentity() {
+    try {
+      setSaving(true);
+      setError("");
+      await api("/api/user-onboarding/refresh-crm-identity", {
+        method: "POST",
+        body: "{}",
+      });
+      await refresh();
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Your CRM identity could not be refreshed."
       );
     } finally {
       setSaving(false);
@@ -567,12 +608,41 @@ export default function MemberOnboardingGate() {
                     </button>
                   ))
                 ) : (
-                  <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
-                    {snapshot.role === "owner" &&
-                    snapshot.company.workspaceMode === "individual"
-                      ? "Finish the CRM sync first. Your CRM owner record must appear with the exact same email as your AmarktAI account before it can be linked."
-                      : "Your CRM salesperson identity has not been mapped yet. Ask your manager to link your CRM owner record to your AmarktAI account."}
-                  </p>
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
+                    <p>
+                      {snapshot.role === "owner" &&
+                      snapshot.company.workspaceMode === "individual"
+                        ? "We have not matched your signed-in Genie user to your AmarktAI account yet. We will only show a CRM identity when the email matches exactly."
+                        : "Your CRM salesperson identity has not been mapped yet. Refresh the CRM identity list or ask your manager to link your CRM owner record."}
+                    </p>
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      <Button
+                        type="button"
+                        disabled={saving}
+                        onClick={() => void refreshIdentity()}
+                        className={blueButton}
+                      >
+                        {saving ? (
+                          <Loader2 className="mr-2 size-4 animate-spin" />
+                        ) : null}
+                        Refresh my CRM identity
+                      </Button>
+                      {snapshot.personalCrm[0]?.id ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={saving}
+                          onClick={() =>
+                            window.location.assign(
+                              `/crm/${snapshot.personalCrm[0].id}`
+                            )
+                          }
+                        >
+                          Open Genie
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
                 )}
               </div>
             </>
