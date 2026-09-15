@@ -190,7 +190,10 @@ export async function executeOwnerScopedGenieContactRead(input: {
     const navigation: SavedBrowserScript = {
       ...input.script,
       steps: input.script.steps.filter(
-        step => !["read_rows", "paginate_rows"].includes(step.action)
+        step =>
+          !["expect_visible", "read_rows", "paginate_rows"].includes(
+            step.action
+          )
       ),
     };
     const firstPagePromise = waitForContactPage(input.page, owner);
