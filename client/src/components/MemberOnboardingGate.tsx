@@ -218,7 +218,10 @@ export default function MemberOnboardingGate() {
   }, []);
 
   const needsIdentity = Boolean(
-    snapshot?.role === "salesperson" && !snapshot.identity.mapped
+    !snapshot?.identity.mapped &&
+      (snapshot?.role === "salesperson" ||
+        (snapshot?.role === "owner" &&
+          snapshot.company.workspaceMode === "individual"))
   );
   const needsMailbox = Boolean(
     snapshot?.company.complete &&
@@ -565,9 +568,10 @@ export default function MemberOnboardingGate() {
                   ))
                 ) : (
                   <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
-                    Your CRM salesperson identity has not been mapped yet. Ask
-                    your manager to link your CRM owner record to your AmarktAI
-                    account.
+                    {snapshot.role === "owner" &&
+                    snapshot.company.workspaceMode === "individual"
+                      ? "Finish the CRM sync first. Your CRM owner record must appear with the exact same email as your AmarktAI account before it can be linked."
+                      : "Your CRM salesperson identity has not been mapped yet. Ask your manager to link your CRM owner record to your AmarktAI account."}
                   </p>
                 )}
               </div>

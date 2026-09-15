@@ -11,7 +11,6 @@ import {
   Check,
   Globe2,
   Loader2,
-  Mail,
   Network,
   RefreshCw,
   Users,
@@ -33,16 +32,6 @@ type ProviderOption = {
   label: string;
   url: string;
   method: "browser" | "oauth";
-};
-
-type MailboxStatus = {
-  configured: boolean;
-  connected: boolean;
-  mailbox: null | {
-    email: string;
-    displayName?: string | null;
-    status: string;
-  };
 };
 
 const providers: ProviderOption[] = [
@@ -222,13 +211,9 @@ export default function Onboarding() {
   });
   const [provider, setProvider] = useState<ProviderOption>(providers[0]);
   const profileHydrated = useRef(false);
-  const [mailboxError, setMailboxError] = useState("");
   const [editingBusiness, setEditingBusiness] = useState(false);
   const [customUrl, setCustomUrl] = useState("");
   const [error, setError] = useState("");
-  const [mailboxStatus, setMailboxStatus] = useState<MailboxStatus | null>(
-    null
-  );
 
   const canManage =
     organisation.data?.role === "owner" ||
@@ -238,41 +223,6 @@ export default function Onboarding() {
     const mode = organisation.data?.settings?.workspaceMode;
     if (mode === "individual" || mode === "team") setWorkspaceMode(mode);
   }, [organisation.data?.settings?.workspaceMode]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const loadMailbox = async () => {
-      try {
-        const response = await fetch("/api/mailbox", {
-          credentials: "include",
-          signal: AbortSignal.timeout(15000),
-        });
-        if (cancelled) return;
-        if (!response.ok)
-          throw new Error("Mailbox status could not be checked.");
-        const body = (await response
-          .json()
-          .catch(() => null)) as MailboxStatus | null;
-        if (!body || typeof body.connected !== "boolean")
-          throw new Error("Mailbox status could not be checked.");
-        if (!cancelled) {
-          setMailboxStatus(body);
-          setMailboxError("");
-        }
-      } catch {
-        if (!cancelled)
-          setMailboxError(
-            "Mailbox status is unavailable. We’ll try again shortly."
-          );
-      }
-    };
-    void loadMailbox();
-    const timer = window.setInterval(() => void loadMailbox(), 4_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, []);
 
   useEffect(() => {
     const saved = setup.data?.profile;
@@ -297,7 +247,13 @@ export default function Onboarding() {
     setup.data?.profile?.discoveryStatus === "confirmed";
   const connectedSystems = systems.data ?? [];
   const crmConnected = connectedSystems.length > 0;
-  const mailboxConnected = Boolean(mailboxStatus?.connected);
+  const onboardingState = organisation.data?.settings?.onboarding;
+  const companySetupComplete = Boolean(
+    onboardingState &&
+      typeof onboardingState === "object" &&
+      !Array.isArray(onboardingState) &&
+      (onboardingState as { complete?: unknown }).complete === true
+  );
   const learningRunning = ["queued", "running"].includes(
     learning.data?.status || ""
   );
@@ -316,16 +272,17 @@ export default function Onboarding() {
   const step = useMemo(() => {
     if (editingBusiness || !workspaceMode || !profileSaved) return 1;
     if (!knowledgeConfirmed) return 2;
-    if (!mailboxConnected) return 3;
-    if (!crmConnected) return 4;
+    if (!crmConnected || !companySetupComplete) return 3;
+    // Once CRM commissioning completes, MemberOnboardingGate owns the
+    // personal identity + Genie/Outlook email choice before the workspace opens.
     return 5;
   }, [
     editingBusiness,
     workspaceMode,
     profileSaved,
     knowledgeConfirmed,
-    mailboxConnected,
     crmConnected,
+    companySetupComplete,
   ]);
 
   async function chooseMode(mode: "individual" | "team") {
@@ -414,7 +371,7 @@ export default function Onboarding() {
         allowedWriteCapabilities: [],
       });
       await systems.refetch();
-      await updateOnboarding.mutateAsync({ step: 4 });
+      await updateOnboarding.mutateAsync({ step: 3 });
       if (provider.method === "oauth") {
         const result = await beginOAuth.mutateAsync({
           organisationId,
@@ -487,7 +444,7 @@ export default function Onboarding() {
       </SetupShell>
     );
 
-  const labels = ["Business", "Learn", "Email", "CRM", "Ready"];
+  const labels = ["Business", "Learn", "CRM", "Email", "Ready"];
 
   return (
     <SetupShell wide>
@@ -791,52 +748,7 @@ export default function Onboarding() {
       {step === 3 ? (
         <section className="mt-7">
           <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#35516F]">
-            STEP 3 · YOUR OUTLOOK MAILBOX
-          </p>
-          <h3 className="mt-2 text-2xl font-bold tracking-[-.035em] text-[#203047]">
-            Connect your email.
-          </h3>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-[#607086]">
-            Connect Microsoft Outlook with the existing secure sign-in. AmarktAI
-            uses your own mailbox for customer context and reviewed follow-ups;
-            connecting it does not send anything.
-          </p>
-          {mailboxError ? (
-            <p role="alert" className="mt-4 text-sm text-amber-800">
-              {mailboxError}
-            </p>
-          ) : null}
-          {mailboxStatus?.configured === false ? (
-            <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-              Microsoft mailbox connection is not configured on this
-              installation yet.
-            </div>
-          ) : null}
-          <Button
-            className="mt-5"
-            disabled={
-              !mailboxStatus ||
-              Boolean(mailboxError) ||
-              mailboxStatus.configured === false
-            }
-            onClick={() =>
-              window.location.assign("/api/mailbox/microsoft/start")
-            }
-          >
-            <Mail className="mr-2 h-4 w-4" /> Connect Outlook
-          </Button>
-          {mailboxStatus?.connected && mailboxStatus.mailbox ? (
-            <p className="mt-3 text-sm font-semibold text-emerald-700">
-              Connected as {mailboxStatus.mailbox.email}
-            </p>
-          ) : null}
-        </section>
-      ) : null}
-
-      {step === 4 ? (
-        <section className="mt-7">
-          <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#35516F]">
-            STEP 4 · YOUR CRM
+            STEP 3 · YOUR CRM
           </p>
           <h3 className="mt-2 text-2xl font-bold tracking-[-.035em] text-[#203047]">
             Connect the CRM your team already uses.
@@ -846,55 +758,78 @@ export default function Onboarding() {
             AmarktAI will use that connection to bring your customers, tasks and
             opportunities into the daily workspace.
           </p>
-          <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {providers.map(option => (
-              <button
-                key={option.provider}
-                type="button"
-                onClick={() => {
-                  setProvider(option);
-                  setError("");
-                }}
-                className={`rounded-2xl border p-4 text-left transition ${
-                  provider.provider === option.provider
-                    ? "border-[#2F6FED] bg-white shadow-sm"
-                    : "border-[#C9D3DF] bg-[#F7F9FC] hover:border-[#AFC3E8] hover:bg-white"
-                }`}
+          {crmConnected ? (
+            <div className="mt-6 rounded-2xl border border-[#C9D3DF] bg-[#F7F9FC] p-5">
+              <p className="font-bold text-[#26354A]">
+                {connectedSystems[0]?.displayName || "CRM"} is connected.
+              </p>
+              <p className="mt-2 text-sm leading-6 text-[#607086]">
+                Finish the secure CRM sign-in and commissioning first. Once the
+                CRM proves the correct user identity, AmarktAI will ask whether
+                to receive your email from Genie or Outlook.
+              </p>
+              <Button
+                className="mt-5"
+                onClick={() => navigate(`/crm/${connectedSystems[0]?.id}`)}
               >
-                <p className="font-bold">{option.label}</p>
-                <p className="mt-1 text-xs text-[#718096]">
-                  {option.method === "browser"
-                    ? "Secure CRM workspace"
-                    : "Connect your account securely"}
-                </p>
-              </button>
-            ))}
-          </div>
-          {provider.provider === "custom_browser" ? (
-            <Input
-              value={customUrl}
-              onChange={event => setCustomUrl(event.target.value)}
-              placeholder="https://crm.yourcompany.com"
-              aria-label="CRM address"
-              className="mt-4 max-w-xl"
-            />
-          ) : null}
-          <Button
-            className="mt-5"
-            disabled={
-              createConnection.isPending ||
-              beginOAuth.isPending ||
-              (provider.provider === "custom_browser" && !customUrl.trim())
-            }
-            onClick={() => void connectCrm()}
-          >
-            {createConnection.isPending ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Network className="mr-2 h-4 w-4" />
-            )}
-            Connect {provider.label}
-          </Button>
+                <Network className="mr-2 h-4 w-4" />
+                Open {connectedSystems[0]?.displayName || "CRM"} and finish setup
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
+          ) : (
+            <>
+              <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {providers.map(option => (
+                  <button
+                    key={option.provider}
+                    type="button"
+                    onClick={() => {
+                      setProvider(option);
+                      setError("");
+                    }}
+                    className={`rounded-2xl border p-4 text-left transition ${
+                      provider.provider === option.provider
+                        ? "border-[#2F6FED] bg-white shadow-sm"
+                        : "border-[#C9D3DF] bg-[#F7F9FC] hover:border-[#AFC3E8] hover:bg-white"
+                    }`}
+                  >
+                    <p className="font-bold">{option.label}</p>
+                    <p className="mt-1 text-xs text-[#718096]">
+                      {option.method === "browser"
+                        ? "Secure CRM workspace"
+                        : "Connect your account securely"}
+                    </p>
+                  </button>
+                ))}
+              </div>
+              {provider.provider === "custom_browser" ? (
+                <Input
+                  value={customUrl}
+                  onChange={event => setCustomUrl(event.target.value)}
+                  placeholder="https://crm.yourcompany.com"
+                  aria-label="CRM address"
+                  className="mt-4 max-w-xl"
+                />
+              ) : null}
+              <Button
+                className="mt-5"
+                disabled={
+                  createConnection.isPending ||
+                  beginOAuth.isPending ||
+                  (provider.provider === "custom_browser" && !customUrl.trim())
+                }
+                onClick={() => void connectCrm()}
+              >
+                {createConnection.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Network className="mr-2 h-4 w-4" />
+                )}
+                Connect {provider.label}
+              </Button>
+            </>
+          )}
         </section>
       ) : null}
 

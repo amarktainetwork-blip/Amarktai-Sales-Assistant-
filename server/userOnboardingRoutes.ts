@@ -438,7 +438,11 @@ export function registerUserOnboardingRoutes(app: Express) {
 
       // Only a known salesperson mapping is a legitimate per-user blocker. CRM
       // sign-in itself happens naturally inside that user's private CRM browser.
-      if (membership.role === "salesperson" && !current.identity.mapped)
+      const personalSalesUser =
+        membership.role === "salesperson" ||
+        (membership.role === "owner" &&
+          current.company.workspaceMode === "individual");
+      if (personalSalesUser && !current.identity.mapped)
         throw new Error("Confirm your salesperson identity in the CRM first.");
 
       const state = await updateMemberOnboardingState({
