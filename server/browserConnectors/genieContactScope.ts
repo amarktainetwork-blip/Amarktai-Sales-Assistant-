@@ -155,7 +155,7 @@ async function browserToken(page: Page) {
     );
   return token;
 }
-async function fetchOwnerScopedContactPage(input: {
+export async function fetchOwnerScopedContactPage(input: {
   page: Page;
   token: string;
   locationId: string;
@@ -163,15 +163,14 @@ async function fetchOwnerScopedContactPage(input: {
   pageNumber: number;
   searchAfter?: unknown;
 }) {
-  const response = await input.page.context().request.post(
-    CONTACT_SEARCH_URL,
-    {
+  const request = (token: string) =>
+    input.page.context().request.post(CONTACT_SEARCH_URL, {
       headers: {
         "content-type": "application/json",
         channel: "APP",
         source: "WEB_USER",
         version: "2021-07-28",
-        "token-id": input.token,
+        "token-id": token,
       },
       data: scopeGenieContactSearchBody(
         {
@@ -186,8 +185,14 @@ async function fetchOwnerScopedContactPage(input: {
         },
         input.ownerExternalId
       ),
-    }
-  );
+    });
+
+  let token = input.token;
+  let response = await request(token);
+  if (response.status() === 401) {
+    token = await browserToken(input.page);
+    response = await request(token);
+  }
   if (!response.ok())
     throw new Error(
       `GENIE_CONTACT_SEARCH_HTTP_ERROR: Contacts search returned HTTP ${response.status()}.`
@@ -196,6 +201,7 @@ async function fetchOwnerScopedContactPage(input: {
   return {
     ...normalizeGenieContactSearchPage(payload, input.ownerExternalId),
     searchAfter: genieContactSearchAfter(payload),
+    token,
   };
 }
 export function ownerScopedGenieContactNavigation(
@@ -239,7 +245,7 @@ export async function executeOwnerScopedGenieContactRead(input: {
   );
   if (!execution.success) return execution;
 
-  const token = await browserToken(input.page);
+  let token = await browserToken(input.page);
   const locationId = contactLocationId(input.script, input.page);
   const byId = new Map<string, ReturnType<
     typeof normalizeGenieContactSearchPage
@@ -259,6 +265,7 @@ export async function executeOwnerScopedGenieContactRead(input: {
       pageNumber,
       searchAfter,
     });
+    token = pageResult.token;
     pagesRead = pageNumber;
     lastPageRecords = pageResult.records.length;
     if (total === undefined) total = pageResult.total;
