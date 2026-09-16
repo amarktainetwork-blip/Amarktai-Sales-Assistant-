@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   genieContactDrainIncomplete,
+  genieContactSearchAfter,
   normalizeGenieContactSearchPage,
   ownerScopedGenieContactNavigation,
   scopeGenieContactSearchBody,
@@ -69,6 +70,18 @@ describe("Genie owner-scoped contact search", () => {
         },
       ],
     });
+  });
+
+  it("uses the last contact sort value as the next searchAfter cursor", () => {
+    expect(
+      genieContactSearchAfter({
+        contacts: [
+          { id: "contact-1", sort: ["2026-09-16T08:00:00Z", "contact-1"] },
+          { id: "contact-2", sort: ["2026-09-16T09:00:00Z", "contact-2"] },
+        ],
+      })
+    ).toEqual(["2026-09-16T09:00:00Z", "contact-2"]);
+    expect(genieContactSearchAfter({ contacts: [] })).toBeUndefined();
   });
 
   it("keeps only exact-owner structured contacts", () => {

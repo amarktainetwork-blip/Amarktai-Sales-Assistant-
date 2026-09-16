@@ -833,11 +833,40 @@ function isGenieTaskGridResponse(urlText: string) {
   }
 }
 
-async function waitForGenieTaskGridPage(page: Page) {
+export function genieTaskGridBodyContainsOwner(
+  value: unknown,
+  ownerExternalId: string
+) {
+  const owner = ownerExternalId.trim();
+  if (!owner) return true;
+  try {
+    return JSON.stringify(value).includes(owner);
+  } catch {
+    return false;
+  }
+}
+
+async function waitForGenieTaskGridPage(
+  page: Page,
+  ownerExternalId = ""
+) {
   const response = await page.waitForResponse(
-    candidate =>
-      candidate.request().method() === "POST" &&
-      isGenieTaskGridResponse(candidate.url()),
+    candidate => {
+      if (
+        candidate.request().method() !== "POST" ||
+        !isGenieTaskGridResponse(candidate.url())
+      )
+        return false;
+      if (!ownerExternalId) return true;
+      try {
+        return genieTaskGridBodyContainsOwner(
+          candidate.request().postDataJSON(),
+          ownerExternalId
+        );
+      } catch {
+        return false;
+      }
+    },
     { timeout: 30_000 }
   );
   if (response.status() < 200 || response.status() >= 300)
@@ -1002,7 +1031,10 @@ async function executeGenieTaskGridRead(input: {
       "execute-owner-navigation"
     );
     if (!execution.success) return execution;
-    const firstPagePromise = waitForGenieTaskGridPage(input.page);
+    const firstPagePromise = waitForGenieTaskGridPage(
+      input.page,
+      ownerExternalId
+    );
     await applyGenieTaskOwnerFilter({
       page: input.page,
       ownerExternalId,
@@ -1024,7 +1056,6 @@ async function executeGenieTaskGridRead(input: {
   const byId = new Map(
     firstPage.records.map(record => [record.externalId, record] as const)
   );
-  const total = firstPage.total;
   const configuredMaxPages = Math.max(
     1,
     Math.min(Number(paginate.maxPages || 1), 100)
@@ -1036,34 +1067,54 @@ async function executeGenieTaskGridRead(input: {
       "GENIE_TASK_GRID_INVALID: canonical task sync has no reviewed next-page selector."
     );
 
+  let ownerDrainComplete = maxPages === 1;
   for (let pageNumber = 1; pageNumber < maxPages; pageNumber += 1) {
-    if (total !== undefined && byId.size >= total) break;
     input.assertControl();
     const next = input.page.locator(nextSelector).first();
-    if ((await next.count()) === 0) break;
+    if ((await next.count()) === 0) {
+      ownerDrainComplete = true;
+      break;
+    }
     const disabled =
       (await next.isDisabled().catch(() => false)) ||
       (await next.getAttribute("aria-disabled")) === "true" ||
       (await next.getAttribute("disabled")) !== null;
-    if (disabled) break;
-    const nextPagePromise = waitForGenieTaskGridPage(input.page);
+    if (disabled) {
+      ownerDrainComplete = true;
+      break;
+    }
+    const nextPagePromise = waitForGenieTaskGridPage(
+      input.page,
+      ownerExternalId
+    );
     const [, rawNextPage] = await Promise.all([next.click(), nextPagePromise]);
     const nextPage = assertGenieTaskOwnerPage(
       rawNextPage,
       ownerExternalId
     );
-    if (!nextPage.records.length) break;
+    if (!nextPage.records.length) {
+      ownerDrainComplete = true;
+      break;
+    }
     for (const record of nextPage.records)
       byId.set(record.externalId, record);
   }
 
-  if (ownerExternalId && total !== undefined && byId.size < total)
-    throw new Error(
-      `CRM_SYNC_PAGE_LIMIT_REACHED: owner-scoped Genie task search still has records after the bounded browser drain (${byId.size}/${total}).`
-    );
+  if (ownerExternalId && !ownerDrainComplete) {
+    const next = input.page.locator(nextSelector).first();
+    const stillHasNext =
+      (await next.count()) > 0 &&
+      !(await next.isDisabled().catch(() => false)) &&
+      (await next.getAttribute("aria-disabled")) !== "true" &&
+      (await next.getAttribute("disabled")) === null;
+    if (stillHasNext)
+      throw new Error(
+        `CRM_SYNC_PAGE_LIMIT_REACHED: owner-scoped Genie task search still has records after the bounded browser drain (${byId.size} collected).`
+      );
+  }
 
   execution.data.records = JSON.stringify(Array.from(byId.values()));
-  if (total === 0)
+  if (byId.size === 0)
     execution.data.collectionEvidence =
       "Owner-scoped Genie Tasks grid verified zero records.";
   else if (byId.size)
