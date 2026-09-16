@@ -1,3 +1,5 @@
+import { formatOrganisationDate } from "../shared/organisationWorkspace";
+import { getOrganisationWorkspaceContext } from "./organisationWorkspace";
 import type { Express, Response } from "express";
 import {
   createWorkflowRun,
@@ -76,16 +78,14 @@ function customerMessage(error: unknown) {
   return "I couldn't complete that request just now. Nothing was changed. Please try again.";
 }
 
-function dateLabel(value: unknown) {
+function dateLabel(
+  value: unknown,
+  org: { locale?: string; timezone?: string } = {}
+) {
   if (!value) return "no due time";
   const date = value instanceof Date ? value : new Date(String(value));
   if (Number.isNaN(date.valueOf())) return "due date unavailable";
-  return date.toLocaleString("en-ZA", {
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatOrganisationDate(date, org);
 }
 
 function listLines<T>(
@@ -153,9 +153,10 @@ export function deterministicTodayAnswer(
 
   if (/overdue.*task|task.*overdue|what.*overdue|late task/.test(normalized)) {
     const items = tasksMentionedByQuery(query, today.queues.overdueTasks);
+    const total = today.taskData?.metrics.overdue ?? items.length;
     return {
       content: items.length
-        ? `You have ${items.length} overdue CRM task${items.length === 1 ? "" : "s"}.\n\n${listLines(items, item => `• ${item.title} — ${dateLabel(item.dueAt)}`)}${items.length > 8 ? `\n\nAnd ${items.length - 8} more.` : ""}`
+        ? `You have ${total} overdue CRM task${total === 1 ? "" : "s"}.\n\n${listLines(items, item => `• ${item.title} — ${dateLabel(item.dueAt, today.workspace?.organisation)}`)}${total > Math.min(items.length, 8) ? `\n\nShowing ${Math.min(items.length, 8)} matching tasks from this queue; open Today for more.` : ""}`
         : "You have no overdue CRM tasks right now.",
       suggestedAction: { label: "Open today's work", path: "/today" },
     };
@@ -163,9 +164,10 @@ export function deterministicTodayAnswer(
 
   if (/due today|today.*task|tasks? (?:for|due) today/.test(normalized)) {
     const items = tasksMentionedByQuery(query, today.queues.dueToday);
+    const total = today.taskData?.metrics.dueToday ?? items.length;
     return {
       content: items.length
-        ? `You have ${items.length} CRM task${items.length === 1 ? "" : "s"} due today.\n\n${listLines(items, item => `• ${item.title} — ${dateLabel(item.dueAt)}`)}${items.length > 8 ? `\n\nAnd ${items.length - 8} more.` : ""}`
+        ? `You have ${total} CRM task${total === 1 ? "" : "s"} due today.\n\n${listLines(items, item => `• ${item.title} — ${dateLabel(item.dueAt, today.workspace?.organisation)}`)}${total > Math.min(items.length, 8) ? `\n\nShowing ${Math.min(items.length, 8)} matching tasks from this queue; open Today for more.` : ""}`
         : "You have no CRM tasks due today.",
       suggestedAction: { label: "Open today's work", path: "/today" },
     };
@@ -178,7 +180,7 @@ export function deterministicTodayAnswer(
     const items = today.queues.callbacks;
     return {
       content: items.length
-        ? `You have ${items.length} callback${items.length === 1 ? "" : "s"} due.\n\n${listLines(items, item => `• ${item.leadLabel}: ${item.title} — ${dateLabel(item.dueAt)}`)}`
+        ? `You have ${items.length} callback${items.length === 1 ? "" : "s"} due.\n\n${listLines(items, item => `• ${item.leadLabel}: ${item.title} — ${dateLabel(item.dueAt, today.workspace?.organisation)}`)}`
         : "You have no callbacks due right now.",
       suggestedAction: { label: "Open today's work", path: "/today" },
     };
@@ -188,7 +190,7 @@ export function deterministicTodayAnswer(
     const items = today.queues.reminders;
     return {
       content: items.length
-        ? `You have ${items.length} reminder${items.length === 1 ? "" : "s"} due.\n\n${listLines(items, item => `• ${item.title} — ${dateLabel(item.dueAt)}`)}`
+        ? `You have ${items.length} reminder${items.length === 1 ? "" : "s"} due.\n\n${listLines(items, item => `• ${item.title} — ${dateLabel(item.dueAt, today.workspace?.organisation)}`)}`
         : "You have no reminders due right now.",
       suggestedAction: { label: "Open today's work", path: "/today" },
     };
@@ -512,9 +514,15 @@ export function registerAssistantRoutes(app: Express) {
       }
 
       if (
-        shouldUseDeterministicTodayAnswer({ query: latestUserMessage, contactId })
+        shouldUseDeterministicTodayAnswer({
+          query: latestUserMessage,
+          contactId,
+        })
       ) {
-        const deterministic = deterministicTodayAnswer(latestUserMessage, today);
+        const deterministic = deterministicTodayAnswer(
+          latestUserMessage,
+          today
+        );
         if (deterministic) {
           await recordAudit({
             userId,
@@ -625,6 +633,9 @@ export function registerAssistantRoutes(app: Express) {
             .join("\n\n---\n\n")
         : undefined;
       const workingContext = JSON.stringify({
+        workspace: await getOrganisationWorkspaceContext(
+          membership.organisationId
+        ),
         user: {
           firstName:
             membership.memberOnboarding.preferredName ||

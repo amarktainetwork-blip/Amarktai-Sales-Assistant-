@@ -200,3 +200,20 @@ describe("normalized sales work", () => {
     ).toBe("task-1");
   });
 });
+
+it("completed historical tasks never become current work and unknown state stays blocked", () => {
+  const records = ["completed", "unknown", "open"].map((status, i) => ({
+    externalId: String(i),
+    status,
+    title: "Task",
+    dueAt: new Date("2020-01-01"),
+    raw: {},
+  }));
+  const work = deriveCrmWorkCandidates(
+    8,
+    { type: "tasks", records },
+    new Date("2026-09-16")
+  );
+  expect(work.map(w => w.status)).toEqual(["completed", "blocked", "open"]);
+  expect(work.filter(w => w.status === "open")).toHaveLength(1);
+});

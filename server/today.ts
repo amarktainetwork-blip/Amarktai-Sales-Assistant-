@@ -1,3 +1,7 @@
+import { getTodayTaskData } from "./todayTaskData";
+import { getOrganisationWorkspaceContext } from "./organisationWorkspace";
+import { isIncompleteTask } from "../shared/taskState";
+import { personalOwnerSql } from "./customerData";
 import { and, desc, eq, isNull, lte, or } from "drizzle-orm";
 import {
   assistantReminders,
@@ -18,13 +22,8 @@ import {
   type ClientActionConfiguration,
 } from "./clientActionConfiguration";
 
-function dayEnd(now: Date) {
-  const end = new Date(now);
-  end.setHours(23, 59, 59, 999);
-  return end;
-}
 function isOpen(status: string) {
-  return !/completed|closed|done|cancelled/i.test(status);
+  return isIncompleteTask(status);
 }
 function ageDays(value?: Date | null, now = new Date()) {
   return value
@@ -117,9 +116,17 @@ export async function getTodayWork(input: {
   });
   const taskPriorityTitles = configuredTaskPriorityTitles(actionConfiguration);
   const now = new Date();
+  const workspace = await getOrganisationWorkspaceContext(input.organisationId);
+  const taskData = await getTodayTaskData({
+    ...input,
+    now,
+    timezone: workspace.organisation.timezone,
+    priorityTitles: taskPriorityTitles,
+    backlogPolicy: workspace.backlogPolicy,
+  });
+  const localDayEnd = new Date(taskData.bounds.endExclusive.getTime() - 1);
   const [
     mappings,
-    tasks,
     opportunities,
     contacts,
     syncJobs,
@@ -140,14 +147,17 @@ export async function getTodayWork(input: {
       ),
     db
       .select()
-      .from(crmTasks)
-      .where(eq(crmTasks.organisationId, input.organisationId))
-      .orderBy(desc(crmTasks.dueAt))
-      .limit(600),
-    db
-      .select()
       .from(crmOpportunities)
-      .where(eq(crmOpportunities.organisationId, input.organisationId))
+      .where(
+        and(
+          eq(crmOpportunities.organisationId, input.organisationId),
+          personalOwnerSql(
+            input,
+            crmOpportunities.connectedSystemId,
+            crmOpportunities.ownerExternalId
+          )
+        )
+      )
       .orderBy(desc(crmOpportunities.updatedAt))
       .limit(600),
     db
@@ -160,7 +170,16 @@ export async function getTodayWork(input: {
           eq(crmContacts.organisationId, input.organisationId)
         )
       )
-      .where(eq(connectedSystems.organisationId, input.organisationId))
+      .where(
+        and(
+          eq(connectedSystems.organisationId, input.organisationId),
+          personalOwnerSql(
+            input,
+            crmContacts.connectedSystemId,
+            crmContacts.ownerExternalId
+          )
+        )
+      )
       .orderBy(desc(crmContacts.createdAt))
       .limit(100),
     db
@@ -191,7 +210,18 @@ export async function getTodayWork(input: {
       .where(
         and(
           eq(inboundMessages.organisationId, input.organisationId),
-          eq(inboundMessages.needsAction, true)
+          eq(inboundMessages.needsAction, true),
+          or(
+            eq(inboundMessages.mailboxUserId, input.userId),
+            and(
+              isNull(inboundMessages.mailboxUserId),
+              personalOwnerSql(
+                input,
+                crmContacts.connectedSystemId,
+                crmContacts.ownerExternalId
+              )
+            )
+          )
         )
       )
       .orderBy(desc(inboundMessages.receivedAt))
@@ -207,7 +237,7 @@ export async function getTodayWork(input: {
             eq(assistantReminders.status, "open"),
             eq(assistantReminders.status, "snoozed")
           ),
-          lte(assistantReminders.dueAt, dayEnd(now))
+          lte(assistantReminders.dueAt, localDayEnd)
         )
       )
       .orderBy(desc(assistantReminders.dueAt))
@@ -220,7 +250,7 @@ export async function getTodayWork(input: {
           eq(callbackTasks.organisationId, input.organisationId),
           eq(callbackTasks.userId, input.userId),
           eq(callbackTasks.state, "open"),
-          lte(callbackTasks.dueAt, dayEnd(now))
+          lte(callbackTasks.dueAt, localDayEnd)
         )
       )
       .orderBy(desc(callbackTasks.dueAt))
@@ -231,6 +261,7 @@ export async function getTodayWork(input: {
       .where(
         and(
           eq(salesWorkItems.organisationId, input.organisationId),
+          eq(salesWorkItems.salespersonUserId, input.userId),
           or(
             eq(salesWorkItems.status, "open"),
             eq(salesWorkItems.status, "in_progress"),
@@ -262,11 +293,20 @@ export async function getTodayWork(input: {
         connectedSystemId &&
         ownerIds.has(`${connectedSystemId}:${ownerExternalId}`)
     );
-  const scopedTasks = tasks.filter(task =>
-    belongsToUser(task.ownerExternalId, task.connectedSystemId)
-  );
-  const scopedOpportunities = opportunities.filter(opportunity =>
-    belongsToUser(opportunity.ownerExternalId, opportunity.connectedSystemId)
+  const scopedTasks = [
+    ...taskData.queues.overdueTasks,
+    ...taskData.queues.dueToday,
+    ...taskData.queues.unscheduled,
+  ];
+  const scopedOpportunities = opportunities.filter(
+    opportunity =>
+      belongsToUser(
+        opportunity.ownerExternalId,
+        opportunity.connectedSystemId
+      ) &&
+      !/^(won|lost|abandoned|closed)$/i.test(
+        String(opportunity.raw?.status || "")
+      )
   );
   const newestLeads = contacts
     .map(row => row.contact)
@@ -278,16 +318,8 @@ export async function getTodayWork(input: {
     )
     .slice(0, 20);
   const openTasks = scopedTasks.filter(task => isOpen(task.status));
-  const overdueTasks = sortTasksByConfiguredPriority(
-    openTasks.filter(task => task.dueAt && task.dueAt < now),
-    taskPriorityTitles
-  );
-  const dueToday = sortTasksByConfiguredPriority(
-    openTasks.filter(
-      task => task.dueAt && task.dueAt >= now && task.dueAt <= dayEnd(now)
-    ),
-    taskPriorityTitles
-  );
+  const overdueTasks = taskData.queues.overdueTasks;
+  const dueToday = taskData.queues.dueToday;
   const staleOpportunities = scopedOpportunities.filter(opportunity => {
     const age = ageDays(opportunity.lastActivityAt, now);
     return age === null || age >= 7;
@@ -331,7 +363,7 @@ export async function getTodayWork(input: {
           task.opportunityExternalId === opportunity.externalId &&
           task.connectedSystemId === opportunity.connectedSystemId &&
           task.dueAt &&
-          task.dueAt <= dayEnd(now)
+          task.dueAt <= localDayEnd
       );
       const inboundForContact = currentInbound.filter(
         message =>
@@ -368,6 +400,8 @@ export async function getTodayWork(input: {
     .slice(0, 20);
   return {
     generatedAt: now,
+    workspace,
+    taskData,
     freshness: {
       status: syncJobs.some(job => job.status === "error")
         ? "attention"
@@ -395,8 +429,8 @@ export async function getTodayWork(input: {
     role: membership.role,
     requiresOwnerMapping: ownerIds.size === 0,
     metrics: {
-      dueToday: dueToday.length + reminders.length + callbacks.length,
-      overdue: overdueTasks.length,
+      dueToday: taskData.metrics.dueToday + reminders.length + callbacks.length,
+      overdue: taskData.metrics.overdue,
       staleOpportunities: staleOpportunities.length,
       noNextStep: noNextStep.length,
       priorityRecords: priority.length,

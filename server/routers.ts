@@ -1,3 +1,12 @@
+import {
+  listCustomerDirectory,
+  getExactCustomerDetail,
+  refreshExactCustomerHistory,
+} from "./customerData";
+import {
+  getOrganisationWorkspaceContext,
+  saveOrganisationWorkspaceConfiguration,
+} from "./organisationWorkspace";
 import { z } from "zod";
 import { parse as parseCookieHeader } from "cookie";
 import { TRPCError } from "@trpc/server";
@@ -1540,6 +1549,89 @@ export const appRouter = router({
       .mutation(({ ctx, input }) => {
         requireActiveOrganisationContext(ctx, input.organisationId);
         return transitionSalesWorkItem({ userId: ctx.user.id, ...input });
+      }),
+    configureWorkspace: secondFactorProcedure
+      .input(
+        z.object({
+          name: z.string().trim().min(1).max(180).optional(),
+          timezone: z.string().min(1),
+          locale: z.string().min(1),
+          currency: z.string().regex(/^[A-Z]{3}$/),
+          customerModel: z.enum([
+            "individual_consumer",
+            "account_business",
+            "hybrid",
+          ]),
+          businessModel: z.record(z.string(), z.string()).optional(),
+          customerFieldMappings: z
+            .array(
+              z.object({
+                sourceFieldId: z.string().min(1),
+                label: z.string().min(1),
+                kind: z.enum(["text", "number", "boolean", "date"]),
+                purpose: z.string().optional(),
+              })
+            )
+            .max(100)
+            .optional(),
+          backlogPolicy: z
+            .object({
+              mode: z.enum(["all_incomplete", "since"]),
+              actionableSince: z.string().optional(),
+            })
+            .optional(),
+        })
+      )
+      .mutation(({ ctx, input }) => {
+        if (!ctx.activeOrganisation) throw new Error("Choose an organisation.");
+        return saveOrganisationWorkspaceConfiguration({
+          ...input,
+          userId: ctx.user.id,
+          organisationId: ctx.activeOrganisation.organisationId,
+        });
+      }),
+    workspaceContext: secondFactorProcedure.query(({ ctx }) => {
+      if (!ctx.activeOrganisation) throw new Error("Choose an organisation.");
+      return getOrganisationWorkspaceContext(
+        ctx.activeOrganisation.organisationId
+      );
+    }),
+    customerDirectory: secondFactorProcedure
+      .input(
+        z.object({
+          page: z.number().int().min(1).default(1),
+          pageSize: z.number().int().min(1).max(100).default(50),
+          search: z.string().max(200).default(""),
+          sort: z.enum(["name", "updated"]).default("updated"),
+        })
+      )
+      .query(({ ctx, input }) => {
+        if (!ctx.activeOrganisation) throw new Error("Choose an organisation.");
+        return listCustomerDirectory({
+          userId: ctx.user.id,
+          organisationId: ctx.activeOrganisation.organisationId,
+          ...input,
+        });
+      }),
+    refreshCustomerHistory: secondFactorProcedure
+      .input(z.object({ contactId: z.number().int().positive() }))
+      .mutation(({ ctx, input }) => {
+        if (!ctx.activeOrganisation) throw new Error("Choose an organisation.");
+        return refreshExactCustomerHistory({
+          userId: ctx.user.id,
+          organisationId: ctx.activeOrganisation.organisationId,
+          ...input,
+        });
+      }),
+    customerDetail: secondFactorProcedure
+      .input(z.object({ contactId: z.number().int().positive() }))
+      .query(({ ctx, input }) => {
+        if (!ctx.activeOrganisation) throw new Error("Choose an organisation.");
+        return getExactCustomerDetail({
+          userId: ctx.user.id,
+          organisationId: ctx.activeOrganisation.organisationId,
+          ...input,
+        });
       }),
     customers: secondFactorProcedure.query(({ ctx }) => {
       if (!ctx.activeOrganisation)

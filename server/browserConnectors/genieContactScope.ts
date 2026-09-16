@@ -1,8 +1,5 @@
 import type { Page } from "playwright-core";
-import type {
-  BrowserScriptResult,
-  SavedBrowserScript,
-} from "./scriptEngine";
+import type { BrowserScriptResult, SavedBrowserScript } from "./scriptEngine";
 
 const CONTACT_SEARCH_URL =
   "https://backend.leadconnectorhq.com/contacts/search/2";
@@ -15,10 +12,7 @@ export function genieContactDrainIncomplete(input: {
   lastPageRecords: number;
   pagesRead: number;
 }) {
-  return (
-    input.pagesRead >= MAX_PAGES &&
-    input.lastPageRecords >= PAGE_LIMIT
-  );
+  return input.pagesRead >= MAX_PAGES && input.lastPageRecords >= PAGE_LIMIT;
 }
 
 function object(value: unknown): Record<string, unknown> {
@@ -50,10 +44,12 @@ function identity(value: unknown): string {
 function contactLocationId(script: SavedBrowserScript, page: Page) {
   const candidates = [
     page.url(),
-    ...script.steps.flatMap(step => [
-      typeof step.value === "string" ? step.value : "",
-      typeof step.fallbackUrl === "string" ? step.fallbackUrl : "",
-    ]).filter(Boolean),
+    ...script.steps
+      .flatMap(step => [
+        typeof step.value === "string" ? step.value : "",
+        typeof step.fallbackUrl === "string" ? step.fallbackUrl : "",
+      ])
+      .filter(Boolean),
   ];
   for (const raw of candidates) {
     const match = raw.match(/\/v2\/location\/([^/]+)/i);
@@ -76,9 +72,7 @@ export function scopeGenieContactSearchBody(
   const body = object(value);
   return {
     ...body,
-    filters: [
-      { field: "assigned_to", operator: "eq", value: owner },
-    ],
+    filters: [{ field: "assigned_to", operator: "eq", value: owner }],
   };
 }
 export function genieContactSearchAfter(value: unknown) {
@@ -128,6 +122,26 @@ export function normalizeGenieContactSearchPage(
       email: text(raw.email).toLowerCase(),
       phone: text(raw.phone),
       lifecycleStage: text(raw.type),
+      normalizedCustomerContext: JSON.stringify({
+        source: text(raw.source) || null,
+        tags: Array.isArray(raw.tags)
+          ? raw.tags.filter(v => typeof v === "string")
+          : [],
+        customFields: Object.fromEntries(
+          (Array.isArray(raw.customFields) ? raw.customFields : [])
+            .map(object)
+            .filter(f => typeof f.id === "string")
+            .map(f => [
+              f.id,
+              f.fieldValueString ??
+                f.fieldValueArray ??
+                f.fieldValueNumber ??
+                f.fieldValueBoolean ??
+                f.value ??
+                null,
+            ])
+        ),
+      }),
       sourceUpdatedAt: text(raw.dateUpdated || raw.updatedAt),
       sourceRevision: text(raw.dateUpdated || raw.updatedAt),
     };
@@ -137,9 +151,7 @@ export function normalizeGenieContactSearchPage(
   return {
     records,
     total:
-      Number.isFinite(totalValue) && totalValue >= 0
-        ? totalValue
-        : undefined,
+      Number.isFinite(totalValue) && totalValue >= 0 ? totalValue : undefined,
   };
 }
 
@@ -247,9 +259,10 @@ export async function executeOwnerScopedGenieContactRead(input: {
 
   let token = await browserToken(input.page);
   const locationId = contactLocationId(input.script, input.page);
-  const byId = new Map<string, ReturnType<
-    typeof normalizeGenieContactSearchPage
-  >["records"][number]>();
+  const byId = new Map<
+    string,
+    ReturnType<typeof normalizeGenieContactSearchPage>["records"][number]
+  >();
   let total: number | undefined;
   let pagesRead = 0;
   let lastPageRecords = 0;

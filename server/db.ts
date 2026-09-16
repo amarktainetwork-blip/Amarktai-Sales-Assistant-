@@ -457,84 +457,89 @@ export async function createWorkflowRun(input: {
     );
     if (newActions.length)
       await db.insert(actionProposals).values(
-      newActions.map((action, index) => {
-        const payload = action.payload as Record<string, unknown>;
-        const signature = automationDeduplicationSignature({
-          actionType: action.actionType,
-          targetLabel: action.targetLabel,
-          payload,
-        });
-        const duplicate = recentSignatures.has(signature);
-        recentSignatures.add(signature);
-        const manual = payload.automatedTrigger !== true;
-        const monitorKey =
-          typeof payload.monitorKey === "string"
-            ? payload.monitorKey
-            : undefined;
-        const triggerKey =
-          typeof payload.triggerKey === "string"
-            ? payload.triggerKey
-            : manual
-              ? "explicit_user_action"
+        newActions.map((action, index) => {
+          const payload = action.payload as Record<string, unknown>;
+          const signature = automationDeduplicationSignature({
+            actionType: action.actionType,
+            targetLabel: action.targetLabel,
+            payload,
+          });
+          const duplicate = recentSignatures.has(signature);
+          recentSignatures.add(signature);
+          const manual = payload.automatedTrigger !== true;
+          const monitorKey =
+            typeof payload.monitorKey === "string"
+              ? payload.monitorKey
               : undefined;
-        const policy = evaluateStoredAutomationPolicy(storedPolicy, {
-          phase: "proposal",
-          actionType: action.actionType,
-          manual,
-          monitorKey,
-          triggerKey,
-          userId: input.userId,
-          pipelineId:
-            String(payload.pipelineId || payload.pipeline || "") || undefined,
-          leadSource: String(payload.leadSource || "") || undefined,
-          channel: String(payload.channel || "") || undefined,
-          templateId:
-            String(payload.templateId || payload.templateName || "") ||
-            undefined,
-          attributes:
-            payload.conditions && typeof payload.conditions === "object"
-              ? (payload.conditions as Record<string, unknown>)
-              : {},
-          actionsInRun: index,
-          duplicate,
-          retryCount: Number(payload.retryCount || 0),
-        });
-        const routable =
-          (action.payload.crmRoute as { routable?: boolean } | undefined)
-            ?.routable !== false;
-        const allowed = routable && policy.allowedToCreate;
-        return {
-          userId: input.userId,
-          organisationId: input.organisationId,
-          workflowRunId,
-          actionType: action.actionType,
-          title: action.title,
-          targetLabel: action.targetLabel,
-          idempotencyKey: action.idempotencyKey,
-          payload: {
-            ...action.payload,
-            ...(monitorKey ? { monitorKey } : {}),
-            ...(triggerKey ? { triggerKey } : {}),
-            automatedTrigger: !manual,
-            automationPolicyDecision: {
-              outcome: policy.outcome,
-              detail: policy.detail,
-              evaluatedAt: new Date().toISOString(),
+          const triggerKey =
+            typeof payload.triggerKey === "string"
+              ? payload.triggerKey
+              : manual
+                ? "explicit_user_action"
+                : undefined;
+          const policy = evaluateStoredAutomationPolicy(storedPolicy, {
+            phase: "proposal",
+            actionType: action.actionType,
+            manual,
+            monitorKey,
+            triggerKey,
+            userId: input.userId,
+            pipelineId:
+              String(payload.pipelineId || payload.pipeline || "") || undefined,
+            leadSource: String(payload.leadSource || "") || undefined,
+            channel: String(payload.channel || "") || undefined,
+            templateId:
+              String(payload.templateId || payload.templateName || "") ||
+              undefined,
+            attributes:
+              payload.conditions && typeof payload.conditions === "object"
+                ? (payload.conditions as Record<string, unknown>)
+                : {},
+            actionsInRun: index,
+            duplicate,
+            retryCount: Number(payload.retryCount || 0),
+          });
+          const routable =
+            (action.payload.crmRoute as { routable?: boolean } | undefined)
+              ?.routable !== false;
+          const reviewOnlyDraft =
+            payload.draftOnly === true &&
+            payload.reviewRequired === true &&
+            payload.executionReady === false;
+          const allowed =
+            (routable || reviewOnlyDraft) && policy.allowedToCreate;
+          return {
+            userId: input.userId,
+            organisationId: input.organisationId,
+            workflowRunId,
+            actionType: action.actionType,
+            title: action.title,
+            targetLabel: action.targetLabel,
+            idempotencyKey: action.idempotencyKey,
+            payload: {
+              ...action.payload,
+              ...(monitorKey ? { monitorKey } : {}),
+              ...(triggerKey ? { triggerKey } : {}),
+              automatedTrigger: !manual,
+              automationPolicyDecision: {
+                outcome: policy.outcome,
+                detail: policy.detail,
+                evaluatedAt: new Date().toISOString(),
+              },
+              automationDeduplication: {
+                duplicate,
+                windowMinutes: deduplicationWindowMinutes,
+              },
             },
-            automationDeduplication: {
-              duplicate,
-              windowMinutes: deduplicationWindowMinutes,
-            },
-          },
-          state: (allowed ? "review_required" : "blocked") as
-            | "blocked"
-            | "review_required",
-          governanceState: allowed
-            ? ("READY_FOR_REVIEW" as const)
-            : ("NEEDS_ATTENTION" as const),
-        };
-      })
-    );
+            state: (allowed ? "review_required" : "blocked") as
+              | "blocked"
+              | "review_required",
+            governanceState: allowed
+              ? ("READY_FOR_REVIEW" as const)
+              : ("NEEDS_ATTENTION" as const),
+          };
+        })
+      );
   }
 
   await recordAudit({
@@ -612,7 +617,8 @@ export async function updateDelegatedEmailDraft(input: {
   if (
     !proposal ||
     !["send_email", "send_email_template"].includes(proposal.actionType) ||
-    route?.provider !== "microsoft_delegated"
+    (route?.provider !== "microsoft_delegated" &&
+      proposal.payload.draftOnly !== true)
   )
     throw new Error(
       "This personal mailbox draft is no longer available to edit."
@@ -1182,8 +1188,7 @@ export async function returnClaimedActionForReview(input: {
     eventType: "action_returned_for_review",
     entityType: "action_proposal",
     entityId: String(input.proposalId),
-    summary:
-      "The action was not executed and returned for review.",
+    summary: "The action was not executed and returned for review.",
     metadata: { reason: input.reason.slice(0, 240) },
   });
 }
@@ -2006,138 +2011,14 @@ export async function getAssistantOperationalContext(
   };
 }
 
-export async function listCrmCustomers(organisationId: number) {
-  const db = await requireDb();
-  const [contacts, companies, activities, opportunities, tasks] =
-    await Promise.all([
-      db
-        .select({
-          id: crmContacts.id,
-          connectedSystemId: crmContacts.connectedSystemId,
-          externalId: crmContacts.externalId,
-          companyExternalId: crmContacts.companyExternalId,
-          firstName: crmContacts.firstName,
-          lastName: crmContacts.lastName,
-          email: crmContacts.email,
-          phone: crmContacts.phone,
-          lifecycleStage: crmContacts.lifecycleStage,
-          updatedAt: crmContacts.updatedAt,
-        })
-        .from(crmContacts)
-        .where(eq(crmContacts.organisationId, organisationId))
-        .orderBy(desc(crmContacts.updatedAt))
-        .limit(250),
-      db
-        .select({
-          connectedSystemId: crmCompanies.connectedSystemId,
-          externalId: crmCompanies.externalId,
-          name: crmCompanies.name,
-        })
-        .from(crmCompanies)
-        .where(eq(crmCompanies.organisationId, organisationId))
-        .limit(500),
-      db
-        .select({
-          connectedSystemId: crmActivities.connectedSystemId,
-          contactExternalId: crmActivities.contactExternalId,
-          activityType: crmActivities.activityType,
-          occurredAt: crmActivities.occurredAt,
-        })
-        .from(crmActivities)
-        .where(eq(crmActivities.organisationId, organisationId))
-        .orderBy(desc(crmActivities.occurredAt))
-        .limit(1_000),
-      db
-        .select({
-          connectedSystemId: crmOpportunities.connectedSystemId,
-          contactExternalId: crmOpportunities.contactExternalId,
-          name: crmOpportunities.name,
-          stage: crmOpportunities.stage,
-          valueMinor: crmOpportunities.valueMinor,
-          currency: crmOpportunities.currency,
-          nextStepAt: crmOpportunities.nextStepAt,
-          updatedAt: crmOpportunities.updatedAt,
-        })
-        .from(crmOpportunities)
-        .where(eq(crmOpportunities.organisationId, organisationId))
-        .orderBy(desc(crmOpportunities.updatedAt))
-        .limit(1_000),
-      db
-        .select({
-          connectedSystemId: crmTasks.connectedSystemId,
-          contactExternalId: crmTasks.contactExternalId,
-          title: crmTasks.title,
-          status: crmTasks.status,
-          dueAt: crmTasks.dueAt,
-        })
-        .from(crmTasks)
-        .where(eq(crmTasks.organisationId, organisationId))
-        .orderBy(desc(crmTasks.dueAt))
-        .limit(1_000),
-    ]);
-  const companyByKey = new Map(
-    companies.map(company => [
-      `${company.connectedSystemId}:${company.externalId}`,
-      company.name,
-    ])
-  );
-  const firstByContact = <
-    T extends { connectedSystemId: number; contactExternalId: string | null },
-  >(
-    rows: T[],
-    include: (row: T) => boolean = () => true
-  ) => {
-    const result = new Map<string, T>();
-    for (const row of rows) {
-      if (!row.contactExternalId || !include(row)) continue;
-      const key = `${row.connectedSystemId}:${row.contactExternalId}`;
-      if (!result.has(key)) result.set(key, row);
-    }
-    return result;
-  };
-  const activityByContact = firstByContact(activities);
-  const opportunityByContact = firstByContact(
-    opportunities,
-    item => !/closed|lost|won/i.test(item.stage ?? "")
-  );
-  const taskByContact = new Map<string, (typeof tasks)[number]>();
-  for (const task of tasks) {
-    if (
-      !task.contactExternalId ||
-      /completed|closed|done|cancelled/i.test(task.status)
-    ) {
-      continue;
-    }
-    const key = `${task.connectedSystemId}:${task.contactExternalId}`;
-    const current = taskByContact.get(key);
-    const dueAt = task.dueAt?.getTime() ?? Number.POSITIVE_INFINITY;
-    const currentDueAt = current?.dueAt?.getTime() ?? Number.POSITIVE_INFINITY;
-    if (!current || dueAt < currentDueAt) taskByContact.set(key, task);
-  }
-  return contacts.map(contact => ({
-    ...contact,
-    name:
-      [contact.firstName, contact.lastName].filter(Boolean).join(" ") ||
-      contact.email ||
-      contact.phone ||
-      `CRM contact ${contact.externalId}`,
-    companyName: contact.companyExternalId
-      ? (companyByKey.get(
-          `${contact.connectedSystemId}:${contact.companyExternalId}`
-        ) ?? null)
-      : null,
-    lastInteraction:
-      activityByContact.get(
-        `${contact.connectedSystemId}:${contact.externalId}`
-      ) ?? null,
-    openOpportunity:
-      opportunityByContact.get(
-        `${contact.connectedSystemId}:${contact.externalId}`
-      ) ?? null,
-    nextAction:
-      taskByContact.get(`${contact.connectedSystemId}:${contact.externalId}`) ??
-      null,
-  }));
+/** Compatibility entry point; personal reads require an explicit user scope. */
+export async function listCrmCustomers(
+  organisationId: number,
+  userId?: number
+) {
+  if (!userId) throw new Error("PERSONAL_OWNER_SCOPE_REQUIRED");
+  const { listPersonalCrmCustomers } = await import("./personalCrmCustomers");
+  return listPersonalCrmCustomers({ userId, organisationId });
 }
 
 export async function saveWebsiteDiscoveryReview(input: {

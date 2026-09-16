@@ -1,3 +1,4 @@
+import { isIncompleteTask } from "../shared/taskState";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import {
   crmOpportunities,
@@ -121,7 +122,7 @@ async function operationalRecordState(input: {
       .limit(120),
   ]);
   const openTasks = tasks
-    .filter(task => !completedTask(task.status))
+    .filter(task => isIncompleteTask(task.status))
     .map(task => ({
       externalId: task.externalId,
       title: task.title,
@@ -144,10 +145,11 @@ async function operationalRecordState(input: {
       openOpportunities.length === 1
         ? openOpportunities[0].externalId
         : undefined,
-    historicalCompletedTaskCount: tasks.filter(task => completedTask(task.status))
-      .length,
-    historicalClosedOpportunityCount: opportunities.filter(closedOpportunity)
-      .length,
+    historicalCompletedTaskCount: tasks.filter(task =>
+      completedTask(task.status)
+    ).length,
+    historicalClosedOpportunityCount:
+      opportunities.filter(closedOpportunity).length,
   };
 }
 

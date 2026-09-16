@@ -1,3 +1,5 @@
+import { normalizedCustomerAttributes } from "../customerData";
+import { INCOMPLETE_TASK_STATUSES } from "../../shared/taskState";
 import { and, asc, desc, eq, inArray, like, or } from "drizzle-orm";
 import {
   callSessions,
@@ -30,6 +32,7 @@ export type LiveCallCrmContext = {
   phone?: string;
   /** Current normalized CRM lifecycle/status, used only for configured workflow eligibility. */
   contactStatus?: string;
+  customerAttributes?: ReturnType<typeof normalizedCustomerAttributes>;
   taskExternalId?: string;
   taskTitle?: string;
   opportunityExternalId?: string;
@@ -152,7 +155,8 @@ async function contextForContact(input: {
               ? eq(crmTasks.opportunityExternalId, opportunity.externalId)
               : eq(crmTasks.contactExternalId, input.contact.externalId)
           ),
-          inArray(crmTasks.ownerExternalId, ownerIds)
+          inArray(crmTasks.ownerExternalId, ownerIds),
+          inArray(crmTasks.status, [...INCOMPLETE_TASK_STATUSES])
         )
       )
       .orderBy(asc(crmTasks.dueAt))
@@ -205,17 +209,19 @@ async function contextForContact(input: {
     provider: system.provider,
     contactExternalId: input.contact.externalId,
     contactName,
+    customerAttributes: normalizedCustomerAttributes(input.contact.raw),
     firstName: input.contact.firstName || undefined,
     lastName: input.contact.lastName || undefined,
     companyName: company?.name || undefined,
     email: input.contact.email || undefined,
     phone: input.contact.phone || undefined,
-    contactStatus: String(
-      input.contact.lifecycleStage ||
-        input.contact.raw?.status ||
-        input.contact.raw?.lifecycleStage ||
-        ""
-    ).trim() || undefined,
+    contactStatus:
+      String(
+        input.contact.lifecycleStage ||
+          input.contact.raw?.status ||
+          input.contact.raw?.lifecycleStage ||
+          ""
+      ).trim() || undefined,
     taskExternalId: task?.externalId,
     taskTitle: task?.title,
     opportunityExternalId: opportunity?.externalId,
@@ -264,7 +270,8 @@ export async function findPersonalCrmContact(input: {
           )
         : eq(crmContacts.externalId, input.externalId)
       : undefined;
-  if (!exactIdentity) throw new Error("An exact CRM contact identity is required.");
+  if (!exactIdentity)
+    throw new Error("An exact CRM contact identity is required.");
   const rows = await db
     .select({ contact: crmContacts })
     .from(crmContacts)
@@ -281,7 +288,9 @@ export async function findPersonalCrmContact(input: {
         eq(externalUserMappings.isActive, true)
       )
     )
-    .where(and(eq(crmContacts.organisationId, input.organisationId), exactIdentity))
+    .where(
+      and(eq(crmContacts.organisationId, input.organisationId), exactIdentity)
+    )
     .limit(2);
   return rows.length === 1 ? rows[0].contact : undefined;
 }
@@ -596,7 +605,9 @@ export async function resolveLiveCallCloseoutIdentity(input: {
       .limit(100)
   ).map(row => row.externalUserId);
   if (!ownerIds.length)
-    throw new Error("TARGET_MISMATCH: no active CRM owner mapping exists for this user.");
+    throw new Error(
+      "TARGET_MISMATCH: no active CRM owner mapping exists for this user."
+    );
   if (input.advanced?.taskExternalId) {
     const task = (
       await db
@@ -607,7 +618,8 @@ export async function resolveLiveCallCloseoutIdentity(input: {
             eq(crmTasks.organisationId, input.organisationId),
             eq(crmTasks.connectedSystemId, context.connectedSystemId),
             eq(crmTasks.externalId, input.advanced.taskExternalId),
-            inArray(crmTasks.ownerExternalId, ownerIds)
+            inArray(crmTasks.ownerExternalId, ownerIds),
+            inArray(crmTasks.status, [...INCOMPLETE_TASK_STATUSES])
           )
         )
         .limit(1)

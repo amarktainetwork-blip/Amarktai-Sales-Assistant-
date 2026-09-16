@@ -1,3 +1,4 @@
+import { isIncompleteTask, isCompletedTask } from "../shared/taskState";
 import { and, eq, sql } from "drizzle-orm";
 import {
   crmTasks,
@@ -47,7 +48,7 @@ export type SalesWorkCandidate = {
   reason: string;
   recommendedNextAction: string;
   sourceUpdatedAt?: Date;
-  status: "open" | "completed";
+  status: "open" | "completed" | "blocked";
   metadata: Record<string, unknown>;
 };
 
@@ -117,7 +118,7 @@ function explicitNewContact(record: NormalizedContact) {
 }
 
 function taskOpen(status: string) {
-  return !/completed|closed|done|cancelled/i.test(status);
+  return isIncompleteTask(status);
 }
 
 export function deriveCrmWorkCandidates(
@@ -185,7 +186,11 @@ export function deriveCrmWorkCandidates(
           ? "Open the customer context and make the callback."
           : "Complete the task and verify the CRM result.",
         sourceUpdatedAt: task.sourceUpdatedAt,
-        status: open ? "open" : "completed",
+        status: open
+          ? "open"
+          : isCompletedTask(task.status)
+            ? "completed"
+            : "blocked",
         metadata: { sourceStatus: task.status },
       };
     });
@@ -337,8 +342,8 @@ export async function upsertSalesWorkFromCrm(input: {
         })
       : triggerPolicy;
     const policyStatus =
-      candidate.status === "completed"
-        ? "completed"
+      candidate.status === "completed" || candidate.status === "blocked"
+        ? candidate.status
         : ["OUTSIDE_SCHEDULE", "QUIET_HOURS"].includes(policy.outcome)
           ? "snoozed"
           : policy.allowedToCreate

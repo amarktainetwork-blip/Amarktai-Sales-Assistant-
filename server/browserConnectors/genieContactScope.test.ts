@@ -51,9 +51,7 @@ describe("Genie owner-scoped contact search", () => {
           pageLimit: 100,
           sort: [],
           query: "",
-          filters: [
-            { field: "assigned_to", operator: "eq", value: "other" },
-          ],
+          filters: [{ field: "assigned_to", operator: "eq", value: "other" }],
         },
         "owner-amelia"
       )
@@ -226,5 +224,31 @@ describe("Genie owner-scoped contact search", () => {
         pagesRead: 100,
       })
     ).toBe(false);
+  });
+});
+
+it("retains source, tags and field values without making provider fields generic requirements", () => {
+  const row = normalizeGenieContactSearchPage(
+    {
+      contacts: [
+        {
+          id: "c",
+          assignedTo: "owner",
+          source: "enquiry",
+          tags: ["interested"],
+          customFields: [
+            { id: "field1", fieldValueString: "career change" },
+            { id: "field2", fieldValueArray: ["a", "b"] },
+          ],
+        },
+      ],
+      total: 1,
+    },
+    "owner"
+  ).records[0];
+  expect(JSON.parse(row.normalizedCustomerContext)).toEqual({
+    source: "enquiry",
+    tags: ["interested"],
+    customFields: { field1: "career change", field2: ["a", "b"] },
   });
 });

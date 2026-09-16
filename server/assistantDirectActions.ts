@@ -1,3 +1,4 @@
+import { getOrganisationWorkspaceContext } from "./organisationWorkspace";
 import { createHash } from "node:crypto";
 import {
   createWorkflowRun,
@@ -56,10 +57,12 @@ function channelFromRequest(value: string): Channel | undefined {
   return undefined;
 }
 
-function isDraftOnly(value: string) {
+export function isDraftOnly(value: string) {
   const normalized = value.toLowerCase();
   return (
-    /\b(draft|write|prepare)\b/.test(normalized) && !/\bsend\b/.test(normalized)
+    /\b(draft|write|prepare)\b/.test(normalized) &&
+    (!/\bsend\b/.test(normalized) ||
+      /\b(?:don['’]t|do not|never|without)\s+send(?:ing)?\b/.test(normalized))
   );
 }
 
@@ -317,6 +320,7 @@ export async function tryPrepareDirectAssistantAction(input: {
       approvedKnowledge,
       workingContext: JSON.stringify({
         selectedCustomer: customer,
+        workspace: await getOrganisationWorkspaceContext(input.organisationId),
         channel,
         executionBoundary:
           channel === "email"
@@ -343,7 +347,13 @@ export async function tryPrepareDirectAssistantAction(input: {
           },
         ],
         approvedKnowledge,
-        workingContext: JSON.stringify({ selectedCustomer: customer, channel }),
+        workingContext: JSON.stringify({
+          selectedCustomer: customer,
+          channel,
+          workspace: await getOrganisationWorkspaceContext(
+            input.organisationId
+          ),
+        }),
         billing: {
           userId: input.userId,
           organisationId: input.organisationId,
@@ -467,6 +477,8 @@ export async function tryPrepareDirectAssistantAction(input: {
       requiredPostconditions:
         configuration.requiredPostconditions[actionType] || [],
       userRequestedDraftOnly: isDraftOnly(input.request),
+      draftOnly: isDraftOnly(input.request),
+      executionReady: false,
     },
   };
 
@@ -489,7 +501,7 @@ export async function tryPrepareDirectAssistantAction(input: {
         requiredCapability?: string;
       }
     | undefined;
-  if (!route?.routable)
+  if (!route?.routable && !isDraftOnly(input.request))
     return {
       content:
         route?.reason ||
@@ -557,14 +569,16 @@ export async function tryPrepareDirectAssistantAction(input: {
       channel,
       sender:
         channel === "email"
-          ? route.mailbox || "Your connected Microsoft mailbox"
+          ? route?.mailbox || "No verified sending mailbox"
           : senderIdentity || "CRM-configured sender",
       subject: validated.subject || null,
       body: validated.body,
       templateName: templateName || null,
       contentSource,
       executionOwner:
-        channel === "email" ? "Microsoft delegated mailbox" : route.displayName,
+        channel === "email"
+          ? "Microsoft delegated mailbox"
+          : route?.displayName || "Not configured",
       duplicateVerification: "required_before_execution",
     },
   };

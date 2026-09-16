@@ -449,9 +449,11 @@ async function syncConnectedSystemDeterministically(input: {
       "tasks",
       "activities",
     ].includes(resourceType);
-    const browserSourceScopedResource = ["contacts", "tasks"].includes(
-      resourceType
-    );
+    const browserSourceScopedResource = [
+      "contacts",
+      "tasks",
+      ...(connection.provider === "genie" ? ["opportunities"] : []),
+    ].includes(resourceType);
     if (browserPersonalScopeRequired && personalResource) {
       if (!hasExactBrowserUserScope || !browserSourceScopedResource) {
         summary[resourceType] = 0;

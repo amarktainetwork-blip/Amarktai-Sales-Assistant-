@@ -31,6 +31,46 @@ vi.mock("./clientActionConfiguration", () => ({
   })),
 }));
 
+vi.mock("./organisationWorkspace", () => ({
+  getOrganisationWorkspaceContext: vi.fn(async () => ({
+    organisation: {
+      timezone: "Europe/London",
+      locale: "en-GB",
+      currency: "GBP",
+    },
+    backlogPolicy: { mode: "all_incomplete" },
+  })),
+}));
+vi.mock("./todayTaskData", () => ({
+  getTodayTaskData: vi.fn(async () => ({
+    bounds: {
+      start: new Date("2020-01-01"),
+      endExclusive: new Date("2100-01-01"),
+    },
+    metrics: {
+      overdue: 1,
+      dueToday: 0,
+      incomplete: 1,
+      historicalBacklog: 0,
+      unknown: 0,
+    },
+    queues: {
+      overdueTasks: [
+        {
+          id: 11,
+          connectedSystemId: 11,
+          externalId: "task",
+          ownerExternalId: "shared-id",
+          title: "Follow up",
+          status: "open",
+          dueAt: new Date("2020-01-01"),
+        },
+      ],
+      dueToday: [],
+      unscheduled: [],
+    },
+  })),
+}));
 import { getTodayWork } from "./today";
 
 describe("Today inbound ownership lookup", () => {
