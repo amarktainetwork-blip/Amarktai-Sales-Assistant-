@@ -833,6 +833,21 @@ function isGenieTaskGridResponse(urlText: string) {
   }
 }
 
+export function ownerScopedGenieTaskNavigation(
+  script: SavedBrowserScript
+): SavedBrowserScript {
+  return {
+    ...script,
+    steps: script.steps.map(step =>
+      step.action === "click" &&
+      step.selector === "#sb_contacts" &&
+      step.fallbackUrl
+        ? { action: "goto" as const, value: step.fallbackUrl }
+        : step
+    ),
+  };
+}
+
 export function genieTaskGridBodyContainsOwner(
   value: unknown,
   ownerExternalId: string
@@ -1016,11 +1031,14 @@ async function executeGenieTaskGridRead(input: {
       "GENIE_TASK_GRID_INVALID: canonical task sync has no bounded pagination step."
     );
   const paginate = input.script.steps[paginateIndex];
-  const navigationScript: SavedBrowserScript = {
+  const ownerExternalId = input.ownerExternalId?.trim() || "";
+  const baseNavigationScript: SavedBrowserScript = {
     ...input.script,
     steps: input.script.steps.filter((_, index) => index !== paginateIndex),
   };
-  const ownerExternalId = input.ownerExternalId?.trim() || "";
+  const navigationScript = ownerExternalId
+    ? ownerScopedGenieTaskNavigation(baseNavigationScript)
+    : baseNavigationScript;
   let execution: Awaited<ReturnType<typeof executeSavedBrowserScript>>;
   let firstPage: ReturnType<typeof normalizeGenieTaskGridPage>;
 
