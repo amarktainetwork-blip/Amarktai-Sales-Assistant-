@@ -12,6 +12,7 @@ import {
   isCanonicalGenieTaskGridScript,
   genieTaskPickerLabelMatches,
   genieTaskGridBodyContainsOwner,
+  ownerScopedGenieTaskNavigation,
   resolveBrowserProfile,
   isRetryableReadBrowserFailure,
 } from "./browserCrmAdapter";
@@ -198,6 +199,35 @@ describe("read-only runtime retry policy", () => {
         new Error("Your CRM needs you to sign in again.")
       )
     ).toBe(false);
+  });
+});
+
+describe("Genie task owner-scoped navigation safety", () => {
+  it("uses the reviewed Contacts fallback URL instead of the obstructable sidebar click", () => {
+    expect(
+      ownerScopedGenieTaskNavigation({
+        steps: [
+          {
+            action: "click",
+            selector: "#sb_contacts",
+            fallbackUrl:
+              "https://genie.example/v2/location/location-1/contacts/smart_list/All",
+          },
+          { action: "wait_for_url", value: "**/contacts/smart_list/**" },
+          { action: "click", selector: "#tb_tasks" },
+        ],
+      })
+    ).toEqual({
+      steps: [
+        {
+          action: "goto",
+          value:
+            "https://genie.example/v2/location/location-1/contacts/smart_list/All",
+        },
+        { action: "wait_for_url", value: "**/contacts/smart_list/**" },
+        { action: "click", selector: "#tb_tasks" },
+      ],
+    });
   });
 });
 
