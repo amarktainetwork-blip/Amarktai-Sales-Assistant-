@@ -1,3 +1,4 @@
+import { formatOrganisationDate } from "@shared/organisationWorkspace";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,21 +24,19 @@ import { useLocation } from "wouter";
 
 export default function Customers() {
   const [, navigate] = useLocation();
-  const customers = trpc.sales.customers.useQuery(undefined, { retry: false });
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
-  const visible = useMemo(() => {
-    const term = query.trim().toLowerCase();
-    return (customers.data ?? []).filter(
-      customer =>
-        !term ||
-        `${customer.name} ${customer.companyName || ""} ${customer.email || ""} ${customer.phone || ""} ${customer.lifecycleStage || ""}`
-          .toLowerCase()
-          .includes(term)
-    );
-  }, [customers.data, query]);
-
+  const [page, setPage] = useState(1);
+  const customers = trpc.sales.customerDirectory.useQuery(
+    { page, pageSize: 50, search: query, sort: "updated" },
+    { retry: false }
+  );
+  const visible = customers.data?.items ?? [];
+  const detail = trpc.sales.customerDetail.useQuery(
+    { contactId: selectedId || 1 },
+    { enabled: Boolean(selectedId), retry: false }
+  );
   useEffect(() => {
     if (!visible.length) {
       setSelectedId(null);
@@ -47,10 +46,17 @@ export default function Customers() {
       setSelectedId(visible[0].id);
   }, [selectedId, visible]);
 
-  const selected = visible.find(customer => customer.id === selectedId) ?? null;
+  const selected = detail.data ?? null;
+  const dateLabel = (value: Date | string) =>
+    formatOrganisationDate(
+      new Date(value),
+      selected?.workspace.organisation || {}
+    );
 
   const ask = (prompt: string) =>
-    navigate(`/assistant?prompt=${encodeURIComponent(prompt)}`);
+    navigate(
+      `/assistant?${selectedId ? `contactId=${selectedId}&` : ""}prompt=${encodeURIComponent(prompt)}`
+    );
 
   return (
     <DashboardLayout>
@@ -63,12 +69,15 @@ export default function Customers() {
                 Every customer, already in context.
               </h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-[#66758A] sm:text-base">
-                Work from the relationship, not from CRM screens. AmarktAI brings the customer, company, opportunity, recent activity and next step together so you can decide, call and follow up from here.
+                Work from the relationship, not from CRM screens. AmarktAI
+                brings the customer, company, opportunity, recent activity and
+                next step together so you can decide, call and follow up from
+                here.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
               <span className="handover-status">
-                {customers.data?.length ?? 0} synced customers
+                {customers.data?.totalAll ?? 0} synced customers
               </span>
               <Button onClick={() => ask("Who should I contact next and why?")}>
                 <Sparkles className="mr-2 h-4 w-4" /> Ask AmarktAI
@@ -81,13 +90,17 @@ export default function Customers() {
           <Search className="h-4 w-4 text-[#2F6FED]" />
           <Input
             value={query}
-            onChange={event => setQuery(event.target.value)}
+            onChange={event => {
+              setPage(1);
+              setQuery(event.target.value);
+            }}
             placeholder="Search customers, companies, email, phone or stage"
             className="h-12 border-0 bg-transparent shadow-none focus-visible:ring-0"
           />
           {query ? (
             <span className="text-xs font-semibold text-[#8290A3]">
-              {visible.length} result{visible.length === 1 ? "" : "s"}
+              {customers.data?.total ?? 0} result
+              {customers.data?.total === 1 ? "" : "s"}
             </span>
           ) : null}
         </label>
@@ -129,7 +142,7 @@ export default function Customers() {
               </div>
               <div className="max-h-[720px] overflow-y-auto p-2">
                 {visible.map(customer => {
-                  const active = customer.id === selected?.id;
+                  const active = customer.id === selectedId;
                   return (
                     <button
                       key={customer.id}
@@ -141,7 +154,9 @@ export default function Customers() {
                           : "border-transparent bg-white hover:border-[#E0E7F0] hover:bg-[#FAFCFF]"
                       }`}
                     >
-                      <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${active ? "bg-[#2F6FED] text-white" : "bg-[#EDF3FF] text-[#2F6FED]"}`}>
+                      <span
+                        className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${active ? "bg-[#2F6FED] text-white" : "bg-[#EDF3FF] text-[#2F6FED]"}`}
+                      >
                         <UserRound className="h-4 w-4" />
                       </span>
                       <span className="min-w-0 flex-1">
@@ -155,10 +170,29 @@ export default function Customers() {
                           {customer.lifecycleStage || "Customer"}
                         </span>
                       </span>
-                      <ArrowRight className={`mt-2 h-4 w-4 shrink-0 ${active ? "text-[#2F6FED]" : "text-[#9AA8B9]"}`} />
+                      <ArrowRight
+                        className={`mt-2 h-4 w-4 shrink-0 ${active ? "text-[#2F6FED]" : "text-[#9AA8B9]"}`}
+                      />
                     </button>
                   );
                 })}
+              </div>
+              <div className="flex justify-between p-3">
+                <Button
+                  variant="outline"
+                  disabled={page === 1}
+                  onClick={() => setPage(value => value - 1)}
+                >
+                  Previous
+                </Button>
+                <span>Page {page}</span>
+                <Button
+                  variant="outline"
+                  disabled={!customers.data?.hasNext}
+                  onClick={() => setPage(value => value + 1)}
+                >
+                  Next
+                </Button>
               </div>
             </aside>
 
@@ -183,14 +217,18 @@ export default function Customers() {
                     <div className="flex flex-wrap gap-2">
                       <Button
                         onClick={() =>
-                          ask(`Give me the complete sales brief for ${selected.name}. What matters now, what happened recently, and what should I do next?`)
+                          ask(
+                            `Give me the complete sales brief for ${selected.name}. What matters now, what happened recently, and what should I do next?`
+                          )
                         }
                       >
                         <Bot className="mr-2 h-4 w-4" /> Ask AmarktAI
                       </Button>
                       <Button
                         variant="outline"
-                        onClick={() => navigate(`/calls?contactId=${selected.id}`)}
+                        onClick={() =>
+                          navigate(`/calls?contactId=${selected.id}`)
+                        }
                       >
                         <Headphones className="mr-2 h-4 w-4" /> Call
                       </Button>
@@ -198,12 +236,22 @@ export default function Customers() {
                   </div>
 
                   <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                    <ContactFact icon={Mail} label="Email" value={selected.email || "Not recorded"} />
-                    <ContactFact icon={Phone} label="Phone" value={selected.phone || "Not recorded"} />
+                    <ContactFact
+                      icon={Mail}
+                      label="Email"
+                      value={selected.email || "Not recorded"}
+                    />
+                    <ContactFact
+                      icon={Phone}
+                      label="Phone"
+                      value={selected.phone || "Not recorded"}
+                    />
                     <ContactFact
                       icon={BriefcaseBusiness}
                       label="Opportunity"
-                      value={selected.openOpportunity?.name || "No open opportunity"}
+                      value={
+                        selected.openOpportunity?.name || "No open opportunity"
+                      }
                     />
                     <ContactFact
                       icon={CalendarClock}
@@ -211,7 +259,7 @@ export default function Customers() {
                       value={
                         selected.nextAction?.title ||
                         (selected.openOpportunity?.nextStepAt
-                          ? `Opportunity follow-up · ${new Date(selected.openOpportunity.nextStepAt).toLocaleDateString()}`
+                          ? `Opportunity follow-up · ${dateLabel(selected.openOpportunity.nextStepAt)}`
                           : "No next step recorded")
                       }
                     />
@@ -228,10 +276,13 @@ export default function Customers() {
                       {selected.lastInteraction ? (
                         <>
                           <p className="font-bold capitalize text-[#33445B]">
-                            {selected.lastInteraction.activityType.replaceAll("_", " ")}
+                            {selected.lastInteraction.activityType.replaceAll(
+                              "_",
+                              " "
+                            )}
                           </p>
                           <p className="mt-1 text-xs text-[#8290A3]">
-                            {new Date(selected.lastInteraction.occurredAt).toLocaleString()}
+                            {dateLabel(selected.lastInteraction.occurredAt)}
                           </p>
                         </>
                       ) : (
@@ -244,7 +295,9 @@ export default function Customers() {
                       variant="outline"
                       className="mt-4"
                       onClick={() =>
-                        ask(`Summarise my relationship history with ${selected.name} and flag anything I should know before contacting them.`)
+                        ask(
+                          `Summarise my relationship history with ${selected.name} and flag anything I should know before contacting them.`
+                        )
                       }
                     >
                       Summarise relationship
@@ -262,24 +315,29 @@ export default function Customers() {
                           {selected.openOpportunity.name}
                         </p>
                         <p className="mt-1 text-sm text-[#66758A]">
-                          {selected.openOpportunity.stage || "Stage not recorded"}
+                          {selected.openOpportunity.stage ||
+                            "Stage not recorded"}
                         </p>
                         {selected.openOpportunity.nextStepAt ? (
                           <p className="mt-3 text-xs font-semibold text-[#55708F]">
-                            Next step: {new Date(selected.openOpportunity.nextStepAt).toLocaleString()}
+                            Next step:{" "}
+                            {dateLabel(selected.openOpportunity.nextStepAt)}
                           </p>
                         ) : null}
                       </div>
                     ) : (
                       <div className="mt-4 handover-soft-surface p-4 text-sm text-[#66758A]">
-                        No open opportunity is currently linked to this customer.
+                        No open opportunity is currently linked to this
+                        customer.
                       </div>
                     )}
                     <Button
                       variant="outline"
                       className="mt-4"
                       onClick={() =>
-                        ask(`What is the best next sales action for ${selected.name} based on their current opportunity and recent history?`)
+                        ask(
+                          `What is the best next sales action for ${selected.name} based on their current opportunity and recent history?`
+                        )
                       }
                     >
                       Recommend next action
@@ -289,9 +347,13 @@ export default function Customers() {
 
                 <section className="flex flex-col gap-3 rounded-2xl border border-[#DCE4EE] bg-[#F8FAFD] p-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <p className="text-sm font-bold text-[#33445B]">Need the original record?</p>
+                    <p className="text-sm font-bold text-[#33445B]">
+                      Need the original record?
+                    </p>
                     <p className="mt-1 text-xs text-[#718096]">
-                      The source CRM remains available for recovery and specialist work, but normal selling should happen in AmarktAI.
+                      The source CRM remains available for recovery and
+                      specialist work, but normal selling should happen in
+                      AmarktAI.
                     </p>
                   </div>
                   <Button variant="ghost" onClick={() => navigate("/crm")}>
@@ -305,7 +367,9 @@ export default function Customers() {
           <section className="rounded-3xl border border-dashed border-[#C9D4E2] bg-white p-12 text-center shadow-sm">
             <Users className="mx-auto h-9 w-9 text-[#2F6FED]" />
             <h2 className="mt-4 font-display text-2xl font-bold tracking-[-.035em]">
-              {query ? "No customers match that search." : "No customers have synced yet."}
+              {query
+                ? "No customers match that search."
+                : "No customers have synced yet."}
             </h2>
             <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[#66758A]">
               {query

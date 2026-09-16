@@ -106,6 +106,8 @@ export type OutboundMessageInput = {
 };
 
 export type CrmAdapter = {
+  readContactHistory?: (input:{connection:AdapterConnection;secret:ConnectionSecretPayload;externalId:string})=>Promise<{activities:NormalizedActivity[];coverage:{notes:'complete';communications:'recent_page'|'complete';refreshedAt:string}}>;
+
   provider: CrmProvider;
   createAuthorizationUrl?: (input: { connection: AdapterConnection; state: string; redirectUri: string }) => string;
   exchangeAuthorizationCode?: (input: { connection: AdapterConnection; code: string; redirectUri: string; callbackParams?: Record<string, string> }) => Promise<ConnectionSecretPayload>;

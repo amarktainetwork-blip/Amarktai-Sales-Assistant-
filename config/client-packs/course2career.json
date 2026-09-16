@@ -1,0 +1,79 @@
+{
+  "name": "Course2Career",
+  "timezone": "Europe/London",
+  "locale": "en-GB",
+  "currency": "GBP",
+  "customerModel": "individual_consumer",
+  "businessModel": {
+    "legalEntity": "Course Correct Ltd",
+    "clientLocation": "United Kingdom",
+    "salesModel": "B2C / person-first"
+  },
+  "backlogPolicy": { "mode": "all_incomplete" },
+  "profile": {
+    "companyName": "Course2Career",
+    "industry": "professional training and career development",
+    "primaryMarket": "UK individuals seeking career development, recognised professional skills, upskilling, career change, recruitment support and improved employment prospects",
+    "salesMotion": "B2C / individual learner and career-support sales",
+    "typicalCustomer": "People looking to change career, upskill, gain professional skills, improve employability or get help progressing toward work",
+    "primarySalesObjective": "Help prospective learners identify suitable training/support and convert appropriate qualified enquiries into enrolments or the next appropriate career-support action",
+    "brandVoice": "Clear, professional, helpful, factual and concise. Never invent course, pricing, finance, certification or employment facts. Flag uncertainty."
+  },
+  "officeHours": {
+    "timezone": "Europe/London",
+    "days": [1, 2, 3, 4, 5],
+    "start": "09:00",
+    "end": "18:00"
+  },
+  "customerFieldMappings": [
+    {
+      "sourceFieldId": "26rlAv4HtDem45dx7hfD",
+      "label": "Courses of interest",
+      "kind": "text",
+      "purpose": "interest"
+    },
+    {
+      "sourceFieldId": "Ibj52uAf52C3Hl5Od2i1",
+      "label": "Your Enquiry",
+      "kind": "text",
+      "purpose": "enquiry"
+    },
+    {
+      "sourceFieldId": "KgRy0JUhxGOPMNNY9nfJ",
+      "label": "Are you currently working?",
+      "kind": "text",
+      "purpose": "employment_context"
+    },
+    {
+      "sourceFieldId": "LGkQuI4OBSqRPvjrcoWy",
+      "label": "Training Start Timeframe",
+      "kind": "text",
+      "purpose": "timing"
+    },
+    {
+      "sourceFieldId": "Xz5LMfmoQ0bWlFE2aqnu",
+      "label": "Best Time to Call",
+      "kind": "text",
+      "purpose": "contact_preference"
+    },
+    {
+      "sourceFieldId": "X8Y5fz2wskJr64uJcS71",
+      "label": "Do you have any IT Experience?",
+      "kind": "text",
+      "purpose": "experience"
+    },
+    {
+      "sourceFieldId": "zSChIRk8kyQcZRIsy1gZ",
+      "label": "Enquiry Type",
+      "kind": "text",
+      "purpose": "enquiry_type"
+    },
+    {
+      "sourceFieldId": "uYEJYehmIt46WY5boiV3",
+      "label": "Course Enrolment Date",
+      "kind": "date",
+      "purpose": "enrolment"
+    }
+  ],
+  "executionConfigurationStatus": "unconfigured_pending_supervised_commissioning"
+}

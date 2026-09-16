@@ -6,11 +6,15 @@ import {
 } from "../../drizzle/schema";
 import { getDb, recordAudit } from "../db";
 import {
+  listConnectedSystemsForUser,
   loadConnectionSecret,
   loadUserConnectionSecret,
   toAdapterConnection,
 } from "../connectedSystems";
-import { connectedSystemSupportsAction } from "../crmRouter";
+import {
+  connectedSystemSupportsAction,
+  routeConnectedSystemActionsForUser,
+} from "../crmRouter";
 import { getCrmAdapter } from "./adapterRegistry";
 import type {
   AdapterConnection,
@@ -75,7 +79,9 @@ function fields(payload: Record<string, unknown>) {
 }
 
 function norm(value: unknown) {
-  return String(value ?? "").trim().toLowerCase();
+  return String(value ?? "")
+    .trim()
+    .toLowerCase();
 }
 
 function activityBody(activity: NormalizedActivity) {
@@ -201,13 +207,21 @@ async function executeMicrosoft(input: {
   ) {
     const to = String(input.payload.to ?? input.payload.email ?? "").trim();
     const subject = String(input.payload.subject ?? "").trim();
-    const body = String(input.payload.body ?? input.payload.message ?? "").trim();
+    const body = String(
+      input.payload.body ?? input.payload.message ?? ""
+    ).trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to))
-      throw new Error("EMAIL_RECIPIENT_REQUIRED: the reviewed email has no exact valid recipient.");
+      throw new Error(
+        "EMAIL_RECIPIENT_REQUIRED: the reviewed email has no exact valid recipient."
+      );
     if (!subject)
-      throw new Error("EMAIL_SUBJECT_REQUIRED: the reviewed email has no exact subject. Nothing was sent.");
+      throw new Error(
+        "EMAIL_SUBJECT_REQUIRED: the reviewed email has no exact subject. Nothing was sent."
+      );
     if (!body)
-      throw new Error("EMAIL_BODY_REQUIRED: the reviewed email body is blank. Nothing was sent.");
+      throw new Error(
+        "EMAIL_BODY_REQUIRED: the reviewed email body is blank. Nothing was sent."
+      );
 
     const workflow = object(input.payload.workflowConfiguration);
     if (!withinConfiguredOfficeHours(workflow.officeHours))
@@ -393,9 +407,13 @@ async function verifyCrmPostcondition(input: {
   proposal: ActionProposal;
   payload: Record<string, unknown>;
 }) {
-  const contactExternalId = explicitExternalId(input.payload, "contactExternalId");
+  const contactExternalId = explicitExternalId(
+    input.payload,
+    "contactExternalId"
+  );
   if (input.actionType === "verify_contact_context") {
-    if (!contactExternalId) return { verified: false, detail: "No exact contact ID." };
+    if (!contactExternalId)
+      return { verified: false, detail: "No exact contact ID." };
     const contact = await input.adapter.getContact({
       connection: input.connection,
       secret: input.secret,
@@ -418,9 +436,15 @@ async function verifyCrmPostcondition(input: {
         "Exact customer, tasks, opportunity history and CRM activity/history were read back immediately.",
     };
   }
-  if (input.actionType === "update_contact" || input.actionType === "update_contact_status") {
+  if (
+    input.actionType === "update_contact" ||
+    input.actionType === "update_contact_status"
+  ) {
     if (!contactExternalId)
-      return { verified: false, detail: "Contact update has no exact external ID." };
+      return {
+        verified: false,
+        detail: "Contact update has no exact external ID.",
+      };
     const contact = await input.adapter.getContact({
       connection: input.connection,
       secret: input.secret,
@@ -459,7 +483,10 @@ async function verifyCrmPostcondition(input: {
       "externalId"
     );
     if (!opportunityExternalId)
-      return { verified: false, detail: "Opportunity update has no exact external ID." };
+      return {
+        verified: false,
+        detail: "Opportunity update has no exact external ID.",
+      };
     const opportunity = await input.adapter.getOpportunity({
       connection: input.connection,
       secret: input.secret,
@@ -754,7 +781,10 @@ async function executeMutation(input: {
   adapter: CrmAdapter;
   secret: ConnectionSecretPayload;
 }) {
-  const contactExternalId = explicitExternalId(input.payload, "contactExternalId");
+  const contactExternalId = explicitExternalId(
+    input.payload,
+    "contactExternalId"
+  );
   let evidence: AdapterEvidence;
   switch (input.proposal.actionType) {
     case "verify_contact_context": {
@@ -911,7 +941,9 @@ async function executeMutation(input: {
       break;
     case "create_opportunity":
       if (!input.adapter.createOpportunity)
-        throw new Error("The verified CRM adapter cannot create opportunities.");
+        throw new Error(
+          "The verified CRM adapter cannot create opportunities."
+        );
       evidence = await input.adapter.createOpportunity({
         connection: input.connection,
         secret: input.secret,
@@ -995,7 +1027,9 @@ async function executeMutation(input: {
         input.payload.sequence ?? input.payload.templateName ?? ""
       );
       if (!sequence.trim())
-        throw new Error("SEQUENCE_REQUIRED: no configured CRM sequence is present.");
+        throw new Error(
+          "SEQUENCE_REQUIRED: no configured CRM sequence is present."
+        );
       if (input.adapter.applySequence)
         evidence = await input.adapter.applySequence({
           connection: input.connection,
@@ -1049,7 +1083,9 @@ async function executeMutation(input: {
           "EXACT_EXTERNAL_TARGET_REQUIRED: generic custom actions cannot execute from a displayed name."
         );
       if (!input.adapter.executeCustomAction)
-        throw new Error("The verified CRM adapter has no commissioned custom action.");
+        throw new Error(
+          "The verified CRM adapter has no commissioned custom action."
+        );
       evidence = await input.adapter.executeCustomAction({
         connection: input.connection,
         secret: input.secret,
@@ -1085,6 +1121,28 @@ export async function executeCanonicalApprovedAction(input: {
   };
   if (!route.routable || !route.provider)
     throw new Error("This proposal has no verified execution route.");
+  if (payload.draftOnly === true) {
+    const [fresh] = await routeConnectedSystemActionsForUser({
+      userId: input.proposal.userId,
+      organisationId: input.organisationId,
+      actions: [{ actionType: input.proposal.actionType, payload }],
+      systems: await listConnectedSystemsForUser(
+        input.proposal.userId,
+        input.organisationId
+      ),
+    });
+    const current = object(fresh.payload.crmRoute);
+    const reviewed = object(payload.crmRoute);
+    if (
+      current.routable !== true ||
+      current.provider !== reviewed.provider ||
+      current.connectedSystemId !== reviewed.connectedSystemId ||
+      current.mailbox !== reviewed.mailbox
+    )
+      throw Error(
+        "DRAFT_ROUTE_CHANGED: prepare and review the draft with the current verified sending route. Nothing was sent."
+      );
+  }
   if (route.provider === "microsoft_delegated")
     return executeMicrosoft({ ...input, payload });
 
@@ -1092,7 +1150,8 @@ export async function executeCanonicalApprovedAction(input: {
     input.proposal.actionType === "deterministic_crm_batch"
       ? validateAssistantCrmBatchPlan(payload.batchPlan)
       : undefined;
-  const effectiveActionType = batchPlan?.actionType || input.proposal.actionType;
+  const effectiveActionType =
+    batchPlan?.actionType || input.proposal.actionType;
   const system = await verifiedSystem({
     organisationId: input.organisationId,
     provider: route.provider,
@@ -1147,11 +1206,8 @@ export async function executeCanonicalApprovedAction(input: {
     secret,
   });
   const shadowMode =
-    (
-      evidence.providerResult as
-        | { data?: { shadowMode?: string } }
-        | undefined
-    )?.data?.shadowMode === "true";
+    (evidence.providerResult as { data?: { shadowMode?: string } } | undefined)
+      ?.data?.shadowMode === "true";
   if (shadowMode)
     return {
       success: true,

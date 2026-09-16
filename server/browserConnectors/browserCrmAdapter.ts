@@ -1,3 +1,6 @@
+import { readGenieContactHistory } from "./genieContactHistory";
+import { readOwnerScopedGenieOpportunities } from "./genieOpportunityScope";
+import { genieTaskCompletion } from "./genieTaskCompletion";
 import { readOwnerScopedGenieTasks } from "./genieTaskScope";
 import { readFile } from "node:fs/promises";
 import {
@@ -494,7 +497,11 @@ export async function withAuthenticatedBrowserSessionPage<T>(input: {
   connection: AdapterConnection;
   secret: ConnectionSecretPayload;
   provider: Extract<CrmProvider, "genie" | "custom_browser">;
-  run: (page: Page, context: BrowserContext) => Promise<T>;
+  run: (
+    page: Page,
+    context: BrowserContext,
+    assertControl: () => void
+  ) => Promise<T>;
 }) {
   const profile = await resolveBrowserProfile(input.connection, input.provider);
   if (!profile)
@@ -505,7 +512,8 @@ export async function withAuthenticatedBrowserSessionPage<T>(input: {
     secret,
     input.provider,
     profile,
-    async (page, context) => input.run(page, context)
+    async (page, context, owner) =>
+      input.run(page, context, () => assertBrowserOperationCanRun(owner))
   );
 }
 
@@ -791,16 +799,12 @@ export function normalizeGenieTaskGridPage(value: unknown) {
       title:
         scalarText(properties.title) || scalarText(properties.name) || "Task",
       description: scalarText(properties.description),
-      status:
-        scalarText(properties.status) ||
-        scalarText(properties.taskStatus) ||
-        "open",
+      ...genieTaskCompletion(properties),
       dueAt:
         scalarText(properties.dueDate) ||
         scalarText(properties.dueAt) ||
         scalarText(properties.due_date),
-      completedAt:
-        scalarText(properties.completedAt) || scalarText(properties.closedAt),
+
       contactExternalId,
       ownerExternalId: identityText(raw.owners),
       sourceUpdatedAt: scalarText(raw.updatedAt),
@@ -1378,7 +1382,15 @@ async function runDeterministicOperation(input: RunOperationInput) {
                     ownerExternalId,
                     ownerDisplayName,
                   })
-                : await runScript(page, script, "execute");
+                : input.provider === "genie" &&
+                    operationKey === "opportunity.sync" &&
+                    ownerExternalId
+                  ? await readOwnerScopedGenieOpportunities({
+                      page,
+                      ownerExternalId,
+                      assertControl: () => assertBrowserOperationCanRun(owner),
+                    })
+                  : await runScript(page, script, "execute");
           if (!execution.success) throw new Error(execution.detail);
           execution.data.actualPageUrl = page.url();
           if (learned?.definition.mode === "write") {
@@ -1598,7 +1610,12 @@ function contact(row: Record<string, string>): NormalizedContact {
     lifecycleStage: row.lifecycleStage || row.status || undefined,
     sourceUpdatedAt: asDate(row.sourceUpdatedAt),
     sourceRevision: row.sourceRevision || row.sourceUpdatedAt,
-    raw: row,
+    raw: {
+      ...row,
+      normalizedCustomerContext: row.normalizedCustomerContext
+        ? JSON.parse(row.normalizedCustomerContext)
+        : undefined,
+    },
   };
 }
 function company(row: Record<string, string>): NormalizedCompany {
@@ -1840,6 +1857,36 @@ export function browserCrmAdapter(
     testConnection,
     discoverCapabilities: async input =>
       (await testConnection(input)).capabilities,
+    ...(provider === "genie"
+      ? {
+          readContactHistory: async (input: {
+            connection: AdapterConnection;
+            secret: ConnectionSecretPayload;
+            externalId: string;
+          }) => {
+            if (
+              !["contacts.read", "activities.read"].every(c =>
+                input.connection.allowedReadCapabilities.includes(
+                  c as CrmCapability
+                )
+              )
+            )
+              throw Error("CONTACT_READ_NOT_AUTHORIZED");
+            return withAuthenticatedBrowserSessionPage({
+              connection: input.connection,
+              secret: input.secret,
+              provider: "genie",
+              run: (page, _context, assertControl) =>
+                readGenieContactHistory({
+                  page,
+                  assertControl,
+                  contactExternalId: input.externalId,
+                  ownerExternalId: input.secret.crmUserExternalId || "",
+                }),
+            });
+          },
+        }
+      : {}),
     syncContacts: input => list("syncContacts", contact, input),
     syncCompanies: input => list("syncCompanies", company, input),
     syncOpportunities: input => list("syncOpportunities", opportunity, input),

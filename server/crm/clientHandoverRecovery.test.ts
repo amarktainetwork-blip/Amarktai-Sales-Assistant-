@@ -29,9 +29,13 @@ describe("client handover recovery contract", () => {
   it("keeps exact salesperson scope while browser operation truth gates sync", () => {
     const source = read("./sync.ts");
     expect(source).toContain("hasExactBrowserUserScope");
-    expect(source.replace(/\s+/g, " ")).toContain(
-      'const browserSourceScopedResource = ["contacts", "tasks"].includes( resourceType );'
+    const compact = source.replace(/\s+/g, " ");
+    expect(compact).toContain("const browserSourceScopedResource = [");
+    expect(compact).toContain('"contacts", "tasks",');
+    expect(compact).toContain(
+      '...(connection.provider === "genie" ? ["opportunities"] : []),'
     );
+    expect(compact).toContain("].includes(resourceType);");
     expect(source).toContain("browserOperationStatuses?.get(syncOperationKey)");
     expect(source).not.toContain("const sessionApi =");
   });
