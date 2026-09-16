@@ -1,3 +1,4 @@
+import type { Page } from "playwright-core";
 import type {
   AdapterConnection,
   CapabilityResult,
@@ -54,6 +55,63 @@ function locationIdFromUrl(raw: string) {
   return locationId;
 }
 
+async function sessionRequestOnPage<T>(
+  page: Page,
+  input: {
+    url: string;
+    method?: "GET" | "POST";
+    body?: unknown;
+    version?: string;
+  }
+): Promise<T> {
+  const response = await page.evaluate(
+    async request => {
+      const token =
+        localStorage.getItem("refreshedToken") ||
+        sessionStorage.getItem("refreshedToken") ||
+        "";
+      if (!token) throw new Error("GENIE_SESSION_TOKEN_UNAVAILABLE");
+      const make = async (authorization: boolean) => {
+        const headers: Record<string, string> = {
+          Version: request.version,
+          "Content-Type": "application/json",
+        };
+        if (authorization) headers.Authorization = `Bearer ${token}`;
+        else headers["token-id"] = token;
+        const result = await fetch(request.url, {
+          method: request.method,
+          headers,
+          credentials: "include",
+          body:
+            request.method === "POST"
+              ? JSON.stringify(request.body ?? {})
+              : undefined,
+        });
+        return {
+          status: result.status,
+          ok: result.ok,
+          text: await result.text(),
+        };
+      };
+      const first = await make(false);
+      if (![401, 403].includes(first.status)) return first;
+      return make(true);
+    },
+    {
+      url: input.url,
+      method: input.method || "GET",
+      body: input.body,
+      version: input.version || "v3",
+    }
+  );
+  const result = response as SessionResponse;
+  if (!result.ok)
+    throw new Error(
+      `GENIE_SESSION_API_${result.status}: ${result.text.slice(0, 400)}`
+    );
+  return (result.text ? JSON.parse(result.text) : {}) as T;
+}
+
 async function sessionRequest<T>(input: {
   connection: AdapterConnection;
   secret: ConnectionSecretPayload;
@@ -66,55 +124,50 @@ async function sessionRequest<T>(input: {
     connection: input.connection,
     secret: input.secret,
     provider: "genie",
-    run: async page => {
-      const response = await page.evaluate(
-        async request => {
-          const token =
-            localStorage.getItem("refreshedToken") ||
-            sessionStorage.getItem("refreshedToken") ||
-            "";
-          if (!token) throw new Error("GENIE_SESSION_TOKEN_UNAVAILABLE");
-          const make = async (authorization: boolean) => {
-            const headers: Record<string, string> = {
-              Version: request.version,
-              "Content-Type": "application/json",
-            };
-            if (authorization) headers.Authorization = `Bearer ${token}`;
-            else headers["token-id"] = token;
-            const result = await fetch(request.url, {
-              method: request.method,
-              headers,
-              credentials: "include",
-              body:
-                request.method === "POST"
-                  ? JSON.stringify(request.body ?? {})
-                  : undefined,
-            });
-            return {
-              status: result.status,
-              ok: result.ok,
-              text: await result.text(),
-            };
-          };
-          const first = await make(false);
-          if (![401, 403].includes(first.status)) return first;
-          return make(true);
-        },
-        {
-          url: input.url,
-          method: input.method || "GET",
-          body: input.body,
-          version: input.version || "v3",
-        }
-      );
-      const result = response as SessionResponse;
-      if (!result.ok)
-        throw new Error(
-          `GENIE_SESSION_API_${result.status}: ${result.text.slice(0, 400)}`
-        );
-      return (result.text ? JSON.parse(result.text) : {}) as T;
-    },
+    run: page =>
+      sessionRequestOnPage<T>(page, {
+        url: input.url,
+        method: input.method,
+        body: input.body,
+        version: input.version,
+      }),
   });
+}
+
+async function sessionContextOnPage(page: Page) {
+  const pageUrl = page.url();
+  const claims = await page.evaluate(() => {
+    const token =
+      localStorage.getItem("refreshedToken") ||
+      sessionStorage.getItem("refreshedToken") ||
+      "";
+    if (!token) return {};
+    const parts = token.split(".");
+    if (parts.length < 2) return {};
+    try {
+      const normalized = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+      const padded = normalized.padEnd(
+        Math.ceil(normalized.length / 4) * 4,
+        "="
+      );
+      const parsed = JSON.parse(atob(padded)) as Record<string, unknown>;
+      const take = (keys: string[]) => {
+        for (const key of keys) {
+          const value = parsed[key];
+          if (typeof value === "string" && value.trim()) return value.trim();
+        }
+        return "";
+      };
+      return {
+        userId: take(["userId", "user_id", "sub"]),
+        companyId: take(["companyId", "company_id", "agencyId"]),
+        email: take(["email", "userEmail", "user_email"]),
+      };
+    } catch {
+      return {};
+    }
+  });
+  return { locationId: locationIdFromUrl(pageUrl), ...claims };
 }
 
 async function sessionContext(input: {
@@ -124,41 +177,7 @@ async function sessionContext(input: {
   return withAuthenticatedBrowserSessionPage({
     ...input,
     provider: "genie",
-    run: async page => {
-      const pageUrl = page.url();
-      const claims = await page.evaluate(() => {
-        const token =
-          localStorage.getItem("refreshedToken") ||
-          sessionStorage.getItem("refreshedToken") ||
-          "";
-        if (!token) return {};
-        const parts = token.split(".");
-        if (parts.length < 2) return {};
-        try {
-          const normalized = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-          const padded = normalized.padEnd(
-            Math.ceil(normalized.length / 4) * 4,
-            "="
-          );
-          const parsed = JSON.parse(atob(padded)) as Record<string, unknown>;
-          const take = (keys: string[]) => {
-            for (const key of keys) {
-              const value = parsed[key];
-              if (typeof value === "string" && value.trim()) return value.trim();
-            }
-            return "";
-          };
-          return {
-            userId: take(["userId", "user_id", "sub"]),
-            companyId: take(["companyId", "company_id", "agencyId"]),
-            email: take(["email", "userEmail", "user_email"]),
-          };
-        } catch {
-          return {};
-        }
-      });
-      return { locationId: locationIdFromUrl(pageUrl), ...claims };
-    },
+    run: page => sessionContextOnPage(page),
   });
 }
 
@@ -259,51 +278,71 @@ async function discoverCurrentUser(input: {
   connection: AdapterConnection;
   secret: ConnectionSecretPayload;
 }): Promise<NormalizedCrmUser[]> {
-  const context = await sessionContext(input);
-  if (context.userId) {
-    const user = await sessionRequest<Json>({
-      ...input,
-      url: `${BACKEND}/users/${encodeURIComponent(context.userId)}`,
-    }).catch(() => ({}));
-    const candidate = record(record(user).user || user);
-    const email = text(candidate.email || context.email).trim().toLowerCase();
-    const displayName =
-      text(candidate.name) ||
-      [text(candidate.firstName), text(candidate.lastName)].filter(Boolean).join(" ");
-    if (text(candidate.id || context.userId) && displayName && email)
-      return [
-        {
-          externalId: text(candidate.id || context.userId),
-          displayName,
-          email,
-          raw: candidate,
-        },
-      ];
-  }
-  if (context.companyId && context.email) {
-    const url = new URL(`${BACKEND}/users/search`);
-    url.searchParams.set("companyId", context.companyId);
-    url.searchParams.set("locationId", context.locationId);
-    url.searchParams.set("query", context.email);
-    url.searchParams.set("limit", "25");
-    const response = await sessionRequest<Json>({ ...input, url: url.toString() });
-    const users = array(response.users)
-      .map(record)
-      .filter(user => text(user.email).trim().toLowerCase() === context.email!.trim().toLowerCase());
-    if (users.length !== 1) return [];
-    const user = users[0];
-    return [
-      {
-        externalId: text(user.id),
-        displayName:
-          text(user.name) ||
-          [text(user.firstName), text(user.lastName)].filter(Boolean).join(" "),
-        email: text(user.email).trim().toLowerCase(),
-        raw: user,
-      },
-    ].filter(user => user.externalId && user.displayName && user.email);
-  }
-  return [];
+  return withAuthenticatedBrowserSessionPage({
+    connection: input.connection,
+    secret: input.secret,
+    provider: "genie",
+    run: async page => {
+      const context = await sessionContextOnPage(page);
+      if (context.userId) {
+        const user = await sessionRequestOnPage<Json>(page, {
+          url: `${BACKEND}/users/${encodeURIComponent(context.userId)}`,
+        }).catch(() => ({}));
+        const candidate = record(record(user).user || user);
+        const email = text(candidate.email || context.email)
+          .trim()
+          .toLowerCase();
+        const displayName =
+          text(candidate.name) ||
+          [text(candidate.firstName), text(candidate.lastName)]
+            .filter(Boolean)
+            .join(" ");
+        if (text(candidate.id || context.userId) && displayName && email)
+          return [
+            {
+              externalId: text(candidate.id || context.userId),
+              displayName,
+              email,
+              raw: candidate,
+            },
+          ];
+      }
+      if (context.companyId && context.email) {
+        const url = new URL(`${BACKEND}/users/search`);
+        url.searchParams.set("companyId", context.companyId);
+        url.searchParams.set("locationId", context.locationId);
+        url.searchParams.set("query", context.email);
+        url.searchParams.set("limit", "25");
+        const response = await sessionRequestOnPage<Json>(page, {
+          url: url.toString(),
+        });
+        const users = array(response.users)
+          .map(record)
+          .filter(
+            user =>
+              text(user.email).trim().toLowerCase() ===
+              context.email!.trim().toLowerCase()
+          );
+        if (users.length !== 1) return [];
+        const user = users[0];
+        return [
+          {
+            externalId: text(user.id),
+            displayName:
+              text(user.name) ||
+              [text(user.firstName), text(user.lastName)]
+                .filter(Boolean)
+                .join(" "),
+            email: text(user.email).trim().toLowerCase(),
+            raw: user,
+          },
+        ].filter(
+          user => user.externalId && user.displayName && user.email
+        );
+      }
+      return [];
+    },
+  });
 }
 
 async function syncContacts(input: {

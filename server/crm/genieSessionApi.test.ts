@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const taskBodies: Array<Record<string, unknown>> = [];
+let authenticatedPageCalls = 0;
 
 vi.mock("../browserConnectors/browserCrmAdapter", () => {
   const page = {
@@ -49,8 +50,10 @@ vi.mock("../browserConnectors/browserCrmAdapter", () => {
   };
   return {
     browserCrmAdapter: () => ({}),
-    withAuthenticatedBrowserSessionPage: async (input: { run: (page: unknown, context: unknown) => unknown }) =>
-      input.run(page, {}),
+    withAuthenticatedBrowserSessionPage: async (input: { run: (page: unknown, context: unknown) => unknown }) => {
+      authenticatedPageCalls += 1;
+      return input.run(page, {});
+    },
   };
 });
 
@@ -77,7 +80,10 @@ const secret = {
 };
 
 describe("Genie authenticated session API adapter", () => {
-  beforeEach(() => taskBodies.splice(0));
+  beforeEach(() => {
+    taskBodies.splice(0);
+    authenticatedPageCalls = 0;
+  });
 
   it("requests only the exact salesperson's pending tasks and paginates beyond 100", async () => {
     const first = await genieSessionApiAdapter.syncTasks({ connection, secret });
@@ -124,5 +130,6 @@ describe("Genie authenticated session API adapter", () => {
         email: "sales@example.com",
       }),
     ]);
+    expect(authenticatedPageCalls).toBe(1);
   });
 });
