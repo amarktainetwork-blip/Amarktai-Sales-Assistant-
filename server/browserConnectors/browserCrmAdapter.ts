@@ -861,6 +861,36 @@ export function genieTaskGridBodyContainsOwner(
   }
 }
 
+export function genieTaskUrlContainsOwnerFilter(
+  urlText: string,
+  ownerExternalId: string
+) {
+  const owner = ownerExternalId.trim();
+  if (!owner) return false;
+  try {
+    const quickFilters = new URL(urlText).searchParams.get("quickFilters");
+    if (!quickFilters) return false;
+    const value = JSON.parse(quickFilters) as unknown;
+    const visit = (node: unknown): boolean => {
+      if (Array.isArray(node)) return node.some(visit);
+      if (!node || typeof node !== "object") return false;
+      const row = node as Record<string, unknown>;
+      const field = String(row.field || "").trim().toLowerCase();
+      const operator = String(row.operator || "").trim().toLowerCase();
+      const filterValue = row.value;
+      if (field === "owners" && operator === "eq") {
+        if (Array.isArray(filterValue))
+          return filterValue.some(item => String(item).trim() === owner);
+        return String(filterValue || "").trim() === owner;
+      }
+      return Object.values(row).some(visit);
+    };
+    return visit(value);
+  } catch {
+    return false;
+  }
+}
+
 async function waitForGenieTaskGridPage(
   page: Page,
   ownerExternalId = ""
@@ -1053,11 +1083,18 @@ async function executeGenieTaskGridRead(input: {
       input.page,
       ownerExternalId
     );
-    await applyGenieTaskOwnerFilter({
-      page: input.page,
-      ownerExternalId,
-      ownerDisplayName: input.ownerDisplayName || "",
-    });
+    if (genieTaskUrlContainsOwnerFilter(input.page.url(), ownerExternalId)) {
+      await input.page.reload({
+        waitUntil: "domcontentloaded",
+        timeout: 45_000,
+      });
+    } else {
+      await applyGenieTaskOwnerFilter({
+        page: input.page,
+        ownerExternalId,
+        ownerDisplayName: input.ownerDisplayName || "",
+      });
+    }
     firstPage = assertGenieTaskOwnerPage(
       await firstPagePromise,
       ownerExternalId
