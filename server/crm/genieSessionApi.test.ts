@@ -57,7 +57,10 @@ vi.mock("../browserConnectors/browserCrmAdapter", () => {
   };
 });
 
-import { genieSessionApiAdapter } from "./genieSessionApi";
+import {
+  genieSessionApiAdapter,
+  genieTokenlessProfileIdentity,
+} from "./genieSessionApi";
 
 const connection = {
   id: 1,
@@ -78,6 +81,38 @@ const secret = {
   crmUserDisplayName: "Sales Person",
   crmUserEmail: "sales@example.com",
 };
+
+describe("Genie tokenless signed-in identity fallback", () => {
+  it("accepts exactly one profile email and exactly one current-user ID", () => {
+    expect(
+      genieTokenlessProfileIdentity({
+        menuText:
+          "AD\nAmelia De Beer\namelia@course2career.com\nSignout",
+        userIds: ["yZrFI0ptOyvG3ZXvs7iZ"],
+      })
+    ).toEqual({
+      externalId: "yZrFI0ptOyvG3ZXvs7iZ",
+      displayName: "Amelia De Beer",
+      email: "amelia@course2career.com",
+    });
+  });
+
+  it("fails closed for missing or ambiguous identity evidence", () => {
+    expect(
+      genieTokenlessProfileIdentity({
+        menuText: "AD\nAmelia De Beer\nSignout",
+        userIds: ["owner-1"],
+      })
+    ).toBeUndefined();
+    expect(
+      genieTokenlessProfileIdentity({
+        menuText:
+          "AD\nAmelia De Beer\namelia@course2career.com\nSignout",
+        userIds: ["owner-1", "owner-2"],
+      })
+    ).toBeUndefined();
+  });
+});
 
 describe("Genie authenticated session API adapter", () => {
   beforeEach(() => {
