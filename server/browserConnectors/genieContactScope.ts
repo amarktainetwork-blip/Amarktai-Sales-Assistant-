@@ -7,7 +7,7 @@ import type {
 const CONTACT_SEARCH_URL =
   "https://backend.leadconnectorhq.com/contacts/search/2";
 const PAGE_LIMIT = 100;
-const MAX_PAGES = 100;
+const MAX_PAGES = 500;
 
 export function genieContactDrainIncomplete(input: {
   total?: number;
@@ -15,7 +15,6 @@ export function genieContactDrainIncomplete(input: {
   lastPageRecords: number;
   pagesRead: number;
 }) {
-  if (input.total !== undefined) return input.uniqueRecords < input.total;
   return (
     input.pagesRead >= MAX_PAGES &&
     input.lastPageRecords >= PAGE_LIMIT

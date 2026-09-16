@@ -112,18 +112,29 @@ describe("Genie owner-scoped contact search", () => {
     ).toThrow("CRM_OWNER_SCOPE_REQUIRED");
   });
 
-  it("fails closed when an unknown-total final allowed page is still full", () => {
+  it("treats Genie total as advisory when the owner-scoped stream ends", () => {
+    expect(
+      genieContactDrainIncomplete({
+        total: 23_955,
+        uniqueRecords: 10_000,
+        lastPageRecords: 0,
+        pagesRead: 101,
+      })
+    ).toBe(false);
+  });
+
+  it("fails closed when the owner-scoped hard cap ends on a full page", () => {
     expect(
       genieContactDrainIncomplete({
         total: undefined,
-        uniqueRecords: 10_000,
+        uniqueRecords: 50_000,
         lastPageRecords: 100,
-        pagesRead: 100,
+        pagesRead: 500,
       })
     ).toBe(true);
   });
 
-  it("allows an unknown-total bounded drain when the final page is short", () => {
+  it("allows a bounded drain when the final page is short", () => {
     expect(
       genieContactDrainIncomplete({
         total: undefined,
