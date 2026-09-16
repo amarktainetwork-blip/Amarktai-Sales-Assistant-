@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
 import {
   AMELIA_HANDOVER as a,
@@ -44,5 +45,17 @@ describe("Amelia handover verifier fails closed", () => {
     expect(handoverAllPassed([])).toBe(false);
     expect(handoverAllPassed([{ ok: true }, { ok: false }])).toBe(false);
     expect(handoverAllPassed([{ ok: true }])).toBe(true);
+  });
+
+  it("converges a stale safe-read commissioning job when current durable truth is ready", () => {
+    const source = readFileSync(
+      new URL("./crm/currentReadiness.ts", import.meta.url),
+      "utf8"
+    );
+    expect(source).toContain('state: "READY" as const');
+    expect(source).toContain('status: "ready" as const');
+    expect(source).toContain("leaseExpiresAt: null");
+    expect(source).toContain("lastError: null");
+    expect(source).toContain("job.completedAt ?? new Date()");
   });
 });

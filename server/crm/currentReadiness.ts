@@ -11,12 +11,15 @@ import { effectiveLatestBrowserOperation } from "../browserConnectors/learnedOpe
 import { isTransientBrowserExecutionFailure } from "../browserConnectors/runtimeFailure";
 import { accountBrowserCapabilities } from "./capabilityAccounting";
 
-const resources: Record<string, string> = {
+/**
+ * Only resources materialised by the canonical personal browser sync require
+ * durable cursors. Opportunities and activities are safe-read capabilities in
+ * this mode: LIVE_PROVEN operation evidence is their current truth.
+ */
+const cursorBackedResources: Record<string, string> = {
   "companies.read": "companies",
   "contacts.read": "contacts",
   "tasks.read": "tasks",
-  "opportunities.read": "opportunities",
-  "activities.read": "activities",
 };
 export function calculateCurrentReadiness(input: {
   operations: ReadonlyMap<string, string>;
@@ -49,7 +52,7 @@ export function calculateCurrentReadiness(input: {
     allowedWriteCapabilities: input.allowedWrites,
   });
   const requiredResources = input.allowedReads
-    .map(key => resources[key])
+    .map(key => cursorBackedResources[key])
     .filter(Boolean);
   const blockingResources = requiredResources.filter(resource => {
     const cursor = input.cursors.find(row => row.resourceType === resource);
@@ -167,20 +170,28 @@ export async function reconcileCurrentBrowserReadiness(input: {
             ...job.progress,
             safeReads: current.safeReads,
             capabilityAccounting: current.capabilityAccounting,
-            ...(job.state === "READY"
-              ? { humanStatus: current.ready ? "Ready" : "CRM needs attention" }
-              : {}),
+            ...(current.ready
+              ? { humanStatus: "Ready" }
+              : job.state === "READY"
+                ? { humanStatus: "CRM needs attention" }
+                : {}),
           },
           optionalFailures,
-          ...(job.state === "READY" &&
-          !["cancelled", "running"].includes(job.status)
+          ...(current.ready
             ? {
-                status: current.ready
-                  ? ("ready" as const)
-                  : ("needs_attention" as const),
-                lastError: current.ready ? null : job.lastError,
+                state: "READY" as const,
+                status: "ready" as const,
+                completedAt: job.completedAt ?? new Date(),
+                leaseExpiresAt: null,
+                lastError: null,
               }
-            : {}),
+            : job.state === "READY" &&
+                !["cancelled", "running"].includes(job.status)
+              ? {
+                  status: "needs_attention" as const,
+                  lastError: job.lastError,
+                }
+              : {}),
         })
         .where(eq(crmCommissioningJobs.id, job.id));
     }
