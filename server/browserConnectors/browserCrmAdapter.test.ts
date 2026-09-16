@@ -11,6 +11,7 @@ import {
   normalizeGenieTaskGridPage,
   isCanonicalGenieTaskGridScript,
   genieTaskPickerLabelMatches,
+  genieTaskGridBodyContainsOwner,
   resolveBrowserProfile,
   isRetryableReadBrowserFailure,
 } from "./browserCrmAdapter";
@@ -197,6 +198,43 @@ describe("read-only runtime retry policy", () => {
         new Error("Your CRM needs you to sign in again.")
       )
     ).toBe(false);
+  });
+});
+
+describe("Genie task owner-scoped response safety", () => {
+  it("ignores the unfiltered grid request and accepts only Amelia-scoped requests", () => {
+    const owner = "yZrFI0ptOyvG3ZXvs7iZ";
+    expect(
+      genieTaskGridBodyContainsOwner(
+        {
+          locationId: "location-1",
+          page: 1,
+          pageLimit: 20,
+          filters: [
+            {
+              group: "AND",
+              filters: [{ group: "OR", filters: [] }],
+            },
+          ],
+        },
+        owner
+      )
+    ).toBe(false);
+    expect(
+      genieTaskGridBodyContainsOwner(
+        {
+          locationId: "location-1",
+          page: 1,
+          filters: [
+            {
+              group: "AND",
+              filters: [{ field: "owners", operator: "eq", value: [owner] }],
+            },
+          ],
+        },
+        owner
+      )
+    ).toBe(true);
   });
 });
 

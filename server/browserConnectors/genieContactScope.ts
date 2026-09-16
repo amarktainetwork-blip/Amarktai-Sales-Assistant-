@@ -81,6 +81,14 @@ export function scopeGenieContactSearchBody(
     ],
   };
 }
+export function genieContactSearchAfter(value: unknown) {
+  const root = object(value);
+  const source = Array.isArray(root.contacts) ? root.contacts : [];
+  if (!source.length) return undefined;
+  const last = object(source[source.length - 1]);
+  return last.sort;
+}
+
 export function normalizeGenieContactSearchPage(
   value: unknown,
   ownerExternalId: string
@@ -153,6 +161,7 @@ async function fetchOwnerScopedContactPage(input: {
   locationId: string;
   ownerExternalId: string;
   pageNumber: number;
+  searchAfter?: unknown;
 }) {
   const response = await input.page.context().request.post(
     CONTACT_SEARCH_URL,
@@ -171,6 +180,9 @@ async function fetchOwnerScopedContactPage(input: {
           pageLimit: PAGE_LIMIT,
           sort: [],
           query: "",
+          ...(input.searchAfter === undefined
+            ? {}
+            : { searchAfter: input.searchAfter }),
         },
         input.ownerExternalId
       ),
@@ -180,10 +192,11 @@ async function fetchOwnerScopedContactPage(input: {
     throw new Error(
       `GENIE_CONTACT_SEARCH_HTTP_ERROR: Contacts search returned HTTP ${response.status()}.`
     );
-  return normalizeGenieContactSearchPage(
-    await response.json(),
-    input.ownerExternalId
-  );
+  const payload = await response.json();
+  return {
+    ...normalizeGenieContactSearchPage(payload, input.ownerExternalId),
+    searchAfter: genieContactSearchAfter(payload),
+  };
 }
 export function ownerScopedGenieContactNavigation(
   script: SavedBrowserScript
@@ -234,6 +247,8 @@ export async function executeOwnerScopedGenieContactRead(input: {
   let total: number | undefined;
   let pagesRead = 0;
   let lastPageRecords = 0;
+  let searchAfter: unknown = undefined;
+  let previousCursor = "";
   for (let pageNumber = 1; pageNumber <= MAX_PAGES; pageNumber += 1) {
     input.assertControl();
     const pageResult = await fetchOwnerScopedContactPage({
@@ -242,6 +257,7 @@ export async function executeOwnerScopedGenieContactRead(input: {
       locationId,
       ownerExternalId: owner,
       pageNumber,
+      searchAfter,
     });
     pagesRead = pageNumber;
     lastPageRecords = pageResult.records.length;
@@ -251,7 +267,14 @@ export async function executeOwnerScopedGenieContactRead(input: {
 
     if (!pageResult.records.length) break;
     if (pageResult.records.length < PAGE_LIMIT) break;
-    if (total !== undefined && byId.size >= total) break;
+
+    const nextCursor = JSON.stringify(pageResult.searchAfter ?? null);
+    if (!pageResult.searchAfter || nextCursor === previousCursor)
+      throw new Error(
+        "CRM_SYNC_CURSOR_REQUIRED: owner-scoped Genie contact search returned a full page without an advancing searchAfter cursor."
+      );
+    previousCursor = nextCursor;
+    searchAfter = pageResult.searchAfter;
   }
 
   if (
