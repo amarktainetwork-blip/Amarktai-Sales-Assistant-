@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   selectLatestWatchdogVersions,
+  watchdogIdentityMappingIsConfirmed,
   watchdogRepairPlan,
 } from "./operationWatchdog";
 
@@ -31,6 +32,38 @@ describe("daily CRM drift economics", () => {
       unchangedGenxCalls: undefined,
       maximumRepairBatches: 1,
     });
+  });
+
+  it("runs background drift checks only after one exact-email CRM identity mapping is confirmed", () => {
+    expect(
+      watchdogIdentityMappingIsConfirmed([
+        {
+          mappingEmail: " Amelia@Example.com ",
+          userEmail: "amelia@example.com",
+        },
+      ])
+    ).toBe(true);
+    expect(watchdogIdentityMappingIsConfirmed([])).toBe(false);
+    expect(
+      watchdogIdentityMappingIsConfirmed([
+        {
+          mappingEmail: "wrong@example.com",
+          userEmail: "amelia@example.com",
+        },
+      ])
+    ).toBe(false);
+    expect(
+      watchdogIdentityMappingIsConfirmed([
+        {
+          mappingEmail: "amelia@example.com",
+          userEmail: "amelia@example.com",
+        },
+        {
+          mappingEmail: "amelia@example.com",
+          userEmail: "amelia@example.com",
+        },
+      ])
+    ).toBe(false);
   });
 
   it.each(["TEST_READY", "DEGRADED", "BLOCKED"])(
