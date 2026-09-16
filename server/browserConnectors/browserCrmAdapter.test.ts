@@ -12,6 +12,7 @@ import {
   isCanonicalGenieTaskGridScript,
   genieTaskPickerLabelMatches,
   genieTaskGridBodyContainsOwner,
+  genieTaskUrlContainsOwnerFilter,
   ownerScopedGenieTaskNavigation,
   resolveBrowserProfile,
   isRetryableReadBrowserFailure,
@@ -269,6 +270,31 @@ describe("Genie task owner-scoped response safety", () => {
 });
 
 describe("Genie task owner picker safety", () => {
+  it("recognizes an already-active exact owner quick filter in the Tasks URL", () => {
+    const owner = "yZrFI0ptOyvG3ZXvs7iZ";
+    const quickFilters = encodeURIComponent(
+      JSON.stringify([
+        { field: "owners", operator: "eq", value: [owner] },
+      ])
+    );
+    expect(
+      genieTaskUrlContainsOwnerFilter(
+        `https://genie.example/v2/location/location-1/tasks?quickFilters=${quickFilters}`,
+        owner
+      )
+    ).toBe(true);
+    expect(
+      genieTaskUrlContainsOwnerFilter(
+        `https://genie.example/v2/location/location-1/tasks?quickFilters=${encodeURIComponent(
+          JSON.stringify([
+            { field: "owners", operator: "eq", value: ["owner-other"] },
+          ])
+        )}`,
+        owner
+      )
+    ).toBe(false);
+  });
+
   it("accepts only an exact picker-line display-name match", () => {
     expect(
       genieTaskPickerLabelMatches(
