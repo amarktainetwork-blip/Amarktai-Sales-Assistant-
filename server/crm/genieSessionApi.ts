@@ -265,6 +265,88 @@ function activity(rawValue: unknown): NormalizedActivity {
   };
 }
 
+export function genieTokenlessProfileIdentity(input: {
+  menuText: string;
+  userIds: string[];
+}) {
+  const lines = input.menuText
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean);
+  const emails = Array.from(
+    new Set(
+      lines
+        .filter(line => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(line))
+        .map(line => line.toLowerCase())
+    )
+  );
+  const userIds = Array.from(
+    new Set(input.userIds.map(value => value.trim()).filter(Boolean))
+  );
+  if (emails.length !== 1 || userIds.length !== 1) return undefined;
+  const emailIndex = lines.findIndex(
+    line => line.toLowerCase() === emails[0]
+  );
+  if (emailIndex < 1) return undefined;
+  const displayName = lines
+    .slice(0, emailIndex)
+    .reverse()
+    .find(
+      line =>
+        !/^[A-Z]{1,4}$/.test(line) &&
+        !/^sign\s*out$/i.test(line) &&
+        !line.includes("@")
+    );
+  if (!displayName) return undefined;
+  return {
+    externalId: userIds[0],
+    displayName,
+    email: emails[0],
+  };
+}
+
+async function discoverTokenlessCurrentUserOnPage(page: Page) {
+  const trigger = page.getByLabel("Open Profile Menu").first();
+  if (!(await trigger.count())) return [] as NormalizedCrmUser[];
+  await trigger.click().catch(() => undefined);
+  await page.waitForTimeout(300);
+  const menuTexts = await page
+    .locator(".dropdown-menu:visible")
+    .allInnerTexts()
+    .catch(() => [] as string[]);
+  const identityMenus = menuTexts.filter(text =>
+    /[^\s@]+@[^\s@]+\.[^\s@]+/.test(text)
+  );
+  if (identityMenus.length !== 1) return [] as NormalizedCrmUser[];
+  const userIds = await page.evaluate(() => {
+    const found: string[] = [];
+    for (const entry of performance.getEntriesByType("resource")) {
+      try {
+        const url = new URL(entry.name);
+        const queryId = url.searchParams.get("userId");
+        if (queryId) found.push(queryId);
+        const match = url.pathname.match(
+          new RegExp("/users/([A-Za-z0-9_-]{8,})")
+        );
+        if (match?.[1]) found.push(match[1]);
+      } catch {}
+    }
+    return Array.from(new Set(found)).sort();
+  });
+  const candidate = genieTokenlessProfileIdentity({
+    menuText: identityMenus[0],
+    userIds,
+  });
+  return candidate
+    ? [
+        {
+          ...candidate,
+          raw: { source: "genie-profile-menu" },
+        },
+      ]
+    : [];
+}
+
 function requirePersonalScope(secret: ConnectionSecretPayload) {
   const externalId = secret.crmUserExternalId?.trim();
   if (!externalId)
@@ -340,7 +422,7 @@ async function discoverCurrentUser(input: {
           user => user.externalId && user.displayName && user.email
         );
       }
-      return [];
+      return discoverTokenlessCurrentUserOnPage(page);
     },
   });
 }
