@@ -91,4 +91,61 @@ describe("current readiness convergence", () => {
         operations: new Map([["task.sync", "LIVE_PROVEN"]]),
       }).ready
     ).toBe(false));
+
+  it("requires cursors only for resources the personal browser sync materialises", () => {
+    const current = calculateCurrentReadiness({
+      operations: new Map([
+        ["company.sync", "LIVE_PROVEN"],
+        ["contact.search", "LIVE_PROVEN"],
+        ["contact.read", "LIVE_PROVEN"],
+        ["contact.sync", "LIVE_PROVEN"],
+        ["task.sync", "LIVE_PROVEN"],
+        ["opportunity.sync", "LIVE_PROVEN"],
+        ["activity.sync", "LIVE_PROVEN"],
+      ]),
+      allowedReads: [
+        "companies.read",
+        "contacts.read",
+        "tasks.read",
+        "opportunities.read",
+        "activities.read",
+      ],
+      allowedWrites: [],
+      discovered: [
+        "company.sync",
+        "contact.search",
+        "contact.read",
+        "contact.sync",
+        "task.sync",
+        "opportunity.sync",
+        "activity.sync",
+      ],
+      cursors: [
+        {
+          resourceType: "companies",
+          lastSuccessfulAt: new Date(),
+          lastError: null,
+        },
+        {
+          resourceType: "contacts",
+          lastSuccessfulAt: new Date(),
+          lastError: null,
+        },
+        {
+          resourceType: "tasks",
+          lastSuccessfulAt: new Date(),
+          lastError: null,
+        },
+      ],
+    });
+    expect(current.blockingResources).toEqual([]);
+    expect(current.ready).toBe(true);
+    expect(current.verifiedCapabilities).toEqual([
+      "companies.read",
+      "contacts.read",
+      "tasks.read",
+      "opportunities.read",
+      "activities.read",
+    ]);
+  });
 });
