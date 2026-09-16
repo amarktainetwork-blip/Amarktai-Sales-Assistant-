@@ -624,9 +624,7 @@ describe("automatic CRM commissioning product contract", () => {
     expect(adapter).toContain("assertAuthorisedConnectionUrl");
     expect(adapter).toContain("postconditionRead");
     expect(adapter).toContain("EXECUTION_UNVERIFIED");
-    expect(adapter).toContain(
-      'postconditionVerified: learned.definition.mode === "write"'
-    );
+    expect(adapter).toMatch(/postconditionVerified:\s*learned.definition.mode === "write" &&\s*result.data.shadowMode !== "true"/);
   });
 
   it("continues any approved browser session at discovery instead of looping through login", () => {

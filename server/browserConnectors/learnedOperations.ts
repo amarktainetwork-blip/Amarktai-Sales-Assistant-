@@ -543,6 +543,13 @@ export async function recordBrowserOperationResult(input: {
         error: input.error?.slice(0, 800),
       },
     });
+  const { reconcileCurrentBrowserReadiness } = await import(
+    "../crm/currentReadiness"
+  );
+  await reconcileCurrentBrowserReadiness({
+    organisationId: input.organisationId,
+    connectedSystemId: input.connectedSystemId,
+  });
   return { status };
 }
 

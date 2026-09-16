@@ -549,15 +549,8 @@ export default function CompanySetup() {
     )
   );
 
-  // Completion is only presentation state. The real setup contract is a
-  // confirmed business profile plus a backend-verified CRM. Never let a stale
-  // organisation flag skip the CRM sign-in/commissioning step.
-  if (
-    markedComplete &&
-    setup.data.profile.discoveryStatus === "confirmed" &&
-    crmReady
-  )
-    return <Knowledge />;
+  // A runtime connector issue must not reopen completed company onboarding.
+  if (markedComplete) return <Knowledge />;
 
   return <Onboarding />;
 }

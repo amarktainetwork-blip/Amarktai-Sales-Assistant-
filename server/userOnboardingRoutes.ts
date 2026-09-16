@@ -83,9 +83,7 @@ export function memberCompanySetupComplete(input: {
   companyKnowledgeReady: boolean;
   crmConnected: boolean;
 }) {
-  return (
-    input.storedComplete && input.companyKnowledgeReady && input.crmConnected
-  );
+  return input.storedComplete;
 }
 
 export function personalCrmIdentityRequired(input: {

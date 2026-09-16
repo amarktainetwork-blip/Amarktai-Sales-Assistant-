@@ -1,3 +1,4 @@
+import { writeFileSync } from "node:fs";
 import "dotenv/config";
 import { runGenieOperationWatchdog } from "./operationWatchdog";
 import { startCompanyKnowledgeWorker } from "../companyKnowledgeJobs";
@@ -79,3 +80,9 @@ startConnectionScopedCrmSyncWorker();
 
 process.on("SIGTERM", () => process.exit(0));
 process.on("SIGINT", () => process.exit(0));
+
+// A fresh event-loop heartbeat distinguishes a live worker from a stuck process.
+const heartbeat = () =>
+  writeFileSync("/tmp/amarktai-worker-heartbeat", String(Date.now()));
+heartbeat();
+setInterval(heartbeat, 15_000).unref();

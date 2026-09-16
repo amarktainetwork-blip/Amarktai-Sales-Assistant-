@@ -1,3 +1,4 @@
+import { readOwnerScopedGenieTasks } from "./genieTaskScope";
 import { readFile } from "node:fs/promises";
 import {
   type Browser,
@@ -788,9 +789,7 @@ export function normalizeGenieTaskGridPage(value: unknown) {
     return {
       externalId,
       title:
-        scalarText(properties.title) ||
-        scalarText(properties.name) ||
-        "Task",
+        scalarText(properties.title) || scalarText(properties.name) || "Task",
       description: scalarText(properties.description),
       status:
         scalarText(properties.status) ||
@@ -801,8 +800,7 @@ export function normalizeGenieTaskGridPage(value: unknown) {
         scalarText(properties.dueAt) ||
         scalarText(properties.due_date),
       completedAt:
-        scalarText(properties.completedAt) ||
-        scalarText(properties.closedAt),
+        scalarText(properties.completedAt) || scalarText(properties.closedAt),
       contactExternalId,
       ownerExternalId: identityText(raw.owners),
       sourceUpdatedAt: scalarText(raw.updatedAt),
@@ -875,8 +873,12 @@ export function genieTaskUrlContainsOwnerFilter(
       if (Array.isArray(node)) return node.some(visit);
       if (!node || typeof node !== "object") return false;
       const row = node as Record<string, unknown>;
-      const field = String(row.field || "").trim().toLowerCase();
-      const operator = String(row.operator || "").trim().toLowerCase();
+      const field = String(row.field || "")
+        .trim()
+        .toLowerCase();
+      const operator = String(row.operator || "")
+        .trim()
+        .toLowerCase();
       const filterValue = row.value;
       if (field === "owners" && operator === "eq") {
         if (Array.isArray(filterValue))
@@ -891,10 +893,7 @@ export function genieTaskUrlContainsOwnerFilter(
   }
 }
 
-async function waitForGenieTaskGridPage(
-  page: Page,
-  ownerExternalId = ""
-) {
+async function waitForGenieTaskGridPage(page: Page, ownerExternalId = "") {
   const response = await page.waitForResponse(
     candidate => {
       if (
@@ -923,7 +922,8 @@ async function waitForGenieTaskGridPage(
 
 export function isCanonicalGenieTaskGridScript(script: SavedBrowserScript) {
   const canonical = GENIE_PROVIDER_PACK.scripts.genie_task_sync;
-  if (!canonical || script.steps.length !== canonical.steps.length) return false;
+  if (!canonical || script.steps.length !== canonical.steps.length)
+    return false;
   return script.steps.every((step, index) => {
     const expected = canonical.steps[index];
     return (
@@ -934,7 +934,8 @@ export function isCanonicalGenieTaskGridScript(script: SavedBrowserScript) {
       step.attribute === expected.attribute &&
       step.nextSelector === expected.nextSelector &&
       step.maxPages === expected.maxPages &&
-      JSON.stringify(step.fields || {}) === JSON.stringify(expected.fields || {})
+      JSON.stringify(step.fields || {}) ===
+        JSON.stringify(expected.fields || {})
     );
   });
 }
@@ -972,7 +973,9 @@ async function applyGenieTaskOwnerFilter(input: {
       "CRM_OWNER_SCOPE_REQUIRED: Genie task Assignee filter was not available."
     );
 
-  const currentPicker = input.page.locator(".hr-popover__content:visible").first();
+  const currentPicker = input.page
+    .locator(".hr-popover__content:visible")
+    .first();
   if (!(await currentPicker.count())) await assignee.click();
 
   const candidates = input.page.locator(`[data-id="${owner}"]`);
@@ -1053,6 +1056,13 @@ async function executeGenieTaskGridRead(input: {
   ownerExternalId?: string;
   ownerDisplayName?: string;
 }) {
+  if (input.ownerExternalId?.trim())
+    return readOwnerScopedGenieTasks({
+      page: input.page,
+      ownerExternalId: input.ownerExternalId.trim(),
+      assertControl: input.assertControl,
+      normalize: normalizeGenieTaskGridPage,
+    });
   const paginateIndex = input.script.steps.findIndex(
     step => step.action === "paginate_rows"
   );
@@ -1143,16 +1153,12 @@ async function executeGenieTaskGridRead(input: {
       ownerExternalId
     );
     const [, rawNextPage] = await Promise.all([next.click(), nextPagePromise]);
-    const nextPage = assertGenieTaskOwnerPage(
-      rawNextPage,
-      ownerExternalId
-    );
+    const nextPage = assertGenieTaskOwnerPage(rawNextPage, ownerExternalId);
     if (!nextPage.records.length) {
       ownerDrainComplete = true;
       break;
     }
-    for (const record of nextPage.records)
-      byId.set(record.externalId, record);
+    for (const record of nextPage.records) byId.set(record.externalId, record);
   }
 
   if (ownerExternalId && !ownerDrainComplete) {
@@ -1441,6 +1447,9 @@ async function runDeterministicOperation(input: RunOperationInput) {
           readProofCode: readProof?.code,
           shadowMode: result.data.shadowMode === "true",
           screenshotPath: result.screenshotPath,
+          ownerExternalId: result.data.ownerExternalId,
+          sourceTotal: result.data.sourceTotal,
+          pagesRead: result.data.pagesRead,
         },
       });
     return {
@@ -1491,32 +1500,6 @@ export async function testLearnedBrowserOperation(input: {
     throw new Error(
       "A shadow-mode replay cannot publish an operation as LIVE_PROVEN because no external write occurred."
     );
-  if (input.publishByUserId) {
-    const learned = await requireRuntimeBrowserOperation({
-      organisationId: input.connection.organisationId,
-      connectedSystemId: input.connection.id,
-      operationKey: input.operationKey,
-      allowTestReady: true,
-    });
-    await recordBrowserOperationResult({
-      organisationId: input.connection.organisationId,
-      connectedSystemId: input.connection.id,
-      operationKey: input.operationKey,
-      version: learned.version,
-      success: true,
-      publishByUserId: input.publishByUserId,
-      evidence: {
-        correlationId: input.correlationId,
-        completedAt: result.result.completedAt,
-        controlledReplay: true,
-        modelUsed: result.result.data.modelUsed === "true",
-        providerCallCount: Number(result.result.data.providerCallCount || 0),
-        targetVerified: learned.definition.mode === "write",
-        postconditionVerified: learned.definition.mode === "write",
-        screenshotPath: result.result.screenshotPath,
-      },
-    });
-  }
   return evidence(input.operationKey, input.correlationId, result.result);
 }
 function evidence(
