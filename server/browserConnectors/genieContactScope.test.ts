@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+  fetchOwnerScopedContactPage,
   genieContactDrainIncomplete,
   genieContactSearchAfter,
   normalizeGenieContactSearchPage,
@@ -123,6 +124,75 @@ describe("Genie owner-scoped contact search", () => {
         "owner-amelia"
       )
     ).toThrow("CRM_OWNER_SCOPE_REQUIRED");
+  });
+
+  it("refreshes the Genie token once when an owner-scoped contact page returns 401", async () => {
+    const post = vi
+      .fn()
+      .mockResolvedValueOnce({
+        status: () => 401,
+        ok: () => false,
+        json: async () => ({}),
+      })
+      .mockResolvedValueOnce({
+        status: () => 200,
+        ok: () => true,
+        json: async () => ({
+          contacts: [
+            {
+              id: "contact-1",
+              assignedTo: "owner-amelia",
+              sort: ["2026-09-16T09:00:00Z", "contact-1"],
+            },
+          ],
+          total: 1,
+        }),
+      });
+    const page = {
+      evaluate: vi.fn(async () => "token-new"),
+      context: () => ({ request: { post } }),
+    } as any;
+
+    const result = await fetchOwnerScopedContactPage({
+      page,
+      token: "token-old",
+      locationId: "location-1",
+      ownerExternalId: "owner-amelia",
+      pageNumber: 1,
+    });
+
+    expect(page.evaluate).toHaveBeenCalledTimes(1);
+    expect(post).toHaveBeenCalledTimes(2);
+    expect(post.mock.calls[0][1].headers["token-id"]).toBe("token-old");
+    expect(post.mock.calls[1][1].headers["token-id"]).toBe("token-new");
+    expect(result.token).toBe("token-new");
+    expect(result.records).toHaveLength(1);
+  });
+
+  it("fails closed after one refreshed-token retry", async () => {
+    const post = vi.fn().mockResolvedValue({
+      status: () => 401,
+      ok: () => false,
+      json: async () => ({}),
+    });
+    const page = {
+      evaluate: vi.fn(async () => "token-new"),
+      context: () => ({ request: { post } }),
+    } as any;
+
+    await expect(
+      fetchOwnerScopedContactPage({
+        page,
+        token: "token-old",
+        locationId: "location-1",
+        ownerExternalId: "owner-amelia",
+        pageNumber: 1,
+      })
+    ).rejects.toThrow(
+      "GENIE_CONTACT_SEARCH_HTTP_ERROR: Contacts search returned HTTP 401."
+    );
+    expect(page.evaluate).toHaveBeenCalledTimes(1);
+    expect(post).toHaveBeenCalledTimes(2);
   });
 
   it("treats Genie total as advisory when the owner-scoped stream ends", () => {
