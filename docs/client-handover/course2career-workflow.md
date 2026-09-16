@@ -1,0 +1,18 @@
+Course2Career client workflow, supplied 16 September 2026
+
+This is operating guidance for draft proposals. Production remains assist_only/review with all external write capabilities and outbound allowlists empty. Do not send or change Genie records during handover. Shared inbox workflow does not override personal mailbox isolation: only genuine inbound email addressed exactly to the signed-in salesperson may be ingested.
+
+Daily order: check personal inbound responses; prioritise overdue and due-today pending First Call, Call 2, Call 3 and Call 4 tasks assigned to the salesperson; then booked consultations, callbacks, post-pitch follow-ups and final attempts. Review contact tasks, conversation history and opportunities before proposing any action. Do not create duplicate tasks or opportunities. A future callback never proves a pending First Call was completed.
+
+First-contact sequence applies only before successful contact. Exclude pitched, Pitch Done, not interested, closed, rejected, not a fit, and any lead progressed beyond attempting contact. Maximum four attempts over four days at different times where possible: First Call -> Call 2 -> Call 3 -> Call 4 -> final closure review. Require actual call-outcome evidence; do not infer a call occurred from an overdue task. Do not invent missing details from the truncated GPT Work prompt.
+
+Initial first-contact SMS template:
+Hi [First Name], thank you for your enquiry about our Career Programme. I’ve received your details and would be happy to talk you through the programme and answer any questions you may have. We’re currently handling a high volume of enquiries, so please let me know a convenient day and time for a quick call, and confirm the best number to reach you on. Our office hours are Monday–Friday, 9am–6pm. Kind regards, Amelia – Course2Career
+
+The only permitted SMS sender identity is +447428000560. Official office hours are Monday–Friday, 9am–6pm; communicate them accurately. Preserve a customer's agreed callback date and time. Obtain the configured timezone before calculating a date; do not infer unspecified scheduling rules.
+
+After a real unsuccessful call: propose VM only if voicemail actually occurred, the relevant Consultant Contact Emails failed-contact Cyber/Data/General (IT Support)/PM template, the corresponding WhatsApp or SMS template, and the next task. IT Support WhatsApp uses Missed Call. Use approved CRM snippet content; do not invent missing template text.
+
+Stages follow actual facts: New Lead / Uncontacted -> Attempting Contact after the first attempted call -> Discovery Call Booked after an agreed consultation -> Discovery Completed / Considering Options after a completed pitch -> Enrolment / Verbal Yes – Pending Payment after a yes without payment -> Enrolled and Paid / Won only after payment or completed finance evidence. Unsuitable or uninterested -> Not a Fit / Rejected, Lost, and an appropriate lost reason. Final unresponsive candidates -> Permission to Close Your File and the appropriate Close File communication, then Lost – No Show / No Response, Lost, with No Engagement or the evidenced reason. All remain proposals until separately authorised and supported by capability proof.
+
+Post-pitch follow-ups use Failed Follow-Up snippets, not first-contact templates. Preserve agreed follow-up dates/times. Summarise meaningful conversations factually: situation, motivation, programme, funding, objections and next step. Watch payments/transactions for actual paid, monthly, failed or defaulted events; a pending stage is not payment evidence. Every active candidate needs a clear next action; do not fabricate tasks or stages to satisfy this rule.

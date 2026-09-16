@@ -1,3 +1,4 @@
+import { reconcileCurrentBrowserReadiness } from "./currentReadiness";
 import { createHash, randomUUID } from "node:crypto";
 import { and, desc, eq, inArray, isNull, lt, or } from "drizzle-orm";
 import {
@@ -1569,11 +1570,17 @@ export function operationProvenDuringCommissioning(input: {
   lastSuccessAt?: Date | string | null;
   jobStartedAt?: Date | string | null;
 }) {
-  if (input.status !== "LIVE_PROVEN" || !input.lastSuccessAt || !input.jobStartedAt)
+  if (
+    input.status !== "LIVE_PROVEN" ||
+    !input.lastSuccessAt ||
+    !input.jobStartedAt
+  )
     return false;
   const success = new Date(input.lastSuccessAt).getTime();
   const started = new Date(input.jobStartedAt).getTime();
-  return Number.isFinite(success) && Number.isFinite(started) && success >= started;
+  return (
+    Number.isFinite(success) && Number.isFinite(started) && success >= started
+  );
 }
 
 export function isTransientBrowserControlError(error: unknown) {
@@ -1719,10 +1726,9 @@ export async function startAutomaticCommissioning(input: {
         initialState === "DISCOVER_NAVIGATION"
           ? "CRM sign-in complete; finding available navigation"
           : "Connecting",
-      steps:
-        authenticatedBrowserSession
-          ? { authentication: "complete", secureSession: "complete" }
-          : {},
+      steps: authenticatedBrowserSession
+        ? { authentication: "complete", secureSession: "complete" }
+        : {},
       ...(authenticatedBrowserSession
         ? { authentication: "complete", secureSession: "complete" }
         : {}),
@@ -2166,6 +2172,10 @@ export async function advanceAutomaticCommissioning(jobId: number) {
         throw new Error(
           "No deterministic CRM safe-read operation passed commissioning."
         );
+      await reconcileCurrentBrowserReadiness({
+        organisationId: job.organisationId,
+        connectedSystemId: job.connectedSystemId,
+      });
       failures = result.failures;
       progress.safeReads = {
         status: "Ready",
@@ -2268,7 +2278,10 @@ export async function advanceAutomaticCommissioning(jobId: number) {
             })),
             criticalGaps: test.capabilities
               .filter(item => !item.available)
-              .map(item => ({ operationKey: item.capability, status: "NEEDS_REPAIR" })),
+              .map(item => ({
+                operationKey: item.capability,
+                status: "NEEDS_REPAIR",
+              })),
             complete: test.status === "ready",
           };
       let initialSyncReady = false;
@@ -2393,6 +2406,10 @@ export async function advanceAutomaticCommissioning(jobId: number) {
         completedAt: new Date(),
         leaseExpiresAt: null,
         lastError: initialSyncError,
+      });
+      await reconcileCurrentBrowserReadiness({
+        organisationId: job.organisationId,
+        connectedSystemId: job.connectedSystemId,
       });
       return;
     }

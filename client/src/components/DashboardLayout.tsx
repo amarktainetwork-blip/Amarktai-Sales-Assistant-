@@ -114,9 +114,8 @@ export default function DashboardLayout({
   const profileConfirmed =
     companySetup.data?.profile?.discoveryStatus === "confirmed";
   const crmReady = Boolean(integrationReadiness.data?.genie.ready);
-  const setupComplete = canManage
-    ? Boolean(storedCompanyComplete && profileConfirmed && crmReady)
-    : storedCompanyComplete;
+  // Completed onboarding is durable; runtime CRM health is shown separately.
+  const setupComplete = storedCompanyComplete;
 
   useEffect(() => {
     if (
@@ -286,6 +285,23 @@ export default function DashboardLayout({
               <ManagementElevation
                 showBrowserCommissioning={location === "/connections"}
               />
+            </div>
+          ) : null}
+          {storedCompanyComplete &&
+          integrationReadiness.isSuccess &&
+          !crmReady ? (
+            <div
+              role="status"
+              className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+            >
+              Your workspace is available. CRM synchronisation needs attention.{" "}
+              <button
+                type="button"
+                onClick={() => navigate("/crm")}
+                className="underline"
+              >
+                Check CRM connection
+              </button>
             </div>
           ) : null}
           {children}

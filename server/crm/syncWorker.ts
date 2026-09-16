@@ -1,3 +1,4 @@
+import { isTransientCrmSyncFailure } from "./sync";
 import { and, asc, eq, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
 import {
   connectedSystems,
@@ -209,6 +210,13 @@ export async function runConnectionScopedCrmSyncCycle(now = new Date()) {
         .set({ status: "ready", lastSucceededAt: new Date(), lastError: null })
         .where(eq(connectorSyncJobs.id, row.job.id));
     } catch (error) {
+      if (isTransientCrmSyncFailure(error)) {
+        await db
+          .update(connectorSyncJobs)
+          .set({ status: row.job.status === "error" ? "error" : "ready" })
+          .where(eq(connectorSyncJobs.id, row.job.id));
+        continue;
+      }
       failed += 1;
       await db
         .update(connectorSyncJobs)

@@ -19,11 +19,21 @@ describe("member handover company readiness", () => {
 
   it.each([
     { storedComplete: false, companyKnowledgeReady: true, crmConnected: true },
-    { storedComplete: true, companyKnowledgeReady: false, crmConnected: true },
-    { storedComplete: true, companyKnowledgeReady: true, crmConnected: false },
+    { storedComplete: false, companyKnowledgeReady: false, crmConnected: true },
+    { storedComplete: false, companyKnowledgeReady: true, crmConnected: false },
   ])("still fails closed when shared setup is incomplete: %o", input => {
     expect(memberCompanySetupComplete(input)).toBe(false);
   });
+});
+
+it("preserves completed company setup through runtime health loss", () => {
+  expect(
+    memberCompanySetupComplete({
+      storedComplete: true,
+      companyKnowledgeReady: false,
+      crmConnected: false,
+    })
+  ).toBe(true);
 });
 
 describe("personal CRM identity timing", () => {
@@ -76,7 +86,6 @@ describe("personal email source choice", () => {
     expect(routes).toContain("requiresCrmSignIn");
   });
 });
-
 
 describe("CRM identity refresh exact-email isolation", () => {
   const discovered = [

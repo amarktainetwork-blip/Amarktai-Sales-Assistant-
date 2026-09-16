@@ -29,7 +29,9 @@ describe("client handover recovery contract", () => {
   it("keeps exact salesperson scope while browser operation truth gates sync", () => {
     const source = read("./sync.ts");
     expect(source).toContain("hasExactBrowserUserScope");
-    expect(source).toContain('const browserSourceScopedResource = ["contacts", "tasks"].includes(resourceType)');
+    expect(source.replace(/\s+/g, " ")).toContain(
+      'const browserSourceScopedResource = ["contacts", "tasks"].includes( resourceType );'
+    );
     expect(source).toContain("browserOperationStatuses?.get(syncOperationKey)");
     expect(source).not.toContain("const sessionApi =");
   });
@@ -59,6 +61,8 @@ describe("client handover recovery contract", () => {
     expect(update).toContain('VCS_REF="$(git rev-parse HEAD');
     expect(update).toContain('build --build-arg VCS_REF="$VCS_REF"');
     expect(dockerfile).toContain("ARG VCS_REF=unknown");
-    expect(dockerfile).toContain("LABEL org.opencontainers.image.revision=$VCS_REF");
+    expect(dockerfile).toContain(
+      "LABEL org.opencontainers.image.revision=$VCS_REF"
+    );
   });
 });

@@ -1,3 +1,5 @@
+import { reconcileCurrentBrowserReadiness } from "./currentReadiness";
+import { isTransientBrowserExecutionFailure } from "../browserConnectors/runtimeFailure";
 import { and, eq, inArray } from "drizzle-orm";
 import {
   crmActivities,
@@ -33,6 +35,15 @@ import { upsertSalesWorkFromCrm } from "../salesWork";
 import { crmResourceSyncEligible } from "./syncEligibility";
 import { assertPersonalBrowserOwnerScope } from "./personalOwnerScope";
 export { crmResourceSyncEligible } from "./syncEligibility";
+
+export function isTransientCrmSyncFailure(error: unknown) {
+  if (
+    error instanceof Error &&
+    error.message.startsWith("CRM_SYNC_PARTIAL_FAILURE:")
+  )
+    return (error as Error & { transient?: boolean }).transient === true;
+  return isTransientBrowserExecutionFailure(error);
+}
 
 async function cursorFor(systemId: number, resourceType: string) {
   const db = await getDb();
@@ -342,7 +353,9 @@ export async function drainCrmPages<T>(input: {
     total += result.records.length;
     pageCount += 1;
     if (result.cursor && result.cursor === cursor)
-      throw new Error("CRM_SYNC_CURSOR_STALLED: provider returned the same cursor twice.");
+      throw new Error(
+        "CRM_SYNC_CURSOR_STALLED: provider returned the same cursor twice."
+      );
     cursor = result.cursor;
     if (cursor && pageCount >= maxPages)
       throw new Error(
@@ -357,6 +370,7 @@ async function syncConnectedSystemDeterministically(input: {
   organisationId: number;
   connectedSystemId: number;
 }) {
+  await reconcileCurrentBrowserReadiness(input);
   const system = await getConnectedSystemForUser(
     input.userId,
     input.organisationId,
@@ -379,17 +393,16 @@ async function syncConnectedSystemDeterministically(input: {
   const hasExactBrowserUserScope = Boolean(
     secret.crmUserExternalId && secret.crmUserDisplayName && secret.crmUserEmail
   );
-  const browserOperationStatuses =
-    browserPersonalScopeRequired
-      ? new Map(
-          (
-            await browserOperationReadinessForSystem({
-              organisationId: input.organisationId,
-              connectedSystemId: system.id,
-            })
-          ).operations.map(operation => [operation.key, operation.status])
-        )
-      : null;
+  const browserOperationStatuses = browserPersonalScopeRequired
+    ? new Map(
+        (
+          await browserOperationReadinessForSystem({
+            organisationId: input.organisationId,
+            connectedSystemId: system.id,
+          })
+        ).operations.map(operation => [operation.key, operation.status])
+      )
+    : null;
   const summary: Record<string, number> = {};
   const failures: Record<string, string> = {};
   const resources = [
@@ -436,7 +449,9 @@ async function syncConnectedSystemDeterministically(input: {
       "tasks",
       "activities",
     ].includes(resourceType);
-    const browserSourceScopedResource = ["contacts", "tasks"].includes(resourceType);
+    const browserSourceScopedResource = ["contacts", "tasks"].includes(
+      resourceType
+    );
     if (browserPersonalScopeRequired && personalResource) {
       if (!hasExactBrowserUserScope || !browserSourceScopedResource) {
         summary[resourceType] = 0;
@@ -504,22 +519,31 @@ async function syncConnectedSystemDeterministically(input: {
         error instanceof Error
           ? error.message.slice(0, 800)
           : "Unknown sync error";
-      await saveCursor(
-        system.id,
-        resourceType,
-        existing?.cursor ?? undefined,
-        detail,
-        existing?.lastSuccessfulAt
-      );
+      if (!isTransientBrowserExecutionFailure(error))
+        await saveCursor(
+          system.id,
+          resourceType,
+          existing?.cursor ?? undefined,
+          detail,
+          existing?.lastSuccessfulAt
+        );
       failures[resourceType] = detail;
     }
   }
-  if (Object.keys(failures).length)
-    throw new Error(
+  await reconcileCurrentBrowserReadiness(input);
+  if (Object.keys(failures).length) {
+    const error = new Error(
       `CRM_SYNC_PARTIAL_FAILURE: ${Object.entries(failures)
         .map(([resource, detail]) => `${resource}: ${detail}`)
         .join("; ")}`
     );
+    Object.assign(error, {
+      transient: Object.values(failures).every(
+        isTransientBrowserExecutionFailure
+      ),
+    });
+    throw error;
+  }
   return summary;
 }
 

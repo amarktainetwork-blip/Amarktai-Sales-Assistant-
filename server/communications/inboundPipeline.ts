@@ -25,6 +25,7 @@ export type InboundEnvelope = {
   externalMessageId: string;
   channel: "email" | "sms" | "chat" | "other";
   senderReference: string;
+  recipientReference?: string;
   subject?: string;
   body: string;
   receivedAt: Date;
@@ -189,6 +190,9 @@ export async function ingestInboundMessage(input: {
         reasons: classification.reasons,
         contactMatched: Boolean(contact),
         contactAmbiguous: match.ambiguous,
+        ...(input.envelope.recipientReference
+          ? { recipientReference: input.envelope.recipientReference }
+          : {}),
       },
       status: "classified",
       needsAction: shouldSurfaceInbound(classification),
@@ -209,6 +213,9 @@ export async function ingestInboundMessage(input: {
           reasons: classification.reasons,
           contactMatched: Boolean(contact),
           contactAmbiguous: match.ambiguous,
+          ...(input.envelope.recipientReference
+            ? { recipientReference: input.envelope.recipientReference }
+            : {}),
         },
         status: "classified",
         needsAction: shouldSurfaceInbound(classification),
@@ -302,6 +309,9 @@ export async function ingestInboundMessage(input: {
         category: classification.category,
         contactMatched: Boolean(contact),
         contactAmbiguous: match.ambiguous,
+        ...(input.envelope.recipientReference
+          ? { recipientReference: input.envelope.recipientReference }
+          : {}),
         automationPolicyOutcome: workPolicy.outcome,
         monitorKey: "inbound_mail",
         triggerKey: "inbound_email",
@@ -319,6 +329,9 @@ export async function ingestInboundMessage(input: {
           category: classification.category,
           contactMatched: Boolean(contact),
           contactAmbiguous: match.ambiguous,
+          ...(input.envelope.recipientReference
+            ? { recipientReference: input.envelope.recipientReference }
+            : {}),
           automationPolicyOutcome: workPolicy.outcome,
           monitorKey: "inbound_mail",
           triggerKey: "inbound_email",
