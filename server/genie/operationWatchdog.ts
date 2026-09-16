@@ -2,6 +2,8 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import {
   browserLearnedOperations,
   connectedSystems,
+  externalUserMappings,
+  users,
 } from "../../drizzle/schema";
 import { testLearnedBrowserOperation } from "../browserConnectors/browserCrmAdapter";
 import { BROWSER_OPERATION_CATALOGUE } from "../browserConnectors/operationContracts";
@@ -41,6 +43,15 @@ export function watchdogRepairPlan(
       ? (1 as const)
       : (0 as const),
   };
+}
+
+export function watchdogIdentityMappingIsConfirmed(
+  rows: Array<{ mappingEmail: string | null; userEmail: string | null }>
+) {
+  if (rows.length !== 1) return false;
+  const mappingEmail = rows[0].mappingEmail?.trim().toLowerCase();
+  const userEmail = rows[0].userEmail?.trim().toLowerCase();
+  return Boolean(mappingEmail && userEmail && mappingEmail === userEmail);
 }
 
 export function selectLatestWatchdogVersions<
@@ -114,6 +125,48 @@ export async function runGenieOperationWatchdog() {
       continue;
     }
 
+    const secret = await loadConnectionSecret({
+      organisationId: system.organisationId,
+      connectedSystemId: system.id,
+      secretKind: "browser",
+    });
+    if (!secret?.commissioningUserId) {
+      results.push({
+        connectedSystemId: system.id,
+        operationKey: "commissioning-session",
+        status: "degraded",
+        detail: "The commissioning manager must sign in again.",
+      });
+      continue;
+    }
+
+    const identityRows = await db
+      .select({
+        mappingEmail: externalUserMappings.email,
+        userEmail: users.email,
+      })
+      .from(externalUserMappings)
+      .innerJoin(users, eq(users.id, externalUserMappings.userId))
+      .where(
+        and(
+          eq(externalUserMappings.organisationId, system.organisationId),
+          eq(externalUserMappings.connectedSystemId, system.id),
+          eq(externalUserMappings.userId, secret.commissioningUserId),
+          eq(externalUserMappings.isActive, true)
+        )
+      )
+      .limit(2);
+    if (!watchdogIdentityMappingIsConfirmed(identityRows)) {
+      results.push({
+        connectedSystemId: system.id,
+        operationKey: "identity-mapping",
+        status: "retry_pending",
+        detail:
+          "CRM identity confirmation is still pending; background Genie drift checks are paused.",
+      });
+      continue;
+    }
+
     const affectedOperationKeys: string[] = [];
     const rows = await db
       .select()
@@ -143,20 +196,6 @@ export async function runGenieOperationWatchdog() {
               ? "The latest operation version is degraded and requires repair plus re-verification."
               : `The latest operation version is ${decision.operation.status} and cannot run in the watchdog.`,
       });
-    }
-    const secret = await loadConnectionSecret({
-      organisationId: system.organisationId,
-      connectedSystemId: system.id,
-      secretKind: "browser",
-    });
-    if (!secret?.commissioningUserId) {
-      results.push({
-        connectedSystemId: system.id,
-        operationKey: "commissioning-session",
-        status: "degraded",
-        detail: "The commissioning manager must sign in again.",
-      });
-      continue;
     }
     for (const operation of selected) {
       try {
