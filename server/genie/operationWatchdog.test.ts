@@ -3,6 +3,7 @@ import {
   selectLatestWatchdogVersions,
   watchdogIdentityMappingIsConfirmed,
   watchdogRepairPlan,
+  watchdogReplayPayload,
 } from "./operationWatchdog";
 
 describe("daily CRM drift economics", () => {
@@ -31,6 +32,36 @@ describe("daily CRM drift economics", () => {
       affectedOperationKeys: ["task.read", "opportunity.read"],
       unchangedGenxCalls: undefined,
       maximumRepairBatches: 1,
+    });
+  });
+
+  it("does not invent watchdog targets for exact contact search or contact read", () => {
+    expect(watchdogReplayPayload("contact.search", {})).toBeNull();
+    expect(watchdogReplayPayload("contact.read", {})).toBeNull();
+    expect(
+      watchdogReplayPayload("contact.search", {
+        watchdogInputs: { query: "Namrata Parikh" },
+      })
+    ).toEqual({ query: "Namrata Parikh" });
+    expect(
+      watchdogReplayPayload("contact.read", {
+        watchdogInputs: { externalId: "contact-1" },
+      })
+    ).toEqual({ externalId: "contact-1" });
+    expect(watchdogReplayPayload("company.sync", {})).toEqual({});
+  });
+
+  it("treats a retained target-bound proof as unchanged rather than repair-worthy", () => {
+    expect(
+      watchdogRepairPlan([
+        { operationKey: "contact.search", status: "retained" },
+        { operationKey: "contact.read", status: "retained" },
+        { operationKey: "company.sync", status: "live" },
+      ])
+    ).toEqual({
+      affectedOperationKeys: [],
+      unchangedGenxCalls: 0,
+      maximumRepairBatches: 0,
     });
   });
 

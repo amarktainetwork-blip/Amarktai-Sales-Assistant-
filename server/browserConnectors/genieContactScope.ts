@@ -189,16 +189,14 @@ export async function fetchOwnerScopedContactPage(input: {
   pageNumber: number;
   searchAfter?: unknown;
 }) {
-  const request = (token: string, authorization = false) =>
+  const request = (token: string) =>
     input.page.context().request.post(CONTACT_SEARCH_URL, {
       headers: {
         "content-type": "application/json",
         channel: "APP",
         source: "WEB_USER",
         version: "2021-07-28",
-        ...(authorization
-          ? { Authorization: `Bearer ${token}` }
-          : { "token-id": token }),
+        "token-id": token,
       },
       data: scopeGenieContactSearchBody(
         {
@@ -217,11 +215,23 @@ export async function fetchOwnerScopedContactPage(input: {
 
   let token = input.token;
   let response = await request(token);
-  if ([401, 403].includes(response.status())) {
-    token = await browserToken(input.page);
+  // Genie rotates its token-id while the authenticated workspace remains live.
+  // During that short handoff getToken() can still return the retiring token.
+  // Retry only this read with fresh browser state; never widen owner scope and
+  // never switch to Bearer auth (the live Contacts endpoint rejects Bearer).
+  for (
+    let retry = 0;
+    [401, 403].includes(response.status()) && retry < 3;
+    retry++
+  ) {
+    await new Promise(resolve => setTimeout(resolve, 250 * (retry + 1)));
+    try {
+      token = await browserToken(input.page);
+    } catch (error) {
+      if (retry === 2) throw error;
+      continue;
+    }
     response = await request(token);
-    if ([401, 403].includes(response.status()))
-      response = await request(token, true);
   }
   // Retry only this authenticated read page; never restart the full drain or change scope.
   for (

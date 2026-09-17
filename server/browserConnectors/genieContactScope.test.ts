@@ -219,7 +219,7 @@ describe("Genie owner-scoped contact search", () => {
     expect(result.records).toHaveLength(1);
   });
 
-  it("falls back to Bearer auth after refreshed token-id auth is rejected", async () => {
+  it("retries token-id auth across a short Genie token rotation without using Bearer", async () => {
     const post = vi
       .fn()
       .mockResolvedValueOnce({
@@ -247,7 +247,10 @@ describe("Genie owner-scoped contact search", () => {
         }),
       });
     const page = {
-      evaluate: vi.fn(async () => "token-new"),
+      evaluate: vi
+        .fn()
+        .mockResolvedValueOnce("token-still-rotating")
+        .mockResolvedValueOnce("token-new"),
       context: () => ({ request: { post } }),
     } as any;
 
@@ -259,10 +262,13 @@ describe("Genie owner-scoped contact search", () => {
       pageNumber: 1,
     });
     expect(post).toHaveBeenCalledTimes(3);
-    expect(post.mock.calls[2][1].headers.Authorization).toBe(
-      "Bearer token-new"
+    expect(post.mock.calls[1][1].headers["token-id"]).toBe(
+      "token-still-rotating"
     );
-    expect(post.mock.calls[2][1].headers["token-id"]).toBeUndefined();
+    expect(post.mock.calls[2][1].headers["token-id"]).toBe("token-new");
+    expect(post.mock.calls.every(call => !call[1].headers.Authorization)).toBe(
+      true
+    );
     expect(result.records).toHaveLength(1);
   });
 
@@ -292,7 +298,7 @@ describe("Genie owner-scoped contact search", () => {
     expect(result.records).toHaveLength(1);
   });
 
-  it("fails closed after refreshed token-id and Bearer authentication are both rejected", async () => {
+  it("fails closed after bounded refreshed token-id authentication is still rejected", async () => {
     const post = vi.fn().mockResolvedValue({
       status: () => 401,
       ok: () => false,
@@ -314,10 +320,10 @@ describe("Genie owner-scoped contact search", () => {
     ).rejects.toThrow(
       "GENIE_CONTACT_SEARCH_HTTP_ERROR: Contacts search page 1 returned HTTP 401."
     );
-    expect(page.evaluate).toHaveBeenCalledTimes(1);
-    expect(post).toHaveBeenCalledTimes(3);
-    expect(post.mock.calls[2][1].headers.Authorization).toBe(
-      "Bearer token-new"
+    expect(page.evaluate).toHaveBeenCalledTimes(3);
+    expect(post).toHaveBeenCalledTimes(4);
+    expect(post.mock.calls.every(call => !call[1].headers.Authorization)).toBe(
+      true
     );
   });
 

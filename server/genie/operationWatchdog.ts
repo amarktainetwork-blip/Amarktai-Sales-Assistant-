@@ -6,7 +6,10 @@ import {
   users,
 } from "../../drizzle/schema";
 import { testLearnedBrowserOperation } from "../browserConnectors/browserCrmAdapter";
-import { BROWSER_OPERATION_CATALOGUE } from "../browserConnectors/operationContracts";
+import {
+  BROWSER_OPERATION_CATALOGUE,
+  browserProofPolicy,
+} from "../browserConnectors/operationContracts";
 import { isTransientBrowserExecutionFailure } from "../browserConnectors/runtimeFailure";
 import { loadConnectionSecret, toAdapterConnection } from "../connectedSystems";
 import { getDb } from "../db";
@@ -25,7 +28,8 @@ export function watchdogRepairPlan(
       | "degraded"
       | "awaiting_verification"
       | "blocked"
-      | "retry_pending";
+      | "retry_pending"
+      | "retained";
   }>
 ) {
   const affectedOperationKeys = Array.from(
@@ -43,6 +47,34 @@ export function watchdogRepairPlan(
       ? (1 as const)
       : (0 as const),
   };
+}
+
+export function watchdogReplayPayload(
+  operationKey: string,
+  prerequisites: Record<string, unknown>
+) {
+  const raw =
+    prerequisites.watchdogInputs &&
+    typeof prerequisites.watchdogInputs === "object" &&
+    !Array.isArray(prerequisites.watchdogInputs)
+      ? { ...(prerequisites.watchdogInputs as Record<string, unknown>) }
+      : {};
+  const policy = browserProofPolicy(operationKey, "read");
+  const nonEmpty = (value: unknown) =>
+    typeof value === "string" && value.trim().length > 0;
+  if (
+    policy.requiresExactSearchMatch &&
+    !nonEmpty(raw.query) &&
+    !nonEmpty(raw.externalId)
+  )
+    return null;
+  if (
+    policy.requiresTargetIdentity &&
+    !nonEmpty(raw.externalId) &&
+    !nonEmpty(raw.contactExternalId)
+  )
+    return null;
+  return raw;
 }
 
 export function watchdogIdentityMappingIsConfirmed(
@@ -104,7 +136,8 @@ export async function runGenieOperationWatchdog() {
       | "degraded"
       | "awaiting_verification"
       | "blocked"
-      | "retry_pending";
+      | "retry_pending"
+      | "retained";
     detail?: string;
   }> = [];
   let repairGenxCalls = 0;
@@ -203,12 +236,20 @@ export async function runGenieOperationWatchdog() {
           string,
           unknown
         >;
-        const watchdogInputs =
-          prerequisites.watchdogInputs &&
-          typeof prerequisites.watchdogInputs === "object" &&
-          !Array.isArray(prerequisites.watchdogInputs)
-            ? (prerequisites.watchdogInputs as Record<string, unknown>)
-            : {};
+        const watchdogInputs = watchdogReplayPayload(
+          operation.operationKey,
+          prerequisites
+        );
+        if (watchdogInputs === null) {
+          results.push({
+            connectedSystemId: system.id,
+            operationKey: operation.operationKey,
+            status: "retained",
+            detail:
+              "Existing LIVE_PROVEN target-bound read retained because no deterministic watchdog target was persisted.",
+          });
+          continue;
+        }
         await testLearnedBrowserOperation({
           connection: toAdapterConnection(system),
           secret,
@@ -268,8 +309,12 @@ export async function runGenieOperationWatchdog() {
         lastHealthCheckAt: new Date(),
         lastHealthSummary: affectedOperationKeys.length
           ? `${affectedOperationKeys.length} CRM operation(s) changed and need deterministic re-verification.`
-          : systemResults.every(result => result.status === "live")
-            ? "Daily CRM drift scan passed with no structural operation failures and zero model calls."
+          : systemResults.every(result =>
+                ["live", "retained"].includes(result.status)
+              )
+            ? systemResults.some(result => result.status === "retained")
+              ? "Daily CRM drift scan passed for replayable reads; target-bound reads retained without an invented replay target."
+              : "Daily CRM drift scan passed with no structural operation failures and zero model calls."
             : "One or more latest CRM operation versions are not eligible for deterministic watchdog execution.",
         configuration: {
           ...(system.configuration || {}),
@@ -282,7 +327,9 @@ export async function runGenieOperationWatchdog() {
           lastDriftScan: {
             checkedAt: new Date().toISOString(),
             affectedOperationKeys: repairPlan.affectedOperationKeys,
-            deterministicExecutions: systemResults.length,
+            deterministicExecutions: systemResults.filter(
+              result => result.status !== "retained"
+            ).length,
             modelUsedDuringVerification: false,
             providerCallCountDuringVerification: 0,
             repairGenxCalls: repair.calls,
@@ -293,13 +340,17 @@ export async function runGenieOperationWatchdog() {
       .where(eq(connectedSystems.id, system.id));
   }
   return {
-    success: results.every(result => result.status === "live"),
+    success: results.every(result =>
+      ["live", "retained"].includes(result.status)
+    ),
     checkedSystems: systems.length,
     checkedOperations: results.length,
     results,
     modelUsedDuringVerification: false as const,
     providerCallCountDuringVerification: 0 as const,
-    unchangedGenxCalls: results.every(result => result.status === "live")
+    unchangedGenxCalls: results.every(result =>
+      ["live", "retained"].includes(result.status)
+    )
       ? (0 as const)
       : undefined,
     repairGenxCalls,
