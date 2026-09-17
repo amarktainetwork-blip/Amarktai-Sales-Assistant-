@@ -3,7 +3,7 @@ import type { SavedBrowserScript } from "../browserConnectors/scriptEngine";
 import type { BrowserProfile } from "../browserConnectors/browserCrmAdapter";
 
 /** Reusable provider structure only: never tenant IDs, credentials or customer values. */
-export const GENIE_PROVIDER_PACK_VERSION = "genie-2026.09.17.3";
+export const GENIE_PROVIDER_PACK_VERSION = "genie-2026.09.17.4";
 
 // The current Genie/HighLevel contacts workspace no longer uses the old
 // Tabulator row structure. Contact-detail links are the durable record identity:
@@ -107,6 +107,10 @@ const scripts: BrowserProfile["scripts"] = {
       { action: "wait_for_url", value: "**/businesses/list**" },
       { action: "wait", value: "2000" },
       {
+        action: "expect_visible",
+        selector: '[tabulator-field="properties.name"]',
+      },
+      {
         action: "read_text",
         selector: '#tb_business, h1, h2, [role="heading"]',
         key: "collectionEvidence",
@@ -186,11 +190,9 @@ const scripts: BrowserProfile["scripts"] = {
         selector: '[tabulator-field="owners"] [data-id]',
       },
       {
-        action: "paginate_rows",
+        action: "read_rows",
         selector: '[tabulator-field="owners"] [data-id]',
         key: "records",
-        nextSelector: 'button.tabulator-page[aria-label="Next Page"]',
-        maxPages: 100,
         fields: {
           externalId: { attribute: "data-id" },
           name: { attribute: "tooltip" },
