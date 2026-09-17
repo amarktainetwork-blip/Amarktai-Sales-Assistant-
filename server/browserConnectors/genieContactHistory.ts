@@ -1,3 +1,4 @@
+import { genieConversationChannel } from "./genieMailboxRead";
 import type { Page } from "playwright-core";
 import type { NormalizedActivity } from "../crm/types";
 /** Selected-contact history read. Notes and messages never mark conversations read. */
@@ -79,26 +80,58 @@ export async function readGenieContactHistory(input: {
     for (const m of messages) {
       if (m.contactId && m.contactId !== input.contactExternalId)
         throw Error("CRM_CONTACT_SCOPE_VIOLATION");
+      if (m.deleted === true) continue;
+      if (
+        (m.locationId && m.locationId !== location) ||
+        (m.conversationId && m.conversationId !== c.id)
+      )
+        throw Error("CRM_CONTACT_SCOPE_VIOLATION");
       if (!m.id || !Number.isFinite(Date.parse(m.dateAdded))) continue;
+      let detail = m;
+      if (![1, 2, 3].includes(Number(m.type))) {
+        const rawDetail = await get(
+          "/conversations/messages/" + encodeURIComponent(m.id)
+        );
+        detail = rawDetail?.message || rawDetail || m;
+        if (
+          (detail.contactId && detail.contactId !== input.contactExternalId) ||
+          (detail.locationId && detail.locationId !== location) ||
+          (detail.conversationId && detail.conversationId !== c.id)
+        )
+          throw Error("CRM_CONTACT_SCOPE_VIOLATION");
+      }
+      const messageType = String(
+        detail.messageTypeString || detail.messageType || ""
+      );
       activities.push({
         externalId: "message:" + m.id,
         contactExternalId: input.contactExternalId,
         ownerExternalId: input.ownerExternalId,
         activityType:
-          m.type === 3
-            ? "email"
-            : m.type === 2
-              ? "call"
-              : m.type === 1
+          genieConversationChannel(detail) === "chat"
+            ? "whatsapp"
+            : Number(detail.type ?? m.type) === 3
+              ? "email"
+              : Number(detail.type ?? m.type) === 2
                 ? "sms"
-                : "communication",
-        occurredAt: new Date(m.dateAdded),
-        body: typeof m.body === "string" ? m.body : undefined,
+                : Number(detail.type ?? m.type) === 1
+                  ? "call"
+                  : "communication",
+        occurredAt: new Date(detail.dateAdded || m.dateAdded),
+        body:
+          typeof detail.body === "string"
+            ? detail.body
+            : typeof m.body === "string"
+              ? m.body
+              : undefined,
         raw: {
           sourceKind: "conversation_message",
           conversationExternalId: c.id,
-          direction: m.direction || null,
-          sourceType: m.type,
+          direction: detail.direction || m.direction || null,
+          sourceType: Number(detail.type ?? m.type),
+          messageTypeString: messageType || null,
+          senderReference: detail.from || detail.meta?.from || null,
+          recipientReference: detail.to || detail.meta?.to || null,
           ownerScope: "contact_assignee",
         },
       });

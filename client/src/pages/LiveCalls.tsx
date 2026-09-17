@@ -184,9 +184,13 @@ export default function LiveCalls() {
   const initialContactId = Number(
     new URLSearchParams(window.location.search).get("contactId") || 0
   );
+  const initialSelectionApplied = useRef(0);
   const initialCustomer = trpc.sales.customerDetail.useQuery(
-    { contactId: initialContactId || 1 },
-    { enabled: initialContactId > 0, retry: false }
+    { contactId: selectedContactId || initialContactId || 1 },
+    {
+      enabled: Boolean(selectedContactId || initialContactId > 0),
+      retry: false,
+    }
   );
   const callContext = trpc.calls.context.useQuery(
     { callSessionId: sessionId || initialSessionId },
@@ -202,9 +206,14 @@ export default function LiveCalls() {
   }, [initialSessionId, sessionId]);
 
   useEffect(() => {
-    if (initialContactId <= 0 || selectedContactId) return;
+    if (
+      initialContactId <= 0 ||
+      initialSelectionApplied.current === initialContactId
+    )
+      return;
     const contact = initialCustomer.data;
     if (!contact) return;
+    initialSelectionApplied.current = initialContactId;
     setSelectedContactId(contact.id);
     setLeadLabel(contact.name);
     setContactExternalId(contact.externalId);
@@ -222,6 +231,7 @@ export default function LiveCalls() {
   }, [callContext.data]);
 
   useEffect(() => {
+    if (!contactMatches.data || selectedContactId) return;
     if (contactMatches.data?.length === 1)
       setSelectedContactId(contactMatches.data[0].id);
     else if (
@@ -561,6 +571,32 @@ export default function LiveCalls() {
           </section>
         ) : null}
 
+        {!sessionId &&
+          initialCustomer.data &&
+          initialCustomer.data.id === selectedContactId && (
+            <section className="mt-6 rounded-2xl border border-[#DCE4EE] bg-white p-6">
+              <p className="font-bold">{initialCustomer.data.name}</p>
+              <p className="mt-2 text-sm">
+                Course interest:{" "}
+                {initialCustomer.data.interest.primary || "Not yet identified"}
+              </p>
+              <p className="mt-2 text-sm">
+                {initialCustomer.data.nextAction?.title ||
+                  "Review the enquiry and agree the next step."}
+              </p>
+              <Button
+                variant="outline"
+                className="mt-3"
+                onClick={() =>
+                  navigate(
+                    `/assistant?contactId=${selectedContactId}&prompt=${encodeURIComponent("Prepare me for this call.")}`
+                  )
+                }
+              >
+                Prepare with AmarktAI
+              </Button>
+            </section>
+          )}
         {callContext.data?.context && (
           <section className="mt-6 rounded-[1.5rem] border border-[#DCE4EE] bg-white p-6">
             <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#2F6FED]">

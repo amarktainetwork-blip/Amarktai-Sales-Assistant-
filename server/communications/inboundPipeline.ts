@@ -26,6 +26,8 @@ export type InboundEnvelope = {
   channel: "email" | "sms" | "chat" | "other";
   senderReference: string;
   recipientReference?: string;
+  contactExternalId?: string;
+  sourceChannel?: "whatsapp";
   subject?: string;
   body: string;
   receivedAt: Date;
@@ -65,6 +67,11 @@ export function parseInboundWebhookEnvelope(
     externalMessageId,
     channel,
     senderReference,
+    contactExternalId:
+      typeof (nested.contactExternalId || nested.contactId) === "string"
+        ? String(nested.contactExternalId || nested.contactId).trim() ||
+          undefined
+        : undefined,
     subject: typeof nested.subject === "string" ? nested.subject : undefined,
     body,
     receivedAt: Number.isNaN(receivedAt.valueOf()) ? new Date() : receivedAt,
@@ -106,10 +113,50 @@ export function mayPrepareInboundReply(
 
 export async function matchInboundContact(
   organisationId: number,
-  envelope: InboundEnvelope
+  envelope: InboundEnvelope,
+  scope?: { connectedSystemId?: number | null; mailboxUserId?: number | null }
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
+
+  let ownerExternalId: string | undefined;
+  if (scope?.mailboxUserId != null && scope.connectedSystemId) {
+    const owners = await db
+      .select({ externalUserId: externalUserMappings.externalUserId })
+      .from(externalUserMappings)
+      .where(
+        and(
+          eq(externalUserMappings.organisationId, organisationId),
+          eq(externalUserMappings.connectedSystemId, scope.connectedSystemId),
+          eq(externalUserMappings.userId, scope.mailboxUserId),
+          eq(externalUserMappings.isActive, true)
+        )
+      )
+      .limit(2);
+    if (owners.length !== 1) throw new Error("INBOUND_OWNER_SCOPE_REQUIRED");
+    ownerExternalId = owners[0].externalUserId;
+  }
+  if (envelope.contactExternalId && scope?.connectedSystemId) {
+    const exact = await db
+      .select()
+      .from(crmContacts)
+      .where(
+        and(
+          eq(crmContacts.organisationId, organisationId),
+          eq(crmContacts.connectedSystemId, scope.connectedSystemId),
+          eq(crmContacts.externalId, envelope.contactExternalId),
+          ownerExternalId
+            ? eq(crmContacts.ownerExternalId, ownerExternalId)
+            : undefined
+        )
+      )
+      .limit(2);
+    return {
+      contact: exact.length === 1 ? exact[0] : undefined,
+      ambiguous: exact.length > 1,
+    };
+  }
+
   const sender = normalizedSender(envelope.channel, envelope.senderReference);
   if (!sender) return { contact: undefined, ambiguous: false };
   const field =
@@ -120,7 +167,16 @@ export async function matchInboundContact(
     .select()
     .from(crmContacts)
     .where(
-      and(eq(crmContacts.organisationId, organisationId), eq(field, sender))
+      and(
+        eq(crmContacts.organisationId, organisationId),
+        eq(field, sender),
+        scope?.connectedSystemId
+          ? eq(crmContacts.connectedSystemId, scope.connectedSystemId)
+          : undefined,
+        ownerExternalId
+          ? eq(crmContacts.ownerExternalId, ownerExternalId)
+          : undefined
+      )
     )
     .limit(2);
   return {
@@ -153,11 +209,24 @@ export async function ingestInboundMessage(input: {
     subject: input.envelope.subject,
     body: input.envelope.body,
   });
-  const match = await matchInboundContact(input.organisationId, {
-    ...input.envelope,
-    senderReference,
-  });
+  const match = await matchInboundContact(
+    input.organisationId,
+    {
+      ...input.envelope,
+      senderReference,
+    },
+    {
+      connectedSystemId: input.connectedSystemId,
+      mailboxUserId: input.mailboxUserId,
+    }
+  );
   const contact = match.contact;
+  if (
+    input.mailboxUserId != null &&
+    input.envelope.contactExternalId &&
+    !contact
+  )
+    throw new Error("INBOUND_CONTACT_SCOPE_REQUIRED");
   const idempotencyKey = inboundIdempotencyKey(
     input.organisationId,
     input.envelope.channel,
@@ -188,6 +257,7 @@ export async function ingestInboundMessage(input: {
       classification: {
         category: classification.category,
         reasons: classification.reasons,
+        sourceChannel: input.envelope.sourceChannel || input.envelope.channel,
         contactMatched: Boolean(contact),
         contactAmbiguous: match.ambiguous,
         ...(input.envelope.recipientReference
@@ -211,6 +281,7 @@ export async function ingestInboundMessage(input: {
         classification: {
           category: classification.category,
           reasons: classification.reasons,
+          sourceChannel: input.envelope.sourceChannel || input.envelope.channel,
           contactMatched: Boolean(contact),
           contactAmbiguous: match.ambiguous,
           ...(input.envelope.recipientReference
@@ -307,6 +378,7 @@ export async function ingestInboundMessage(input: {
       metadata: {
         channel: input.envelope.channel,
         category: classification.category,
+        sourceChannel: input.envelope.sourceChannel || input.envelope.channel,
         contactMatched: Boolean(contact),
         contactAmbiguous: match.ambiguous,
         ...(input.envelope.recipientReference
@@ -327,6 +399,7 @@ export async function ingestInboundMessage(input: {
         metadata: {
           channel: input.envelope.channel,
           category: classification.category,
+          sourceChannel: input.envelope.sourceChannel || input.envelope.channel,
           contactMatched: Boolean(contact),
           contactAmbiguous: match.ambiguous,
           ...(input.envelope.recipientReference

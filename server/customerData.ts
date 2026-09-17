@@ -426,6 +426,7 @@ export async function refreshExactCustomerHistory(input: {
       })
       .onDuplicateKeyUpdate({
         set: {
+          activityType: record.activityType,
           body: record.body ?? null,
           occurredAt: record.occurredAt,
           raw: record.raw,

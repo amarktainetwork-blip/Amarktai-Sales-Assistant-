@@ -2,9 +2,12 @@ import { getOrganisationWorkspaceContext } from "./organisationWorkspace";
 import { createHash } from "node:crypto";
 import {
   createWorkflowRun,
+  getDb,
   listActionProposals,
   searchApprovedKnowledge,
 } from "./db";
+import { users } from "../drizzle/schema";
+import { eq } from "drizzle-orm";
 import { listConnectedSystemsForUser } from "./connectedSystems";
 import { routeConnectedSystemActionsForUser } from "./crmRouter";
 import { runGenxAgent } from "./genx";
@@ -259,6 +262,28 @@ export async function tryPrepareDirectAssistantAction(input: {
   const configuration = await getClientActionConfiguration({
     organisationId: input.organisationId,
   });
+  const workspace = await getOrganisationWorkspaceContext(input.organisationId);
+  const db = await getDb();
+  const salesperson = db
+    ? (
+        await db
+          .select({ name: users.name })
+          .from(users)
+          .where(eq(users.id, input.userId))
+          .limit(1)
+      )[0]
+    : undefined;
+  const mappedCustomerContext = workspace.customerFieldMappings
+    .map(mapping => {
+      const value =
+        customer.customerAttributes?.customFields?.[mapping.sourceFieldId];
+      if (value == null || value === "") return null;
+      const rendered = Array.isArray(value) ? value.join(", ") : String(value);
+      return `${mapping.label}: ${rendered}`;
+    })
+    .filter((value): value is string => Boolean(value))
+    .slice(0, 12)
+    .join("\n");
   const configuredTemplate = matchingConfiguredTemplate(
     configuration,
     channel,
@@ -299,12 +324,36 @@ export async function tryPrepareDirectAssistantAction(input: {
       .join("\n\n");
     const grounding: GroundedDraftContext = {
       request: input.request,
+      channel,
+      salespersonName: salesperson?.name?.trim() || undefined,
+      brandVoice:
+        workspace.businessContext &&
+        typeof workspace.businessContext === "object" &&
+        "brandVoice" in workspace.businessContext &&
+        typeof workspace.businessContext.brandVoice === "string"
+          ? workspace.businessContext.brandVoice
+          : undefined,
       contactName: customer.contactName,
       companyName: customer.companyName,
       emailSubject: customer.recentInboundSubject,
       inboundMessage: customer.recentInboundBody || customer.recentInbound,
       opportunityName: customer.opportunityName,
       stage: customer.stage,
+      courseInterest: customer.courseInterest,
+      customerContext: [
+        mappedCustomerContext,
+        ...(customer.operationalRecordState?.openTasks || [])
+          .slice(0, 3)
+          .map(
+            task =>
+              `Current task: ${task.title}${task.dueAt ? `; due ${task.dueAt}` : ""}`
+          ),
+        customer.customerTags?.length
+          ? `CRM tags: ${customer.customerTags.join(", ")}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
       lastInteraction: customer.lastInteraction,
       outstandingCommitment: customer.objective,
       approvedKnowledge,
@@ -319,8 +368,8 @@ export async function tryPrepareDirectAssistantAction(input: {
       ],
       approvedKnowledge,
       workingContext: JSON.stringify({
-        selectedCustomer: customer,
-        workspace: await getOrganisationWorkspaceContext(input.organisationId),
+        selectedCustomer: grounding,
+        workspace,
         channel,
         executionBoundary:
           channel === "email"
@@ -348,11 +397,9 @@ export async function tryPrepareDirectAssistantAction(input: {
         ],
         approvedKnowledge,
         workingContext: JSON.stringify({
-          selectedCustomer: customer,
+          selectedCustomer: grounding,
           channel,
-          workspace: await getOrganisationWorkspaceContext(
-            input.organisationId
-          ),
+          workspace,
         }),
         billing: {
           userId: input.userId,

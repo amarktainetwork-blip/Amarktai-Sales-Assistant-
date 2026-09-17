@@ -26,9 +26,7 @@ function strings(value: unknown): string[] {
   return [];
 }
 function unique(values: string[]) {
-  return Array.from(
-    new Set(values.map(value => value.trim()).filter(Boolean))
-  );
+  return Array.from(new Set(values.map(value => value.trim()).filter(Boolean)));
 }
 
 function courseFromTag(tag: string) {
@@ -49,16 +47,23 @@ function courseFromTag(tag: string) {
 }
 
 function mappingLooksLikeInterest(mapping: CustomerFieldMapping) {
+  if (mapping.purpose?.trim().toLowerCase() === "interest") return true;
+  const label = mapping.label.trim();
   return (
-    mapping.purpose?.trim().toLowerCase() === "interest" ||
-    /\b(course|programme|program|qualification|training)\b.*\b(interest|enquiry|inquiry)?\b/i.test(
-      mapping.label
+    /\b(courses?|programmes?|programs?|qualifications?)\b.*\b(interest|interested|enquiry|inquiry)\b/i.test(
+      label
+    ) ||
+    /\b(interest|interested|enquiry|inquiry)\b.*\b(courses?|programmes?|programs?|qualifications?)\b/i.test(
+      label
     )
   );
 }
 function labelLooksLikeProgrammeForm(label: string) {
-  return /\b(facebook\s+ad\s+form|form\s*\d+|elcas(?:\s+form)?|programme\s+form|course\s+form)\b/i.test(
-    label
+  // A generic form identifier is acquisition metadata, not a programme answer.
+  return (
+    /\b(?:course|programme|program|qualification)\b/i.test(label) &&
+    /\bform\b/i.test(label) &&
+    !/\b(?:timeframe|start|working|experience|date|time)\b/i.test(label)
   );
 }
 
@@ -76,16 +81,23 @@ export function deriveCustomerInterest(input: {
       .flatMap(mapping => strings(customFields[mapping.sourceFieldId]))
   );
 
-  const mappedIds = new Set(input.mappings.map(mapping => mapping.sourceFieldId));
+  const mappedIds = new Set(
+    input.mappings.map(mapping => mapping.sourceFieldId)
+  );
   const mappedForms = input.mappings
     .filter(mapping => labelLooksLikeProgrammeForm(mapping.label))
     .flatMap(mapping => strings(customFields[mapping.sourceFieldId]));
   const labelledForms = Object.entries(customFields)
-    .filter(([id]) => !mappedIds.has(id) && labelLooksLikeProgrammeForm(labels[id] || ""))
+    .filter(
+      ([id]) =>
+        !mappedIds.has(id) && labelLooksLikeProgrammeForm(labels[id] || "")
+    )
     .flatMap(([, value]) => strings(value));
   const formValues = unique([...mappedForms, ...labelledForms]);
 
-  const courseTags = unique(tags.map(courseFromTag).filter((value): value is string => Boolean(value)));
+  const courseTags = unique(
+    tags.map(courseFromTag).filter((value): value is string => Boolean(value))
+  );
   const values = unique([...mapped, ...formValues, ...courseTags]);
   const source = mapped.length
     ? "mapped_field"
