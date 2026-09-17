@@ -104,6 +104,22 @@ describe("canonical Genie provider pack", () => {
     ]));
     const taskScript = GENIE_PROVIDER_PACK.scripts.genie_task_sync;
     expect(JSON.stringify(taskScript)).toContain("recordId");
+    const ownerScript = GENIE_PROVIDER_PACK.scripts.genie_owner_sync;
+    expect(ownerScript.steps.at(-1)).toMatchObject({
+      action: "read_rows",
+      selector: '[tabulator-field="owners"] [data-id]',
+      key: "records",
+    });
+    expect(JSON.stringify(ownerScript)).not.toContain('"maxPages":100');
+    const companyScript = GENIE_PROVIDER_PACK.scripts.genie_company_sync;
+    expect(companyScript.steps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "expect_visible",
+          selector: '[tabulator-field="properties.name"]',
+        }),
+      ])
+    );
     expect(taskScript.steps.at(-1)).toMatchObject({
       action: "paginate_rows",
       nextSelector: 'button.tabulator-page[aria-label="Next Page"]',
@@ -118,23 +134,6 @@ describe("canonical Genie provider pack", () => {
         contactExternalId: { attribute: "href" },
         ownerExternalId: { attribute: "data-id" },
         dueAt: {},
-      },
-    });
-    expect(
-      GENIE_PROVIDER_PACK.scripts.genie_company_sync.steps.some(
-        step => step.action === "expect_visible" &&
-          step.selector?.includes("properties.name")
-      )
-    ).toBe(false);
-    expect(
-      GENIE_PROVIDER_PACK.scripts.genie_owner_sync.steps.at(-1)
-    ).toMatchObject({
-      action: "paginate_rows",
-      nextSelector: 'button.tabulator-page[aria-label="Next Page"]',
-      maxPages: 100,
-      fields: {
-        externalId: { attribute: "data-id" },
-        name: { attribute: "tooltip" },
       },
     });
     expect(
