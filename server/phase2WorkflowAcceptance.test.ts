@@ -32,6 +32,17 @@ describe("Phase 2 daily salesperson workflow", () => {
     expect(queue).toContain("if (!contact) return");
   });
 
+  it("keeps Today fresh and makes Refresh-now bounded for browser CRMs", () => {
+    const today = read("client/src/pages/Today.tsx");
+    const sync = read("server/crm/sync.ts");
+
+    expect(today).toContain("refetchInterval: 30_000");
+    expect(today).toContain("refetchOnWindowFocus: true");
+    expect(today).toContain("refetchOnReconnect: true");
+    expect(sync).toContain('? syncConnectedSystemRoutine');
+    expect(sync).toContain(': syncConnectedSystem;');
+  });
+
   it("keeps one exact customer context through Customers, AmarktAI and Calls", () => {
     const customers = read("client/src/pages/Customers.tsx");
     const assistant = read("client/src/pages/Assistant.tsx");
