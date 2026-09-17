@@ -45,7 +45,13 @@ export default function Today() {
   const organisationId = organisation.data?.organisationId;
   const today = trpc.sales.today.useQuery(
     { organisationId: organisationId ?? 0 },
-    { enabled: Boolean(organisationId), retry: false }
+    {
+      enabled: Boolean(organisationId),
+      retry: false,
+      refetchInterval: 30_000,
+      refetchOnWindowFocus: true,
+      refetchOnReconnect: true,
+    }
   );
   const utils = trpc.useUtils();
   const [reminder, setReminder] = useState("");

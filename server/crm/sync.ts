@@ -855,8 +855,11 @@ export async function syncConnectedSystemsForUser(input: {
   const failures: Array<{ connectedSystemId: number; error: string }> = [];
   for (const system of systems) {
     try {
+      const sync = ["browser", "sidecar"].includes(system.connectionMethod)
+        ? syncConnectedSystemRoutine
+        : syncConnectedSystem;
       results.push(
-        await syncConnectedSystem({
+        await sync({
           ...input,
           connectedSystemId: system.id,
         })
