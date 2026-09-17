@@ -7,6 +7,7 @@ import { trpc } from "@/lib/trpc";
 import {
   ArrowRight,
   Bot,
+  BookOpen,
   BriefcaseBusiness,
   CalendarClock,
   CheckCircle2,
@@ -285,7 +286,7 @@ export default function Customers() {
                     </div>
                   </div>
 
-                  <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                     <ContactFact
                       icon={Mail}
                       label="Email"
@@ -295,6 +296,11 @@ export default function Customers() {
                       icon={Phone}
                       label="Phone"
                       value={selected.phone || "Not recorded"}
+                    />
+                    <ContactFact
+                      icon={BookOpen}
+                      label="Course interest"
+                      value={selected.interest.primary || "Not yet identified"}
                     />
                     <ContactFact
                       icon={CalendarClock}
@@ -335,6 +341,23 @@ export default function Customers() {
                         </div>
                       ))}
                     </div>
+                    {selected.interest.tags.length ? (
+                      <div className="mt-4 border-t border-[#E6EBF2] pt-4">
+                        <p className="text-[10px] font-black uppercase tracking-[.1em] text-[#7B8CA2]">
+                          CRM tags
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {selected.interest.tags.slice(0, 10).map(tag => (
+                            <span
+                              key={tag}
+                              className="rounded-full border border-[#D9E2ED] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#526277]"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                   </section>
                 ) : null}
 

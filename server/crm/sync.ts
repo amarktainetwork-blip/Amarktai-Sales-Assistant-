@@ -172,7 +172,7 @@ async function upsertCompanies(
       });
 }
 
-async function upsertContacts(
+export async function upsertContacts(
   organisationId: number,
   systemId: number,
   records: NormalizedContact[]
@@ -210,7 +210,7 @@ async function upsertContacts(
   }
 }
 
-async function existingContactIds(
+export async function existingContactIds(
   organisationId: number,
   systemId: number,
   externalIds: string[]

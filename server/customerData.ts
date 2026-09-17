@@ -24,6 +24,7 @@ import {
 import { getDb } from "./db";
 import { requireOrganisationMembership } from "./organisation";
 import { getOrganisationWorkspaceContext } from "./organisationWorkspace";
+import { deriveCustomerInterest } from "./customerInterest";
 import {
   INCOMPLETE_TASK_STATUSES,
   isIncompleteTask,
@@ -79,6 +80,12 @@ export function normalizedCustomerAttributes(raw: unknown) {
       !Array.isArray(context.customFields)
         ? context.customFields
         : {},
+    customFieldLabels:
+      context?.customFieldLabels &&
+      typeof context.customFieldLabels === "object" &&
+      !Array.isArray(context.customFieldLabels)
+        ? context.customFieldLabels
+        : {},
   };
 }
 export async function listCustomerDirectory(input: {
@@ -93,6 +100,7 @@ export async function listCustomerDirectory(input: {
   const db = await getDb();
   if (!db) throw Error("Database connection is unavailable.");
   const request = customerPageInput(input);
+  const workspace = await getOrganisationWorkspaceContext(input.organisationId);
   const pattern = `%${request.search.replace(/[\\%_]/g, "\\$&")}%`;
   const owned = and(
     eq(crmContacts.organisationId, input.organisationId),
@@ -138,6 +146,7 @@ export async function listCustomerDirectory(input: {
       email: crmContacts.email,
       phone: crmContacts.phone,
       lifecycleStage: crmContacts.lifecycleStage,
+      raw: crmContacts.raw,
       updatedAt: crmContacts.updatedAt,
       companyName: crmCompanies.name,
     })
@@ -163,7 +172,18 @@ export async function listCustomerDirectory(input: {
     .limit(request.pageSize)
     .offset((request.page - 1) * request.pageSize);
   return {
-    items: items.map(contact => ({ ...contact, name: customerName(contact) })),
+    items: items.map(contact => {
+      const attributes = normalizedCustomerAttributes(contact.raw);
+      return {
+        ...contact,
+        raw: undefined,
+        name: customerName(contact),
+        interest: deriveCustomerInterest({
+          mappings: workspace.customerFieldMappings,
+          attributes,
+        }),
+      };
+    }),
     page: request.page,
     pageSize: request.pageSize,
     total: Number(matched.total),
@@ -307,6 +327,10 @@ export async function getExactCustomerDetail(input: {
     ...mapping,
     value: attributes.customFields[mapping.sourceFieldId] ?? null,
   }));
+  const interest = deriveCustomerInterest({
+    mappings: workspace.customerFieldMappings,
+    attributes,
+  });
   return {
     ...contact,
     raw: undefined,
@@ -323,6 +347,7 @@ export async function getExactCustomerDetail(input: {
     lastInteraction: activities[0] || null,
     nextAction: tasks[0] || null,
     attributes,
+    interest,
     mappedFields,
     workspace,
     tasks: {

@@ -531,7 +531,8 @@ export default function Reviews() {
                         {resultDetail || statusCopy.description}
                       </p>
 
-                      {draftOnly && lifecycle === "pending" ? (
+                      {draftOnly &&
+                      ["pending", "approved", "blocked"].includes(lifecycle) ? (
                         <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-900">
                           <p className="font-bold">
                             Draft prepared — sending is offline.
@@ -624,7 +625,8 @@ export default function Reviews() {
                     </div>
 
                     <div className="flex shrink-0 flex-wrap gap-2 lg:max-w-48 lg:flex-col">
-                      {lifecycle === "pending" && draftOnly ? (
+                      {["pending", "approved", "blocked"].includes(lifecycle) &&
+                      draftOnly ? (
                         <>
                           <Button
                             variant="outline"

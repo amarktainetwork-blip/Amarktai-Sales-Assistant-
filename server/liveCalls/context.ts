@@ -1,4 +1,6 @@
 import { normalizedCustomerAttributes } from "../customerData";
+import { deriveCustomerInterest } from "../customerInterest";
+import { getOrganisationWorkspaceContext } from "../organisationWorkspace";
 import { INCOMPLETE_TASK_STATUSES } from "../../shared/taskState";
 import { and, asc, desc, eq, inArray, like, or } from "drizzle-orm";
 import {
@@ -33,6 +35,9 @@ export type LiveCallCrmContext = {
   /** Current normalized CRM lifecycle/status, used only for configured workflow eligibility. */
   contactStatus?: string;
   customerAttributes?: ReturnType<typeof normalizedCustomerAttributes>;
+  courseInterest?: string;
+  courseInterestValues?: string[];
+  customerTags?: string[];
   taskExternalId?: string;
   taskTitle?: string;
   opportunityExternalId?: string;
@@ -93,10 +98,9 @@ async function contextForContact(input: {
     throw new Error(
       "The selected CRM contact is not available to this user and organisation."
     );
-  const opportunity =
-    input.opportunity ||
-    (
-      await db
+  const opportunityRows = input.opportunity
+    ? [input.opportunity]
+    : await db
         .select()
         .from(crmOpportunities)
         .where(
@@ -111,89 +115,108 @@ async function contextForContact(input: {
           )
         )
         .orderBy(desc(crmOpportunities.updatedAt))
-        .limit(1)
-    )[0];
-  const [system, company, task, activity, inbound] = await Promise.all([
-    db
-      .select()
-      .from(connectedSystems)
-      .where(
-        and(
-          eq(connectedSystems.id, input.contact.connectedSystemId),
-          eq(connectedSystems.organisationId, input.organisationId)
-        )
-      )
-      .limit(1)
-      .then(rows => rows[0]),
-    input.contact.companyExternalId
-      ? db
-          .select()
-          .from(crmCompanies)
-          .where(
-            and(
-              eq(crmCompanies.organisationId, input.organisationId),
-              eq(
-                crmCompanies.connectedSystemId,
-                input.contact.connectedSystemId
-              ),
-              eq(crmCompanies.externalId, input.contact.companyExternalId)
-            )
+        .limit(100);
+  const opportunity = opportunityRows.find(item => {
+    const raw = item.raw && typeof item.raw === "object" ? item.raw : {};
+    return !/closed|lost|won|rejected|not.?interested/i.test(
+      `${item.stage || ""} ${String((raw as Record<string, unknown>).status || "")}`
+    );
+  });
+  const [system, company, task, activity, inbound, workspace] =
+    await Promise.all([
+      db
+        .select()
+        .from(connectedSystems)
+        .where(
+          and(
+            eq(connectedSystems.id, input.contact.connectedSystemId),
+            eq(connectedSystems.organisationId, input.organisationId)
           )
-          .limit(1)
-          .then(rows => rows[0])
-      : undefined,
-    db
-      .select()
-      .from(crmTasks)
-      .where(
-        and(
-          eq(crmTasks.organisationId, input.organisationId),
-          eq(crmTasks.connectedSystemId, input.contact.connectedSystemId),
-          or(
-            eq(crmTasks.contactExternalId, input.contact.externalId),
-            opportunity
-              ? eq(crmTasks.opportunityExternalId, opportunity.externalId)
-              : eq(crmTasks.contactExternalId, input.contact.externalId)
-          ),
-          inArray(crmTasks.ownerExternalId, ownerIds),
-          inArray(crmTasks.status, [...INCOMPLETE_TASK_STATUSES])
         )
-      )
-      .orderBy(asc(crmTasks.dueAt))
-      .limit(1)
-      .then(rows => rows[0]),
-    db
-      .select()
-      .from(crmActivities)
-      .where(
-        and(
-          eq(crmActivities.organisationId, input.organisationId),
-          eq(crmActivities.connectedSystemId, input.contact.connectedSystemId),
-          eq(crmActivities.contactExternalId, input.contact.externalId),
-          inArray(crmActivities.ownerExternalId, ownerIds)
+        .limit(1)
+        .then(rows => rows[0]),
+      input.contact.companyExternalId
+        ? db
+            .select()
+            .from(crmCompanies)
+            .where(
+              and(
+                eq(crmCompanies.organisationId, input.organisationId),
+                eq(
+                  crmCompanies.connectedSystemId,
+                  input.contact.connectedSystemId
+                ),
+                eq(crmCompanies.externalId, input.contact.companyExternalId)
+              )
+            )
+            .limit(1)
+            .then(rows => rows[0])
+        : undefined,
+      db
+        .select()
+        .from(crmTasks)
+        .where(
+          and(
+            eq(crmTasks.organisationId, input.organisationId),
+            eq(crmTasks.connectedSystemId, input.contact.connectedSystemId),
+            or(
+              eq(crmTasks.contactExternalId, input.contact.externalId),
+              opportunity
+                ? eq(crmTasks.opportunityExternalId, opportunity.externalId)
+                : eq(crmTasks.contactExternalId, input.contact.externalId)
+            ),
+            inArray(crmTasks.ownerExternalId, ownerIds),
+            inArray(crmTasks.status, [...INCOMPLETE_TASK_STATUSES])
+          )
         )
-      )
-      .orderBy(desc(crmActivities.occurredAt))
-      .limit(1)
-      .then(rows => rows[0]),
-    db
-      .select()
-      .from(inboundMessages)
-      .where(
-        and(
-          eq(inboundMessages.organisationId, input.organisationId),
-          eq(
-            inboundMessages.connectedSystemId,
-            input.contact.connectedSystemId
-          ),
-          eq(inboundMessages.contactExternalId, input.contact.externalId),
-          eq(inboundMessages.mailboxUserId, input.userId)
+        .orderBy(asc(crmTasks.dueAt))
+        .limit(1)
+        .then(rows => rows[0]),
+      db
+        .select()
+        .from(crmActivities)
+        .where(
+          and(
+            eq(crmActivities.organisationId, input.organisationId),
+            eq(
+              crmActivities.connectedSystemId,
+              input.contact.connectedSystemId
+            ),
+            eq(crmActivities.contactExternalId, input.contact.externalId),
+            inArray(crmActivities.ownerExternalId, ownerIds)
+          )
         )
-      )
-      .orderBy(desc(inboundMessages.receivedAt))
-      .limit(1)
-      .then(rows => rows[0]),
-  ]);
+        .orderBy(desc(crmActivities.occurredAt))
+        .limit(1)
+        .then(rows => rows[0]),
+      db
+        .select()
+        .from(inboundMessages)
+        .where(
+          and(
+            eq(inboundMessages.organisationId, input.organisationId),
+            eq(
+              inboundMessages.connectedSystemId,
+              input.contact.connectedSystemId
+            ),
+            eq(inboundMessages.contactExternalId, input.contact.externalId),
+            eq(inboundMessages.mailboxUserId, input.userId)
+          )
+        )
+        .orderBy(desc(inboundMessages.receivedAt))
+        .limit(1)
+        .then(rows => rows[0]),
+      getOrganisationWorkspaceContext(input.organisationId).catch(error => {
+        if (
+          error instanceof Error &&
+          error.message === "ORGANISATION_NOT_FOUND"
+        )
+          return { customerFieldMappings: [] } as unknown as Awaited<
+            ReturnType<typeof getOrganisationWorkspaceContext>
+          >;
+        throw error;
+      }),
+    ]);
   if (!system)
     throw new Error("The contact's connected system is not available.");
   const contactName =
@@ -203,13 +226,21 @@ async function contextForContact(input: {
     input.contact.email ||
     input.contact.phone ||
     input.contact.externalId;
+  const customerAttributes = normalizedCustomerAttributes(input.contact.raw);
+  const interest = deriveCustomerInterest({
+    mappings: workspace.customerFieldMappings,
+    attributes: customerAttributes,
+  });
   return {
     source: input.source,
     connectedSystemId: system.id,
     provider: system.provider,
     contactExternalId: input.contact.externalId,
     contactName,
-    customerAttributes: normalizedCustomerAttributes(input.contact.raw),
+    customerAttributes,
+    courseInterest: interest.primary || undefined,
+    courseInterestValues: interest.values,
+    customerTags: interest.tags,
     firstName: input.contact.firstName || undefined,
     lastName: input.contact.lastName || undefined,
     companyName: company?.name || undefined,

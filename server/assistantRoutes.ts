@@ -145,7 +145,22 @@ export function deterministicTodayAnswer(
     const items = today.queues.newLeads;
     return {
       content: items.length
-        ? `Here are the newest synchronized leads:\n\n${listLines(items, item => `• ${[item.firstName, item.lastName].filter(Boolean).join(" ") || item.email || item.externalId}${item.lifecycleStage ? ` — ${item.lifecycleStage}` : ""}`)}`
+        ? `Here are the newest synchronized leads:\n\n${listLines(
+            items,
+            item => {
+              const name =
+                item.name ||
+                [
+                  "firstName" in item ? item.firstName : undefined,
+                  "lastName" in item ? item.lastName : undefined,
+                ]
+                  .filter(Boolean)
+                  .join(" ") ||
+                ("email" in item ? item.email : undefined) ||
+                "CRM contact";
+              return `• ${name}${item.courseInterest ? ` — ${item.courseInterest}` : item.lifecycleStage ? ` — ${item.lifecycleStage}` : ""}`;
+            }
+          )}`
         : "There are no synchronized leads to show yet.",
       suggestedAction: { label: "Open customers", path: "/customers" },
     };
@@ -387,6 +402,21 @@ export function registerAssistantRoutes(app: Express) {
           organisationId: membership.organisationId,
           contactId,
         });
+        if (
+          context &&
+          /(?:what|which).*(?:course|programme|program).*(?:interest|enquir|ask)|(?:course|programme|program).*(?:interested|enquired|inquired)/i.test(
+            latestUserMessage
+          )
+        )
+          return res.json({
+            content: context.courseInterest
+              ? `${context.contactName} is interested in ${context.courseInterest}.`
+              : `I cannot identify a course or programme interest for ${context.contactName} from the synchronized CRM fields and tags yet.`,
+            suggestedAction: {
+              label: "Open customer context",
+              path: `/customers?contactId=${contactId}`,
+            },
+          });
         if (
           context &&
           /(?:what|which).*(?:stage|opportunity)|(?:active|current).*(?:deal|opportunity)/i.test(

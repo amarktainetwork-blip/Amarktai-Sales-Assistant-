@@ -1370,6 +1370,7 @@ async function runDeterministicOperation(input: RunOperationInput) {
                   ownerExternalId,
                   runScript,
                   assertControl: () => assertBrowserOperationCanRun(owner),
+                  latestPageOnly: payload.fastPath === true,
                 })
               : input.provider === "genie" &&
                   operationKey === "task.sync" &&
@@ -1826,7 +1827,8 @@ export function browserCrmAdapter(
       connection: AdapterConnection;
       secret: ConnectionSecretPayload;
       cursor?: string;
-    }
+    },
+    extraPayload: Record<string, unknown> = {}
   ) => {
     const execution = await runOperation({
       connection: input.connection,
@@ -1838,6 +1840,7 @@ export function browserCrmAdapter(
         cursor: input.cursor || "",
         ownerExternalId: input.secret.crmUserExternalId || "",
         ownerDisplayName: input.secret.crmUserDisplayName || "",
+        ...extraPayload,
       },
     });
     return {
@@ -1888,6 +1891,19 @@ export function browserCrmAdapter(
         }
       : {}),
     syncContacts: input => list("syncContacts", contact, input),
+    ...(provider === "genie"
+      ? {
+          syncRecentContacts: async (input: {
+            connection: AdapterConnection;
+            secret: ConnectionSecretPayload;
+          }) => {
+            const result = await list("syncContacts", contact, input, {
+              fastPath: true,
+            });
+            return { records: result.records };
+          },
+        }
+      : {}),
     syncCompanies: input => list("syncCompanies", company, input),
     syncOpportunities: input => list("syncOpportunities", opportunity, input),
     syncTasks: input => list("syncTasks", task, input),

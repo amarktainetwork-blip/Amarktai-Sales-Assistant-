@@ -1,3 +1,8 @@
+import { showCrmAttention } from "@/lib/workspaceHealth";
+import {
+  rememberNewLeadNotifications,
+  unseenNewLeadNotifications,
+} from "@/lib/newLeadNotifications";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { BrandMark } from "@/components/BrandMark";
 import ManagementElevation from "@/components/ManagementElevation";
@@ -72,7 +77,16 @@ export default function DashboardLayout({
     retry: false,
   });
   const organisationId = organisation.data?.organisationId;
-  trpc.connectedSystems.list.useQuery(
+  const newLeadAlerts = trpc.sales.newLeadAlerts.useQuery(
+    { organisationId: organisationId ?? 0, limit: 20 },
+    {
+      enabled: Boolean(user && security.data?.verified && organisationId),
+      retry: false,
+      refetchInterval: 60_000,
+      refetchIntervalInBackground: true,
+    }
+  );
+  const connectedSystems = trpc.connectedSystems.list.useQuery(
     { organisationId: organisationId ?? 0 },
     {
       enabled: Boolean(
@@ -88,6 +102,14 @@ export default function DashboardLayout({
     retry: false,
   });
   const utils = trpc.useUtils();
+  const openNewLead = trpc.sales.workAction.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.sales.newLeadAlerts.invalidate(),
+        utils.sales.today.invalidate(),
+      ]);
+    },
+  });
   const switchOrganisation = trpc.organisation.switch.useMutation({
     onSuccess: async () => {
       await Promise.all([
@@ -113,7 +135,10 @@ export default function DashboardLayout({
   const storedCompanyComplete = onboarding?.complete === true;
   const profileConfirmed =
     companySetup.data?.profile?.discoveryStatus === "confirmed";
-  const crmReady = Boolean(integrationReadiness.data?.genie.ready);
+  const crmAttention = showCrmAttention(
+    connectedSystems.data,
+    connectedSystems.isSuccess
+  );
   // Completed onboarding is durable; runtime CRM health is shown separately.
   const setupComplete = storedCompanyComplete;
 
@@ -133,6 +158,54 @@ export default function DashboardLayout({
     location,
     navigate,
   ]);
+
+  const leadAlerts = newLeadAlerts.data ?? [];
+
+  useEffect(() => {
+    if (!organisationId || !newLeadAlerts.data?.length) return;
+    try {
+      const key = `amarktai:new-lead-notified:${organisationId}`;
+      const stored = JSON.parse(localStorage.getItem(key) || "[]") as string[];
+      const unseen = unseenNewLeadNotifications(
+        newLeadAlerts.data,
+        stored
+      ) as typeof newLeadAlerts.data;
+      if (!unseen.length) return;
+      const first = unseen[0];
+      toast.success(
+        unseen.length === 1
+          ? `New lead: ${first.name}`
+          : `${unseen.length} new leads have arrived`,
+        {
+          description:
+            unseen.length === 1 && first.interest.primary
+              ? `Interested in: ${first.interest.primary}`
+              : "Open Today to work the newest leads first.",
+        }
+      );
+      localStorage.setItem(
+        key,
+        JSON.stringify(rememberNewLeadNotifications(stored, unseen))
+      );
+    } catch {
+      // Durable NEW_LEAD work remains authoritative if browser storage is unavailable.
+    }
+  }, [newLeadAlerts.data, organisationId]);
+
+  const openLead = (lead: (typeof leadAlerts)[number], prepare = false) => {
+    if (!organisationId) return;
+    openNewLead.mutate({
+      organisationId,
+      workItemId: lead.workItemId,
+      action: "start",
+      transitionKey: `lead-alert-open:${lead.workItemId}`,
+    });
+    navigate(
+      prepare
+        ? `/assistant?contactId=${lead.contactId}&prompt=${encodeURIComponent("Prepare me for this new lead. Summarise the enquiry, course interest, useful context and what I should ask on the first call.")}`
+        : `/customers?contactId=${lead.contactId}`
+    );
+  };
 
   const secondaryMenu = useMemo<NavItem[]>(() => {
     if (!canManage) return [];
@@ -290,9 +363,7 @@ export default function DashboardLayout({
               />
             </div>
           ) : null}
-          {storedCompanyComplete &&
-          integrationReadiness.isSuccess &&
-          !crmReady ? (
+          {storedCompanyComplete && crmAttention ? (
             <div
               role="status"
               className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
@@ -305,6 +376,51 @@ export default function DashboardLayout({
               >
                 Check CRM connection
               </button>
+            </div>
+          ) : null}
+          {leadAlerts.length ? (
+            <div
+              role="status"
+              data-new-lead-alert
+              className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#BFD2F8] bg-[#EDF4FF] px-4 py-3 text-[#26354A] shadow-sm"
+            >
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-[#2F6FED] px-2.5 py-1 text-[10px] font-black uppercase tracking-[.1em] text-white">
+                    New leads · {leadAlerts.length}
+                  </span>
+                  <span className="font-bold">
+                    {leadAlerts.length === 1
+                      ? leadAlerts[0].name
+                      : `${leadAlerts.length} people need first contact`}
+                  </span>
+                </div>
+                {leadAlerts.length === 1 && leadAlerts[0].interest.primary ? (
+                  <p className="mt-1 text-sm font-semibold text-[#526985]">
+                    Interested in: {leadAlerts[0].interest.primary}
+                  </p>
+                ) : null}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {leadAlerts.length === 1 ? (
+                  <>
+                    <Button size="sm" onClick={() => openLead(leadAlerts[0])}>
+                      Open lead
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => openLead(leadAlerts[0], true)}
+                    >
+                      Prepare call
+                    </Button>
+                  </>
+                ) : (
+                  <Button size="sm" onClick={() => navigate("/today")}>
+                    Work new leads
+                  </Button>
+                )}
+              </div>
             </div>
           ) : null}
           {children}

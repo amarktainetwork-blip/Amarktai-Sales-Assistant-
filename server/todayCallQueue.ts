@@ -23,6 +23,9 @@ export type TodayQueueContact = {
   email: string | null;
   phone: string | null;
   lifecycleStage: string | null;
+  courseInterest?: string | null;
+  interestValues?: string[];
+  tags?: string[];
 };
 
 export type TodayCallQueueItem = {
@@ -34,13 +37,17 @@ export type TodayCallQueueItem = {
   email: string | null;
   phone: string | null;
   lifecycleStage: string | null;
-  primaryKind: "overdue_task" | "inbound_reply" | "due_today";
+  courseInterest: string | null;
+  interestValues: string[];
+  tags: string[];
+  primaryKind: "overdue_task" | "inbound_reply" | "due_today" | "new_lead";
   headline: string;
   dueAt: Date | null;
   receivedAt: Date | null;
   reasons: string[];
   taskIds: number[];
   inboundIds: number[];
+  workItemIds: number[];
   workCount: number;
 };
 
@@ -57,6 +64,12 @@ function contactName(contact: TodayQueueContact) {
 }
 
 export function buildTodayCallQueue(input: {
+  newLeads?: Array<{
+    workItemId: number;
+    connectedSystemId: number;
+    contactExternalId: string;
+    createdAt: Date;
+  }>;
   overdueTasks: TodayQueueTask[];
   dueToday: TodayQueueTask[];
   inbound: TodayQueueInbound[];
@@ -80,6 +93,7 @@ export function buildTodayCallQueue(input: {
     reason: string;
     taskId?: number;
     inboundId?: number;
+    workItemId?: number;
   };
 
   const candidates: Candidate[] = [];
@@ -106,7 +120,26 @@ export function buildTodayCallQueue(input: {
     });
   };
 
-  input.overdueTasks.forEach(task => addTask(task, "overdue_task", 0));
+  for (const lead of input.newLeads || []) {
+    const contact = contacts.get(
+      contactKey(lead.connectedSystemId, lead.contactExternalId)
+    );
+    if (!contact) continue;
+    candidates.push({
+      rank: 0,
+      occurredAt: lead.createdAt.valueOf(),
+      contact,
+      kind: "new_lead",
+      headline: contact.courseInterest
+        ? `New lead · ${contact.courseInterest}`
+        : "New lead ready for first contact",
+      dueAt: null,
+      receivedAt: null,
+      reason: "New lead needs first contact",
+      workItemId: lead.workItemId,
+    });
+  }
+  input.overdueTasks.forEach(task => addTask(task, "overdue_task", 1));
   for (const message of input.inbound) {
     if (!message.contactExternalId || !message.connectedSystemId) continue;
     const contact = contacts.get(
@@ -114,7 +147,7 @@ export function buildTodayCallQueue(input: {
     );
     if (!contact) continue;
     candidates.push({
-      rank: 1,
+      rank: 2,
       occurredAt: message.receivedAt.valueOf(),
       contact,
       kind: "inbound_reply",
@@ -125,7 +158,7 @@ export function buildTodayCallQueue(input: {
       inboundId: message.id,
     });
   }
-  input.dueToday.forEach(task => addTask(task, "due_today", 2));
+  input.dueToday.forEach(task => addTask(task, "due_today", 3));
 
   candidates.sort(
     (a, b) =>
@@ -151,6 +184,9 @@ export function buildTodayCallQueue(input: {
         email: candidate.contact.email,
         phone: candidate.contact.phone,
         lifecycleStage: candidate.contact.lifecycleStage,
+        courseInterest: candidate.contact.courseInterest || null,
+        interestValues: candidate.contact.interestValues || [],
+        tags: candidate.contact.tags || [],
         primaryKind: candidate.kind,
         headline: candidate.headline,
         dueAt: candidate.dueAt,
@@ -158,6 +194,7 @@ export function buildTodayCallQueue(input: {
         reasons: [candidate.reason],
         taskIds: candidate.taskId ? [candidate.taskId] : [],
         inboundIds: candidate.inboundId ? [candidate.inboundId] : [],
+        workItemIds: candidate.workItemId ? [candidate.workItemId] : [],
         workCount: 1,
       });
       continue;
@@ -166,6 +203,7 @@ export function buildTodayCallQueue(input: {
       existing.reasons.push(candidate.reason);
     if (candidate.taskId) existing.taskIds.push(candidate.taskId);
     if (candidate.inboundId) existing.inboundIds.push(candidate.inboundId);
+    if (candidate.workItemId) existing.workItemIds.push(candidate.workItemId);
     existing.workCount += 1;
   }
   return Array.from(result.values());

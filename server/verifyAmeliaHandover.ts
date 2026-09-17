@@ -26,9 +26,10 @@ async function main() {
     const [user] = await query("SELECT id,email FROM users WHERE id=?", [
       a.userId,
     ]);
-    const [org] = await query("SELECT settings FROM organisations WHERE id=?", [
-      a.organisationId,
-    ]);
+    const [org] = await query(
+      "SELECT name,timezone,locale,currency,settings FROM organisations WHERE id=?",
+      [a.organisationId]
+    );
     const [member] = await query(
       "SELECT * FROM organisationMembers WHERE organisationId=? AND userId=?",
       [a.organisationId, a.userId]
@@ -48,6 +49,14 @@ async function main() {
     );
     const settings = parse(org?.settings || {});
     const policy = settings.automationPolicy || {};
+    check(
+      "COURSE2CAREER_CONTEXT",
+      org?.name === "Course2Career" &&
+        org?.timezone === "Europe/London" &&
+        org?.locale === "en-GB" &&
+        org?.currency === "GBP" &&
+        settings.customerModel === "individual_consumer"
+    );
     check(
       "WRITE_CAPABILITIES_EMPTY",
       JSON.stringify(parse(system?.allowedWriteCapabilities || [])) === "[]"
@@ -122,7 +131,7 @@ async function main() {
         JSON.stringify([...(progress.safeReads?.proven || [])].sort()) ===
           JSON.stringify([...current.safeReads.proven].sort())
     );
-    for (const table of ["crmContacts", "crmTasks"]) {
+    for (const table of ["crmContacts", "crmTasks", "crmOpportunities"]) {
       const rows = await query(
         `SELECT ownerExternalId,COUNT(*) AS count FROM ${table} WHERE connectedSystemId=? GROUP BY ownerExternalId`,
         [a.connectedSystemId]
@@ -131,10 +140,12 @@ async function main() {
       check(
         table === "crmContacts"
           ? "CONTACT_OWNER_ISOLATION"
-          : "TASK_OWNER_ISOLATION",
+          : table === "crmTasks"
+            ? "TASK_OWNER_ISOLATION"
+            : "OPPORTUNITY_OWNER_ISOLATION",
         counts.nullOwner === 0 &&
           counts.other === 0 &&
-          (table === "crmContacts"
+          (table !== "crmTasks"
             ? counts.total > 0
             : exactTaskCollectionProven(
                 counts.total,
@@ -142,7 +153,7 @@ async function main() {
               ))
       );
       console.log(
-        `${table === "crmContacts" ? "CONTACT" : "TASK"}_COUNTS=${JSON.stringify(counts)}`
+        `${table === "crmContacts" ? "CONTACT" : table === "crmTasks" ? "TASK" : "OPPORTUNITY"}_COUNTS=${JSON.stringify(counts)}`
       );
     }
     const [sales] = await query(
@@ -154,16 +165,18 @@ async function main() {
       "SELECT mailboxUserId,externalMessageId,receivedAt,LENGTH(body) AS bodyLength,classification FROM inboundMessages WHERE organisationId=? AND connectedSystemId=?",
       [a.organisationId, a.connectedSystemId]
     );
-    check(
-      "INBOUND_POSITIVE_PROOF",
-      messages.some(
-        m =>
-          m.mailboxUserId === a.userId &&
-          m.externalMessageId &&
-          m.receivedAt &&
-          m.bodyLength > 0 &&
-          parse(m.classification)?.recipientReference === a.email
-      )
+    const positiveInbound = messages.some(
+      m =>
+        m.mailboxUserId === a.userId &&
+        m.externalMessageId &&
+        m.receivedAt &&
+        m.bodyLength > 0 &&
+        parse(m.classification)?.recipientReference === a.email
+    );
+    console.log(
+      positiveInbound
+        ? "PASS INBOUND_POSITIVE_PROOF"
+        : "EXTERNAL_INBOUND_TEST_REQUIRED"
     );
     check(
       "INBOUND_OWNERSHIP_ISOLATION",

@@ -1,6 +1,7 @@
 import { isIncompleteTask, isCompletedTask } from "../shared/taskState";
-import { and, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import {
+  crmContacts,
   crmTasks,
   externalUserMappings,
   inboundMessages,
@@ -10,6 +11,9 @@ import {
 import { getDb, recordAudit } from "./db";
 import { evaluateStoredAutomationPolicy } from "./automationPolicyEvaluator";
 import { canViewTeamData, requireOrganisationMembership } from "./organisation";
+import { getOrganisationWorkspaceContext } from "./organisationWorkspace";
+import { deriveCustomerInterest } from "./customerInterest";
+import { normalizedCustomerAttributes } from "./customerData";
 import type {
   NormalizedActivity,
   NormalizedCompany,
@@ -410,6 +414,66 @@ export async function upsertSalesWorkFromCrm(input: {
       });
   }
   return candidates;
+}
+
+export async function listNewLeadAlerts(input: {
+  userId: number;
+  organisationId: number;
+  limit?: number;
+}) {
+  await requireOrganisationMembership(input.userId, input.organisationId);
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const workspace = await getOrganisationWorkspaceContext(input.organisationId);
+  const rows = await db
+    .select({ work: salesWorkItems, contact: crmContacts })
+    .from(salesWorkItems)
+    .innerJoin(
+      crmContacts,
+      and(
+        eq(crmContacts.organisationId, salesWorkItems.organisationId),
+        eq(crmContacts.connectedSystemId, salesWorkItems.connectedSystemId),
+        eq(crmContacts.externalId, salesWorkItems.contactExternalId)
+      )
+    )
+    .where(
+      and(
+        eq(salesWorkItems.organisationId, input.organisationId),
+        eq(salesWorkItems.salespersonUserId, input.userId),
+        eq(salesWorkItems.type, "NEW_LEAD"),
+        eq(salesWorkItems.status, "open")
+      )
+    )
+    .orderBy(desc(salesWorkItems.createdAt), desc(salesWorkItems.id))
+    .limit(Math.min(50, Math.max(1, input.limit || 20)));
+
+  return rows.map(({ work, contact }) => {
+    const attributes = normalizedCustomerAttributes(contact.raw);
+    const interest = deriveCustomerInterest({
+      mappings: workspace.customerFieldMappings,
+      attributes,
+    });
+    const name =
+      [contact.firstName, contact.lastName].filter(Boolean).join(" ") ||
+      contact.email ||
+      contact.phone ||
+      `CRM contact ${contact.externalId}`;
+    return {
+      workItemId: work.id,
+      sourceKey: work.sourceKey,
+      contactId: contact.id,
+      connectedSystemId: contact.connectedSystemId,
+      contactExternalId: contact.externalId,
+      name,
+      email: contact.email,
+      phone: contact.phone,
+      lifecycleStage: contact.lifecycleStage,
+      interest,
+      reason: work.reason,
+      recommendedNextAction: work.recommendedNextAction,
+      createdAt: work.createdAt,
+    };
+  });
 }
 
 type SalesWorkRow = typeof salesWorkItems.$inferSelect;

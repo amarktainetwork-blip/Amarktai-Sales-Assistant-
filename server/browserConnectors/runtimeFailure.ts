@@ -49,7 +49,7 @@ export function classifyBrowserRuntimeFailure(
   )
     return "selector_drift";
   if (
-    /timeout|timed out|ECONN|network|transport|websocket|CDP|fetch failed/i.test(
+    /HTTP[ _]+(?:429|502|503|504|520|521|522|523|524)\b|timeout|timed out|ECONN|network|transport|websocket|CDP|fetch failed/i.test(
       detail
     )
   )

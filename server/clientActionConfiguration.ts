@@ -127,6 +127,7 @@ export const SUPPORTED_CONFIGURED_WORKFLOW_ACTIONS = new Set([
   "complete_active_task",
   "update_contact_status",
   "update_contact",
+  "ensure_current_opportunity",
   "update_current_opportunity",
   "update_opportunity",
   "send_email_template",
@@ -656,9 +657,11 @@ export function validateClientActionConfigurationForCommissioning(
           `CLIENT_WORKFLOW_TASK_ALIAS_REQUIRED: '${workflowKey}' must map callback purpose '${purpose}' to an exact CRM task title.`
         );
       if (
-        ["update_current_opportunity", "update_opportunity"].includes(
-          actionType
-        ) &&
+        [
+          "ensure_current_opportunity",
+          "update_current_opportunity",
+          "update_opportunity",
+        ].includes(actionType) &&
         !workflow.opportunityMappings[purpose] &&
         !Object.keys(workflow.opportunityStageTransitions?.[purpose] || {})
           .length

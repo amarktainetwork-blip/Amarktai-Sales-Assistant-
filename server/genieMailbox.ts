@@ -1,3 +1,4 @@
+import { isRetryableGenieMailboxRead } from "./genieMailboxRetry";
 import { readPersonalGenieMailbox } from "./browserConnectors/genieMailboxRead";
 import { eq } from "drizzle-orm";
 import { organisationMembers, organisations } from "../drizzle/schema";
@@ -199,6 +200,7 @@ export async function syncReadyGenieMailboxes() {
     .slice(0, MAX_GENIE_MAILBOXES_PER_CYCLE);
 
   let synced = 0;
+  let deferred = 0;
   let failed = 0;
   let received = 0;
   let draftsPrepared = 0;
@@ -214,6 +216,18 @@ export async function syncReadyGenieMailboxes() {
       received += result.received;
       draftsPrepared += result.draftsPrepared;
     } catch (error) {
+      if (isRetryableGenieMailboxRead(error)) {
+        deferred += 1;
+        console.info(
+          JSON.stringify({
+            event: "personal_genie_mailbox_retry_deferred",
+            userId: row.userId,
+            organisationId: row.organisationId,
+            readOnlySource: true,
+          })
+        );
+        continue;
+      }
       failed += 1;
       console.error(
         JSON.stringify({
@@ -232,6 +246,7 @@ export async function syncReadyGenieMailboxes() {
   return {
     checked: selected.length,
     synced,
+    deferred,
     failed,
     received,
     draftsPrepared,

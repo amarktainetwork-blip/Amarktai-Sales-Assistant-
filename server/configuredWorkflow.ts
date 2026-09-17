@@ -24,6 +24,7 @@ const SEQUENCE_ACTIONS = new Set([
   "complete_active_task",
   "update_contact_status",
   "update_contact",
+  "ensure_current_opportunity",
   "update_current_opportunity",
   "update_opportunity",
   "send_email_template",
@@ -227,6 +228,7 @@ function sequenceAction(
     payload.taskPurpose = purpose;
   if (actionType === "update_contact_status") payload.statusIntent = purpose;
   if (
+    actionType === "ensure_current_opportunity" ||
     actionType === "update_current_opportunity" ||
     actionType === "update_opportunity"
   )
@@ -342,6 +344,36 @@ function applyTaskProgression(input: {
           : {}),
       },
     }));
+}
+
+function resolveOpportunityTarget(
+  action: ProposedAction,
+  customer: ResolvedAssistantCustomerContext
+): ProposedAction {
+  if (action.actionType !== "ensure_current_opportunity") return action;
+  const open = customer.operationalRecordState.openOpportunities;
+  if (open.length > 1)
+    throw new Error(
+      "WORKFLOW_CURRENT_OPPORTUNITY_AMBIGUOUS: more than one active opportunity exists, so Amarktai will not guess or create another one."
+    );
+  if (open.length === 1)
+    return {
+      ...action,
+      actionType: "update_current_opportunity",
+      payload: {
+        ...action.payload,
+        opportunityResolution: "reuse_existing_open",
+      },
+    };
+  return {
+    ...action,
+    actionType: "create_opportunity",
+    payload: {
+      ...action.payload,
+      opportunityResolution: "create_only_when_no_open",
+      requireFreshCustomerContext: true,
+    },
+  };
 }
 
 function uniqueStrings(...sets: string[][]) {
@@ -511,13 +543,21 @@ function configuredActionMetadata(input: {
     ...(timingRule && !payload.timingRule ? { timingRule } : {}),
     ...(dueAt && !payload.dueAt ? { dueAt } : {}),
     ...(opportunityStage || Object.keys(opportunityFields).length
-      ? {
-          patch: {
-            ...(payload.patch as Record<string, unknown> | undefined),
-            ...opportunityFields,
-            ...(opportunityStage ? { stage: opportunityStage } : {}),
-          },
-        }
+      ? input.action.actionType === "create_opportunity"
+        ? {
+            fields: {
+              ...(payload.fields as Record<string, unknown> | undefined),
+              ...opportunityFields,
+              ...(opportunityStage ? { stage: opportunityStage } : {}),
+            },
+          }
+        : {
+            patch: {
+              ...(payload.patch as Record<string, unknown> | undefined),
+              ...opportunityFields,
+              ...(opportunityStage ? { stage: opportunityStage } : {}),
+            },
+          }
       : {}),
     ...(contactStatus || Object.keys(contactFields).length
       ? {
@@ -806,7 +846,8 @@ export async function buildConfiguredWorkflowPlan(input: {
   });
   const actions: ProposedAction[] = [];
   const skippedOptionalActions: string[] = [];
-  for (const raw of source) {
+  for (const unresolved of source) {
+    const raw = resolveOpportunityTarget(unresolved, input.customer);
     const token =
       typeof raw.payload.workflowToken === "string"
         ? raw.payload.workflowToken

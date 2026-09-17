@@ -7,6 +7,7 @@ import { friendlyError } from "@/lib/friendlyError";
 import { trpc } from "@/lib/trpc";
 import {
   ArrowRight,
+  BookOpen,
   BriefcaseBusiness,
   CalendarClock,
   Headphones,
@@ -257,6 +258,11 @@ export default function Assistant() {
                 <p className="mt-1 truncate font-bold text-[#33445B]">
                   {selectedCustomer.name}
                 </p>
+                {selectedCustomer.interest.primary ? (
+                  <p className="mt-1 text-xs font-bold text-[#315EA8]">
+                    Course interest: {selectedCustomer.interest.primary}
+                  </p>
+                ) : null}
                 <p className="mt-1 text-xs text-[#718096]">
                   {selectedCustomer.nextAction?.title ||
                     selectedCustomer.openOpportunity?.stage ||
@@ -317,6 +323,14 @@ export default function Assistant() {
                       </div>
                       {selectedCustomer ? (
                         <div className="mt-5 grid gap-2 sm:grid-cols-2">
+                          <ContextFact
+                            icon={BookOpen}
+                            label="Course interest"
+                            value={
+                              selectedCustomer.interest.primary ||
+                              "Not yet identified"
+                            }
+                          />
                           <ContextFact
                             icon={CalendarClock}
                             label="Next task"

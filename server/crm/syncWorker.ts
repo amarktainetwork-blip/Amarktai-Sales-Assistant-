@@ -26,10 +26,13 @@ export function crmSyncIntervalMs(raw = process.env.CRM_SYNC_INTERVAL_MS) {
 export function crmSyncJobIsDue(
   lastStartedAt: Date | null,
   now: Date,
-  intervalMs = crmSyncIntervalMs()
+  intervalMs = crmSyncIntervalMs(),
+  lastSucceededAt: Date | null = null
 ) {
   return (
-    !lastStartedAt || now.valueOf() - lastStartedAt.valueOf() >= intervalMs
+    (!lastStartedAt || now.valueOf() - lastStartedAt.valueOf() >= intervalMs) &&
+    (!lastSucceededAt ||
+      now.valueOf() - lastSucceededAt.valueOf() >= intervalMs)
   );
 }
 
@@ -146,6 +149,10 @@ export async function runConnectionScopedCrmSyncCycle(now = new Date()) {
             or(
               isNull(connectorSyncJobs.lastStartedAt),
               lt(connectorSyncJobs.lastStartedAt, dueBefore)
+            ),
+            or(
+              isNull(connectorSyncJobs.lastSucceededAt),
+              lt(connectorSyncJobs.lastSucceededAt, dueBefore)
             )
           ),
           and(

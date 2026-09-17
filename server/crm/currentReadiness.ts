@@ -85,9 +85,19 @@ export function calculateCurrentReadiness(input: {
 }
 
 /** Recompute current presentation from durable proofs, never from historical job snapshots. */
+export function shouldPreserveConnectionStatus(
+  status: string,
+  authenticationVerified = false
+) {
+  if (["paused", "disconnected"].includes(status)) return true;
+  if (status === "authentication_expired") return !authenticationVerified;
+  return false;
+}
+
 export async function reconcileCurrentBrowserReadiness(input: {
   organisationId: number;
   connectedSystemId: number;
+  authenticationVerified?: boolean;
 }) {
   const db = await getDb();
   if (!db) throw Error("Database connection is unavailable.");
@@ -136,11 +146,10 @@ export async function reconcileCurrentBrowserReadiness(input: {
       discovered: job?.discoveredOperationKeys || [],
       cursors,
     });
-    const preserveStatus = [
-      "paused",
-      "disconnected",
-      "authentication_expired",
-    ].includes(system.status);
+    const preserveStatus = shouldPreserveConnectionStatus(
+      system.status,
+      Boolean(input.authenticationVerified)
+    );
     await tx
       .update(connectedSystems)
       .set({
@@ -155,6 +164,15 @@ export async function reconcileCurrentBrowserReadiness(input: {
             }
           : {}),
         lastHealthCheckAt: new Date(),
+        ...(input.authenticationVerified &&
+        (system.status === "authentication_expired" ||
+          /authentication expired/i.test(system.lastHealthSummary || ""))
+          ? {
+              lastHealthSummary: current.ready
+                ? "Browser CRM authentication verified; current readiness restored."
+                : "Browser CRM authentication verified; capability readiness was recomputed.",
+            }
+          : {}),
       })
       .where(eq(connectedSystems.id, system.id));
     if (job) {

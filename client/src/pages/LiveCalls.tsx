@@ -566,11 +566,16 @@ export default function LiveCalls() {
             <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#2F6FED]">
               PRE-CALL BRIEF
             </p>
-            <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+            <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-6">
               {[
                 [
                   "Customer",
                   `${callContext.data.context.contactName}${callContext.data.context.companyName ? ` · ${callContext.data.context.companyName}` : ""}\n${callContext.data.context.phone || callContext.data.context.email || "No phone or email available"}`,
+                ],
+                [
+                  "Course interest",
+                  callContext.data.context.courseInterest ||
+                    "Not yet identified from CRM context",
                 ],
                 [
                   "Opportunity",
@@ -648,6 +653,11 @@ export default function LiveCalls() {
               placeholder="Jane Smith, email, or phone"
               className="mt-2 border-[#CBD5E0] bg-white text-[#26354A] placeholder:text-[#95A2B2]"
             />
+            {initialCustomer.data?.interest.primary ? (
+              <p className="mt-2 rounded-lg bg-[#EDF4FF] px-3 py-2 text-xs font-bold text-[#315EA8]">
+                Course interest: {initialCustomer.data.interest.primary}
+              </p>
+            ) : null}
 
             {!sessionId && !!contactMatches.data?.length && (
               <div className="mt-2 space-y-1 rounded-xl border border-[#DCE4EE] bg-white p-2 shadow-sm">
