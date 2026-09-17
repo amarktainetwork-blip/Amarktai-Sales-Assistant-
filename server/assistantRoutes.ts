@@ -201,12 +201,17 @@ export function deterministicTodayAnswer(
       normalized
     )
   ) {
-    const items = today.queues.priority;
+    const items = today.queues.callQueue;
     return {
       content: items.length
-        ? `I'd focus on these first:\n\n${listLines(items, (item, index) => `${index + 1}. ${item.name}${item.stage ? ` — ${item.stage}` : ""}\n   ${item.reasons.join(" · ")}`, 5)}`
-        : "There isn't a priority customer queue yet. If your CRM has just been connected, give it a moment to synchronize and I’ll rank the work as soon as records are available.",
-      suggestedAction: { label: "Open priorities", path: "/today" },
+        ? `I'd work these people first:\n\n${listLines(
+            items,
+            (item, index) =>
+              `${index + 1}. ${item.name} — ${item.headline}\n   ${item.reasons.join(" · ")}`,
+            5
+          )}`
+        : "Your immediate call queue is clear. There are no overdue tasks, due-today tasks or customer replies currently requiring action.",
+      suggestedAction: { label: "Open call queue", path: "/today" },
     };
   }
 
@@ -658,6 +663,13 @@ export function registerAssistantRoutes(app: Express) {
           generatedAt: today.generatedAt,
           metrics: today.metrics,
           priority: today.queues.priority.slice(0, 8).map(compactPriority),
+          callQueue: today.queues.callQueue.slice(0, 8).map(item => ({
+            contactId: item.contactId,
+            name: item.name,
+            headline: item.headline,
+            reasons: item.reasons,
+            phone: item.phone,
+          })),
           overdueTasks: today.queues.overdueTasks.slice(0, 12).map(compactTask),
           dueToday: today.queues.dueToday.slice(0, 12).map(compactTask),
           callbacks: today.queues.callbacks.slice(0, 10).map(item => ({

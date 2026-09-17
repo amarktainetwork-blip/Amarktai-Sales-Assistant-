@@ -11,6 +11,7 @@ import {
 import { trpc } from "@/lib/trpc";
 import {
   ArrowLeft,
+  ArrowRight,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -383,19 +384,26 @@ export default function Reviews() {
                 </p>
               </div>
               <h1 className="mt-3 font-display text-4xl font-bold tracking-[-.06em] sm:text-5xl">
-                One place to approve, apply and prove every action.
+                Only stop here when AmarktAI needs your decision.
               </h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-[#66758A]">
-                Pending work stays review-first. Approved work shows when it is
-                executing. Completed, skipped, blocked and failed actions remain
-                visible with the customer target, safeguards, readback and audit
-                evidence that produced the final result.
+                AmarktAI can prepare the repetitive work, but nothing
+                customer-facing should disappear into the background. Check the
+                customer, edit the draft if needed, approve or skip it, then get
+                back to the call queue. Evidence and history stay available
+                underneath when you need them.
               </p>
             </div>
-            <Button variant="outline" onClick={() => navigate("/assistant")}>
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to AmarktAI
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => navigate("/assistant")}>
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back to AmarktAI
+              </Button>
+              <Button onClick={() => navigate("/today")}>
+                Back to call queue
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </header>
 
@@ -453,7 +461,10 @@ export default function Reviews() {
             {visible.map(({ item, lifecycle }) => {
               const payload = object(item.payload);
               const route = object(payload.crmRoute);
+              const draftOnly = payload.draftOnly === true;
+              const executionReady = payload.executionReady === true;
               const mailboxDraft =
+                !draftOnly &&
                 route.provider === "microsoft_delegated" &&
                 ["send_email", "send_email_template"].includes(item.actionType);
               const draftBody =
@@ -519,6 +530,20 @@ export default function Reviews() {
                       <p className="mt-1 text-xs leading-5 text-[#8190A3]">
                         {resultDetail || statusCopy.description}
                       </p>
+
+                      {draftOnly && lifecycle === "pending" ? (
+                        <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-900">
+                          <p className="font-bold">
+                            Draft prepared — sending is offline.
+                          </p>
+                          <p className="mt-1">
+                            Keep or review the wording here. This item cannot
+                            execute until an authorised outbound route is
+                            connected and re-verified. Nothing will be sent from
+                            this screen.
+                          </p>
+                        </div>
+                      ) : null}
 
                       {destination || subject || sender || purpose ? (
                         <div className="mt-4 grid gap-3 rounded-2xl border border-[#DCE4EE] bg-[#F7F9FC] p-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
@@ -599,7 +624,34 @@ export default function Reviews() {
                     </div>
 
                     <div className="flex shrink-0 flex-wrap gap-2 lg:max-w-48 lg:flex-col">
-                      {lifecycle === "pending" && mailboxDraft ? (
+                      {lifecycle === "pending" && draftOnly ? (
+                        <>
+                          <Button
+                            variant="outline"
+                            disabled={review.isPending}
+                            onClick={() =>
+                              review.mutate({
+                                proposalId: item.id,
+                                state: "skipped",
+                              })
+                            }
+                          >
+                            <X className="mr-2 h-4 w-4" />
+                            Dismiss draft
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => navigate("/assistant")}
+                          >
+                            Back to AmarktAI
+                          </Button>
+                          <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold leading-5 text-blue-900">
+                            {executionReady
+                              ? "Execution route will still be re-verified before use."
+                              : "No sending route is enabled. Draft stays review-only."}
+                          </div>
+                        </>
+                      ) : lifecycle === "pending" && mailboxDraft ? (
                         <>
                           <Button
                             variant="outline"

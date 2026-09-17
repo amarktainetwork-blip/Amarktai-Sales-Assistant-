@@ -5,7 +5,9 @@ import { friendlyError } from "@/lib/friendlyError";
 import { trpc } from "@/lib/trpc";
 import {
   AlertTriangle,
+  ArrowRight,
   CheckCircle2,
+  ClipboardCheck,
   Headphones,
   Mic,
   MonitorUp,
@@ -14,6 +16,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { useLocation } from "wouter";
 
 type Signal = {
   type: string;
@@ -138,6 +141,7 @@ async function getCaptureStream(mode: CaptureMode) {
 }
 
 export default function LiveCalls() {
+  const [, navigate] = useLocation();
   const [leadLabel, setLeadLabel] = useState("");
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [captureMode, setCaptureMode] = useState<CaptureMode>("mixed");
@@ -180,10 +184,10 @@ export default function LiveCalls() {
   const initialContactId = Number(
     new URLSearchParams(window.location.search).get("contactId") || 0
   );
-  const initialCustomers = trpc.sales.customers.useQuery(undefined, {
-    enabled: initialContactId > 0,
-    retry: false,
-  });
+  const initialCustomer = trpc.sales.customerDetail.useQuery(
+    { contactId: initialContactId || 1 },
+    { enabled: initialContactId > 0, retry: false }
+  );
   const callContext = trpc.calls.context.useQuery(
     { callSessionId: sessionId || initialSessionId },
     { enabled: Boolean(sessionId || initialSessionId), retry: false }
@@ -199,13 +203,14 @@ export default function LiveCalls() {
 
   useEffect(() => {
     if (initialContactId <= 0 || selectedContactId) return;
-    const contact = initialCustomers.data?.find(
-      item => item.id === initialContactId
-    );
+    const contact = initialCustomer.data;
     if (!contact) return;
     setSelectedContactId(contact.id);
     setLeadLabel(contact.name);
-  }, [initialContactId, initialCustomers.data, selectedContactId]);
+    setContactExternalId(contact.externalId);
+    setTaskExternalId(contact.nextAction?.externalId || "");
+    setOpportunityExternalId(contact.openOpportunity?.externalId || "");
+  }, [initialContactId, initialCustomer.data, selectedContactId]);
 
   useEffect(() => {
     if (!callContext.data) return;
@@ -538,7 +543,10 @@ export default function LiveCalls() {
             </p>
             <div className="mt-4 flex gap-2">
               {retryAction ? (
-                <Button onClick={retryAction} className="bg-[#2F6FED] hover:bg-[#2459C2]">
+                <Button
+                  onClick={retryAction}
+                  className="bg-[#2F6FED] hover:bg-[#2459C2]"
+                >
                   Retry
                 </Button>
               ) : null}
@@ -583,7 +591,10 @@ export default function LiveCalls() {
                   `${callContext.data.context.reasons.join(" · ") || "Selected customer"}\n${callContext.data.context.objective || "Confirm the next factual step"}`,
                 ],
               ].map(([label, value]) => (
-                <div key={label} className="rounded-xl border border-[#E5EAF0] bg-[#F8FAFC] p-4">
+                <div
+                  key={label}
+                  className="rounded-xl border border-[#E5EAF0] bg-[#F8FAFC] p-4"
+                >
                   <p className="text-[10px] font-black uppercase text-[#728197]">
                     {label}
                   </p>
@@ -893,6 +904,29 @@ export default function LiveCalls() {
                       </span>
                     </div>
                   ))}
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button
+                    onClick={() => navigate("/reviews")}
+                    className="bg-[#2F6FED] hover:bg-[#2459C2]"
+                  >
+                    <ClipboardCheck className="mr-2 h-4 w-4" />
+                    Review prepared work
+                  </Button>
+                  <Button variant="outline" onClick={() => navigate("/today")}>
+                    Next person
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                  {selectedContactId ? (
+                    <Button
+                      variant="ghost"
+                      onClick={() =>
+                        navigate(`/customers?contactId=${selectedContactId}`)
+                      }
+                    >
+                      Open customer context
+                    </Button>
+                  ) : null}
                 </div>
               </section>
             )}

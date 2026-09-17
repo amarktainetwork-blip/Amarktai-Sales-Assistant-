@@ -2,7 +2,8 @@ import { getTodayTaskData } from "./todayTaskData";
 import { getOrganisationWorkspaceContext } from "./organisationWorkspace";
 import { isIncompleteTask } from "../shared/taskState";
 import { personalOwnerSql } from "./customerData";
-import { and, desc, eq, isNull, lte, or } from "drizzle-orm";
+import { buildTodayCallQueue } from "./todayCallQueue";
+import { and, desc, eq, inArray, isNull, lte, or } from "drizzle-orm";
 import {
   assistantReminders,
   callbackTasks,
@@ -340,6 +341,49 @@ export async function getTodayWork(input: {
   const currentInbound = actionableInbound.filter(message =>
     isCurrentActionableInbound(message, now)
   );
+
+  const workContactExternalIds = Array.from(
+    new Set(
+      [
+        ...taskData.queues.overdueTasks.map(task => task.contactExternalId),
+        ...taskData.queues.dueToday.map(task => task.contactExternalId),
+        ...currentInbound.map(message => message.contactExternalId),
+      ].filter((value): value is string => Boolean(value))
+    )
+  );
+  const workContacts = workContactExternalIds.length
+    ? await db
+        .select({
+          id: crmContacts.id,
+          connectedSystemId: crmContacts.connectedSystemId,
+          externalId: crmContacts.externalId,
+          firstName: crmContacts.firstName,
+          lastName: crmContacts.lastName,
+          email: crmContacts.email,
+          phone: crmContacts.phone,
+          lifecycleStage: crmContacts.lifecycleStage,
+        })
+        .from(crmContacts)
+        .where(
+          and(
+            eq(crmContacts.organisationId, input.organisationId),
+            inArray(crmContacts.externalId, workContactExternalIds),
+            personalOwnerSql(
+              input,
+              crmContacts.connectedSystemId,
+              crmContacts.ownerExternalId
+            )
+          )
+        )
+    : [];
+
+  const callQueue = buildTodayCallQueue({
+    overdueTasks: taskData.queues.overdueTasks,
+    dueToday: taskData.queues.dueToday,
+    inbound: currentInbound,
+    contacts: workContacts,
+  });
+
   const assignedWork = workItems
     .filter(item => item.salespersonUserId === input.userId)
     .sort((a, b) => {
@@ -439,6 +483,7 @@ export async function getTodayWork(input: {
       callbacksDue: callbacks.length,
       newLeads: newestLeads.length,
       workItems: assignedWork.length,
+      callQueue: callQueue.length,
     },
     queues: {
       dueToday: dueToday.slice(0, 12),
@@ -447,6 +492,7 @@ export async function getTodayWork(input: {
       reminders: reminders.slice(0, 20),
       callbacks: callbacks.slice(0, 20),
       priority,
+      callQueue,
       newLeads: newestLeads,
       work: assignedWork.slice(0, 100),
     },

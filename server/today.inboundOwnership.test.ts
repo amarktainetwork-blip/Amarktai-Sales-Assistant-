@@ -232,7 +232,9 @@ describe("Today inbound ownership lookup", () => {
       id: 55,
       contactExternalId: "contact-2001",
     });
-    expect(fromCalls.filter(table => table === crmContacts)).toHaveLength(0);
+    // Phase 2 performs one additional owner-scoped contact hydration for the
+    // current call queue. It must not resurrect the old bounded contact slice.
+    expect(fromCalls.filter(table => table === crmContacts)).toHaveLength(1);
   });
 
   it("includes a due Amarktai reminder in the normal Today queue", async () => {

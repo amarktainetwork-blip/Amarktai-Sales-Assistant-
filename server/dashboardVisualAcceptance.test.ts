@@ -35,7 +35,7 @@ describe("final dashboard information architecture", () => {
     );
     const app = readFileSync(path.resolve("client/src/App.tsx"), "utf8");
 
-    for (const label of ["Home", "Customers", "Calls", "AmarktAI", "Review"])
+    for (const label of ["Today", "Customers", "Calls", "AmarktAI", "Review"])
       expect(layout).toContain(`label: "${label}"`);
     expect(layout).toContain('label: "CRM setup"');
     expect(layout).toContain('path: "/connections"');
@@ -107,7 +107,6 @@ describe("final dashboard information architecture", () => {
       "utf8"
     );
 
-
     expect(css).toContain("--dash-canvas: #f4f6f8");
     expect(css).toContain("--dash-paper: #ffffff");
     expect(css).toContain("--dash-ink: #203047");
@@ -123,7 +122,6 @@ describe("final dashboard information architecture", () => {
       'className="border-r border-[#1B2B44] bg-[#0B1B36] text-white"'
     );
     expect(layout).not.toContain("bg-white/[.06]");
-
   });
 
   it("keeps the call workflow and does not rely on a deleted override layer", () => {

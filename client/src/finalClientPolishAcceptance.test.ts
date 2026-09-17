@@ -31,7 +31,7 @@ describe("final client-facing handover polish", () => {
     expect(onboarding).not.toContain("backend-verified");
   });
 
-  it("makes Home refresh the live mailbox-backed sales day", () => {
+  it("makes Today refresh the live mailbox-backed sales day", () => {
     const today = read("pages/Today.tsx");
     const refresh = read("lib/refreshSalesDay.ts");
     expect(today).toContain("async function refreshDay()");
@@ -39,21 +39,27 @@ describe("final client-facing handover polish", () => {
     expect(today).toContain("refreshSalesDay({");
     expect(refresh).toContain('fetcher("/api/mailbox/sync"');
     expect(today).toContain("utils.sales.today.invalidate()");
-    expect(today).toContain("utils.sales.customers.invalidate()");
+    expect(today).toContain("utils.sales.customerDirectory.invalidate()");
     expect(today).toContain('toast.success("Your sales day is up to date.")');
   });
 
-  it("keeps customer context actions reachable in the conversation", () => {
+  it("keeps exact customer context through the AmarktAI conversation", () => {
     const assistant = read("pages/Assistant.tsx");
-    expect(assistant).toContain("Customer details and actions");
-    expect(assistant).toContain("<details");
+    expect(assistant).toContain("trpc.sales.customerDirectory.useQuery");
+    expect(assistant).toContain("trpc.sales.customerDetail.useQuery");
+    expect(assistant).toContain('params.get("contactId")');
+    expect(assistant).toContain("/customers?contactId=");
     expect(assistant).toContain("data-assistant-conversation");
-    expect(read("dashboard-final.css")).not.toContain("display: none !important");
+    expect(read("dashboard-final.css")).not.toContain(
+      "display: none !important"
+    );
   });
 
   it("moves dashboard copyright into the sidebar footer", () => {
     const css = read("dashboard-final.css");
-    expect(css).toContain('body:has(.amarktai-dashboard-sidebar) [data-sidebar="footer"]::after');
+    expect(css).toContain(
+      'body:has(.amarktai-dashboard-sidebar) [data-sidebar="footer"]::after'
+    );
     expect(css).toContain("Part of Amarktai Network");
   });
 

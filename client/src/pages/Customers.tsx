@@ -8,10 +8,12 @@ import {
   ArrowRight,
   Bot,
   BriefcaseBusiness,
-  Building2,
   CalendarClock,
+  CheckCircle2,
+  Clock3,
   Headphones,
   Mail,
+  MessageSquareText,
   MonitorUp,
   Phone,
   Search,
@@ -19,38 +21,60 @@ import {
   UserRound,
   Users,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
+
+function initialContactId() {
+  const value = Number(
+    new URLSearchParams(window.location.search).get("contactId")
+  );
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function displayValue(value: unknown) {
+  if (value == null || value === "") return "Not recorded";
+  if (Array.isArray(value))
+    return value.map(String).join(", ") || "Not recorded";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
 
 export default function Customers() {
   const [, navigate] = useLocation();
   const [query, setQuery] = useState("");
-  const [selectedId, setSelectedId] = useState<number | null>(null);
-
+  const [selectedId, setSelectedId] = useState<number | null>(initialContactId);
   const [page, setPage] = useState(1);
+
+  const workspace = trpc.sales.workspaceContext.useQuery(undefined, {
+    retry: false,
+  });
   const customers = trpc.sales.customerDirectory.useQuery(
     { page, pageSize: 50, search: query, sort: "updated" },
     { retry: false }
   );
-  const visible = customers.data?.items ?? [];
   const detail = trpc.sales.customerDetail.useQuery(
     { contactId: selectedId || 1 },
     { enabled: Boolean(selectedId), retry: false }
   );
+  const visible = customers.data?.items ?? [];
+  const selected = detail.data ?? null;
+  const personFirst =
+    (selected?.workspace.customerModel || workspace.data?.customerModel) ===
+    "individual_consumer";
+
   useEffect(() => {
-    if (!visible.length) {
-      setSelectedId(null);
-      return;
-    }
-    if (!selectedId || !visible.some(customer => customer.id === selectedId))
-      setSelectedId(visible[0].id);
+    if (!selectedId && visible.length) setSelectedId(visible[0].id);
   }, [selectedId, visible]);
 
-  const selected = detail.data ?? null;
+  function selectCustomer(id: number) {
+    setSelectedId(id);
+    window.history.replaceState({}, "", `/customers?contactId=${id}`);
+  }
+
   const dateLabel = (value: Date | string) =>
     formatOrganisationDate(
       new Date(value),
-      selected?.workspace.organisation || {}
+      selected?.workspace.organisation || workspace.data?.organisation || {}
     );
 
   const ask = (prompt: string) =>
@@ -66,13 +90,15 @@ export default function Customers() {
             <div>
               <p className="handover-kicker">Customers</p>
               <h1 className="mt-3 font-display text-4xl font-bold tracking-[-.06em] sm:text-5xl">
-                Every customer, already in context.
+                {personFirst
+                  ? "Know the person before you call."
+                  : "Know the customer before you call."}
               </h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-[#66758A] sm:text-base">
-                Work from the relationship, not from CRM screens. AmarktAI
-                brings the customer, company, opportunity, recent activity and
-                next step together so you can decide, call and follow up from
-                here.
+                Search the full customer set, open one record, and get the
+                useful context without digging through CRM screens. Tasks,
+                history, enquiry fields and opportunities stay attached to the
+                person you are working.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -94,7 +120,7 @@ export default function Customers() {
               setPage(1);
               setQuery(event.target.value);
             }}
-            placeholder="Search customers, companies, email, phone or stage"
+            placeholder="Search name, email, phone or stage"
             className="h-12 border-0 bg-transparent shadow-none focus-visible:ring-0"
           />
           {query ? (
@@ -125,19 +151,19 @@ export default function Customers() {
               Try again
             </Button>
           </section>
-        ) : customers.isLoading ? (
+        ) : customers.isLoading && !selected ? (
           <section className="handover-surface grid min-h-64 place-items-center p-8 text-sm font-semibold text-[#66758A]">
             Loading your customer workspace…
           </section>
-        ) : visible.length ? (
-          <section className="grid min-h-[620px] gap-5 xl:grid-cols-[380px_1fr]">
+        ) : visible.length || selected ? (
+          <section className="grid min-h-[620px] gap-5 xl:grid-cols-[360px_1fr]">
             <aside className="handover-surface overflow-hidden">
               <div className="border-b border-[#E3E9F1] bg-[#FAFCFF] px-5 py-4">
                 <p className="text-xs font-black uppercase tracking-[.12em] text-[#7A899C]">
                   Customer list
                 </p>
                 <p className="mt-1 text-sm text-[#66758A]">
-                  Select a person to open the full selling context.
+                  Select a person. Their working context stays with you.
                 </p>
               </div>
               <div className="max-h-[720px] overflow-y-auto p-2">
@@ -147,7 +173,7 @@ export default function Customers() {
                     <button
                       key={customer.id}
                       type="button"
-                      onClick={() => setSelectedId(customer.id)}
+                      onClick={() => selectCustomer(customer.id)}
                       className={`mb-1 flex w-full items-start gap-3 rounded-2xl border p-3.5 text-left transition ${
                         active
                           ? "border-[#AFC4EB] bg-[#F1F6FF] shadow-sm"
@@ -155,7 +181,11 @@ export default function Customers() {
                       }`}
                     >
                       <span
-                        className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${active ? "bg-[#2F6FED] text-white" : "bg-[#EDF3FF] text-[#2F6FED]"}`}
+                        className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${
+                          active
+                            ? "bg-[#2F6FED] text-white"
+                            : "bg-[#EDF3FF] text-[#2F6FED]"
+                        }`}
                       >
                         <UserRound className="h-4 w-4" />
                       </span>
@@ -164,30 +194,38 @@ export default function Customers() {
                           {customer.name}
                         </span>
                         <span className="mt-0.5 block truncate text-xs text-[#708097]">
-                          {customer.companyName || "No linked company"}
+                          {customer.email ||
+                            customer.phone ||
+                            "Contact details not recorded"}
                         </span>
                         <span className="mt-2 inline-flex rounded-full bg-white px-2 py-1 text-[10px] font-bold text-[#55708F] ring-1 ring-[#DCE4EE]">
                           {customer.lifecycleStage || "Customer"}
                         </span>
                       </span>
                       <ArrowRight
-                        className={`mt-2 h-4 w-4 shrink-0 ${active ? "text-[#2F6FED]" : "text-[#9AA8B9]"}`}
+                        className={`mt-2 h-4 w-4 shrink-0 ${
+                          active ? "text-[#2F6FED]" : "text-[#9AA8B9]"
+                        }`}
                       />
                     </button>
                   );
                 })}
               </div>
-              <div className="flex justify-between p-3">
+              <div className="flex items-center justify-between gap-2 border-t border-[#E8EDF3] p-3">
                 <Button
                   variant="outline"
+                  size="sm"
                   disabled={page === 1}
                   onClick={() => setPage(value => value - 1)}
                 >
                   Previous
                 </Button>
-                <span>Page {page}</span>
+                <span className="text-xs font-semibold text-[#718096]">
+                  Page {page}
+                </span>
                 <Button
                   variant="outline"
+                  size="sm"
                   disabled={!customers.data?.hasNext}
                   onClick={() => setPage(value => value + 1)}
                 >
@@ -209,28 +247,40 @@ export default function Customers() {
                           {selected.lifecycleStage || "Customer"}
                         </span>
                       </div>
-                      <p className="mt-2 flex items-center gap-2 text-sm text-[#66758A]">
-                        <Building2 className="h-4 w-4 text-[#2F6FED]" />
-                        {selected.companyName || "No linked company"}
-                      </p>
+                      {selected.companyName && !personFirst ? (
+                        <p className="mt-2 text-sm text-[#66758A]">
+                          {selected.companyName}
+                        </p>
+                      ) : null}
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <Button
                         onClick={() =>
-                          ask(
-                            `Give me the complete sales brief for ${selected.name}. What matters now, what happened recently, and what should I do next?`
-                          )
+                          navigate(`/calls?contactId=${selected.id}`)
                         }
                       >
-                        <Bot className="mr-2 h-4 w-4" /> Ask AmarktAI
+                        <Headphones className="mr-2 h-4 w-4" /> Open call
                       </Button>
                       <Button
                         variant="outline"
                         onClick={() =>
-                          navigate(`/calls?contactId=${selected.id}`)
+                          ask(
+                            `Prepare me for my call with ${selected.name}. Give me the important history, what they asked about, what I need to ask, and the best next step.`
+                          )
                         }
                       >
-                        <Headphones className="mr-2 h-4 w-4" /> Call
+                        <Bot className="mr-2 h-4 w-4" /> Prepare me
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() =>
+                          ask(
+                            `Draft a concise follow-up for ${selected.name}. Do not send it. Put anything customer-facing into Review.`
+                          )
+                        }
+                      >
+                        <MessageSquareText className="mr-2 h-4 w-4" />
+                        Draft follow-up
                       </Button>
                     </div>
                   </div>
@@ -247,48 +297,99 @@ export default function Customers() {
                       value={selected.phone || "Not recorded"}
                     />
                     <ContactFact
-                      icon={BriefcaseBusiness}
-                      label="Opportunity"
-                      value={
-                        selected.openOpportunity?.name || "No open opportunity"
-                      }
+                      icon={CalendarClock}
+                      label="What needs doing"
+                      value={selected.nextAction?.title || "No current task"}
                     />
                     <ContactFact
-                      icon={CalendarClock}
-                      label="Next step"
+                      icon={BriefcaseBusiness}
+                      label="Current opportunity"
                       value={
-                        selected.nextAction?.title ||
-                        (selected.openOpportunity?.nextStepAt
-                          ? `Opportunity follow-up · ${dateLabel(selected.openOpportunity.nextStepAt)}`
-                          : "No next step recorded")
+                        selected.openOpportunity?.name ||
+                        (personFirst
+                          ? "Not required for this person"
+                          : "None linked")
                       }
                     />
                   </div>
                 </section>
 
+                {selected.mappedFields.length ? (
+                  <section className="handover-surface p-5 sm:p-6">
+                    <p className="handover-kicker">Customer context</p>
+                    <h3 className="mt-2 font-display text-2xl font-bold tracking-[-.035em]">
+                      What matters before the call
+                    </h3>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                      {selected.mappedFields.map(field => (
+                        <div
+                          key={field.sourceFieldId}
+                          className="rounded-2xl border border-[#E0E7F0] bg-[#FAFCFF] p-4"
+                        >
+                          <p className="text-[10px] font-black uppercase tracking-[.1em] text-[#7B8CA2]">
+                            {field.label}
+                          </p>
+                          <p className="mt-2 break-words text-sm font-bold leading-5 text-[#33445B]">
+                            {displayValue(field.value)}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
+
+                <section className="grid gap-5 lg:grid-cols-2">
+                  <WorkPanel
+                    title="Current work"
+                    subtitle="What still needs doing"
+                    empty="No current customer tasks."
+                    items={selected.tasks.current.slice(0, 8).map(task => ({
+                      id: task.id,
+                      title: task.title,
+                      detail: task.dueAt
+                        ? dateLabel(task.dueAt)
+                        : "No due time",
+                    }))}
+                  />
+                  <WorkPanel
+                    title="Recently completed"
+                    subtitle="What has already been handled"
+                    empty="No completed task history is recorded yet."
+                    items={selected.tasks.completed.slice(0, 8).map(task => ({
+                      id: task.id,
+                      title: task.title,
+                      detail:
+                        task.completedAt || task.sourceUpdatedAt
+                          ? dateLabel(task.completedAt || task.sourceUpdatedAt!)
+                          : "Completed",
+                      complete: true,
+                    }))}
+                  />
+                </section>
+
                 <section className="grid gap-5 lg:grid-cols-2">
                   <div className="handover-surface p-5 sm:p-6">
-                    <p className="handover-kicker">Relationship</p>
+                    <p className="handover-kicker">Recent history</p>
                     <h3 className="mt-2 font-display text-2xl font-bold tracking-[-.035em]">
                       What happened recently
                     </h3>
-                    <div className="mt-4 handover-soft-surface p-4">
-                      {selected.lastInteraction ? (
-                        <>
-                          <p className="font-bold capitalize text-[#33445B]">
-                            {selected.lastInteraction.activityType.replaceAll(
-                              "_",
-                              " "
-                            )}
-                          </p>
-                          <p className="mt-1 text-xs text-[#8290A3]">
-                            {dateLabel(selected.lastInteraction.occurredAt)}
-                          </p>
-                        </>
+                    <div className="mt-4 space-y-2">
+                      {selected.activities.items.slice(0, 8).length ? (
+                        selected.activities.items.slice(0, 8).map(activity => (
+                          <div
+                            key={activity.id}
+                            className="rounded-xl border border-[#E3E9F1] bg-[#FAFCFF] p-3"
+                          >
+                            <p className="text-sm font-bold capitalize text-[#40536B]">
+                              {activity.activityType.replaceAll("_", " ")}
+                            </p>
+                            <p className="mt-1 text-xs text-[#8290A3]">
+                              {dateLabel(activity.occurredAt)}
+                            </p>
+                          </div>
+                        ))
                       ) : (
-                        <p className="text-sm text-[#66758A]">
-                          No recent interaction is recorded yet.
-                        </p>
+                        <Empty text="No recent CRM activity is recorded yet." />
                       )}
                     </div>
                     <Button
@@ -296,27 +397,31 @@ export default function Customers() {
                       className="mt-4"
                       onClick={() =>
                         ask(
-                          `Summarise my relationship history with ${selected.name} and flag anything I should know before contacting them.`
+                          `Summarise my full relationship history with ${selected.name}. Keep it concise and tell me what matters for the next call.`
                         )
                       }
                     >
-                      Summarise relationship
+                      Summarise with AmarktAI
                     </Button>
                   </div>
 
                   <div className="handover-surface p-5 sm:p-6">
-                    <p className="handover-kicker">Opportunity</p>
+                    <p className="handover-kicker">Opportunity context</p>
                     <h3 className="mt-2 font-display text-2xl font-bold tracking-[-.035em]">
-                      Deal context
+                      {personFirst ? "Sales journey" : "Deal context"}
                     </h3>
                     {selected.openOpportunity ? (
-                      <div className="mt-4 handover-soft-surface p-4">
+                      <div className="mt-4 rounded-2xl border border-[#E0E7F0] bg-[#FAFCFF] p-4">
                         <p className="font-bold text-[#33445B]">
                           {selected.openOpportunity.name}
                         </p>
                         <p className="mt-1 text-sm text-[#66758A]">
-                          {selected.openOpportunity.stage ||
-                            "Stage not recorded"}
+                          {[
+                            selected.openOpportunity.pipeline,
+                            selected.openOpportunity.stage,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ") || "Current opportunity"}
                         </p>
                         {selected.openOpportunity.nextStepAt ? (
                           <p className="mt-3 text-xs font-semibold text-[#55708F]">
@@ -326,34 +431,23 @@ export default function Customers() {
                         ) : null}
                       </div>
                     ) : (
-                      <div className="mt-4 handover-soft-surface p-4 text-sm text-[#66758A]">
-                        No open opportunity is currently linked to this
-                        customer.
+                      <div className="mt-4 rounded-2xl border border-[#E0E7F0] bg-[#FAFCFF] p-4 text-sm leading-6 text-[#66758A]">
+                        {personFirst
+                          ? "No open opportunity is linked. That does not block the person from being worked — tasks, enquiry context and history remain the primary guide."
+                          : "No open opportunity is currently linked to this customer."}
                       </div>
                     )}
-                    <Button
-                      variant="outline"
-                      className="mt-4"
-                      onClick={() =>
-                        ask(
-                          `What is the best next sales action for ${selected.name} based on their current opportunity and recent history?`
-                        )
-                      }
-                    >
-                      Recommend next action
-                    </Button>
                   </div>
                 </section>
 
                 <section className="flex flex-col gap-3 rounded-2xl border border-[#DCE4EE] bg-[#F8FAFD] p-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-sm font-bold text-[#33445B]">
-                      Need the original record?
+                      Source CRM is recovery, not the daily workspace.
                     </p>
                     <p className="mt-1 text-xs text-[#718096]">
-                      The source CRM remains available for recovery and
-                      specialist work, but normal selling should happen in
-                      AmarktAI.
+                      Use it for specialist checks. Normal calling, context,
+                      drafting and Review should happen here.
                     </p>
                   </div>
                   <Button variant="ghost" onClick={() => navigate("/crm")}>
@@ -361,7 +455,12 @@ export default function Customers() {
                   </Button>
                 </section>
               </div>
-            ) : null}
+            ) : (
+              <section className="handover-surface grid place-items-center p-10 text-center">
+                <UserRound className="h-8 w-8 text-[#2F6FED]" />
+                <p className="mt-3 font-bold">Choose a customer to begin.</p>
+              </section>
+            )}
           </section>
         ) : (
           <section className="rounded-3xl border border-dashed border-[#C9D4E2] bg-white p-12 text-center shadow-sm">
@@ -373,14 +472,9 @@ export default function Customers() {
             </h2>
             <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[#66758A]">
               {query
-                ? "Try a different name, company, email or stage."
-                : "Connect the company CRM once. AmarktAI will bring customer records into this workspace automatically."}
+                ? "Try a different name, email, phone, company or stage."
+                : "Connect the company CRM once. AmarktAI will bring customer records into the workspace automatically."}
             </p>
-            {!query ? (
-              <Button className="mt-5" onClick={() => navigate("/connections")}>
-                Open CRM setup
-              </Button>
-            ) : null}
           </section>
         )}
       </div>
@@ -408,6 +502,62 @@ function ContactFact({
       <p className="mt-2 break-words text-sm font-bold leading-5 text-[#33445B]">
         {value}
       </p>
+    </div>
+  );
+}
+
+function WorkPanel({
+  title,
+  subtitle,
+  empty,
+  items,
+}: {
+  title: string;
+  subtitle: string;
+  empty: string;
+  items: Array<{
+    id: number;
+    title: string;
+    detail: string;
+    complete?: boolean;
+  }>;
+}) {
+  return (
+    <div className="handover-surface p-5 sm:p-6">
+      <p className="handover-kicker">{subtitle}</p>
+      <h3 className="mt-2 font-display text-2xl font-bold tracking-[-.035em]">
+        {title}
+      </h3>
+      <div className="mt-4 space-y-2">
+        {items.length ? (
+          items.map(item => (
+            <div
+              key={item.id}
+              className="flex items-start gap-3 rounded-xl border border-[#E3E9F1] bg-[#FAFCFF] p-3"
+            >
+              {item.complete ? (
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+              ) : (
+                <Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-[#2F6FED]" />
+              )}
+              <div>
+                <p className="text-sm font-bold text-[#40536B]">{item.title}</p>
+                <p className="mt-1 text-xs text-[#8290A3]">{item.detail}</p>
+              </div>
+            </div>
+          ))
+        ) : (
+          <Empty text={empty} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Empty({ text }: { text: string }) {
+  return (
+    <div className="rounded-xl border border-dashed border-[#D9E1EB] bg-[#FAFCFF] p-4 text-sm text-[#718096]">
+      {text}
     </div>
   );
 }

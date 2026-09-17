@@ -13,18 +13,16 @@ const assistantRoute = readFileSync(
 describe("client-handover AmarktAI contract", () => {
   it("uses one full-page contextual conversation and one integrated composer", () => {
     expect(assistantPage).toContain("data-assistant-workspace");
-    expect(assistantPage).toContain(
-      "I already have the sales workspace context."
-    );
+    expect(assistantPage).toContain("Use me for the work around the call:");
     expect(assistantPage).toContain('aria-label="AmarktAI"');
     expect(assistantPage).not.toContain("Try asking me");
     expect(assistantPage).not.toContain("<Bot");
     expect(assistantPage.match(/<Textarea/g)).toHaveLength(1);
     for (const prompt of [
-      "Who should I contact next?",
+      "Who should I call next?",
       "Prepare my next call",
-      "What needs my attention?",
-      "Draft a follow-up",
+      "Summarise this customer",
+      "Draft a follow-up — don't send",
     ])
       expect(assistantPage).toContain(prompt);
   });
