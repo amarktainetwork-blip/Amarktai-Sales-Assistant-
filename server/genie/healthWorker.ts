@@ -12,6 +12,17 @@ const intervalMs = Number(
   process.env.CRM_HEALTH_INTERVAL_MS || 24 * 60 * 60 * 1000
 );
 
+function startupDelay(
+  raw: string | undefined,
+  fallbackMs: number,
+  minimumMs: number
+) {
+  const parsed = Number(raw || fallbackMs);
+  return Number.isFinite(parsed) && parsed >= minimumMs
+    ? Math.floor(parsed)
+    : fallbackMs;
+}
+
 async function check() {
   try {
     const result = await runGenieOperationWatchdog();
@@ -36,8 +47,15 @@ async function check() {
   }
 }
 
-void check();
-setInterval(() => void check(), intervalMs);
+const watchdogInitialDelayMs = startupDelay(
+  process.env.CRM_WATCHDOG_INITIAL_DELAY_MS,
+  45_000,
+  30_000
+);
+setTimeout(() => {
+  void check();
+  setInterval(() => void check(), intervalMs);
+}, watchdogInitialDelayMs);
 
 let processingMailboxes = false;
 async function processMailboxes() {
@@ -71,14 +89,26 @@ const mailboxIntervalMs = Math.max(
   30_000,
   Number(process.env.PERSONAL_MAILBOX_SYNC_INTERVAL_MS || 60_000)
 );
-void processMailboxes();
-setInterval(() => void processMailboxes(), mailboxIntervalMs);
+const mailboxInitialDelayMs = startupDelay(
+  process.env.PERSONAL_MAILBOX_INITIAL_DELAY_MS,
+  15_000,
+  5_000
+);
+setTimeout(() => {
+  void processMailboxes();
+  setInterval(() => void processMailboxes(), mailboxIntervalMs);
+}, mailboxInitialDelayMs);
 
 startCompanyKnowledgeWorker();
 startAutomaticCommissioningWorker();
 startPersonalWorkLearningWorker();
-startConnectionScopedCrmSyncWorker();
 startNewLeadWatcher();
+const crmSyncInitialDelayMs = startupDelay(
+  process.env.CRM_SYNC_INITIAL_DELAY_MS,
+  30_000,
+  10_000
+);
+setTimeout(() => startConnectionScopedCrmSyncWorker(), crmSyncInitialDelayMs);
 
 process.on("SIGTERM", () => process.exit(0));
 process.on("SIGINT", () => process.exit(0));

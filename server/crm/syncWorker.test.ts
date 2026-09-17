@@ -3,6 +3,7 @@ import {
   DEFAULT_CRM_SYNC_INTERVAL_MS,
   crmSyncIntervalMs,
   crmSyncJobIsDue,
+  crmBackgroundSyncMode,
 } from "./syncWorker";
 
 describe("connection-scoped CRM synchronization schedule", () => {
@@ -12,6 +13,13 @@ describe("connection-scoped CRM synchronization schedule", () => {
     expect(crmSyncIntervalMs("180000")).toBe(180_000);
     expect(crmSyncIntervalMs("1000")).toBe(120_000);
     expect(crmSyncIntervalMs("not-a-number")).toBe(120_000);
+  });
+
+  it("uses bounded routine reconciliation for browser CRMs only", () => {
+    expect(crmBackgroundSyncMode("browser")).toBe("routine");
+    expect(crmBackgroundSyncMode("sidecar")).toBe("routine");
+    expect(crmBackgroundSyncMode("oauth")).toBe("full");
+    expect(crmBackgroundSyncMode("api_key")).toBe("full");
   });
 
   it("is due after one interval and not due during repeated rapid refreshes", () => {
