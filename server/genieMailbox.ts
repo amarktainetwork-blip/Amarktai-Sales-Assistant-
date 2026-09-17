@@ -117,6 +117,7 @@ export async function syncGenieMailboxForUser(input: {
   checked = proof.checked;
   for (const message of proof.records) {
     if (
+      message.channel === "email" &&
       !exactGenieMailboxIdentity({
         appEmail: scope.email,
         mappingEmail: secret.crmUserEmail,
@@ -129,10 +130,12 @@ export async function syncGenieMailboxForUser(input: {
       mailboxUserId: input.userId,
       connectedSystemId: system.id,
       envelope: {
-        externalMessageId: message.emailId,
-        channel: "email",
+        externalMessageId: message.externalMessageId,
+        channel: message.channel,
+        sourceChannel: message.channel === "chat" ? "whatsapp" : undefined,
         senderReference: message.sender,
         recipientReference: message.recipient,
+        contactExternalId: message.contactExternalId,
         subject: message.subject,
         body: message.body,
         receivedAt: message.receivedAt,
@@ -158,6 +161,7 @@ export async function syncGenieMailboxForUser(input: {
       readOnlySource: proof.readOnlySource,
       unreadPreserved: proof.unreadPreserved,
       rejectedForeignRecipientCount: proof.rejectedForeignRecipientCount,
+      rejectedForeignOwnerCount: proof.rejectedForeignOwnerCount,
       examined: proof.examined,
       bounded: proof.bounded,
       crmUserExternalId: scope.externalUserId,
@@ -169,6 +173,7 @@ export async function syncGenieMailboxForUser(input: {
     received,
     draftsPrepared,
     rejectedForeignRecipientCount: proof.rejectedForeignRecipientCount,
+    rejectedForeignOwnerCount: proof.rejectedForeignOwnerCount,
     unreadPreserved: proof.unreadPreserved,
     bounded: proof.bounded,
   };

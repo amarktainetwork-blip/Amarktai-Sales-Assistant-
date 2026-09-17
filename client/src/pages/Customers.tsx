@@ -1,3 +1,4 @@
+import { customerHistory } from "@shared/customerHistory";
 import { formatOrganisationDate } from "@shared/organisationWorkspace";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
@@ -13,10 +14,12 @@ import {
   CheckCircle2,
   Clock3,
   Headphones,
+  Loader2,
   Mail,
   MessageSquareText,
   MonitorUp,
   Phone,
+  RefreshCw,
   Search,
   Sparkles,
   UserRound,
@@ -42,6 +45,7 @@ function displayValue(value: unknown) {
 
 export default function Customers() {
   const [, navigate] = useLocation();
+  const utils = trpc.useUtils();
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(initialContactId);
   const [page, setPage] = useState(1);
@@ -57,8 +61,16 @@ export default function Customers() {
     { contactId: selectedId || 1 },
     { enabled: Boolean(selectedId), retry: false }
   );
+  const refreshHistory = trpc.sales.refreshCustomerHistory.useMutation({
+    onSuccess: async () => {
+      await utils.sales.customerDetail.invalidate();
+    },
+  });
   const visible = customers.data?.items ?? [];
   const selected = detail.data ?? null;
+  const history = selected
+    ? customerHistory(selected.activities.items, selected.communications.items)
+    : [];
   const personFirst =
     (selected?.workspace.customerModel || workspace.data?.customerModel) ===
     "individual_consumer";
@@ -390,44 +402,91 @@ export default function Customers() {
                   />
                 </section>
 
-                <section className="grid gap-5 lg:grid-cols-2">
-                  <div className="handover-surface p-5 sm:p-6">
-                    <p className="handover-kicker">Recent history</p>
-                    <h3 className="mt-2 font-display text-2xl font-bold tracking-[-.035em]">
-                      What happened recently
-                    </h3>
-                    <div className="mt-4 space-y-2">
-                      {selected.activities.items.slice(0, 8).length ? (
-                        selected.activities.items.slice(0, 8).map(activity => (
-                          <div
-                            key={activity.id}
-                            className="rounded-xl border border-[#E3E9F1] bg-[#FAFCFF] p-3"
-                          >
-                            <p className="text-sm font-bold capitalize text-[#40536B]">
-                              {activity.activityType.replaceAll("_", " ")}
-                            </p>
-                            <p className="mt-1 text-xs text-[#8290A3]">
-                              {dateLabel(activity.occurredAt)}
-                            </p>
-                          </div>
-                        ))
-                      ) : (
-                        <Empty text="No recent CRM activity is recorded yet." />
-                      )}
+                <section className="handover-surface p-5 sm:p-6">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <p className="handover-kicker">Messages</p>
+                      <h3 className="mt-2 font-display text-2xl font-bold tracking-[-.035em]">
+                        Customer conversation & history
+                      </h3>
+                      <p className="mt-1 text-sm text-[#66758A]">
+                        Email, SMS, WhatsApp, calls and notes in one place.
+                      </p>
                     </div>
-                    <Button
-                      variant="outline"
-                      className="mt-4"
-                      onClick={() =>
-                        ask(
-                          `Summarise my full relationship history with ${selected.name}. Keep it concise and tell me what matters for the next call.`
-                        )
-                      }
-                    >
-                      Summarise with AmarktAI
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-[#718096]">
+                        {history.length} recent entries
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={refreshHistory.isPending}
+                        onClick={() =>
+                          selectedId &&
+                          refreshHistory.mutate({ contactId: selectedId })
+                        }
+                      >
+                        {refreshHistory.isPending ? (
+                          <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <RefreshCw className="mr-2 h-3.5 w-3.5" />
+                        )}
+                        Refresh Genie history
+                      </Button>
+                    </div>
                   </div>
+                  {refreshHistory.isError ? (
+                    <p role="alert" className="mt-3 text-sm text-red-700">
+                      History could not be refreshed. Your saved history is
+                      still available. Please try again.
+                    </p>
+                  ) : null}
+                  {refreshHistory.isSuccess ? (
+                    <p role="status" className="mt-3 text-sm text-[#526277]">
+                      Genie history refreshed.
+                    </p>
+                  ) : null}
+                  <div className="mt-4 space-y-2">
+                    {history.length ? (
+                      history.slice(0, 30).map(message => (
+                        <div
+                          key={message.id}
+                          className="rounded-2xl border border-[#E0E7F0] bg-[#FAFCFF] p-4"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="rounded-full bg-[#EDF3FF] px-2.5 py-1 text-[10px] font-black uppercase tracking-[.08em] text-[#2F6FED]">
+                                {message.channel} · {message.direction}
+                              </span>
+                              {message.needsAction ? (
+                                <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-bold text-amber-800">
+                                  Needs reply
+                                </span>
+                              ) : null}
+                            </div>
+                            <span className="text-xs font-semibold text-[#8290A3]">
+                              {dateLabel(message.occurredAt)}
+                            </span>
+                          </div>
+                          {message.subject ? (
+                            <p className="mt-3 text-sm font-bold text-[#33445B]">
+                              {message.subject}
+                            </p>
+                          ) : null}
+                          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#526277]">
+                            {message.body.length > 700
+                              ? `${message.body.slice(0, 700)}…`
+                              : message.body}
+                          </p>
+                        </div>
+                      ))
+                    ) : (
+                      <Empty text="No conversation history has been synchronized for this customer yet." />
+                    )}
+                  </div>
+                </section>
 
+                <section>
                   <div className="handover-surface p-5 sm:p-6">
                     <p className="handover-kicker">Opportunity context</p>
                     <h3 className="mt-2 font-display text-2xl font-bold tracking-[-.035em]">

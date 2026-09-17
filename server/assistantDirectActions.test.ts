@@ -6,6 +6,13 @@ const m = vi.hoisted(() => ({
   genx: vi.fn(),
 }));
 vi.mock("./db", () => ({
+  getDb: vi.fn(async () => ({
+    select: () => ({
+      from: () => ({
+        where: () => ({ limit: async () => [{ name: "Advisor Example" }] }),
+      }),
+    }),
+  })),
   createWorkflowRun: m.create,
   listActionProposals: vi.fn(async () => []),
   searchApprovedKnowledge: vi.fn(async () => []),
@@ -18,7 +25,8 @@ vi.mock("./organisationWorkspace", () => ({
       locale: "en-GB",
       currency: "GBP",
     },
-    businessContext: { industry: "training" },
+    customerFieldMappings: [],
+    businessContext: { industry: "training", brandVoice: "Warm and factual" },
   })),
 }));
 vi.mock("./connectedSystems", () => ({
@@ -101,6 +109,12 @@ describe("draft preparation is separate from sending", () => {
       reviewRequired: true,
       crmRoute: { routable: false },
     });
+    expect(m.genx.mock.calls[0][0].messages[0].content).toContain(
+      "SALESPERSON: Advisor Example"
+    );
+    expect(m.genx.mock.calls[0][0].messages[0].content).toContain(
+      "VOICE: Warm and factual"
+    );
     expect(m.auto).not.toHaveBeenCalled();
     expect(
       JSON.parse(m.genx.mock.calls[0][0].workingContext).workspace

@@ -21,6 +21,7 @@ export function parsePersonalGenieEmail(
     locationId: string;
     conversationId: string;
     unreadSince: number;
+    contactExternalId?: string;
   }
 ) {
   const email = value?.emailMessage || value;
@@ -29,7 +30,10 @@ export function parsePersonalGenieEmail(
   if (
     email.id !== input.emailId ||
     email.locationId !== input.locationId ||
-    email.conversationId !== input.conversationId
+    email.conversationId !== input.conversationId ||
+    (input.contactExternalId &&
+      email.contactId &&
+      email.contactId !== input.contactExternalId)
   )
     throw Error("GENIE_MAILBOX_SCOPE_MISMATCH");
   const receivedAt = new Date(email.dateAdded);
@@ -68,6 +72,94 @@ export function parsePersonalGenieEmail(
     },
   };
 }
+
+export type PersonalGenieMailboxRecord = {
+  externalMessageId: string;
+  channel: "email" | "sms" | "chat";
+  sender: string;
+  recipient?: string;
+  body: string;
+  subject?: string;
+  receivedAt: Date;
+  contactExternalId?: string;
+  conversationExternalId: string;
+};
+
+export function genieConversationChannel(value: any) {
+  const messageType = String(
+    value?.messageTypeString || value?.messageType || ""
+  ).toUpperCase();
+  if (messageType.includes("WHATSAPP")) return "chat" as const;
+  if (messageType.includes("SMS")) return "sms" as const;
+  // HighLevel's current conversation message contract uses numeric type 1 for
+  // calls and type 2 for SMS. Email (type 3) is handled by the dedicated email
+  // detail endpoint because it has stricter recipient-isolation requirements.
+  if (Number(value?.type) === 2) return "sms" as const;
+  return null;
+}
+
+function phoneReference(value: unknown) {
+  if (typeof value !== "string") return "";
+  const normalized = value
+    .trim()
+    .replace(/^(?:whatsapp|sms|tel):/i, "")
+    .trim();
+  return /^[+0-9][0-9+ ()-]{5,40}$/.test(normalized) ? normalized : "";
+}
+
+export function parsePersonalGenieConversationMessage(
+  value: any,
+  input: {
+    messageId: string;
+    locationId: string;
+    conversationId: string;
+    contactExternalId: string;
+    unreadSince: number;
+  }
+) {
+  const message = value?.message || value;
+  if (!message || message.deleted === true || message.direction !== "inbound")
+    return { kind: "excluded" as const };
+  if (
+    message.id !== input.messageId ||
+    message.locationId !== input.locationId ||
+    message.conversationId !== input.conversationId ||
+    message.contactId !== input.contactExternalId
+  )
+    throw Error("GENIE_MAILBOX_SCOPE_MISMATCH");
+  const receivedAt = new Date(message.dateAdded);
+  if (
+    !Number.isFinite(receivedAt.getTime()) ||
+    receivedAt.getTime() < input.unreadSince
+  )
+    return { kind: "excluded" as const };
+  const channel = genieConversationChannel(message);
+  if (!channel) return { kind: "excluded" as const };
+  const body = typeof message.body === "string" ? message.body.trim() : "";
+  if (!body) return { kind: "excluded" as const };
+  const sender =
+    phoneReference(message.from) ||
+    phoneReference(message.meta?.from) ||
+    phoneReference(message.sender);
+  if (!sender) return { kind: "excluded" as const };
+  const recipient =
+    phoneReference(message.to) || phoneReference(message.meta?.to) || undefined;
+  return {
+    kind: "personal" as const,
+    message: {
+      externalMessageId: message.id as string,
+      channel,
+      sender,
+      recipient,
+      body,
+      subject: channel === "chat" ? "WhatsApp message" : "SMS message",
+      receivedAt,
+      contactExternalId: input.contactExternalId,
+      conversationExternalId: input.conversationId,
+    },
+  };
+}
+
 export async function readPersonalGenieMailbox(input: {
   page: Page;
   ownerExternalId: string;
@@ -107,19 +199,17 @@ export async function readPersonalGenieMailbox(input: {
         timeout: 30000,
       };
       return bootstrap
-        ? input.page
-            .context()
-            .request.post(BOOTSTRAP, {
-              ...options,
-              data: {
-                locationId,
-                userId: input.ownerExternalId,
-                category: "teamInbox",
-                status: "unread",
-                saveFilters: false,
-                messages: { limit: 20 },
-              },
-            })
+        ? input.page.context().request.post(BOOTSTRAP, {
+            ...options,
+            data: {
+              locationId,
+              userId: input.ownerExternalId,
+              category: "teamInbox",
+              status: "unread",
+              saveFilters: false,
+              messages: { limit: 20 },
+            },
+          })
         : input.page.context().request.get(ROOT + path, { ...options, params });
     };
     let response = await call();
@@ -136,30 +226,50 @@ export async function readPersonalGenieMailbox(input: {
   const conversations = before.search?.conversations;
   if (!Array.isArray(conversations))
     throw Error("GENIE_MAILBOX_SEARCH_INVALID");
-  const records = new Map<
-    string,
-    Extract<
-      ReturnType<typeof parsePersonalGenieEmail>,
-      { kind: "personal" }
-    >["message"]
-  >();
+  const records = new Map<string, PersonalGenieMailboxRecord>();
   const visited = new Set<string>();
   let rejectedForeignRecipientCount = 0;
+  let rejectedForeignOwnerCount = 0;
   let examined = 0;
   let bounded = false;
   for (const conversation of conversations.slice(0, 20)) {
+    const conversationId = id(conversation.id);
+    const contactExternalId = id(conversation.contactId);
     if (
-      !id(conversation.id) ||
+      !conversationId ||
+      !contactExternalId ||
       conversation.locationId !== locationId ||
       !(conversation.unreadCount > 0)
     )
       throw Error("GENIE_MAILBOX_CONVERSATION_SCOPE_REQUIRED");
+
+    if (
+      conversation.assignedTo &&
+      conversation.assignedTo !== input.ownerExternalId
+    ) {
+      rejectedForeignOwnerCount++;
+      continue;
+    }
+    let exactOwner = false;
+    if (!exactOwner) {
+      const contact = (await read(`/contacts/${contactExternalId}`)).contact;
+      exactOwner = Boolean(
+        contact?.id === contactExternalId &&
+          contact?.locationId === locationId &&
+          contact?.assignedTo === input.ownerExternalId
+      );
+    }
+    if (!exactOwner) {
+      rejectedForeignOwnerCount++;
+      continue;
+    }
+
     const unreadSince = Number(conversation.firstUnreadInboundTimestamp);
     if (!Number.isFinite(unreadSince) || unreadSince <= 0) continue;
     let lastMessageId: string | undefined;
     for (let pageNumber = 0; pageNumber < 5; pageNumber++) {
       const result = await read(
-        `/conversations/${conversation.id}/messages`,
+        `/conversations/${conversationId}/messages`,
         false,
         { limit: 100, ...(lastMessageId ? { lastMessageId } : {}) }
       );
@@ -167,32 +277,68 @@ export async function readPersonalGenieMailbox(input: {
       if (!Array.isArray(messages))
         throw Error("GENIE_MAILBOX_MESSAGES_INVALID");
       for (const thread of messages) {
-        if (thread.type !== 3 || thread.deleted === true) continue;
+        if (thread.deleted === true) continue;
         if (
           thread.locationId !== locationId ||
-          thread.conversationId !== conversation.id
+          thread.conversationId !== conversationId
         )
           throw Error("GENIE_MAILBOX_SCOPE_MISMATCH");
-        for (const emailId of thread.meta?.email?.messageIds || []) {
-          if (!id(emailId) || visited.has(emailId)) continue;
-          if (examined >= 200) {
-            bounded = true;
-            break;
+
+        if (Number(thread.type) === 3) {
+          for (const emailId of thread.meta?.email?.messageIds || []) {
+            if (!id(emailId) || visited.has(emailId)) continue;
+            if (examined >= 200) {
+              bounded = true;
+              break;
+            }
+            visited.add(emailId);
+            examined++;
+            const raw = await read(`/conversations/messages/email/${emailId}`);
+            const parsed = parsePersonalGenieEmail(raw, {
+              emailId,
+              mailboxEmail: input.mailboxEmail,
+              locationId,
+              conversationId,
+              contactExternalId,
+              unreadSince,
+            });
+            if (parsed.kind === "foreign") rejectedForeignRecipientCount++;
+            if (parsed.kind === "personal")
+              records.set(emailId, {
+                externalMessageId: parsed.message.emailId,
+                channel: "email",
+                sender: parsed.message.sender,
+                recipient: parsed.message.recipient,
+                body: parsed.message.body,
+                subject: parsed.message.subject,
+                receivedAt: parsed.message.receivedAt,
+                contactExternalId:
+                  parsed.message.contactExternalId || contactExternalId,
+                conversationExternalId: conversationId,
+              });
           }
-          visited.add(emailId);
-          examined++;
-          const raw = await read(`/conversations/messages/email/${emailId}`);
-          const parsed = parsePersonalGenieEmail(raw, {
-            emailId,
-            mailboxEmail: input.mailboxEmail,
-            locationId,
-            conversationId: conversation.id,
-            unreadSince,
-          });
-          if (parsed.kind === "foreign") rejectedForeignRecipientCount++;
-          if (parsed.kind === "personal") records.set(emailId, parsed.message);
+          if (bounded) break;
+          continue;
         }
-        if (bounded) break;
+
+        if (thread.direction !== "inbound") continue;
+        const messageId = id(thread.id);
+        if (!messageId || visited.has(messageId)) continue;
+        if (examined >= 200) {
+          bounded = true;
+          break;
+        }
+        visited.add(messageId);
+        examined++;
+        const raw = await read(`/conversations/messages/${messageId}`);
+        const parsed = parsePersonalGenieConversationMessage(raw, {
+          messageId,
+          locationId,
+          conversationId,
+          contactExternalId,
+          unreadSince,
+        });
+        if (parsed.kind === "personal") records.set(messageId, parsed.message);
       }
       if (bounded || !result.messages.nextPage) break;
       const next = id(result.messages.lastMessageId);
@@ -217,6 +363,7 @@ export async function readPersonalGenieMailbox(input: {
     checked: Math.min(conversations.length, 20),
     examined,
     rejectedForeignRecipientCount,
+    rejectedForeignOwnerCount,
     unreadPreserved,
     readOnlySource: true,
     bounded: bounded || conversations.length > 20,
