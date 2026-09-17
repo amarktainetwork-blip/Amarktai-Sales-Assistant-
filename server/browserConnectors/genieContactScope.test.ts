@@ -266,6 +266,32 @@ describe("Genie owner-scoped contact search", () => {
     expect(result.records).toHaveLength(1);
   });
 
+  it("refreshes a rejected contact read from window.getToken before retrying authentication", async () => {
+    const post = vi
+      .fn()
+      .mockResolvedValueOnce({ status: () => 401, ok: () => false, json: async () => ({}) })
+      .mockResolvedValueOnce({
+        status: () => 200,
+        ok: () => true,
+        json: async () => ({ contacts: [{ id: "contact-1", assignedTo: "owner-amelia" }], total: 1 }),
+      });
+    const page = {
+      evaluate: vi.fn(async () => "fresh-window-token"),
+      context: () => ({ request: { post } }),
+    } as any;
+
+    const result = await fetchOwnerScopedContactPage({
+      page,
+      token: "stale-stored-token",
+      locationId: "location-1",
+      ownerExternalId: "owner-amelia",
+      pageNumber: 1,
+    });
+    expect(post).toHaveBeenCalledTimes(2);
+    expect(post.mock.calls[1][1].headers["token-id"]).toBe("fresh-window-token");
+    expect(result.records).toHaveLength(1);
+  });
+
   it("fails closed after refreshed token-id and Bearer authentication are both rejected", async () => {
     const post = vi.fn().mockResolvedValue({
       status: () => 401,

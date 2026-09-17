@@ -137,6 +137,15 @@ async function main() {
         [a.connectedSystemId]
       );
       const counts = exactOwnerCounts(rows, a.ownerExternalId);
+      let taskCurrentOpen = counts.total;
+      if (table === "crmTasks") {
+        const [openTasks] = await query(
+          "SELECT COUNT(*) AS count FROM crmTasks WHERE connectedSystemId=? AND ownerExternalId=? AND status IN ('open','pending','incomplete','new','todo','to_do')",
+          [a.connectedSystemId, a.ownerExternalId]
+        );
+        taskCurrentOpen = Number(openTasks?.count || 0);
+        console.log(`TASK_CURRENT_OPEN=${taskCurrentOpen}`);
+      }
       check(
         table === "crmContacts"
           ? "CONTACT_OWNER_ISOLATION"
@@ -148,7 +157,7 @@ async function main() {
           (table !== "crmTasks"
             ? counts.total > 0
             : exactTaskCollectionProven(
-                counts.total,
+                taskCurrentOpen,
                 parse(latest.get("task.sync")?.evidence || {})
               ))
       );
@@ -194,8 +203,10 @@ async function main() {
     check(
       "INBOUND_NEGATIVE_PROOF",
       mailboxProof.readOnlySource === true &&
-        mailboxProof.rejectedForeignRecipientCount > 0 &&
-        mailboxProof.unreadPreserved === true
+        mailboxProof.exactEmailIsolation === true &&
+        mailboxProof.unreadPreserved === true &&
+        Number.isFinite(Number(mailboxProof.rejectedForeignRecipientCount)) &&
+        Number.isFinite(Number(mailboxProof.rejectedForeignOwnerCount))
     );
     const proposals = await query(
       "SELECT id,state,governanceState,executedAt FROM actionProposals WHERE organisationId=? AND userId=?",

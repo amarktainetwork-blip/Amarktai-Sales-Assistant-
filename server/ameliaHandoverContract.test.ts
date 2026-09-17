@@ -41,6 +41,16 @@ describe("Amelia handover verifier fails closed", () => {
       })
     ).toBe(false);
   });
+  it("verifies current pending tasks rather than historical task rows and does not require a foreign inbox message to exist", () => {
+    const source = readFileSync(
+      new URL("./verifyAmeliaHandover.ts", import.meta.url),
+      "utf8"
+    );
+    expect(source).toContain("TASK_CURRENT_OPEN=");
+    expect(source).toContain("exactEmailIsolation === true");
+    expect(source).not.toContain("rejectedForeignRecipientCount > 0");
+  });
+
   it("fails the handover when any required proof is absent", () => {
     expect(handoverAllPassed([])).toBe(false);
     expect(handoverAllPassed([{ ok: true }, { ok: false }])).toBe(false);
