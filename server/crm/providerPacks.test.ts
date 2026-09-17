@@ -210,6 +210,30 @@ describe("Genie read safety", () => {
     });
     expect(bound.steps.slice(1)).toEqual(script.steps.slice(1));
   });
+  it("adds reviewed same-location fallbacks for obstructable Companies and Tasks tabs", () => {
+    const snapshot = {
+      controls: [
+        {
+          selector: "#sb_contacts",
+          href: "https://genie.example/v2/location/example/contacts/smart_list/All",
+        },
+      ],
+    };
+    const company = bindGenieContactNavigation(
+      GENIE_PROVIDER_PACK.scripts.genie_company_sync,
+      snapshot
+    );
+    const owner = bindGenieContactNavigation(
+      GENIE_PROVIDER_PACK.scripts.genie_owner_sync,
+      snapshot
+    );
+    expect(company.steps.find(step => step.selector === "#tb_business")).toMatchObject({
+      fallbackUrl: "https://genie.example/v2/location/example/businesses/list",
+    });
+    expect(owner.steps.find(step => step.selector === "#tb_tasks")).toMatchObject({
+      fallbackUrl: "https://genie.example/v2/location/example/tasks",
+    });
+  });
   it("rejects a contact detail page as the catalogue navigation target", () => {
     expect(() =>
       bindGenieContactNavigation(

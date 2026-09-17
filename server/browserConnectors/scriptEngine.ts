@@ -495,8 +495,20 @@ export async function executeSavedBrowserScript(input: {
         );
         if (targetPresent && locator) {
           const before = input.page.url();
-          await locator.click();
-          await input.page.waitForTimeout(1_200);
+          try {
+            await locator.click();
+            await input.page.waitForTimeout(1_200);
+          } catch {
+            // A reviewed SPA control can be visible yet obstructed by a CRM
+            // overlay. The authorised fallback is safer than forcing the click.
+            await input.authorizeNavigation?.(fallbackTarget);
+            await input.page.goto(fallbackTarget, {
+              waitUntil: "domcontentloaded",
+              timeout: 45_000,
+            });
+            await input.authorizeNavigation?.(input.page.url());
+            continue;
+          }
           if (input.page.url() === before && fallbackTarget !== before) {
             await input.authorizeNavigation?.(fallbackTarget);
             await input.page.goto(fallbackTarget, {

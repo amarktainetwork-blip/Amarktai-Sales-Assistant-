@@ -3,7 +3,7 @@ import type { SavedBrowserScript } from "../browserConnectors/scriptEngine";
 import type { BrowserProfile } from "../browserConnectors/browserCrmAdapter";
 
 /** Reusable provider structure only: never tenant IDs, credentials or customer values. */
-export const GENIE_PROVIDER_PACK_VERSION = "genie-2026.09.13.2";
+export const GENIE_PROVIDER_PACK_VERSION = "genie-2026.09.17.3";
 
 // The current Genie/HighLevel contacts workspace no longer uses the old
 // Tabulator row structure. Contact-detail links are the durable record identity:
@@ -465,14 +465,20 @@ export function bindGenieContactNavigation(
     throw new Error("GENIE_CONTACT_NAVIGATION_NOT_CAPTURED");
   }
   const url = new URL(hrefs[0]);
+  const location = url.pathname.match(/^\/v2\/location\/([^/]+)\//)?.[1];
+  if (!location) throw new Error("GENIE_CONTACT_NAVIGATION_INVALID");
+  const locationBase = `${url.origin}/v2/location/${location}`;
+  const tabFallbacks: Record<string, string> = {
+    "#tb_business": `${locationBase}/businesses/list`,
+    "#tb_tasks": `${locationBase}/tasks`,
+  };
   return {
     ...script,
-    steps: [
-      {
-        ...script.steps[0],
-        fallbackUrl: url.toString(),
-      },
-      ...script.steps.slice(1),
-    ],
+    steps: script.steps.map((step, index) => {
+      if (index === 0) return { ...step, fallbackUrl: url.toString() };
+      if (step.action === "click" && step.selector && tabFallbacks[step.selector])
+        return { ...step, fallbackUrl: tabFallbacks[step.selector] };
+      return step;
+    }),
   };
 }

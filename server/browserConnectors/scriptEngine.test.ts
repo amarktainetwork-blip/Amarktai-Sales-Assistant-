@@ -186,6 +186,50 @@ describe("saved browser connector scripts", () => {
     expect(current).toBe(fallback);
   });
 
+  it("uses the reviewed fallback when a visible SPA control is obstructed", async () => {
+    let current = "https://crm.example.test/v2/location/location-1/contacts/smart_list/All";
+    const fallback = "https://crm.example.test/v2/location/location-1/tasks";
+    const click = vi.fn(async () => {
+      throw new Error("pointer events intercepted by CRM overlay");
+    });
+    const page = {
+      url: () => current,
+      waitForTimeout: vi.fn(async () => undefined),
+      goto: vi.fn(async (url: string) => {
+        current = url;
+      }),
+      locator: vi.fn(() => ({
+        count: vi.fn(async () => 1),
+        click,
+      })),
+    };
+    const authorizeNavigation = vi.fn(async () => undefined);
+    const result = await executeSavedBrowserScript({
+      page: page as any,
+      script: {
+        steps: [
+          {
+            action: "click",
+            selector: "#tb_tasks",
+            fallbackUrl: fallback,
+          },
+        ],
+      },
+      inputs: {},
+      artifactDirectory: "/tmp",
+      artifactPrefix: "obstructed-navigation",
+      authorizeNavigation,
+    });
+    expect(result.success, result.detail).toBe(true);
+    expect(click).toHaveBeenCalledOnce();
+    expect(page.goto).toHaveBeenCalledWith(
+      fallback,
+      expect.objectContaining({ waitUntil: "domcontentloaded" })
+    );
+    expect(authorizeNavigation).toHaveBeenCalledWith(fallback);
+    expect(current).toBe(fallback);
+  });
+
   it("rejects unbounded scripts", () => {
     expect(() =>
       validateSavedBrowserScript({
