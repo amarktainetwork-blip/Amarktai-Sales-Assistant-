@@ -164,14 +164,16 @@ export function normalizeGenieContactSearchPage(
 
 async function browserToken(page: Page) {
   const token = await page.evaluate(async () => {
-    const stored =
+    const getToken = (window as Window & { getToken?: () => unknown }).getToken;
+    if (typeof getToken === "function") {
+      const fresh = String(await getToken());
+      if (fresh) return fresh;
+    }
+    return (
       localStorage.getItem("refreshedToken") ||
       sessionStorage.getItem("refreshedToken") ||
-      "";
-    if (stored) return stored;
-    const getToken = (window as Window & { getToken?: () => unknown }).getToken;
-    if (typeof getToken !== "function") return "";
-    return String(await getToken());
+      ""
+    );
   });
   if (!token)
     throw new Error(
