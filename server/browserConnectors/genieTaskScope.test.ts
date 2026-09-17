@@ -39,15 +39,18 @@ function harness(payloads: unknown[], statuses: number[] = []) {
 const row = (id: string, owners: unknown = [owner]) => ({
   id,
   owners,
-  properties: { title: "First Call" },
+  properties: { title: "First Call", completed: 0 },
   searchAfter: [1, id],
 });
 describe("authenticated browser Tasks source", () => {
-  it("builds only the exact owner filter", () =>
+  it("builds the exact owner and incomplete-task filters", () =>
     expect(genieTaskSearchBody("location-1", owner, 1).filters).toEqual([
       {
         group: "AND",
-        filters: [{ field: "owners", operator: "eq", value: [owner] }],
+        filters: [
+          { field: "owners", operator: "eq", value: [owner] },
+          { field: "properties.completed", operator: "eq", value: [0] },
+        ],
       },
     ]));
   it.each([undefined, [], [owner, "other"], ["other"]])(
@@ -99,6 +102,18 @@ describe("authenticated browser Tasks source", () => {
     expect(h.post).toHaveBeenCalledTimes(2);
     expect(h.evaluate).toHaveBeenCalledTimes(2);
   });
+  it("rejects completed records even if the provider ignores the incomplete filter", async () =>
+    await expect(
+      harness([
+        {
+          customObjectRecords: [
+            { ...row("done"), properties: { title: "Old task", completed: 1 } },
+          ],
+          total: 1,
+        },
+      ]).read()
+    ).rejects.toThrow("TASK_SCOPE_VIOLATION"));
+
   it("does not accept foreign records even from an exact-filter request", async () =>
     await expect(
       harness([{ customObjectRecords: [row("x", ["other"])], total: 1 }]).read()

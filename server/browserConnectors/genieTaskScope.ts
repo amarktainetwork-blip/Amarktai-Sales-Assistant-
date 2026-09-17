@@ -25,6 +25,7 @@ export function genieTaskSearchBody(
         group: "AND",
         filters: [
           { field: "owners", operator: "eq", value: [ownerExternalId] },
+          { field: "properties.completed", operator: "eq", value: [0] },
         ],
       },
     ],
@@ -56,6 +57,11 @@ export function assertExactGenieTaskOwners(payload: unknown, owner: string) {
     if (row.owners[0] !== owner)
       throw Error(
         "CRM_OWNER_SCOPE_VIOLATION: task owner differs from the mapped salesperson."
+      );
+    const completed = (row as { properties?: { completed?: unknown } }).properties?.completed;
+    if (![0, "0", false, "false"].includes(completed as never))
+      throw Error(
+        "CRM_TASK_SCOPE_VIOLATION: pending-task search returned a completed or unknown-status task."
       );
   }
   if (root.customObjectRecords.length === 0 && Number(root.total) !== 0)

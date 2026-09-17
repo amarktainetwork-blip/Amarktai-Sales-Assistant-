@@ -9,6 +9,7 @@ import {
   crmSyncCursors,
   crmTasks,
   salesActivityEvents,
+  salesWorkItems,
 } from "../../drizzle/schema";
 import { getDb } from "../db";
 import {
@@ -32,6 +33,7 @@ import type {
 import { normalizeCrmEmail, normalizeCrmPhone } from "./identity";
 import { runModelFreeOperation } from "../aiExecutionBoundary";
 import { upsertSalesWorkFromCrm } from "../salesWork";
+import { INCOMPLETE_TASK_STATUSES } from "../../shared/taskState";
 import { crmResourceSyncEligible } from "./syncEligibility";
 import { assertPersonalBrowserOwnerScope } from "./personalOwnerScope";
 export { crmResourceSyncEligible } from "./syncEligibility";
@@ -294,6 +296,74 @@ async function upsertTasks(
       });
 }
 
+export function missingTaskIdsFromSnapshot(
+  cachedOpenIds: string[],
+  currentOpenIds: Iterable<string>
+) {
+  const current = new Set(currentOpenIds);
+  return Array.from(new Set(cachedOpenIds.filter(id => id && !current.has(id))));
+}
+
+async function reconcileOpenTaskSnapshot(input: {
+  organisationId: number;
+  connectedSystemId: number;
+  ownerExternalId: string;
+  currentOpenIds: Set<string>;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const cached = await db
+    .select({ externalId: crmTasks.externalId })
+    .from(crmTasks)
+    .where(
+      and(
+        eq(crmTasks.organisationId, input.organisationId),
+        eq(crmTasks.connectedSystemId, input.connectedSystemId),
+        eq(crmTasks.ownerExternalId, input.ownerExternalId),
+        inArray(crmTasks.status, [...INCOMPLETE_TASK_STATUSES])
+      )
+    );
+  const missing = missingTaskIdsFromSnapshot(
+    cached.map(row => row.externalId),
+    input.currentOpenIds
+  );
+  if (!missing.length) return 0;
+  const reconciledAt = new Date();
+  await db
+    .update(crmTasks)
+    .set({ status: "closed", completedAt: null })
+    .where(
+      and(
+        eq(crmTasks.organisationId, input.organisationId),
+        eq(crmTasks.connectedSystemId, input.connectedSystemId),
+        eq(crmTasks.ownerExternalId, input.ownerExternalId),
+        inArray(crmTasks.externalId, missing)
+      )
+    );
+  await db
+    .update(salesWorkItems)
+    .set({
+      status: "completed",
+      completedAt: reconciledAt,
+      freshness: "current",
+      syncedAt: reconciledAt,
+    })
+    .where(
+      and(
+        eq(salesWorkItems.organisationId, input.organisationId),
+        eq(salesWorkItems.connectedSystemId, input.connectedSystemId),
+        inArray(salesWorkItems.taskExternalId, missing),
+        inArray(salesWorkItems.status, [
+          "open",
+          "in_progress",
+          "snoozed",
+          "blocked",
+        ])
+      )
+    );
+  return missing.length;
+}
+
 async function upsertActivities(
   organisationId: number,
   systemId: number,
@@ -478,6 +548,8 @@ async function syncConnectedSystemDeterministically(input: {
         | NormalizedOpportunity
         | NormalizedTask
         | NormalizedActivity;
+      const currentTaskExternalIds =
+        resourceType === "tasks" ? new Set<string>() : undefined;
       const drained = await drainCrmPages<SyncRecord>({
         initialCursor: existing?.cursor ?? undefined,
         fetchPage: cursor =>
@@ -492,6 +564,9 @@ async function syncConnectedSystemDeterministically(input: {
               expectedOwnerExternalId: secret.crmUserExternalId || "",
               records,
             });
+          if (currentTaskExternalIds)
+            for (const record of records)
+              currentTaskExternalIds.add(record.externalId);
           const contactBaseline =
             resourceType === "contacts"
               ? {
@@ -514,6 +589,17 @@ async function syncConnectedSystemDeterministically(input: {
           });
         },
       });
+      if (
+        resourceType === "tasks" &&
+        currentTaskExternalIds &&
+        secret.crmUserExternalId
+      )
+        await reconcileOpenTaskSnapshot({
+          organisationId: input.organisationId,
+          connectedSystemId: system.id,
+          ownerExternalId: secret.crmUserExternalId,
+          currentOpenIds: currentTaskExternalIds,
+        });
       await saveCursor(system.id, resourceType, undefined);
       summary[resourceType] = drained.total;
     } catch (error) {
