@@ -161,7 +161,7 @@ export const BROWSER_OPERATION_CATALOGUE: BrowserOperationCatalogueItem[] = [
     area: "Sync",
     mode: "read",
     capability: "contacts.read",
-    safeWatchdog: true,
+    safeWatchdog: false,
   },
   {
     key: "contact.create",
@@ -177,7 +177,7 @@ export const BROWSER_OPERATION_CATALOGUE: BrowserOperationCatalogueItem[] = [
     area: "Sync",
     mode: "read",
     capability: "companies.read",
-    safeWatchdog: true,
+    safeWatchdog: false,
   },
   {
     key: "company.read",
@@ -233,7 +233,7 @@ export const BROWSER_OPERATION_CATALOGUE: BrowserOperationCatalogueItem[] = [
     area: "Tasks / Manual Actions",
     mode: "read",
     capability: "tasks.read",
-    safeWatchdog: true,
+    safeWatchdog: false,
   },
   {
     key: "task.list",
@@ -257,7 +257,7 @@ export const BROWSER_OPERATION_CATALOGUE: BrowserOperationCatalogueItem[] = [
     area: "Sync",
     mode: "read",
     capability: "tasks.read",
-    safeWatchdog: true,
+    safeWatchdog: false,
   },
   {
     key: "task.complete",
@@ -305,7 +305,7 @@ export const BROWSER_OPERATION_CATALOGUE: BrowserOperationCatalogueItem[] = [
     area: "Sync",
     mode: "read",
     capability: "opportunities.read",
-    safeWatchdog: true,
+    safeWatchdog: false,
   },
   {
     key: "opportunity.update",
@@ -337,7 +337,7 @@ export const BROWSER_OPERATION_CATALOGUE: BrowserOperationCatalogueItem[] = [
     area: "Sync",
     mode: "read",
     capability: "activities.read",
-    safeWatchdog: true,
+    safeWatchdog: false,
   },
   {
     key: "activity.create",

@@ -66,6 +66,24 @@ describe("Genie commissioning catalogue", () => {
     ])
       expect(keys.has(key), `${key} must remain in the catalogue`).toBe(true);
   });
+
+  it("keeps bulk reconciliation operations out of the unattended watchdog", () => {
+    const byKey = new Map(
+      BROWSER_OPERATION_CATALOGUE.map(operation => [operation.key, operation])
+    );
+    for (const key of [
+      "contact.sync",
+      "company.sync",
+      "manual_action.sync",
+      "task.sync",
+      "opportunity.sync",
+      "activity.sync",
+    ])
+      expect(
+        byKey.get(key)?.safeWatchdog,
+        `${key} must not monopolise the browser watchdog`
+      ).toBe(false);
+  });
 });
 
 describe("browser CRM record guardian", () => {

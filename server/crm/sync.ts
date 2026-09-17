@@ -301,7 +301,9 @@ export function missingTaskIdsFromSnapshot(
   currentOpenIds: Iterable<string>
 ) {
   const current = new Set(currentOpenIds);
-  return Array.from(new Set(cachedOpenIds.filter(id => id && !current.has(id))));
+  return Array.from(
+    new Set(cachedOpenIds.filter(id => id && !current.has(id)))
+  );
 }
 
 async function reconcileOpenTaskSnapshot(input: {
@@ -633,6 +635,190 @@ async function syncConnectedSystemDeterministically(input: {
     throw error;
   }
   return summary;
+}
+
+async function syncConnectedSystemRoutineDeterministically(input: {
+  userId: number;
+  organisationId: number;
+  connectedSystemId: number;
+}) {
+  await reconcileCurrentBrowserReadiness(input);
+  const system = await getConnectedSystemForUser(
+    input.userId,
+    input.organisationId,
+    input.connectedSystemId
+  );
+  if (system.status !== "ready" && system.status !== "limited_permissions")
+    throw new Error(
+      "This connected system must pass backend verification before synchronization."
+    );
+  const connection = toAdapterConnection(system);
+  const adapter = getCrmAdapter(connection.provider);
+  const browserConnection = ["browser", "sidecar"].includes(
+    connection.connectionMethod
+  );
+  if (!browserConnection || !adapter.syncRecentContacts)
+    return syncConnectedSystemDeterministically(input);
+
+  const secret = await usableSecret({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    connection,
+  });
+  if (!secret.crmUserExternalId)
+    throw new Error("CRM_SALESPERSON_IDENTITY_REQUIRED");
+  const operationStatuses = new Map(
+    (
+      await browserOperationReadinessForSystem({
+        organisationId: input.organisationId,
+        connectedSystemId: system.id,
+      })
+    ).operations.map(operation => [operation.key, operation.status])
+  );
+  const summary: Record<string, number | string> = { mode: "routine" };
+  const failures: Record<string, string> = {};
+  const failureTransient: Record<string, boolean> = {};
+
+  if (
+    crmResourceSyncEligible(
+      connection,
+      "contacts.read",
+      operationStatuses.get("contact.sync")
+    )
+  ) {
+    try {
+      const existing = await cursorFor(system.id, "contacts");
+      const page = await adapter.syncRecentContacts({ connection, secret });
+      assertPersonalBrowserOwnerScope({
+        resourceType: "contacts",
+        expectedOwnerExternalId: secret.crmUserExternalId,
+        records: page.records,
+      });
+      const existingExternalIds = await existingContactIds(
+        input.organisationId,
+        system.id,
+        page.records.map(record => record.externalId)
+      );
+      await upsertContacts(input.organisationId, system.id, page.records);
+      await upsertSalesWorkFromCrm({
+        organisationId: input.organisationId,
+        connectedSystemId: system.id,
+        resource: { type: "contacts", records: page.records },
+        contactBaseline: {
+          baselineComplete: Boolean(existing?.lastSuccessfulAt),
+          existingExternalIds,
+        },
+      });
+      summary.contacts = page.records.length;
+    } catch (error) {
+      failures.contacts =
+        error instanceof Error
+          ? error.message.slice(0, 800)
+          : "Unknown sync error";
+      failureTransient.contacts = isTransientBrowserExecutionFailure(error);
+    }
+  } else summary.contacts = 0;
+
+  if (
+    crmResourceSyncEligible(
+      connection,
+      "tasks.read",
+      operationStatuses.get("task.sync")
+    )
+  ) {
+    const existing = await cursorFor(system.id, "tasks");
+    try {
+      const currentTaskExternalIds = new Set<string>();
+      const drained = await drainCrmPages<NormalizedTask>({
+        // The Genie task reader is a complete current-pending snapshot. Never
+        // resume from an old historical cursor or missing tasks cannot be retired.
+        initialCursor: undefined,
+        fetchPage: cursor => adapter.syncTasks({ connection, secret, cursor }),
+        onPage: async records => {
+          assertPersonalBrowserOwnerScope({
+            resourceType: "tasks",
+            expectedOwnerExternalId: secret.crmUserExternalId || "",
+            records,
+          });
+          for (const record of records)
+            currentTaskExternalIds.add(record.externalId);
+          await upsertTasks(input.organisationId, system.id, records);
+          await upsertSalesWorkFromCrm({
+            organisationId: input.organisationId,
+            connectedSystemId: system.id,
+            resource: { type: "tasks", records },
+          });
+        },
+      });
+      await reconcileOpenTaskSnapshot({
+        organisationId: input.organisationId,
+        connectedSystemId: system.id,
+        ownerExternalId: secret.crmUserExternalId,
+        currentOpenIds: currentTaskExternalIds,
+      });
+      await saveCursor(system.id, "tasks", undefined);
+      summary.tasks = drained.total;
+    } catch (error) {
+      const detail =
+        error instanceof Error
+          ? error.message.slice(0, 800)
+          : "Unknown sync error";
+      if (!isTransientBrowserExecutionFailure(error))
+        await saveCursor(
+          system.id,
+          "tasks",
+          undefined,
+          detail,
+          existing?.lastSuccessfulAt
+        );
+      failures.tasks = detail;
+      failureTransient.tasks = isTransientBrowserExecutionFailure(error);
+    }
+  } else summary.tasks = 0;
+
+  await reconcileCurrentBrowserReadiness(input);
+  if (Object.keys(failures).length) {
+    const error = new Error(
+      `CRM_SYNC_PARTIAL_FAILURE: ${Object.entries(failures)
+        .map(([resource, detail]) => `${resource}: ${detail}`)
+        .join("; ")}`
+    );
+    Object.assign(error, {
+      transient: Object.keys(failures).every(
+        key => failureTransient[key] === true
+      ),
+    });
+    throw error;
+  }
+  return summary;
+}
+
+/**
+ * Lightweight unattended reconciliation for browser CRMs. It intentionally
+ * refreshes only the newest owner-scoped contacts plus the complete current
+ * pending-task snapshot. Full historical reconciliation remains the explicit
+ * manager/manual path via syncConnectedSystem().
+ */
+export async function syncConnectedSystemRoutine(input: {
+  userId: number;
+  organisationId: number;
+  connectedSystemId: number;
+}) {
+  const result = await runModelFreeOperation(
+    {
+      purpose: "crm_sync",
+      organisationId: input.organisationId,
+      connectedSystemId: input.connectedSystemId,
+      reference: `crm-routine-sync:${input.connectedSystemId}:${Date.now()}`,
+    },
+    () => syncConnectedSystemRoutineDeterministically(input)
+  );
+  return {
+    ...result.value,
+    lastSuccessfulAt: new Date().toISOString(),
+    modelUsed: result.evidence.modelUsed,
+    providerCallCount: result.evidence.providerCallCount,
+  };
 }
 
 export async function syncConnectedSystem(input: {

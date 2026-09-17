@@ -10,7 +10,7 @@ import {
 import { getDb } from "../db";
 import { runModelFreeOperation } from "../aiExecutionBoundary";
 import { connectedSystemHasActiveCommissioning } from "./backgroundReadCommissioningGuard";
-import { syncConnectedSystem } from "./sync";
+import { syncConnectedSystem, syncConnectedSystemRoutine } from "./sync";
 
 export const DEFAULT_CRM_SYNC_INTERVAL_MS = 120_000;
 const MAX_CONNECTIONS_PER_CYCLE = 50;
@@ -21,6 +21,12 @@ export function crmSyncIntervalMs(raw = process.env.CRM_SYNC_INTERVAL_MS) {
   return Number.isFinite(parsed) && parsed >= 30_000
     ? Math.floor(parsed)
     : DEFAULT_CRM_SYNC_INTERVAL_MS;
+}
+
+export function crmBackgroundSyncMode(connectionMethod: string) {
+  return ["browser", "sidecar"].includes(connectionMethod)
+    ? ("routine" as const)
+    : ("full" as const);
 }
 
 export function crmSyncJobIsDue(
@@ -205,8 +211,12 @@ export async function runConnectionScopedCrmSyncCycle(now = new Date()) {
         connectedSystemId: row.system.id,
         connectionMethod: row.system.connectionMethod,
       });
+      const sync =
+        crmBackgroundSyncMode(row.system.connectionMethod) === "routine"
+          ? syncConnectedSystemRoutine
+          : syncConnectedSystem;
       for (const userId of userIds)
-        await syncConnectedSystem({
+        await sync({
           userId,
           organisationId: row.system.organisationId,
           connectedSystemId: row.system.id,
