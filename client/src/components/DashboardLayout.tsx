@@ -40,7 +40,7 @@ import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 type NavItem = { icon: LucideIcon; label: string; path: string };
 
 const dailyMenu: NavItem[] = [
-  { icon: Home, label: "Home", path: "/today" },
+  { icon: Home, label: "Today", path: "/today" },
   { icon: ContactRound, label: "Customers", path: "/customers" },
   { icon: Headphones, label: "Calls", path: "/calls" },
   { icon: MessageSquareText, label: "AmarktAI", path: "/assistant" },
@@ -217,7 +217,10 @@ export default function DashboardLayout({
             }
           />
 
-          <SidebarMenu className="mt-5 gap-1">
+          <p className="mt-5 px-2 text-[10px] font-black uppercase tracking-[.14em] text-[#9AA6B5] group-data-[collapsible=icon]:hidden">
+            Daily flow
+          </p>
+          <SidebarMenu className="mt-2 gap-1">
             {dailyMenu.map(item => (
               <AppNavItem key={item.path} {...item} />
             ))}
@@ -322,7 +325,7 @@ function pageTitle(location: string) {
   if (location.startsWith("/connections")) return "CRM setup";
   if (location.startsWith("/knowledge")) return "Company knowledge";
   if (location.startsWith("/crm")) return "Source CRM";
-  return "Home";
+  return "Today";
 }
 
 function WorkspaceSetupPending() {
