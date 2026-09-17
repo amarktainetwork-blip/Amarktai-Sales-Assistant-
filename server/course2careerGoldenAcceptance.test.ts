@@ -6,9 +6,9 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("./clientActionConfiguration", async () => {
-  const actual = await vi.importActual<typeof import("./clientActionConfiguration")>(
-    "./clientActionConfiguration"
-  );
+  const actual = await vi.importActual<
+    typeof import("./clientActionConfiguration")
+  >("./clientActionConfiguration");
   return {
     ...actual,
     getClientActionConfiguration: mocks.getClientActionConfiguration,
@@ -16,9 +16,10 @@ vi.mock("./clientActionConfiguration", async () => {
 });
 
 vi.mock("./communications", async () => {
-  const actual = await vi.importActual<typeof import("./communications")>(
-    "./communications"
-  );
+  const actual =
+    await vi.importActual<typeof import("./communications")>(
+      "./communications"
+    );
   return {
     ...actual,
     getOutboundSuppressionStatus: mocks.getOutboundSuppressionStatus,
@@ -53,10 +54,11 @@ function course2CareerAcceptanceConfiguration() {
         taskSequence: ["attempt_1", "attempt_2", "attempt_3", "attempt_4"],
         sequence: [
           "verify_contact_context:current_customer",
+          "ensure_current_opportunity:first_attempt",
           "send_sms_template:first_contact",
           "schedule_callback:follow_up",
         ],
-        eligibilityStatuses: ["New Lead – Uncontacted", "Attempting Contact"],
+        eligibilityStatuses: ["New Lead / Uncontacted", "Attempting Contact"],
         stopStatuses: [
           "pitched",
           "Pitch Done",
@@ -65,7 +67,7 @@ function course2CareerAcceptanceConfiguration() {
           "rejected",
           "not a fit",
         ],
-        opportunityMappings: {},
+        opportunityMappings: { first_attempt: "Attempting Contact" },
         statusMappings: {},
         templates: { first_contact: "initial-first-contact-sms" },
         timingRules: {
@@ -99,7 +101,7 @@ function course2CareerAcceptanceConfiguration() {
         eligibilityStatuses: [],
         stopStatuses: ["closed", "rejected", "not a fit"],
         opportunityMappings: {
-          post_consultation: "Discovery Completed – Considering Options",
+          post_consultation: "Discovery Completed / Considering Options",
         },
         statusMappings: {},
         templates: {
@@ -134,7 +136,7 @@ function course2CareerAcceptanceConfiguration() {
         eligibilityStatuses: [],
         stopStatuses: ["closed", "rejected", "not a fit"],
         opportunityMappings: {
-          post_consultation: "Discovery Completed – Considering Options",
+          post_consultation: "Discovery Completed / Considering Options",
         },
         statusMappings: {},
         templates: {},
@@ -170,10 +172,10 @@ function course2CareerAcceptanceConfiguration() {
         opportunityMappings: {},
         opportunityStageTransitions: {
           close_or_lost: {
-            "New Lead – Uncontacted": "Lost – No Show",
-            "Attempting Contact": "Lost – No Show",
-            "Discovery Call Completed – Considering Options":
-              "Not a Fit / Rejected",
+            "New Lead / Uncontacted": "Lost – No Show / No Response",
+            "Attempting Contact": "Lost – No Show / No Response",
+            "Discovery Completed / Considering Options":
+              "Lost – No Show / No Response",
           },
         },
         statusMappings: { closed_or_lost: "Lost" },
@@ -266,8 +268,10 @@ function customer(input: {
   status?: string;
   stage?: string;
   firstName?: string;
+  openOpportunity?: boolean;
 }): ResolvedAssistantCustomerContext {
   const firstName = input.firstName ?? "Jamie";
+  const openOpportunity = input.openOpportunity !== false;
   return {
     source: "manual_resolved",
     connectedSystemId: 10,
@@ -279,12 +283,12 @@ function customer(input: {
     companyName: "Test Company",
     email: "jamie@example.test",
     phone: "+447700900123",
-    contactStatus: input.status ?? "New Lead – Uncontacted",
+    contactStatus: input.status ?? "New Lead / Uncontacted",
     taskExternalId: "task-current",
     taskTitle: input.taskTitle,
-    opportunityExternalId: "opp-current",
-    opportunityName: "Current Cyber opportunity",
-    stage: input.stage ?? "Attempting Contact",
+    opportunityExternalId: openOpportunity ? "opp-current" : undefined,
+    opportunityName: openOpportunity ? "Current Cyber opportunity" : undefined,
+    stage: openOpportunity ? (input.stage ?? "Attempting Contact") : undefined,
     reasons: [],
     targetVerification: {
       verified: true,
@@ -301,14 +305,18 @@ function customer(input: {
         },
       ],
       currentActiveTaskExternalId: "task-current",
-      openOpportunities: [
-        {
-          externalId: "opp-current",
-          name: "Current Cyber opportunity",
-          stage: input.stage ?? "Attempting Contact",
-        },
-      ],
-      currentActiveOpportunityExternalId: "opp-current",
+      openOpportunities: openOpportunity
+        ? [
+            {
+              externalId: "opp-current",
+              name: "Current Cyber opportunity",
+              stage: input.stage ?? "Attempting Contact",
+            },
+          ]
+        : [],
+      currentActiveOpportunityExternalId: openOpportunity
+        ? "opp-current"
+        : undefined,
       historicalCompletedTaskCount: 4,
       historicalClosedOpportunityCount: 2,
     },
@@ -340,7 +348,17 @@ describe("Course2Career first-client golden workflow contract (test-only fixture
     expect(plan.actions.map(action => action.actionType)).not.toContain(
       "complete_active_task"
     );
-    const sms = plan.actions.find(action => action.actionType === "send_sms_template");
+    expect(plan.actions.map(action => action.actionType)).not.toContain(
+      "create_opportunity"
+    );
+    expect(
+      plan.actions.find(
+        action => action.actionType === "update_current_opportunity"
+      )?.payload.patch
+    ).toMatchObject({ stage: "Attempting Contact" });
+    const sms = plan.actions.find(
+      action => action.actionType === "send_sms_template"
+    );
     expect(sms?.payload).toMatchObject({
       senderIdentity: SENDER,
       body: INITIAL_SMS.replace("[First Name]", "Jamie"),
@@ -355,24 +373,52 @@ describe("Course2Career first-client golden workflow contract (test-only fixture
     });
   });
 
-  it.each([
-    ["Call 2", "Call 3"],
-    ["Call 3", "Call 4"],
-  ])("does not resend the initial SMS for %s and schedules only %s", async (current, next) => {
+  it("creates a new opportunity only when the customer has no active opportunity left", async () => {
     const plan = await buildConfiguredWorkflowPlan({
       organisationId: 4,
       request: { workflowKey: "first_contact", leadLabel: "Jamie Test" },
-      customer: customer({ taskTitle: current }),
+      customer: customer({
+        taskTitle: "First Call",
+        stage: "New Lead / Uncontacted",
+        openOpportunity: false,
+      }),
       now: new Date("2026-09-10T10:00:00.000Z"),
     });
-    expect(plan.actions.some(action => /^send_/.test(action.actionType))).toBe(
-      false
+    const create = plan.actions.find(
+      action => action.actionType === "create_opportunity"
     );
+    expect(create?.payload).toMatchObject({
+      opportunityResolution: "create_only_when_no_open",
+      fields: { stage: "Attempting Contact" },
+    });
     expect(
-      plan.actions.find(action => action.actionType === "schedule_callback")
-        ?.payload.taskTitle
-    ).toBe(next);
+      plan.actions.some(
+        action => action.actionType === "update_current_opportunity"
+      )
+    ).toBe(false);
   });
+
+  it.each([
+    ["Call 2", "Call 3"],
+    ["Call 3", "Call 4"],
+  ])(
+    "does not resend the initial SMS for %s and schedules only %s",
+    async (current, next) => {
+      const plan = await buildConfiguredWorkflowPlan({
+        organisationId: 4,
+        request: { workflowKey: "first_contact", leadLabel: "Jamie Test" },
+        customer: customer({ taskTitle: current }),
+        now: new Date("2026-09-10T10:00:00.000Z"),
+      });
+      expect(
+        plan.actions.some(action => /^send_/.test(action.actionType))
+      ).toBe(false);
+      expect(
+        plan.actions.find(action => action.actionType === "schedule_callback")
+          ?.payload.taskTitle
+      ).toBe(next);
+    }
+  );
 
   it("blocks progressed/closed candidates before any workflow proposal is prepared", async () => {
     await expect(
@@ -395,7 +441,7 @@ describe("Course2Career first-client golden workflow contract (test-only fixture
       customer: customer({
         taskTitle: "Yes/No Cyber",
         status: "Pitched",
-        stage: "Discovery Call Completed – Considering Options",
+        stage: "Discovery Completed / Considering Options",
       }),
       now: new Date("2026-09-10T10:00:00.000Z"),
     });
@@ -422,9 +468,10 @@ describe("Course2Career first-client golden workflow contract (test-only fixture
         ?.payload.content
     ).toBe("Follow-up call attempted: no answer.");
     expect(
-      plan.actions.find(action => action.actionType === "update_current_opportunity")
-        ?.payload.patch
-    ).toMatchObject({ stage: "Discovery Completed – Considering Options" });
+      plan.actions.find(
+        action => action.actionType === "update_current_opportunity"
+      )?.payload.patch
+    ).toMatchObject({ stage: "Discovery Completed / Considering Options" });
     expect(
       plan.actions.find(action => action.actionType === "send_email_template")
         ?.payload.templateName
@@ -437,8 +484,9 @@ describe("Course2Career first-client golden workflow contract (test-only fixture
       senderIdentity: SENDER,
     });
     expect(
-      plan.actions.find(action => action.actionType === "send_whatsapp_template")
-        ?.payload.templateName
+      plan.actions.find(
+        action => action.actionType === "send_whatsapp_template"
+      )?.payload.templateName
     ).toBe("tried_to_email");
     expect(
       plan.actions.find(action => action.actionType === "schedule_callback")
@@ -459,7 +507,7 @@ describe("Course2Career first-client golden workflow contract (test-only fixture
       customer: customer({
         taskTitle: "Yes/No Cyber",
         status: "Pitched",
-        stage: "Discovery Call Completed – Considering Options",
+        stage: "Discovery Completed / Considering Options",
       }),
     });
 
@@ -475,6 +523,23 @@ describe("Course2Career first-client golden workflow contract (test-only fixture
     ).toBe(
       "Customer has reviewed the information and will confirm their decision after speaking with family."
     );
+  });
+
+  it("keeps no-response loss distinct from spoken Not a Fit even after a completed discovery", async () => {
+    const plan = await buildConfiguredWorkflowPlan({
+      organisationId: 4,
+      request: { workflowKey: "final_close", leadLabel: "Jamie Test" },
+      customer: customer({
+        taskTitle: "Call 4",
+        status: "Attempting Contact",
+        stage: "Discovery Completed / Considering Options",
+      }),
+    });
+    const patch = plan.actions.find(
+      action => action.actionType === "update_current_opportunity"
+    )?.payload.patch;
+    expect(patch).toMatchObject({ stage: "Lost – No Show / No Response" });
+    expect(JSON.stringify(patch)).not.toContain("Not a Fit / Rejected");
   });
 
   it("accepts Call 4 as an explicitly commissioned final-task alias and closes only the current open opportunity path", async () => {
@@ -504,16 +569,17 @@ describe("Course2Career first-client golden workflow contract (test-only fixture
       senderIdentity: SENDER,
     });
     expect(
-      plan.actions.find(action => action.actionType === "update_current_opportunity")
-        ?.payload.patch
-    ).toMatchObject({ stage: "Lost – No Show" });
+      plan.actions.find(
+        action => action.actionType === "update_current_opportunity"
+      )?.payload.patch
+    ).toMatchObject({ stage: "Lost – No Show / No Response" });
     expect(
       plan.actions.find(action => action.actionType === "update_contact_status")
         ?.payload.status
     ).toBe("Lost");
     expect(
-      plan.actions.find(action => action.actionType === "apply_sequence")?.payload
-        .sequence
+      plan.actions.find(action => action.actionType === "apply_sequence")
+        ?.payload.sequence
     ).toBe("TEST_ONLY_LIVE_GENIE_CLOSED_LOST_SEQUENCE");
   });
 });

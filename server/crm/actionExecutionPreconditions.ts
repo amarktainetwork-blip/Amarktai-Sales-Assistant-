@@ -23,6 +23,7 @@ const CUSTOMER_BOUND_MUTATIONS = new Set([
   "update_contact",
   "update_current_opportunity",
   "update_opportunity",
+  "create_opportunity",
   "send_sms_template",
   "send_sms",
   "send_whatsapp_template",
@@ -71,11 +72,18 @@ function fields(payload: Record<string, unknown>) {
 }
 
 function norm(value: unknown) {
-  return String(value ?? "").trim().toLowerCase();
+  return String(value ?? "")
+    .trim()
+    .toLowerCase();
 }
 
-export function taskIsHistorical(task: Pick<NormalizedTask, "status" | "completedAt">) {
-  return Boolean(task.completedAt) || /complete|closed|done|cancelled/i.test(task.status);
+export function taskIsHistorical(
+  task: Pick<NormalizedTask, "status" | "completedAt">
+) {
+  return (
+    Boolean(task.completedAt) ||
+    /complete|closed|done|cancelled/i.test(task.status)
+  );
 }
 
 export function opportunityIsHistorical(
@@ -86,14 +94,23 @@ export function opportunityIsHistorical(
   );
 }
 
-function samePatch(current: Record<string, unknown>, patch: Record<string, unknown>) {
+function samePatch(
+  current: Record<string, unknown>,
+  patch: Record<string, unknown>
+) {
   const entries = Object.entries(patch);
-  return Boolean(entries.length) && entries.every(([key, value]) => norm(current[key]) === norm(value));
+  return (
+    Boolean(entries.length) &&
+    entries.every(([key, value]) => norm(current[key]) === norm(value))
+  );
 }
 
 function contactStatus(contact: NormalizedContact) {
   return String(
-    contact.lifecycleStage || contact.raw.status || contact.raw.lifecycleStage || ""
+    contact.lifecycleStage ||
+      contact.raw.status ||
+      contact.raw.lifecycleStage ||
+      ""
   ).trim();
 }
 
@@ -132,29 +149,45 @@ export function withinConfiguredOfficeHours(value: unknown, now = new Date()) {
     );
   }
   const weekday = parts.find(part => part.type === "weekday")?.value || "";
-  const dayIndex = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(weekday);
+  const dayIndex = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(
+    weekday
+  );
   const hour = Number(parts.find(part => part.type === "hour")?.value || "0");
-  const minute = Number(parts.find(part => part.type === "minute")?.value || "0");
+  const minute = Number(
+    parts.find(part => part.type === "minute")?.value || "0"
+  );
   const current = hour * 60 + minute;
   const [startHour, startMinute] = start.split(":").map(Number);
   const [endHour, endMinute] = end.split(":").map(Number);
   const startMinutes = startHour * 60 + startMinute;
   const endMinutes = endHour * 60 + endMinute;
-  return days.includes(dayIndex) && current >= startMinutes && current < endMinutes;
+  return (
+    days.includes(dayIndex) && current >= startMinutes && current < endMinutes
+  );
 }
 
 function matchesConfiguredStatus(value: string, configured: unknown) {
   if (!Array.isArray(configured)) return false;
   const current = norm(value);
-  return configured.some(item => typeof item === "string" && norm(item) === current);
+  return configured.some(
+    item => typeof item === "string" && norm(item) === current
+  );
 }
 
 function activityBody(activity: NormalizedActivity) {
-  return String(activity.body || activity.raw.body || activity.raw.message || activity.raw.content || "").trim();
+  return String(
+    activity.body ||
+      activity.raw.body ||
+      activity.raw.message ||
+      activity.raw.content ||
+      ""
+  ).trim();
 }
 
 function activityChannel(activity: NormalizedActivity) {
-  return norm(activity.raw.channel || activity.raw.activityType || activity.activityType);
+  return norm(
+    activity.raw.channel || activity.raw.activityType || activity.activityType
+  );
 }
 
 function isEquivalentTask(input: {
@@ -165,7 +198,10 @@ function isEquivalentTask(input: {
   dueAt?: string;
 }) {
   if (taskIsHistorical(input.task)) return false;
-  if (input.task.contactExternalId && input.task.contactExternalId !== input.contactExternalId)
+  if (
+    input.task.contactExternalId &&
+    input.task.contactExternalId !== input.contactExternalId
+  )
     return false;
   if (
     input.opportunityExternalId &&
@@ -206,7 +242,10 @@ function assertWorkflowEligibility(
     throw new Error(
       `WORKFLOW_STOP_STATUS: the customer is now '${status}', which is a configured stop status. Nothing was changed.`
     );
-  if (Array.isArray(workflow.eligibilityStatuses) && workflow.eligibilityStatuses.length) {
+  if (
+    Array.isArray(workflow.eligibilityStatuses) &&
+    workflow.eligibilityStatuses.length
+  ) {
     if (!status)
       throw new Error(
         "WORKFLOW_ELIGIBILITY_UNVERIFIED: the current CRM status could not be read immediately before execution. Nothing was changed."
@@ -227,17 +266,17 @@ export async function verifyFreshWorkflowContext(input: {
   // Browser adapters share one authenticated page and one control lease.
   // Complete each read before the next resource navigates that page.
   const taskResult = await input.adapter.syncTasks({
-      connection: input.connection,
-      secret: input.secret,
-    });
+    connection: input.connection,
+    secret: input.secret,
+  });
   const opportunityResult = await input.adapter.syncOpportunities({
-      connection: input.connection,
-      secret: input.secret,
-    });
+    connection: input.connection,
+    secret: input.secret,
+  });
   const activityResult = await input.adapter.syncActivities({
-      connection: input.connection,
-      secret: input.secret,
-    });
+    connection: input.connection,
+    secret: input.secret,
+  });
   const opportunities = opportunityResult.records.filter(
     item => item.contactExternalId === input.contactExternalId
   );
@@ -289,7 +328,10 @@ export async function checkApprovedCrmExecutionPreconditions(input: {
   proposal: ActionProposal;
   payload: Record<string, unknown>;
 }): Promise<ExecutionPreconditionResult> {
-  const contactExternalId = explicitExternalId(input.payload, "contactExternalId");
+  const contactExternalId = explicitExternalId(
+    input.payload,
+    "contactExternalId"
+  );
   if (CUSTOMER_BOUND_MUTATIONS.has(input.actionType) && !contactExternalId)
     throw new Error(
       "EXACT_CUSTOMER_REQUIRED: this reviewed CRM action has no stable external customer ID. Names are not accepted as execution targets."
@@ -323,16 +365,26 @@ export async function checkApprovedCrmExecutionPreconditions(input: {
     );
 
   if (input.actionType === "complete_active_task") {
-    const taskExternalId = explicitExternalId(input.payload, "taskExternalId", "externalId");
+    const taskExternalId = explicitExternalId(
+      input.payload,
+      "taskExternalId",
+      "externalId"
+    );
     if (!taskExternalId)
-      throw new Error("EXACT_TASK_REQUIRED: the reviewed action has no stable current task ID.");
-    const tasks = (await input.adapter.syncTasks({
-      connection: input.connection,
-      secret: input.secret,
-    })).records;
+      throw new Error(
+        "EXACT_TASK_REQUIRED: the reviewed action has no stable current task ID."
+      );
+    const tasks = (
+      await input.adapter.syncTasks({
+        connection: input.connection,
+        secret: input.secret,
+      })
+    ).records;
     const task = tasks.find(item => item.externalId === taskExternalId);
     if (!task)
-      throw new Error("EXECUTION_TASK_STALE: the exact current task no longer exists. Nothing was changed.");
+      throw new Error(
+        "EXECUTION_TASK_STALE: the exact current task no longer exists. Nothing was changed."
+      );
     if (
       contactExternalId &&
       task.contactExternalId &&
@@ -348,110 +400,226 @@ export async function checkApprovedCrmExecutionPreconditions(input: {
       throw new Error(
         `EXECUTION_TASK_TITLE_MISMATCH: expected current task '${expectedTaskTitle}' but the exact CRM task is now '${task.title}'. Nothing was changed.`
       );
-    const opportunityExternalId = explicitExternalId(input.payload, "opportunityExternalId");
-    if (opportunityExternalId && task.opportunityExternalId && task.opportunityExternalId !== opportunityExternalId)
-      throw new Error("EXECUTION_TASK_OPPORTUNITY_MISMATCH: the task no longer belongs to the reviewed opportunity. Nothing was changed.");
+    const opportunityExternalId = explicitExternalId(
+      input.payload,
+      "opportunityExternalId"
+    );
+    if (
+      opportunityExternalId &&
+      task.opportunityExternalId &&
+      task.opportunityExternalId !== opportunityExternalId
+    )
+      throw new Error(
+        "EXECUTION_TASK_OPPORTUNITY_MISMATCH: the task no longer belongs to the reviewed opportunity. Nothing was changed."
+      );
     if (taskIsHistorical(task))
       return {
         alreadySatisfied: true,
-        detail: "The exact task is already complete/historical, so it was not touched again.",
+        detail:
+          "The exact task is already complete/historical, so it was not touched again.",
         evidence: { taskExternalId, status: task.status },
       };
-    return { alreadySatisfied: false, detail: "The exact current task is still open and safe to complete." };
+    return {
+      alreadySatisfied: false,
+      detail: "The exact current task is still open and safe to complete.",
+    };
   }
 
-  if (input.actionType === "update_current_opportunity" || input.actionType === "update_opportunity") {
-    const opportunityExternalId = explicitExternalId(input.payload, "opportunityExternalId", "externalId");
+  if (input.actionType === "create_opportunity") {
+    const opportunities = (
+      await input.adapter.syncOpportunities({
+        connection: input.connection,
+        secret: input.secret,
+      })
+    ).records.filter(
+      item => !contactExternalId || item.contactExternalId === contactExternalId
+    );
+    const active = opportunities.filter(item => !opportunityIsHistorical(item));
+    if (active.length)
+      throw new Error(
+        "ACTIVE_OPPORTUNITY_ALREADY_EXISTS: a current/open opportunity exists for this customer, so Amarktai will not create a duplicate."
+      );
+    return {
+      alreadySatisfied: false,
+      detail:
+        "Fresh CRM read confirms no active opportunity exists for this customer; historical closed opportunities remain untouched.",
+      evidence: {
+        activeOpportunitiesReviewed: 0,
+        historicalOpportunitiesReviewed: opportunities.length,
+      },
+    };
+  }
+
+  if (
+    input.actionType === "update_current_opportunity" ||
+    input.actionType === "update_opportunity"
+  ) {
+    const opportunityExternalId = explicitExternalId(
+      input.payload,
+      "opportunityExternalId",
+      "externalId"
+    );
     if (!opportunityExternalId)
-      throw new Error("EXACT_OPPORTUNITY_REQUIRED: the reviewed action has no stable current opportunity ID.");
+      throw new Error(
+        "EXACT_OPPORTUNITY_REQUIRED: the reviewed action has no stable current opportunity ID."
+      );
     const opportunity = await input.adapter.getOpportunity({
       connection: input.connection,
       secret: input.secret,
       externalId: opportunityExternalId,
     });
     if (!opportunity || opportunity.externalId !== opportunityExternalId)
-      throw new Error("EXECUTION_OPPORTUNITY_STALE: the exact current opportunity no longer exists. Nothing was changed.");
-    if (contactExternalId && opportunity.contactExternalId && opportunity.contactExternalId !== contactExternalId)
-      throw new Error("EXECUTION_OPPORTUNITY_TARGET_MISMATCH: the opportunity no longer belongs to the exact customer. Nothing was changed.");
+      throw new Error(
+        "EXECUTION_OPPORTUNITY_STALE: the exact current opportunity no longer exists. Nothing was changed."
+      );
+    if (
+      contactExternalId &&
+      opportunity.contactExternalId &&
+      opportunity.contactExternalId !== contactExternalId
+    )
+      throw new Error(
+        "EXECUTION_OPPORTUNITY_TARGET_MISMATCH: the opportunity no longer belongs to the exact customer. Nothing was changed."
+      );
     if (opportunityIsHistorical(opportunity))
-      throw new Error("HISTORICAL_OPPORTUNITY_PROTECTED: the reviewed opportunity is now closed/historical and will not be modified.");
+      throw new Error(
+        "HISTORICAL_OPPORTUNITY_PROTECTED: the reviewed opportunity is now closed/historical and will not be modified."
+      );
     const patch = fields(input.payload);
-    const current = { ...opportunity.raw, stage: opportunity.stage, pipeline: opportunity.pipeline };
+    const current = {
+      ...opportunity.raw,
+      stage: opportunity.stage,
+      pipeline: opportunity.pipeline,
+    };
     if (samePatch(current, patch))
       return {
         alreadySatisfied: true,
-        detail: "The exact opportunity already satisfies the reviewed postcondition, so no duplicate write was made.",
+        detail:
+          "The exact opportunity already satisfies the reviewed postcondition, so no duplicate write was made.",
         evidence: { opportunityExternalId },
       };
-    return { alreadySatisfied: false, detail: "The exact current opportunity remains open and safe to update." };
+    return {
+      alreadySatisfied: false,
+      detail: "The exact current opportunity remains open and safe to update.",
+    };
   }
 
-  if (input.actionType === "update_contact" || input.actionType === "update_contact_status") {
+  if (
+    input.actionType === "update_contact" ||
+    input.actionType === "update_contact_status"
+  ) {
     const patch = fields(input.payload);
     if (!Object.keys(patch).length && input.payload.status !== undefined)
       patch.status = input.payload.status;
     const current = contact
-      ? { ...contact.raw, lifecycleStage: contact.lifecycleStage, status: contact.raw.status || contact.lifecycleStage }
+      ? {
+          ...contact.raw,
+          lifecycleStage: contact.lifecycleStage,
+          status: contact.raw.status || contact.lifecycleStage,
+        }
       : {};
     if (samePatch(current, patch))
       return {
         alreadySatisfied: true,
-        detail: "The exact contact already satisfies the reviewed postcondition, so no duplicate write was made.",
+        detail:
+          "The exact contact already satisfies the reviewed postcondition, so no duplicate write was made.",
         evidence: { contactExternalId },
       };
-    return { alreadySatisfied: false, detail: "The exact contact remains safe to update." };
+    return {
+      alreadySatisfied: false,
+      detail: "The exact contact remains safe to update.",
+    };
   }
 
   if (input.actionType === "schedule_callback") {
-    const taskTitle = String(input.payload.taskTitle || input.payload.title || input.proposal.title).trim();
-    const dueAt = typeof input.payload.dueAt === "string" ? input.payload.dueAt : undefined;
+    const taskTitle = String(
+      input.payload.taskTitle || input.payload.title || input.proposal.title
+    ).trim();
+    const dueAt =
+      typeof input.payload.dueAt === "string" ? input.payload.dueAt : undefined;
     if (!taskTitle)
-      throw new Error("CALLBACK_TITLE_REQUIRED: the configured callback task title is missing.");
-    const tasks = (await input.adapter.syncTasks({
-      connection: input.connection,
-      secret: input.secret,
-    })).records;
-    const opportunityExternalId = explicitExternalId(input.payload, "opportunityExternalId");
-    const duplicate = tasks.find(task => isEquivalentTask({
-      task,
-      contactExternalId: contactExternalId!,
-      opportunityExternalId,
-      taskTitle,
-      dueAt,
-    }));
+      throw new Error(
+        "CALLBACK_TITLE_REQUIRED: the configured callback task title is missing."
+      );
+    const tasks = (
+      await input.adapter.syncTasks({
+        connection: input.connection,
+        secret: input.secret,
+      })
+    ).records;
+    const opportunityExternalId = explicitExternalId(
+      input.payload,
+      "opportunityExternalId"
+    );
+    const duplicate = tasks.find(task =>
+      isEquivalentTask({
+        task,
+        contactExternalId: contactExternalId!,
+        opportunityExternalId,
+        taskTitle,
+        dueAt,
+      })
+    );
     if (duplicate)
       return {
         alreadySatisfied: true,
-        detail: "An equivalent open/future CRM task already exists, so no duplicate callback was created.",
+        detail:
+          "An equivalent open/future CRM task already exists, so no duplicate callback was created.",
         evidence: { taskExternalId: duplicate.externalId },
       };
-    return { alreadySatisfied: false, detail: "No equivalent open/future CRM task exists." };
+    return {
+      alreadySatisfied: false,
+      detail: "No equivalent open/future CRM task exists.",
+    };
   }
 
-  if (input.actionType === "append_contact_note" || OUTBOUND_ACTIONS.has(input.actionType) || input.actionType === "apply_sequence") {
-    const activities = (await input.adapter.syncActivities({
-      connection: input.connection,
-      secret: input.secret,
-    })).records.filter(
-      item => !item.contactExternalId || item.contactExternalId === contactExternalId
+  if (
+    input.actionType === "append_contact_note" ||
+    OUTBOUND_ACTIONS.has(input.actionType) ||
+    input.actionType === "apply_sequence"
+  ) {
+    const activities = (
+      await input.adapter.syncActivities({
+        connection: input.connection,
+        secret: input.secret,
+      })
+    ).records.filter(
+      item =>
+        !item.contactExternalId || item.contactExternalId === contactExternalId
     );
     if (input.actionType === "append_contact_note") {
-      const body = String(input.payload.content ?? input.payload.note ?? input.payload.message ?? input.proposal.title).trim();
+      const body = String(
+        input.payload.content ??
+          input.payload.note ??
+          input.payload.message ??
+          input.proposal.title
+      ).trim();
       const duplicate = activities.find(item => activityBody(item) === body);
       if (duplicate)
         return {
           alreadySatisfied: true,
-          detail: "The exact note content already exists in CRM activity, so it was not appended twice.",
+          detail:
+            "The exact note content already exists in CRM activity, so it was not appended twice.",
           evidence: { activityExternalId: duplicate.externalId },
         };
     }
     if (OUTBOUND_ACTIONS.has(input.actionType)) {
-      const body = String(input.payload.body ?? input.payload.templateText ?? input.payload.message ?? "").trim();
-      const channel = input.actionType.includes("whatsapp") ? "whatsapp" : "sms";
+      const body = String(
+        input.payload.body ??
+          input.payload.templateText ??
+          input.payload.message ??
+          ""
+      ).trim();
+      const channel = input.actionType.includes("whatsapp")
+        ? "whatsapp"
+        : "sms";
       const duplicate = activities.find(item => {
         if (activityBody(item) !== body) return false;
         const observed = activityChannel(item);
-        return !observed || observed.includes(channel) || observed.includes("message");
+        return (
+          !observed ||
+          observed.includes(channel) ||
+          observed.includes("message")
+        );
       });
       if (duplicate)
         return {
@@ -461,17 +629,23 @@ export async function checkApprovedCrmExecutionPreconditions(input: {
         };
     }
     if (input.actionType === "apply_sequence") {
-      const sequence = String(input.payload.sequence ?? input.payload.templateName ?? "").trim();
+      const sequence = String(
+        input.payload.sequence ?? input.payload.templateName ?? ""
+      ).trim();
       if (!sequence)
-        throw new Error("SEQUENCE_REQUIRED: the configured CRM sequence is missing.");
+        throw new Error(
+          "SEQUENCE_REQUIRED: the configured CRM sequence is missing."
+        );
       const duplicate = activities.find(item =>
-        [item.raw.sequence, item.raw.sequenceName, item.raw.sequenceKey]
-          .some(value => norm(value) === norm(sequence))
+        [item.raw.sequence, item.raw.sequenceName, item.raw.sequenceKey].some(
+          value => norm(value) === norm(sequence)
+        )
       );
       if (duplicate)
         return {
           alreadySatisfied: true,
-          detail: "The configured sequence is already evidenced on the exact customer, so it will not be applied twice.",
+          detail:
+            "The configured sequence is already evidenced on the exact customer, so it will not be applied twice.",
           evidence: { activityExternalId: duplicate.externalId },
         };
     }

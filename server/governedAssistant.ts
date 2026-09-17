@@ -334,7 +334,8 @@ async function performSafeRead(input: {
       return {
         state: "answered",
         proposalCount: 0,
-        summary: "The matching customer record is no longer available in the CRM.",
+        summary:
+          "The matching customer record is no longer available in the CRM.",
         needsClarification: false,
         route: input.route,
       };
@@ -387,7 +388,9 @@ async function performSafeRead(input: {
     const records = (await adapter.syncTasks({ ...context })).records.filter(
       item => item.contactExternalId === exactCustomer.contactExternalId
     );
-    const open = records.filter(item => !/complete|closed|done/i.test(item.status));
+    const open = records.filter(
+      item => !/complete|closed|done/i.test(item.status)
+    );
     return {
       state: "answered",
       proposalCount: 0,
@@ -458,7 +461,9 @@ async function performWatchtowerAnalysis(input: {
       includePromises: input.route.agentKey === "promise_tracker",
     });
     if (input.route.agentKey === "sales_comms_tracker") {
-      const waiting = watchtower.salesComms.filter(item => item.waitingOnUs).length;
+      const waiting = watchtower.salesComms.filter(
+        item => item.waitingOnUs
+      ).length;
       return {
         state: "answered",
         proposalCount: 0,
@@ -568,7 +573,7 @@ function bindWorkflowActionToCustomer(
   action: ProposedAction,
   customer: ResolvedAssistantCustomerContext
 ): ProposedAction {
-  const payload = {
+  const payload: Record<string, unknown> = {
     ...action.payload,
     contactExternalId: customer.contactExternalId,
     preferredConnectedSystemId: customer.connectedSystemId,
@@ -597,6 +602,19 @@ function bindWorkflowActionToCustomer(
         ...payload,
         taskExternalId:
           customer.operationalRecordState.currentActiveTaskExternalId,
+      },
+    };
+  if (action.actionType === "create_opportunity")
+    return {
+      ...action,
+      targetLabel: customer.contactName,
+      idempotencyKey: `${customer.connectedSystemId}:${customer.contactExternalId}:${action.idempotencyKey}`,
+      payload: {
+        ...payload,
+        fields: {
+          ...((payload.fields as Record<string, unknown> | undefined) || {}),
+          contactExternalId: customer.contactExternalId,
+        },
       },
     };
   if (
@@ -761,7 +779,8 @@ export async function prepareGovernedAssistantRequest(input: {
       return {
         state: "connection_not_ready",
         proposalCount: 0,
-        summary: "The CRM connection is not ready to prepare that callback yet.",
+        summary:
+          "The CRM connection is not ready to prepare that callback yet.",
         needsClarification: false,
         route,
       };

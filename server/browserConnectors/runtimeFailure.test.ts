@@ -15,6 +15,10 @@ describe("learned browser runtime failure truth", () => {
     ["EXECUTION_UNVERIFIED: postcondition mismatch", "postcondition_failure"],
     ["REAUTHENTICATION_REQUIRED", "authentication"],
     ["CDP transport timed out", "transient_transport"],
+    [
+      "GENIE_CONTACT_SEARCH_HTTP_ERROR: Contacts search page 17 returned HTTP 520.",
+      "transient_transport",
+    ],
     ["CRM_VIEWER_AGENT_CONTROL_ACTIVE", "transient_transport"],
     ["CRM_VIEWER_HUMAN_CONTROL_ACTIVE", "transient_transport"],
     ["CRM_BROWSER_CONTROL_LEASE_LOST", "transient_transport"],

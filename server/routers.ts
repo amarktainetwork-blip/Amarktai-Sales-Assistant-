@@ -124,6 +124,7 @@ import { syncConnectedSystem, syncConnectedSystemsForUser } from "./crm/sync";
 import { getTodayWork } from "./today";
 import { listPersonalCrmCustomers } from "./personalCrmCustomers";
 import {
+  listNewLeadAlerts,
   resolveSalesWorkAfterVerifiedAction,
   transitionSalesWorkItem,
 } from "./salesWork";
@@ -1525,6 +1526,21 @@ export const appRouter = router({
         return getTodayWork({
           userId: ctx.user.id,
           organisationId: input.organisationId,
+        });
+      }),
+    newLeadAlerts: secondFactorProcedure
+      .input(
+        z.object({
+          organisationId: z.number().int().positive(),
+          limit: z.number().int().min(1).max(50).optional(),
+        })
+      )
+      .query(({ ctx, input }) => {
+        requireActiveOrganisationContext(ctx, input.organisationId);
+        return listNewLeadAlerts({
+          userId: ctx.user.id,
+          organisationId: input.organisationId,
+          limit: input.limit,
         });
       }),
     workAction: secondFactorProcedure

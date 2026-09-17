@@ -141,6 +141,13 @@ export function normalizeGenieContactSearchPage(
                 null,
             ])
         ),
+        customFieldLabels: Object.fromEntries(
+          (Array.isArray(raw.customFields) ? raw.customFields : [])
+            .map(object)
+            .filter(f => typeof f.id === "string")
+            .map(f => [f.id, text(f.name || f.label || f.fieldKey || f.key)])
+            .filter(([, label]) => Boolean(label))
+        ),
       }),
       sourceUpdatedAt: text(raw.dateUpdated || raw.updatedAt),
       sourceRevision: text(raw.dateUpdated || raw.updatedAt),
@@ -157,6 +164,11 @@ export function normalizeGenieContactSearchPage(
 
 async function browserToken(page: Page) {
   const token = await page.evaluate(async () => {
+    const stored =
+      localStorage.getItem("refreshedToken") ||
+      sessionStorage.getItem("refreshedToken") ||
+      "";
+    if (stored) return stored;
     const getToken = (window as Window & { getToken?: () => unknown }).getToken;
     if (typeof getToken !== "function") return "";
     return String(await getToken());
@@ -175,14 +187,16 @@ export async function fetchOwnerScopedContactPage(input: {
   pageNumber: number;
   searchAfter?: unknown;
 }) {
-  const request = (token: string) =>
+  const request = (token: string, authorization = false) =>
     input.page.context().request.post(CONTACT_SEARCH_URL, {
       headers: {
         "content-type": "application/json",
         channel: "APP",
         source: "WEB_USER",
         version: "2021-07-28",
-        "token-id": token,
+        ...(authorization
+          ? { Authorization: `Bearer ${token}` }
+          : { "token-id": token }),
       },
       data: scopeGenieContactSearchBody(
         {
@@ -201,13 +215,25 @@ export async function fetchOwnerScopedContactPage(input: {
 
   let token = input.token;
   let response = await request(token);
-  if (response.status() === 401) {
+  if ([401, 403].includes(response.status())) {
     token = await browserToken(input.page);
+    response = await request(token);
+    if ([401, 403].includes(response.status()))
+      response = await request(token, true);
+  }
+  // Retry only this authenticated read page; never restart the full drain or change scope.
+  for (
+    let retry = 0;
+    [429, 502, 503, 504, 520, 521, 522, 523, 524].includes(response.status()) &&
+    retry < 2;
+    retry++
+  ) {
+    await new Promise(resolve => setTimeout(resolve, 500 * (retry + 1)));
     response = await request(token);
   }
   if (!response.ok())
     throw new Error(
-      `GENIE_CONTACT_SEARCH_HTTP_ERROR: Contacts search returned HTTP ${response.status()}.`
+      `GENIE_CONTACT_SEARCH_HTTP_ERROR: Contacts search page ${input.pageNumber} returned HTTP ${response.status()}.`
     );
   const payload = await response.json();
   return {
@@ -246,6 +272,7 @@ export async function executeOwnerScopedGenieContactRead(input: {
     suffix: string
   ) => Promise<BrowserScriptResult>;
   assertControl: () => void;
+  latestPageOnly?: boolean;
 }) {
   const owner = input.ownerExternalId.trim();
   const navigation = ownerScopedGenieContactNavigation(input.script);
@@ -285,6 +312,7 @@ export async function executeOwnerScopedGenieContactRead(input: {
     for (const record of pageResult.records)
       byId.set(record.externalId, record);
 
+    if (input.latestPageOnly) break;
     if (!pageResult.records.length) break;
     if (pageResult.records.length < PAGE_LIMIT) break;
 
@@ -310,6 +338,9 @@ export async function executeOwnerScopedGenieContactRead(input: {
     );
 
   execution.data.records = JSON.stringify(Array.from(byId.values()));
+  execution.data.sourceTotal = total === undefined ? "" : String(total);
+  execution.data.pagesRead = String(pagesRead);
+  execution.data.latestPageOnly = input.latestPageOnly ? "true" : "false";
   execution.data.collectionEvidence =
     total === 0 || byId.size === 0
       ? "Owner-scoped Genie contacts verified zero records."

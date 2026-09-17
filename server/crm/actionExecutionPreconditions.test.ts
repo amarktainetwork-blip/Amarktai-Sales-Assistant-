@@ -85,18 +85,31 @@ describe("approved CRM execution preconditions", () => {
       active = false;
       return { records: [] };
     };
-    const adapter = baseAdapter({ syncTasks: read("tasks"), syncOpportunities: read("opportunities"), syncActivities: read("activities") });
-    await expect(verifyFreshWorkflowContext({ adapter, connection, secret: {}, contactExternalId: "contact-1" })).resolves.toMatchObject({ evidence: { contextReadVerified: true } });
+    const adapter = baseAdapter({
+      syncTasks: read("tasks"),
+      syncOpportunities: read("opportunities"),
+      syncActivities: read("activities"),
+    });
+    await expect(
+      verifyFreshWorkflowContext({
+        adapter,
+        connection,
+        secret: {},
+        contactExternalId: "contact-1",
+      })
+    ).resolves.toMatchObject({ evidence: { contextReadVerified: true } });
     expect(calls).toEqual(["tasks", "opportunities", "activities"]);
   });
   it("classifies completed tasks and closed opportunities as historical", () => {
-    expect(taskIsHistorical({ status: "completed", completedAt: undefined })).toBe(
-      true
-    );
+    expect(
+      taskIsHistorical({ status: "completed", completedAt: undefined })
+    ).toBe(true);
     expect(taskIsHistorical({ status: "open", completedAt: undefined })).toBe(
       false
     );
-    expect(opportunityIsHistorical({ stage: "Closed Lost", raw: {} })).toBe(true);
+    expect(opportunityIsHistorical({ stage: "Closed Lost", raw: {} })).toBe(
+      true
+    );
     expect(
       opportunityIsHistorical({ stage: "Discovery", raw: { status: "open" } })
     ).toBe(false);
@@ -281,6 +294,70 @@ describe("approved CRM execution preconditions", () => {
         },
       })
     ).rejects.toThrow("EXECUTION_TASK_TITLE_MISMATCH");
+  });
+
+  it("never creates a second opportunity when a current/open opportunity exists", async () => {
+    const adapter = baseAdapter({
+      syncOpportunities: vi.fn(async () => ({
+        records: [
+          {
+            externalId: "opp-open",
+            contactExternalId: "contact-1",
+            name: "Existing current opportunity",
+            stage: "New Lead / Uncontacted",
+            raw: { status: "open" },
+          },
+        ],
+      })),
+    });
+    await expect(
+      checkApprovedCrmExecutionPreconditions({
+        actionType: "create_opportunity",
+        adapter,
+        connection,
+        secret: { browserSession: {} },
+        proposal: proposal("create_opportunity", {
+          contactExternalId: "contact-1",
+          fields: { stage: "Attempting Contact" },
+        }),
+        payload: {
+          contactExternalId: "contact-1",
+          fields: { stage: "Attempting Contact" },
+        },
+      })
+    ).rejects.toThrow("ACTIVE_OPPORTUNITY_ALREADY_EXISTS");
+  });
+
+  it("allows opportunity creation only when fresh CRM truth contains historical opportunities and no active one", async () => {
+    const adapter = baseAdapter({
+      syncOpportunities: vi.fn(async () => ({
+        records: [
+          {
+            externalId: "opp-old",
+            contactExternalId: "contact-1",
+            name: "Previous enquiry",
+            stage: "Closed Lost",
+            raw: { status: "lost" },
+          },
+        ],
+      })),
+    });
+    await expect(
+      checkApprovedCrmExecutionPreconditions({
+        actionType: "create_opportunity",
+        adapter,
+        connection,
+        secret: { browserSession: {} },
+        proposal: proposal("create_opportunity", {
+          contactExternalId: "contact-1",
+          fields: { stage: "Attempting Contact" },
+        }),
+        payload: {
+          contactExternalId: "contact-1",
+          fields: { stage: "Attempting Contact" },
+        },
+      })
+    ).resolves.toMatchObject({ alreadySatisfied: false });
   });
 
   it("fails closed for invalid configured office hours", () => {

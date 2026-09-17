@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   REVIEW_EXECUTION_CLAIM_TTL_MS,
@@ -32,9 +33,7 @@ describe("review lifecycle", () => {
         {
           state: "approved",
           executionClaimId: "claim-1",
-          executionClaimedAt: new Date(
-            now - REVIEW_EXECUTION_CLAIM_TTL_MS - 1
-          ),
+          executionClaimedAt: new Date(now - REVIEW_EXECUTION_CLAIM_TTL_MS - 1),
         },
         now
       )
@@ -58,6 +57,18 @@ describe("review lifecycle", () => {
 
   it("uses the canonical AmarktAI spelling in visible lifecycle copy", () => {
     expect(REVIEW_LIFECYCLE_COPY.executing.description).toContain("AmarktAI");
-    expect(REVIEW_LIFECYCLE_COPY.executing.description).not.toContain("Amarktai");
+    expect(REVIEW_LIFECYCLE_COPY.executing.description).not.toContain(
+      "Amarktai"
+    );
   });
+});
+
+it("keeps approved draft-only content non-executable in the Review controls", () => {
+  const source = readFileSync(
+    new URL("../pages/Reviews.tsx", import.meta.url),
+    "utf8"
+  );
+  expect(source).toMatch(
+    /\["pending", "approved", "blocked"\]\.includes\(lifecycle\)\s*&&\s*draftOnly/
+  );
 });

@@ -17,6 +17,7 @@ export function queryRecorder(resolve: (query: any) => unknown[]) {
             leftJoin: () => chain,
             orderBy: (...values: any[]) => {
               q.order = values;
+              q.orderSql = values.map(value => dialect.sqlToQuery(value));
               return chain;
             },
             limit: (n: number) => {

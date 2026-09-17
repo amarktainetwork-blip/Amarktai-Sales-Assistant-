@@ -84,3 +84,43 @@ describe("Today call queue", () => {
     expect(queue).toEqual([]);
   });
 });
+
+describe("Today new lead priority", () => {
+  it("puts a genuine new lead ahead of overdue work and carries course context", () => {
+    const queue = buildTodayCallQueue({
+      contacts: [
+        {
+          ...contacts[0],
+          courseInterest: "Cyber Security",
+          tags: ["course — cyber security"],
+        },
+        contacts[1],
+      ],
+      newLeads: [
+        {
+          workItemId: 90,
+          connectedSystemId: 8,
+          contactExternalId: "a",
+          createdAt: new Date("2026-09-17T09:00:00Z"),
+        },
+      ],
+      overdueTasks: [
+        {
+          id: 11,
+          connectedSystemId: 8,
+          contactExternalId: "b",
+          title: "Call back",
+          dueAt: new Date("2026-09-15T10:00:00Z"),
+        },
+      ],
+      inbound: [],
+      dueToday: [],
+    });
+    expect(queue.map(item => item.name)).toEqual(["Alice Example", "Bob"]);
+    expect(queue[0]).toMatchObject({
+      primaryKind: "new_lead",
+      courseInterest: "Cyber Security",
+      workItemIds: [90],
+    });
+  });
+});

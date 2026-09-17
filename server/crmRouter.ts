@@ -30,12 +30,9 @@ export type PersonalMicrosoftRouteContext = {
  * cannot be governed safely at execution time.
  */
 export const ACTION_CONNECTED_CAPABILITIES: Record<string, string[][]> = {
-  verify_contact_context: [[
-    "contacts.read",
-    "tasks.read",
-    "opportunities.read",
-    "activities.read",
-  ]],
+  verify_contact_context: [
+    ["contacts.read", "tasks.read", "opportunities.read", "activities.read"],
+  ],
   append_contact_note: [
     ["notes.read", "notes.write"],
     ["activities.read", "activities.write"],
@@ -48,7 +45,7 @@ export const ACTION_CONNECTED_CAPABILITIES: Record<string, string[][]> = {
   create_company: [["companies.write"]],
   update_current_opportunity: [["opportunities.read", "opportunities.write"]],
   update_opportunity: [["opportunities.read", "opportunities.write"]],
-  create_opportunity: [["opportunities.write"]],
+  create_opportunity: [["opportunities.read", "opportunities.write"]],
   create_activity: [["activities.write"]],
   send_email_template: [["email.send"]],
   send_email: [["email.send"]],
@@ -60,7 +57,10 @@ export const ACTION_CONNECTED_CAPABILITIES: Record<string, string[][]> = {
 };
 
 function isBrowserConnection(system: ConnectedSystemRoute) {
-  return system.connectionMethod === "browser" || system.connectionMethod === "sidecar";
+  return (
+    system.connectionMethod === "browser" ||
+    system.connectionMethod === "sidecar"
+  );
 }
 
 export function connectedSystemSupportsAction(
@@ -80,7 +80,10 @@ export function connectedSystemSupportsAction(
     return Boolean(
       customOperationKey &&
         isCustomOperationKey(customOperationKey) &&
-        productionOperationAvailable(system.learnedOperations, customOperationKey)
+        productionOperationAvailable(
+          system.learnedOperations,
+          customOperationKey
+        )
     );
   }
 
@@ -88,7 +91,9 @@ export function connectedSystemSupportsAction(
     ["activities.write"],
   ];
   return alternatives.some(required =>
-    required.every(capability => system.verifiedCapabilities.includes(capability))
+    required.every(capability =>
+      system.verifiedCapabilities.includes(capability)
+    )
   );
 }
 
@@ -96,8 +101,7 @@ function routedActionType(action: {
   actionType: string;
   payload: Record<string, unknown>;
 }) {
-  if (action.actionType !== "deterministic_crm_batch")
-    return action.actionType;
+  if (action.actionType !== "deterministic_crm_batch") return action.actionType;
   const plan = action.payload.batchPlan;
   if (!plan || typeof plan !== "object" || Array.isArray(plan)) return "";
   const nested = (plan as Record<string, unknown>).actionType;
@@ -110,9 +114,12 @@ function routedPayload(action: {
 }) {
   if (action.actionType !== "deterministic_crm_batch") return action.payload;
   const plan = action.payload.batchPlan;
-  if (!plan || typeof plan !== "object" || Array.isArray(plan)) return action.payload;
+  if (!plan || typeof plan !== "object" || Array.isArray(plan))
+    return action.payload;
   const nestedPayload = (plan as Record<string, unknown>).payload;
-  return nestedPayload && typeof nestedPayload === "object" && !Array.isArray(nestedPayload)
+  return nestedPayload &&
+    typeof nestedPayload === "object" &&
+    !Array.isArray(nestedPayload)
     ? (nestedPayload as Record<string, unknown>)
     : action.payload;
 }
@@ -125,14 +132,17 @@ function delegatedMicrosoftRoute(
   actionType: string,
   personalMicrosoft?: PersonalMicrosoftRouteContext
 ) {
-  const email = actionType === "send_email" || actionType === "send_email_template";
+  const email =
+    actionType === "send_email" || actionType === "send_email_template";
   const calendar = actionType === "create_calendar_event";
   if (!email && !calendar) return undefined;
   const requiredCapabilities = email
     ? ["Mail.Read", "Mail.Send"]
     : ["Calendars.ReadWrite"];
   const requiredCapability = requiredCapabilities.join(" + ");
-  const displayName = email ? "Your Microsoft mailbox" : "Your Microsoft calendar";
+  const displayName = email
+    ? "Your Microsoft mailbox"
+    : "Your Microsoft calendar";
   const connectMessage = email
     ? "Connect your Microsoft mailbox before preparing an executable email action."
     : "Connect your Microsoft calendar before preparing an executable calendar action.";
@@ -144,7 +154,9 @@ function delegatedMicrosoftRoute(
       requiredCapabilities,
       connectionMode: "per_user_delegated_oauth" as const,
     };
-  const scopes = new Set(personalMicrosoft.scopes.map(scope => scope.toLowerCase()));
+  const scopes = new Set(
+    personalMicrosoft.scopes.map(scope => scope.toLowerCase())
+  );
   const missing = requiredCapabilities.filter(
     capability => !scopes.has(capability.toLowerCase())
   );
@@ -174,7 +186,9 @@ export function routeConnectedSystemActions<
   systems: ConnectedSystemRoute[],
   options?: { personalMicrosoft?: PersonalMicrosoftRouteContext }
 ) {
-  const eligibleSystems = systems.filter(system => connectionCanRoute(system.status));
+  const eligibleSystems = systems.filter(system =>
+    connectionCanRoute(system.status)
+  );
   return actions.map(action => {
     const effectiveActionType = routedActionType(action);
     const effectivePayload = routedPayload(action);
@@ -195,7 +209,9 @@ export function routeConnectedSystemActions<
         : undefined;
     const alternatives = customAction
       ? []
-      : ACTION_CONNECTED_CAPABILITIES[effectiveActionType] || [["activities.write"]];
+      : ACTION_CONNECTED_CAPABILITIES[effectiveActionType] || [
+          ["activities.write"],
+        ];
     const preferred =
       typeof effectivePayload.preferredProvider === "string"
         ? effectivePayload.preferredProvider
@@ -204,15 +220,16 @@ export function routeConnectedSystemActions<
       typeof effectivePayload.preferredConnectedSystemId === "number"
         ? effectivePayload.preferredConnectedSystemId
         : undefined;
-    const eligible = customAction && !customOperationKey
-      ? []
-      : eligibleSystems.filter(system =>
-          connectedSystemSupportsAction(
-            system,
-            effectiveActionType,
-            customOperationKey
-          )
-        );
+    const eligible =
+      customAction && !customOperationKey
+        ? []
+        : eligibleSystems.filter(system =>
+            connectedSystemSupportsAction(
+              system,
+              effectiveActionType,
+              customOperationKey
+            )
+          );
     const chosen = preferredConnectedSystemId
       ? eligible.find(system => system.id === preferredConnectedSystemId)
       : preferred

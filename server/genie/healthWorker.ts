@@ -6,6 +6,7 @@ import { startAutomaticCommissioningWorker } from "../crm/automaticCommissioning
 import { startPersonalWorkLearningWorker } from "../personalWorkLearning";
 import { syncReadyDelegatedMailboxes } from "../mailboxWorker";
 import { startConnectionScopedCrmSyncWorker } from "../crm/syncWorker";
+import { startNewLeadWatcher } from "../crm/leadWatcher";
 
 const intervalMs = Number(
   process.env.CRM_HEALTH_INTERVAL_MS || 24 * 60 * 60 * 1000
@@ -77,6 +78,7 @@ startCompanyKnowledgeWorker();
 startAutomaticCommissioningWorker();
 startPersonalWorkLearningWorker();
 startConnectionScopedCrmSyncWorker();
+startNewLeadWatcher();
 
 process.on("SIGTERM", () => process.exit(0));
 process.on("SIGINT", () => process.exit(0));

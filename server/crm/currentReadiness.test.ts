@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { calculateCurrentReadiness } from "./currentReadiness";
+import {
+  calculateCurrentReadiness,
+  shouldPreserveConnectionStatus,
+} from "./currentReadiness";
 import { browserOperationStatusAfterResult } from "../browserConnectors/learnedOperations";
 import { classifyBrowserRuntimeFailure } from "../browserConnectors/runtimeFailure";
 const base = {
@@ -11,6 +14,16 @@ const base = {
   ],
 };
 describe("current readiness convergence", () => {
+  it("recovers authentication_expired only after a successful authenticated browser proof", () => {
+    expect(
+      shouldPreserveConnectionStatus("authentication_expired", false)
+    ).toBe(true);
+    expect(shouldPreserveConnectionStatus("authentication_expired", true)).toBe(
+      false
+    );
+    expect(shouldPreserveConnectionStatus("paused", true)).toBe(true);
+    expect(shouldPreserveConnectionStatus("disconnected", true)).toBe(true);
+  });
   it("recovers a failed read through controlled proof and successful canonical cursor", () => {
     let status = browserOperationStatusAfterResult({
       currentStatus: "LIVE_PROVEN",

@@ -66,7 +66,8 @@ export async function getTodayTaskData(input: {
         ),
         sql` `
       )} else ${input.priorityTitles.length} end`
-    : sql`0`;
+    : undefined;
+  const priorityOrder = rank ? [rank] : [];
   const [
     overdueCount,
     dueTodayCount,
@@ -88,19 +89,19 @@ export async function getTodayTaskData(input: {
       .select()
       .from(crmTasks)
       .where(overdue)
-      .orderBy(rank, asc(crmTasks.dueAt), asc(crmTasks.id))
+      .orderBy(...priorityOrder, asc(crmTasks.dueAt), asc(crmTasks.id))
       .limit(50),
     db
       .select()
       .from(crmTasks)
       .where(today)
-      .orderBy(rank, asc(crmTasks.dueAt), asc(crmTasks.id))
+      .orderBy(...priorityOrder, asc(crmTasks.dueAt), asc(crmTasks.id))
       .limit(50),
     db
       .select()
       .from(crmTasks)
       .where(and(current, isNull(crmTasks.dueAt)))
-      .orderBy(rank, asc(crmTasks.id))
+      .orderBy(...priorityOrder, asc(crmTasks.id))
       .limit(20),
   ]);
   return {

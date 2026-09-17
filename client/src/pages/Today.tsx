@@ -54,6 +54,14 @@ export default function Today() {
   const refreshInFlight = useRef(false);
   const syncAll = trpc.connectedSystems.syncAll.useMutation();
 
+  const acknowledgeLead = trpc.sales.workAction.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.sales.today.invalidate(),
+        utils.sales.newLeadAlerts.invalidate(),
+      ]);
+    },
+  });
   const saveReminder = trpc.memory.command.useMutation({
     onSuccess: () => {
       setReminder("");
@@ -71,6 +79,7 @@ export default function Today() {
   });
 
   const callQueue = today.data?.queues.callQueue ?? [];
+  const newLeads = today.data?.queues.newLeads ?? [];
   const current = callQueue[selected];
   const workspace = today.data?.workspace.organisation;
 
@@ -143,6 +152,22 @@ export default function Today() {
       `/assistant?${contactId ? `contactId=${contactId}&` : ""}prompt=${encodeURIComponent(prompt)}`
     );
 
+  const openLead = (lead: (typeof newLeads)[number], prepare = false) => {
+    const workItemId = lead.workItemIds[0];
+    if (organisationId && workItemId)
+      acknowledgeLead.mutate({
+        organisationId,
+        workItemId,
+        action: "start",
+        transitionKey: `today-new-lead:${workItemId}`,
+      });
+    navigate(
+      prepare
+        ? `/assistant?contactId=${lead.contactId}&prompt=${encodeURIComponent("Prepare me for this new lead. Summarise their course interest, enquiry context and what I should ask on the first call.")}`
+        : `/customers?contactId=${lead.contactId}`
+    );
+  };
+
   const dateLabel = (value?: Date | string | null) =>
     value
       ? formatOrganisationDate(new Date(value), workspace || {})
@@ -174,8 +199,8 @@ export default function Today() {
           </p>
           <Button
             className="mt-5"
-            disabled={refreshing}
-            onClick={() => void refreshDay()}
+            disabled={today.isFetching}
+            onClick={() => void today.refetch()}
           >
             <RefreshCw className="mr-2 h-4 w-4" />
             Try again
@@ -277,6 +302,43 @@ export default function Today() {
           </div>
         ) : null}
 
+        {newLeads.length ? (
+          <section
+            data-today-new-leads
+            className="rounded-3xl border border-[#BFD2F8] bg-[#EDF4FF] p-5 shadow-sm sm:p-6"
+          >
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-[#2F6FED] px-2.5 py-1 text-[10px] font-black uppercase tracking-[.1em] text-white">
+                    New leads · {newLeads.length}
+                  </span>
+                  <span className="text-sm font-bold text-[#315EA8]">
+                    First contact comes first
+                  </span>
+                </div>
+                <h2 className="mt-3 font-display text-2xl font-bold tracking-[-.04em]">
+                  {newLeads[0].name}
+                </h2>
+                <p className="mt-1 text-sm font-semibold text-[#526985]">
+                  {newLeads[0].courseInterest
+                    ? `Course interest: ${newLeads[0].courseInterest}`
+                    : "Course interest not yet identified — open the lead context before calling."}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={() => openLead(newLeads[0])}>Open lead</Button>
+                <Button
+                  variant="outline"
+                  onClick={() => openLead(newLeads[0], true)}
+                >
+                  <Bot className="mr-2 h-4 w-4" /> Prepare call
+                </Button>
+              </div>
+            </div>
+          </section>
+        ) : null}
+
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <Metric
             icon={Phone}
@@ -297,10 +359,10 @@ export default function Today() {
             note="Customer replies only"
           />
           <Metric
-            icon={AlarmClock}
-            label="Open CRM tasks"
-            value={taskMetrics?.incomplete ?? 0}
-            note="Future work stays out of today's way"
+            icon={UserRound}
+            label="New leads"
+            value={metrics?.newLeads ?? 0}
+            note="Fresh enquiries waiting for first contact"
           />
         </section>
 
@@ -353,6 +415,11 @@ export default function Today() {
                             {item.workCount} items
                           </span>
                         ) : null}
+                        {item.primaryKind === "new_lead" ? (
+                          <span className="rounded-full bg-[#2F6FED] px-2 py-0.5 text-[10px] font-black uppercase tracking-[.08em] text-white">
+                            New lead
+                          </span>
+                        ) : null}
                       </span>
                       <span className="mt-1 block truncate text-sm text-[#5D6E83]">
                         {item.headline}
@@ -393,6 +460,11 @@ export default function Today() {
                 <p className="mt-2 text-sm font-semibold text-[#526277]">
                   {current.headline}
                 </p>
+                {current.courseInterest ? (
+                  <p className="mt-2 rounded-xl bg-[#EDF4FF] px-3 py-2 text-sm font-bold text-[#315EA8]">
+                    Course interest: {current.courseInterest}
+                  </p>
+                ) : null}
                 <div className="mt-4 space-y-2 rounded-2xl bg-[#F7F9FC] p-4 text-sm text-[#526277]">
                   {current.reasons.map((reason: string) => (
                     <p key={reason}>• {reason}</p>

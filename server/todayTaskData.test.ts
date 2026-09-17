@@ -48,3 +48,55 @@ describe("Today aggregate contract", () => {
     ).toBe(true);
   });
 });
+
+describe("MariaDB task queue ordering", () => {
+  it.each([
+    { priorityTitles: [] },
+    { priorityTitles: ["First contact", "Follow up"] },
+  ])(
+    "uses valid ordering for priority titles %j",
+    async ({ priorityTitles }) => {
+      const r = queryRecorder(q => (q.selection?.total ? [{ total: 0 }] : []));
+      m.db.mockResolvedValue(r.db);
+      const result = await getTodayTaskData({
+        userId: 2,
+        organisationId: 8,
+        timezone: "Europe/London",
+        now: new Date("2026-10-25T12:00:00Z"),
+        priorityTitles,
+      });
+      expect(result.bounds.start.toISOString()).toBe(
+        "2026-10-24T23:00:00.000Z"
+      );
+      expect(result.bounds.endExclusive.toISOString()).toBe(
+        "2026-10-26T00:00:00.000Z"
+      );
+      const queues = r.queries.filter(q => q.limit);
+      expect(queues).toHaveLength(3);
+      for (const [index, q] of queues.entries()) {
+        const order = q.orderSql.map((v: any) => v.sql).join(", ");
+        expect(order).not.toMatch(/(?:^|,)\s*0(?:\s*,|$)/);
+        expect(order).toContain("`crmTasks`.`id` asc");
+        if (index < 2) expect(order).toContain("`crmTasks`.`dueAt` asc");
+        if (priorityTitles.length) {
+          expect(order).toContain("case when lower(trim(");
+          expect(q.orderSql[0].params).toEqual([
+            "first contact",
+            0,
+            "follow up",
+            1,
+            2,
+          ]);
+        } else {
+          expect(order).not.toContain("case");
+          expect(q.orderSql).toHaveLength(index < 2 ? 2 : 1);
+        }
+      }
+      expect(result.metrics).toMatchObject({
+        overdue: 0,
+        dueToday: 0,
+        incomplete: 0,
+      });
+    }
+  );
+});

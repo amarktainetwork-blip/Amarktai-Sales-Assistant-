@@ -549,6 +549,7 @@ export async function recordBrowserOperationResult(input: {
   await reconcileCurrentBrowserReadiness({
     organisationId: input.organisationId,
     connectedSystemId: input.connectedSystemId,
+    authenticationVerified: input.success,
   });
   return { status };
 }
