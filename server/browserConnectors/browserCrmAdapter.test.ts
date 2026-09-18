@@ -341,8 +341,13 @@ describe("browser profile", () => {
       "utf8"
     );
     expect(source).toContain("reproveRecentContactsRead");
+    expect(source).toContain("reproveRoutineRead");
     expect(source).toContain("CRM_READ_REPROOF_OWNER_REQUIRED");
     expect(source).toContain("CRM_READ_REPROOF_USER_SCOPE_MISMATCH");
+    expect(source).toContain("CRM_READ_REPROOF_CAPABILITY_NOT_AUTHORIZED");
+    expect(source).toContain('resource: "contacts" | "tasks" | "opportunities"');
+    expect(source).toContain('list("syncTasks", task');
+    expect(source).toContain('"syncOpportunities"');
     expect(source).toContain("allowTestReady: true");
     expect(source).toContain("publishByUserId: input.publishByUserId");
   });

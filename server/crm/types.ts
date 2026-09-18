@@ -203,6 +203,17 @@ export type CrmAdapter = {
     secret: ConnectionSecretPayload;
     publishByUserId: number;
   }) => Promise<{ records: NormalizedContact[] }>;
+  /**
+   * Internal exact-owner self-heal for routine read operations that were
+   * degraded by an authentication/transport interruption. The resource enum is
+   * intentionally closed so this path can never be used for a write operation.
+   */
+  reproveRoutineRead?: (input: {
+    connection: AdapterConnection;
+    secret: ConnectionSecretPayload;
+    publishByUserId: number;
+    resource: "contacts" | "tasks" | "opportunities";
+  }) => Promise<{ recordCount: number }>;
   syncCompanies: (input: {
     connection: AdapterConnection;
     secret: ConnectionSecretPayload;

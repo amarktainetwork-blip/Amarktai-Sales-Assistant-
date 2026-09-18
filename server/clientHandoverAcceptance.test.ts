@@ -12,6 +12,7 @@ const customerData = fs.readFileSync("server/customerData.ts", "utf8");
 const salesWork = fs.readFileSync("server/salesWork.ts", "utf8");
 const todayTaskData = fs.readFileSync("server/todayTaskData.ts", "utf8");
 const syncWorker = fs.readFileSync("server/crm/syncWorker.ts", "utf8");
+const crmSync = fs.readFileSync("server/crm/sync.ts", "utf8");
 const managedCrmSession = fs.readFileSync(
   "server/browserConnectors/managedCrmBrowserSessionManager.ts",
   "utf8"
@@ -103,6 +104,10 @@ describe("client handover acceptance guards", () => {
     expect(syncWorker).toContain("lastStartedAt: null");
     expect(syncWorker).toContain("reconcileNewLeadAlertsFromTaskHistory");
     expect(syncWorker).toContain('"authentication_expired"');
+    expect(crmSync).toContain("reproveRoutineRead");
+    expect(crmSync).toContain('["tasks", "task.sync"]');
+    expect(crmSync).toContain('["opportunities", "opportunity.sync"]');
+    expect(crmSync).toContain("externalWritePerformed: false");
     expect(managedCrmSession).toContain("lastSucceededAt: null");
     expect(managedCrmSession).toContain('"crm_reconciliation"');
   });
