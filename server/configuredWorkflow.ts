@@ -661,7 +661,7 @@ async function materializeTemplateAction(input: {
       contentSource: materialized.contentSource,
       ...(senderIdentity ? { senderIdentity } : {}),
       executionOwner:
-        channel === "email" ? "microsoft_delegated" : "commissioned_crm",
+        channel === "email" ? "member_selected_email_source" : "commissioned_crm",
       actionVerification: {
         ...((input.action.payload.actionVerification as Record<
           string,
@@ -677,7 +677,7 @@ async function materializeTemplateAction(input: {
       },
       duplicateVerification: {
         state: "unknown",
-        rule: "Canonical execution must re-read external activity or Microsoft Sent Items immediately before the irreversible send.",
+        rule: "Canonical execution must re-read external activity or the selected mailbox sent history immediately before the irreversible send.",
       },
     },
   };

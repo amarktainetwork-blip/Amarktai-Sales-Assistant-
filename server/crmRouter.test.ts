@@ -391,6 +391,56 @@ describe("canonical connected-system capability router", () => {
     });
   });
 
+  it("honours Genie as the selected email source without silently falling back to Microsoft", () => {
+    const genie = {
+      id: 8,
+      provider: "genie",
+      displayName: "Genie",
+      status: "ready",
+      connectionMethod: "browser",
+      verifiedCapabilities: ["email.send"],
+    };
+    const [ready] = routeConnectedSystemActions(
+      [{ actionType: "send_email", payload: {} }],
+      [genie],
+      {
+        emailSource: "genie",
+        personalMicrosoft: {
+          connected: true,
+          scopes: ["Mail.Read", "Mail.Send"],
+          mailbox: "amelia@example.test",
+        },
+      }
+    );
+    expect(ready.payload.crmRoute).toMatchObject({
+      routable: true,
+      provider: "genie",
+      connectedSystemId: 8,
+      emailSource: "genie",
+    });
+    expect(ready.payload.executionOwner).toBe("Genie");
+
+    const [reviewOnly] = routeConnectedSystemActions(
+      [{ actionType: "send_email", payload: {} }],
+      [{ ...genie, verifiedCapabilities: [] }],
+      {
+        emailSource: "genie",
+        personalMicrosoft: {
+          connected: true,
+          scopes: ["Mail.Read", "Mail.Send"],
+          mailbox: "amelia@example.test",
+        },
+      }
+    );
+    expect(reviewOnly.payload.crmRoute).toMatchObject({
+      routable: false,
+      emailSource: "genie",
+    });
+    expect(reviewOnly.payload.executionOwner).toBe(
+      "Genie inbox · review only"
+    );
+  });
+
   it("routes calendar only for the current user delegated calendar scope", () => {
     const [blocked] = routeConnectedSystemActions(
       [{ actionType: "create_calendar_event", payload: {} }],
