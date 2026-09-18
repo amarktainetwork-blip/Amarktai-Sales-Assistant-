@@ -7,6 +7,7 @@ import {
   inArray,
   isNull,
   lt,
+  notInArray,
   or,
   sql,
 } from "drizzle-orm";
@@ -22,6 +23,7 @@ export async function getTodayTaskData(input: {
   now: Date;
   priorityTitles: string[];
   backlogPolicy?: { mode: string; actionableSince?: string };
+  excludeExternalIds?: string[];
 }) {
   const db = await getDb();
   if (!db) throw Error("Database connection is unavailable.");
@@ -34,9 +36,17 @@ export async function getTodayTaskData(input: {
       crmTasks.ownerExternalId
     )
   );
+  const excluded = Array.from(
+    new Set(
+      (input.excludeExternalIds || [])
+        .map(value => value.trim())
+        .filter(Boolean)
+    )
+  );
   const incomplete = and(
     owned,
-    inArray(crmTasks.status, [...INCOMPLETE_TASK_STATUSES])
+    inArray(crmTasks.status, [...INCOMPLETE_TASK_STATUSES]),
+    excluded.length ? notInArray(crmTasks.externalId, excluded) : undefined
   );
   const cutoff =
     input.backlogPolicy?.mode === "since" && input.backlogPolicy.actionableSince

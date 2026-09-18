@@ -56,6 +56,7 @@ export default function Today() {
   const utils = trpc.useUtils();
   const [reminder, setReminder] = useState("");
   const [selected, setSelected] = useState(0);
+  const [showAllQueue, setShowAllQueue] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const refreshInFlight = useRef(false);
   const syncAll = trpc.connectedSystems.syncAll.useMutation();
@@ -86,6 +87,7 @@ export default function Today() {
 
   const callQueue = today.data?.queues.callQueue ?? [];
   const newLeads = today.data?.queues.newLeads ?? [];
+  const visibleCallQueue = showAllQueue ? callQueue : callQueue.slice(0, 12);
   const current = callQueue[selected];
   const workspace = today.data?.workspace.organisation;
 
@@ -345,18 +347,41 @@ export default function Today() {
           </section>
         ) : null}
 
+        <section className="rounded-2xl border border-[#DCE4EE] bg-white px-4 py-3 shadow-sm sm:px-5">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[#66758A]">
+            <span className="font-black uppercase tracking-[.11em] text-[#2F6FED]">
+              Today priority
+            </span>
+            <span>
+              <strong className="text-[#33445B]">1.</strong> New leads
+            </span>
+            <span>
+              <strong className="text-[#33445B]">2.</strong> Customer replies
+            </span>
+            <span>
+              <strong className="text-[#33445B]">3.</strong> Overdue tasks
+            </span>
+            <span>
+              <strong className="text-[#33445B]">4.</strong> Tasks due today
+            </span>
+            <span className="ml-auto text-[#8290A3]">
+              Completed work moves to Review or history.
+            </span>
+          </div>
+        </section>
+
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <Metric
             icon={Phone}
             label="People to work now"
             value={metrics?.callQueue ?? 0}
-            note="Tasks + replies, deduplicated by person"
+            note="Only customer work that still needs attention"
           />
           <Metric
             icon={CalendarClock}
             label="Tasks due today"
             value={taskMetrics?.dueToday ?? 0}
-            note={`${taskMetrics?.overdue ?? 0} overdue`}
+            note={`${taskMetrics?.overdue ?? 0} overdue · ${metrics?.awaitingTaskReview ?? 0} waiting in Review`}
           />
           <Metric
             icon={Mail}
@@ -380,7 +405,7 @@ export default function Today() {
                   Call queue
                 </p>
                 <h2 className="mt-1 font-display text-2xl font-bold tracking-[-.04em]">
-                  Work the list. Keep moving.
+                  Your active work, in priority order.
                 </h2>
               </div>
               <span className="rounded-full bg-[#EDF4FF] px-3 py-1 text-xs font-bold text-[#315EA8]">
@@ -391,7 +416,7 @@ export default function Today() {
 
             {callQueue.length ? (
               <div className="divide-y divide-[#EDF1F5]">
-                {callQueue.map((item, index) => (
+                {visibleCallQueue.map((item, index) => (
                   <button
                     key={item.key}
                     type="button"
@@ -438,6 +463,24 @@ export default function Today() {
                     <ArrowRight className="h-4 w-4 shrink-0 text-[#8A99AB]" />
                   </button>
                 ))}
+                {callQueue.length > 12 ? (
+                  <div className="flex justify-center border-t border-[#EDF1F5] bg-[#FAFCFF] px-5 py-3">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setShowAllQueue(value => {
+                          if (value && selected >= 12) setSelected(0);
+                          return !value;
+                        });
+                      }}
+                    >
+                      {showAllQueue
+                        ? "Show priority view"
+                        : `Show all ${callQueue.length} people`}
+                    </Button>
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div className="p-8 text-center">

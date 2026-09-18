@@ -301,9 +301,11 @@ export default function Assistant() {
             className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[#D7E0EA] bg-white"
           >
             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-7 sm:py-6">
-              <div className="mx-auto flex min-h-full max-w-3xl flex-col">
+              <div
+                className={`mx-auto flex min-h-full max-w-3xl flex-col ${!messages.length ? "justify-center py-8" : ""}`}
+              >
                 {!messages.length ? (
-                  <div className="flex max-w-2xl items-start gap-3 pt-3">
+                  <div className="flex max-w-2xl items-start gap-3">
                     <AssistantMark compact />
                     <div className="min-w-0 flex-1">
                       <div className="rounded-2xl rounded-tl-md bg-[#F4F7FB] px-4 py-3 text-[15px] leading-7 text-[#33445B]">

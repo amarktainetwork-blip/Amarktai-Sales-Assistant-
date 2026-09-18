@@ -31,6 +31,26 @@ describe("Today aggregate contract", () => {
     expect(counts[0].where.params).not.toContain("unknown");
     expect(result.metrics.historicalBacklog).toBe(0);
   });
+  it("excludes CRM tasks that have already moved to Review", async () => {
+    const r = queryRecorder(q => (q.selection?.total ? [{ total: 0 }] : []));
+    m.db.mockResolvedValue(r.db);
+    await getTodayTaskData({
+      userId: 2,
+      organisationId: 8,
+      timezone: "Europe/London",
+      now: new Date("2026-09-18T10:00:00Z"),
+      priorityTitles: [],
+      excludeExternalIds: ["task-in-review", "task-in-review", "task-approved"],
+    });
+    const activeQueries = r.queries.filter(q =>
+      q.where?.params.includes("open")
+    );
+    expect(activeQueries.length).toBeGreaterThan(0);
+    for (const q of activeQueries) {
+      expect(q.where.params).toContain("task-in-review");
+      expect(q.where.params).toContain("task-approved");
+    }
+  });
   it("separates a configured backlog cutoff without changing source records", async () => {
     const r = queryRecorder(q => (q.selection?.total ? [{ total: 700 }] : []));
     m.db.mockResolvedValue(r.db);

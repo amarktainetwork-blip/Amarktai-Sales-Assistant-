@@ -118,7 +118,10 @@ import {
   recordConnectionVerification,
   toAdapterConnection,
 } from "./connectedSystems";
-import { getCrmAdapter } from "./crm/adapterRegistry";
+import {
+  getCrmAdapter,
+  listCrmProviderAvailability,
+} from "./crm/adapterRegistry";
 import { createCrmOAuthState } from "./crm/oauthState";
 import { crmOAuthCallbackUrl } from "./crm/oauthRoutes";
 import { syncConnectedSystem, syncConnectedSystemsForUser } from "./crm/sync";
@@ -1188,6 +1191,9 @@ export const appRouter = router({
       }),
   }),
   connectedSystems: router({
+    providerAvailability: secondFactorProcedure.query(() =>
+      listCrmProviderAvailability()
+    ),
     list: secondFactorProcedure
       .input(z.object({ organisationId: z.number().int().positive() }))
       .query(({ ctx, input }) => {

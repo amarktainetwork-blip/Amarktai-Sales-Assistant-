@@ -6,6 +6,7 @@ import { deriveCustomerInterest } from "./customerInterest";
 import { buildTodayCallQueue } from "./todayCallQueue";
 import { and, desc, eq, inArray, isNull, lte, or } from "drizzle-orm";
 import {
+  actionProposals,
   assistantReminders,
   callbackTasks,
   connectedSystems,
@@ -119,12 +120,31 @@ export async function getTodayWork(input: {
   const taskPriorityTitles = configuredTaskPriorityTitles(actionConfiguration);
   const now = new Date();
   const workspace = await getOrganisationWorkspaceContext(input.organisationId);
+  const pendingTaskReviewRows = await db
+    .select({ payload: actionProposals.payload })
+    .from(actionProposals)
+    .where(
+      and(
+        eq(actionProposals.organisationId, input.organisationId),
+        eq(actionProposals.userId, input.userId),
+        eq(actionProposals.actionType, "complete_active_task"),
+        inArray(actionProposals.state, ["review_required", "approved"])
+      )
+    );
+  const pendingTaskExternalIds = Array.from(
+    new Set(
+      pendingTaskReviewRows
+        .map(row => String(row.payload?.taskExternalId || "").trim())
+        .filter(Boolean)
+    )
+  );
   const taskData = await getTodayTaskData({
     ...input,
     now,
     timezone: workspace.organisation.timezone,
     priorityTitles: taskPriorityTitles,
     backlogPolicy: workspace.backlogPolicy,
+    excludeExternalIds: pendingTaskExternalIds,
   });
   const localDayEnd = new Date(taskData.bounds.endExclusive.getTime() - 1);
   const [
@@ -481,6 +501,7 @@ export async function getTodayWork(input: {
       inboundNeedsAction: currentInbound.length,
       remindersDue: reminders.length,
       callbacksDue: callbacks.length,
+      awaitingTaskReview: pendingTaskExternalIds.length,
       newLeads: newLeadQueue.length,
       workItems: assignedWork.length,
       callQueue: callQueue.length,

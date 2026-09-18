@@ -8,7 +8,12 @@ vi.mock("./organisationWorkspace", () => ({
     customerModel: "individual_consumer",
     productContext: { companyOptional: true },
     customerFieldMappings: [
-      { sourceFieldId: "interest", label: "Interest", kind: "text" },
+      {
+        sourceFieldId: "interest",
+        label: "Courses of interest",
+        kind: "text",
+        purpose: "interest",
+      },
     ],
   })),
 }));
@@ -110,6 +115,38 @@ describe("canonical scoped customer data", () => {
       expect(q.where.sql).toContain("connectedSystemId");
     }
     expect(r.queries.some(q => q.table === "crmCompanies")).toBe(false);
+  });
+  it("uses derived course tags to fill an empty mapped course-interest field", async () => {
+    const tagged = {
+      ...contact,
+      raw: {
+        normalizedCustomerContext: {
+          source: "enquiry",
+          tags: ["course — it support technician"],
+          customFields: {},
+        },
+      },
+    };
+    const r = queryRecorder(q =>
+      q.selection?.total
+        ? [{ total: 0 }]
+        : q.table === "crmContacts"
+          ? [tagged]
+          : []
+    );
+    m.db.mockResolvedValue(r.db);
+    const result = await getExactCustomerDetail({
+      userId: 2,
+      organisationId: 8,
+      contactId: 301,
+    });
+    expect(result?.interest.primary).toBe("it support technician");
+    expect(result?.mappedFields).toEqual([
+      expect.objectContaining({
+        label: "Courses of interest",
+        value: "it support technician",
+      }),
+    ]);
   });
   it("does not fetch relations for an unowned selected customer", async () => {
     const r = queryRecorder(() => []);

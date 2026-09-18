@@ -341,13 +341,20 @@ export async function getExactCustomerDetail(input: {
     getOrganisationWorkspaceContext(input.organisationId),
   ]);
   const attributes = normalizedCustomerAttributes(contact.raw);
-  const mappedFields = workspace.customerFieldMappings.map(mapping => ({
-    ...mapping,
-    value: attributes.customFields[mapping.sourceFieldId] ?? null,
-  }));
   const interest = deriveCustomerInterest({
     mappings: workspace.customerFieldMappings,
     attributes,
+  });
+  const mappedFields = workspace.customerFieldMappings.map(mapping => {
+    const sourceValue = attributes.customFields[mapping.sourceFieldId] ?? null;
+    const value =
+      mapping.purpose?.trim().toLowerCase() === "interest" &&
+      (sourceValue === null ||
+        sourceValue === undefined ||
+        (typeof sourceValue === "string" && !sourceValue.trim()))
+        ? interest.primary
+        : sourceValue;
+    return { ...mapping, value };
   });
   return {
     ...contact,
