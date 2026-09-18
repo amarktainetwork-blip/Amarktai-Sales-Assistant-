@@ -5,6 +5,7 @@ import {
   crmSyncIntervalMs,
   crmSyncJobIsDue,
   crmBackgroundSyncMode,
+  shouldAttemptReadOnlyAuthenticationRecovery,
 } from "./syncWorker";
 
 describe("connection-scoped CRM synchronization schedule", () => {
@@ -22,6 +23,46 @@ describe("connection-scoped CRM synchronization schedule", () => {
     expect(crmBackgroundSyncMode("sidecar")).toBe("routine");
     expect(crmBackgroundSyncMode("oauth")).toBe("full");
     expect(crmBackgroundSyncMode("api_key")).toBe("full");
+  });
+
+  it("retries expired browser authentication only through the bounded read-only recovery path", () => {
+    const now = new Date("2026-09-18T16:50:00Z");
+    expect(
+      shouldAttemptReadOnlyAuthenticationRecovery({
+        status: "authentication_expired",
+        connectionMethod: "browser",
+        lastHealthCheckAt: new Date("2026-09-18T16:48:59Z"),
+        now,
+        intervalMs: 60_000,
+      })
+    ).toBe(true);
+    expect(
+      shouldAttemptReadOnlyAuthenticationRecovery({
+        status: "authentication_expired",
+        connectionMethod: "browser",
+        lastHealthCheckAt: new Date("2026-09-18T16:49:30Z"),
+        now,
+        intervalMs: 60_000,
+      })
+    ).toBe(false);
+    expect(
+      shouldAttemptReadOnlyAuthenticationRecovery({
+        status: "ready",
+        connectionMethod: "browser",
+        lastHealthCheckAt: null,
+        now,
+        intervalMs: 60_000,
+      })
+    ).toBe(false);
+    expect(
+      shouldAttemptReadOnlyAuthenticationRecovery({
+        status: "authentication_expired",
+        connectionMethod: "oauth",
+        lastHealthCheckAt: null,
+        now,
+        intervalMs: 60_000,
+      })
+    ).toBe(false);
   });
 
   it("is due after one interval and not due during repeated rapid refreshes", () => {
