@@ -38,3 +38,22 @@ export function exactTaskCollectionProven(
 export function handoverAllPassed(checks: Array<{ ok: boolean }>) {
   return checks.length > 0 && checks.every(c => c.ok);
 }
+
+export function exactInboundRecipientProven(input: {
+  mailboxUserId: number | null;
+  expectedUserId: number;
+  channel?: string | null;
+  recipientReference?: string | null;
+  expectedEmail: string;
+}) {
+  if (input.mailboxUserId !== input.expectedUserId) return false;
+  const channel = String(input.channel || "")
+    .trim()
+    .toLowerCase();
+  const recipient = String(input.recipientReference || "").trim();
+  if (!recipient) return false;
+  if (channel === "email")
+    return recipient.toLowerCase() === input.expectedEmail.trim().toLowerCase();
+  if (channel === "sms" || channel === "whatsapp") return true;
+  return false;
+}

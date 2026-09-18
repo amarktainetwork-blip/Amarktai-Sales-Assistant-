@@ -2,6 +2,7 @@ import { effectiveLatestBrowserOperation } from "./browserConnectors/learnedOper
 import mysql from "mysql2/promise";
 import {
   AMELIA_HANDOVER as a,
+  exactInboundRecipientProven,
   exactOwnerCounts,
   exactTaskCollectionProven,
   handoverAllPassed,
@@ -171,17 +172,24 @@ async function main() {
     );
     check("SALES_WORK_ISOLATION", Number(sales.invalid) === 0);
     const messages = await query(
-      "SELECT mailboxUserId,externalMessageId,receivedAt,LENGTH(body) AS bodyLength,classification FROM inboundMessages WHERE organisationId=? AND connectedSystemId=?",
+      "SELECT mailboxUserId,channel,externalMessageId,receivedAt,LENGTH(body) AS bodyLength,classification FROM inboundMessages WHERE organisationId=? AND connectedSystemId=?",
       [a.organisationId, a.connectedSystemId]
     );
-    const positiveInbound = messages.some(
-      m =>
-        m.mailboxUserId === a.userId &&
+    const positiveInbound = messages.some(m => {
+      const classification = parse(m.classification) || {};
+      return (
         m.externalMessageId &&
         m.receivedAt &&
         m.bodyLength > 0 &&
-        parse(m.classification)?.recipientReference === a.email
-    );
+        exactInboundRecipientProven({
+          mailboxUserId: m.mailboxUserId,
+          expectedUserId: a.userId,
+          channel: m.channel || classification.sourceChannel,
+          recipientReference: classification.recipientReference,
+          expectedEmail: a.email,
+        })
+      );
+    });
     console.log(
       positiveInbound
         ? "PASS INBOUND_POSITIVE_PROOF"
@@ -189,11 +197,16 @@ async function main() {
     );
     check(
       "INBOUND_OWNERSHIP_ISOLATION",
-      messages.every(
-        m =>
-          m.mailboxUserId === a.userId &&
-          parse(m.classification)?.recipientReference === a.email
-      )
+      messages.every(m => {
+        const classification = parse(m.classification) || {};
+        return exactInboundRecipientProven({
+          mailboxUserId: m.mailboxUserId,
+          expectedUserId: a.userId,
+          channel: m.channel || classification.sourceChannel,
+          recipientReference: classification.recipientReference,
+          expectedEmail: a.email,
+        });
+      })
     );
     const mailboxProofs = await query(
       "SELECT metadata FROM auditEntries WHERE organisationId=? AND userId=? AND eventType='personal_genie_mailbox_synced' ORDER BY id DESC LIMIT 1",
