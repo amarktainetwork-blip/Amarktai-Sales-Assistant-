@@ -12,6 +12,7 @@ export type TodayQueueInbound = {
   contactExternalId: string | null;
   receivedAt: Date;
   subject?: string | null;
+  classification?: { category?: string } | null;
 };
 
 export type TodayQueueReminder = {
@@ -142,7 +143,7 @@ export function buildTodayCallQueue(input: {
     );
     if (!contact) continue;
     candidates.push({
-      rank: 0,
+      rank: 2,
       occurredAt: lead.createdAt.valueOf(),
       contact,
       kind: "new_lead",
@@ -161,15 +162,20 @@ export function buildTodayCallQueue(input: {
       contactKey(message.connectedSystemId, message.contactExternalId)
     );
     if (!contact) continue;
+    const saleIntent = message.classification?.category === "sale_intent";
     candidates.push({
-      rank: 1,
+      rank: saleIntent ? 0 : 1,
       occurredAt: message.receivedAt.valueOf(),
       contact,
       kind: "inbound_reply",
-      headline: message.subject?.trim() || "Customer reply needs attention",
+      headline: saleIntent
+        ? message.subject?.trim() || "Customer is ready to move forward"
+        : message.subject?.trim() || "Customer reply needs attention",
       dueAt: null,
       receivedAt: message.receivedAt,
-      reason: "Customer reply needs action",
+      reason: saleIntent
+        ? "Possible sale or payment step needs attention"
+        : "Customer reply needs action",
       inboundId: message.id,
     });
   }
@@ -181,7 +187,7 @@ export function buildTodayCallQueue(input: {
     if (matching.length !== 1) continue;
     const contact = matching[0];
     candidates.push({
-      rank: reminder.source === "call_commitment" ? 2 : 3,
+      rank: reminder.source === "call_commitment" ? 3 : 4,
       occurredAt: reminder.dueAt.valueOf(),
       contact,
       kind: "confirmed_follow_up",
@@ -195,8 +201,8 @@ export function buildTodayCallQueue(input: {
       reminderId: reminder.id,
     });
   }
-  input.overdueTasks.forEach(task => addTask(task, "overdue_task", 3));
-  input.dueToday.forEach(task => addTask(task, "due_today", 4));
+  input.overdueTasks.forEach(task => addTask(task, "overdue_task", 4));
+  input.dueToday.forEach(task => addTask(task, "due_today", 5));
 
   candidates.sort(
     (a, b) =>

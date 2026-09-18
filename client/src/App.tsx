@@ -29,6 +29,7 @@ import CrmWorkspace from "./pages/CrmWorkspace";
 import Customers from "./pages/Customers";
 import Home from "./pages/Home";
 import Knowledge from "./pages/Knowledge";
+import Inbox from "./pages/Inbox";
 import LiveCalls from "./pages/LiveCalls";
 import Pricing from "./pages/Pricing";
 import Reviews from "./pages/Reviews";
@@ -45,6 +46,7 @@ const workspacePrefixes = [
   "/agents",
   "/sell",
   "/customers",
+  "/inbox",
   "/calls",
   "/crm",
   "/reviews",
@@ -192,6 +194,7 @@ function Router() {
         <Route path="/agents">{() => <LegacyRedirect to="/assistant" />}</Route>
         <Route path="/sell">{() => <LegacyRedirect to="/today" />}</Route>
         <Route path="/customers" component={Customers} />
+        <Route path="/inbox" component={Inbox} />
         <Route path="/calls" component={LiveCalls} />
         <Route path="/crm/:connectedSystemId" component={CrmWorkspace} />
         <Route path="/crm" component={CrmWorkspace} />

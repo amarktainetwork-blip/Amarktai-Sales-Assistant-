@@ -42,11 +42,12 @@ import { toast } from "sonner";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 
-type NavItem = { icon: LucideIcon; label: string; path: string };
+type NavItem = { icon: LucideIcon; label: string; path: string; badge?: number };
 
 const dailyMenu: NavItem[] = [
   { icon: Home, label: "Today", path: "/today" },
   { icon: ContactRound, label: "Customers", path: "/customers" },
+  { icon: MailCheck, label: "Inbox", path: "/inbox" },
   { icon: Headphones, label: "Calls", path: "/calls" },
   { icon: MessageSquareText, label: "AmarktAI", path: "/assistant" },
   { icon: ClipboardCheck, label: "Review", path: "/reviews" },
@@ -83,6 +84,15 @@ export default function DashboardLayout({
       enabled: Boolean(user && security.data?.verified && organisationId),
       retry: false,
       refetchInterval: 60_000,
+      refetchIntervalInBackground: true,
+    }
+  );
+  const inbox = trpc.sales.inbox.useQuery(
+    { organisationId: organisationId ?? 0, limit: 20 },
+    {
+      enabled: Boolean(user && security.data?.verified && organisationId),
+      retry: false,
+      refetchInterval: 15_000,
       refetchIntervalInBackground: true,
     }
   );
@@ -192,6 +202,42 @@ export default function DashboardLayout({
     }
   }, [newLeadAlerts.data, organisationId]);
 
+  useEffect(() => {
+    if (!organisationId || !inbox.data?.messages.length) return;
+    try {
+      const key = `amarktai:inbox-notified:${organisationId}`;
+      const stored = JSON.parse(localStorage.getItem(key) || "[]") as number[];
+      const actionable = inbox.data.messages.filter(message => message.needsAction);
+      const unseen = actionable.filter(message => !stored.includes(message.id));
+      if (!unseen.length) return;
+      const first = unseen[0];
+      const classification =
+        first.classification &&
+        typeof first.classification === "object" &&
+        !Array.isArray(first.classification)
+          ? String((first.classification as Record<string, unknown>).category || "")
+          : "";
+      toast.success(
+        classification === "sale_intent"
+          ? `Possible sale: ${first.contact?.name || first.senderReference}`
+          : `New customer ${first.channel}: ${first.contact?.name || first.senderReference}`,
+        {
+          description: first.subject || "A customer reply needs attention.",
+          action: { label: "Open inbox", onClick: () => navigate("/inbox") },
+        }
+      );
+      localStorage.setItem(
+        key,
+        JSON.stringify([
+          ...unseen.map(message => message.id),
+          ...stored,
+        ].slice(0, 100))
+      );
+    } catch {
+      // Inbox source truth remains in the database if browser storage is unavailable.
+    }
+  }, [inbox.data?.messages, organisationId, navigate]);
+
   const openLead = (lead: (typeof leadAlerts)[number], prepare = false) => {
     if (!organisationId) return;
     openNewLead.mutate({
@@ -295,7 +341,15 @@ export default function DashboardLayout({
           </p>
           <SidebarMenu className="mt-2 gap-1">
             {dailyMenu.map(item => (
-              <AppNavItem key={item.path} {...item} />
+              <AppNavItem
+                key={item.path}
+                {...item}
+                badge={
+                  item.path === "/inbox"
+                    ? inbox.data?.needsActionCount
+                    : item.badge
+                }
+              />
             ))}
           </SidebarMenu>
 
@@ -432,6 +486,7 @@ export default function DashboardLayout({
 
 function pageTitle(location: string) {
   if (location.startsWith("/customers")) return "Customers";
+  if (location.startsWith("/inbox")) return "Inbox";
   if (location.startsWith("/calls")) return "Calls";
   if (location.startsWith("/assistant")) return "AmarktAI";
   if (location.startsWith("/reviews")) return "Review";
@@ -683,7 +738,7 @@ function OrganisationSelectionGate({
   );
 }
 
-function AppNavItem({ icon: Icon, label, path }: NavItem) {
+function AppNavItem({ icon: Icon, label, path, badge }: NavItem) {
   const [location, setLocation] = useLocation();
   const active = location === path;
   return (
@@ -703,6 +758,11 @@ function AppNavItem({ icon: Icon, label, path }: NavItem) {
         <span className="font-semibold group-data-[collapsible=icon]:hidden">
           {label}
         </span>
+        {badge && badge > 0 ? (
+          <span className="ml-auto rounded-full bg-[#2F6FED] px-2 py-0.5 text-[10px] font-black text-white group-data-[collapsible=icon]:hidden">
+            {badge > 99 ? "99+" : badge}
+          </span>
+        ) : null}
       </SidebarMenuButton>
     </SidebarMenuItem>
   );

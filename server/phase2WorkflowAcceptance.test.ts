@@ -6,14 +6,16 @@ const read = (file: string) =>
   readFileSync(path.resolve(process.cwd(), file), "utf8");
 
 describe("Phase 2 daily salesperson workflow", () => {
-  it("makes Today a work-led call queue rather than an opportunity ageing dashboard", () => {
+  it("makes Today a work-led priority queue rather than an opportunity ageing dashboard", () => {
     const today = read("client/src/pages/Today.tsx");
     const service = read("server/today.ts");
     const queue = read("server/todayCallQueue.ts");
 
     expect(today).toContain(
-      "Make the calls. AmarktAI handles the admin around them."
+      "Work the hottest customer. AmarktAI handles the admin around it."
     );
+    expect(today).toContain("Customer replies / possible sales");
+    expect(today).toContain('navigate("/inbox")');
     expect(today).toContain("today.data?.queues.callQueue");
     expect(today).not.toContain("today.data?.queues.priority");
     expect(today).toContain("startCall.mutate");
@@ -52,6 +54,8 @@ describe("Phase 2 daily salesperson workflow", () => {
   it("keeps one exact customer context through Customers, AmarktAI and Calls", () => {
     const customers = read("client/src/pages/Customers.tsx");
     const assistant = read("client/src/pages/Assistant.tsx");
+    const inbox = read("client/src/pages/Inbox.tsx");
+    const app = read("client/src/App.tsx");
     const layout = read("client/src/components/DashboardLayout.tsx");
     const calls = read("client/src/pages/LiveCalls.tsx");
     const review = read("client/src/pages/Reviews.tsx");
@@ -71,7 +75,14 @@ describe("Phase 2 daily salesperson workflow", () => {
     expect(assistant).toContain('params.get("contactId")');
     expect(assistant).toContain('label: "Open Review"');
 
+    expect(inbox).toContain("trpc.sales.inbox.useQuery");
+    expect(inbox).toContain("trpc.sales.syncInbox.useMutation");
+    expect(inbox).toContain("Draft reply");
+    expect(inbox).toContain("nothing is sent without Review approval");
+    expect(app).toContain('<Route path="/inbox" component={Inbox} />');
+
     expect(layout).toContain('label: "Today"');
+    expect(layout).toContain('label: "Inbox"');
     expect(layout).toContain("Daily flow");
 
     expect(calls).toContain("trpc.sales.customerDetail.useQuery");

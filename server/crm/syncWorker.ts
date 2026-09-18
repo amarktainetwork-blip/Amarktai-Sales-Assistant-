@@ -429,7 +429,9 @@ export async function runConnectionScopedCrmSyncCycle(now = new Date()) {
 }
 
 export function startConnectionScopedCrmSyncWorker(
-  intervalMs = crmSyncIntervalMs()
+  intervalMs = crmSyncIntervalMs(),
+  runCycle: () => Promise<Awaited<ReturnType<typeof runConnectionScopedCrmSyncCycle>>> =
+    runConnectionScopedCrmSyncCycle
 ) {
   let processing = false;
   const run = async () => {
@@ -438,7 +440,7 @@ export function startConnectionScopedCrmSyncWorker(
     try {
       const result = await runModelFreeOperation(
         { purpose: "crm_sync", reference: `crm-sync-cycle:${Date.now()}` },
-        () => runConnectionScopedCrmSyncCycle()
+        () => runCycle()
       );
       if (result.value.checked || result.value.failed)
         console.log(
