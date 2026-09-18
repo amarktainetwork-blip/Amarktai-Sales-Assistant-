@@ -1,7 +1,11 @@
 import { isRetryableGenieMailboxRead } from "./genieMailboxRetry";
 import { readPersonalGenieMailbox } from "./browserConnectors/genieMailboxRead";
-import { eq } from "drizzle-orm";
-import { organisationMembers, organisations } from "../drizzle/schema";
+import { and, desc, eq } from "drizzle-orm";
+import {
+  inboundMessages,
+  organisationMembers,
+  organisations,
+} from "../drizzle/schema";
 import {
   getConnectedSystemForUser,
   listConnectedSystemsForUser,
@@ -24,12 +28,10 @@ function normalizeEmail(value: string | null | undefined) {
 export function exactGenieMailboxIdentity(input: {
   appEmail: string | null | undefined;
   mappingEmail: string | null | undefined;
-  recipientEmail: string | null | undefined;
 }) {
   const app = normalizeEmail(input.appEmail);
   const mapping = normalizeEmail(input.mappingEmail);
-  const recipient = normalizeEmail(input.recipientEmail);
-  return Boolean(app && app === mapping && mapping === recipient);
+  return Boolean(app && app === mapping);
 }
 
 export function parseGenieReceivedAt(value: string | null | undefined) {
@@ -83,7 +85,10 @@ export async function syncGenieMailboxForUser(input: {
     !secret?.browserSession ||
     secret.browserUserId !== input.userId ||
     !secret.crmUserExternalId ||
-    normalizeEmail(secret.crmUserEmail) !== normalizeEmail(scope.email)
+    !exactGenieMailboxIdentity({
+      appEmail: scope.email,
+      mappingEmail: secret.crmUserEmail,
+    })
   )
     return {
       checked: 0,
@@ -103,6 +108,34 @@ export async function syncGenieMailboxForUser(input: {
   let received = 0;
   let draftsPrepared = 0;
 
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const latest = (
+    await db
+      .select({ receivedAt: inboundMessages.receivedAt })
+      .from(inboundMessages)
+      .where(
+        and(
+          eq(inboundMessages.organisationId, input.organisationId),
+          eq(inboundMessages.mailboxUserId, input.userId),
+          eq(inboundMessages.connectedSystemId, system.id)
+        )
+      )
+      .orderBy(desc(inboundMessages.receivedAt))
+      .limit(1)
+  )[0];
+  const now = Date.now();
+  const sevenDaysAgo = now - 7 * 24 * 60 * 60_000;
+  const oneDayAgo = now - 24 * 60 * 60_000;
+  const latestOverlap = latest?.receivedAt
+    ? latest.receivedAt.getTime() - 6 * 60 * 60_000
+    : sevenDaysAgo;
+  // Durable-ish source cursor without a second state table: always overlap at
+  // least one day, and catch up from the last stored message after an outage.
+  const since = new Date(
+    Math.max(sevenDaysAgo, Math.min(oneDayAgo, latestOverlap))
+  );
+
   const proof = await withAuthenticatedBrowserSessionPage({
     connection: adapterConnection,
     secret,
@@ -112,19 +145,11 @@ export async function syncGenieMailboxForUser(input: {
         page,
         ownerExternalId: scope.externalUserId,
         mailboxEmail: scope.email,
+        since,
       }),
   });
   checked = proof.checked;
   for (const message of proof.records) {
-    if (
-      message.channel === "email" &&
-      !exactGenieMailboxIdentity({
-        appEmail: scope.email,
-        mappingEmail: secret.crmUserEmail,
-        recipientEmail: message.recipient,
-      })
-    )
-      continue;
     const result = await ingestInboundMessage({
       organisationId: input.organisationId,
       mailboxUserId: input.userId,
@@ -164,6 +189,7 @@ export async function syncGenieMailboxForUser(input: {
       rejectedForeignOwnerCount: proof.rejectedForeignOwnerCount,
       examined: proof.examined,
       bounded: proof.bounded,
+      sourceSince: since.toISOString(),
       crmUserExternalId: scope.externalUserId,
     },
   });

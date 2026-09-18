@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  crmActivityHistoryProvesLeadWorked,
   crmTaskHistoryProvesLeadWorked,
   crmTaskProvesLeadProgress,
   isTransientCrmSyncFailure,
@@ -22,6 +23,62 @@ it("does not hide permanent failures when another resource had transient content
   expect(
     isTransientCrmSyncFailure(new Error("CRM_BROWSER_CONTROL_LEASE_LOST"))
   ).toBe(true);
+});
+
+describe("CRM customer-history lead progression", () => {
+  it("treats calls, salesperson-authored notes and inbound replies as proof the lead was worked", () => {
+    const owner = "owner-1";
+    expect(
+      crmActivityHistoryProvesLeadWorked(
+        { activityType: "call", ownerExternalId: owner, raw: {} },
+        owner
+      )
+    ).toBe(true);
+    expect(
+      crmActivityHistoryProvesLeadWorked(
+        {
+          activityType: "note",
+          ownerExternalId: owner,
+          raw: { authorExternalId: owner },
+        },
+        owner
+      )
+    ).toBe(true);
+    expect(
+      crmActivityHistoryProvesLeadWorked(
+        {
+          activityType: "email",
+          ownerExternalId: owner,
+          raw: { direction: "inbound" },
+        },
+        owner
+      )
+    ).toBe(true);
+  });
+
+  it("does not treat automated-looking outbound messages or another author's note as salesperson work", () => {
+    const owner = "owner-1";
+    expect(
+      crmActivityHistoryProvesLeadWorked(
+        {
+          activityType: "email",
+          ownerExternalId: owner,
+          raw: { direction: "outbound" },
+        },
+        owner
+      )
+    ).toBe(false);
+    expect(
+      crmActivityHistoryProvesLeadWorked(
+        {
+          activityType: "note",
+          ownerExternalId: owner,
+          raw: { authorExternalId: "other-owner" },
+        },
+        owner
+      )
+    ).toBe(false);
+  });
 });
 
 describe("CRM task lead progression", () => {

@@ -1,6 +1,6 @@
 import { reconcileCurrentBrowserReadiness } from "./currentReadiness";
 import { isTransientBrowserExecutionFailure } from "../browserConnectors/runtimeFailure";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import {
   crmActivities,
   crmCompanies,
@@ -24,6 +24,8 @@ import { browserOperationReadinessForSystem } from "../browserConnectors/learned
 import { getCrmAdapter } from "./adapterRegistry";
 import type {
   AdapterConnection,
+  ConnectionSecretPayload,
+  CrmAdapter,
   NormalizedActivity,
   NormalizedCompany,
   NormalizedContact,
@@ -32,7 +34,10 @@ import type {
 } from "./types";
 import { normalizeCrmEmail, normalizeCrmPhone } from "./identity";
 import { runModelFreeOperation } from "../aiExecutionBoundary";
-import { upsertSalesWorkFromCrm } from "../salesWork";
+import {
+  completeNewLeadWorkAfterVerifiedContact,
+  upsertSalesWorkFromCrm,
+} from "../salesWork";
 import {
   INCOMPLETE_TASK_STATUSES,
   isCompletedTask,
@@ -385,6 +390,32 @@ export function crmTaskHistoryProvesLeadWorked(
   return isCompletedTask(task.status) || crmTaskProvesLeadProgress(task);
 }
 
+export function crmActivityHistoryProvesLeadWorked(
+  activity: Pick<
+    NormalizedActivity,
+    "activityType" | "ownerExternalId" | "raw"
+  >,
+  ownerExternalId: string
+) {
+  const type = activity.activityType.trim().toLowerCase();
+  const raw =
+    activity.raw &&
+    typeof activity.raw === "object" &&
+    !Array.isArray(activity.raw)
+      ? activity.raw
+      : {};
+  const direction = String(raw.direction || "")
+    .trim()
+    .toLowerCase();
+  if (type === "call") return true;
+  if (type === "note")
+    return String(raw.authorExternalId || "").trim() === ownerExternalId.trim();
+  return (
+    ["email", "sms", "whatsapp", "communication"].includes(type) &&
+    direction === "inbound"
+  );
+}
+
 export async function reconcileNewLeadAlertsFromTaskHistory(input: {
   userId: number;
   organisationId: number;
@@ -467,6 +498,128 @@ export async function reconcileNewLeadAlertsFromTaskHistory(input: {
       )
     );
   return Number(result[0].affectedRows || 0);
+}
+
+const MAX_ACTIVE_CUSTOMER_HISTORY_CHECKS_PER_SYNC = 10;
+
+async function refreshActiveCustomerSourceTruth(input: {
+  userId: number;
+  organisationId: number;
+  connectedSystemId: number;
+  adapter: CrmAdapter;
+  connection: AdapterConnection;
+  secret: ConnectionSecretPayload;
+}) {
+  if (!input.adapter.readContactHistory || !input.secret.crmUserExternalId)
+    return { checked: 0, resolvedNewLeads: 0, deferred: 0 };
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+
+  const rows = await db
+    .select({
+      contact: crmContacts,
+      workType: salesWorkItems.type,
+      workCreatedAt: salesWorkItems.createdAt,
+      priority: salesWorkItems.priority,
+    })
+    .from(salesWorkItems)
+    .innerJoin(
+      crmContacts,
+      and(
+        eq(crmContacts.organisationId, salesWorkItems.organisationId),
+        eq(crmContacts.connectedSystemId, salesWorkItems.connectedSystemId),
+        eq(crmContacts.externalId, salesWorkItems.contactExternalId)
+      )
+    )
+    .where(
+      and(
+        eq(salesWorkItems.organisationId, input.organisationId),
+        eq(salesWorkItems.connectedSystemId, input.connectedSystemId),
+        eq(salesWorkItems.salespersonUserId, input.userId),
+        inArray(salesWorkItems.status, [
+          "open",
+          "in_progress",
+          "snoozed",
+          "blocked",
+        ])
+      )
+    )
+    .orderBy(desc(salesWorkItems.priority), asc(salesWorkItems.id))
+    .limit(100);
+
+  const candidates = new Map<
+    string,
+    { contact: typeof crmContacts.$inferSelect; newLeadCreatedAt?: Date }
+  >();
+  for (const row of rows) {
+    if (!row.contact.externalId) continue;
+    const existing = candidates.get(row.contact.externalId);
+    if (!existing) {
+      candidates.set(row.contact.externalId, {
+        contact: row.contact,
+        ...(row.workType === "NEW_LEAD"
+          ? { newLeadCreatedAt: row.workCreatedAt }
+          : {}),
+      });
+    } else if (row.workType === "NEW_LEAD" && !existing.newLeadCreatedAt) {
+      existing.newLeadCreatedAt = row.workCreatedAt;
+    }
+    if (candidates.size >= MAX_ACTIVE_CUSTOMER_HISTORY_CHECKS_PER_SYNC) break;
+  }
+
+  let checked = 0;
+  let resolvedNewLeads = 0;
+  let deferred = 0;
+  for (const { contact, newLeadCreatedAt } of Array.from(candidates.values())) {
+    if (contact.ownerExternalId !== input.secret.crmUserExternalId) {
+      deferred += 1;
+      continue;
+    }
+    try {
+      const history = await input.adapter.readContactHistory({
+        connection: input.connection,
+        secret: input.secret,
+        externalId: contact.externalId,
+      });
+      for (const activity of history.activities)
+        if (
+          activity.contactExternalId !== contact.externalId ||
+          activity.ownerExternalId !== input.secret.crmUserExternalId
+        )
+          throw new Error("CRM_OWNER_SCOPE_VIOLATION");
+      await upsertActivities(
+        input.organisationId,
+        input.connectedSystemId,
+        history.activities
+      );
+      checked += 1;
+
+      if (newLeadCreatedAt) {
+        // The watcher can observe a new lead a few minutes after the salesperson
+        // has already made first contact. Use a bounded lookback, not arbitrary
+        // historic activity, when deciding whether the lead is still untouched.
+        const evidenceFloor = newLeadCreatedAt.getTime() - 24 * 60 * 60_000;
+        const worked = history.activities.some(
+          activity =>
+            activity.occurredAt.getTime() >= evidenceFloor &&
+            crmActivityHistoryProvesLeadWorked(
+              activity,
+              input.secret.crmUserExternalId!
+            )
+        );
+        if (worked)
+          resolvedNewLeads += await completeNewLeadWorkAfterVerifiedContact({
+            userId: input.userId,
+            organisationId: input.organisationId,
+            contactExternalId: contact.externalId,
+            reason: "verified_customer_history",
+          });
+      }
+    } catch {
+      deferred += 1;
+    }
+  }
+  return { checked, resolvedNewLeads, deferred };
 }
 
 async function upsertActivities(
@@ -831,6 +984,54 @@ async function syncConnectedSystemRoutineDeterministically(input: {
   if (
     crmResourceSyncEligible(
       connection,
+      "opportunities.read",
+      operationStatuses.get("opportunity.sync")
+    )
+  ) {
+    const existing = await cursorFor(system.id, "opportunities");
+    try {
+      const drained = await drainCrmPages<NormalizedOpportunity>({
+        initialCursor: undefined,
+        fetchPage: cursor =>
+          adapter.syncOpportunities({ connection, secret, cursor }),
+        onPage: async records => {
+          assertPersonalBrowserOwnerScope({
+            resourceType: "opportunities",
+            expectedOwnerExternalId: secret.crmUserExternalId || "",
+            records,
+          });
+          await upsertOpportunities(input.organisationId, system.id, records);
+          await upsertSalesWorkFromCrm({
+            organisationId: input.organisationId,
+            connectedSystemId: system.id,
+            resource: { type: "opportunities", records },
+          });
+        },
+      });
+      await saveCursor(system.id, "opportunities", undefined);
+      summary.opportunities = drained.total;
+    } catch (error) {
+      const detail =
+        error instanceof Error
+          ? error.message.slice(0, 800)
+          : "Unknown sync error";
+      if (!isTransientBrowserExecutionFailure(error))
+        await saveCursor(
+          system.id,
+          "opportunities",
+          undefined,
+          detail,
+          existing?.lastSuccessfulAt
+        );
+      failures.opportunities = detail;
+      failureTransient.opportunities =
+        isTransientBrowserExecutionFailure(error);
+    }
+  } else summary.opportunities = 0;
+
+  if (
+    crmResourceSyncEligible(
+      connection,
       "tasks.read",
       operationStatuses.get("task.sync")
     )
@@ -890,6 +1091,30 @@ async function syncConnectedSystemRoutineDeterministically(input: {
     }
   } else summary.tasks = 0;
 
+  if (
+    crmResourceSyncEligible(
+      connection,
+      "contacts.read",
+      operationStatuses.get("contact.read")
+    )
+  ) {
+    try {
+      const history = await refreshActiveCustomerSourceTruth({
+        userId: input.userId,
+        organisationId: input.organisationId,
+        connectedSystemId: system.id,
+        adapter,
+        connection,
+        secret,
+      });
+      summary.customerHistoryChecked = history.checked;
+      summary.newLeadHistoryResolved = history.resolvedNewLeads;
+      summary.customerHistoryDeferred = history.deferred;
+    } catch {
+      summary.customerHistoryDeferred = 1;
+    }
+  }
+
   await reconcileCurrentBrowserReadiness(input);
   if (Object.keys(failures).length) {
     const error = new Error(
@@ -908,10 +1133,10 @@ async function syncConnectedSystemRoutineDeterministically(input: {
 }
 
 /**
- * Lightweight unattended reconciliation for browser CRMs. It intentionally
- * refreshes only the newest owner-scoped contacts plus the complete current
- * pending-task snapshot. Full historical reconciliation remains the explicit
- * manager/manual path via syncConnectedSystem().
+ * Unattended read-only reconciliation for browser CRMs. It keeps recent
+ * contacts, owner-scoped opportunities, the complete current pending-task
+ * snapshot and exact history for active customers aligned with source truth.
+ * It never performs a CRM write.
  */
 export async function syncConnectedSystemRoutine(input: {
   userId: number;
