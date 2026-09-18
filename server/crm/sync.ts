@@ -936,7 +936,7 @@ async function syncConnectedSystemRoutineDeterministically(input: {
   });
   if (!secret.crmUserExternalId)
     throw new Error("CRM_SALESPERSON_IDENTITY_REQUIRED");
-  const operationStatuses = new Map(
+  let operationStatuses = new Map(
     (
       await browserOperationReadinessForSystem({
         organisationId: input.organisationId,
@@ -944,6 +944,68 @@ async function syncConnectedSystemRoutineDeterministically(input: {
       })
     ).operations.map(operation => [operation.key, operation.status])
   );
+
+  // A short authentication interruption can degrade task/opportunity reads even
+  // after the same browser session is healthy again. Re-prove only the closed
+  // set of exact-owner routine READ operations before deciding they are
+  // unavailable. The adapter hard-locks this path to read definitions and never
+  // exposes a write operation.
+  if (adapter.reproveRoutineRead) {
+    const recoverable = [
+      ["contacts", "contact.sync"],
+      ["tasks", "task.sync"],
+      ["opportunities", "opportunity.sync"],
+    ] as const;
+    let attempted = false;
+    for (const [resource, operationKey] of recoverable) {
+      if (operationStatuses.get(operationKey) !== "DEGRADED") continue;
+      attempted = true;
+      try {
+        const proof = await adapter.reproveRoutineRead({
+          connection,
+          secret,
+          publishByUserId: input.userId,
+          resource,
+        });
+        console.log(
+          JSON.stringify({
+            event: "crm_degraded_read_reproved",
+            connectedSystemId: system.id,
+            userId: input.userId,
+            resource,
+            operationKey,
+            recordCount: proof.recordCount,
+            externalWritePerformed: false,
+          })
+        );
+      } catch (error) {
+        console.warn(
+          JSON.stringify({
+            event: "crm_degraded_read_reproof_deferred",
+            connectedSystemId: system.id,
+            userId: input.userId,
+            resource,
+            operationKey,
+            detail:
+              error instanceof Error
+                ? error.message.slice(0, 300)
+                : String(error).slice(0, 300),
+            externalWritePerformed: false,
+          })
+        );
+      }
+    }
+    if (attempted)
+      operationStatuses = new Map(
+        (
+          await browserOperationReadinessForSystem({
+            organisationId: input.organisationId,
+            connectedSystemId: system.id,
+          })
+        ).operations.map(operation => [operation.key, operation.status])
+      );
+  }
+
   const summary: Record<string, number | string> = { mode: "routine" };
   const failures: Record<string, string> = {};
   const failureTransient: Record<string, boolean> = {};

@@ -1929,6 +1929,49 @@ export function browserCrmAdapter(
             );
             return { records: result.records };
           },
+          reproveRoutineRead: async (input: {
+            connection: AdapterConnection;
+            secret: ConnectionSecretPayload;
+            publishByUserId: number;
+            resource: "contacts" | "tasks" | "opportunities";
+          }) => {
+            if (!input.secret.crmUserExternalId)
+              throw new Error("CRM_READ_REPROOF_OWNER_REQUIRED");
+            if (input.secret.browserUserId !== input.publishByUserId)
+              throw new Error("CRM_READ_REPROOF_USER_SCOPE_MISMATCH");
+            const verification = {
+              allowTestReady: true,
+              publishByUserId: input.publishByUserId,
+            };
+            if (input.resource === "contacts") {
+              if (!input.connection.allowedReadCapabilities.includes("contacts.read"))
+                throw new Error("CRM_READ_REPROOF_CAPABILITY_NOT_AUTHORIZED");
+              const result = await list(
+                "syncContacts",
+                contact,
+                input,
+                { fastPath: true },
+                verification
+              );
+              return { recordCount: result.records.length };
+            }
+            if (input.resource === "tasks") {
+              if (!input.connection.allowedReadCapabilities.includes("tasks.read"))
+                throw new Error("CRM_READ_REPROOF_CAPABILITY_NOT_AUTHORIZED");
+              const result = await list("syncTasks", task, input, {}, verification);
+              return { recordCount: result.records.length };
+            }
+            if (!input.connection.allowedReadCapabilities.includes("opportunities.read"))
+              throw new Error("CRM_READ_REPROOF_CAPABILITY_NOT_AUTHORIZED");
+            const result = await list(
+              "syncOpportunities",
+              opportunity,
+              input,
+              {},
+              verification
+            );
+            return { recordCount: result.records.length };
+          },
         }
       : {}),
     syncCompanies: input => list("syncCompanies", company, input),
