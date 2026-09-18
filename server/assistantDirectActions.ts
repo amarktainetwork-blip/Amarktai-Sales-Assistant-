@@ -373,7 +373,7 @@ export async function tryPrepareDirectAssistantAction(input: {
         channel,
         executionBoundary:
           channel === "email"
-            ? "Send from the salesperson's delegated Microsoft mailbox."
+            ? "Execute only through the member-selected email source after that exact route is verified and explicitly authorised."
             : "Execute only through the exact LIVE_PROVEN CRM communication capability.",
       }),
       billing: {
@@ -506,7 +506,7 @@ export async function tryPrepareDirectAssistantAction(input: {
       },
       contentSource,
       executionOwner:
-        channel === "email" ? "microsoft_delegated" : "commissioned_crm",
+        channel === "email" ? "member_selected_email_source" : "commissioned_crm",
       actionVerification: {
         targetVerified: true,
         recipientVerified: true,
@@ -568,7 +568,7 @@ export async function tryPrepareDirectAssistantAction(input: {
     },
     verificationSummary:
       channel === "email"
-        ? "Prepared for one exact normalized CRM customer. Content source and Microsoft execution ownership are separate. Recipient, suppression, duplicate and effective-autonomy checks remain explicit."
+        ? "Prepared for one exact normalized CRM customer. Content source and the member-selected email execution route are separate. Recipient, suppression, duplicate and effective-autonomy checks remain explicit."
         : `Prepared for one exact normalized CRM customer and the exact commissioned ${channel.toUpperCase()} CRM capability. Sender, recipient, suppression, duplicate and effective-autonomy checks remain explicit.`,
     actions: [routed],
   });
@@ -616,7 +616,10 @@ export async function tryPrepareDirectAssistantAction(input: {
       channel,
       sender:
         channel === "email"
-          ? route?.mailbox || "No verified sending mailbox"
+          ? route?.mailbox ||
+            (typeof routed.payload.executionOwner === "string"
+              ? routed.payload.executionOwner
+              : "Selected email source is not ready")
           : senderIdentity || "CRM-configured sender",
       subject: validated.subject || null,
       body: validated.body,
@@ -624,7 +627,9 @@ export async function tryPrepareDirectAssistantAction(input: {
       contentSource,
       executionOwner:
         channel === "email"
-          ? "Microsoft delegated mailbox"
+          ? typeof routed.payload.executionOwner === "string"
+            ? routed.payload.executionOwner
+            : route?.displayName || "Selected email source is not ready"
           : route?.displayName || "Not configured",
       duplicateVerification: "required_before_execution",
     },

@@ -84,6 +84,9 @@ describe("personal email source choice", () => {
     expect(routes).toContain('req.body?.emailSource === "microsoft"');
     expect(routes).toContain("genieConnected");
     expect(routes).toContain("requiresCrmSignIn");
+    const router = readFileSync(new URL("./crmRouter.ts", import.meta.url), "utf8");
+    expect(router).toContain('emailSource !== "genie"');
+    expect(router).toContain('emailSource: options?.emailSource || "microsoft"');
   });
 });
 

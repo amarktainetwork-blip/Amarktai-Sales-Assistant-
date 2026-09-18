@@ -176,10 +176,9 @@ async function resolveExecutionSender(
 }
 
 /**
- * SMS and WhatsApp execute only through the exact commissioned CRM capability.
- * Sales email has a different execution owner: it must use the salesperson's
- * personally connected delegated Microsoft mailbox and is deliberately rejected
- * here so an old/incorrect CRM route can never silently send it.
+ * CRM-native communication executes only through the exact commissioned
+ * capability selected by the member's route. Microsoft delegated email is
+ * executed by its separate transport boundary before this function is reached.
  */
 export async function sendSalesMessage(input: {
   adapter: CrmAdapter;
@@ -188,15 +187,11 @@ export async function sendSalesMessage(input: {
   message: SalesMessage;
   correlationId: string;
 }): Promise<AdapterEvidence> {
-  if (input.message.channel === "email")
-    throw new Error(
-      "EMAIL_EXECUTION_OWNER_INVALID: salesperson email must execute through the user's delegated Microsoft mailbox."
-    );
   const senderIdentity = await resolveExecutionSender(
     input.connection.organisationId,
     input.message
   );
-  if (!senderIdentity)
+  if (input.message.channel !== "email" && !senderIdentity)
     throw new Error(
       `SENDER_NOT_COMMISSIONED: an exact approved ${input.message.channel.toUpperCase()} sender identity is required before execution.`
     );
@@ -208,7 +203,11 @@ export async function sendSalesMessage(input: {
   await assertNotSuppressed(input.connection.organisationId, message);
 
   const native =
-    message.channel === "sms" ? input.adapter.sendSms : input.adapter.sendWhatsApp;
+    message.channel === "email"
+      ? input.adapter.sendEmail
+      : message.channel === "sms"
+        ? input.adapter.sendSms
+        : input.adapter.sendWhatsApp;
 
   if (!native)
     throw new Error(
@@ -232,10 +231,10 @@ export async function sendSalesMessage(input: {
 
 export function getSalesCommunicationsReadiness() {
   return {
-    emailMode: "personal_microsoft_delegated" as const,
+    emailMode: "member_selected_source" as const,
     crmMessagingMode: "crm_native_per_connection" as const,
     deploymentMessagingGatewayRequired: false,
     detail:
-      "Sales email executes through each salesperson's delegated Microsoft mailbox. SMS and WhatsApp remain exact capability truth on each connected CRM, including the commissioned sender identity and a stable outbound idempotency key.",
+      "Sales email follows the member-selected source: Genie requires the exact commissioned CRM email.send capability, while Microsoft requires the salesperson's delegated mailbox. SMS and WhatsApp remain exact capability truth on each connected CRM.",
   };
 }

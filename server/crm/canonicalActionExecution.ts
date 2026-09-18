@@ -953,9 +953,41 @@ async function executeMutation(input: {
       break;
     case "send_email":
     case "send_email_template":
-      throw new Error(
-        "EMAIL_EXECUTION_OWNER_INVALID: salesperson email must execute through the user's delegated Microsoft mailbox."
-      );
+      evidence = await sendSalesMessage({
+        adapter: input.adapter,
+        connection: input.connection,
+        secret: input.secret,
+        correlationId: input.correlationId,
+        message: {
+          channel: "email",
+          to: String(input.payload.to ?? input.payload.email ?? ""),
+          subject:
+            typeof input.payload.subject === "string"
+              ? input.payload.subject
+              : undefined,
+          body: String(
+            input.payload.body ??
+              input.payload.templateText ??
+              input.payload.message ??
+              ""
+          ),
+          templateName:
+            typeof input.payload.templateName === "string"
+              ? input.payload.templateName
+              : undefined,
+          senderIdentity:
+            typeof input.payload.senderIdentity === "string"
+              ? input.payload.senderIdentity
+              : undefined,
+          idempotencyKey: input.proposal.idempotencyKey,
+          contactExternalId,
+          opportunityExternalId: explicitExternalId(
+            input.payload,
+            "opportunityExternalId"
+          ),
+        },
+      });
+      break;
     case "send_sms":
     case "send_sms_template":
       evidence = await sendSalesMessage({

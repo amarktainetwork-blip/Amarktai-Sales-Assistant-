@@ -1,4 +1,5 @@
 import { getDelegatedMailboxStatus } from "./delegatedMailbox";
+import { requireOrganisationMembership } from "./organisation";
 import {
   isCustomOperationKey,
   productionOperationAvailable,
@@ -130,12 +131,14 @@ function connectionCanRoute(status: string) {
 
 function delegatedMicrosoftRoute(
   actionType: string,
-  personalMicrosoft?: PersonalMicrosoftRouteContext
+  personalMicrosoft?: PersonalMicrosoftRouteContext,
+  emailSource?: "genie" | "microsoft"
 ) {
   const email =
     actionType === "send_email" || actionType === "send_email_template";
   const calendar = actionType === "create_calendar_event";
   if (!email && !calendar) return undefined;
+  if (email && emailSource === "genie") return undefined;
   const requiredCapabilities = email
     ? ["Mail.Read", "Mail.Send"]
     : ["Calendars.ReadWrite"];
@@ -184,7 +187,10 @@ export function routeConnectedSystemActions<
 >(
   actions: T[],
   systems: ConnectedSystemRoute[],
-  options?: { personalMicrosoft?: PersonalMicrosoftRouteContext }
+  options?: {
+    personalMicrosoft?: PersonalMicrosoftRouteContext;
+    emailSource?: "genie" | "microsoft";
+  }
 ) {
   const eligibleSystems = systems.filter(system =>
     connectionCanRoute(system.status)
@@ -194,12 +200,26 @@ export function routeConnectedSystemActions<
     const effectivePayload = routedPayload(action);
     const microsoftRoute = delegatedMicrosoftRoute(
       effectiveActionType || action.actionType,
-      options?.personalMicrosoft
+      options?.personalMicrosoft,
+      options?.emailSource
     );
     if (microsoftRoute)
       return {
         ...action,
-        payload: { ...action.payload, crmRoute: microsoftRoute },
+        payload: {
+          ...action.payload,
+          crmRoute: {
+            ...microsoftRoute,
+            ...(effectiveActionType === "send_email" ||
+            effectiveActionType === "send_email_template"
+              ? { emailSource: options?.emailSource || "microsoft" }
+              : {}),
+          },
+          ...(effectiveActionType === "send_email" ||
+          effectiveActionType === "send_email_template"
+            ? { executionOwner: microsoftRoute.displayName }
+            : {}),
+        },
       };
 
     const customAction = effectiveActionType === "custom_crm_action";
@@ -261,7 +281,27 @@ export function routeConnectedSystemActions<
             : `No backend-verified organisation CRM connection can perform '${effectiveActionType || action.actionType}' with the required execution/readback capability (${requiredCapability}).`,
           requiredCapability,
         };
-    return { ...action, payload: { ...action.payload, crmRoute } };
+    const emailAction =
+      effectiveActionType === "send_email" ||
+      effectiveActionType === "send_email_template";
+    const routedCrm =
+      emailAction && options?.emailSource
+        ? { ...crmRoute, emailSource: options.emailSource }
+        : crmRoute;
+    const executionOwner =
+      emailAction && options?.emailSource === "genie"
+        ? crmRoute.routable
+          ? crmRoute.displayName || "Genie"
+          : "Genie inbox · review only"
+        : undefined;
+    return {
+      ...action,
+      payload: {
+        ...action.payload,
+        crmRoute: routedCrm,
+        ...(executionOwner ? { executionOwner } : {}),
+      },
+    };
   });
 }
 
@@ -273,21 +313,29 @@ export async function routeConnectedSystemActionsForUser<
   actions: T[];
   systems: ConnectedSystemRoute[];
 }) {
+  const membership = await requireOrganisationMembership(
+    input.userId,
+    input.organisationId
+  );
+  const emailSource = membership.memberOnboarding.emailSource;
   const requiresMicrosoft = input.actions.some(action => {
     const actionType = routedActionType(action) || action.actionType;
+    if (actionType === "create_calendar_event") return true;
     return (
-      actionType === "send_email" ||
-      actionType === "send_email_template" ||
-      actionType === "create_calendar_event"
+      emailSource !== "genie" &&
+      (actionType === "send_email" || actionType === "send_email_template")
     );
   });
   if (!requiresMicrosoft)
-    return routeConnectedSystemActions(input.actions, input.systems);
+    return routeConnectedSystemActions(input.actions, input.systems, {
+      emailSource,
+    });
   const status = await getDelegatedMailboxStatus({
     userId: input.userId,
     organisationId: input.organisationId,
   });
   return routeConnectedSystemActions(input.actions, input.systems, {
+    emailSource,
     personalMicrosoft: {
       connected: status.connected,
       scopes: Array.isArray(status.mailbox?.scopes)
