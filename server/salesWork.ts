@@ -1,5 +1,5 @@
 import { isIncompleteTask, isCompletedTask } from "../shared/taskState";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   crmContacts,
   crmTasks,
@@ -21,6 +21,8 @@ import type {
   NormalizedOpportunity,
   NormalizedTask,
 } from "./crm/types";
+
+export const NEW_LEAD_ALERT_STATUSES = ["open", "in_progress"] as const;
 
 export type SalesWorkType =
   | "NEW_LEAD"
@@ -441,7 +443,7 @@ export async function listNewLeadAlerts(input: {
         eq(salesWorkItems.organisationId, input.organisationId),
         eq(salesWorkItems.salespersonUserId, input.userId),
         eq(salesWorkItems.type, "NEW_LEAD"),
-        eq(salesWorkItems.status, "open")
+        inArray(salesWorkItems.status, [...NEW_LEAD_ALERT_STATUSES])
       )
     )
     .orderBy(desc(salesWorkItems.createdAt), desc(salesWorkItems.id))

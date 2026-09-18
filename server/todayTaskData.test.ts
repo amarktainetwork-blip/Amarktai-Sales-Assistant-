@@ -15,6 +15,9 @@ describe("Today aggregate contract", () => {
       priorityTitles: [],
     });
     expect(result.metrics.overdue).toBe(2401);
+    expect(result.overdueDefinition).toBe("before_current_time");
+    expect(result.metrics.futureScheduled).toBe(2401);
+    expect(result.metrics.unscheduled).toBe(2401);
     expect(result.bounds.start.toISOString()).toBe("2026-07-01T23:00:00.000Z");
     for (const q of r.queries) {
       expect(q.where.sql).toContain("exists (select 1");

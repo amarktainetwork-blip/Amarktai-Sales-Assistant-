@@ -66,6 +66,22 @@ const statusCopy: Record<OperationStatus, string> = {
   BLOCKED: "Blocked",
 };
 
+const requiredReadGroups = [
+  [
+    "Customer data",
+    ["contact.search", "contact.read", "contact.sync", "company.sync"],
+  ],
+  ["Tasks", ["task.sync"]],
+  ["Opportunities", ["opportunity.sync"]],
+  ["Activities", ["activity.sync"]],
+  ["Salesperson identity", ["owner.sync"]],
+  ["Pipeline", ["pipeline.list"]],
+] as const;
+
+const requiredReadKeys: string[] = requiredReadGroups.flatMap(([, keys]) => [
+  ...keys,
+]);
+
 const targetFieldOptions = [
   "externalId",
   "taskId",
@@ -201,17 +217,9 @@ export default function BrowserCrmCommissioning() {
   }, [operations]);
   const commissioningSummary = useMemo(
     () =>
-      [
-        ["Customer data", ["contact.search", "contact.read", "company.read"]],
-        ["Tasks", ["task.list"]],
-        ["Opportunities", ["opportunity.read", "opportunity.update"]],
-        ["Activities", ["history.read"]],
-        ["Notes", ["note.create"]],
-        ["Callback tasks", ["task.create_callback"]],
-        ["Salesperson identity", ["owner.sync"]],
-      ].map(([label, keys]) => ({
-        label: label as string,
-        ready: (keys as string[]).every(key =>
+      requiredReadGroups.map(([label, keys]) => ({
+        label,
+        ready: keys.every(key =>
           operations.some(
             operation =>
               operation.key === key && operation.status === "LIVE_PROVEN"
@@ -220,9 +228,19 @@ export default function BrowserCrmCommissioning() {
       })),
     [operations]
   );
-  const unresolvedCount = operations.filter(
-    operation => operation.status !== "LIVE_PROVEN"
+  const unresolvedRequiredCount = requiredReadKeys.filter(
+    key =>
+      !operations.some(
+        operation => operation.key === key && operation.status === "LIVE_PROVEN"
+      )
   ).length;
+  const optionalUncommissionedCount = operations.filter(
+    operation =>
+      !requiredReadKeys.includes(operation.key) &&
+      operation.status !== "LIVE_PROVEN"
+  ).length;
+  const writeCapabilitiesEnabled =
+    (selectedSystem?.allowedWriteCapabilities?.length ?? 0) > 0;
 
   async function refresh() {
     await Promise.all([
@@ -492,8 +510,13 @@ export default function BrowserCrmCommissioning() {
 
           <details className="rounded-xl border border-[#E1E7EF] bg-white">
             <summary className="cursor-pointer list-none px-4 py-3 text-sm font-bold text-[#526278]">
-              Advanced diagnostics · {unresolvedCount} operation
-              {unresolvedCount === 1 ? "" : "s"} need attention
+              Advanced diagnostics ·{" "}
+              {unresolvedRequiredCount
+                ? `${unresolvedRequiredCount} required read ${unresolvedRequiredCount === 1 ? "issue" : "issues"}`
+                : "required reads proven"}
+              {optionalUncommissionedCount
+                ? ` · ${optionalUncommissionedCount} optional/future functions not commissioned`
+                : ""}
             </summary>
             <div className="grid gap-4 border-t border-[#E1E7EF] p-3">
               {grouped.map(([area, rows]) => (
@@ -513,7 +536,10 @@ export default function BrowserCrmCommissioning() {
                           </p>
                           <p className="mt-0.5 text-[11px] text-[#718096]">
                             {operation.key} · {operation.mode.toUpperCase()} ·{" "}
-                            {statusCopy[operation.status]}
+                            {operation.mode === "write" &&
+                            !writeCapabilitiesEnabled
+                              ? "Disabled by policy"
+                              : statusCopy[operation.status]}
                           </p>
                           {operation.lastError ? (
                             <p className="mt-1 max-w-2xl text-xs text-red-700">
@@ -527,9 +553,13 @@ export default function BrowserCrmCommissioning() {
                               <CheckCircle2 className="size-3.5" /> LIVE_PROVEN
                             </span>
                           ) : null}
-                          {operation.status === "NOT_LEARNED" ||
-                          operation.status === "DEGRADED" ||
-                          operation.status === "BLOCKED" ? (
+                          {(operation.status === "NOT_LEARNED" ||
+                            operation.status === "DEGRADED" ||
+                            operation.status === "BLOCKED") &&
+                          !(
+                            operation.mode === "write" &&
+                            !writeCapabilitiesEnabled
+                          ) ? (
                             <Button
                               size="sm"
                               variant="outline"
@@ -537,6 +567,12 @@ export default function BrowserCrmCommissioning() {
                             >
                               Teach AmarktAI
                             </Button>
+                          ) : null}
+                          {operation.mode === "write" &&
+                          !writeCapabilitiesEnabled ? (
+                            <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
+                              Review-only
+                            </span>
                           ) : null}
                           {operation.status === "LEARNED" ? (
                             <Button

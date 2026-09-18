@@ -90,19 +90,6 @@ function readCapabilitiesForProvider(provider: string) {
     ? ["companies.read", "owners.read", "pipelines.read"]
     : readCapabilities;
 }
-const writeCapabilities = [
-  "contacts.write",
-  "companies.write",
-  "opportunities.write",
-  "tasks.write",
-  "activities.write",
-  "notes.write",
-  "email.send",
-  "sms.send",
-  "whatsapp.send",
-  "sequences.apply",
-];
-
 function statusPresentation(status: string) {
   if (status === "ready")
     return {
@@ -201,7 +188,8 @@ export default function ConnectionsV2() {
         baseUrl: startUrl,
         connectionMethod: selected.transport,
         allowedReadCapabilities: readCapabilitiesForProvider(selected.provider),
-        allowedWriteCapabilities: writeCapabilities,
+        // New connections always start review-only. Writes are enabled later, one proven capability at a time.
+        allowedWriteCapabilities: [],
       });
       await systems.refetch();
       setAdding(false);
@@ -302,7 +290,7 @@ export default function ConnectionsV2() {
           <JourneyStep
             number="2"
             title="Prove"
-            detail="AmarktAI commissions the required read and write operations before the workspace can become Ready."
+            detail="AmarktAI proves the required read operations first. Write actions stay disabled until they are deliberately enabled and proven later."
           />
           <JourneyStep
             number="3"

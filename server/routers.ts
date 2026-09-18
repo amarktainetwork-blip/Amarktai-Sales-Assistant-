@@ -2,6 +2,7 @@ import {
   listCustomerDirectory,
   getExactCustomerDetail,
   refreshExactCustomerHistory,
+  refreshExactCustomerHistoryIfDue,
 } from "./customerData";
 import {
   getOrganisationWorkspaceContext,
@@ -1641,13 +1642,15 @@ export const appRouter = router({
       }),
     customerDetail: secondFactorProcedure
       .input(z.object({ contactId: z.number().int().positive() }))
-      .query(({ ctx, input }) => {
+      .query(async ({ ctx, input }) => {
         if (!ctx.activeOrganisation) throw new Error("Choose an organisation.");
-        return getExactCustomerDetail({
+        const scope = {
           userId: ctx.user.id,
           organisationId: ctx.activeOrganisation.organisationId,
           ...input,
-        });
+        };
+        await refreshExactCustomerHistoryIfDue(scope).catch(() => undefined);
+        return getExactCustomerDetail(scope);
       }),
     customers: secondFactorProcedure.query(({ ctx }) => {
       if (!ctx.activeOrganisation)
