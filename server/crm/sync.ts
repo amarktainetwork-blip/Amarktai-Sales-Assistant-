@@ -385,7 +385,7 @@ export function crmTaskHistoryProvesLeadWorked(
   return isCompletedTask(task.status) || crmTaskProvesLeadProgress(task);
 }
 
-async function reconcileNewLeadAlertsFromTaskHistory(input: {
+export async function reconcileNewLeadAlertsFromTaskHistory(input: {
   userId: number;
   organisationId: number;
   connectedSystemId: number;
