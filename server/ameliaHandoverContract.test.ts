@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
 import {
   AMELIA_HANDOVER as a,
+  exactInboundRecipientProven,
   exactOwnerCounts,
   exactTaskCollectionProven,
   handoverAllPassed,
@@ -49,6 +50,54 @@ describe("Amelia handover verifier fails closed", () => {
     expect(source).toContain("TASK_CURRENT_OPEN=");
     expect(source).toContain("exactEmailIsolation === true");
     expect(source).not.toContain("rejectedForeignRecipientCount > 0");
+  });
+
+  it("validates inbound ownership by channel instead of forcing email identity onto SMS/WhatsApp", () => {
+    expect(
+      exactInboundRecipientProven({
+        mailboxUserId: a.userId,
+        expectedUserId: a.userId,
+        channel: "email",
+        recipientReference: a.email,
+        expectedEmail: a.email,
+      })
+    ).toBe(true);
+    expect(
+      exactInboundRecipientProven({
+        mailboxUserId: a.userId,
+        expectedUserId: a.userId,
+        channel: "sms",
+        recipientReference: "+447428000560",
+        expectedEmail: a.email,
+      })
+    ).toBe(true);
+    expect(
+      exactInboundRecipientProven({
+        mailboxUserId: a.userId,
+        expectedUserId: a.userId,
+        channel: "whatsapp",
+        recipientReference: "+447428000560",
+        expectedEmail: a.email,
+      })
+    ).toBe(true);
+    expect(
+      exactInboundRecipientProven({
+        mailboxUserId: 999,
+        expectedUserId: a.userId,
+        channel: "sms",
+        recipientReference: "+447428000560",
+        expectedEmail: a.email,
+      })
+    ).toBe(false);
+    expect(
+      exactInboundRecipientProven({
+        mailboxUserId: a.userId,
+        expectedUserId: a.userId,
+        channel: "email",
+        recipientReference: "someone-else@example.com",
+        expectedEmail: a.email,
+      })
+    ).toBe(false);
   });
 
   it("fails the handover when any required proof is absent", () => {
