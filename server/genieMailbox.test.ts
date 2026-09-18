@@ -27,12 +27,11 @@ const baseEmail = {
 };
 
 describe("Genie personal email isolation", () => {
-  it("allows ingestion only when app, CRM mapping and Genie recipient email match exactly", () => {
+  it("requires the signed-in app user and mapped Genie salesperson email to match exactly", () => {
     expect(
       exactGenieMailboxIdentity({
         appEmail: "Amelia@Course2Career.com",
         mappingEmail: "amelia@course2career.com",
-        recipientEmail: " AMELIA@course2career.com ",
       })
     ).toBe(true);
   });
@@ -40,22 +39,18 @@ describe("Genie personal email isolation", () => {
   it.each([
     {
       appEmail: "amelia@course2career.com",
-      mappingEmail: "amelia@course2career.com",
-      recipientEmail: "other@course2career.com",
-    },
-    {
-      appEmail: "amelia@course2career.com",
       mappingEmail: "other@course2career.com",
-      recipientEmail: "amelia@course2career.com",
     },
     {
       appEmail: "",
       mappingEmail: "amelia@course2career.com",
-      recipientEmail: "amelia@course2career.com",
     },
-  ])("fails closed for shared-inbox mismatch: %o", input => {
-    expect(exactGenieMailboxIdentity(input)).toBe(false);
-  });
+  ])(
+    "fails closed when the salesperson identity mapping disagrees: %o",
+    input => {
+      expect(exactGenieMailboxIdentity(input)).toBe(false);
+    }
+  );
 
   it("normalizes direct and display-name mailbox addresses", () => {
     expect(mailboxAddress(" Amelia@Course2Career.com ")).toBe(
@@ -75,7 +70,7 @@ describe("Genie personal email isolation", () => {
         mailboxEmail: "amelia@course2career.com",
         locationId: "location-1",
         conversationId: "conversation-1",
-        unreadSince: Date.parse("2026-09-16T13:59:00.000Z"),
+        since: Date.parse("2026-09-16T13:59:00.000Z"),
       }
     );
     expect(result).toMatchObject({
@@ -89,31 +84,34 @@ describe("Genie personal email isolation", () => {
     });
   });
 
-  it("rejects another mailbox and multi-recipient/team email without ingesting it", () => {
+  it("accepts owner-scoped team-inbox and multi-recipient email without requiring the visible recipient to equal the salesperson login", () => {
     const input = {
       emailId: "email-1",
       mailboxEmail: "amelia@course2career.com",
       locationId: "location-1",
       conversationId: "conversation-1",
-      unreadSince: Date.parse("2026-09-16T13:59:00.000Z"),
+      since: Date.parse("2026-09-16T13:59:00.000Z"),
     };
     expect(
       parsePersonalGenieEmail(
         { emailMessage: { ...baseEmail, to: ["team@course2career.com"] } },
         input
       )
-    ).toEqual({ kind: "foreign" });
+    ).toMatchObject({
+      kind: "personal",
+      message: { recipient: "team@course2career.com" },
+    });
     expect(
       parsePersonalGenieEmail(
         {
           emailMessage: {
             ...baseEmail,
-            to: ["amelia@course2career.com", "team@course2career.com"],
+            to: ["team@course2career.com", "amelia@course2career.com"],
           },
         },
         input
       )
-    ).toEqual({ kind: "foreign" });
+    ).toMatchObject({ kind: "personal" });
   });
 
   it("ignores outbound, old/read-window, deleted, self and empty-body email", () => {
@@ -122,7 +120,7 @@ describe("Genie personal email isolation", () => {
       mailboxEmail: "amelia@course2career.com",
       locationId: "location-1",
       conversationId: "conversation-1",
-      unreadSince: Date.parse("2026-09-16T13:59:00.000Z"),
+      since: Date.parse("2026-09-16T13:59:00.000Z"),
     };
     expect(
       parsePersonalGenieEmail(
@@ -180,7 +178,7 @@ describe("Genie personal email isolation", () => {
           mailboxEmail: "amelia@course2career.com",
           locationId: "location-1",
           conversationId: "conversation-1",
-          unreadSince: Date.parse("2026-09-16T13:59:00.000Z"),
+          since: Date.parse("2026-09-16T13:59:00.000Z"),
         }
       )
     ).toThrow("GENIE_MAILBOX_SCOPE_MISMATCH");
@@ -215,7 +213,7 @@ describe("Genie personal email isolation", () => {
           locationId: "location-1",
           conversationId: "conversation-1",
           contactExternalId: "contact-1",
-          unreadSince: Date.parse("2026-09-16T13:59:00.000Z"),
+          since: Date.parse("2026-09-16T13:59:00.000Z"),
         }
       )
     ).toMatchObject({
@@ -235,7 +233,7 @@ describe("Genie personal email isolation", () => {
           locationId: "location-1",
           conversationId: "conversation-1",
           contactExternalId: "contact-1",
-          unreadSince: Date.parse("2026-09-16T13:59:00.000Z"),
+          since: Date.parse("2026-09-16T13:59:00.000Z"),
         }
       )
     ).toMatchObject({ kind: "personal", message: { channel: "chat" } });
@@ -299,7 +297,7 @@ describe("inbound phone message fail-closed scope", () => {
     locationId: "loc",
     conversationId: "conv",
     contactExternalId: "contact",
-    unreadSince: Date.parse("2026-09-17T09:00:00Z"),
+    since: Date.parse("2026-09-17T09:00:00Z"),
   };
   const message = {
     id: "m",
@@ -347,7 +345,7 @@ describe("inbound phone message fail-closed scope", () => {
           locationId: "location-1",
           conversationId: "conversation-1",
           contactExternalId: "contact-1",
-          unreadSince: 0,
+          since: 0,
         }
       )
     ).toThrow("GENIE_MAILBOX_SCOPE_MISMATCH");
@@ -382,17 +380,19 @@ describe("read-only mailbox ownership proof", () => {
     });
     const get = vi.fn(async (url: string) =>
       response(
-        url.includes("/contacts/")
-          ? {
-              contact: {
-                id: "contact",
-                assignedTo: contactOwner,
-                locationId: "loc",
-              },
-            }
-          : url.endsWith("/messages")
-            ? { messages: { messages: [message], nextPage: false } }
-            : { message }
+        url.includes("/conversations/search")
+          ? { conversations: [conversation], total: 1 }
+          : url.includes("/contacts/")
+            ? {
+                contact: {
+                  id: "contact",
+                  assignedTo: contactOwner,
+                  locationId: "loc",
+                },
+              }
+            : url.endsWith("/messages")
+              ? { messages: { messages: [message], nextPage: false } }
+              : { message }
       )
     );
     const post = vi.fn(async () =>
@@ -414,6 +414,7 @@ describe("read-only mailbox ownership proof", () => {
       page: f.page,
       ownerExternalId: "owner",
       mailboxEmail: "advisor@example.test",
+      since: new Date("2026-09-17T09:00:00Z"),
     });
     expect(result.records).toHaveLength(1);
     expect(result.records[0]).toMatchObject({
@@ -430,16 +431,47 @@ describe("read-only mailbox ownership proof", () => {
       )
     ).toBe(true);
   });
+  it("ingests owner-scoped messages even when the CRM conversation is already read", async () => {
+    const f = source("owner");
+    const bootstrapConversation = {
+      id: "other-unread",
+      unreadCount: 1,
+    };
+    f.post.mockImplementation(
+      async () =>
+        ({
+          ok: () => true,
+          status: () => 200,
+          json: async () => ({
+            search: { conversations: [bootstrapConversation] },
+          }),
+        }) as any
+    );
+    const result = await readPersonalGenieMailbox({
+      page: f.page,
+      ownerExternalId: "owner",
+      mailboxEmail: "advisor@example.test",
+      since: new Date("2026-09-17T09:00:00Z"),
+    });
+    expect(result.records).toHaveLength(1);
+    expect(result.records[0].externalMessageId).toBe("m");
+  });
+
   it("does not trust stale conversation assignment when the contact has another owner", async () => {
     const f = source("other");
     const result = await readPersonalGenieMailbox({
       page: f.page,
       ownerExternalId: "owner",
       mailboxEmail: "advisor@example.test",
+      since: new Date("2026-09-17T09:00:00Z"),
     });
     expect(result.records).toEqual([]);
     expect(result.rejectedForeignOwnerCount).toBe(1);
-    expect(f.get).toHaveBeenCalledTimes(1);
+    expect(
+      f.get.mock.calls.some((call: any) =>
+        String(call[0]).includes("/contacts/contact")
+      )
+    ).toBe(true);
   });
   it("excludes another salesperson's conversation even if the contact is owned", async () => {
     const f = source("owner", "other");
@@ -447,8 +479,13 @@ describe("read-only mailbox ownership proof", () => {
       page: f.page,
       ownerExternalId: "owner",
       mailboxEmail: "advisor@example.test",
+      since: new Date("2026-09-17T09:00:00Z"),
     });
     expect(result.records).toEqual([]);
-    expect(f.get).not.toHaveBeenCalled();
+    expect(
+      f.get.mock.calls.filter(
+        (call: any) => !String(call[0]).includes("/conversations/search")
+      )
+    ).toHaveLength(0);
   });
 });

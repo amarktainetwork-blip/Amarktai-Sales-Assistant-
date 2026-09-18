@@ -693,11 +693,15 @@ const VERIFIED_CONTACT_NEW_LEAD_STATUSES = [
   "blocked",
 ] as const;
 
-async function completeNewLeadWorkAfterVerifiedContact(input: {
+export async function completeNewLeadWorkAfterVerifiedContact(input: {
   userId: number;
   organisationId: number;
   contactExternalId: string;
-  reason: "verified_call" | "verified_task_completion";
+  reason:
+    | "verified_call"
+    | "verified_task_completion"
+    | "verified_inbound_reply"
+    | "verified_customer_history";
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
@@ -734,7 +738,11 @@ async function completeNewLeadWorkAfterVerifiedContact(input: {
       summary:
         input.reason === "verified_call"
           ? "Verified customer call resolved the first-contact lead alert."
-          : "Verified CRM task completion resolved the first-contact lead alert.",
+          : input.reason === "verified_task_completion"
+            ? "Verified CRM task completion resolved the first-contact lead alert."
+            : input.reason === "verified_inbound_reply"
+              ? "Verified inbound customer reply resolved the first-contact lead alert."
+              : "Verified customer history resolved the first-contact lead alert.",
       metadata: { count, contactExternalId, reason: input.reason },
     });
   return count;

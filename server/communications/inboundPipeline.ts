@@ -20,6 +20,7 @@ import {
   persistConfirmedCommitment,
 } from "../memory";
 import { evaluateStoredAutomationPolicy } from "../automationPolicyEvaluator";
+import { completeNewLeadWorkAfterVerifiedContact } from "../salesWork";
 
 export type InboundEnvelope = {
   externalMessageId: string;
@@ -410,6 +411,13 @@ export async function ingestInboundMessage(input: {
           triggerKey: "inbound_email",
         },
       },
+    });
+  if (contact?.externalId && input.mailboxUserId != null)
+    await completeNewLeadWorkAfterVerifiedContact({
+      userId: input.mailboxUserId,
+      organisationId: input.organisationId,
+      contactExternalId: contact.externalId,
+      reason: "verified_inbound_reply",
     });
   if (classification.category === "unsubscribe")
     await db
