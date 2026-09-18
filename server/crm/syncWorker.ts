@@ -159,7 +159,7 @@ async function attemptReadOnlyAuthenticationRecovery(input: {
   if (!db) throw new Error("Database connection is unavailable.");
   const connection = toAdapterConnection(input.system);
   const adapter = getCrmAdapter(connection.provider);
-  if (!adapter.syncRecentContacts) return false;
+  if (!adapter.reproveRecentContactsRead) return false;
   const secret = await loadUserConnectionSecret({
     userId: input.userId,
     organisationId: input.system.organisationId,
@@ -174,10 +174,15 @@ async function attemptReadOnlyAuthenticationRecovery(input: {
     return false;
 
   try {
-    // This is deliberately a GET-only, exact-owner read. A successful learned
-    // contact.sync operation records authenticationVerified=true and restores
-    // current readiness. No CRM write capability is required or exercised.
-    await adapter.syncRecentContacts({ connection, secret });
+    // This is deliberately a GET-only, exact-owner re-proof. The adapter fixes
+    // the operation to contact.sync, enables failed-read verification only, and
+    // publishes fresh structured read proof for this exact mapped browser user.
+    // No CRM write capability is required or exercised.
+    await adapter.reproveRecentContactsRead({
+      connection,
+      secret,
+      publishByUserId: input.userId,
+    });
     const [restored] = await db
       .select({ status: connectedSystems.status })
       .from(connectedSystems)

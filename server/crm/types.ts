@@ -194,6 +194,15 @@ export type CrmAdapter = {
     connection: AdapterConnection;
     secret: ConnectionSecretPayload;
   }) => Promise<{ records: NormalizedContact[] }>;
+  /**
+   * Internal recovery path for re-proving a failed read definition after an
+   * authentication or transport interruption. This must never execute CRM writes.
+   */
+  reproveRecentContactsRead?: (input: {
+    connection: AdapterConnection;
+    secret: ConnectionSecretPayload;
+    publishByUserId: number;
+  }) => Promise<{ records: NormalizedContact[] }>;
   syncCompanies: (input: {
     connection: AdapterConnection;
     secret: ConnectionSecretPayload;

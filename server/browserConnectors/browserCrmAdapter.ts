@@ -1828,7 +1828,11 @@ export function browserCrmAdapter(
       secret: ConnectionSecretPayload;
       cursor?: string;
     },
-    extraPayload: Record<string, unknown> = {}
+    extraPayload: Record<string, unknown> = {},
+    verification: {
+      allowTestReady?: boolean;
+      publishByUserId?: number;
+    } = {}
   ) => {
     const execution = await runOperation({
       connection: input.connection,
@@ -1836,6 +1840,8 @@ export function browserCrmAdapter(
       provider,
       operation,
       correlationId: `sync-${operation}`,
+      allowTestReady: verification.allowTestReady,
+      publishByUserId: verification.publishByUserId,
       payload: {
         cursor: input.cursor || "",
         ownerExternalId: input.secret.crmUserExternalId || "",
@@ -1900,6 +1906,27 @@ export function browserCrmAdapter(
             const result = await list("syncContacts", contact, input, {
               fastPath: true,
             });
+            return { records: result.records };
+          },
+          reproveRecentContactsRead: async (input: {
+            connection: AdapterConnection;
+            secret: ConnectionSecretPayload;
+            publishByUserId: number;
+          }) => {
+            if (!input.secret.crmUserExternalId)
+              throw new Error("CRM_READ_REPROOF_OWNER_REQUIRED");
+            if (input.secret.browserUserId !== input.publishByUserId)
+              throw new Error("CRM_READ_REPROOF_USER_SCOPE_MISMATCH");
+            const result = await list(
+              "syncContacts",
+              contact,
+              input,
+              { fastPath: true },
+              {
+                allowTestReady: true,
+                publishByUserId: input.publishByUserId,
+              }
+            );
             return { records: result.records };
           },
         }
