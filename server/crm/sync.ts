@@ -33,7 +33,10 @@ import type {
 import { normalizeCrmEmail, normalizeCrmPhone } from "./identity";
 import { runModelFreeOperation } from "../aiExecutionBoundary";
 import { upsertSalesWorkFromCrm } from "../salesWork";
-import { INCOMPLETE_TASK_STATUSES } from "../../shared/taskState";
+import {
+  INCOMPLETE_TASK_STATUSES,
+  isCompletedTask,
+} from "../../shared/taskState";
 import { crmResourceSyncEligible } from "./syncEligibility";
 import { assertPersonalBrowserOwnerScope } from "./personalOwnerScope";
 export { crmResourceSyncEligible } from "./syncEligibility";
@@ -315,7 +318,11 @@ async function reconcileOpenTaskSnapshot(input: {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
   const cached = await db
-    .select({ externalId: crmTasks.externalId })
+    .select({
+      externalId: crmTasks.externalId,
+      contactExternalId: crmTasks.contactExternalId,
+      title: crmTasks.title,
+    })
     .from(crmTasks)
     .where(
       and(
@@ -364,6 +371,102 @@ async function reconcileOpenTaskSnapshot(input: {
       )
     );
   return missing.length;
+}
+
+export function crmTaskProvesLeadProgress(task: Pick<NormalizedTask, "title">) {
+  const title = task.title.trim().toLowerCase().replace(/\s+/g, " ");
+  if (!title) return false;
+  return !/(^|\s)(first|1st|initial)\s*(call|contact)(\s|$)/i.test(title);
+}
+
+export function crmTaskHistoryProvesLeadWorked(
+  task: Pick<NormalizedTask, "title" | "status">
+) {
+  return isCompletedTask(task.status) || crmTaskProvesLeadProgress(task);
+}
+
+async function reconcileNewLeadAlertsFromTaskHistory(input: {
+  userId: number;
+  organisationId: number;
+  connectedSystemId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const activeLeads = await db
+    .select({ contactExternalId: salesWorkItems.contactExternalId })
+    .from(salesWorkItems)
+    .where(
+      and(
+        eq(salesWorkItems.organisationId, input.organisationId),
+        eq(salesWorkItems.connectedSystemId, input.connectedSystemId),
+        eq(salesWorkItems.salespersonUserId, input.userId),
+        eq(salesWorkItems.type, "NEW_LEAD"),
+        inArray(salesWorkItems.status, [
+          "open",
+          "in_progress",
+          "snoozed",
+          "blocked",
+        ])
+      )
+    );
+  const contactExternalIds = Array.from(
+    new Set(
+      activeLeads
+        .map(row => row.contactExternalId?.trim())
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+  if (!contactExternalIds.length) return 0;
+  const taskTruth = await db
+    .select({
+      contactExternalId: crmTasks.contactExternalId,
+      title: crmTasks.title,
+      status: crmTasks.status,
+    })
+    .from(crmTasks)
+    .where(
+      and(
+        eq(crmTasks.organisationId, input.organisationId),
+        eq(crmTasks.connectedSystemId, input.connectedSystemId),
+        inArray(crmTasks.contactExternalId, contactExternalIds)
+      )
+    );
+  const workedContacts = Array.from(
+    new Set(
+      taskTruth
+        .filter(
+          task => task.contactExternalId && crmTaskHistoryProvesLeadWorked(task)
+        )
+        .map(task => task.contactExternalId!.trim())
+        .filter(Boolean)
+    )
+  );
+  if (!workedContacts.length) return 0;
+  const now = new Date();
+  const result = await db
+    .update(salesWorkItems)
+    .set({
+      status: "completed",
+      completedAt: now,
+      freshness: "current",
+      syncedAt: now,
+    })
+    .where(
+      and(
+        eq(salesWorkItems.organisationId, input.organisationId),
+        eq(salesWorkItems.connectedSystemId, input.connectedSystemId),
+        eq(salesWorkItems.salespersonUserId, input.userId),
+        eq(salesWorkItems.type, "NEW_LEAD"),
+        inArray(salesWorkItems.contactExternalId, workedContacts),
+        inArray(salesWorkItems.status, [
+          "open",
+          "in_progress",
+          "snoozed",
+          "blocked",
+        ])
+      )
+    );
+  return Number(result[0].affectedRows || 0);
 }
 
 async function upsertActivities(
@@ -595,13 +698,19 @@ async function syncConnectedSystemDeterministically(input: {
         resourceType === "tasks" &&
         currentTaskExternalIds &&
         secret.crmUserExternalId
-      )
+      ) {
         await reconcileOpenTaskSnapshot({
           organisationId: input.organisationId,
           connectedSystemId: system.id,
           ownerExternalId: secret.crmUserExternalId,
           currentOpenIds: currentTaskExternalIds,
         });
+        await reconcileNewLeadAlertsFromTaskHistory({
+          userId: input.userId,
+          organisationId: input.organisationId,
+          connectedSystemId: system.id,
+        });
+      }
       await saveCursor(system.id, resourceType, undefined);
       summary[resourceType] = drained.total;
     } catch (error) {
@@ -755,6 +864,11 @@ async function syncConnectedSystemRoutineDeterministically(input: {
         connectedSystemId: system.id,
         ownerExternalId: secret.crmUserExternalId,
         currentOpenIds: currentTaskExternalIds,
+      });
+      await reconcileNewLeadAlertsFromTaskHistory({
+        userId: input.userId,
+        organisationId: input.organisationId,
+        connectedSystemId: system.id,
       });
       await saveCursor(system.id, "tasks", undefined);
       summary.tasks = drained.total;

@@ -13,7 +13,7 @@ import {
   saveUserConnectionSecret,
 } from "../connectedSystems";
 import { getDb, recordAudit } from "../db";
-import { connectedSystems } from "../../drizzle/schema";
+import { connectedSystems, connectorSyncJobs } from "../../drizzle/schema";
 import { and, eq } from "drizzle-orm";
 import {
   canManageOrganisationForUser,
@@ -411,6 +411,24 @@ async function persistAuthenticatedSession(
                   )
                 )
               );
+          await db
+            .update(connectorSyncJobs)
+            .set({
+              status: "ready",
+              lastStartedAt: null,
+              lastSucceededAt: null,
+              lastError: null,
+            })
+            .where(
+              and(
+                eq(
+                  connectorSyncJobs.organisationId,
+                  session.connection.organisationId
+                ),
+                eq(connectorSyncJobs.connectedSystemId, session.connection.id),
+                eq(connectorSyncJobs.resourceType, "crm_reconciliation")
+              )
+            );
         }
       }
       await recordAudit({

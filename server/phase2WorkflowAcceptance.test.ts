@@ -26,9 +26,15 @@ describe("Phase 2 daily salesperson workflow", () => {
     expect(service).toContain(
       "inArray(crmContacts.externalId, workContactExternalIds)"
     );
-    expect(queue).toContain(
-      'primaryKind: "overdue_task" | "inbound_reply" | "due_today"'
-    );
+    for (const kind of [
+      '"new_lead"',
+      '"inbound_reply"',
+      '"confirmed_follow_up"',
+      '"overdue_task"',
+      '"due_today"',
+    ])
+      expect(queue).toContain(kind);
+    expect(queue).toContain("reminderIds");
     expect(queue).toContain("if (!contact) return");
   });
 

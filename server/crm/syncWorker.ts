@@ -13,6 +13,7 @@ import { connectedSystemHasActiveCommissioning } from "./backgroundReadCommissio
 import { syncConnectedSystem, syncConnectedSystemRoutine } from "./sync";
 
 export const DEFAULT_CRM_SYNC_INTERVAL_MS = 120_000;
+export const CRM_SYNC_POLL_INTERVAL_MS = 30_000;
 const MAX_CONNECTIONS_PER_CYCLE = 50;
 export const CRM_SYNC_STALE_LEASE_MS = 10 * 60_000;
 
@@ -230,7 +231,10 @@ export async function runConnectionScopedCrmSyncCycle(now = new Date()) {
       if (isTransientCrmSyncFailure(error)) {
         await db
           .update(connectorSyncJobs)
-          .set({ status: row.job.status === "error" ? "error" : "ready" })
+          .set({
+            status: row.job.status === "error" ? "error" : "ready",
+            lastStartedAt: null,
+          })
           .where(eq(connectorSyncJobs.id, row.job.id));
         continue;
       }
@@ -287,5 +291,8 @@ export function startConnectionScopedCrmSyncWorker(
     }
   };
   void run();
-  return setInterval(() => void run(), intervalMs);
+  return setInterval(
+    () => void run(),
+    Math.min(intervalMs, CRM_SYNC_POLL_INTERVAL_MS)
+  );
 }

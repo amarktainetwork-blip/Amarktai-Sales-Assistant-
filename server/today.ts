@@ -4,7 +4,7 @@ import { isIncompleteTask } from "../shared/taskState";
 import { normalizedCustomerAttributes, personalOwnerSql } from "./customerData";
 import { deriveCustomerInterest } from "./customerInterest";
 import { buildTodayCallQueue } from "./todayCallQueue";
-import { and, desc, eq, inArray, isNull, lte, or } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
 import {
   actionProposals,
   assistantReminders,
@@ -153,6 +153,7 @@ export async function getTodayWork(input: {
     syncJobs,
     inboundRows,
     reminders,
+    futureCommitments,
     callbacks,
     workItems,
   ] = await Promise.all([
@@ -243,6 +244,23 @@ export async function getTodayWork(input: {
       .limit(100),
     db
       .select()
+      .from(assistantReminders)
+      .where(
+        and(
+          eq(assistantReminders.organisationId, input.organisationId),
+          eq(assistantReminders.userId, input.userId),
+          eq(assistantReminders.source, "call_commitment"),
+          or(
+            eq(assistantReminders.status, "open"),
+            eq(assistantReminders.status, "snoozed")
+          ),
+          gt(assistantReminders.dueAt, localDayEnd)
+        )
+      )
+      .orderBy(desc(assistantReminders.dueAt))
+      .limit(200),
+    db
+      .select()
       .from(callbackTasks)
       .where(
         and(
@@ -292,11 +310,20 @@ export async function getTodayWork(input: {
         connectedSystemId &&
         ownerIds.has(`${connectedSystemId}:${ownerExternalId}`)
     );
-  const scopedTasks = [
-    ...taskData.queues.overdueTasks,
-    ...taskData.queues.dueToday,
-    ...taskData.queues.unscheduled,
-  ];
+  const futureCommitmentContacts = new Set(
+    futureCommitments
+      .map(item => item.contactExternalId?.trim())
+      .filter((value): value is string => Boolean(value))
+  );
+  const currentTask = <T extends { contactExternalId: string | null }>(
+    task: T
+  ) =>
+    !task.contactExternalId ||
+    !futureCommitmentContacts.has(task.contactExternalId);
+  const overdueTasks = taskData.queues.overdueTasks.filter(currentTask);
+  const dueToday = taskData.queues.dueToday.filter(currentTask);
+  const unscheduledTasks = taskData.queues.unscheduled.filter(currentTask);
+  const scopedTasks = [...overdueTasks, ...dueToday, ...unscheduledTasks];
   const scopedOpportunities = opportunities.filter(
     opportunity =>
       belongsToUser(
@@ -308,8 +335,6 @@ export async function getTodayWork(input: {
       )
   );
   const openTasks = scopedTasks.filter(task => isOpen(task.status));
-  const overdueTasks = taskData.queues.overdueTasks;
-  const dueToday = taskData.queues.dueToday;
   const staleOpportunities = scopedOpportunities.filter(opportunity => {
     const age = ageDays(opportunity.lastActivityAt, now);
     return age === null || age >= 7;
@@ -337,7 +362,8 @@ export async function getTodayWork(input: {
       item.type === "NEW_LEAD" &&
       ["open", "in_progress"].includes(item.status) &&
       item.connectedSystemId &&
-      item.contactExternalId
+      item.contactExternalId &&
+      !futureCommitmentContacts.has(item.contactExternalId)
   );
 
   const workContactExternalIds = Array.from(
@@ -346,6 +372,7 @@ export async function getTodayWork(input: {
         ...taskData.queues.overdueTasks.map(task => task.contactExternalId),
         ...taskData.queues.dueToday.map(task => task.contactExternalId),
         ...currentInbound.map(message => message.contactExternalId),
+        ...reminders.map(reminder => reminder.contactExternalId),
         ...newLeadWork.map(item => item.contactExternalId),
       ].filter((value): value is string => Boolean(value))
     )
@@ -397,9 +424,16 @@ export async function getTodayWork(input: {
       contactExternalId: item.contactExternalId!,
       createdAt: item.createdAt,
     })),
-    overdueTasks: taskData.queues.overdueTasks,
-    dueToday: taskData.queues.dueToday,
+    overdueTasks,
+    dueToday,
     inbound: currentInbound,
+    reminders: reminders.map(reminder => ({
+      id: reminder.id,
+      contactExternalId: reminder.contactExternalId,
+      title: reminder.title,
+      dueAt: reminder.dueAt,
+      source: reminder.source,
+    })),
     contacts: enrichedWorkContacts,
   });
   const newLeadQueue = callQueue.filter(item => item.workItemIds.length > 0);
@@ -493,8 +527,8 @@ export async function getTodayWork(input: {
     role: membership.role,
     requiresOwnerMapping: ownerIds.size === 0,
     metrics: {
-      dueToday: taskData.metrics.dueToday + reminders.length + callbacks.length,
-      overdue: taskData.metrics.overdue,
+      dueToday: dueToday.length + reminders.length + callbacks.length,
+      overdue: overdueTasks.length,
       staleOpportunities: staleOpportunities.length,
       noNextStep: noNextStep.length,
       priorityRecords: priority.length,
