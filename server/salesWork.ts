@@ -686,6 +686,60 @@ export async function transitionSalesWorkItem(input: {
   return { item: updated, context: workContext(updated) };
 }
 
+const VERIFIED_CONTACT_NEW_LEAD_STATUSES = [
+  "open",
+  "in_progress",
+  "snoozed",
+  "blocked",
+] as const;
+
+async function completeNewLeadWorkAfterVerifiedContact(input: {
+  userId: number;
+  organisationId: number;
+  contactExternalId: string;
+  reason: "verified_call" | "verified_task_completion";
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const contactExternalId = input.contactExternalId.trim();
+  if (!contactExternalId) return 0;
+  const now = new Date();
+  const result = await db
+    .update(salesWorkItems)
+    .set({
+      status: "completed",
+      completedAt: now,
+      blockedReason: null,
+      snoozedUntil: null,
+      freshness: "current",
+      syncedAt: now,
+      stateVersion: sql`${salesWorkItems.stateVersion} + 1`,
+    })
+    .where(
+      and(
+        eq(salesWorkItems.organisationId, input.organisationId),
+        eq(salesWorkItems.salespersonUserId, input.userId),
+        eq(salesWorkItems.type, "NEW_LEAD"),
+        eq(salesWorkItems.contactExternalId, contactExternalId),
+        inArray(salesWorkItems.status, [...VERIFIED_CONTACT_NEW_LEAD_STATUSES])
+      )
+    );
+  const count = Number(result[0].affectedRows || 0);
+  if (count)
+    await recordAudit({
+      userId: input.userId,
+      organisationId: input.organisationId,
+      eventType: "sales_work_resolved_by_verified_contact",
+      entityType: "sales_work_item",
+      summary:
+        input.reason === "verified_call"
+          ? "Verified customer call resolved the first-contact lead alert."
+          : "Verified CRM task completion resolved the first-contact lead alert.",
+      metadata: { count, contactExternalId, reason: input.reason },
+    });
+  return count;
+}
+
 /** Closes only the exact work whose external action has completed verified readback. */
 export async function resolveSalesWorkAfterVerifiedAction(input: {
   userId: number;
@@ -746,6 +800,24 @@ export async function resolveSalesWorkAfterVerifiedAction(input: {
   }
   const taskExternalId = String(input.payload.taskExternalId || "").trim();
   if (input.actionType === "complete_active_task" && taskExternalId) {
+    let contactExternalId = String(
+      input.payload.contactExternalId || ""
+    ).trim();
+    if (!contactExternalId) {
+      const task = (
+        await db
+          .select({ contactExternalId: crmTasks.contactExternalId })
+          .from(crmTasks)
+          .where(
+            and(
+              eq(crmTasks.organisationId, input.organisationId),
+              eq(crmTasks.externalId, taskExternalId)
+            )
+          )
+          .limit(1)
+      )[0];
+      contactExternalId = task?.contactExternalId?.trim() || "";
+    }
     await db
       .update(salesWorkItems)
       .set({
@@ -771,6 +843,13 @@ export async function resolveSalesWorkAfterVerifiedAction(input: {
         "Verified CRM task completion resolved the exact sales work item.",
       metadata: { actionType: input.actionType },
     });
+    if (contactExternalId)
+      await completeNewLeadWorkAfterVerifiedContact({
+        userId: input.userId,
+        organisationId: input.organisationId,
+        contactExternalId,
+        reason: "verified_task_completion",
+      });
     return true;
   }
   return false;
@@ -876,6 +955,13 @@ export async function completeCallbackWorkAfterVerifiedCall(input: {
         opportunityExternalId: input.opportunityExternalId || null,
         taskExternalId: input.taskExternalId || null,
       },
+    });
+  if (input.contactExternalId)
+    await completeNewLeadWorkAfterVerifiedContact({
+      userId: input.userId,
+      organisationId: input.organisationId,
+      contactExternalId: input.contactExternalId,
+      reason: "verified_call",
     });
   return exact.length;
 }

@@ -151,6 +151,10 @@ export default function ConnectionsV2() {
     { organisationId: organisationId || 0 },
     { enabled: Boolean(organisationId), refetchInterval: 5_000 }
   );
+  const providerAvailability =
+    trpc.connectedSystems.providerAvailability.useQuery(undefined, {
+      retry: false,
+    });
   const readiness = trpc.integrations.list.useQuery(undefined, {
     enabled: Boolean(organisationId),
     retry: false,
@@ -172,6 +176,10 @@ export default function ConnectionsV2() {
     organisation.data?.role === "manager";
   const startUrl =
     selected.provider === "custom_browser" ? customUrl.trim() : selected.url;
+  const selectedAvailability = providerAvailability.data?.find(
+    item => item.provider === selected.provider
+  );
+  const selectedConfigured = selectedAvailability?.configured === true;
   const connected = useMemo(() => systems.data || [], [systems.data]);
   const workspaceReady = Boolean(readiness.data?.genie.ready);
 
@@ -353,29 +361,50 @@ export default function ConnectionsV2() {
             </div>
 
             <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {providers.map(item => (
-                <button
-                  key={item.provider}
-                  type="button"
-                  onClick={() => {
-                    setSelected(item);
-                    setError("");
-                  }}
-                  className={`rounded-2xl border p-4 text-left transition ${
-                    selected.provider === item.provider
-                      ? "border-[#2F6FED] bg-[#F1F6FF] shadow-sm"
-                      : "border-[#DCE4EE] bg-white hover:border-[#AFC3E8] hover:bg-[#FAFCFF]"
-                  }`}
-                >
-                  <span className="font-bold text-[#26354A]">{item.label}</span>
-                  <span className="mt-1 block text-xs text-[#718096]">
-                    {item.transport === "oauth"
-                      ? "Secure account connection"
-                      : "Private browser connection"}
-                  </span>
-                </button>
-              ))}
+              {providers.map(item => {
+                const availability = providerAvailability.data?.find(
+                  entry => entry.provider === item.provider
+                );
+                const configured = availability?.configured === true;
+                return (
+                  <button
+                    key={item.provider}
+                    type="button"
+                    disabled={!configured}
+                    onClick={() => {
+                      setSelected(item);
+                      setError("");
+                    }}
+                    className={`rounded-2xl border p-4 text-left transition ${
+                      selected.provider === item.provider
+                        ? "border-[#2F6FED] bg-[#F1F6FF] shadow-sm"
+                        : configured
+                          ? "border-[#DCE4EE] bg-white hover:border-[#AFC3E8] hover:bg-[#FAFCFF]"
+                          : "cursor-not-allowed border-[#E3E8EF] bg-[#F8FAFC] opacity-65"
+                    }`}
+                  >
+                    <span className="font-bold text-[#26354A]">
+                      {item.label}
+                    </span>
+                    <span className="mt-1 block text-xs text-[#718096]">
+                      {configured
+                        ? item.transport === "oauth"
+                          ? "Secure account connection"
+                          : item.provider === "custom_browser"
+                            ? "Private browser connection · commissioning required"
+                            : "Private browser connection"
+                        : "Platform setup required before client onboarding"}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
+
+            {selectedAvailability && !selectedConfigured ? (
+              <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+                {selectedAvailability.reason}
+              </p>
+            ) : null}
 
             {selected.provider === "custom_browser" ? (
               <label className="mt-5 block max-w-xl text-sm font-bold text-[#33445B]">
@@ -405,7 +434,7 @@ export default function ConnectionsV2() {
             <Button
               className="mt-5"
               onClick={() => void connect()}
-              disabled={!startUrl || create.isPending}
+              disabled={!startUrl || !selectedConfigured || create.isPending}
             >
               {create.isPending ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />

@@ -139,7 +139,6 @@ export function buildTodayCallQueue(input: {
       workItemId: lead.workItemId,
     });
   }
-  input.overdueTasks.forEach(task => addTask(task, "overdue_task", 1));
   for (const message of input.inbound) {
     if (!message.contactExternalId || !message.connectedSystemId) continue;
     const contact = contacts.get(
@@ -147,7 +146,7 @@ export function buildTodayCallQueue(input: {
     );
     if (!contact) continue;
     candidates.push({
-      rank: 2,
+      rank: 1,
       occurredAt: message.receivedAt.valueOf(),
       contact,
       kind: "inbound_reply",
@@ -158,6 +157,7 @@ export function buildTodayCallQueue(input: {
       inboundId: message.id,
     });
   }
+  input.overdueTasks.forEach(task => addTask(task, "overdue_task", 2));
   input.dueToday.forEach(task => addTask(task, "due_today", 3));
 
   candidates.sort(

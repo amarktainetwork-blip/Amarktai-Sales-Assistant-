@@ -435,12 +435,12 @@ export default function BrowserCrmCommissioning() {
         <div>
           <div className="flex items-center gap-2 text-[#26354A]">
             <Sparkles className="size-4 text-[#3F70D8]" />
-            <h3 className="font-bold">CRM operation commissioning</h3>
+            <h3 className="font-bold">Advanced CRM setup</h3>
           </div>
           <p className="mt-1 max-w-3xl text-xs leading-5 text-[#6C798B]">
-            Each CRM function has its own proof state. Authentication alone
-            never enables production actions. Teach, review, run a controlled
-            test, then publish only the operation that passed.
+            Use this only when a manager is adding or proving a CRM function.
+            Normal daily work should happen in Today, Customers, Calls, AmarktAI
+            and Review.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => void refresh()}>
@@ -510,12 +510,12 @@ export default function BrowserCrmCommissioning() {
 
           <details className="rounded-xl border border-[#E1E7EF] bg-white">
             <summary className="cursor-pointer list-none px-4 py-3 text-sm font-bold text-[#526278]">
-              Advanced diagnostics ·{" "}
+              Technical details ·{" "}
               {unresolvedRequiredCount
                 ? `${unresolvedRequiredCount} required read ${unresolvedRequiredCount === 1 ? "issue" : "issues"}`
                 : "required reads proven"}
               {optionalUncommissionedCount
-                ? ` · ${optionalUncommissionedCount} optional/future functions not commissioned`
+                ? ` · ${optionalUncommissionedCount} additional functions available`
                 : ""}
             </summary>
             <div className="grid gap-4 border-t border-[#E1E7EF] p-3">
@@ -539,9 +539,16 @@ export default function BrowserCrmCommissioning() {
                             {operation.mode === "write" &&
                             !writeCapabilitiesEnabled
                               ? "Disabled by policy"
-                              : statusCopy[operation.status]}
+                              : operation.mode === "read" &&
+                                  !requiredReadKeys.includes(operation.key) &&
+                                  operation.status !== "LIVE_PROVEN"
+                                ? "Optional — add only if needed"
+                                : statusCopy[operation.status]}
                           </p>
-                          {operation.lastError ? (
+                          {operation.lastError &&
+                          (requiredReadKeys.includes(operation.key) ||
+                            (operation.mode === "write" &&
+                              writeCapabilitiesEnabled)) ? (
                             <p className="mt-1 max-w-2xl text-xs text-red-700">
                               {operation.lastError}
                             </p>
@@ -565,7 +572,10 @@ export default function BrowserCrmCommissioning() {
                               variant="outline"
                               onClick={() => void beginTeach(operation)}
                             >
-                              Teach AmarktAI
+                              {operation.mode === "read" &&
+                              !requiredReadKeys.includes(operation.key)
+                                ? "Add optional function"
+                                : "Teach AmarktAI"}
                             </Button>
                           ) : null}
                           {operation.mode === "write" &&

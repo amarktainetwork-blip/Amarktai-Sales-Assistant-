@@ -25,7 +25,7 @@ const contacts = [
 ];
 
 describe("Today call queue", () => {
-  it("prioritises overdue, then replies, then due-today work", () => {
+  it("prioritises customer replies ahead of overdue backlog, then due-today work", () => {
     const queue = buildTodayCallQueue({
       contacts,
       overdueTasks: [
@@ -56,14 +56,14 @@ describe("Today call queue", () => {
         },
       ],
     });
-    expect(queue.map(item => item.name)).toEqual(["Bob", "Alice Example"]);
-    expect(queue[0].primaryKind).toBe("overdue_task");
-    expect(queue[1].primaryKind).toBe("inbound_reply");
-    expect(queue[1].workCount).toBe(2);
-    expect(queue[1].reasons).toEqual([
+    expect(queue.map(item => item.name)).toEqual(["Alice Example", "Bob"]);
+    expect(queue[0].primaryKind).toBe("inbound_reply");
+    expect(queue[0].workCount).toBe(2);
+    expect(queue[0].reasons).toEqual([
       "Customer reply needs action",
       "Task due today",
     ]);
+    expect(queue[1].primaryKind).toBe("overdue_task");
   });
 
   it("never queues work without an exact owned normalized contact", () => {

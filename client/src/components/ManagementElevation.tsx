@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { friendlyError } from "@/lib/friendlyError";
 import { trpc } from "@/lib/trpc";
-import { ShieldCheck } from "lucide-react";
+import { ChevronDown, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -17,12 +17,15 @@ export default function ManagementElevation({
     refetchInterval: 15_000,
   });
   const [password, setPassword] = useState("");
+  const [showAdvancedCrm, setShowAdvancedCrm] = useState(false);
 
   const start = trpc.managementElevation.start.useMutation({
     onSuccess: async result => {
       setPassword("");
       await status.refetch();
-      toast.success(`Management access confirmed for ${result.ttlMinutes} minutes.`);
+      toast.success(
+        `Management access confirmed for ${result.ttlMinutes} minutes.`
+      );
     },
     onError: cause =>
       toast.error(
@@ -94,7 +97,32 @@ export default function ManagementElevation({
         </div>
       </section>
       {showBrowserCommissioning && status.data.elevated ? (
-        <BrowserCrmCommissioning />
+        <section className="rounded-2xl border border-[#DCE4EE] bg-white p-4 shadow-sm">
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-3 text-left"
+            onClick={() => setShowAdvancedCrm(value => !value)}
+            aria-expanded={showAdvancedCrm}
+          >
+            <div>
+              <p className="text-sm font-bold text-[#26354A]">
+                Advanced CRM setup
+              </p>
+              <p className="mt-1 text-xs leading-5 text-[#66758A]">
+                Only open this while adding, teaching or proving a CRM function.
+                It is not part of the salesperson's daily workflow.
+              </p>
+            </div>
+            <ChevronDown
+              className={`h-4 w-4 shrink-0 text-[#718096] transition-transform ${showAdvancedCrm ? "rotate-180" : ""}`}
+            />
+          </button>
+          {showAdvancedCrm ? (
+            <div className="mt-4 border-t border-[#E5EAF0] pt-4">
+              <BrowserCrmCommissioning />
+            </div>
+          ) : null}
+        </section>
       ) : null}
     </>
   );

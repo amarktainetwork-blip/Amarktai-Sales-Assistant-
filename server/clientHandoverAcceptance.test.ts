@@ -4,8 +4,13 @@ import fs from "node:fs";
 const assistant = fs.readFileSync("server/assistantRoutes.ts", "utf8");
 const today = fs.readFileSync("server/today.ts", "utf8");
 const onboarding = fs.readFileSync("client/src/pages/Onboarding.tsx", "utf8");
-const connections = fs.readFileSync("client/src/pages/ConnectionsV2.tsx", "utf8");
+const connections = fs.readFileSync(
+  "client/src/pages/ConnectionsV2.tsx",
+  "utf8"
+);
 const customerData = fs.readFileSync("server/customerData.ts", "utf8");
+const salesWork = fs.readFileSync("server/salesWork.ts", "utf8");
+const todayTaskData = fs.readFileSync("server/todayTaskData.ts", "utf8");
 const liveCallContext = fs.readFileSync("server/liveCalls/context.ts", "utf8");
 const crm = fs.readFileSync("client/src/pages/CrmWorkspace.tsx", "utf8");
 const memberOnboarding = fs.readFileSync(
@@ -70,15 +75,29 @@ describe("client handover acceptance guards", () => {
     expect(connections).not.toContain('"whatsapp.send",');
   });
 
+  it("keeps worked leads and tasks out of the active Today queue without faking CRM completion", () => {
+    expect(salesWork).toContain("completeNewLeadWorkAfterVerifiedContact");
+    expect(salesWork).toContain('reason: "verified_call"');
+    expect(salesWork).toContain('reason: "verified_task_completion"');
+    expect(todayTaskData).toContain("excludeExternalIds");
+    expect(todayTaskData).toContain(
+      "notInArray(crmTasks.externalId, excluded)"
+    );
+  });
+
   it("hydrates exact Genie customer history on demand for customer and call context", () => {
     expect(customerData).toContain("refreshExactCustomerHistoryIfDue");
     expect(compact(routers)).toContain(
-      compact("await refreshExactCustomerHistoryIfDue(scope).catch(() => undefined)")
+      compact(
+        "await refreshExactCustomerHistoryIfDue(scope).catch(() => undefined)"
+      )
     );
     expect(compact(liveCallContext)).toContain(
       compact("await refreshExactCustomerHistoryIfDue({")
     );
-    expect(customerData).toContain("CUSTOMER_HISTORY_REFRESH_TTL_MS = 5 * 60_000");
+    expect(customerData).toContain(
+      "CUSTOMER_HISTORY_REFRESH_TTL_MS = 5 * 60_000"
+    );
   });
 
   it("keeps shared CRM commissioning separate and requires identity for an individual owner", () => {
