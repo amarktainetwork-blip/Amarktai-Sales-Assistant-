@@ -139,6 +139,14 @@ export default function Settings() {
   const profile = company.data?.profile;
   const crmCount = systems.data?.length ?? 0;
   const workspaceMode = organisation.data?.settings?.workspaceMode;
+  const emailSource = organisation.data?.memberOnboarding.emailSource;
+  const genieSystem = systems.data?.find(system => system.provider === "genie");
+  const genieReady = Boolean(
+    genieSystem && ["ready", "limited_permissions"].includes(genieSystem.status)
+  );
+  const workspaceWriteEnabled = Boolean(
+    systems.data?.some(system => system.allowedWriteCapabilities.length > 0)
+  );
 
   useEffect(() => {
     let active = true;
@@ -238,7 +246,7 @@ export default function Settings() {
           </p>
         </div>
 
-        <ManagementElevation />
+        <ManagementElevation showBrowserCommissioning={false} />
 
         <section className="grid gap-4 md:grid-cols-2">
           <SettingCard
@@ -300,23 +308,46 @@ export default function Settings() {
               </span>
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#3F70D8]">
-                  Your mailbox
+                  Sales email source
                 </p>
-                <h2 className="mt-1 text-lg font-bold">Personal mailbox</h2>
+                <h2 className="mt-1 text-lg font-bold">
+                  {emailSource === "genie" ? "Genie inbox" : "Personal mailbox"}
+                </h2>
                 <p className="mt-1 max-w-2xl text-sm leading-6 text-[#66758A]">
-                  Connect your own Microsoft account through the Microsoft 365
-                  adapter. AmarktAI never asks for your mailbox password. Drafts
-                  wait for your review unless your approved autonomy settings
-                  allow otherwise.
+                  {emailSource === "genie"
+                    ? "Genie is selected for your sales email. AmarktAI reads your mapped Genie conversations for customer context and new inbound email, SMS and WhatsApp without marking them read. Customer-facing actions remain governed by Review."
+                    : mailbox?.connected
+                      ? "Your Microsoft mailbox is connected for email and calendar context. Customer-facing work still follows your Review and autonomy settings."
+                      : mailbox?.configured === false
+                        ? "Microsoft mailbox connection is not available for this workspace yet."
+                        : "Microsoft 365 is available, but your mailbox is not connected yet. Connect the account you use for sales. Nothing is sent automatically; customer-facing drafts wait for Review."}
                 </p>
-                {mailbox?.connected ? (
+                {emailSource === "genie" ? (
+                  <p
+                    className={`mt-3 text-sm font-semibold ${genieReady ? "text-emerald-700" : "text-amber-800"}`}
+                  >
+                    {genieReady
+                      ? "Genie sales inbox connected"
+                      : "Genie connection needs attention"}
+                  </p>
+                ) : mailbox?.connected ? (
                   <p className="mt-3 text-sm font-semibold text-emerald-700">
                     Connected as {mailbox.mailbox?.email}
                   </p>
                 ) : null}
               </div>
             </div>
-            {mailboxLoading ? (
+            {emailSource === "genie" ? (
+              <Button
+                variant="outline"
+                disabled={!genieSystem}
+                onClick={() =>
+                  genieSystem && navigate(`/crm/${genieSystem.id}`)
+                }
+              >
+                Open Genie connection
+              </Button>
+            ) : mailboxLoading ? (
               <Button variant="outline" disabled>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Checking…
               </Button>
@@ -338,7 +369,7 @@ export default function Settings() {
               </Button>
             )}
           </div>
-          {mailbox?.configured === false ? (
+          {emailSource !== "genie" && mailbox?.configured === false ? (
             <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
               Your administrator still needs to enable delegated Microsoft
               mailbox connection.
@@ -370,8 +401,9 @@ export default function Settings() {
                 Choose how AmarktAI may work for you
               </h2>
               <p className="mt-1 max-w-3xl text-sm leading-6 text-[#66758A]">
-                Start with review. You can give AmarktAI more freedom later as
-                you become comfortable with how it works.
+                {workspaceWriteEnabled
+                  ? "Start with review. You can give AmarktAI more freedom only within CRM actions your organisation has explicitly enabled."
+                  : "This workspace is currently review-only. No CRM write capability is enabled, so customer-facing actions remain drafts until the organisation deliberately enables and proves them."}
               </p>
             </div>
           </div>
@@ -407,10 +439,13 @@ export default function Settings() {
                     key={mode}
                     type="button"
                     aria-pressed={autonomy.mode === mode}
+                    disabled={
+                      !workspaceWriteEnabled && mode !== "review_everything"
+                    }
                     onClick={() =>
                       setAutonomy(current => ({ ...current, mode }))
                     }
-                    className={`rounded-2xl border p-4 text-left transition ${autonomy.mode === mode ? "border-[#3F70D8] bg-[#F3F7FF]" : "border-[#DCE4EE] bg-white hover:border-[#AFC3E8]"}`}
+                    className={`rounded-2xl border p-4 text-left transition ${autonomy.mode === mode ? "border-[#3F70D8] bg-[#F3F7FF]" : "border-[#DCE4EE] bg-white hover:border-[#AFC3E8]"} ${!workspaceWriteEnabled && mode !== "review_everything" ? "cursor-not-allowed opacity-50" : ""}`}
                   >
                     <span className="font-bold">{title}</span>
                     <span className="mt-2 block text-xs leading-5 text-[#66758A]">
@@ -448,9 +483,19 @@ export default function Settings() {
               ) : null}
 
               <div className="mt-5 rounded-xl border border-[#D9E3F0] bg-[#F8FAFD] p-4 text-xs leading-5 text-[#596A80]">
-                Company policy remains the maximum. Opt-outs, recipient checks,
-                duplicate protection, CRM capability checks, tenant isolation
-                and compliance rules always remain active—even in Full autonomy.
+                {workspaceWriteEnabled ? (
+                  <>
+                    Company policy remains the maximum. Opt-outs, recipient
+                    checks, duplicate protection, CRM capability checks, tenant
+                    isolation and compliance rules always remain active—even in
+                    Full autonomy.
+                  </>
+                ) : (
+                  <strong className="text-[#40536B]">
+                    Company policy: Review only. No CRM write capabilities are
+                    enabled.
+                  </strong>
+                )}
                 {JSON.stringify(effectiveAutonomy) !==
                 JSON.stringify(autonomy) ? (
                   <strong className="mt-2 block text-amber-800">

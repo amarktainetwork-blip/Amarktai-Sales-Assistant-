@@ -51,6 +51,24 @@ describe("client feature acceptance truth", () => {
     expect(evaluateStrictClientAcceptance(matrix).passed).toBe(true);
   });
 
+  it("accepts a critical feature as not applicable when policy deliberately disables it", () => {
+    const matrix = Object.fromEntries(
+      FEATURE_ACCEPTANCE_NAMES.map(name => [
+        name,
+        result("LIVE_PROVEN", "proof"),
+      ])
+    ) as FeatureAcceptanceMatrix;
+    const policyDisabled = CRITICAL_CLIENT_FEATURES.find(name =>
+      name.startsWith("CRM_")
+    );
+    expect(policyDisabled).toBeTruthy();
+    matrix[policyDisabled!] = result(
+      "NOT_APPLICABLE",
+      "disabled by explicit organisation policy"
+    );
+    expect(evaluateStrictClientAcceptance(matrix).passed).toBe(true);
+  });
+
   it("allows optional CRM functions only when live-proven or truthfully not applicable", () => {
     const matrix = Object.fromEntries(
       FEATURE_ACCEPTANCE_NAMES.map(name => [

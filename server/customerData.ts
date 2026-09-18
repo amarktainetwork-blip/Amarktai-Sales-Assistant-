@@ -30,6 +30,24 @@ import {
   isIncompleteTask,
   isCompletedTask,
 } from "../shared/taskState";
+const customerHistoryRefreshDueAt = new Map<string, number>();
+const CUSTOMER_HISTORY_REFRESH_TTL_MS = 5 * 60_000;
+
+export async function refreshExactCustomerHistoryIfDue(input: {
+  userId: number;
+  organisationId: number;
+  contactId: number;
+  force?: boolean;
+}) {
+  const key = `${input.organisationId}:${input.userId}:${input.contactId}`;
+  const now = Date.now();
+  if (!input.force && (customerHistoryRefreshDueAt.get(key) || 0) > now)
+    return { refreshed: false as const };
+  const result = await refreshExactCustomerHistory(input);
+  customerHistoryRefreshDueAt.set(key, now + CUSTOMER_HISTORY_REFRESH_TTL_MS);
+  return { refreshed: true as const, result };
+}
+
 export function personalOwnerSql(
   input: { userId: number; organisationId: number },
   system: AnyMySqlColumn,

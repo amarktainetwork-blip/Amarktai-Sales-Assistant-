@@ -629,16 +629,14 @@ export default function Today() {
 
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#DCE4EE] bg-[#F8FAFD] px-4 py-3 text-xs text-[#66758A]">
           <span>
-            Future open tasks:{" "}
+            Scheduled after today:{" "}
             <strong className="text-[#40536B]">
-              {Math.max(
-                0,
-                (taskMetrics?.incomplete ?? 0) -
-                  (taskMetrics?.overdue ?? 0) -
-                  (taskMetrics?.dueToday ?? 0)
-              )}
+              {taskMetrics?.futureScheduled ?? 0}
             </strong>
-            . They stay scheduled instead of crowding today's queue.
+            {taskMetrics?.unscheduled
+              ? ` · Unscheduled: ${taskMetrics.unscheduled}`
+              : ""}
+            . Future work stays out of today's call queue.
           </span>
           <Button
             variant="ghost"

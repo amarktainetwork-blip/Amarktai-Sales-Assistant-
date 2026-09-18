@@ -2,7 +2,7 @@ import "dotenv/config";
 import { access } from "node:fs/promises";
 import path from "node:path";
 import { createClient } from "redis";
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import {
   actionProposals,
   auditEntries,
@@ -11,6 +11,7 @@ import {
   callbackTasks,
   connectedSystems,
   connectorVerificationRuns,
+  crmActivities,
   crmOpportunities,
   knowledgeSources,
   organisationMembers,
@@ -168,7 +169,10 @@ async function main() {
       db
         .select()
         .from(browserLearnedOperations)
-        .orderBy(desc(browserLearnedOperations.version))
+        .orderBy(
+          desc(browserLearnedOperations.version),
+          desc(browserLearnedOperations.id)
+        )
         .limit(1_000),
       db
         .select()
@@ -208,14 +212,20 @@ async function main() {
         .limit(500),
       db.select({ id: crmOpportunities.id }).from(crmOpportunities).limit(1),
     ]);
-    const currentOperations = new Map<string, string>();
-    for (const operation of operations)
-      if (!currentOperations.has(operation.operationKey))
-        currentOperations.set(operation.operationKey, operation.status);
     const readyVerification = verifications.find(
       item => item.status === "ready"
     );
-    const readySystem = systems.find(item => item.status === "ready");
+    const readySystem =
+      systems.find(item => item.id === readyVerification?.connectedSystemId) ||
+      systems.find(item => item.status === "ready");
+    const currentOperations = new Map<string, string>();
+    for (const operation of operations)
+      if (
+        readySystem &&
+        operation.connectedSystemId === readySystem.id &&
+        !currentOperations.has(operation.operationKey)
+      )
+        currentOperations.set(operation.operationKey, operation.status);
     const authAudit = audits.find(
       item => item.eventType === "two_factor_verified"
     );
@@ -255,59 +265,78 @@ async function main() {
       ["contact.search", "contact.read", "contact.sync"],
       "CRM contact reading"
     );
-    matrix.CRM_WRITE = operationStatus(
-      currentOperations,
-      ["contact.update", "note.create", "task.create"],
-      "Core CRM writing"
-    );
+    const enabledWrites = new Set(readySystem?.allowedWriteCapabilities || []);
+    matrix.CRM_WRITE = enabledWrites.size
+      ? operationStatus(
+          currentOperations,
+          ["contact.update", "note.create", "task.create"],
+          "Core CRM writing"
+        )
+      : result(
+          "NOT_APPLICABLE",
+          "CRM writes are deliberately disabled by organisation policy for this review-only connection."
+        );
     matrix.CRM_TASKS = operationStatus(
       currentOperations,
-      [
-        "task.list",
-        "task.read",
-        "task.sync",
-        "task.create",
-        "task.complete",
-        "task.create_callback",
-      ],
-      "CRM tasks"
+      ["task.sync"],
+      "CRM task reading"
     );
-    matrix.CRM_NOTES = operationStatus(
-      currentOperations,
-      ["note.read", "note.create"],
-      "CRM notes"
-    );
+    const [liveNote] = readySystem
+      ? await db
+          .select({ id: crmActivities.id })
+          .from(crmActivities)
+          .where(
+            and(
+              eq(crmActivities.organisationId, readySystem.organisationId),
+              eq(crmActivities.connectedSystemId, readySystem.id),
+              eq(crmActivities.activityType, "note")
+            )
+          )
+          .limit(1)
+      : [];
+    matrix.CRM_NOTES = liveNote
+      ? result(
+          "LIVE_PROVEN",
+          "A live source-CRM note has been read into customer history.",
+          { activityId: liveNote.id }
+        )
+      : result(
+          "TESTED",
+          "Detailed customer-history note reading is implemented and tested, but no retained live note is available for this connection yet."
+        );
     matrix.CRM_PIPELINE = operationStatus(
       currentOperations,
-      [
-        "pipeline.list",
-        "stage.read",
-        "opportunity.read",
-        "opportunity.update",
-        "stage.update",
-      ],
-      "CRM pipeline"
+      ["pipeline.list", "opportunity.sync"],
+      "CRM pipeline reading"
     );
-    matrix.CRM_EMAIL = operationStatus(
-      currentOperations,
-      ["email.send"],
-      "CRM-native email"
-    );
-    matrix.CRM_SMS = operationStatus(
-      currentOperations,
-      ["sms.send"],
-      "CRM-native SMS"
-    );
-    matrix.CRM_WHATSAPP = operationStatus(
-      currentOperations,
-      ["whatsapp.send"],
-      "CRM-native WhatsApp"
-    );
-    matrix.CRM_DIALLER = operationStatus(
-      currentOperations,
-      ["dialler.launch"],
-      "CRM dialler"
-    );
+    matrix.CRM_EMAIL = enabledWrites.has("email.send")
+      ? operationStatus(currentOperations, ["email.send"], "CRM-native email")
+      : result(
+          "NOT_APPLICABLE",
+          "CRM-native email sending is disabled by policy."
+        );
+    matrix.CRM_SMS = enabledWrites.has("sms.send")
+      ? operationStatus(currentOperations, ["sms.send"], "CRM-native SMS")
+      : result(
+          "NOT_APPLICABLE",
+          "CRM-native SMS sending is disabled by policy."
+        );
+    matrix.CRM_WHATSAPP = enabledWrites.has("whatsapp.send")
+      ? operationStatus(
+          currentOperations,
+          ["whatsapp.send"],
+          "CRM-native WhatsApp"
+        )
+      : result(
+          "NOT_APPLICABLE",
+          "CRM-native WhatsApp sending is disabled by policy."
+        );
+    matrix.CRM_DIALLER = enabledWrites.has("calls.write")
+      ? operationStatus(currentOperations, ["dialler.launch"], "CRM dialler")
+      : result(
+          "NOT_APPLICABLE",
+          "CRM dialler execution is disabled by policy."
+        );
     for (const [feature, capability] of [
       ["CRM_EMAIL", "email.send"],
       ["CRM_SMS", "sms.send"],

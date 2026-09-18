@@ -1,4 +1,7 @@
-import { normalizedCustomerAttributes } from "../customerData";
+import {
+  normalizedCustomerAttributes,
+  refreshExactCustomerHistoryIfDue,
+} from "../customerData";
 import { deriveCustomerInterest } from "../customerInterest";
 import { getOrganisationWorkspaceContext } from "../organisationWorkspace";
 import { INCOMPLETE_TASK_STATUSES } from "../../shared/taskState";
@@ -74,6 +77,14 @@ async function contextForContact(input: {
   reasons?: string[];
   opportunity?: typeof crmOpportunities.$inferSelect;
 }) {
+  // Detailed Genie history is demand-driven: refresh the exact selected customer
+  // before Assistant/call context, but never make the workspace unavailable if
+  // the source history read is temporarily unavailable.
+  await refreshExactCustomerHistoryIfDue({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    contactId: input.contact.id,
+  }).catch(() => undefined);
   const db = await dbOrThrow();
   const ownerRows = await db
     .select({ externalUserId: externalUserMappings.externalUserId })

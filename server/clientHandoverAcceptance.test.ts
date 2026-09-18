@@ -4,6 +4,9 @@ import fs from "node:fs";
 const assistant = fs.readFileSync("server/assistantRoutes.ts", "utf8");
 const today = fs.readFileSync("server/today.ts", "utf8");
 const onboarding = fs.readFileSync("client/src/pages/Onboarding.tsx", "utf8");
+const connections = fs.readFileSync("client/src/pages/ConnectionsV2.tsx", "utf8");
+const customerData = fs.readFileSync("server/customerData.ts", "utf8");
+const liveCallContext = fs.readFileSync("server/liveCalls/context.ts", "utf8");
 const crm = fs.readFileSync("client/src/pages/CrmWorkspace.tsx", "utf8");
 const memberOnboarding = fs.readFileSync(
   "client/src/components/MemberOnboardingGate.tsx",
@@ -58,6 +61,24 @@ describe("client handover acceptance guards", () => {
     expect(onboarding).not.toContain("STEP 3 · YOUR OUTLOOK MAILBOX");
     expect(onboarding).toContain("to receive your email from Genie or Outlook");
     expect(compact(onboarding)).toContain("allowedWriteCapabilities: []");
+  });
+
+  it("keeps every new CRM connection review-only by default", () => {
+    expect(compact(connections)).toContain("allowedWriteCapabilities: []");
+    expect(connections).not.toContain('"email.send",');
+    expect(connections).not.toContain('"sms.send",');
+    expect(connections).not.toContain('"whatsapp.send",');
+  });
+
+  it("hydrates exact Genie customer history on demand for customer and call context", () => {
+    expect(customerData).toContain("refreshExactCustomerHistoryIfDue");
+    expect(compact(routers)).toContain(
+      compact("await refreshExactCustomerHistoryIfDue(scope).catch(() => undefined)")
+    );
+    expect(compact(liveCallContext)).toContain(
+      compact("await refreshExactCustomerHistoryIfDue({")
+    );
+    expect(customerData).toContain("CUSTOMER_HISTORY_REFRESH_TTL_MS = 5 * 60_000");
   });
 
   it("keeps shared CRM commissioning separate and requires identity for an individual owner", () => {

@@ -4,6 +4,7 @@ import {
   compareSalesWork,
   deriveCrmWorkCandidates,
   isSalesWorkTransitionReplay,
+  NEW_LEAD_ALERT_STATUSES,
   nextSalesWorkStatus,
   selectCallbackWorkForVerifiedCall,
 } from "./salesWork";
@@ -24,6 +25,10 @@ describe("normalized sales work", () => {
         raw,
       },
     ],
+  });
+
+  it("keeps open and in-progress leads in the first-contact alert count", () => {
+    expect(NEW_LEAD_ALERT_STATUSES).toEqual(["open", "in_progress"]);
   });
 
   it("creates no NEW_LEAD work for an initial historical baseline", () => {

@@ -48,12 +48,17 @@ export async function getTodayTaskData(input: {
     incomplete,
     cutoff ? or(isNull(crmTasks.dueAt), gte(crmTasks.dueAt, cutoff)) : undefined
   );
-  const overdue = and(current, lt(crmTasks.dueAt, bounds.start));
+  const overdue = and(current, lt(crmTasks.dueAt, input.now));
   const today = and(
     current,
-    gte(crmTasks.dueAt, bounds.start),
+    gte(crmTasks.dueAt, input.now),
     lt(crmTasks.dueAt, bounds.endExclusive)
   );
+  const futureScheduled = and(
+    current,
+    gte(crmTasks.dueAt, bounds.endExclusive)
+  );
+  const unscheduledWhere = and(current, isNull(crmTasks.dueAt));
   const total = async (where: ReturnType<typeof and>) => {
     const [r] = await db.select({ total: count() }).from(crmTasks).where(where);
     return Number(r.total);
@@ -74,6 +79,8 @@ export async function getTodayTaskData(input: {
     incompleteCount,
     historicalBacklog,
     unknownCount,
+    futureScheduledCount,
+    unscheduledCount,
     overdueTasks,
     dueToday,
     unscheduled,
@@ -85,6 +92,8 @@ export async function getTodayTaskData(input: {
       ? total(and(incomplete, lt(crmTasks.dueAt, cutoff)))
       : Promise.resolve(0),
     total(and(owned, eq(crmTasks.status, "unknown"))),
+    total(futureScheduled),
+    total(unscheduledWhere),
     db
       .select()
       .from(crmTasks)
@@ -100,7 +109,7 @@ export async function getTodayTaskData(input: {
     db
       .select()
       .from(crmTasks)
-      .where(and(current, isNull(crmTasks.dueAt)))
+      .where(unscheduledWhere)
       .orderBy(...priorityOrder, asc(crmTasks.id))
       .limit(20),
   ]);
@@ -113,10 +122,12 @@ export async function getTodayTaskData(input: {
       incomplete: incompleteCount,
       historicalBacklog,
       unknown: unknownCount,
+      futureScheduled: futureScheduledCount,
+      unscheduled: unscheduledCount,
     },
     queues: { overdueTasks, dueToday, unscheduled },
     queueLimit: 50,
     backlogPolicy: input.backlogPolicy || { mode: "all_incomplete" },
-    overdueDefinition: "before_local_day_start" as const,
+    overdueDefinition: "before_current_time" as const,
   };
 }

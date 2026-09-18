@@ -97,7 +97,8 @@ export function evaluateStrictClientAcceptance(
   matrix: FeatureAcceptanceMatrix
 ) {
   const criticalNotLive = CRITICAL_CLIENT_FEATURES.filter(
-    feature => matrix[feature].status !== "LIVE_PROVEN"
+    feature =>
+      !["LIVE_PROVEN", "NOT_APPLICABLE"].includes(matrix[feature].status)
   );
   const optionalInvalid = OPTIONAL_CLIENT_FEATURES.filter(
     feature =>
