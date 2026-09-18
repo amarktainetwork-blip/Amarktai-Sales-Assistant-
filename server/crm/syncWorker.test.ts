@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  CRM_SYNC_POLL_INTERVAL_MS,
   DEFAULT_CRM_SYNC_INTERVAL_MS,
   crmSyncIntervalMs,
   crmSyncJobIsDue,
@@ -9,6 +10,7 @@ import {
 describe("connection-scoped CRM synchronization schedule", () => {
   it("defaults to 120 seconds and rejects unsafe/invalid overrides", () => {
     expect(DEFAULT_CRM_SYNC_INTERVAL_MS).toBe(120_000);
+    expect(CRM_SYNC_POLL_INTERVAL_MS).toBe(30_000);
     expect(crmSyncIntervalMs(undefined)).toBe(120_000);
     expect(crmSyncIntervalMs("180000")).toBe(180_000);
     expect(crmSyncIntervalMs("1000")).toBe(120_000);

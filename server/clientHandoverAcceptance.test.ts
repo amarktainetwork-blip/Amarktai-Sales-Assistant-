@@ -11,6 +11,11 @@ const connections = fs.readFileSync(
 const customerData = fs.readFileSync("server/customerData.ts", "utf8");
 const salesWork = fs.readFileSync("server/salesWork.ts", "utf8");
 const todayTaskData = fs.readFileSync("server/todayTaskData.ts", "utf8");
+const syncWorker = fs.readFileSync("server/crm/syncWorker.ts", "utf8");
+const managedCrmSession = fs.readFileSync(
+  "server/browserConnectors/managedCrmBrowserSessionManager.ts",
+  "utf8"
+);
 const liveCallContext = fs.readFileSync("server/liveCalls/context.ts", "utf8");
 const crm = fs.readFileSync("client/src/pages/CrmWorkspace.tsx", "utf8");
 const memberOnboarding = fs.readFileSync(
@@ -83,6 +88,21 @@ describe("client handover acceptance guards", () => {
     expect(todayTaskData).toContain(
       "notInArray(crmTasks.externalId, excluded)"
     );
+  });
+
+  it("makes confirmed follow-up commitments the next work item instead of leaving stale CRM work on Today", () => {
+    expect(today).toContain("futureCommitmentContacts");
+    expect(today).toContain("reminders: reminders.map");
+    expect(today).toContain(
+      "!futureCommitmentContacts.has(item.contactExternalId)"
+    );
+  });
+
+  it("retries transient CRM contention promptly and refreshes immediately after reauthentication", () => {
+    expect(syncWorker).toContain("CRM_SYNC_POLL_INTERVAL_MS = 30_000");
+    expect(syncWorker).toContain("lastStartedAt: null");
+    expect(managedCrmSession).toContain("lastSucceededAt: null");
+    expect(managedCrmSession).toContain('"crm_reconciliation"');
   });
 
   it("hydrates exact Genie customer history on demand for customer and call context", () => {

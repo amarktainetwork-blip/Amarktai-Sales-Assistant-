@@ -14,6 +14,14 @@ export type TodayQueueInbound = {
   subject?: string | null;
 };
 
+export type TodayQueueReminder = {
+  id: number;
+  contactExternalId: string | null;
+  title: string;
+  dueAt: Date;
+  source: string;
+};
+
 export type TodayQueueContact = {
   id: number;
   connectedSystemId: number;
@@ -40,13 +48,19 @@ export type TodayCallQueueItem = {
   courseInterest: string | null;
   interestValues: string[];
   tags: string[];
-  primaryKind: "overdue_task" | "inbound_reply" | "due_today" | "new_lead";
+  primaryKind:
+    | "new_lead"
+    | "inbound_reply"
+    | "confirmed_follow_up"
+    | "overdue_task"
+    | "due_today";
   headline: string;
   dueAt: Date | null;
   receivedAt: Date | null;
   reasons: string[];
   taskIds: number[];
   inboundIds: number[];
+  reminderIds: number[];
   workItemIds: number[];
   workCount: number;
 };
@@ -73,6 +87,7 @@ export function buildTodayCallQueue(input: {
   overdueTasks: TodayQueueTask[];
   dueToday: TodayQueueTask[];
   inbound: TodayQueueInbound[];
+  reminders?: TodayQueueReminder[];
   contacts: TodayQueueContact[];
 }) {
   const contacts = new Map(
@@ -93,6 +108,7 @@ export function buildTodayCallQueue(input: {
     reason: string;
     taskId?: number;
     inboundId?: number;
+    reminderId?: number;
     workItemId?: number;
   };
 
@@ -157,8 +173,30 @@ export function buildTodayCallQueue(input: {
       inboundId: message.id,
     });
   }
-  input.overdueTasks.forEach(task => addTask(task, "overdue_task", 2));
-  input.dueToday.forEach(task => addTask(task, "due_today", 3));
+  for (const reminder of input.reminders || []) {
+    if (!reminder.contactExternalId) continue;
+    const matching = input.contacts.filter(
+      contact => contact.externalId === reminder.contactExternalId
+    );
+    if (matching.length !== 1) continue;
+    const contact = matching[0];
+    candidates.push({
+      rank: reminder.source === "call_commitment" ? 2 : 3,
+      occurredAt: reminder.dueAt.valueOf(),
+      contact,
+      kind: "confirmed_follow_up",
+      headline: reminder.title,
+      dueAt: reminder.dueAt,
+      receivedAt: null,
+      reason:
+        reminder.source === "call_commitment"
+          ? "Confirmed follow-up is due"
+          : "Reminder is due",
+      reminderId: reminder.id,
+    });
+  }
+  input.overdueTasks.forEach(task => addTask(task, "overdue_task", 3));
+  input.dueToday.forEach(task => addTask(task, "due_today", 4));
 
   candidates.sort(
     (a, b) =>
@@ -194,6 +232,7 @@ export function buildTodayCallQueue(input: {
         reasons: [candidate.reason],
         taskIds: candidate.taskId ? [candidate.taskId] : [],
         inboundIds: candidate.inboundId ? [candidate.inboundId] : [],
+        reminderIds: candidate.reminderId ? [candidate.reminderId] : [],
         workItemIds: candidate.workItemId ? [candidate.workItemId] : [],
         workCount: 1,
       });
@@ -203,6 +242,7 @@ export function buildTodayCallQueue(input: {
       existing.reasons.push(candidate.reason);
     if (candidate.taskId) existing.taskIds.push(candidate.taskId);
     if (candidate.inboundId) existing.inboundIds.push(candidate.inboundId);
+    if (candidate.reminderId) existing.reminderIds.push(candidate.reminderId);
     if (candidate.workItemId) existing.workItemIds.push(candidate.workItemId);
     existing.workCount += 1;
   }

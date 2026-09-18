@@ -672,14 +672,8 @@ export default function Today() {
 
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#DCE4EE] bg-[#F8FAFD] px-4 py-3 text-xs text-[#66758A]">
           <span>
-            Scheduled after today:{" "}
-            <strong className="text-[#40536B]">
-              {taskMetrics?.futureScheduled ?? 0}
-            </strong>
-            {taskMetrics?.unscheduled
-              ? ` · Unscheduled: ${taskMetrics.unscheduled}`
-              : ""}
-            . Future work stays out of today's call queue.
+            Future follow-ups stay scheduled and return here automatically when
+            they are due.
           </span>
           <Button
             variant="ghost"

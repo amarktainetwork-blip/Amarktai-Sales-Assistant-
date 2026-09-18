@@ -66,6 +66,39 @@ describe("Today call queue", () => {
     expect(queue[1].primaryKind).toBe("overdue_task");
   });
 
+  it("puts a confirmed follow-up into the main queue ahead of overdue backlog", () => {
+    const queue = buildTodayCallQueue({
+      contacts,
+      overdueTasks: [
+        {
+          id: 11,
+          connectedSystemId: 8,
+          contactExternalId: "b",
+          title: "Old task",
+          dueAt: new Date("2026-09-15T10:00:00Z"),
+        },
+      ],
+      inbound: [],
+      reminders: [
+        {
+          id: 77,
+          contactExternalId: "a",
+          title: "Discuss funding options",
+          dueAt: new Date("2026-09-18T11:00:00Z"),
+          source: "call_commitment",
+        },
+      ],
+      dueToday: [],
+    });
+    expect(queue.map(item => item.name)).toEqual(["Alice Example", "Bob"]);
+    expect(queue[0]).toMatchObject({
+      primaryKind: "confirmed_follow_up",
+      headline: "Discuss funding options",
+      reasons: ["Confirmed follow-up is due"],
+      reminderIds: [77],
+    });
+  });
+
   it("never queues work without an exact owned normalized contact", () => {
     const queue = buildTodayCallQueue({
       contacts,
