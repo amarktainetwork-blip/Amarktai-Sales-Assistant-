@@ -14,6 +14,11 @@ import { getDb } from "../db";
 import { runModelFreeOperation } from "../aiExecutionBoundary";
 import { connectedSystemHasActiveCommissioning } from "./backgroundReadCommissioningGuard";
 import { syncConnectedSystem, syncConnectedSystemRoutine } from "./sync";
+import { getCrmAdapter } from "./adapterRegistry";
+import {
+  loadUserConnectionSecret,
+  toAdapterConnection,
+} from "../connectedSystems";
 
 export const DEFAULT_CRM_SYNC_INTERVAL_MS = 120_000;
 export const CRM_SYNC_POLL_INTERVAL_MS = 30_000;
@@ -31,6 +36,25 @@ export function crmBackgroundSyncMode(connectionMethod: string) {
   return ["browser", "sidecar"].includes(connectionMethod)
     ? ("routine" as const)
     : ("full" as const);
+}
+
+export function shouldAttemptReadOnlyAuthenticationRecovery(input: {
+  status: string;
+  connectionMethod: string;
+  lastHealthCheckAt: Date | null;
+  now: Date;
+  intervalMs?: number;
+}) {
+  if (
+    input.status !== "authentication_expired" ||
+    !["browser", "sidecar"].includes(input.connectionMethod)
+  )
+    return false;
+  const intervalMs = input.intervalMs ?? crmSyncIntervalMs();
+  return (
+    !input.lastHealthCheckAt ||
+    input.now.valueOf() - input.lastHealthCheckAt.valueOf() >= intervalMs
+  );
 }
 
 export function crmSyncJobIsDue(
@@ -126,6 +150,73 @@ async function synchronizationUsers(input: {
   return member ? [member.userId] : [];
 }
 
+async function attemptReadOnlyAuthenticationRecovery(input: {
+  system: typeof connectedSystems.$inferSelect;
+  userId: number;
+  now: Date;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const connection = toAdapterConnection(input.system);
+  const adapter = getCrmAdapter(connection.provider);
+  if (!adapter.syncRecentContacts) return false;
+  const secret = await loadUserConnectionSecret({
+    userId: input.userId,
+    organisationId: input.system.organisationId,
+    connectedSystemId: input.system.id,
+    secretKind: "browser",
+  });
+  if (
+    !secret?.browserSession ||
+    !secret.crmUserExternalId ||
+    secret.browserUserId !== input.userId
+  )
+    return false;
+
+  try {
+    // This is deliberately a GET-only, exact-owner read. A successful learned
+    // contact.sync operation records authenticationVerified=true and restores
+    // current readiness. No CRM write capability is required or exercised.
+    await adapter.syncRecentContacts({ connection, secret });
+    const [restored] = await db
+      .select({ status: connectedSystems.status })
+      .from(connectedSystems)
+      .where(eq(connectedSystems.id, input.system.id))
+      .limit(1);
+    const recovered = Boolean(
+      restored && ["ready", "limited_permissions"].includes(restored.status)
+    );
+    if (recovered)
+      console.log(
+        JSON.stringify({
+          event: "crm_read_authentication_recovered",
+          connectedSystemId: input.system.id,
+          userId: input.userId,
+          externalWritePerformed: false,
+        })
+      );
+    return recovered;
+  } catch (error) {
+    await db
+      .update(connectedSystems)
+      .set({ lastHealthCheckAt: input.now })
+      .where(eq(connectedSystems.id, input.system.id));
+    console.warn(
+      JSON.stringify({
+        event: "crm_read_authentication_recovery_deferred",
+        connectedSystemId: input.system.id,
+        userId: input.userId,
+        detail:
+          error instanceof Error
+            ? error.message.slice(0, 300)
+            : String(error).slice(0, 300),
+        externalWritePerformed: false,
+      })
+    );
+    return false;
+  }
+}
+
 /** One bounded reconciliation cycle. Each connection retains independent failure state. */
 export async function runConnectionScopedCrmSyncCycle(now = new Date()) {
   const db = await getDb();
@@ -170,9 +261,39 @@ export async function runConnectionScopedCrmSyncCycle(now = new Date()) {
     }
   }
 
-  const systems = candidateSystems.filter(system =>
-    ["ready", "limited_permissions"].includes(system.status)
-  );
+  for (const system of candidateSystems) {
+    if (
+      !shouldAttemptReadOnlyAuthenticationRecovery({
+        status: system.status,
+        connectionMethod: system.connectionMethod,
+        lastHealthCheckAt: system.lastHealthCheckAt,
+        now,
+      })
+    )
+      continue;
+    const userIds = await synchronizationUsers({
+      organisationId: system.organisationId,
+      connectedSystemId: system.id,
+      connectionMethod: system.connectionMethod,
+    });
+    for (const userId of userIds) {
+      if (
+        await attemptReadOnlyAuthenticationRecovery({
+          system,
+          userId,
+          now,
+        })
+      )
+        break;
+    }
+  }
+
+  // Re-read after recovery so a restored browser connection can enter normal
+  // reconciliation in the same cycle instead of waiting for another poll.
+  const systems = await db
+    .select()
+    .from(connectedSystems)
+    .where(inArray(connectedSystems.status, ["ready", "limited_permissions"]));
 
   for (const system of systems)
     await ensureConnectionScopedCrmSyncJob({
