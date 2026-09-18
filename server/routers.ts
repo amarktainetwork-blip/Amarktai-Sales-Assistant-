@@ -126,6 +126,7 @@ import { createCrmOAuthState } from "./crm/oauthState";
 import { crmOAuthCallbackUrl } from "./crm/oauthRoutes";
 import { syncConnectedSystem, syncConnectedSystemsForUser } from "./crm/sync";
 import { getTodayWork } from "./today";
+import { getSalesInbox, syncSalesInbox } from "./salesInbox";
 import { listPersonalCrmCustomers } from "./personalCrmCustomers";
 import {
   listNewLeadAlerts,
@@ -1531,6 +1532,30 @@ export const appRouter = router({
       .query(({ ctx, input }) => {
         requireActiveOrganisationContext(ctx, input.organisationId);
         return getTodayWork({
+          userId: ctx.user.id,
+          organisationId: input.organisationId,
+        });
+      }),
+    inbox: secondFactorProcedure
+      .input(
+        z.object({
+          organisationId: z.number().int().positive(),
+          limit: z.number().int().min(1).max(100).optional(),
+        })
+      )
+      .query(({ ctx, input }) => {
+        requireActiveOrganisationContext(ctx, input.organisationId);
+        return getSalesInbox({
+          userId: ctx.user.id,
+          organisationId: input.organisationId,
+          limit: input.limit,
+        });
+      }),
+    syncInbox: secondFactorProcedure
+      .input(z.object({ organisationId: z.number().int().positive() }))
+      .mutation(({ ctx, input }) => {
+        requireActiveOrganisationContext(ctx, input.organisationId);
+        return syncSalesInbox({
           userId: ctx.user.id,
           organisationId: input.organisationId,
         });

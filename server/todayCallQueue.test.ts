@@ -119,6 +119,37 @@ describe("Today call queue", () => {
 });
 
 describe("Today new lead priority", () => {
+  it("puts a possible-sale inbound reply ahead of an untouched new lead", () => {
+    const queue = buildTodayCallQueue({
+      contacts,
+      newLeads: [
+        {
+          workItemId: 90,
+          connectedSystemId: 8,
+          contactExternalId: "a",
+          createdAt: new Date("2026-09-18T17:00:00Z"),
+        },
+      ],
+      inbound: [
+        {
+          id: 91,
+          connectedSystemId: 8,
+          contactExternalId: "b",
+          receivedAt: new Date("2026-09-18T17:01:00Z"),
+          subject: "Ready to proceed",
+          classification: { category: "sale_intent" },
+        },
+      ],
+      overdueTasks: [],
+      dueToday: [],
+    });
+    expect(queue.map(item => item.name)).toEqual(["Bob", "Alice Example"]);
+    expect(queue[0]).toMatchObject({
+      primaryKind: "inbound_reply",
+      reasons: ["Possible sale or payment step needs attention"],
+    });
+  });
+
   it("puts a genuine new lead ahead of overdue work and carries course context", () => {
     const queue = buildTodayCallQueue({
       contacts: [

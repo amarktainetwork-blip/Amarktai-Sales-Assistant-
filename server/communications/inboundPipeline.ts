@@ -289,8 +289,11 @@ export async function ingestInboundMessage(input: {
             ? { recipientReference: input.envelope.recipientReference }
             : {}),
         },
-        status: "classified",
-        needsAction: shouldSurfaceInbound(classification),
+        status: existing?.status === "archived" ? "archived" : "classified",
+        needsAction:
+          existing?.status === "archived"
+            ? false
+            : shouldSurfaceInbound(classification),
         receivedAt: input.envelope.receivedAt,
       },
     });
@@ -334,7 +337,7 @@ export async function ingestInboundMessage(input: {
       )
     : triggerPolicy;
   const workStatus =
-    existing && !existing.needsAction
+    existing?.status === "archived"
       ? ("completed" as const)
       : !shouldSurfaceInbound(classification)
         ? ("completed" as const)
@@ -358,12 +361,19 @@ export async function ingestInboundMessage(input: {
         classification.category === "meeting_request"
           ? "APPOINTMENT"
           : "REPLY_REQUIRED",
-      priority: classification.category === "objection" ? 105 : 95,
+      priority:
+        classification.category === "sale_intent"
+          ? 110
+          : classification.category === "objection"
+            ? 105
+            : 95,
       dueAt: input.envelope.receivedAt,
       reason:
-        classification.category === "meeting_request"
-          ? "A customer sent a meeting request."
-          : "An inbound customer message needs a reply.",
+        classification.category === "sale_intent"
+          ? "A customer appears ready to proceed or needs payment/enrolment help."
+          : classification.category === "meeting_request"
+            ? "A customer sent a meeting request."
+            : "An inbound customer message needs a reply.",
       status: workStatus,
       recommendedNextAction:
         "Review the customer and mailbox context, then prepare a governed reply.",
@@ -394,6 +404,23 @@ export async function ingestInboundMessage(input: {
       set: {
         salespersonUserId: input.mailboxUserId ?? null,
         contactExternalId: contact?.externalId ?? null,
+        type:
+          classification.category === "meeting_request"
+            ? "APPOINTMENT"
+            : "REPLY_REQUIRED",
+        priority:
+          classification.category === "sale_intent"
+            ? 110
+            : classification.category === "objection"
+              ? 105
+              : 95,
+        dueAt: input.envelope.receivedAt,
+        reason:
+          classification.category === "sale_intent"
+            ? "A customer appears ready to proceed or needs payment/enrolment help."
+            : classification.category === "meeting_request"
+              ? "A customer sent a meeting request."
+              : "An inbound customer message needs a reply.",
         status: workStatus,
         freshness: "current",
         syncedAt: new Date(),

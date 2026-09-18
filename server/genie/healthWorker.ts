@@ -5,8 +5,12 @@ import { startCompanyKnowledgeWorker } from "../companyKnowledgeJobs";
 import { startAutomaticCommissioningWorker } from "../crm/automaticCommissioning";
 import { startPersonalWorkLearningWorker } from "../personalWorkLearning";
 import { syncReadyDelegatedMailboxes } from "../mailboxWorker";
-import { startConnectionScopedCrmSyncWorker } from "../crm/syncWorker";
-import { startNewLeadWatcher } from "../crm/leadWatcher";
+import {
+  runConnectionScopedCrmSyncCycle,
+  startConnectionScopedCrmSyncWorker,
+} from "../crm/syncWorker";
+import { runNewLeadWatchCycle, startNewLeadWatcher } from "../crm/leadWatcher";
+import { runBackgroundBrowserReadLane } from "../crm/backgroundReadLane";
 
 const intervalMs = Number(
   process.env.CRM_HEALTH_INTERVAL_MS || 24 * 60 * 60 * 1000
@@ -25,7 +29,10 @@ function startupDelay(
 
 async function check() {
   try {
-    const result = await runGenieOperationWatchdog();
+    const result = await runBackgroundBrowserReadLane(
+      "crm_operation_watchdog",
+      () => runGenieOperationWatchdog()
+    );
     console.log(
       JSON.stringify({
         event: "crm_operation_watchdog",
@@ -62,7 +69,10 @@ async function processMailboxes() {
   if (processingMailboxes) return;
   processingMailboxes = true;
   try {
-    const result = await syncReadyDelegatedMailboxes();
+    const result = await runBackgroundBrowserReadLane(
+      "personal_mailbox_sync",
+      () => syncReadyDelegatedMailboxes()
+    );
     if (result.checked || result.failed)
       console.log(
         JSON.stringify({
@@ -102,13 +112,25 @@ setTimeout(() => {
 startCompanyKnowledgeWorker();
 startAutomaticCommissioningWorker();
 startPersonalWorkLearningWorker();
-startNewLeadWatcher();
+startNewLeadWatcher(undefined, () =>
+  runBackgroundBrowserReadLane("crm_new_lead_watch", () =>
+    runNewLeadWatchCycle()
+  )
+);
 const crmSyncInitialDelayMs = startupDelay(
   process.env.CRM_SYNC_INITIAL_DELAY_MS,
   30_000,
   10_000
 );
-setTimeout(() => startConnectionScopedCrmSyncWorker(), crmSyncInitialDelayMs);
+setTimeout(
+  () =>
+    startConnectionScopedCrmSyncWorker(undefined, () =>
+      runBackgroundBrowserReadLane("crm_reconciliation", () =>
+        runConnectionScopedCrmSyncCycle()
+      )
+    ),
+  crmSyncInitialDelayMs
+);
 
 process.on("SIGTERM", () => process.exit(0));
 process.on("SIGINT", () => process.exit(0));

@@ -1,6 +1,6 @@
 import { reconcileCurrentBrowserReadiness } from "./currentReadiness";
 import { isTransientBrowserExecutionFailure } from "../browserConnectors/runtimeFailure";
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   crmActivities,
   crmCompanies,
@@ -8,6 +8,7 @@ import {
   crmOpportunities,
   crmSyncCursors,
   crmTasks,
+  externalUserMappings,
   salesActivityEvents,
   salesWorkItems,
 } from "../../drizzle/schema";
@@ -424,7 +425,10 @@ export async function reconcileNewLeadAlertsFromTaskHistory(input: {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
   const activeLeads = await db
-    .select({ contactExternalId: salesWorkItems.contactExternalId })
+    .select({
+      contactExternalId: salesWorkItems.contactExternalId,
+      createdAt: salesWorkItems.createdAt,
+    })
     .from(salesWorkItems)
     .where(
       and(
@@ -544,7 +548,10 @@ async function refreshActiveCustomerSourceTruth(input: {
         ])
       )
     )
-    .orderBy(desc(salesWorkItems.priority), asc(salesWorkItems.id))
+    .orderBy(
+      sql`CASE WHEN ${salesWorkItems.type} = 'NEW_LEAD' THEN 0 ELSE 1 END`,
+      desc(salesWorkItems.id)
+    )
     .limit(100);
 
   const candidates = new Map<
@@ -981,6 +988,33 @@ async function syncConnectedSystemRoutineDeterministically(input: {
     }
   } else summary.contacts = 0;
 
+  // Reconcile exact customer history immediately after the newest contacts.
+  // This retires already-worked NEW_LEAD alerts before slower opportunity/task
+  // scans can delay the salesperson's live queue.
+  if (
+    crmResourceSyncEligible(
+      connection,
+      "contacts.read",
+      operationStatuses.get("contact.read")
+    )
+  ) {
+    try {
+      const history = await refreshActiveCustomerSourceTruth({
+        userId: input.userId,
+        organisationId: input.organisationId,
+        connectedSystemId: system.id,
+        adapter,
+        connection,
+        secret,
+      });
+      summary.customerHistoryChecked = history.checked;
+      summary.newLeadHistoryResolved = history.resolvedNewLeads;
+      summary.customerHistoryDeferred = history.deferred;
+    } catch {
+      summary.customerHistoryDeferred = 1;
+    }
+  }
+
   if (
     crmResourceSyncEligible(
       connection,
@@ -1090,30 +1124,6 @@ async function syncConnectedSystemRoutineDeterministically(input: {
       failureTransient.tasks = isTransientBrowserExecutionFailure(error);
     }
   } else summary.tasks = 0;
-
-  if (
-    crmResourceSyncEligible(
-      connection,
-      "contacts.read",
-      operationStatuses.get("contact.read")
-    )
-  ) {
-    try {
-      const history = await refreshActiveCustomerSourceTruth({
-        userId: input.userId,
-        organisationId: input.organisationId,
-        connectedSystemId: system.id,
-        adapter,
-        connection,
-        secret,
-      });
-      summary.customerHistoryChecked = history.checked;
-      summary.newLeadHistoryResolved = history.resolvedNewLeads;
-      summary.customerHistoryDeferred = history.deferred;
-    } catch {
-      summary.customerHistoryDeferred = 1;
-    }
-  }
 
   await reconcileCurrentBrowserReadiness(input);
   if (Object.keys(failures).length) {

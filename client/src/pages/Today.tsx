@@ -25,6 +25,12 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 
+function inboundCategory(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? String((value as Record<string, unknown>).category || "")
+    : "";
+}
+
 function freshnessLabel(value?: Date | string | null, status?: string) {
   if (status === "attention") return "CRM sync needs attention";
   if (!value) return "CRM has not synchronized yet";
@@ -87,6 +93,7 @@ export default function Today() {
 
   const callQueue = today.data?.queues.callQueue ?? [];
   const newLeads = today.data?.queues.newLeads ?? [];
+  const inboundQueue = today.data?.queues.inbound ?? [];
   const visibleCallQueue = showAllQueue ? callQueue : callQueue.slice(0, 12);
   const current = callQueue[selected];
   const workspace = today.data?.workspace.organisation;
@@ -227,33 +234,40 @@ export default function Today() {
           <div className="grid gap-0 xl:grid-cols-[1fr_360px]">
             <div className="p-6 sm:p-8">
               <p className="text-[10px] font-black uppercase tracking-[.16em] text-[#2F6FED]">
-                Today · Call first
+                Today · Work what matters
               </p>
               <h1 className="mt-3 max-w-4xl font-display text-4xl font-bold tracking-[-.06em] sm:text-5xl">
-                Make the calls. AmarktAI handles the admin around them.
+                Work the hottest customer. AmarktAI handles the admin around it.
               </h1>
               <p className="mt-4 max-w-3xl text-sm leading-6 text-[#66758A] sm:text-base">
-                Your queue is built from real tasks, replies and customer
-                context. Open the next person, make the call, then let AmarktAI
+                Your queue combines customer replies, possible sales, new leads,
+                tasks and CRM history. Handle the next customer, then let AmarktAI
                 prepare the follow-up, notes or reminder for Review.
               </p>
               <div className="mt-5 flex flex-wrap gap-2">
                 {current ? (
-                  <Button
-                    size="lg"
-                    disabled={startCall.isPending}
-                    onClick={() =>
-                      startCall.mutate({
-                        leadLabel: current.name,
-                        contactId: current.contactId,
-                      })
-                    }
-                  >
-                    <Headphones className="mr-2 h-4 w-4" />
-                    {startCall.isPending
-                      ? "Opening call workspace…"
-                      : `Start with ${current.name}`}
-                  </Button>
+                  current.primaryKind === "inbound_reply" ? (
+                    <Button size="lg" onClick={() => navigate("/inbox")}>
+                      <Mail className="mr-2 h-4 w-4" />
+                      Open reply from {current.name}
+                    </Button>
+                  ) : (
+                    <Button
+                      size="lg"
+                      disabled={startCall.isPending}
+                      onClick={() =>
+                        startCall.mutate({
+                          leadLabel: current.name,
+                          contactId: current.contactId,
+                        })
+                      }
+                    >
+                      <Headphones className="mr-2 h-4 w-4" />
+                      {startCall.isPending
+                        ? "Opening call workspace…"
+                        : `Start with ${current.name}`}
+                    </Button>
+                  )
                 ) : (
                   <Button size="lg" onClick={() => navigate("/customers")}>
                     <UserRound className="mr-2 h-4 w-4" />
@@ -287,7 +301,11 @@ export default function Today() {
                   title="Pick the next person"
                   detail="Today"
                 />
-                <FlowStep number="2" title="Make the call" detail="Calls" />
+                <FlowStep
+                  number="2"
+                  title="Handle the reply or call"
+                  detail="Inbox · Calls"
+                />
                 <FlowStep
                   number="3"
                   title="Prepare the admin"
@@ -306,8 +324,36 @@ export default function Today() {
         {today.data?.requiresOwnerMapping ? (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
             Your CRM salesperson record still needs to be matched before a safe
-            personal call queue can be shown.
+            personal work queue can be shown.
           </div>
+        ) : null}
+
+        {inboundQueue.length ? (
+          <section className="rounded-3xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm sm:p-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-emerald-700 px-2.5 py-1 text-[10px] font-black uppercase tracking-[.1em] text-white">
+                    Customer replies · {inboundQueue.length}
+                  </span>
+                  {inboundCategory(inboundQueue[0].classification) === "sale_intent" ? (
+                    <span className="text-sm font-black text-emerald-800">Possible sale needs attention</span>
+                  ) : (
+                    <span className="text-sm font-bold text-emerald-800">Reply before starting lower-priority work</span>
+                  )}
+                </div>
+                <h2 className="mt-3 font-display text-2xl font-bold tracking-[-.04em]">
+                  {inboundQueue[0].subject || "New customer message"}
+                </h2>
+                <p className="mt-1 text-sm font-semibold text-emerald-900/70">
+                  Received {dateLabel(inboundQueue[0].receivedAt)}
+                </p>
+              </div>
+              <Button onClick={() => navigate("/inbox")}>
+                <Mail className="mr-2 h-4 w-4" /> Open inbox
+              </Button>
+            </div>
+          </section>
         ) : null}
 
         {newLeads.length ? (
@@ -322,7 +368,7 @@ export default function Today() {
                     New leads · {newLeads.length}
                   </span>
                   <span className="text-sm font-bold text-[#315EA8]">
-                    First contact comes first
+                    Fresh enquiries waiting for first contact
                   </span>
                 </div>
                 <h2 className="mt-3 font-display text-2xl font-bold tracking-[-.04em]">
@@ -353,10 +399,10 @@ export default function Today() {
               Today priority
             </span>
             <span>
-              <strong className="text-[#33445B]">1.</strong> New leads
+              <strong className="text-[#33445B]">1.</strong> Customer replies / possible sales
             </span>
             <span>
-              <strong className="text-[#33445B]">2.</strong> Customer replies
+              <strong className="text-[#33445B]">2.</strong> New leads
             </span>
             <span>
               <strong className="text-[#33445B]">3.</strong> Overdue tasks
@@ -402,7 +448,7 @@ export default function Today() {
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E6EBF2] px-5 py-4 sm:px-6">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#2F6FED]">
-                  Call queue
+                  Priority queue
                 </p>
                 <h2 className="mt-1 font-display text-2xl font-bold tracking-[-.04em]">
                   Your active work, in priority order.
@@ -540,23 +586,32 @@ export default function Today() {
                   ) : null}
                 </div>
                 <div className="mt-5 grid gap-2">
-                  <Button
-                    disabled={startCall.isPending}
-                    onClick={() =>
-                      startCall.mutate({
-                        leadLabel: current.name,
-                        contactId: current.contactId,
-                      })
-                    }
-                  >
-                    <Headphones className="mr-2 h-4 w-4" />
-                    Open call companion
-                  </Button>
+                  {current.primaryKind === "inbound_reply" ? (
+                    <Button onClick={() => navigate("/inbox")}>
+                      <Mail className="mr-2 h-4 w-4" />
+                      Read customer reply
+                    </Button>
+                  ) : (
+                    <Button
+                      disabled={startCall.isPending}
+                      onClick={() =>
+                        startCall.mutate({
+                          leadLabel: current.name,
+                          contactId: current.contactId,
+                        })
+                      }
+                    >
+                      <Headphones className="mr-2 h-4 w-4" />
+                      Open call companion
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     onClick={() =>
                       ask(
-                        `Prepare me for my call with ${current.name}. Summarise what matters, what I need to ask, and the likely next step.`,
+                        current.primaryKind === "inbound_reply"
+                          ? `Prepare a reply to ${current.name}. Use their latest inbound message and CRM history, explain what matters commercially, and draft the response without sending it.`
+                          : `Prepare me for my call with ${current.name}. Summarise what matters, what I need to ask, and the likely next step.`,
                         current.contactId
                       )
                     }
