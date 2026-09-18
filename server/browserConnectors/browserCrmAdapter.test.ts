@@ -335,6 +335,18 @@ describe("browser profile", () => {
     expect(source).not.toContain("runGenxAgent");
   });
 
+  it("keeps expired-authentication reproof fixed to an exact-owner read path", async () => {
+    const source = await readFile(
+      new URL("./browserCrmAdapter.ts", import.meta.url),
+      "utf8"
+    );
+    expect(source).toContain("reproveRecentContactsRead");
+    expect(source).toContain("CRM_READ_REPROOF_OWNER_REQUIRED");
+    expect(source).toContain("CRM_READ_REPROOF_USER_SCOPE_MISMATCH");
+    expect(source).toContain("allowTestReady: true");
+    expect(source).toContain("publishByUserId: input.publishByUserId");
+  });
+
   it("uses connectedSystem.baseUrl as a provider hint without credentials", async () => {
     const profile = await resolveBrowserProfile(
       {
