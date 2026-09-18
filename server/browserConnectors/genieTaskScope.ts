@@ -58,7 +58,8 @@ export function assertExactGenieTaskOwners(payload: unknown, owner: string) {
       throw Error(
         "CRM_OWNER_SCOPE_VIOLATION: task owner differs from the mapped salesperson."
       );
-    const completed = (row as { properties?: { completed?: unknown } }).properties?.completed;
+    const completed = (row as { properties?: { completed?: unknown } })
+      .properties?.completed;
     if (![0, "0", false, "false"].includes(completed as never))
       throw Error(
         "CRM_TASK_SCOPE_VIOLATION: pending-task search returned a completed or unknown-status task."
@@ -86,10 +87,18 @@ export async function readOwnerScopedGenieTasks(input: {
       "GENIE_TASK_GRID_INVALID: authenticated location is unavailable."
     );
   const locationId = match[1];
-  const token = async () => {
+  const browserToken = async () => {
     const value = await input.page.evaluate(async () => {
       const f = (window as Window & { getToken?: () => unknown }).getToken;
-      return typeof f === "function" ? String(await f()) : "";
+      if (typeof f === "function") {
+        const fresh = String(await f());
+        if (fresh) return fresh;
+      }
+      return (
+        localStorage.getItem("refreshedToken") ||
+        sessionStorage.getItem("refreshedToken") ||
+        ""
+      );
     });
     if (!value)
       throw Error(
@@ -97,8 +106,7 @@ export async function readOwnerScopedGenieTasks(input: {
       );
     return value;
   };
-  let currentToken = await token();
-  let refreshed = false;
+  let currentToken = await browserToken();
   let cursor: unknown;
   let previousCursor = "";
   const records = new Map<string, { externalId: string }>();
@@ -123,9 +131,28 @@ export async function readOwnerScopedGenieTasks(input: {
         timeout: 30000,
       });
     let response = await request();
-    if (response.status() === 401 && !refreshed) {
-      refreshed = true;
-      currentToken = await token();
+    for (
+      let retry = 0;
+      [401, 403].includes(response.status()) && retry < 3;
+      retry++
+    ) {
+      await new Promise(resolve => setTimeout(resolve, 250 * (retry + 1)));
+      try {
+        currentToken = await browserToken();
+      } catch (error) {
+        if (retry === 2) throw error;
+        continue;
+      }
+      response = await request();
+    }
+    for (
+      let retry = 0;
+      [429, 502, 503, 504, 520, 521, 522, 523, 524].includes(
+        response.status()
+      ) && retry < 2;
+      retry++
+    ) {
+      await new Promise(resolve => setTimeout(resolve, 500 * (retry + 1)));
       response = await request();
     }
     if (!response.ok())

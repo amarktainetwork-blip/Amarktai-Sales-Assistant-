@@ -6,7 +6,11 @@ import {
 } from "./genieTaskScope";
 import { normalizeGenieTaskGridPage } from "./browserCrmAdapter";
 const owner = "yZrFI0ptOyvG3ZXvs7iZ";
-function harness(payloads: unknown[], statuses: number[] = []) {
+function harness(
+  payloads: unknown[],
+  statuses: number[] = [],
+  tokens: string[] = []
+) {
   const post = vi.fn().mockImplementation(async () => {
     const payload = payloads.shift();
     const status = statuses.shift() || 201;
@@ -16,7 +20,10 @@ function harness(payloads: unknown[], statuses: number[] = []) {
       json: async () => payload,
     };
   });
-  const evaluate = vi.fn().mockResolvedValue("private-session-token");
+  const evaluate = vi.fn().mockImplementation(async () => {
+    if (tokens.length) return tokens.shift();
+    return "private-session-token";
+  });
   const page = {
     url: () =>
       "https://genie.entrepreneurscircle.org/v2/location/location-1/tasks?alreadyFiltered=true",
@@ -96,11 +103,28 @@ describe("authenticated browser Tasks source", () => {
       ]).read()
     ).rejects.toThrow("INCOMPLETE");
   });
-  it("refreshes authentication only once", async () => {
-    const h = harness([{}, {}], [401, 401]);
+  it("retries bounded token-id rotation without widening task scope", async () => {
+    const h = harness(
+      [{}, {}, { customObjectRecords: [], total: 0 }],
+      [401, 401, 201],
+      ["token-old", "token-old", "token-new"]
+    );
+    const result = await h.read();
+    expect(result.data.records).toBe("[]");
+    expect(h.post).toHaveBeenCalledTimes(3);
+    expect(h.post.mock.calls[0][1].headers["token-id"]).toBe("token-old");
+    expect(h.post.mock.calls[1][1].headers["token-id"]).toBe("token-old");
+    expect(h.post.mock.calls[2][1].headers["token-id"]).toBe("token-new");
+    expect(h.post.mock.calls[2][1].data.filters).toEqual(
+      genieTaskSearchBody("location-1", owner, 1).filters
+    );
+  });
+
+  it("fails closed after bounded refreshed task authentication is still rejected", async () => {
+    const h = harness([{}, {}, {}, {}], [401, 401, 401, 401]);
     await expect(h.read()).rejects.toThrow("HTTP 401");
-    expect(h.post).toHaveBeenCalledTimes(2);
-    expect(h.evaluate).toHaveBeenCalledTimes(2);
+    expect(h.post).toHaveBeenCalledTimes(4);
+    expect(h.evaluate).toHaveBeenCalledTimes(4);
   });
   it("rejects completed records even if the provider ignores the incomplete filter", async () =>
     await expect(

@@ -1,4 +1,7 @@
-import { isTransientCrmSyncFailure } from "./sync";
+import {
+  isTransientCrmSyncFailure,
+  reconcileNewLeadAlertsFromTaskHistory,
+} from "./sync";
 import { and, asc, eq, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
 import {
   connectedSystems,
@@ -127,10 +130,49 @@ async function synchronizationUsers(input: {
 export async function runConnectionScopedCrmSyncCycle(now = new Date()) {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
-  const systems = await db
+  const candidateSystems = await db
     .select()
     .from(connectedSystems)
-    .where(inArray(connectedSystems.status, ["ready", "limited_permissions"]));
+    .where(
+      inArray(connectedSystems.status, [
+        "ready",
+        "limited_permissions",
+        "authentication_expired",
+        "testing",
+      ])
+    );
+
+  for (const system of candidateSystems) {
+    if (!["browser", "sidecar"].includes(system.connectionMethod)) continue;
+    try {
+      const userIds = await synchronizationUsers({
+        organisationId: system.organisationId,
+        connectedSystemId: system.id,
+        connectionMethod: system.connectionMethod,
+      });
+      for (const userId of userIds)
+        await reconcileNewLeadAlertsFromTaskHistory({
+          userId,
+          organisationId: system.organisationId,
+          connectedSystemId: system.id,
+        });
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          event: "crm_cached_work_reconciliation_failed",
+          connectedSystemId: system.id,
+          detail:
+            error instanceof Error
+              ? error.message.slice(0, 500)
+              : String(error).slice(0, 500),
+        })
+      );
+    }
+  }
+
+  const systems = candidateSystems.filter(system =>
+    ["ready", "limited_permissions"].includes(system.status)
+  );
 
   for (const system of systems)
     await ensureConnectionScopedCrmSyncJob({
