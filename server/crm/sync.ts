@@ -56,6 +56,25 @@ export function isTransientCrmSyncFailure(error: unknown) {
   return isTransientBrowserExecutionFailure(error);
 }
 
+export const DEFAULT_ROUTINE_OPPORTUNITY_SYNC_INTERVAL_MS = 15 * 60_000;
+
+export function routineOpportunitySnapshotDue(
+  lastSuccessfulAt: Date | null | undefined,
+  now = new Date(),
+  intervalMs = Number(
+    process.env.ROUTINE_OPPORTUNITY_SYNC_INTERVAL_MS ||
+      DEFAULT_ROUTINE_OPPORTUNITY_SYNC_INTERVAL_MS
+  )
+) {
+  const safeInterval =
+    Number.isFinite(intervalMs) && intervalMs >= 5 * 60_000
+      ? Math.floor(intervalMs)
+      : DEFAULT_ROUTINE_OPPORTUNITY_SYNC_INTERVAL_MS;
+  return (
+    !lastSuccessfulAt || now.valueOf() - lastSuccessfulAt.valueOf() >= safeInterval
+  );
+}
+
 async function cursorFor(systemId: number, resourceType: string) {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
@@ -936,6 +955,12 @@ async function syncConnectedSystemRoutineDeterministically(input: {
   });
   if (!secret.crmUserExternalId)
     throw new Error("CRM_SALESPERSON_IDENTITY_REQUIRED");
+  const routineNow = new Date();
+  const opportunityCursor = await cursorFor(system.id, "opportunities");
+  const opportunitySnapshotDue = routineOpportunitySnapshotDue(
+    opportunityCursor?.lastSuccessfulAt,
+    routineNow
+  );
   let operationStatuses = new Map(
     (
       await browserOperationReadinessForSystem({
@@ -958,6 +983,7 @@ async function syncConnectedSystemRoutineDeterministically(input: {
     ] as const;
     let attempted = false;
     for (const [resource, operationKey] of recoverable) {
+      if (resource === "opportunities" && !opportunitySnapshotDue) continue;
       if (operationStatuses.get(operationKey) !== "DEGRADED") continue;
       attempted = true;
       try {
@@ -1080,54 +1106,6 @@ async function syncConnectedSystemRoutineDeterministically(input: {
   if (
     crmResourceSyncEligible(
       connection,
-      "opportunities.read",
-      operationStatuses.get("opportunity.sync")
-    )
-  ) {
-    const existing = await cursorFor(system.id, "opportunities");
-    try {
-      const drained = await drainCrmPages<NormalizedOpportunity>({
-        initialCursor: undefined,
-        fetchPage: cursor =>
-          adapter.syncOpportunities({ connection, secret, cursor }),
-        onPage: async records => {
-          assertPersonalBrowserOwnerScope({
-            resourceType: "opportunities",
-            expectedOwnerExternalId: secret.crmUserExternalId || "",
-            records,
-          });
-          await upsertOpportunities(input.organisationId, system.id, records);
-          await upsertSalesWorkFromCrm({
-            organisationId: input.organisationId,
-            connectedSystemId: system.id,
-            resource: { type: "opportunities", records },
-          });
-        },
-      });
-      await saveCursor(system.id, "opportunities", undefined);
-      summary.opportunities = drained.total;
-    } catch (error) {
-      const detail =
-        error instanceof Error
-          ? error.message.slice(0, 800)
-          : "Unknown sync error";
-      if (!isTransientBrowserExecutionFailure(error))
-        await saveCursor(
-          system.id,
-          "opportunities",
-          undefined,
-          detail,
-          existing?.lastSuccessfulAt
-        );
-      failures.opportunities = detail;
-      failureTransient.opportunities =
-        isTransientBrowserExecutionFailure(error);
-    }
-  } else summary.opportunities = 0;
-
-  if (
-    crmResourceSyncEligible(
-      connection,
       "tasks.read",
       operationStatuses.get("task.sync")
     )
@@ -1186,6 +1164,57 @@ async function syncConnectedSystemRoutineDeterministically(input: {
       failureTransient.tasks = isTransientBrowserExecutionFailure(error);
     }
   } else summary.tasks = 0;
+
+
+  summary.opportunitySnapshot = opportunitySnapshotDue ? "due" : "cached";
+  if (
+    opportunitySnapshotDue &&
+    crmResourceSyncEligible(
+      connection,
+      "opportunities.read",
+      operationStatuses.get("opportunity.sync")
+    )
+  ) {
+    const existing = opportunityCursor;
+    try {
+      const drained = await drainCrmPages<NormalizedOpportunity>({
+        initialCursor: undefined,
+        fetchPage: cursor =>
+          adapter.syncOpportunities({ connection, secret, cursor }),
+        onPage: async records => {
+          assertPersonalBrowserOwnerScope({
+            resourceType: "opportunities",
+            expectedOwnerExternalId: secret.crmUserExternalId || "",
+            records,
+          });
+          await upsertOpportunities(input.organisationId, system.id, records);
+          await upsertSalesWorkFromCrm({
+            organisationId: input.organisationId,
+            connectedSystemId: system.id,
+            resource: { type: "opportunities", records },
+          });
+        },
+      });
+      await saveCursor(system.id, "opportunities", undefined);
+      summary.opportunities = drained.total;
+    } catch (error) {
+      const detail =
+        error instanceof Error
+          ? error.message.slice(0, 800)
+          : "Unknown sync error";
+      if (!isTransientBrowserExecutionFailure(error))
+        await saveCursor(
+          system.id,
+          "opportunities",
+          undefined,
+          detail,
+          existing?.lastSuccessfulAt
+        );
+      failures.opportunities = detail;
+      failureTransient.opportunities =
+        isTransientBrowserExecutionFailure(error);
+    }
+  } else summary.opportunities = 0;
 
   await reconcileCurrentBrowserReadiness(input);
   if (Object.keys(failures).length) {

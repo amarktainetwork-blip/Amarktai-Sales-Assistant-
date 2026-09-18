@@ -4,6 +4,7 @@ import {
   crmTaskHistoryProvesLeadWorked,
   crmTaskProvesLeadProgress,
   isTransientCrmSyncFailure,
+  routineOpportunitySnapshotDue,
 } from "./sync";
 it("does not hide permanent failures when another resource had transient contention", () => {
   const mixed = Object.assign(
@@ -23,6 +24,31 @@ it("does not hide permanent failures when another resource had transient content
   expect(
     isTransientCrmSyncFailure(new Error("CRM_BROWSER_CONTROL_LEASE_LOST"))
   ).toBe(true);
+});
+
+describe("routine opportunity snapshot cadence", () => {
+  const now = new Date("2026-09-18T19:30:00Z");
+
+  it("does not let the expensive opportunity drain monopolize every realtime cycle", () => {
+    expect(
+      routineOpportunitySnapshotDue(
+        new Date("2026-09-18T19:29:00Z"),
+        now,
+        15 * 60_000
+      )
+    ).toBe(false);
+  });
+
+  it("runs the full opportunity snapshot when it is stale or missing", () => {
+    expect(routineOpportunitySnapshotDue(null, now, 15 * 60_000)).toBe(true);
+    expect(
+      routineOpportunitySnapshotDue(
+        new Date("2026-09-18T19:15:00Z"),
+        now,
+        15 * 60_000
+      )
+    ).toBe(true);
+  });
 });
 
 describe("CRM customer-history lead progression", () => {
