@@ -251,6 +251,35 @@ export async function syncGenieMailboxForUser(input: {
       .orderBy(asc(inboundMessages.receivedAt))
       .limit(1)
   )[0];
+  const legacyActionable = (
+    await db
+      .select({
+        id: inboundMessages.id,
+        externalMessageId: inboundMessages.externalMessageId,
+        channel: inboundMessages.channel,
+        contactExternalId: inboundMessages.contactExternalId,
+        receivedAt: inboundMessages.receivedAt,
+        classification: inboundMessages.classification,
+      })
+      .from(inboundMessages)
+      .where(
+        and(
+          eq(inboundMessages.organisationId, input.organisationId),
+          eq(inboundMessages.mailboxUserId, input.userId),
+          eq(inboundMessages.connectedSystemId, system.id),
+          eq(inboundMessages.needsAction, true)
+        )
+      )
+      .orderBy(asc(inboundMessages.receivedAt))
+      .limit(60)
+  )
+    .filter(
+      row =>
+        !genieInboundConversationId(row.classification) &&
+        Boolean(row.contactExternalId) &&
+        ["email", "sms", "chat"].includes(row.channel)
+    )
+    .slice(0, 20);
   const now = Date.now();
   const sevenDaysAgo = now - 7 * 24 * 60 * 60_000;
   const oneDayAgo = now - 24 * 60 * 60_000;
@@ -279,9 +308,43 @@ export async function syncGenieMailboxForUser(input: {
         ownerExternalId: scope.externalUserId,
         mailboxEmail: scope.email,
         since,
+        unresolved: legacyActionable.map(row => ({
+          externalMessageId: row.externalMessageId,
+          channel: row.channel as "email" | "sms" | "chat",
+          contactExternalId: row.contactExternalId!,
+          receivedAt: row.receivedAt,
+        })),
       }),
   });
   checked = proof.checked;
+  for (const link of proof.legacyConversationLinks) {
+    const row = legacyActionable.find(
+      candidate => candidate.externalMessageId === link.inboundExternalMessageId
+    );
+    if (!row) continue;
+    const classification =
+      row.classification &&
+      typeof row.classification === "object" &&
+      !Array.isArray(row.classification)
+        ? (row.classification as Record<string, unknown>)
+        : {};
+    await db
+      .update(inboundMessages)
+      .set({
+        classification: {
+          ...classification,
+          conversationExternalId: link.conversationExternalId,
+        },
+      })
+      .where(
+        and(
+          eq(inboundMessages.id, row.id),
+          eq(inboundMessages.organisationId, input.organisationId),
+          eq(inboundMessages.mailboxUserId, input.userId),
+          eq(inboundMessages.connectedSystemId, system.id)
+        )
+      );
+  }
   for (const message of proof.records) {
     const result = await ingestInboundMessage({
       organisationId: input.organisationId,
@@ -322,6 +385,8 @@ export async function syncGenieMailboxForUser(input: {
       received,
       handledReplies,
       outboundEvidence: proof.outboundEvidence.length,
+      legacyConversationLinks: proof.legacyConversationLinks.length,
+      legacyActionableChecked: legacyActionable.length,
       draftsPrepared,
       contentRetained: false,
       exactEmailIsolation: true,

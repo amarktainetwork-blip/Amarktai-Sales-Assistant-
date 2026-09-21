@@ -91,6 +91,62 @@ export type PersonalGenieOutboundEvidence = {
   sentAt: Date;
 };
 
+
+export type LegacyGenieInboundReference = {
+  externalMessageId: string;
+  channel: "email" | "sms" | "chat";
+  contactExternalId: string;
+  receivedAt: Date;
+};
+
+export type LegacyGenieConversationLink = {
+  inboundExternalMessageId: string;
+  contactExternalId: string;
+  conversationExternalId: string;
+};
+
+export function legacyGenieOutboundEvidence(
+  thread: any,
+  input: {
+    channel: "email" | "sms" | "chat";
+    locationId: string;
+    conversationId: string;
+    contactExternalId: string;
+    receivedAt: Date;
+  }
+): PersonalGenieOutboundEvidence | undefined {
+  if (!thread || thread.deleted === true || thread.direction !== "outbound")
+    return undefined;
+  if (
+    thread.locationId !== input.locationId ||
+    thread.conversationId !== input.conversationId ||
+    (thread.contactId && thread.contactId !== input.contactExternalId)
+  )
+    throw Error("GENIE_MAILBOX_SCOPE_MISMATCH");
+  const sentAt = new Date(thread.dateAdded);
+  if (
+    !Number.isFinite(sentAt.getTime()) ||
+    sentAt.getTime() <= input.receivedAt.getTime()
+  )
+    return undefined;
+  const channel =
+    Number(thread.type) === 3 ? ("email" as const) : genieConversationChannel(thread);
+  if (!channel || channel !== input.channel) return undefined;
+  const externalMessageId =
+    id(thread.id) ||
+    (Array.isArray(thread.meta?.email?.messageIds)
+      ? id(thread.meta.email.messageIds[0])
+      : null);
+  if (!externalMessageId) return undefined;
+  return {
+    externalMessageId,
+    channel,
+    contactExternalId: input.contactExternalId,
+    conversationExternalId: input.conversationId,
+    sentAt,
+  };
+}
+
 export function parsePersonalGenieOutboundEmail(
   value: any,
   input: {
@@ -206,6 +262,7 @@ export async function readPersonalGenieMailbox(input: {
   ownerExternalId: string;
   mailboxEmail: string;
   since: Date;
+  unresolved?: LegacyGenieInboundReference[];
 }) {
   const locationId = input.page
     .url()
@@ -287,6 +344,7 @@ export async function readPersonalGenieMailbox(input: {
 
   const records = new Map<string, PersonalGenieMailboxRecord>();
   const outboundEvidence = new Map<string, PersonalGenieOutboundEvidence>();
+  const legacyConversationLinks = new Map<string, LegacyGenieConversationLink>();
   const visited = new Set<string>();
   let rejectedForeignRecipientCount = 0;
   let rejectedForeignOwnerCount = 0;
@@ -437,6 +495,105 @@ export async function readPersonalGenieMailbox(input: {
     }
     if (bounded) break;
   }
+  for (const unresolved of (input.unresolved || []).slice(0, 20)) {
+    const externalMessageId = id(unresolved.externalMessageId);
+    const contactExternalId = id(unresolved.contactExternalId);
+    if (
+      !externalMessageId ||
+      !contactExternalId ||
+      !["email", "sms", "chat"].includes(unresolved.channel) ||
+      !Number.isFinite(unresolved.receivedAt.getTime())
+    )
+      continue;
+
+    const contact = (await read(`/contacts/${contactExternalId}`)).contact;
+    if (
+      contact?.id !== contactExternalId ||
+      contact?.locationId !== locationId ||
+      contact?.assignedTo !== input.ownerExternalId
+    ) {
+      rejectedForeignOwnerCount++;
+      continue;
+    }
+
+    const raw =
+      unresolved.channel === "email"
+        ? await read(`/conversations/messages/email/${externalMessageId}`)
+        : await read(`/conversations/messages/${externalMessageId}`);
+    const source =
+      unresolved.channel === "email"
+        ? raw?.emailMessage || raw
+        : raw?.message || raw;
+    if (
+      !source ||
+      source.deleted === true ||
+      source.direction !== "inbound" ||
+      source.id !== externalMessageId ||
+      source.locationId !== locationId ||
+      source.contactId !== contactExternalId
+    )
+      continue;
+    const conversationId = id(source.conversationId);
+    if (!conversationId) continue;
+    if (
+      unresolved.channel !== "email" &&
+      genieConversationChannel(source) !== unresolved.channel
+    )
+      continue;
+
+    legacyConversationLinks.set(externalMessageId, {
+      inboundExternalMessageId: externalMessageId,
+      contactExternalId,
+      conversationExternalId: conversationId,
+    });
+
+    let lastMessageId: string | undefined;
+    let foundReply = false;
+    for (let pageNumber = 0; pageNumber < 3 && !foundReply; pageNumber++) {
+      const result = await read(
+        `/conversations/${conversationId}/messages`,
+        false,
+        { limit: 100, ...(lastMessageId ? { lastMessageId } : {}) }
+      );
+      const messages = result.messages?.messages;
+      if (!Array.isArray(messages))
+        throw Error("GENIE_MAILBOX_MESSAGES_INVALID");
+      let crossedInboundTime = false;
+      for (const thread of messages) {
+        if (thread.deleted === true) continue;
+        if (
+          thread.locationId !== locationId ||
+          thread.conversationId !== conversationId
+        )
+          throw Error("GENIE_MAILBOX_SCOPE_MISMATCH");
+        const threadAt = new Date(thread.dateAdded);
+        if (
+          Number.isFinite(threadAt.getTime()) &&
+          threadAt.getTime() <= unresolved.receivedAt.getTime()
+        ) {
+          crossedInboundTime = true;
+          continue;
+        }
+        const evidence = legacyGenieOutboundEvidence(thread, {
+          channel: unresolved.channel,
+          locationId,
+          conversationId,
+          contactExternalId,
+          receivedAt: unresolved.receivedAt,
+        });
+        if (!evidence) continue;
+        outboundEvidence.set(evidence.externalMessageId, evidence);
+        foundReply = true;
+        break;
+      }
+      if (foundReply || crossedInboundTime || !result.messages.nextPage) break;
+      const next = id(result.messages.lastMessageId);
+      if (!next || next === lastMessageId)
+        throw Error("GENIE_MAILBOX_CURSOR_STALLED");
+      lastMessageId = next;
+    }
+  }
+
   const after = await read("", true);
   const unreadPreserved = beforeUnread.every((previous: any) =>
     after.search?.conversations?.some(
@@ -449,6 +606,7 @@ export async function readPersonalGenieMailbox(input: {
   return {
     records: Array.from(records.values()),
     outboundEvidence: Array.from(outboundEvidence.values()),
+    legacyConversationLinks: Array.from(legacyConversationLinks.values()),
     checked: Math.min(conversations.length, 20),
     examined,
     rejectedForeignRecipientCount,

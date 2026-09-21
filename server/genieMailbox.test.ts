@@ -8,6 +8,7 @@ import {
 import {
   readPersonalGenieMailbox,
   genieConversationChannel,
+  legacyGenieOutboundEvidence,
   mailboxAddress,
   parsePersonalGenieConversationMessage,
   parsePersonalGenieEmail,
@@ -185,6 +186,77 @@ describe("Genie personal email isolation", () => {
         conversationExternalId: "conversation-1",
       },
     });
+  });
+
+
+  it("accepts only later outbound activity in the exact legacy contact conversation and channel", () => {
+    const evidence = legacyGenieOutboundEvidence(
+      {
+        id: "outbound-1",
+        type: 2,
+        direction: "outbound",
+        deleted: false,
+        locationId: "location-1",
+        conversationId: "conversation-1",
+        contactId: "contact-1",
+        dateAdded: "2026-09-16T14:05:00.000Z",
+      },
+      {
+        channel: "sms",
+        locationId: "location-1",
+        conversationId: "conversation-1",
+        contactExternalId: "contact-1",
+        receivedAt: new Date("2026-09-16T14:00:00.000Z"),
+      }
+    );
+    expect(evidence).toMatchObject({
+      externalMessageId: "outbound-1",
+      channel: "sms",
+      contactExternalId: "contact-1",
+      conversationExternalId: "conversation-1",
+    });
+    expect(
+      legacyGenieOutboundEvidence(
+        {
+          id: "outbound-early",
+          type: 2,
+          direction: "outbound",
+          deleted: false,
+          locationId: "location-1",
+          conversationId: "conversation-1",
+          contactId: "contact-1",
+          dateAdded: "2026-09-16T13:59:00.000Z",
+        },
+        {
+          channel: "sms",
+          locationId: "location-1",
+          conversationId: "conversation-1",
+          contactExternalId: "contact-1",
+          receivedAt: new Date("2026-09-16T14:00:00.000Z"),
+        }
+      )
+    ).toBeUndefined();
+    expect(() =>
+      legacyGenieOutboundEvidence(
+        {
+          id: "outbound-other",
+          type: 2,
+          direction: "outbound",
+          deleted: false,
+          locationId: "location-1",
+          conversationId: "conversation-other",
+          contactId: "contact-1",
+          dateAdded: "2026-09-16T14:05:00.000Z",
+        },
+        {
+          channel: "sms",
+          locationId: "location-1",
+          conversationId: "conversation-1",
+          contactExternalId: "contact-1",
+          receivedAt: new Date("2026-09-16T14:00:00.000Z"),
+        }
+      )
+    ).toThrow("GENIE_MAILBOX_SCOPE_MISMATCH");
   });
 
   it("closes only an earlier actionable inbound message in the exact replied conversation", () => {
@@ -492,6 +564,33 @@ describe("read-only mailbox ownership proof", () => {
       )
     ).toBe(true);
   });
+  it("recovers an exact conversation identity for one legacy actionable message without any write to Genie", async () => {
+    const f = source("owner");
+    const result = await readPersonalGenieMailbox({
+      page: f.page,
+      ownerExternalId: "owner",
+      mailboxEmail: "advisor@example.test",
+      since: new Date("2026-09-17T09:00:00Z"),
+      unresolved: [
+        {
+          externalMessageId: "m",
+          channel: "sms",
+          contactExternalId: "contact",
+          receivedAt: new Date("2026-09-17T10:00:00Z"),
+        },
+      ],
+    });
+    expect(result.legacyConversationLinks).toEqual([
+      {
+        inboundExternalMessageId: "m",
+        contactExternalId: "contact",
+        conversationExternalId: "conv",
+      },
+    ]);
+    expect(result.readOnlySource).toBe(true);
+    expect(f.post).toHaveBeenCalledTimes(2);
+  });
+
   it("ingests owner-scoped messages even when the CRM conversation is already read", async () => {
     const f = source("owner");
     const bootstrapConversation = {
