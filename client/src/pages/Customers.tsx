@@ -98,25 +98,20 @@ export default function Customers() {
   return (
     <DashboardLayout>
       <div className="mx-auto max-w-[1440px] space-y-5 text-[#26354A]">
-        <header className="rounded-3xl border border-[#DCE4EE] bg-white p-6 shadow-sm sm:p-8">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+        <header className="rounded-2xl border border-[#DCE4EE] bg-white px-5 py-4 shadow-sm sm:px-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="handover-kicker">Customers</p>
-              <h1 className="mt-3 font-display text-4xl font-bold tracking-[-.06em] sm:text-5xl">
-                {personFirst
-                  ? "Know the person before you call."
-                  : "Know the customer before you call."}
+              <h1 className="mt-1 font-display text-2xl font-bold tracking-[-.04em] sm:text-3xl">
+                Customer context
               </h1>
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-[#66758A] sm:text-base">
-                Search the full customer set, open one record, and get the
-                useful context without digging through CRM screens. Tasks,
-                history, enquiry fields and opportunities stay attached to the
-                person you are working.
+              <p className="mt-1 text-sm text-[#66758A]">
+                Search, open the person, then call or prepare the next action.
               </p>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="handover-status">
-                {customers.data?.totalAll ?? 0} synced customers
+                {customers.data?.totalAll ?? 0} synced
               </span>
               <Button onClick={() => ask("Who should I contact next and why?")}>
                 <Sparkles className="mr-2 h-4 w-4" /> Ask AmarktAI

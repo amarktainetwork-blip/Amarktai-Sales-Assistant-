@@ -61,6 +61,64 @@ describe("final dashboard information architecture", () => {
     expect(settings).toContain('title="Team members"');
   });
 
+  it("keeps the salesperson flow action-first instead of repeating decorative banners", () => {
+    const layout = readFileSync(
+      path.resolve("client/src/components/DashboardLayout.tsx"),
+      "utf8"
+    );
+    const today = readFileSync(path.resolve("client/src/pages/Today.tsx"), "utf8");
+    const customers = readFileSync(
+      path.resolve("client/src/pages/Customers.tsx"),
+      "utf8"
+    );
+    const review = readFileSync(path.resolve("client/src/pages/Reviews.tsx"), "utf8");
+    const assistant = readFileSync(
+      path.resolve("client/src/pages/Assistant.tsx"),
+      "utf8"
+    );
+
+    expect(layout).not.toContain("data-new-lead-alert");
+    expect(layout).toContain('crmAttention && location === "/today"');
+    expect(today).not.toContain("Daily loop");
+    expect(today).not.toContain("Work the hottest customer");
+    expect(today).toContain("Your priority queue is clear.");
+    expect(customers).not.toContain("Know the person before you call.");
+    expect(customers).toContain("Customer context");
+    expect(review).not.toContain("Only stop here when AmarktAI needs your decision.");
+    expect(review).toContain("Back to Today");
+    expect(assistant).not.toContain("Give me the admin around the call.");
+    expect(assistant).toContain("What do you need for the next customer?");
+  });
+
+  it("gives team managers factual workload and follow-up exceptions", () => {
+    const page = readFileSync(
+      path.resolve("client/src/pages/TeamIntelligence.tsx"),
+      "utf8"
+    );
+    const service = readFileSync(
+      path.resolve("server/teamIntelligence.ts"),
+      "utf8"
+    );
+
+    for (const signal of [
+      "Activity today",
+      "New leads",
+      "Unanswered",
+      "Overdue",
+      "Stale deals",
+      "No next step",
+      "Pipeline at risk",
+    ])
+      expect(page).toContain(signal);
+    for (const field of [
+      "activitiesToday",
+      "newLeadsWaiting",
+      "unansweredCustomers",
+      "openWorkItems",
+    ])
+      expect(service).toContain(field);
+  });
+
   it("keeps client exports accessible without adding another primary navigation area", () => {
     const settings = readFileSync(
       path.resolve("client/src/pages/Settings.tsx"),

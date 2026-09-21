@@ -233,93 +233,60 @@ export default function Today() {
   return (
     <DashboardLayout>
       <div className="mx-auto max-w-[1380px] space-y-5 text-[#26354A]">
-        <header className="overflow-hidden rounded-3xl border border-[#D7E1EE] bg-white shadow-sm">
-          <div className="grid gap-0 xl:grid-cols-[1fr_360px]">
-            <div className="p-6 sm:p-8">
-              <p className="text-[10px] font-black uppercase tracking-[.16em] text-[#2F6FED]">
-                Today · Work what matters
-              </p>
-              <h1 className="mt-3 max-w-4xl font-display text-4xl font-bold tracking-[-.06em] sm:text-5xl">
-                Work the hottest customer. AmarktAI handles the admin around it.
-              </h1>
-              <p className="mt-4 max-w-3xl text-sm leading-6 text-[#66758A] sm:text-base">
-                Your queue combines customer replies, possible sales, new leads,
-                tasks and CRM history. Handle the next customer, then let AmarktAI
-                prepare the follow-up, notes or reminder for Review.
-              </p>
-              <div className="mt-5 flex flex-wrap gap-2">
-                {current ? (
-                  current.primaryKind === "inbound_reply" ? (
-                    <Button size="lg" onClick={() => navigate("/inbox")}>
-                      <Mail className="mr-2 h-4 w-4" />
-                      Open reply from {current.name}
-                    </Button>
-                  ) : (
-                    <Button
-                      size="lg"
-                      disabled={startCall.isPending}
-                      onClick={() =>
-                        startCall.mutate({
-                          leadLabel: current.name,
-                          contactId: current.contactId,
-                        })
-                      }
-                    >
-                      <Headphones className="mr-2 h-4 w-4" />
-                      {startCall.isPending
-                        ? "Opening call workspace…"
-                        : `Start with ${current.name}`}
-                    </Button>
-                  )
-                ) : (
-                  <Button size="lg" onClick={() => navigate("/customers")}>
-                    <UserRound className="mr-2 h-4 w-4" />
-                    Open customers
-                  </Button>
-                )}
-                <Button
-                  variant="outline"
-                  size="lg"
-                  onClick={() => navigate("/reviews")}
-                >
-                  <ClipboardCheck className="mr-2 h-4 w-4" />
-                  Review prepared work
-                </Button>
+        <header className="rounded-2xl border border-[#D7E1EE] bg-white px-5 py-4 shadow-sm sm:px-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[10px] font-black uppercase tracking-[.14em] text-[#2F6FED]">
+                  Today
+                </span>
+                <span className="text-xs font-semibold text-[#8290A3]">
+                  {freshnessLabel(
+                    today.data?.freshness.lastSuccessfulAt,
+                    today.data?.freshness.status
+                  )}
+                </span>
               </div>
-              <p className="mt-4 text-xs font-semibold text-[#7A899C]">
-                {freshnessLabel(
-                  today.data?.freshness.lastSuccessfulAt,
-                  today.data?.freshness.status
-                )}
+              <h1 className="mt-1.5 truncate font-display text-2xl font-bold tracking-[-.04em] sm:text-3xl">
+                {current ? `Next: ${current.name}` : "Your priority queue is clear."}
+              </h1>
+              <p className="mt-1 max-w-3xl text-sm text-[#66758A]">
+                {current
+                  ? current.headline
+                  : "No customer work currently needs your attention."}
               </p>
             </div>
-
-            <div className="border-t border-[#E3E9F1] bg-[#F7FAFF] p-6 xl:border-l xl:border-t-0">
-              <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#6C7F98]">
-                Daily loop
-              </p>
-              <div className="mt-4 space-y-3">
-                <FlowStep
-                  number="1"
-                  title="Pick the next person"
-                  detail="Today"
-                />
-                <FlowStep
-                  number="2"
-                  title="Handle the reply or call"
-                  detail="Inbox · Calls"
-                />
-                <FlowStep
-                  number="3"
-                  title="Prepare the admin"
-                  detail="AmarktAI"
-                />
-                <FlowStep
-                  number="4"
-                  title="Approve only what matters"
-                  detail="Review"
-                />
-              </div>
+            <div className="flex shrink-0 flex-wrap gap-2">
+              {current ? (
+                current.primaryKind === "inbound_reply" ? (
+                  <Button onClick={() => navigate("/inbox")}>
+                    <Mail className="mr-2 h-4 w-4" />
+                    Open reply
+                  </Button>
+                ) : (
+                  <Button
+                    disabled={startCall.isPending}
+                    onClick={() =>
+                      startCall.mutate({
+                        leadLabel: current.name,
+                        contactId: current.contactId,
+                      })
+                    }
+                  >
+                    <Headphones className="mr-2 h-4 w-4" />
+                    {startCall.isPending ? "Opening…" : "Open call"}
+                  </Button>
+                )
+              ) : (
+                <Button onClick={() => navigate("/customers")}>
+                  <UserRound className="mr-2 h-4 w-4" />
+                  Customers
+                </Button>
+              )}
+              <Button variant="outline" onClick={() => navigate("/reviews")}>
+                <ClipboardCheck className="mr-2 h-4 w-4" />
+                Review
+              </Button>
             </div>
           </div>
         </header>
@@ -749,28 +716,6 @@ export default function Today() {
         </div>
       </div>
     </DashboardLayout>
-  );
-}
-
-function FlowStep({
-  number,
-  title,
-  detail,
-}: {
-  number: string;
-  title: string;
-  detail: string;
-}) {
-  return (
-    <div className="flex items-center gap-3">
-      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white text-xs font-black text-[#2F6FED] ring-1 ring-[#C9D7EC]">
-        {number}
-      </span>
-      <span className="min-w-0">
-        <span className="block text-sm font-bold text-[#33445B]">{title}</span>
-        <span className="block text-xs text-[#8290A3]">{detail}</span>
-      </span>
-    </div>
   );
 }
 

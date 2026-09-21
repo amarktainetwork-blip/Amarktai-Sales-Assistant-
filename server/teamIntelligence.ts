@@ -1,5 +1,5 @@
-import { and, eq } from "drizzle-orm";
-import { crmActivities, crmOpportunities, crmPipelineStageMappings, crmTasks, externalUserMappings } from "../drizzle/schema";
+import { and, eq, inArray } from "drizzle-orm";
+import { crmActivities, crmOpportunities, crmPipelineStageMappings, crmTasks, externalUserMappings, inboundMessages, salesWorkItems } from "../drizzle/schema";
 import { getDb } from "./db";
 import { canViewTeamData, requireOrganisationMembership } from "./organisation";
 import { getSalesTargets } from "./salesTargets";
@@ -29,11 +29,13 @@ export async function getTeamIntelligence(input: { userId: number; organisationI
   const nowParts = zonedParts(now, membership.timezone || "UTC");
   const daysInMonth = new Date(Date.UTC(nowParts.year, nowParts.month, 0)).getUTCDate();
   const expectedMonthlyPace = Math.min(1, Math.max(0, nowParts.day / daysInMonth));
-  const [mappings, tasks, opportunities, activities, targets, stageMappings] = await Promise.all([
+  const [mappings, tasks, opportunities, activities, workItems, inbound, targets, stageMappings] = await Promise.all([
     db.select().from(externalUserMappings).where(and(eq(externalUserMappings.organisationId, input.organisationId), eq(externalUserMappings.isActive, true))),
     db.select().from(crmTasks).where(eq(crmTasks.organisationId, input.organisationId)).limit(5000),
     db.select().from(crmOpportunities).where(eq(crmOpportunities.organisationId, input.organisationId)).limit(5000),
     db.select().from(crmActivities).where(eq(crmActivities.organisationId, input.organisationId)).limit(10_000),
+    db.select().from(salesWorkItems).where(and(eq(salesWorkItems.organisationId, input.organisationId), inArray(salesWorkItems.status, ["open", "in_progress", "snoozed", "blocked"]))).limit(5000),
+    db.select().from(inboundMessages).where(and(eq(inboundMessages.organisationId, input.organisationId), eq(inboundMessages.needsAction, true))).limit(5000),
     getSalesTargets({ userId: input.userId, organisationId: input.organisationId }),
     db.select().from(crmPipelineStageMappings).where(and(eq(crmPipelineStageMappings.organisationId, input.organisationId), eq(crmPipelineStageMappings.isActive, true))),
   ]);
@@ -45,7 +47,13 @@ export async function getTeamIntelligence(input: { userId: number; organisationI
     externalUserId: mapping.externalUserId, name: mapping.displayName, userId: mapping.userId,
     overdueTasks: 0, staleOpportunities: 0, noNextStep: 0, pipelineAtRiskMinor: 0,
     activitiesToday: 0, wonValueThisMonthMinor: 0,
+    newLeadsWaiting: 0, unansweredCustomers: 0, openWorkItems: 0,
   }]));
+  const peopleByUserId = new Map(
+    Array.from(people.values())
+      .filter(person => person.userId)
+      .map(person => [person.userId!, person])
+  );
   for (const task of tasks) {
     if (!task.ownerExternalId || !people.has(task.ownerExternalId) || !open(task.status) || !task.dueAt || task.dueAt >= now) continue;
     people.get(task.ownerExternalId)!.overdueTasks += 1;
@@ -76,6 +84,19 @@ export async function getTeamIntelligence(input: { userId: number; organisationI
     if (dateKey(activity.occurredAt, membership.timezone) === nowParts.dateKey) people.get(activity.ownerExternalId)!.activitiesToday += 1;
   }
 
+  for (const item of workItems) {
+    if (!item.salespersonUserId) continue;
+    const person = peopleByUserId.get(item.salespersonUserId);
+    if (!person) continue;
+    person.openWorkItems += 1;
+    if (item.type === "NEW_LEAD") person.newLeadsWaiting += 1;
+  }
+  for (const message of inbound) {
+    if (!message.mailboxUserId) continue;
+    const person = peopleByUserId.get(message.mailboxUserId);
+    if (person) person.unansweredCustomers += 1;
+  }
+
   const team = Array.from(people.values()).map(person => {
     const target = person.userId ? targetByUser.get(person.userId) : undefined;
     const dailyProgress = target?.dailyActivityTarget ? person.activitiesToday / target.dailyActivityTarget : null;
@@ -84,7 +105,13 @@ export async function getTeamIntelligence(input: { userId: number; organisationI
     const monthlyAtRisk = monthlyProgress !== null && monthlyProgress < expectedMonthlyPace * 0.8;
     const dailyAtRisk = dailyProgress !== null && nowParts.hour >= 15 && dailyProgress < 0.8;
     const targetStatus = overdueBreach ? "needs_attention" : monthlyAtRisk || dailyAtRisk ? "at_risk" : (monthlyProgress !== null && monthlyProgress >= 1) || (dailyProgress !== null && dailyProgress >= 1) ? "strong" : "on_track";
-    const exceptionScore = person.overdueTasks * 12 + person.staleOpportunities * 8 + person.noNextStep * 6 + (targetStatus === "needs_attention" ? 40 : targetStatus === "at_risk" ? 24 : 0);
+    const exceptionScore =
+      person.overdueTasks * 12 +
+      person.unansweredCustomers * 18 +
+      person.newLeadsWaiting * 14 +
+      person.staleOpportunities * 8 +
+      person.noNextStep * 6 +
+      (targetStatus === "needs_attention" ? 40 : targetStatus === "at_risk" ? 24 : 0);
     const personCurrencies = pipelineCurrenciesByPerson.get(person.externalUserId) ?? new Set<string>();
     return {
       ...person,
@@ -106,6 +133,9 @@ export async function getTeamIntelligence(input: { userId: number; organisationI
       onTarget: team.filter(person => person.targetStatus === "on_track" || person.targetStatus === "strong").length,
       atRisk: team.filter(person => person.targetStatus === "at_risk" || person.targetStatus === "needs_attention").length,
       overdueTasks: team.reduce((sum, person) => sum + person.overdueTasks, 0),
+      newLeadsWaiting: team.reduce((sum, person) => sum + person.newLeadsWaiting, 0),
+      unansweredCustomers: team.reduce((sum, person) => sum + person.unansweredCustomers, 0),
+      openWorkItems: team.reduce((sum, person) => sum + person.openWorkItems, 0),
       staleOpportunities: team.reduce((sum, person) => sum + person.staleOpportunities, 0),
       pipelineAtRiskMinor: team.reduce((sum, person) => sum + person.pipelineAtRiskMinor, 0),
       pipelineCurrency: pipelineCurrencies.size === 1 ? Array.from(pipelineCurrencies)[0] : null,

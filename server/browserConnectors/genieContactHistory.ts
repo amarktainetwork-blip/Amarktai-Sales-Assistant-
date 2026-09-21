@@ -133,6 +133,7 @@ export async function readGenieContactHistory(input: {
           senderReference: detail.from || detail.meta?.from || null,
           recipientReference: detail.to || detail.meta?.to || null,
           ownerScope: "contact_assignee",
+          userExternalId: detail.userId || m.userId || null,
         },
       });
     }
