@@ -29,6 +29,7 @@ import {
 } from "./approvedTemplates";
 import { getOutboundSuppressionStatus } from "./communications";
 import { renderConfiguredTemplateText } from "./communicationContent";
+import { listRelevantAssistantMemories } from "./memory";
 import {
   buildGroundedDraftInstruction,
   groundedDraftIssues,
@@ -273,6 +274,24 @@ export async function tryPrepareDirectAssistantAction(input: {
           .limit(1)
       )[0]
     : undefined;
+  const draftingPreferences =
+    channel === "email"
+      ? await listRelevantAssistantMemories({
+          userId: input.userId,
+          organisationId: input.organisationId,
+          query: `email writing style ${input.request}`,
+          contactExternalId: customer.contactExternalId,
+          maximum: 8,
+        })
+      : [];
+  const personalStyle = draftingPreferences
+    .filter(
+      memory =>
+        memory.memoryType === "user_preference" && !memory.contactExternalId
+    )
+    .map(memory => `${memory.subject}: ${memory.content}`)
+    .join("\n")
+    .slice(0, 4_000);
   const mappedCustomerContext = workspace.customerFieldMappings
     .map(mapping => {
       const value =
@@ -333,6 +352,7 @@ export async function tryPrepareDirectAssistantAction(input: {
         typeof workspace.businessContext.brandVoice === "string"
           ? workspace.businessContext.brandVoice
           : undefined,
+      personalStyle: personalStyle || undefined,
       contactName: customer.contactName,
       companyName: customer.companyName,
       emailSubject: customer.recentInboundSubject,

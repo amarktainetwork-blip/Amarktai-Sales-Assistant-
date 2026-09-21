@@ -24,7 +24,8 @@ describe("client-handover AmarktAI contract", () => {
       "Prepare me for this call",
       "Summarise the customer history",
       "What should I ask next?",
-      "Draft the right follow-up using an approved template — don't send",
+      "Draft the right follow-up — don't send",
+      "Show me the approved templates available here",
     ])
       expect(assistantPage).toContain(prompt);
   });
@@ -54,5 +55,7 @@ describe("client-handover AmarktAI contract", () => {
     );
     expect(assistantRoute).toContain("relevantMemory: relevantMemory.map");
     expect(assistantRoute).toContain("isSafeAssistantMemory");
+    expect(assistantRoute).toContain("getClientActionConfiguration");
+    expect(assistantRoute).toContain("No approved communication templates are commissioned");
   });
 });

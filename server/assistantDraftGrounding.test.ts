@@ -10,6 +10,7 @@ const context: GroundedDraftContext = {
   channel: "email",
   salespersonName: "Amelia De Beer",
   brandVoice: "Clear, professional, helpful, factual and concise.",
+  personalStyle: "Warm and direct. Short paragraphs. Close with Thanks, Amelia.",
   contactName: "Namrata Parikh",
   inboundMessage:
     "I am looking for cyber security training and funding options.",
@@ -22,6 +23,8 @@ describe("grounded customer-facing draft contract", () => {
   it("grounds the draft in salesperson voice and known customer context", () => {
     const prompt = buildGroundedDraftInstruction(context);
     expect(prompt).toContain("SALESPERSON: Amelia De Beer");
+    expect(prompt).toContain("PERSONAL STYLE PREFERENCES");
+    expect(prompt).toContain("Short paragraphs");
     expect(prompt).toContain("Course/programme interest: Cyber Security");
     expect(prompt).toContain("Training Start Timeframe: As soon as possible");
     expect(prompt).toContain("never as an AI, CRM, compliance system");

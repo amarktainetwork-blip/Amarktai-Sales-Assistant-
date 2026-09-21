@@ -272,3 +272,11 @@ export function buildTodayCallQueue(input: {
   }
   return Array.from(result.values());
 }
+
+export function unrepresentedTodayTasks(
+  queue: Array<Pick<TodayCallQueueItem, "taskIds">>,
+  tasks: TodayQueueTask[]
+) {
+  const represented = new Set(queue.flatMap(item => item.taskIds));
+  return tasks.filter(task => !represented.has(task.id));
+}

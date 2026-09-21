@@ -21,6 +21,7 @@ import { planAssistantCrmBatchInstruction } from "./crm/assistantBatchExecution"
 import { routeConnectedSystemActions } from "./crmRouter";
 import { tryPrepareDirectAssistantAction } from "./assistantDirectActions";
 import { attachRuntimeOperationReadiness } from "./crm/runtimeCapabilities";
+import { getClientActionConfiguration } from "./clientActionConfiguration";
 import { syncConnectedSystemsForUser } from "./crm/sync";
 import { planAssistantSingleRecordAction } from "./crm/assistantSingleRecord";
 import {
@@ -362,6 +363,45 @@ export function registerAssistantRoutes(app: Express) {
         organisationId: membership.organisationId,
       });
 
+      const asksAboutTemplates =
+        /\btemplates?\b/i.test(latestUserMessage) &&
+        /\b(?:which|what|show|available|approved|fit|fits|use)\b/i.test(
+          latestUserMessage
+        ) &&
+        !/\b(?:draft|write|prepare|send|reply|respond)\b/i.test(
+          latestUserMessage
+        );
+      if (asksAboutTemplates) {
+        const configuration = await getClientActionConfiguration({
+          organisationId: membership.organisationId,
+        });
+        const templates = Object.values(configuration.templates);
+        return res.json({
+          content: templates.length
+            ? [
+                "These communication templates are commissioned for this workspace:",
+                ...templates.map(
+                  template =>
+                    `• ${template.templateName} · ${template.channel.toUpperCase()}`
+                ),
+                "",
+                "I can use an exact commissioned template when you name it. Nothing will be sent without the required Review and authority.",
+              ].join("\n")
+            : "No approved communication templates are commissioned in this workspace yet. I can still prepare a grounded customer-specific draft for Review, but I will not pretend it came from a saved template.",
+        });
+      }
+
+      if (
+        /\battachments?\b/i.test(latestUserMessage) &&
+        /\b(?:which|what|show|available|approved|attach|use)\b/i.test(
+          latestUserMessage
+        )
+      )
+        return res.json({
+          content:
+            "There is no commissioned approved-attachment library in this workspace yet. I will not invent or attach a file. We can commission the real Course2Career documents with Amelia or management before enabling that workflow.",
+        });
+
       if (
         shouldUseSelectedCustomerGovernedIntent({
           query: latestUserMessage,
@@ -642,19 +682,28 @@ export function registerAssistantRoutes(app: Express) {
             contactId,
           })
         : undefined;
-      const [sources, operationalContext, relevantMemory, user, listedSystems] =
-        await Promise.all([
-          searchApprovedKnowledge(userId, membership.organisationId, query),
-          getAssistantOperationalContext(userId, membership.organisationId),
-          listRelevantAssistantMemories({
-            userId,
-            organisationId: membership.organisationId,
-            query,
-            contactExternalId: contactContext?.contactExternalId,
-          }),
-          getUserById(userId),
-          listConnectedSystemsForUser(userId, membership.organisationId),
-        ]);
+      const [
+        sources,
+        operationalContext,
+        relevantMemory,
+        user,
+        listedSystems,
+        clientActions,
+      ] = await Promise.all([
+        searchApprovedKnowledge(userId, membership.organisationId, query),
+        getAssistantOperationalContext(userId, membership.organisationId),
+        listRelevantAssistantMemories({
+          userId,
+          organisationId: membership.organisationId,
+          query,
+          contactExternalId: contactContext?.contactExternalId,
+        }),
+        getUserById(userId),
+        listConnectedSystemsForUser(userId, membership.organisationId),
+        getClientActionConfiguration({
+          organisationId: membership.organisationId,
+        }),
+      ]);
       const runtimeSystems = await attachRuntimeOperationReadiness({
         organisationId: membership.organisationId,
         systems: listedSystems,
@@ -734,6 +783,21 @@ export function registerAssistantRoutes(app: Express) {
               mode: operation.mode,
             })),
         })),
+        communicationTemplates: Object.values(clientActions.templates).map(
+          template => ({
+            key: template.key,
+            name: template.templateName,
+            channel: template.channel,
+            source: template.source,
+          })
+        ),
+        workflowTemplateMappings: Object.fromEntries(
+          Object.entries(clientActions.workflows).map(([key, workflow]) => [
+            key,
+            workflow.templates,
+          ])
+        ),
+        attachmentLibraryCommissioned: false,
         requestRoute: route.summary,
         governedEvidence,
       });

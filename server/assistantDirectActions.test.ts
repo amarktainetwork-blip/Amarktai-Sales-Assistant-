@@ -32,6 +32,9 @@ vi.mock("./organisationWorkspace", () => ({
 vi.mock("./connectedSystems", () => ({
   listConnectedSystemsForUser: vi.fn(async () => []),
 }));
+vi.mock("./memory", () => ({
+  listRelevantAssistantMemories: vi.fn(async () => []),
+}));
 vi.mock("./crmRouter", () => ({ routeConnectedSystemActionsForUser: m.route }));
 vi.mock("./genx", () => ({ runGenxAgent: m.genx }));
 vi.mock("./automationPolicy", () => ({

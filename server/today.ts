@@ -3,7 +3,7 @@ import { getOrganisationWorkspaceContext } from "./organisationWorkspace";
 import { isIncompleteTask } from "../shared/taskState";
 import { normalizedCustomerAttributes, personalOwnerSql } from "./customerData";
 import { deriveCustomerInterest } from "./customerInterest";
-import { buildTodayCallQueue } from "./todayCallQueue";
+import { buildTodayCallQueue, unrepresentedTodayTasks } from "./todayCallQueue";
 import { opportunityIsHistorical } from "./crm/actionExecutionPreconditions";
 import { and, asc, desc, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
 import {
@@ -583,6 +583,37 @@ export async function getTodayWork(input: {
     contacts: enrichedWorkContacts,
   });
   const newLeadQueue = callQueue.filter(item => item.workItemIds.length > 0);
+  const unlinkedTaskIds = new Set(
+    unrepresentedTodayTasks(callQueue, [...overdueTasks, ...dueToday]).map(
+      task => task.id
+    )
+  );
+  const assignedTaskExceptions = [...overdueTasks, ...dueToday]
+    .filter(task => unlinkedTaskIds.has(task.id))
+    .map(task => {
+      const raw =
+        task.raw && typeof task.raw === "object" && !Array.isArray(task.raw)
+          ? (task.raw as Record<string, unknown>)
+          : {};
+      const detail =
+        typeof raw.description === "string" && raw.description.trim()
+          ? raw.description.trim().slice(0, 500)
+          : null;
+      return {
+        id: task.id,
+        connectedSystemId: task.connectedSystemId,
+        externalId: task.externalId,
+        contactExternalId: task.contactExternalId,
+        title: task.title,
+        detail,
+        dueAt: task.dueAt,
+        status: task.status,
+        reason:
+          task.dueAt && task.dueAt < now
+            ? ("Overdue assigned task" as const)
+            : ("Assigned task due today" as const),
+      };
+    });
 
   const assignedWork = workItems
     .filter(item => item.salespersonUserId === input.userId)
@@ -700,6 +731,7 @@ export async function getTodayWork(input: {
       newLeads: newLeadQueue.length,
       workItems: assignedWork.length,
       callQueue: callQueue.length,
+      assignedTaskExceptions: assignedTaskExceptions.length,
     },
     queues: {
       dueToday: dueToday.slice(0, 12),
@@ -710,6 +742,7 @@ export async function getTodayWork(input: {
       priority,
       callQueue,
       newLeads: newLeadQueue,
+      assignedTaskExceptions,
       upcoming: upcomingCommitments,
       work: assignedWork.slice(0, 100),
     },

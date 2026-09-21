@@ -2,6 +2,8 @@ import { and, desc, eq } from "drizzle-orm";
 import {
   actionProposals,
   assistantMemories,
+  crmActivities,
+  externalUserMappings,
   userMailboxConnections,
 } from "../drizzle/schema";
 import { getDb, recordAudit } from "./db";
@@ -26,7 +28,7 @@ type GraphPage<T> = {
   "@odata.nextLink"?: string;
 };
 
-const STYLE_SOURCE_PREFIX = "personal_email_style:microsoft:v1:";
+const STYLE_SOURCE_PREFIX = "personal_email_style:v2:";
 const MAX_SENT_MESSAGES = 40;
 const MIN_STYLE_MESSAGES = 5;
 const MAX_STYLE_CORPUS_CHARS = 24_000;
@@ -80,8 +82,11 @@ export function stripQuotedEmailHistory(value: string) {
 /** Minimise personal/customer detail before style evidence is sent to GenX. */
 export function redactStyleEvidence(value: string) {
   return value
+    .replace(/^(hi|hello|dear)\s+[^,\n]+/i, "$1 [name]")
     .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[email]")
     .replace(/https?:\/\/\S+/gi, "[link]")
+    .replace(/(?:£|\$|€|R)\s?\d[\d,.]*/g, "[amount]")
+    .replace(/\b\d+(?:[.,]\d+)?\s*%/g, "[percentage]")
     .replace(/\b(?:\+?\d[\d .()/-]{7,}\d)\b/g, "[number]")
     .replace(/\b\d{5,}\b/g, "[number]")
     .replace(
@@ -111,6 +116,45 @@ function styleEvidence(message: GraphSentMessage) {
   return {
     id: message.id,
     sentAt,
+    sample: `SUBJECT: ${subject || "[no subject]"}\nBODY:\n${body.slice(0, 2_500)}`,
+  };
+}
+
+export function crmActivityStyleEvidence(
+  activity: {
+    externalId: string;
+    occurredAt: Date;
+    body: string | null;
+    raw: unknown;
+  },
+  identity: { externalUserId: string; email?: string | null }
+) {
+  const raw =
+    activity.raw && typeof activity.raw === "object" && !Array.isArray(activity.raw)
+      ? (activity.raw as Record<string, unknown>)
+      : {};
+  if (String(raw.direction || "").trim().toLowerCase() !== "outbound")
+    return undefined;
+  const externalUserId = identity.externalUserId.trim();
+  const actorExternalId = String(raw.userExternalId || "").trim();
+  const email = String(identity.email || "").trim().toLowerCase();
+  const sender = String(raw.senderReference || "").trim().toLowerCase();
+  const authoredByUser =
+    Boolean(externalUserId && actorExternalId === externalUserId) ||
+    Boolean(
+      email &&
+        sender &&
+        (sender === email ||
+          sender.includes(`<${email}>`) ||
+          sender.endsWith(` ${email}`))
+    );
+  if (!authoredByUser) return undefined;
+  const body = redactStyleEvidence(stripQuotedEmailHistory(activity.body || ""));
+  if (body.length < 30) return undefined;
+  const subject = redactStyleEvidence(String(raw.subject || "")).slice(0, 180);
+  return {
+    id: activity.externalId,
+    sentAt: activity.occurredAt,
     sample: `SUBJECT: ${subject || "[no subject]"}\nBODY:\n${body.slice(0, 2_500)}`,
   };
 }
@@ -196,9 +240,10 @@ async function currentStyleMemory(userId: number, organisationId: number) {
         and(
           eq(assistantMemories.userId, userId),
           eq(assistantMemories.organisationId, organisationId),
+          eq(assistantMemories.memoryType, "user_preference"),
           eq(
-            assistantMemories.sourceReference,
-            personalStyleSourceReference(userId)
+            assistantMemories.subject,
+            "Personal email writing style and recurring patterns"
           ),
           eq(assistantMemories.status, "active")
         )
@@ -225,6 +270,8 @@ export async function learnPersonalEmailStyle(input: {
     };
 
   const previous = await currentStyleMemory(input.userId, input.organisationId);
+  const styleReference =
+    previous?.sourceReference || personalStyleSourceReference(input.userId);
   const newestSentAt = evidence[0].sentAt;
   if (
     previous?.occurredAt &&
@@ -289,7 +336,7 @@ export async function learnPersonalEmailStyle(input: {
     content,
     provenance: "approved_ai_extraction",
     trust: "inferred",
-    sourceReference: personalStyleSourceReference(input.userId),
+    sourceReference: styleReference,
     occurredAt: newestSentAt,
   });
   await recordAudit({
@@ -297,13 +344,143 @@ export async function learnPersonalEmailStyle(input: {
     organisationId: input.organisationId,
     eventType: "personal_email_style_learned",
     entityType: "assistant_memory",
-    entityId: personalStyleSourceReference(input.userId),
+    entityId: styleReference,
     summary:
       "Amarktai refreshed the salesperson's private inferred email-writing preferences from their own genuine Sent Items.",
     metadata: {
       provider: "microsoft",
       sampleCount: samples.length,
       excludesAmarktaiGeneratedMail: true,
+      trust: "inferred",
+    },
+  });
+  return { learned: true as const, sampleCount: samples.length, content };
+}
+
+export async function learnPersonalEmailStyleFromCrm(input: {
+  userId: number;
+  organisationId: number;
+  connectedSystemId: number;
+  externalUserId: string;
+  email?: string | null;
+}) {
+  const db = await dbOrThrow();
+  const rows = await db
+    .select({
+      externalId: crmActivities.externalId,
+      occurredAt: crmActivities.occurredAt,
+      body: crmActivities.body,
+      raw: crmActivities.raw,
+    })
+    .from(crmActivities)
+    .where(
+      and(
+        eq(crmActivities.organisationId, input.organisationId),
+        eq(crmActivities.connectedSystemId, input.connectedSystemId),
+        eq(crmActivities.ownerExternalId, input.externalUserId),
+        eq(crmActivities.activityType, "email")
+      )
+    )
+    .orderBy(desc(crmActivities.occurredAt))
+    .limit(80);
+  const evidence = rows
+    .map(activity =>
+      crmActivityStyleEvidence(activity, {
+        externalUserId: input.externalUserId,
+        email: input.email,
+      })
+    )
+    .filter((item): item is NonNullable<typeof item> => Boolean(item))
+    .slice(0, MAX_SENT_MESSAGES);
+  if (evidence.length < MIN_STYLE_MESSAGES)
+    return {
+      learned: false as const,
+      reason: "not_enough_verified_crm_sent_mail" as const,
+    };
+
+  const previous = await currentStyleMemory(input.userId, input.organisationId);
+  const styleReference =
+    previous?.sourceReference || personalStyleSourceReference(input.userId);
+  const newestSentAt = evidence[0].sentAt;
+  if (
+    previous?.occurredAt &&
+    previous.occurredAt.valueOf() >= newestSentAt.valueOf()
+  )
+    return {
+      learned: false as const,
+      reason: "no_new_verified_crm_sent_mail" as const,
+    };
+
+  const samples: string[] = [];
+  let characters = 0;
+  for (const item of evidence) {
+    if (characters >= MAX_STYLE_CORPUS_CHARS) break;
+    const remaining = MAX_STYLE_CORPUS_CHARS - characters;
+    const sample = item.sample.slice(0, remaining);
+    if (sample.length < 30) continue;
+    samples.push(sample);
+    characters += sample.length;
+  }
+  if (samples.length < MIN_STYLE_MESSAGES)
+    return {
+      learned: false as const,
+      reason: "not_enough_bounded_crm_evidence" as const,
+    };
+
+  const response = await runGenxAgent({
+    agentKey: "communications",
+    messages: [
+      {
+        role: "user",
+        content: buildPersonalEmailStyleLearningPrompt(samples),
+      },
+    ],
+    workingContext:
+      "This is private, user-scoped preference learning from verified read-only CRM outbound email activity attributed to the mapped salesperson. The result is an inferred style preference, never company policy and never permission to send anything.",
+    billing: {
+      userId: input.userId,
+      organisationId: input.organisationId,
+      feature: "personal_email_style_learning",
+      reference: `crm-style:${input.connectedSystemId}:${newestSentAt.toISOString()}`,
+    },
+    maxContextChars: 30_000,
+    maxOutputTokens: 450,
+  });
+  const content = response.content.trim().slice(0, 8_000);
+  if (
+    !content ||
+    /intelligence is not connected|cannot run safely/i.test(content) ||
+    !isSafeAssistantMemory(content)
+  )
+    return {
+      learned: false as const,
+      reason: "style_summary_unavailable" as const,
+    };
+
+  await createAssistantMemory({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    memoryType: "user_preference",
+    subject: "Personal email writing style and recurring patterns",
+    content,
+    provenance: "approved_ai_extraction",
+    trust: "inferred",
+    sourceReference: styleReference,
+    occurredAt: newestSentAt,
+  });
+  await recordAudit({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    eventType: "personal_email_style_learned",
+    entityType: "assistant_memory",
+    entityId: styleReference,
+    summary:
+      "Amarktai refreshed the salesperson's private inferred email-writing preferences from verified read-only CRM sent activity.",
+    metadata: {
+      provider: "crm_read",
+      connectedSystemId: input.connectedSystemId,
+      sampleCount: samples.length,
+      exactMappedUser: input.externalUserId,
       trust: "inferred",
     },
   });
@@ -405,21 +582,34 @@ export async function applyPersonalEmailStyleToPendingDrafts(input: {
 
 export async function runPersonalWorkLearning() {
   const db = await dbOrThrow();
-  const mailboxes = await db
-    .select()
-    .from(userMailboxConnections)
-    .where(
-      and(
-        eq(userMailboxConnections.provider, "microsoft"),
-        eq(userMailboxConnections.status, "ready")
+  const [mailboxes, mappings] = await Promise.all([
+    db
+      .select()
+      .from(userMailboxConnections)
+      .where(
+        and(
+          eq(userMailboxConnections.provider, "microsoft"),
+          eq(userMailboxConnections.status, "ready")
+        )
       )
-    )
-    .orderBy(desc(userMailboxConnections.updatedAt))
-    .limit(50);
+      .orderBy(desc(userMailboxConnections.updatedAt))
+      .limit(50),
+    db
+      .select()
+      .from(externalUserMappings)
+      .where(eq(externalUserMappings.isActive, true))
+      .orderBy(desc(externalUserMappings.updatedAt))
+      .limit(100),
+  ]);
 
   let learned = 0;
   let styled = 0;
   let failed = 0;
+  const microsoftUsers = new Set(
+    mailboxes.map(
+      mailbox => `${mailbox.organisationId}:${mailbox.userId}`
+    )
+  );
   for (const mailbox of mailboxes) {
     try {
       const result = await learnPersonalEmailStyle({
@@ -439,6 +629,7 @@ export async function runPersonalWorkLearning() {
       console.error(
         JSON.stringify({
           event: "personal_work_learning_failed",
+          source: "microsoft",
           userId: mailbox.userId,
           organisationId: mailbox.organisationId,
           detail:
@@ -449,7 +640,57 @@ export async function runPersonalWorkLearning() {
       );
     }
   }
-  return { mailboxes: mailboxes.length, learned, styled, failed };
+
+  const crmMappings = Array.from(
+    mappings
+      .filter(
+        mapping =>
+          mapping.userId != null &&
+          !microsoftUsers.has(
+            `${mapping.organisationId}:${mapping.userId}`
+          )
+      )
+      .reduce((unique, mapping) => {
+        const key = `${mapping.organisationId}:${mapping.userId}`;
+        if (!unique.has(key)) unique.set(key, mapping);
+        return unique;
+      }, new Map<string, (typeof mappings)[number]>())
+      .values()
+  );
+  for (const mapping of crmMappings) {
+    try {
+      const result = await learnPersonalEmailStyleFromCrm({
+        userId: mapping.userId!,
+        organisationId: mapping.organisationId,
+        connectedSystemId: mapping.connectedSystemId,
+        externalUserId: mapping.externalUserId,
+        email: mapping.email,
+      });
+      if (result.learned) learned += 1;
+    } catch (error) {
+      failed += 1;
+      console.error(
+        JSON.stringify({
+          event: "personal_work_learning_failed",
+          source: "crm_read",
+          userId: mapping.userId,
+          organisationId: mapping.organisationId,
+          connectedSystemId: mapping.connectedSystemId,
+          detail:
+            error instanceof Error
+              ? error.message.slice(0, 400)
+              : String(error).slice(0, 400),
+        })
+      );
+    }
+  }
+  return {
+    mailboxes: mailboxes.length,
+    crmMappings: crmMappings.length,
+    learned,
+    styled,
+    failed,
+  };
 }
 
 export function startPersonalWorkLearningWorker(

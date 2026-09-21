@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildTodayCallQueue } from "./todayCallQueue";
+import { buildTodayCallQueue, unrepresentedTodayTasks } from "./todayCallQueue";
 
 const contacts = [
   {
@@ -239,9 +239,7 @@ describe("Today call queue", () => {
     });
 
     expect(queue.map(item => item.name)).toEqual(["Bob", "Cara"]);
-    expect(queue[0].reasons).toEqual([
-      "Scheduled task due within 30 minutes",
-    ]);
+    expect(queue[0].reasons).toEqual(["Scheduled task due within 30 minutes"]);
     expect(queue[1].reasons).toEqual(["Overdue task"]);
   });
 
@@ -261,6 +259,42 @@ describe("Today call queue", () => {
       ],
     });
     expect(queue).toEqual([]);
+  });
+
+  it("keeps assigned tasks visible to the safety lane when customer context is unavailable", () => {
+    const task = {
+      id: 44,
+      connectedSystemId: 8,
+      contactExternalId: "missing-contact",
+      title: "First Call",
+      dueAt: new Date("2026-09-21T09:00:00Z"),
+    };
+    const queue = buildTodayCallQueue({
+      contacts,
+      overdueTasks: [task],
+      inbound: [],
+      dueToday: [],
+    });
+    expect(queue).toEqual([]);
+    expect(unrepresentedTodayTasks(queue, [task])).toEqual([task]);
+  });
+
+  it("does not duplicate tasks already represented in the person queue", () => {
+    const task = {
+      id: 45,
+      connectedSystemId: 8,
+      contactExternalId: "a",
+      title: "First Call",
+      dueAt: new Date("2026-09-21T09:00:00Z"),
+    };
+    const queue = buildTodayCallQueue({
+      contacts,
+      overdueTasks: [task],
+      inbound: [],
+      dueToday: [],
+    });
+    expect(queue[0]?.taskIds).toEqual([45]);
+    expect(unrepresentedTodayTasks(queue, [task])).toEqual([]);
   });
 });
 

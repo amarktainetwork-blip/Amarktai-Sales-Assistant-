@@ -1140,3 +1140,186 @@ body:has([data-slot="sidebar-wrapper"]) [class*="bg-[#F1EDE4]"] {
   background: #fff7e8 !important;
   color: #69572f !important;
 }
+
+/* ===== Final comfort + intelligence workspace refinement ===== */
+body:has([data-slot="sidebar-wrapper"]) {
+  --dash-canvas-premium: #eef2f7;
+  --dash-surface: #ffffff;
+  --dash-surface-soft: #f5f7fa;
+  --dash-text: #172033;
+  --dash-muted: #5e6b7d;
+  --dash-faint: #8490a1;
+  --dash-line: #d8e0e9;
+  --dash-line-strong: #c7d1dd;
+  --dash-brand: #6257d9;
+  --dash-brand-dark: #4d43ba;
+  --dash-brand-soft: #ebe9ff;
+  --dash-teal: #3f817b;
+  --dash-teal-soft: #e9f4f1;
+  --dash-success: #2f7661;
+  --dash-warning: #93631f;
+  --dash-danger: #a94c5d;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-wrapper"],
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] {
+  background:
+    radial-gradient(circle at 88% 0%, rgba(98, 87, 217, .06), transparent 34rem),
+    linear-gradient(180deg, #f4f6fa 0%, #eef2f7 100%);
+}
+
+body:has([data-slot="sidebar-wrapper"]) .amarktai-dashboard-sidebar,
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="sidebar"],
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-container"] {
+  background: linear-gradient(180deg, #263247 0%, #2d3950 100%) !important;
+  border-color: rgba(255,255,255,.08) !important;
+  box-shadow: 12px 0 36px rgba(25, 35, 55, .08) !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="menu-button"] {
+  color: #c9d3df !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="menu-button"]:hover {
+  background: rgba(255,255,255,.07) !important;
+  color: #ffffff !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="menu-button"][data-active="true"] {
+  background: rgba(124, 113, 232, .18) !important;
+  color: #ffffff !important;
+  box-shadow: inset 3px 0 0 #9c93ff !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="menu-button"][data-active="true"] svg {
+  color: #b8b1ff !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="footer"] {
+  background: rgba(27, 38, 57, .5) !important;
+  border-color: rgba(255,255,255,.08) !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="footer"] > div {
+  background: rgba(255,255,255,.06) !important;
+  border-color: rgba(255,255,255,.08) !important;
+}
+
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="header"] .text-white,
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="footer"] .text-white,
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="header"] [class*="text-white/"],
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="footer"] [class*="text-white/"] {
+  color: #eef3f8 !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="content"] > p {
+  color: #94a2b5 !important;
+}
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="content"] select {
+  background: rgba(255,255,255,.08) !important;
+  border-color: rgba(255,255,255,.12) !important;
+  color: #eef3f8 !important;
+}
+[data-assistant-workspace] > div.grid {
+  grid-template-columns: minmax(0, 1fr) !important;
+  min-height: 0 !important;
+}
+[data-assistant-context] {
+  display: grid !important;
+  grid-template-columns: minmax(220px, .8fr) minmax(0, 2fr) minmax(210px, .8fr);
+  gap: 18px;
+  align-items: start;
+  background:
+    radial-gradient(circle at 88% 0%, rgba(98,87,217,.07), transparent 20rem),
+    linear-gradient(145deg, #ffffff 0%, #f7f8fc 100%) !important;
+}
+
+[data-assistant-context] > div:first-child {
+  grid-column: 1;
+}
+[data-assistant-context] [data-assistant-facts] {
+  grid-column: 2;
+  margin-top: 0 !important;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 14px;
+}
+[data-assistant-context] [data-assistant-facts] [data-assistant-fact] {
+  border: 1px solid #e2e7ef !important;
+  border-radius: 14px;
+  background: rgba(255,255,255,.82);
+  padding: 11px 12px !important;
+}
+[data-assistant-context] [data-assistant-reasons] {
+  grid-column: 3;
+  margin-top: 0 !important;
+  border-top: 0 !important;
+  border-left: 1px solid #e3e7ee;
+  padding: 4px 0 4px 16px !important;
+}
+[data-assistant-context] [data-assistant-actions] {
+  grid-column: 3;
+  margin-top: 10px !important;
+}
+
+[data-assistant-context] [data-assistant-picker] {
+  grid-column: 1 / -1;
+  margin-top: 2px !important;
+  border-top: 1px solid #e4e8ef !important;
+  padding-top: 14px !important;
+  display: grid;
+  grid-template-columns: minmax(220px, .6fr) minmax(260px, 1fr);
+  gap: 10px 16px;
+  align-items: end;
+}
+[data-assistant-context] [data-assistant-picker] > label {
+  grid-column: 1 / -1;
+}
+[data-assistant-context] [data-assistant-picker] > div {
+  margin-top: 0 !important;
+}
+[data-assistant-context] [data-assistant-picker] > select {
+  margin-top: 0 !important;
+}
+[data-assistant-conversation] {
+  min-height: 620px;
+  background: rgba(255,255,255,.98) !important;
+}
+[data-assistant-conversation] [data-assistant-welcome] {
+  background: #f4f3ff !important;
+  border-color: #dedbfd !important;
+}
+[data-assistant-conversation] [data-assistant-prompt] {
+  background: #f8f9fc !important;
+  border-color: #dfe4ec !important;
+}
+
+[data-today-context] > div {
+  background: rgba(248,250,253,.92) !important;
+  border-color: #e0e5ed !important;
+}
+[data-today-exceptions] {
+  box-shadow: 0 10px 28px rgba(112, 82, 24, .055);
+}
+@media (max-width: 1100px) {
+  [data-assistant-context] {
+    grid-template-columns: 1fr 1fr;
+  }
+  [data-assistant-context] [data-assistant-facts] {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  [data-assistant-context] [data-assistant-reasons],
+  [data-assistant-context] [data-assistant-actions] {
+    grid-column: auto;
+    border-left: 0;
+    padding-left: 0 !important;
+  }
+}
+@media (max-width: 720px) {
+  [data-assistant-context] {
+    grid-template-columns: 1fr;
+  }
+  [data-assistant-context] [data-assistant-facts],
+  [data-assistant-context] [data-assistant-reasons],
+  [data-assistant-context] [data-assistant-actions],
+  [data-assistant-context] [data-assistant-picker] {
+    grid-column: 1;
+  }
+  [data-assistant-context] [data-assistant-facts],
+  [data-assistant-context] [data-assistant-picker] {
+    grid-template-columns: 1fr;
+  }
+}

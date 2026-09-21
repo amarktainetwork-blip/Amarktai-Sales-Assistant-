@@ -37,8 +37,8 @@ const suggestions = [
   "What matters most about this customer?",
   "What should I ask next?",
   "What objections should I prepare for?",
-  "Draft the right follow-up using an approved template — don't send",
-  "Which template or approved attachment fits this customer?",
+  "Draft the right follow-up — don't send",
+  "Show me the approved templates available here",
 ];
 
 async function askAssistant(input: {
@@ -67,8 +67,11 @@ function displayContextValue(value: unknown) {
 
 function AssistantMark() {
   return (
-    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#EEEFFF] text-xs font-bold text-[#42536A]">
-      AI
+    <span
+      aria-hidden="true"
+      className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#EEEFFF] text-[#5558C9]"
+    >
+      <Sparkles className="h-5 w-5" />
     </span>
   );
 }
@@ -250,7 +253,7 @@ export default function Assistant() {
 
             {selectedCustomer ? (
               <>
-                <div className="mt-5 space-y-4">
+                <div data-assistant-facts className="mt-5 space-y-4">
                   <Fact
                     label="Why now"
                     value={
@@ -304,7 +307,10 @@ export default function Assistant() {
                 </div>
 
                 {dayItem?.reasons?.length ? (
-                  <div className="mt-5 border-t border-[#E8EAF1] pt-4">
+                  <div
+                    data-assistant-reasons
+                    className="mt-5 border-t border-[#E8EAF1] pt-4"
+                  >
                     <p className="text-sm font-medium text-[#7A8497]">
                       Why this is in Today
                     </p>
@@ -316,7 +322,7 @@ export default function Assistant() {
                   </div>
                 ) : null}
 
-                <div className="mt-5 grid gap-2">
+                <div data-assistant-actions className="mt-5 grid gap-2">
                   <Button
                     disabled={startCall.isPending}
                     onClick={() =>
@@ -347,7 +353,10 @@ export default function Assistant() {
               </p>
             )}
 
-            <div className="mt-auto border-t border-[#E8EAF1] pt-4">
+            <div
+              data-assistant-picker
+              className="mt-auto border-t border-[#E8EAF1] pt-4"
+            >
               <label className="text-sm font-medium text-[#7A8497]">
                 Change customer
               </label>

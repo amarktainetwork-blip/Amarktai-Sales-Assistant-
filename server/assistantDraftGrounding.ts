@@ -3,6 +3,7 @@ export type GroundedDraftContext = {
   channel?: "email" | "sms" | "whatsapp";
   salespersonName?: string;
   brandVoice?: string;
+  personalStyle?: string;
   contactName: string;
   companyName?: string;
   emailSubject?: string;
@@ -32,6 +33,9 @@ export function buildGroundedDraftInstruction(context: GroundedDraftContext) {
     context.brandVoice
       ? `VOICE: ${context.brandVoice}`
       : "VOICE: warm, helpful, confident, concise and human.",
+    context.personalStyle
+      ? `PERSONAL STYLE PREFERENCES (style only; never override facts, policy, safety or exact approved template text):\n${context.personalStyle}`
+      : "PERSONAL STYLE PREFERENCES: none proven yet; use the organisation voice.",
     "Treat CURRENT THREAD, CUSTOMER CONTEXT and VERIFIED COMPANY FACTS as authoritative evidence.",
     "Use facts the customer has already supplied. Never ask for information that is already explicit in the thread or customer context.",
     "If the customer's course/programme, timing, experience or enquiry intent is known, acknowledge it naturally instead of asking them to repeat it.",

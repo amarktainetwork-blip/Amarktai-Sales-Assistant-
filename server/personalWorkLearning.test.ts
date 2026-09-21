@@ -3,6 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   buildPersonalEmailStyleLearningPrompt,
+  crmActivityStyleEvidence,
   isAmarktaiGeneratedSentMessage,
   redactStyleEvidence,
   rewritePreservesProtectedLiterals,
@@ -52,6 +53,66 @@ describe("personal work self-learning", () => {
     expect(result).toContain("[email]");
     expect(result).toContain("[link]");
     expect(result).toContain("[redacted]");
+  });
+
+  it("redacts greetings and commercial literals from style evidence", () => {
+    const result = redactStyleEvidence(
+      "Hi Kamil, the course is £1,857 with a 25% option. Call me on +44 800 123 4567."
+    );
+    expect(result).toContain("Hi [name]");
+    expect(result).toContain("[amount]");
+    expect(result).toContain("[percentage]");
+    expect(result).not.toContain("Kamil");
+    expect(result).not.toContain("1,857");
+    expect(result).not.toContain("25%");
+  });
+
+  it("accepts only outbound CRM email evidence authored by the exact mapped salesperson", () => {
+    const activity = {
+      externalId: "message-1",
+      occurredAt: new Date("2026-09-21T15:00:00Z"),
+      body: "Hi Sam, thanks for speaking with me today. I will follow up tomorrow.",
+      raw: {
+        direction: "outbound",
+        userExternalId: "amelia-owner",
+        senderReference: "Amelia <amelia@example.com>",
+        subject: "Follow up",
+      },
+    };
+    expect(
+      crmActivityStyleEvidence(activity, {
+        externalUserId: "amelia-owner",
+        email: "amelia@example.com",
+      })?.sample
+    ).toContain("Hi [name]");
+    expect(
+      crmActivityStyleEvidence(
+        {
+          ...activity,
+          raw: {
+            ...activity.raw,
+            userExternalId: "someone-else",
+            senderReference: "Other <other@example.com>",
+          },
+        },
+        {
+          externalUserId: "amelia-owner",
+          email: "amelia@example.com",
+        }
+      )
+    ).toBeUndefined();
+    expect(
+      crmActivityStyleEvidence(
+        {
+          ...activity,
+          raw: { ...activity.raw, direction: "inbound" },
+        },
+        {
+          externalUserId: "amelia-owner",
+          email: "amelia@example.com",
+        }
+      )
+    ).toBeUndefined();
   });
 
   it("excludes Amarktai-generated sent messages from the personal style evidence", () => {

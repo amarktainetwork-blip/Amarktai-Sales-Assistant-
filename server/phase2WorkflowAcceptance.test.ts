@@ -11,7 +11,9 @@ describe("Phase 2 daily salesperson workflow", () => {
     const service = read("server/today.ts");
     const queue = read("server/todayCallQueue.ts");
 
-    expect(today).toContain('current ? `Next: ${current.name}`');
+    expect(today).toContain("assignedTaskExceptions.length");
+    expect(today).toContain("An assigned task needs attention.");
+    expect(today).toContain("`Next: ${current.name}`");
     expect(today).toContain('"Start call"');
     expect(today).not.toContain(
       "Work the hottest customer. AmarktAI handles the admin around it."
@@ -51,8 +53,8 @@ describe("Phase 2 daily salesperson workflow", () => {
     expect(today).toContain("refetchInterval: 30_000");
     expect(today).toContain("refetchOnWindowFocus: true");
     expect(today).toContain("refetchOnReconnect: true");
-    expect(sync).toContain('? syncConnectedSystemRoutine');
-    expect(sync).toContain(': syncConnectedSystem;');
+    expect(sync).toContain("? syncConnectedSystemRoutine");
+    expect(sync).toContain(": syncConnectedSystem;");
   });
 
   it("keeps one exact customer context through Customers, AmarktAI and Calls", () => {

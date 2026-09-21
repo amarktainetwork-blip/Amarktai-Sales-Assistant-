@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { refreshSalesDay } from "@/lib/refreshSalesDay";
 import { trpc } from "@/lib/trpc";
 import {
+  AlertTriangle,
   ArrowRight,
   CheckCircle2,
   ClipboardCheck,
@@ -66,8 +67,14 @@ export default function Today() {
   const callQueue = today.data?.queues.callQueue ?? [];
   const inboundQueue = today.data?.queues.inbound ?? [];
   const newLeads = today.data?.queues.newLeads ?? [];
+  const assignedTaskExceptions =
+    today.data?.queues.assignedTaskExceptions ?? [];
   const upcoming = today.data?.queues.upcoming ?? [];
   const current = callQueue[0];
+  const currentCustomer = trpc.sales.customerDetail.useQuery(
+    { contactId: current?.contactId ?? 1 },
+    { enabled: Boolean(current?.contactId), retry: false }
+  );
   const visibleQueue = showAll ? callQueue.slice(1) : callQueue.slice(1, 8);
   const workspace = today.data?.workspace.organisation;
   const taskMetrics = today.data?.taskData.metrics;
@@ -185,7 +192,11 @@ export default function Today() {
           <div>
             <p className="text-base font-medium text-[#7A8497]">Today</p>
             <h1 className="mt-1 text-3xl font-semibold tracking-[-.035em]">
-              {current ? `Next: ${current.name}` : "You are caught up."}
+              {assignedTaskExceptions.length
+                ? "An assigned task needs attention."
+                : current
+                  ? `Next: ${current.name}`
+                  : "You are caught up."}
             </h1>
             <p className="mt-1 text-sm text-[#667085]">
               {freshnessLabel(
@@ -246,6 +257,75 @@ export default function Today() {
             <span>Next</span>
           </div>
         </section>
+
+        {assignedTaskExceptions.length ? (
+          <section
+            data-today-task-safety
+            className="rounded-2xl border border-[#F0D9A6] bg-[#FFFBF1] p-5 shadow-[0_10px_30px_rgba(120,82,18,.06)]"
+          >
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex min-w-0 gap-3">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#FFF0C8] text-[#8A6318]">
+                  <AlertTriangle className="h-5 w-5" />
+                </span>
+                <div>
+                  <h2 className="text-lg font-semibold text-[#293145]">
+                    {assignedTaskExceptions.length === 1
+                      ? "1 assigned task needs attention"
+                      : `${assignedTaskExceptions.length} assigned tasks need attention`}
+                  </h2>
+                  <p className="mt-1 max-w-3xl text-sm leading-6 text-[#6A6255]">
+                    The CRM assignment is current, but the matching customer
+                    record is not in your personal contact snapshot yet. The
+                    task stays visible here so it cannot be missed.
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => void refreshDay()}
+                disabled={refreshing}
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Refresh context
+              </Button>
+            </div>
+            <div className="mt-4 grid gap-3">
+              {assignedTaskExceptions.slice(0, 4).map(item => (
+                <div
+                  key={item.id}
+                  className="flex flex-col gap-3 rounded-xl border border-[#EEE2C6] bg-white/80 p-4 md:flex-row md:items-center md:justify-between"
+                >
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-[#8A6318]">
+                      <span>{item.reason}</span>
+                      {item.dueAt ? (
+                        <span className="text-[#7A8497]">
+                          {dateLabel(item.dueAt)}
+                        </span>
+                      ) : null}
+                    </div>
+                    <h3 className="mt-1 text-base font-semibold text-[#293145]">
+                      {item.title}
+                    </h3>
+                    <p className="mt-1 text-sm leading-5 text-[#667085]">
+                      {item.detail ||
+                        "Customer details are still syncing from the assigned CRM task."}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    className="shrink-0"
+                    onClick={() => navigate(`/crm/${item.connectedSystemId}`)}
+                  >
+                    Open CRM context
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         {current ? (
           <section
@@ -316,6 +396,41 @@ export default function Today() {
                     {current.reasons.slice(0, 4).map(reason => (
                       <p key={reason}>• {reason}</p>
                     ))}
+                  </div>
+                ) : null}
+
+                {currentCustomer.data ? (
+                  <div
+                    data-today-context
+                    className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-3"
+                  >
+                    <TodayContextFact
+                      label="Opportunity"
+                      value={
+                        currentCustomer.data.openOpportunity?.stage ||
+                        currentCustomer.data.openOpportunity?.name ||
+                        "No open opportunity"
+                      }
+                    />
+                    <TodayContextFact
+                      label="Current task"
+                      value={
+                        currentCustomer.data.nextAction?.title ||
+                        "No current task"
+                      }
+                    />
+                    <TodayContextFact
+                      label="Latest activity"
+                      value={
+                        currentCustomer.data.lastInteraction
+                          ? currentCustomer.data.lastInteraction.activityType +
+                            " · " +
+                            dateLabel(
+                              currentCustomer.data.lastInteraction.occurredAt
+                            )
+                          : "No recent activity"
+                      }
+                    />
                   </div>
                 ) : null}
               </div>
@@ -487,5 +602,16 @@ export default function Today() {
         ) : null}
       </div>
     </DashboardLayout>
+  );
+}
+
+function TodayContextFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-[#E5E8F0] bg-[#FAFBFD] px-3 py-2.5">
+      <p className="text-xs font-semibold text-[#7A8497]">{label}</p>
+      <p className="mt-1 text-sm font-medium leading-5 text-[#364154]">
+        {value}
+      </p>
+    </div>
   );
 }
