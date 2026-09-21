@@ -52,6 +52,17 @@ export function genieInboundConversationId(
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
+export function genieInboundRecipient(
+  classification: unknown
+): string | undefined {
+  if (!classification || typeof classification !== "object" || Array.isArray(classification))
+    return undefined;
+  const value = (classification as Record<string, unknown>).recipientReference;
+  return typeof value === "string" && value.trim()
+    ? value.trim().toLowerCase()
+    : undefined;
+}
+
 export function outboundGenieReplyMatchesInbound(
   inbound: {
     contactExternalId: string | null;
@@ -222,6 +233,60 @@ export async function syncGenieMailboxForUser(input: {
 
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
+
+  const actionableEmailRows = await db
+    .select({
+      id: inboundMessages.id,
+      externalMessageId: inboundMessages.externalMessageId,
+      classification: inboundMessages.classification,
+    })
+    .from(inboundMessages)
+    .where(
+      and(
+        eq(inboundMessages.organisationId, input.organisationId),
+        eq(inboundMessages.mailboxUserId, input.userId),
+        eq(inboundMessages.connectedSystemId, system.id),
+        eq(inboundMessages.channel, "email"),
+        eq(inboundMessages.needsAction, true)
+      )
+    )
+    .limit(500);
+  const foreignRecipientRows = actionableEmailRows.filter(row => {
+    const recipient = genieInboundRecipient(row.classification);
+    return Boolean(recipient && recipient !== scope.email!.trim().toLowerCase());
+  });
+  if (foreignRecipientRows.length) {
+    const ids = foreignRecipientRows.map(row => row.id);
+    const externalIds = foreignRecipientRows.map(row => row.externalMessageId);
+    await db
+      .update(inboundMessages)
+      .set({ needsAction: false, status: "archived" })
+      .where(inArray(inboundMessages.id, ids));
+    await db
+      .update(salesWorkItems)
+      .set({
+        status: "completed",
+        completedAt: new Date(),
+        freshness: "current",
+        syncedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(salesWorkItems.organisationId, input.organisationId),
+          eq(salesWorkItems.connectedSystemId, system.id),
+          eq(salesWorkItems.salespersonUserId, input.userId),
+          eq(salesWorkItems.sourceType, "inbound_message"),
+          inArray(salesWorkItems.sourceExternalId, externalIds),
+          inArray(salesWorkItems.status, [
+            "open",
+            "in_progress",
+            "snoozed",
+            "blocked",
+          ])
+        )
+      );
+  }
+
   const latest = (
     await db
       .select({ receivedAt: inboundMessages.receivedAt })
@@ -392,7 +457,8 @@ export async function syncGenieMailboxForUser(input: {
       exactEmailIsolation: true,
       readOnlySource: proof.readOnlySource,
       unreadPreserved: proof.unreadPreserved,
-      rejectedForeignRecipientCount: proof.rejectedForeignRecipientCount,
+      rejectedForeignRecipientCount:
+        proof.rejectedForeignRecipientCount + foreignRecipientRows.length,
       rejectedForeignOwnerCount: proof.rejectedForeignOwnerCount,
       examined: proof.examined,
       bounded: proof.bounded,
@@ -406,7 +472,8 @@ export async function syncGenieMailboxForUser(input: {
     received,
     handledReplies,
     draftsPrepared,
-    rejectedForeignRecipientCount: proof.rejectedForeignRecipientCount,
+    rejectedForeignRecipientCount:
+      proof.rejectedForeignRecipientCount + foreignRecipientRows.length,
     rejectedForeignOwnerCount: proof.rejectedForeignOwnerCount,
     unreadPreserved: proof.unreadPreserved,
     bounded: proof.bounded,

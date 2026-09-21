@@ -87,7 +87,7 @@ describe("Genie personal email isolation", () => {
     });
   });
 
-  it("accepts owner-scoped team-inbox and multi-recipient email without requiring the visible recipient to equal the salesperson login", () => {
+  it("requires the mapped salesperson to be an exact email recipient", () => {
     const input = {
       emailId: "email-1",
       mailboxEmail: "amelia@course2career.com",
@@ -97,13 +97,10 @@ describe("Genie personal email isolation", () => {
     };
     expect(
       parsePersonalGenieEmail(
-        { emailMessage: { ...baseEmail, to: ["team@course2career.com"] } },
+        { emailMessage: { ...baseEmail, to: ["sandile@course2career.com"] } },
         input
       )
-    ).toMatchObject({
-      kind: "personal",
-      message: { recipient: "team@course2career.com" },
-    });
+    ).toEqual({ kind: "foreign_recipient" });
     expect(
       parsePersonalGenieEmail(
         {
@@ -114,7 +111,10 @@ describe("Genie personal email isolation", () => {
         },
         input
       )
-    ).toMatchObject({ kind: "personal" });
+    ).toMatchObject({
+      kind: "personal",
+      message: { recipient: "amelia@course2career.com" },
+    });
   });
 
   it("ignores outbound, old/read-window, deleted, self and empty-body email", () => {

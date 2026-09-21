@@ -232,8 +232,8 @@ export default function Today() {
 
   return (
     <DashboardLayout>
-      <div className="mx-auto max-w-[1380px] space-y-5 text-[#26354A]">
-        <header className="rounded-2xl border border-[#D7E1EE] bg-white px-5 py-4 shadow-sm sm:px-6">
+      <div data-today-workspace className="mx-auto max-w-[1280px] space-y-4 text-[#2D3A4E]">
+        <header className="rounded-2xl bg-white px-5 py-4 shadow-[0_6px_24px_rgba(35,49,70,.055)] sm:px-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
@@ -298,124 +298,32 @@ export default function Today() {
           </div>
         ) : null}
 
-        {inboundQueue.length ? (
-          <section className="rounded-3xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm sm:p-6">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-full bg-emerald-700 px-2.5 py-1 text-[10px] font-black uppercase tracking-[.1em] text-white">
-                    Customer replies · {inboundQueue.length}
-                  </span>
-                  {inboundCategory(inboundQueue[0].classification) === "sale_intent" ? (
-                    <span className="text-sm font-black text-emerald-800">Possible sale needs attention</span>
-                  ) : (
-                    <span className="text-sm font-bold text-emerald-800">Reply before starting lower-priority work</span>
-                  )}
-                </div>
-                <h2 className="mt-3 font-display text-2xl font-bold tracking-[-.04em]">
-                  {inboundQueue[0].subject || "New customer message"}
-                </h2>
-                <p className="mt-1 text-sm font-semibold text-emerald-900/70">
-                  Received {dateLabel(inboundQueue[0].receivedAt)}
-                </p>
-              </div>
-              <Button onClick={() => navigate("/inbox")}>
-                <Mail className="mr-2 h-4 w-4" /> Open inbox
-              </Button>
-            </div>
-          </section>
-        ) : null}
-
-        {newLeads.length ? (
-          <section
-            data-today-new-leads
-            className="rounded-3xl border border-[#BFD2F8] bg-[#EDF4FF] p-5 shadow-sm sm:p-6"
+        <section className="flex flex-wrap items-center gap-x-5 gap-y-2 px-1 text-sm text-[#6F7D8F]">
+          <span className="font-semibold text-[#2D3A4E]">
+            {callQueue.length} {callQueue.length === 1 ? "person" : "people"} need attention
+          </span>
+          <span>{inboundQueue.length} replies</span>
+          <span>{newLeads.length} new leads</span>
+          <span>{taskMetrics?.overdue ?? 0} overdue</span>
+          <span>{taskMetrics?.dueToday ?? 0} due today</span>
+          <button
+            type="button"
+            onClick={() => void refreshDay()}
+            disabled={refreshing}
+            className="ml-auto inline-flex items-center gap-1.5 font-semibold text-[#5577B7] disabled:opacity-50"
           >
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-full bg-[#2F6FED] px-2.5 py-1 text-[10px] font-black uppercase tracking-[.1em] text-white">
-                    New leads · {newLeads.length}
-                  </span>
-                  <span className="text-sm font-bold text-[#315EA8]">
-                    Fresh enquiries waiting for first contact
-                  </span>
-                </div>
-                <h2 className="mt-3 font-display text-2xl font-bold tracking-[-.04em]">
-                  {newLeads[0].name}
-                </h2>
-                <p className="mt-1 text-sm font-semibold text-[#526985]">
-                  {newLeads[0].courseInterest
-                    ? `Course interest: ${newLeads[0].courseInterest}`
-                    : "Course interest not yet identified — open the lead context before calling."}
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button onClick={() => openLead(newLeads[0])}>Open lead</Button>
-                <Button
-                  variant="outline"
-                  onClick={() => openLead(newLeads[0], true)}
-                >
-                  <Bot className="mr-2 h-4 w-4" /> Prepare call
-                </Button>
-              </div>
-            </div>
-          </section>
-        ) : null}
-
-        <section className="rounded-2xl border border-[#DCE4EE] bg-white px-4 py-3 shadow-sm sm:px-5">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[#66758A]">
-            <span className="font-black uppercase tracking-[.11em] text-[#2F6FED]">
-              Today priority
-            </span>
-            <span>
-              <strong className="text-[#33445B]">1.</strong> Customer replies / possible sales
-            </span>
-            <span>
-              <strong className="text-[#33445B]">2.</strong> New leads
-            </span>
-            <span>
-              <strong className="text-[#33445B]">3.</strong> Overdue tasks
-            </span>
-            <span>
-              <strong className="text-[#33445B]">4.</strong> Tasks due today
-            </span>
-            <span className="ml-auto text-[#8290A3]">
-              Completed work moves to Review or history.
-            </span>
-          </div>
-        </section>
-
-        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <Metric
-            icon={Phone}
-            label="People to work now"
-            value={metrics?.callQueue ?? 0}
-            note="Only customer work that still needs attention"
-          />
-          <Metric
-            icon={CalendarClock}
-            label="Tasks due today"
-            value={taskMetrics?.dueToday ?? 0}
-            note={`${taskMetrics?.overdue ?? 0} overdue · ${metrics?.awaitingTaskReview ?? 0} waiting in Review`}
-          />
-          <Metric
-            icon={Mail}
-            label="Replies needing action"
-            value={metrics?.inboundNeedsAction ?? 0}
-            note="Customer replies only"
-          />
-          <Metric
-            icon={UserRound}
-            label="New leads"
-            value={metrics?.newLeads ?? 0}
-            note="Fresh enquiries waiting for first contact"
-          />
+            {refreshing ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" />
+            )}
+            Refresh
+          </button>
         </section>
 
         <section className="grid gap-5 xl:grid-cols-[1fr_390px]">
-          <div className="rounded-3xl border border-[#DCE4EE] bg-white shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E6EBF2] px-5 py-4 sm:px-6">
+          <div className="rounded-2xl bg-white shadow-[0_6px_24px_rgba(35,49,70,.06)]">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#EDF0F4] px-5 py-4 sm:px-6">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#2F6FED]">
                   Priority queue
@@ -431,7 +339,7 @@ export default function Today() {
             </div>
 
             {callQueue.length ? (
-              <div className="divide-y divide-[#EDF1F5]">
+              <div className="divide-y divide-[#F0F2F5]">
                 {visibleCallQueue.map((item, index) => (
                   <button
                     key={item.key}
@@ -439,15 +347,15 @@ export default function Today() {
                     onClick={() => setSelected(index)}
                     className={`flex w-full items-center gap-4 px-5 py-4 text-left transition sm:px-6 ${
                       index === selected
-                        ? "bg-[#F3F7FF]"
-                        : "bg-white hover:bg-[#FAFCFF]"
+                        ? "bg-[#F4F6F8]"
+                        : "bg-white hover:bg-[#FAFBFC]"
                     }`}
                   >
                     <span
                       className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl text-sm font-black ${
                         index === selected
-                          ? "bg-[#2F6FED] text-white"
-                          : "bg-[#EDF3FF] text-[#2F6FED]"
+                          ? "bg-[#5F708A] text-white"
+                          : "bg-[#F0F2F5] text-[#5F708A]"
                       }`}
                     >
                       {index + 1}
@@ -513,7 +421,7 @@ export default function Today() {
             )}
           </div>
 
-          <aside className="rounded-3xl border border-[#DCE4EE] bg-white p-5 shadow-sm sm:p-6">
+          <aside className="rounded-2xl bg-white p-5 shadow-[0_6px_24px_rgba(35,49,70,.06)] sm:p-6">
             <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#2F6FED]">
               Next person
             </p>
@@ -608,81 +516,6 @@ export default function Today() {
               </div>
             )}
           </aside>
-        </section>
-
-        <section className="grid gap-5 lg:grid-cols-2">
-          <div className="rounded-3xl border border-[#DCE4EE] bg-white p-5 shadow-sm sm:p-6">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-[#2F6FED]" />
-              <h2 className="font-display text-2xl font-bold tracking-[-.04em]">
-                Give the admin to AmarktAI
-              </h2>
-            </div>
-            <p className="mt-2 text-sm leading-6 text-[#66758A]">
-              Use AmarktAI for the time-consuming work around the call. Customer
-              facing actions stay drafted and reviewable.
-            </p>
-            <div className="mt-4 grid gap-2 sm:grid-cols-2">
-              {[
-                "Prepare my next call",
-                "Summarise the customer history",
-                "Draft the follow-up — don't send",
-                "What do I need to do after this call?",
-              ].map(prompt => (
-                <button
-                  key={prompt}
-                  type="button"
-                  onClick={() => ask(prompt, current?.contactId)}
-                  className="rounded-xl border border-[#D7E1EE] bg-[#FAFCFF] px-4 py-3 text-left text-sm font-semibold text-[#40516A] transition hover:border-[#9CB8E8] hover:bg-[#F1F6FF]"
-                >
-                  {prompt}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-3xl border border-[#DCE4EE] bg-white p-5 shadow-sm sm:p-6">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#7A899C]">
-                  Quick capture
-                </p>
-                <h2 className="mt-1 font-display text-2xl font-bold tracking-[-.04em]">
-                  Get it out of your head.
-                </h2>
-              </div>
-              <ClipboardCheck className="h-5 w-5 text-[#2F6FED]" />
-            </div>
-            <label className="mt-4 block text-xs font-bold text-[#526277]">
-              Reminder
-              <Input
-                value={reminder}
-                onChange={event => setReminder(event.target.value)}
-                placeholder="Remind me tomorrow at 2 to call John"
-                className="mt-2"
-              />
-            </label>
-            <Button
-              className="mt-3"
-              disabled={reminder.trim().length < 8 || saveReminder.isPending}
-              onClick={() => saveReminder.mutate({ command: reminder })}
-            >
-              {saveReminder.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Check className="mr-2 h-4 w-4" />
-              )}
-              Save reminder
-            </Button>
-            <Button
-              variant="ghost"
-              className="mt-3"
-              onClick={() => navigate("/reviews")}
-            >
-              Open Review
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-          </div>
         </section>
 
         {today.data?.paymentReview.enabled ? (

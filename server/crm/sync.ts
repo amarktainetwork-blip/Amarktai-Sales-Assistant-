@@ -538,7 +538,8 @@ export async function reconcileNewLeadAlertsFromTaskHistory(input: {
   return Number(result[0].affectedRows || 0);
 }
 
-const MAX_ACTIVE_CUSTOMER_HISTORY_CHECKS_PER_SYNC = 10;
+const NEW_LEAD_HISTORY_CHECKS_PER_SYNC = 5;
+const ROTATING_CUSTOMER_HISTORY_CHECKS_PER_SYNC = 10;
 
 async function refreshActiveCustomerSourceTruth(input: {
   userId: number;
@@ -605,13 +606,35 @@ async function refreshActiveCustomerSourceTruth(input: {
     } else if (row.workType === "NEW_LEAD" && !existing.newLeadCreatedAt) {
       existing.newLeadCreatedAt = row.workCreatedAt;
     }
-    if (candidates.size >= MAX_ACTIVE_CUSTOMER_HISTORY_CHECKS_PER_SYNC) break;
   }
+
+  const allCandidates = Array.from(candidates.values());
+  const leadCandidates = allCandidates
+    .filter(candidate => candidate.newLeadCreatedAt)
+    .slice(0, NEW_LEAD_HISTORY_CHECKS_PER_SYNC);
+  const regularCandidates = allCandidates.filter(candidate => !candidate.newLeadCreatedAt);
+  const chunkCount = Math.max(
+    1,
+    Math.ceil(
+      regularCandidates.length / ROTATING_CUSTOMER_HISTORY_CHECKS_PER_SYNC
+    )
+  );
+  const chunkIndex =
+    Math.floor(Date.now() / 120_000) % chunkCount;
+  const chunkStart =
+    chunkIndex * ROTATING_CUSTOMER_HISTORY_CHECKS_PER_SYNC;
+  const selectedCandidates = [
+    ...leadCandidates,
+    ...regularCandidates.slice(
+      chunkStart,
+      chunkStart + ROTATING_CUSTOMER_HISTORY_CHECKS_PER_SYNC
+    ),
+  ];
 
   let checked = 0;
   let resolvedNewLeads = 0;
   let deferred = 0;
-  for (const { contact, newLeadCreatedAt } of Array.from(candidates.values())) {
+  for (const { contact, newLeadCreatedAt } of selectedCandidates) {
     if (contact.ownerExternalId !== input.secret.crmUserExternalId) {
       deferred += 1;
       continue;

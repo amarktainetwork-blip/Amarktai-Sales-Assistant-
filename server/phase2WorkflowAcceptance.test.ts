@@ -16,7 +16,8 @@ describe("Phase 2 daily salesperson workflow", () => {
     expect(today).not.toContain(
       "Work the hottest customer. AmarktAI handles the admin around it."
     );
-    expect(today).toContain("Customer replies / possible sales");
+    expect(today).not.toContain("Customer replies / possible sales");
+    expect(today).toContain("{inboundQueue.length} replies");
     expect(today).toContain('navigate("/inbox")');
     expect(today).toContain("today.data?.queues.callQueue");
     expect(today).not.toContain("today.data?.queues.priority");

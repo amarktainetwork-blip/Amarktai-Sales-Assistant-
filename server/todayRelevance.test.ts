@@ -3,6 +3,7 @@ import {
   configuredTaskPriorityTitles,
   paymentReviewCandidates,
   isCurrentActionableInbound,
+  salespersonActivityProvesTaskHandled,
   sortTasksByConfiguredPriority,
 } from "./today";
 
@@ -35,6 +36,65 @@ describe("current sales day relevance", () => {
           receivedAt: new Date("2026-09-06T12:00:00.000Z"),
         },
         now
+      )
+    ).toBe(false);
+  });
+
+  it("treats only verified salesperson activity as proof that an old task was worked", () => {
+    const owner = "owner-1";
+    const occurredAt = new Date("2026-09-07T10:00:00.000Z");
+    expect(
+      salespersonActivityProvesTaskHandled(
+        {
+          activityType: "call",
+          ownerExternalId: owner,
+          occurredAt,
+          raw: {},
+        },
+        owner,
+        "sales@example.com"
+      )
+    ).toBe(true);
+    expect(
+      salespersonActivityProvesTaskHandled(
+        {
+          activityType: "email",
+          ownerExternalId: owner,
+          occurredAt,
+          raw: {
+            direction: "outbound",
+            senderReference: "Sales Person <sales@example.com>",
+          },
+        },
+        owner,
+        "sales@example.com"
+      )
+    ).toBe(true);
+    expect(
+      salespersonActivityProvesTaskHandled(
+        {
+          activityType: "email",
+          ownerExternalId: owner,
+          occurredAt,
+          raw: {
+            direction: "outbound",
+            senderReference: "Campaign <marketing@example.com>",
+          },
+        },
+        owner,
+        "sales@example.com"
+      )
+    ).toBe(false);
+    expect(
+      salespersonActivityProvesTaskHandled(
+        {
+          activityType: "email",
+          ownerExternalId: owner,
+          occurredAt,
+          raw: { direction: "inbound" },
+        },
+        owner,
+        "sales@example.com"
       )
     ).toBe(false);
   });
