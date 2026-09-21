@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import {
   exactGenieMailboxIdentity,
+  outboundGenieReplyMatchesInbound,
   parseGenieReceivedAt,
 } from "./genieMailbox";
 import {
@@ -10,6 +11,7 @@ import {
   mailboxAddress,
   parsePersonalGenieConversationMessage,
   parsePersonalGenieEmail,
+  parsePersonalGenieOutboundEmail,
 } from "./browserConnectors/genieMailboxRead";
 
 const baseEmail = {
@@ -162,6 +164,65 @@ describe("Genie personal email isolation", () => {
         input
       )
     ).toEqual({ kind: "excluded" });
+  });
+
+  it("records owner-scoped outbound email as reply evidence without ingesting it as inbound", () => {
+    const result = parsePersonalGenieOutboundEmail(
+      { emailMessage: { ...baseEmail, direction: "outbound" } },
+      {
+        emailId: "email-1",
+        locationId: "location-1",
+        conversationId: "conversation-1",
+        contactExternalId: "contact-1",
+        since: Date.parse("2026-09-16T13:59:00.000Z"),
+      }
+    );
+    expect(result).toMatchObject({
+      kind: "outbound",
+      evidence: {
+        externalMessageId: "email-1",
+        contactExternalId: "contact-1",
+        conversationExternalId: "conversation-1",
+      },
+    });
+  });
+
+  it("closes only an earlier actionable inbound message in the exact replied conversation", () => {
+    const evidence = {
+      contactExternalId: "contact-1",
+      conversationExternalId: "conversation-1",
+      sentAt: new Date("2026-09-17T11:00:00Z"),
+    };
+    expect(
+      outboundGenieReplyMatchesInbound(
+        {
+          contactExternalId: "contact-1",
+          receivedAt: new Date("2026-09-17T10:00:00Z"),
+          classification: { conversationExternalId: "conversation-1" },
+        },
+        evidence
+      )
+    ).toBe(true);
+    expect(
+      outboundGenieReplyMatchesInbound(
+        {
+          contactExternalId: "contact-1",
+          receivedAt: new Date("2026-09-17T12:00:00Z"),
+          classification: { conversationExternalId: "conversation-1" },
+        },
+        evidence
+      )
+    ).toBe(false);
+    expect(
+      outboundGenieReplyMatchesInbound(
+        {
+          contactExternalId: "contact-1",
+          receivedAt: new Date("2026-09-17T10:00:00Z"),
+          classification: { conversationExternalId: "conversation-other" },
+        },
+        evidence
+      )
+    ).toBe(false);
   });
 
   it("fails closed when immutable Genie scope disagrees", () => {

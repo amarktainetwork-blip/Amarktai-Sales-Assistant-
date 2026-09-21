@@ -28,6 +28,7 @@ export type InboundEnvelope = {
   senderReference: string;
   recipientReference?: string;
   contactExternalId?: string;
+  conversationExternalId?: string;
   sourceChannel?: "whatsapp";
   subject?: string;
   body: string;
@@ -264,6 +265,9 @@ export async function ingestInboundMessage(input: {
         ...(input.envelope.recipientReference
           ? { recipientReference: input.envelope.recipientReference }
           : {}),
+        ...(input.envelope.conversationExternalId
+          ? { conversationExternalId: input.envelope.conversationExternalId }
+          : {}),
       },
       status: "classified",
       needsAction: shouldSurfaceInbound(classification),
@@ -287,6 +291,9 @@ export async function ingestInboundMessage(input: {
           contactAmbiguous: match.ambiguous,
           ...(input.envelope.recipientReference
             ? { recipientReference: input.envelope.recipientReference }
+            : {}),
+          ...(input.envelope.conversationExternalId
+            ? { conversationExternalId: input.envelope.conversationExternalId }
             : {}),
         },
         status: existing?.status === "archived" ? "archived" : "classified",
@@ -394,6 +401,9 @@ export async function ingestInboundMessage(input: {
         contactAmbiguous: match.ambiguous,
         ...(input.envelope.recipientReference
           ? { recipientReference: input.envelope.recipientReference }
+          : {}),
+        ...(input.envelope.conversationExternalId
+          ? { conversationExternalId: input.envelope.conversationExternalId }
           : {}),
         automationPolicyOutcome: workPolicy.outcome,
         monitorKey: "inbound_mail",

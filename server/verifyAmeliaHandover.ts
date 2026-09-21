@@ -172,7 +172,7 @@ async function main() {
     );
     check("SALES_WORK_ISOLATION", Number(sales.invalid) === 0);
     const messages = await query(
-      "SELECT mailboxUserId,channel,externalMessageId,receivedAt,LENGTH(body) AS bodyLength,classification FROM inboundMessages WHERE organisationId=? AND connectedSystemId=?",
+      "SELECT m.mailboxUserId,m.channel,m.externalMessageId,m.receivedAt,LENGTH(m.body) AS bodyLength,m.classification,c.ownerExternalId AS contactOwnerExternalId FROM inboundMessages m LEFT JOIN crmContacts c ON c.organisationId=m.organisationId AND c.connectedSystemId=m.connectedSystemId AND c.externalId=m.contactExternalId WHERE m.organisationId=? AND m.connectedSystemId=?",
       [a.organisationId, a.connectedSystemId]
     );
     const positiveInbound = messages.some(m => {
@@ -187,6 +187,8 @@ async function main() {
           channel: m.channel || classification.sourceChannel,
           recipientReference: classification.recipientReference,
           expectedEmail: a.email,
+          contactOwnerExternalId: m.contactOwnerExternalId,
+          expectedOwnerExternalId: a.ownerExternalId,
         })
       );
     });
@@ -205,6 +207,8 @@ async function main() {
           channel: m.channel || classification.sourceChannel,
           recipientReference: classification.recipientReference,
           expectedEmail: a.email,
+          contactOwnerExternalId: m.contactOwnerExternalId,
+          expectedOwnerExternalId: a.ownerExternalId,
         });
       })
     );

@@ -84,7 +84,10 @@ export default function Today() {
     onError: () => toast.error("That reminder could not be saved. Try again."),
   });
   const startCall = trpc.calls.startLive.useMutation({
-    onSuccess: result => navigate(`/calls?sessionId=${result.callSessionId}`),
+    onSuccess: (result, variables) =>
+      navigate(
+        `/calls?sessionId=${result.callSessionId}${variables.contactId ? `&contactId=${variables.contactId}` : ""}`
+      ),
     onError: () =>
       toast.error(
         "The call workspace could not open. Nothing was changed; try again."

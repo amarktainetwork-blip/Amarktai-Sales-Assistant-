@@ -45,15 +45,23 @@ export function exactInboundRecipientProven(input: {
   channel?: string | null;
   recipientReference?: string | null;
   expectedEmail: string;
+  contactOwnerExternalId?: string | null;
+  expectedOwnerExternalId?: string | null;
 }) {
   if (input.mailboxUserId !== input.expectedUserId) return false;
+  if (
+    !input.contactOwnerExternalId ||
+    !input.expectedOwnerExternalId ||
+    input.contactOwnerExternalId !== input.expectedOwnerExternalId
+  )
+    return false;
   const channel = String(input.channel || "")
     .trim()
     .toLowerCase();
   const recipient = String(input.recipientReference || "").trim();
   if (!recipient) return false;
-  if (channel === "email")
-    return recipient.toLowerCase() === input.expectedEmail.trim().toLowerCase();
-  if (channel === "sms" || channel === "whatsapp") return true;
+  if (channel === "email") return true;
+  if (channel === "sms" || channel === "whatsapp" || channel === "chat")
+    return true;
   return false;
 }

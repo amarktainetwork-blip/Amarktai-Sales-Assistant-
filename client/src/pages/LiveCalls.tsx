@@ -142,8 +142,16 @@ async function getCaptureStream(mode: CaptureMode) {
 
 export default function LiveCalls() {
   const [, navigate] = useLocation();
+  const initialSessionId = Number(
+    new URLSearchParams(window.location.search).get("sessionId") || 0
+  );
+  const initialContactId = Number(
+    new URLSearchParams(window.location.search).get("contactId") || 0
+  );
   const [leadLabel, setLeadLabel] = useState("");
-  const [sessionId, setSessionId] = useState<number | null>(null);
+  const [sessionId, setSessionId] = useState<number | null>(
+    initialSessionId > 0 ? initialSessionId : null
+  );
   const [captureMode, setCaptureMode] = useState<CaptureMode>("mixed");
   const [consent, setConsent] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -161,7 +169,7 @@ export default function LiveCalls() {
   const [opportunityExternalId, setOpportunityExternalId] = useState("");
   const [selectedContactId, setSelectedContactId] = useState<
     number | undefined
-  >();
+  >(initialContactId > 0 ? initialContactId : undefined);
   const [communicationChannel, setCommunicationChannel] = useState("");
   const [templateName, setTemplateName] = useState("");
   const [closeoutActions, setCloseoutActions] = useState<
@@ -178,12 +186,6 @@ export default function LiveCalls() {
   const coachingRef = useRef(false);
 
   const startSession = trpc.calls.startLive.useMutation();
-  const initialSessionId = Number(
-    new URLSearchParams(window.location.search).get("sessionId") || 0
-  );
-  const initialContactId = Number(
-    new URLSearchParams(window.location.search).get("contactId") || 0
-  );
   const initialSelectionApplied = useRef(0);
   const initialCustomer = trpc.sales.customerDetail.useQuery(
     { contactId: selectedContactId || initialContactId || 1 },
