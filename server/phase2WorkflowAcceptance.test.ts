@@ -11,7 +11,9 @@ describe("Phase 2 daily salesperson workflow", () => {
     const service = read("server/today.ts");
     const queue = read("server/todayCallQueue.ts");
 
-    expect(today).toContain(
+    expect(today).toContain('current ? `Next: ${current.name}`');
+    expect(today).toContain('"Open call"');
+    expect(today).not.toContain(
       "Work the hottest customer. AmarktAI handles the admin around it."
     );
     expect(today).toContain("Customer replies / possible sales");

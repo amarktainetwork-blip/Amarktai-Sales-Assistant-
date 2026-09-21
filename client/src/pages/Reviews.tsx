@@ -11,7 +11,6 @@ import {
 import { trpc } from "@/lib/trpc";
 import {
   ArrowLeft,
-  ArrowRight,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -374,36 +373,28 @@ export default function Reviews() {
   return (
     <DashboardLayout>
       <div className="mx-auto max-w-6xl space-y-5 text-[#26354A]">
-        <header className="rounded-3xl border border-[#DCE4EE] bg-white p-6 shadow-sm sm:p-8">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+        <header className="rounded-2xl border border-[#DCE4EE] bg-white px-5 py-4 shadow-sm sm:px-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="flex items-center gap-2 text-[#3F70D8]">
                 <ShieldCheck className="h-4 w-4" />
-                <p className="text-[10px] font-black uppercase tracking-[.16em]">
+                <p className="text-[10px] font-black uppercase tracking-[.14em]">
                   Review
                 </p>
               </div>
-              <h1 className="mt-3 font-display text-4xl font-bold tracking-[-.06em] sm:text-5xl">
-                Only stop here when AmarktAI needs your decision.
+              <h1 className="mt-1 font-display text-2xl font-bold tracking-[-.04em] sm:text-3xl">
+                {counts.pending
+                  ? `${counts.pending} decision${counts.pending === 1 ? "" : "s"} waiting`
+                  : "Nothing needs your decision."}
               </h1>
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-[#66758A]">
-                AmarktAI can prepare the repetitive work, but nothing
-                customer-facing should disappear into the background. Check the
-                customer, edit the draft if needed, approve or skip it, then get
-                back to the call queue. Evidence and history stay available
-                underneath when you need them.
+              <p className="mt-1 text-sm text-[#66758A]">
+                Approve, edit or dismiss prepared work, then return to Today.
               </p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={() => navigate("/assistant")}>
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to AmarktAI
-              </Button>
-              <Button onClick={() => navigate("/today")}>
-                Back to call queue
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </div>
+            <Button onClick={() => navigate("/today")}>
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Today
+            </Button>
           </div>
         </header>
 

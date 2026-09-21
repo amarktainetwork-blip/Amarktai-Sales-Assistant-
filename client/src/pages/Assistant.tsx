@@ -196,7 +196,7 @@ export default function Assistant() {
     <DashboardLayout>
       <div
         data-assistant-workspace
-        className="mx-auto flex h-[calc(100dvh-120px)] min-h-[520px] max-w-[1180px] flex-col overflow-hidden text-[#24344A]"
+        className="mx-auto flex h-[calc(100dvh-92px)] min-h-[500px] max-w-[1180px] flex-col overflow-hidden text-[#24344A]"
       >
         <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[#D7E0EA] pb-4">
           <div className="flex min-w-0 items-center gap-3">
@@ -205,8 +205,8 @@ export default function Assistant() {
               <p className="text-sm font-black tracking-[-.01em] text-[#24344A]">
                 Amarkt<span className="text-[#2F6FED]">AI</span>
               </p>
-              <h1 className="truncate text-sm font-medium text-[#6B7B90]">
-                Good {greeting}, {firstName}. Give me the admin around the call.
+              <h1 className="truncate text-base font-semibold text-[#40516A]">
+                Good {greeting}, {firstName}. What do you need for the next customer?
               </h1>
             </div>
           </div>
@@ -302,13 +302,13 @@ export default function Assistant() {
           >
             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-7 sm:py-6">
               <div
-                className={`mx-auto flex min-h-full max-w-3xl flex-col ${!messages.length ? "justify-center py-8" : ""}`}
+                className={`mx-auto flex max-w-3xl flex-col ${!messages.length ? "pt-5" : "min-h-full"}`}
               >
                 {!messages.length ? (
                   <div className="flex max-w-2xl items-start gap-3">
                     <AssistantMark compact />
                     <div className="min-w-0 flex-1">
-                      <div className="rounded-2xl rounded-tl-md bg-[#F4F7FB] px-4 py-3 text-[15px] leading-7 text-[#33445B]">
+                      <div className="rounded-2xl rounded-tl-md bg-[#F4F7FB] px-4 py-3 text-base leading-7 text-[#2D3F57]">
                         {emptyState}
                       </div>
                       <div className="mt-4 flex flex-wrap gap-2">

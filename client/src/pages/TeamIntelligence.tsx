@@ -78,18 +78,17 @@ export default function TeamIntelligence() {
   return (
     <DashboardLayout>
       <div className="mx-auto max-w-7xl space-y-6 text-[#26354A]">
-        <header className="rounded-3xl border border-[#DCE4EE] bg-white p-6 shadow-sm sm:p-8">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+        <header className="rounded-2xl border border-[#DCE4EE] bg-white px-5 py-4 shadow-sm sm:px-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[.16em] text-[#3F70D8]">
+              <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#3F70D8]">
                 Team intelligence
               </p>
-              <h1 className="mt-2 font-display text-4xl font-bold tracking-[-.06em] sm:text-5xl">
-                See where management attention is needed.
+              <h1 className="mt-1 font-display text-2xl font-bold tracking-[-.04em] sm:text-3xl">
+                Who needs management attention today?
               </h1>
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-[#66758A]">
-                Focus on overdue work, unanswered customers, stale opportunities
-                and missing next steps across the team.
+              <p className="mt-1 text-sm text-[#66758A]">
+                See activity, untouched leads, unanswered customers, overdue work and pipeline risk.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -104,18 +103,32 @@ export default function TeamIntelligence() {
             </div>
           </div>
         </header>
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
           <Metric
             icon={Users}
             label="Salespeople"
             value={data?.summary.mappedSalespeople ?? 0}
-            detail="Linked to CRM work"
+            detail="Mapped to CRM owners"
           />
           <Metric
             icon={AlertTriangle}
             label="Need attention"
             value={data?.summary.needsAttention ?? 0}
-            detail="People with open exceptions"
+            detail="Reps with live exceptions"
+            alert
+          />
+          <Metric
+            icon={AlertTriangle}
+            label="New leads waiting"
+            value={data?.summary.newLeadsWaiting ?? 0}
+            detail="Still awaiting verified first contact"
+            alert
+          />
+          <Metric
+            icon={CircleAlert}
+            label="Unanswered"
+            value={data?.summary.unansweredCustomers ?? 0}
+            detail="Customer replies needing action"
             alert
           />
           <Metric
@@ -123,13 +136,6 @@ export default function TeamIntelligence() {
             label="Overdue tasks"
             value={data?.summary.overdueTasks ?? 0}
             detail="Past their due date"
-            alert
-          />
-          <Metric
-            icon={BarChart3}
-            label="Stale opportunities"
-            value={data?.summary.staleOpportunities ?? 0}
-            detail="Without recent activity"
             alert
           />
           <Metric
@@ -142,8 +148,8 @@ export default function TeamIntelligence() {
             )}
             detail={
               data?.summary.pipelineHasMixedCurrencies
-                ? "Multiple CRM currencies — review per salesperson"
-                : `Value on stale opportunities${data?.summary.pipelineCurrency ? ` · ${data.summary.pipelineCurrency}` : ""}`
+                ? "Multiple currencies — review per rep"
+                : "Value on stale opportunities"
             }
             alert
           />
@@ -154,17 +160,20 @@ export default function TeamIntelligence() {
               People needing attention
             </h2>
             <p className="mt-1 text-sm text-[#66758A]">
-              Start with the largest overdue workload or pipeline risk.
+              Use exceptions, not surveillance: the table shows only authorised CRM and sales-work evidence.
             </p>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-left">
+            <table className="w-full min-w-[1120px] text-left">
               <thead className="bg-[#F7F9FC] text-xs font-bold text-[#66758A]">
                 <tr>
                   <th className="p-4">Salesperson</th>
+                  <th className="p-4 text-right">Activity today</th>
+                  <th className="p-4 text-right">New leads</th>
+                  <th className="p-4 text-right">Unanswered</th>
                   <th className="p-4 text-right">Overdue</th>
                   <th className="p-4 text-right">Stale deals</th>
-                  <th className="p-4 text-right">Missing next step</th>
+                  <th className="p-4 text-right">No next step</th>
                   <th className="p-4 text-right">Pipeline at risk</th>
                 </tr>
               </thead>
@@ -179,9 +188,18 @@ export default function TeamIntelligence() {
                         <p className="font-bold">{person.name}</p>
                         <p className="mt-1 text-xs text-[#8290A3]">
                           {person.userId
-                            ? "Linked team member"
+                            ? person.targetStatus.replaceAll("_", " ")
                             : "Not linked to a team member"}
                         </p>
+                      </td>
+                      <td className="p-4 text-right font-semibold">
+                        {person.activitiesToday}
+                      </td>
+                      <td className="p-4 text-right font-semibold">
+                        {person.newLeadsWaiting}
+                      </td>
+                      <td className="p-4 text-right font-semibold">
+                        {person.unansweredCustomers}
                       </td>
                       <td className="p-4 text-right font-semibold">
                         {person.overdueTasks}
@@ -204,7 +222,7 @@ export default function TeamIntelligence() {
                 ) : (
                   <tr>
                     <td
-                      colSpan={5}
+                      colSpan={8}
                       className="p-10 text-center text-sm text-[#66758A]"
                     >
                       No team exceptions are available yet. Connect and

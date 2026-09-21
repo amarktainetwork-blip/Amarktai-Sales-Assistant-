@@ -52,7 +52,7 @@ describe("routine opportunity snapshot cadence", () => {
 });
 
 describe("CRM customer-history lead progression", () => {
-  it("treats calls, salesperson-authored notes and inbound replies as proof the lead was worked", () => {
+  it("treats calls, salesperson-authored notes, inbound replies and verified salesperson outbound contact as proof the lead was worked", () => {
     const owner = "owner-1";
     expect(
       crmActivityHistoryProvesLeadWorked(
@@ -80,6 +80,30 @@ describe("CRM customer-history lead progression", () => {
         owner
       )
     ).toBe(true);
+    expect(
+      crmActivityHistoryProvesLeadWorked(
+        {
+          activityType: "email",
+          ownerExternalId: owner,
+          raw: {
+            direction: "outbound",
+            senderReference: "Sales Person <sales@example.com>",
+          },
+        },
+        owner,
+        "sales@example.com"
+      )
+    ).toBe(true);
+    expect(
+      crmActivityHistoryProvesLeadWorked(
+        {
+          activityType: "sms",
+          ownerExternalId: owner,
+          raw: { direction: "outbound", userExternalId: owner },
+        },
+        owner
+      )
+    ).toBe(true);
   });
 
   it("does not treat automated-looking outbound messages or another author's note as salesperson work", () => {
@@ -89,9 +113,13 @@ describe("CRM customer-history lead progression", () => {
         {
           activityType: "email",
           ownerExternalId: owner,
-          raw: { direction: "outbound" },
+          raw: {
+            direction: "outbound",
+            senderReference: "Company <outreach@marketing.example.com>",
+          },
         },
-        owner
+        owner,
+        "sales@example.com"
       )
     ).toBe(false);
     expect(

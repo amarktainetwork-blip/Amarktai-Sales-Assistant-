@@ -415,7 +415,8 @@ export function crmActivityHistoryProvesLeadWorked(
     NormalizedActivity,
     "activityType" | "ownerExternalId" | "raw"
   >,
-  ownerExternalId: string
+  ownerExternalId: string,
+  crmUserEmail?: string
 ) {
   const type = activity.activityType.trim().toLowerCase();
   const raw =
@@ -430,9 +431,23 @@ export function crmActivityHistoryProvesLeadWorked(
   if (type === "call") return true;
   if (type === "note")
     return String(raw.authorExternalId || "").trim() === ownerExternalId.trim();
-  return (
-    ["email", "sms", "whatsapp", "communication"].includes(type) &&
-    direction === "inbound"
+  if (!["email", "sms", "whatsapp", "communication"].includes(type))
+    return false;
+  if (direction === "inbound") return true;
+  if (direction !== "outbound") return false;
+
+  const actorExternalId = String(raw.userExternalId || "").trim();
+  if (actorExternalId && actorExternalId === ownerExternalId.trim()) return true;
+
+  const senderReference = String(raw.senderReference || "").trim().toLowerCase();
+  const ownerEmail = String(crmUserEmail || "").trim().toLowerCase();
+  return Boolean(
+    type === "email" &&
+      ownerEmail &&
+      senderReference &&
+      (senderReference === ownerEmail ||
+        senderReference.includes(`<${ownerEmail}>`) ||
+        senderReference.endsWith(` ${ownerEmail}`))
   );
 }
 
@@ -630,7 +645,8 @@ async function refreshActiveCustomerSourceTruth(input: {
             activity.occurredAt.getTime() >= evidenceFloor &&
             crmActivityHistoryProvesLeadWorked(
               activity,
-              input.secret.crmUserExternalId!
+              input.secret.crmUserExternalId!,
+              input.secret.crmUserEmail
             )
         );
         if (worked)
