@@ -32,10 +32,13 @@ type AssistantResponse = {
 };
 
 const suggestions = [
-  "Prepare this call",
+  "Prepare me for this call",
   "Summarise the customer history",
+  "What matters most about this customer?",
   "What should I ask next?",
-  "Draft the follow-up — don't send",
+  "What objections should I prepare for?",
+  "Draft the right follow-up using an approved template — don't send",
+  "Which template or approved attachment fits this customer?",
 ];
 
 async function askAssistant(input: {
@@ -56,9 +59,15 @@ async function askAssistant(input: {
   return body;
 }
 
+function displayContextValue(value: unknown) {
+  if (Array.isArray(value)) return value.filter(Boolean).join(", ");
+  if (value == null) return "";
+  return String(value).trim();
+}
+
 function AssistantMark() {
   return (
-    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#E9EDF2] text-xs font-bold text-[#42536A]">
+    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#EEEFFF] text-xs font-bold text-[#42536A]">
       AI
     </span>
   );
@@ -207,30 +216,33 @@ export default function Assistant() {
       <div
         data-assistant-workspace
         aria-label="AmarktAI"
-        className="mx-auto flex max-w-[1180px] flex-col gap-5 text-[#243247]"
+        className="mx-auto flex max-w-[1180px] flex-col gap-5 text-[#20283A]"
       >
         <header>
-          <p className="text-base font-medium text-[#788394]">AmarktAI</p>
+          <p className="text-base font-medium text-[#7A8497]">AmarktAI</p>
           <h1 className="mt-1 text-3xl font-semibold tracking-[-.035em]">
             {selectedCustomer
               ? `Work ${selectedCustomer.name} with me.`
               : `Your sales assistant is ready, ${firstName}.`}
           </h1>
-          <p className="mt-1 max-w-2xl text-base leading-6 text-[#697386]">
+          <p className="mt-1 max-w-2xl text-base leading-6 text-[#667085]">
             You handle the conversation. AmarktAI handles the preparation,
             context and draft admin around it.
           </p>
         </header>
 
         <div className="grid min-h-[calc(100dvh-190px)] gap-5 lg:grid-cols-[330px_1fr]">
-          <aside className="flex flex-col rounded-2xl bg-white p-5 shadow-[0_6px_24px_rgba(38,50,71,.05)]">
+          <aside
+            data-assistant-context
+            className="flex flex-col rounded-2xl bg-white p-5 shadow-[0_6px_24px_rgba(38,50,71,.05)]"
+          >
             <div className="flex items-center gap-3">
               <AssistantMark />
               <div className="min-w-0">
-                <p className="text-sm font-medium text-[#788394]">
+                <p className="text-sm font-medium text-[#7A8497]">
                   Current customer
                 </p>
-                <p className="truncate text-base font-semibold text-[#344257]">
+                <p className="truncate text-base font-semibold text-[#293145]">
                   {selectedCustomer?.name || "Choose a customer"}
                 </p>
               </div>
@@ -250,8 +262,7 @@ export default function Assistant() {
                   <Fact
                     label="Interest"
                     value={
-                      selectedCustomer.interest.primary ||
-                      "Not yet identified"
+                      selectedCustomer.interest.primary || "Not yet identified"
                     }
                   />
                   <Fact
@@ -268,14 +279,36 @@ export default function Assistant() {
                       "No open opportunity"
                     }
                   />
+                  <Fact
+                    label="Last interaction"
+                    value={
+                      selectedCustomer.lastInteraction
+                        ? selectedCustomer.lastInteraction.activityType +
+                          " · " +
+                          new Date(
+                            selectedCustomer.lastInteraction.occurredAt
+                          ).toLocaleString()
+                        : "No recent interaction"
+                    }
+                  />
+                  {selectedCustomer.mappedFields
+                    .filter(field => displayContextValue(field.value))
+                    .slice(0, 4)
+                    .map(field => (
+                      <Fact
+                        key={field.sourceFieldId}
+                        label={field.label}
+                        value={displayContextValue(field.value)}
+                      />
+                    ))}
                 </div>
 
                 {dayItem?.reasons?.length ? (
-                  <div className="mt-5 border-t border-[#EEF0F3] pt-4">
-                    <p className="text-sm font-medium text-[#788394]">
+                  <div className="mt-5 border-t border-[#E8EAF1] pt-4">
+                    <p className="text-sm font-medium text-[#7A8497]">
                       Why this is in Today
                     </p>
-                    <div className="mt-2 space-y-1 text-sm leading-5 text-[#5F6B7A]">
+                    <div className="mt-2 space-y-1 text-sm leading-5 text-[#606B80]">
                       {dayItem.reasons.slice(0, 4).map(reason => (
                         <p key={reason}>• {reason}</p>
                       ))}
@@ -308,22 +341,23 @@ export default function Assistant() {
                 </div>
               </>
             ) : (
-              <p className="mt-5 text-base leading-6 text-[#697386]">
-                When Today has work, the next customer is selected automatically.
+              <p className="mt-5 text-base leading-6 text-[#667085]">
+                When Today has work, the next customer is selected
+                automatically.
               </p>
             )}
 
-            <div className="mt-auto border-t border-[#EEF0F3] pt-4">
-              <label className="text-sm font-medium text-[#788394]">
+            <div className="mt-auto border-t border-[#E8EAF1] pt-4">
+              <label className="text-sm font-medium text-[#7A8497]">
                 Change customer
               </label>
               <div className="mt-2 flex items-center gap-2">
-                <Search className="h-4 w-4 shrink-0 text-[#8A93A0]" />
+                <Search className="h-4 w-4 shrink-0 text-[#8A93A5]" />
                 <Input
                   value={contextSearch}
                   onChange={event => setContextSearch(event.target.value)}
                   placeholder="Search…"
-                  className="h-10 border-[#E1E5EA] text-base"
+                  className="h-10 border-[#E2E5EE] text-base"
                 />
               </div>
               <select
@@ -334,7 +368,7 @@ export default function Assistant() {
                     event.target.value ? Number(event.target.value) : undefined
                   )
                 }
-                className="mt-2 h-11 w-full rounded-xl border border-[#E1E5EA] bg-white px-3 text-base text-[#344257] outline-none focus:border-[#A8B4C3]"
+                className="mt-2 h-11 w-full rounded-xl border border-[#E2E5EE] bg-white px-3 text-base text-[#293145] outline-none focus:border-[#8F92DD]"
               >
                 <option value="">Select customer</option>
                 {contextOptions.map(customer => (
@@ -357,7 +391,10 @@ export default function Assistant() {
                   <div>
                     <div className="flex items-start gap-3">
                       <AssistantMark />
-                      <div className="rounded-2xl bg-[#F5F6F8] px-4 py-3 text-base leading-7 text-[#344257]">
+                      <div
+                        data-assistant-welcome
+                        className="rounded-2xl bg-[#F7F8FC] px-4 py-3 text-base leading-7 text-[#293145]"
+                      >
                         {selectedCustomer
                           ? `I have ${selectedCustomer.name}'s sales context. I can prepare the call, surface the important history, help with objections and draft the follow-up for Review.`
                           : "I can prioritise your day, prepare calls, summarise customers and draft follow-ups for Review."}
@@ -370,9 +407,10 @@ export default function Assistant() {
                           key={prompt}
                           type="button"
                           onClick={() => void send(prompt)}
-                          className="rounded-xl bg-[#F8F9FA] px-4 py-3 text-left text-base font-medium text-[#425066] hover:bg-[#F0F2F5]"
+                          data-assistant-prompt
+                          className="rounded-xl bg-[#FAFBFE] px-4 py-3 text-left text-base font-medium text-[#4E586C] hover:bg-[#F1F2F8]"
                         >
-                          <Sparkles className="mb-2 h-4 w-4 text-[#718096]" />
+                          <Sparkles className="mb-2 h-4 w-4 text-[#696BC8]" />
                           {prompt}
                         </button>
                       ))}
@@ -385,7 +423,7 @@ export default function Assistant() {
                         key={`${message.role}-${index}`}
                         className={
                           message.role === "user"
-                            ? "ml-auto max-w-[80%] rounded-2xl bg-[#43546B] px-4 py-3 text-base leading-6 text-white"
+                            ? "ml-auto max-w-[80%] rounded-2xl bg-[#5558C9] px-4 py-3 text-base leading-6 text-white"
                             : "max-w-[92%]"
                         }
                       >
@@ -393,7 +431,7 @@ export default function Assistant() {
                           <div className="flex gap-3">
                             <AssistantMark />
                             <div className="min-w-0 flex-1">
-                              <div className="whitespace-pre-wrap text-base leading-7 text-[#344257]">
+                              <div className="whitespace-pre-wrap text-base leading-7 text-[#293145]">
                                 {message.content}
                               </div>
                               {message.action ? (
@@ -416,7 +454,7 @@ export default function Assistant() {
                     ))}
 
                     {busy ? (
-                      <div className="flex items-center gap-3 text-base text-[#697386]">
+                      <div className="flex items-center gap-3 text-base text-[#667085]">
                         <AssistantMark />
                         <Loader2 className="h-4 w-4 animate-spin" />
                         Working with the current sales context…
@@ -444,7 +482,7 @@ export default function Assistant() {
               </div>
             </div>
 
-            <div className="border-t border-[#EEF0F3] bg-[#FAFBFC] p-3 sm:p-4">
+            <div className="border-t border-[#E8EAF1] bg-[#FAFBFC] p-3 sm:p-4">
               <div className="mx-auto max-w-3xl">
                 <Textarea
                   aria-label="Message AmarktAI"
@@ -464,7 +502,7 @@ export default function Assistant() {
                   className="min-h-[72px] resize-none rounded-xl border-[#E0E4E9] bg-white px-4 py-3 text-base leading-6 shadow-none focus-visible:ring-[#B9C2CE]"
                 />
                 <div className="mt-2 flex items-center justify-between gap-3">
-                  <p className="text-sm text-[#8992A0]">
+                  <p className="text-sm text-[#8A93A5]">
                     Draft first. Customer-facing actions remain reviewable.
                   </p>
                   <Button
@@ -491,9 +529,9 @@ export default function Assistant() {
 
 function Fact({ label, value }: { label: string; value: string }) {
   return (
-    <div>
-      <p className="text-sm font-medium text-[#8992A0]">{label}</p>
-      <p className="mt-1 text-base font-medium leading-6 text-[#3B495E]">
+    <div data-assistant-fact>
+      <p className="text-sm font-medium text-[#8A93A5]">{label}</p>
+      <p className="mt-1 text-base font-medium leading-6 text-[#3F485C]">
         {value}
       </p>
     </div>

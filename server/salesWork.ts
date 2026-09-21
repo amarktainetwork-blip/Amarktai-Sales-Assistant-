@@ -14,6 +14,7 @@ import { canViewTeamData, requireOrganisationMembership } from "./organisation";
 import { getOrganisationWorkspaceContext } from "./organisationWorkspace";
 import { deriveCustomerInterest } from "./customerInterest";
 import { normalizedCustomerAttributes } from "./customerData";
+import { opportunityIsHistorical } from "./crm/actionExecutionPreconditions";
 import type {
   NormalizedActivity,
   NormalizedCompany,
@@ -210,7 +211,8 @@ export function deriveCrmWorkCandidates(
             )
           : 30;
         const noNextAction = !opportunity.nextStepAt;
-        if (!noNextAction && staleDays < 7) return null;
+        const historical = opportunityIsHistorical(opportunity);
+        if (!historical && !noNextAction && staleDays < 7) return null;
         const type: SalesWorkType = noNextAction
           ? "OPPORTUNITY_NEEDS_ACTION"
           : "STALE_OPPORTUNITY";
@@ -225,17 +227,21 @@ export function deriveCrmWorkCandidates(
           type,
           priority: noNextAction ? 70 : 60,
           dueAt: opportunity.nextStepAt,
-          reason: noNextAction
-            ? "This opportunity has no recorded next action."
-            : `This opportunity has had no recorded activity for ${staleDays} days.`,
-          recommendedNextAction:
-            "Review the opportunity and schedule the next verified action.",
+          reason: historical
+            ? "This opportunity is already closed in the CRM."
+            : noNextAction
+              ? "This opportunity has no recorded next action."
+              : `This opportunity has had no recorded activity for ${staleDays} days.`,
+          recommendedNextAction: historical
+            ? "No action is required for this closed opportunity."
+            : "Review the opportunity and schedule the next verified action.",
           sourceUpdatedAt: opportunity.sourceUpdatedAt,
-          status: "open" as const,
+          status: historical ? ("completed" as const) : ("open" as const),
           metadata: {
             stage: opportunity.stage || null,
             pipeline: opportunity.pipeline || null,
             staleDays,
+            historical,
           },
         };
       })
@@ -403,9 +409,8 @@ export async function upsertSalesWorkFromCrm(input: {
           priority: values.priority,
           dueAt: values.dueAt,
           reason: values.reason,
-          ...(input.resource.type === "tasks" ? { status: values.status } : {}),
-          ...(input.resource.type === "tasks"
-            ? { completedAt: values.completedAt }
+          ...(["tasks", "opportunities"].includes(input.resource.type)
+            ? { status: values.status, completedAt: values.completedAt }
             : {}),
           recommendedNextAction: values.recommendedNextAction,
           freshness: "current",
@@ -415,6 +420,94 @@ export async function upsertSalesWorkFromCrm(input: {
         },
       });
   }
+
+  if (input.resource.type === "opportunities") {
+    const terminalByUserAndContact = new Map<string, Date>();
+    for (const opportunity of input.resource.records) {
+      if (
+        !opportunity.contactExternalId ||
+        !opportunity.ownerExternalId ||
+        !opportunityIsHistorical(opportunity)
+      )
+        continue;
+      const salespersonUserId =
+        usersByExternalOwner.get(opportunity.ownerExternalId) || null;
+      const resolvedAt =
+        opportunity.sourceUpdatedAt ||
+        opportunity.lastActivityAt ||
+        opportunity.closeAt ||
+        null;
+      if (!salespersonUserId || !resolvedAt) continue;
+      const key = `${salespersonUserId}:${opportunity.contactExternalId}`;
+      const existing = terminalByUserAndContact.get(key);
+      if (!existing || resolvedAt > existing)
+        terminalByUserAndContact.set(key, resolvedAt);
+    }
+
+    if (terminalByUserAndContact.size) {
+      const actionableInbound = await db
+        .select({
+          id: inboundMessages.id,
+          mailboxUserId: inboundMessages.mailboxUserId,
+          contactExternalId: inboundMessages.contactExternalId,
+          receivedAt: inboundMessages.receivedAt,
+        })
+        .from(inboundMessages)
+        .where(
+          and(
+            eq(inboundMessages.organisationId, input.organisationId),
+            eq(inboundMessages.connectedSystemId, input.connectedSystemId),
+            eq(inboundMessages.needsAction, true)
+          )
+        );
+
+      const resolvedInboundIds = actionableInbound
+        .filter(message => {
+          if (!message.mailboxUserId || !message.contactExternalId)
+            return false;
+          const resolvedAt = terminalByUserAndContact.get(
+            `${message.mailboxUserId}:${message.contactExternalId}`
+          );
+          return Boolean(resolvedAt && resolvedAt >= message.receivedAt);
+        })
+        .map(message => message.id);
+
+      if (resolvedInboundIds.length) {
+        const now = new Date();
+        await db
+          .update(inboundMessages)
+          .set({ status: "archived", needsAction: false })
+          .where(inArray(inboundMessages.id, resolvedInboundIds));
+        await db
+          .update(salesWorkItems)
+          .set({
+            status: "completed",
+            completedAt: now,
+            blockedReason: null,
+            snoozedUntil: null,
+            freshness: "current",
+            syncedAt: now,
+            stateVersion: sql`${salesWorkItems.stateVersion} + 1`,
+          })
+          .where(
+            and(
+              eq(salesWorkItems.organisationId, input.organisationId),
+              inArray(
+                salesWorkItems.sourceKey,
+                resolvedInboundIds.map(id => `mailbox:inbound:${id}`)
+              ),
+              inArray(salesWorkItems.status, [
+                "open",
+                "in_progress",
+                "snoozed",
+                "blocked",
+              ])
+            )
+          );
+      }
+    }
+  }
+
   return candidates;
 }
 

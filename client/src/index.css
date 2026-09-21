@@ -365,3 +365,72 @@ body:has(.amk-auth.fixed) {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Product-led 50/50 auth visual */
+.amk-auth {
+  --auth-ink: #1d2433;
+  --auth-soft: #667085;
+  --auth-blue: #5b5bd6;
+  background: #f7f8fb;
+}
+.amk-auth__visual {
+  background:
+    radial-gradient(
+      circle at 15% 5%,
+      rgba(105, 105, 223, 0.3),
+      transparent 24rem
+    ),
+    linear-gradient(145deg, #20283a, #303958);
+}
+.amk-auth__scene {
+  position: absolute;
+  inset: clamp(96px, 12vh, 150px) clamp(38px, 5vw, 76px) auto;
+  z-index: 0;
+  opacity: 0.95;
+}
+.amk-auth__shade {
+  background: linear-gradient(
+    180deg,
+    rgba(24, 31, 49, 0.05) 0%,
+    rgba(24, 31, 49, 0.18) 45%,
+    rgba(24, 31, 49, 0.78) 100%
+  );
+}
+.amk-auth__visual-inner {
+  z-index: 2;
+}
+.amk-auth__form-side {
+  background: #f7f8fb;
+}
+.amk-auth-field input {
+  min-height: 50px;
+  border-radius: 12px;
+  border-color: #dfe2ea;
+}
+.amk-auth-field input:focus {
+  border-color: #7779df;
+  box-shadow: 0 0 0 4px rgba(91, 91, 214, 0.1);
+}
+.amk-auth__primary,
+.amk-auth__secondary {
+  min-height: 50px;
+  border-radius: 12px;
+}
+.amk-auth__primary {
+  background: linear-gradient(135deg, #5b5bd6, #6868df);
+  box-shadow: 0 10px 24px rgba(91, 91, 214, 0.2);
+}
+.amk-auth__primary:hover {
+  background: #4d4fc3;
+}
+.amk-auth__secondary {
+  border-color: #dfe2ea;
+}
+@media (max-height: 760px) and (min-width: 900px) {
+  .amk-auth__scene {
+    inset-top: 88px;
+  }
+  .amk-auth__message {
+    padding-top: 32px;
+  }
+}

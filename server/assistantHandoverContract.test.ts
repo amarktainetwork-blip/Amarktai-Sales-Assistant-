@@ -21,10 +21,10 @@ describe("client-handover AmarktAI contract", () => {
     expect(assistantPage).not.toContain("<Bot");
     expect(assistantPage.match(/<Textarea/g)).toHaveLength(1);
     for (const prompt of [
-      "Prepare this call",
+      "Prepare me for this call",
       "Summarise the customer history",
       "What should I ask next?",
-      "Draft the follow-up — don't send",
+      "Draft the right follow-up using an approved template — don't send",
     ])
       expect(assistantPage).toContain(prompt);
   });

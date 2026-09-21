@@ -25,7 +25,9 @@ describe("final account presentation", () => {
   });
 
   it("reacts to register, forgot-password and sign-in query links", () => {
-    expect(auth).toContain('import { Link, useLocation, useSearch } from "wouter";');
+    expect(auth).toContain(
+      'import { Link, useLocation, useSearch } from "wouter";'
+    );
     expect(auth).toContain("const search = useSearch();");
     expect(auth).toContain("const query = new URLSearchParams(search);");
     expect(auth).not.toContain("window.location.search");
@@ -40,13 +42,17 @@ describe("final account presentation", () => {
   });
 
   it("keeps identity proof inside secure access and uses first-party visuals", () => {
-    expect(auth).toContain('/auth?step=verify');
+    expect(auth).toContain("/auth?step=verify");
     expect(auth).toContain("Verify your email.");
-    expect(auth).toContain('/images/people/thenikscape-ai-generated-9586971_1920.jpg');
+    expect(auth).toContain(
+      'MarketingArtwork variant="workflow" inverse compact'
+    );
     expect(auth).not.toContain("images.pexels.com");
     expect(auth).not.toContain("images.unsplash.com");
     expect(auth).toContain('window.location.assign("/auth?step=verify")');
-    expect(auth).toContain("if (!user || !security.data?.verified || invite || reset) return;");
+    expect(auth).toContain(
+      "if (!user || !security.data?.verified || invite || reset) return;"
+    );
     expect(auth).toContain('navigate("/dashboard", { replace: true });');
   });
 });

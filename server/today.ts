@@ -4,7 +4,8 @@ import { isIncompleteTask } from "../shared/taskState";
 import { normalizedCustomerAttributes, personalOwnerSql } from "./customerData";
 import { deriveCustomerInterest } from "./customerInterest";
 import { buildTodayCallQueue } from "./todayCallQueue";
-import { and, desc, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
+import { opportunityIsHistorical } from "./crm/actionExecutionPreconditions";
+import { and, asc, desc, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
 import {
   actionProposals,
   assistantReminders,
@@ -52,7 +53,9 @@ export function salespersonActivityProvesTaskHandled(
   if (activity.ownerExternalId !== ownerExternalId) return false;
   const type = String(activity.activityType || "").toLowerCase();
   const raw =
-    activity.raw && typeof activity.raw === "object" && !Array.isArray(activity.raw)
+    activity.raw &&
+    typeof activity.raw === "object" &&
+    !Array.isArray(activity.raw)
       ? (activity.raw as Record<string, unknown>)
       : {};
   if (type === "call") return true;
@@ -63,15 +66,22 @@ export function salespersonActivityProvesTaskHandled(
   if (String(raw.direction || "").toLowerCase() !== "outbound") return false;
 
   const actorExternalId = String(raw.userExternalId || "").trim();
-  if (actorExternalId && actorExternalId === ownerExternalId.trim()) return true;
+  if (actorExternalId && actorExternalId === ownerExternalId.trim())
+    return true;
 
-  const email = String(ownerEmail || "").trim().toLowerCase();
-  const sender = String(raw.senderReference || "").trim().toLowerCase();
+  const email = String(ownerEmail || "")
+    .trim()
+    .toLowerCase();
+  const sender = String(raw.senderReference || "")
+    .trim()
+    .toLowerCase();
   return Boolean(
     type === "email" &&
       email &&
       sender &&
-      (sender === email || sender.includes(`<${email}>`) || sender.endsWith(` ${email}`))
+      (sender === email ||
+        sender.includes(`<${email}>`) ||
+        sender.endsWith(` ${email}`))
   );
 }
 
@@ -191,6 +201,7 @@ export async function getTodayWork(input: {
     inboundRows,
     reminders,
     futureCommitments,
+    futureCrmTasks,
     callbacks,
     workItems,
   ] = await Promise.all([
@@ -298,6 +309,22 @@ export async function getTodayWork(input: {
       .limit(200),
     db
       .select()
+      .from(crmTasks)
+      .where(
+        and(
+          eq(crmTasks.organisationId, input.organisationId),
+          personalOwnerSql(
+            input,
+            crmTasks.connectedSystemId,
+            crmTasks.ownerExternalId
+          ),
+          gt(crmTasks.dueAt, localDayEnd)
+        )
+      )
+      .orderBy(asc(crmTasks.dueAt))
+      .limit(100),
+    db
+      .select()
       .from(callbackTasks)
       .where(
         and(
@@ -360,10 +387,7 @@ export async function getTodayWork(input: {
 
   const taskContactExternalIds = Array.from(
     new Set(
-      [
-        ...taskData.queues.overdueTasks,
-        ...taskData.queues.dueToday,
-      ]
+      [...taskData.queues.overdueTasks, ...taskData.queues.dueToday]
         .map(task => task.contactExternalId?.trim())
         .filter((value): value is string => Boolean(value))
     )
@@ -394,7 +418,9 @@ export async function getTodayWork(input: {
       mapping.email,
     ])
   );
-  const taskWasAlreadyWorked = (task: (typeof taskData.queues.overdueTasks)[number]) => {
+  const taskWasAlreadyWorked = (
+    task: (typeof taskData.queues.overdueTasks)[number]
+  ) => {
     if (!task.contactExternalId || !task.ownerExternalId || !task.dueAt)
       return false;
     const ownerEmail =
@@ -427,11 +453,33 @@ export async function getTodayWork(input: {
         opportunity.ownerExternalId,
         opportunity.connectedSystemId
       ) &&
-      !/^(won|lost|abandoned|closed)$/i.test(
-        String(opportunity.raw?.status || "")
-      )
+      !opportunityIsHistorical({
+        stage: opportunity.stage || undefined,
+        raw: opportunity.raw,
+      })
   );
   const openTasks = scopedTasks.filter(task => isOpen(task.status));
+  const upcomingTasks = futureCrmTasks
+    .filter(task => isOpen(task.status) && Boolean(task.dueAt))
+    .slice(0, 20);
+  const upcomingCommitments = [
+    ...upcomingTasks.map(task => ({
+      id: `crm-task:${task.connectedSystemId}:${task.externalId}`,
+      kind: "crm_task" as const,
+      contactExternalId: task.contactExternalId,
+      title: task.title,
+      dueAt: task.dueAt!,
+    })),
+    ...futureCommitments.map(reminder => ({
+      id: `reminder:${reminder.id}`,
+      kind: "reminder" as const,
+      contactExternalId: reminder.contactExternalId,
+      title: reminder.title,
+      dueAt: reminder.dueAt,
+    })),
+  ]
+    .sort((a, b) => a.dueAt.valueOf() - b.dueAt.valueOf())
+    .slice(0, 8);
   const staleOpportunities = scopedOpportunities.filter(opportunity => {
     const age = ageDays(opportunity.lastActivityAt, now);
     return age === null || age >= 7;
@@ -662,6 +710,7 @@ export async function getTodayWork(input: {
       priority,
       callQueue,
       newLeads: newLeadQueue,
+      upcoming: upcomingCommitments,
       work: assignedWork.slice(0, 100),
     },
   };

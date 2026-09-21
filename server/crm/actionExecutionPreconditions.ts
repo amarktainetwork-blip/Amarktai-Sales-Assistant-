@@ -87,10 +87,12 @@ export function taskIsHistorical(
 }
 
 export function opportunityIsHistorical(
-  opportunity: Pick<NormalizedOpportunity, "stage" | "raw">
+  opportunity: Pick<NormalizedOpportunity, "stage"> & {
+    raw?: Record<string, unknown> | null;
+  }
 ) {
   return /closed|lost|won|rejected|not.?interested/i.test(
-    `${opportunity.stage || ""} ${String(opportunity.raw.status || "")}`
+    `${opportunity.stage || ""} ${String(opportunity.raw?.status || "")}`
   );
 }
 

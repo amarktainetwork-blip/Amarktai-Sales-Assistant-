@@ -237,6 +237,74 @@ describe("Today inbound ownership lookup", () => {
     expect(fromCalls.filter(table => table === crmContacts)).toHaveLength(1);
   });
 
+  it("keeps future CRM tasks visible as protected schedule without making them immediate work", async () => {
+    const futureTask = {
+      id: 501,
+      organisationId: 4,
+      connectedSystemId: 11,
+      externalId: "future-task",
+      contactExternalId: "future-contact",
+      opportunityExternalId: null,
+      ownerExternalId: "shared-id",
+      title: "Future callback",
+      status: "open",
+      dueAt: new Date("2101-01-02T10:00:00.000Z"),
+      completedAt: null,
+      sourceUpdatedAt: new Date("2099-01-01T00:00:00.000Z"),
+      raw: {},
+      createdAt: new Date("2099-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2099-01-01T00:00:00.000Z"),
+    };
+    const rows = new Map<unknown, unknown[]>([
+      [
+        externalUserMappings,
+        [
+          {
+            externalUserId: "shared-id",
+            connectedSystemId: 11,
+            userId: 9,
+            isActive: true,
+          },
+        ],
+      ],
+      [crmTasks, [futureTask]],
+      [crmOpportunities, []],
+      [inboundMessages, []],
+      [assistantReminders, []],
+      [callbackTasks, []],
+    ]);
+    const database = {
+      select: vi.fn(() => ({
+        from: vi.fn((table: unknown) => {
+          const result = rows.get(table) || [];
+          const chain = {
+            where: vi.fn(() => chain),
+            orderBy: vi.fn(() => chain),
+            leftJoin: vi.fn(() => chain),
+            limit: vi.fn(async (count: number) => result.slice(0, count)),
+            then: (
+              resolve: (value: unknown[]) => unknown,
+              reject: (error: unknown) => unknown
+            ) => Promise.resolve(result).then(resolve, reject),
+          };
+          return chain;
+        }),
+      })),
+    };
+    mocks.getDb.mockResolvedValue(database);
+    mocks.requireOrganisationMembership.mockResolvedValue({
+      role: "salesperson",
+    });
+
+    const result = await getTodayWork({ userId: 9, organisationId: 4 });
+
+    expect(result.queues.upcoming[0]).toMatchObject({
+      id: "crm-task:11:future-task",
+      kind: "crm_task",
+      title: "Future callback",
+    });
+  });
+
   it("includes a due Amarktai reminder in the normal Today queue", async () => {
     const reminder = {
       id: 77,

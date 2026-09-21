@@ -25,6 +25,7 @@ import { getDb } from "./db";
 import { requireOrganisationMembership } from "./organisation";
 import { getOrganisationWorkspaceContext } from "./organisationWorkspace";
 import { deriveCustomerInterest } from "./customerInterest";
+import { opportunityIsHistorical } from "./crm/actionExecutionPreconditions";
 import {
   INCOMPLETE_TASK_STATUSES,
   isIncompleteTask,
@@ -364,10 +365,11 @@ export async function getExactCustomerDetail(input: {
     company: companies[0] || null,
     openOpportunity:
       opportunities.find(
-        o =>
-          !/closed|lost|won|abandoned/i.test(
-            String((o.raw as any)?.status || o.stage || "")
-          )
+        opportunity =>
+          !opportunityIsHistorical({
+            stage: opportunity.stage || undefined,
+            raw: opportunity.raw,
+          })
       ) || null,
     lastInteraction: activities[0] || null,
     nextAction: tasks[0] || null,

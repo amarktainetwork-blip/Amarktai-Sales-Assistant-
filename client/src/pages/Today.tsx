@@ -66,6 +66,7 @@ export default function Today() {
   const callQueue = today.data?.queues.callQueue ?? [];
   const inboundQueue = today.data?.queues.inbound ?? [];
   const newLeads = today.data?.queues.newLeads ?? [];
+  const upcoming = today.data?.queues.upcoming ?? [];
   const current = callQueue[0];
   const visibleQueue = showAll ? callQueue.slice(1) : callQueue.slice(1, 8);
   const workspace = today.data?.workspace.organisation;
@@ -111,12 +112,18 @@ export default function Today() {
         refetchToday: () => today.refetch(),
       });
       if (crmWarning)
-        toast.warning("CRM refresh was incomplete. Existing data is still safe.");
+        toast.warning(
+          "CRM refresh was incomplete. Existing data is still safe."
+        );
       else if (mailboxWarning)
-        toast.warning("Sales data refreshed. Recent replies may take a moment.");
+        toast.warning(
+          "Sales data refreshed. Recent replies may take a moment."
+        );
       else toast.success("Your sales day is up to date.");
     } catch {
-      toast.error("Refresh could not finish. Existing sales data is still safe.");
+      toast.error(
+        "Refresh could not finish. Existing sales data is still safe."
+      );
     } finally {
       refreshInFlight.current = false;
       setRefreshing(false);
@@ -140,7 +147,7 @@ export default function Today() {
   if (today.isLoading || organisation.isLoading)
     return (
       <DashboardLayout>
-        <div className="grid min-h-[55vh] place-items-center text-[#697386]">
+        <div className="grid min-h-[55vh] place-items-center text-[#667085]">
           <div className="flex items-center gap-3 text-base font-medium">
             <Loader2 className="h-5 w-5 animate-spin" />
             Building your sales day…
@@ -153,10 +160,10 @@ export default function Today() {
     return (
       <DashboardLayout>
         <div className="mx-auto max-w-xl rounded-2xl bg-white p-8 text-center shadow-sm">
-          <h1 className="text-2xl font-semibold text-[#243247]">
+          <h1 className="text-2xl font-semibold text-[#20283A]">
             Your work queue could not be loaded.
           </h1>
-          <p className="mt-2 text-base leading-6 text-[#697386]">
+          <p className="mt-2 text-base leading-6 text-[#667085]">
             Nothing has been changed. Your last synchronized customer data is
             still safe.
           </p>
@@ -170,14 +177,17 @@ export default function Today() {
 
   return (
     <DashboardLayout>
-      <div className="mx-auto max-w-[1180px] space-y-5 text-[#243247]">
+      <div
+        data-today-workspace
+        className="mx-auto max-w-[1220px] space-y-5 text-[#20283A]"
+      >
         <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-base font-medium text-[#788394]">Today</p>
+            <p className="text-base font-medium text-[#7A8497]">Today</p>
             <h1 className="mt-1 text-3xl font-semibold tracking-[-.035em]">
               {current ? `Next: ${current.name}` : "You are caught up."}
             </h1>
-            <p className="mt-1 text-sm text-[#697386]">
+            <p className="mt-1 text-sm text-[#667085]">
               {freshnessLabel(
                 today.data?.freshness.lastSuccessfulAt,
                 today.data?.freshness.status
@@ -211,10 +221,11 @@ export default function Today() {
           </div>
         ) : null}
 
-        <section className="border-y border-[#E2E0DB] py-3">
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-[#697386]">
+        <section data-today-summary className="border-y border-[#E2E0DB] py-3">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-[#667085]">
             <strong className="font-semibold text-[#30353C]">
-              {callQueue.length} {callQueue.length === 1 ? "person" : "people"} to work
+              {callQueue.length} {callQueue.length === 1 ? "person" : "people"}{" "}
+              to work
             </strong>
             <span>{inboundQueue.length} replies</span>
             <span>{newLeads.length} new leads</span>
@@ -237,12 +248,28 @@ export default function Today() {
         </section>
 
         {current ? (
-          <section className="rounded-2xl bg-white p-6 shadow-[0_8px_28px_rgba(38,50,71,.06)] sm:p-7">
+          <section
+            data-today-primary
+            className="rounded-2xl bg-white p-6 shadow-[0_8px_28px_rgba(38,50,71,.06)] sm:p-7"
+          >
             <div className="grid gap-6 lg:grid-cols-[1fr_auto] lg:items-start">
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-[#788394]">
-                  Why this person is next
-                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-semibold text-[#7A8497]">
+                    Why this person is next
+                  </p>
+                  <span data-today-signal>
+                    {current.primaryKind === "inbound_reply"
+                      ? "Customer replied"
+                      : current.primaryKind === "confirmed_follow_up"
+                        ? "Scheduled follow-up"
+                        : current.primaryKind === "overdue_task"
+                          ? "Overdue"
+                          : current.primaryKind === "due_today"
+                            ? "Due today"
+                            : "New lead"}
+                  </span>
+                </div>
                 <h2 className="mt-2 text-3xl font-semibold tracking-[-.035em]">
                   {current.name}
                 </h2>
@@ -250,10 +277,10 @@ export default function Today() {
                   {current.headline}
                 </p>
 
-                <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-sm text-[#697386]">
+                <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-sm text-[#667085]">
                   {current.courseInterest ? (
                     <span>
-                      <strong className="font-semibold text-[#344257]">
+                      <strong className="font-semibold text-[#293145]">
                         Interest:
                       </strong>{" "}
                       {current.courseInterest}
@@ -261,7 +288,7 @@ export default function Today() {
                   ) : null}
                   {current.dueAt ? (
                     <span>
-                      <strong className="font-semibold text-[#344257]">
+                      <strong className="font-semibold text-[#293145]">
                         Due:
                       </strong>{" "}
                       {dateLabel(current.dueAt)}
@@ -270,6 +297,19 @@ export default function Today() {
                   {current.phone ? <span>{current.phone}</span> : null}
                   {current.email ? <span>{current.email}</span> : null}
                 </div>
+
+                {current.interestValues.length || current.tags.length ? (
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {[...current.interestValues, ...current.tags]
+                      .filter(Boolean)
+                      .slice(0, 5)
+                      .map(value => (
+                        <span data-today-tag key={value}>
+                          {value}
+                        </span>
+                      ))}
+                  </div>
+                ) : null}
 
                 {current.reasons.length ? (
                   <div className="mt-5 space-y-1.5 text-base leading-6 text-[#5B687A]">
@@ -317,29 +357,83 @@ export default function Today() {
               </div>
             </div>
 
-            <div className="mt-6 border-t border-[#ECEEF2] pt-4 text-sm text-[#788394]">
+            <div className="mt-6 border-t border-[#ECEEF2] pt-4 text-sm text-[#7A8497]">
               After the conversation, AmarktAI prepares the follow-up and CRM
               admin for Review. You stay focused on the customer.
             </div>
           </section>
         ) : (
-          <section className="rounded-2xl bg-white p-8 text-center shadow-[0_8px_28px_rgba(38,50,71,.05)]">
+          <section
+            data-today-empty
+            className="rounded-2xl bg-white p-8 text-center shadow-[0_8px_28px_rgba(38,50,71,.05)]"
+          >
             <CheckCircle2 className="mx-auto h-8 w-8 text-[#5B8067]" />
             <h2 className="mt-3 text-2xl font-semibold">
               Immediate work is clear.
             </h2>
-            <p className="mx-auto mt-2 max-w-xl text-base leading-6 text-[#697386]">
+            <p className="mx-auto mt-2 max-w-xl text-base leading-6 text-[#667085]">
               Future follow-ups remain scheduled, but nothing needs your
               attention right now.
             </p>
+            {upcoming[0] ? (
+              <div className="mx-auto mt-5 max-w-xl rounded-xl border border-[#E2E5EE] bg-white px-4 py-3 text-left">
+                <p className="text-xs font-semibold uppercase tracking-[.08em] text-[#8A93A5]">
+                  Next protected commitment
+                </p>
+                <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-semibold text-[#293145]">
+                    {upcoming[0].title}
+                  </span>
+                  <span className="text-sm text-[#667085]">
+                    {dateLabel(upcoming[0].dueAt)}
+                  </span>
+                </div>
+              </div>
+            ) : null}
           </section>
         )}
 
+        {upcoming.length ? (
+          <section className="rounded-2xl border border-[#E5E7EE] bg-white/80 px-5 py-4 shadow-[0_8px_24px_rgba(31,39,63,.035)]">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-[#293145]">
+                  Protected schedule
+                </p>
+                <p className="mt-0.5 text-sm text-[#667085]">
+                  Future work stays out of Today until it approaches, but
+                  AmarktAI is already watching it.
+                </p>
+              </div>
+              <span className="rounded-full bg-[#EEEFFF] px-3 py-1 text-xs font-semibold text-[#5558C9]">
+                {upcoming.length} upcoming
+              </span>
+            </div>
+            <div className="mt-3 grid gap-2 md:grid-cols-2">
+              {upcoming.slice(0, 4).map(item => (
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between gap-3 rounded-xl bg-[#F8F9FC] px-3 py-2.5"
+                >
+                  <span className="min-w-0 truncate text-sm font-medium text-[#3F485C]">
+                    {item.title}
+                  </span>
+                  <span className="shrink-0 text-xs text-[#7A8497]">
+                    {dateLabel(item.dueAt)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
         {callQueue.length > 1 ? (
-          <section>
+          <section data-today-queue>
             <div className="mb-2 flex items-center justify-between">
-              <h2 className="text-base font-semibold text-[#344257]">Up next</h2>
-              <span className="text-sm text-[#8992A0]">
+              <h2 className="text-base font-semibold text-[#293145]">
+                Up next
+              </h2>
+              <span className="text-sm text-[#8A93A5]">
                 {callQueue.length - 1} remaining
               </span>
             </div>
@@ -362,12 +456,14 @@ export default function Today() {
                       <span className="block truncate text-base font-semibold text-[#2F3D52]">
                         {item.name}
                       </span>
-                      <span className="mt-0.5 block truncate text-sm text-[#6E7888]">
-                        {item.headline}
+                      <span className="mt-0.5 block truncate text-sm text-[#707A8F]">
+                        {item.courseInterest
+                          ? item.headline + " · " + item.courseInterest
+                          : item.headline}
                       </span>
                     </span>
                     {item.dueAt ? (
-                      <span className="hidden shrink-0 text-sm text-[#8A93A0] md:block">
+                      <span className="hidden shrink-0 text-sm text-[#8A93A5] md:block">
                         {dateLabel(item.dueAt)}
                       </span>
                     ) : null}

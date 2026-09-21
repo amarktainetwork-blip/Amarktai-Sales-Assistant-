@@ -3,17 +3,11 @@ import { BrandMark } from "@/components/BrandMark";
 import { startLogin } from "@/const";
 import { friendlyError } from "@/lib/friendlyError";
 import { trpc } from "@/lib/trpc";
-import {
-  ArrowRight,
-  ChevronLeft,
-  MailCheck,
-  UserPlus,
-} from "lucide-react";
+import { MarketingArtwork } from "@/marketing/MarketingArtwork";
+import { ArrowRight, ChevronLeft, MailCheck, UserPlus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation, useSearch } from "wouter";
-
-const AUTH_VISUAL = "/images/people/thenikscape-ai-generated-9586971_1920.jpg";
 
 export default function Auth() {
   const search = useSearch();
@@ -84,10 +78,9 @@ export default function Auth() {
   return (
     <main className={`amk-auth${isRegister ? " amk-auth--register" : ""}`}>
       <section className="amk-auth__visual">
-        <img
-          src={AUTH_VISUAL}
-          alt="AmarktAI sales workspace showing customer context and guided follow-up"
-        />
+        <div className="amk-auth__scene" aria-hidden="true">
+          <MarketingArtwork variant="workflow" inverse compact />
+        </div>
         <div className="amk-auth__shade" />
         <div className="amk-auth__visual-inner">
           <div className="amk-auth__topline">

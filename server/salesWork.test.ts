@@ -136,6 +136,82 @@ describe("normalized sales work", () => {
     expect(candidates[1]).toMatchObject({ status: "completed" });
   });
 
+  it("retires terminal opportunities instead of surfacing them as active work", () => {
+    for (const stage of [
+      "Not a Fit / Rejected",
+      "Lost – No Show / No Response",
+      "Closed Won",
+      "Enrolled & Paid (Closed Won)",
+    ]) {
+      const [candidate] = deriveCrmWorkCandidates(
+        9,
+        {
+          type: "opportunities",
+          records: [
+            {
+              externalId: `opp-${stage}`,
+              ownerExternalId: "owner-2",
+              contactExternalId: "contact-2",
+              name: "Opportunity",
+              stage,
+              raw: {},
+            },
+          ],
+        },
+        now
+      );
+      expect(candidate).toMatchObject({
+        status: "completed",
+        metadata: { historical: true },
+      });
+    }
+  });
+
+  it("keeps genuinely active opportunities actionable", () => {
+    const [candidate] = deriveCrmWorkCandidates(
+      9,
+      {
+        type: "opportunities",
+        records: [
+          {
+            externalId: "opp-active",
+            ownerExternalId: "owner-2",
+            contactExternalId: "contact-2",
+            name: "Opportunity",
+            stage: "Attempting Contact",
+            raw: { status: "open" },
+          },
+        ],
+      },
+      now
+    );
+    expect(candidate).toMatchObject({
+      type: "OPPORTUNITY_NEEDS_ACTION",
+      status: "open",
+      metadata: { historical: false },
+    });
+  });
+
+  it("trusts normalized closed task state over stale raw open metadata", () => {
+    const [candidate] = deriveCrmWorkCandidates(
+      9,
+      {
+        type: "tasks",
+        records: [
+          {
+            externalId: "task-closed",
+            title: "First Call",
+            status: "closed",
+            dueAt: now,
+            raw: { status: "open" },
+          },
+        ],
+      },
+      now
+    );
+    expect(candidate.status).toBe("completed");
+  });
+
   it("supports the operational work lifecycle and idempotent completion", () => {
     expect(nextSalesWorkStatus("open", "start")).toBe("in_progress");
     expect(nextSalesWorkStatus("in_progress", "snooze")).toBe("snoozed");
