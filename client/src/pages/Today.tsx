@@ -1,22 +1,15 @@
 import { formatOrganisationDate } from "@shared/organisationWorkspace";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { refreshSalesDay } from "@/lib/refreshSalesDay";
 import { trpc } from "@/lib/trpc";
 import {
-  AlarmClock,
   ArrowRight,
-  Bot,
-  CalendarClock,
-  Check,
   CheckCircle2,
-  CircleAlert,
   ClipboardCheck,
   Headphones,
   Loader2,
   Mail,
-  Phone,
   RefreshCw,
   Sparkles,
   UserRound,
@@ -25,24 +18,18 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 
-function inboundCategory(value: unknown) {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? String((value as Record<string, unknown>).category || "")
-    : "";
-}
-
 function freshnessLabel(value?: Date | string | null, status?: string) {
-  if (status === "attention") return "CRM sync needs attention";
-  if (!value) return "CRM has not synchronized yet";
+  if (status === "attention") return "Sync needs attention";
+  if (!value) return "Waiting for first CRM sync";
   const seconds = Math.max(
     0,
     Math.floor((Date.now() - new Date(value).valueOf()) / 1000)
   );
-  if (seconds < 60) return "CRM updated moments ago";
+  if (seconds < 60) return "Updated moments ago";
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60)
-    return `CRM updated ${minutes} minute${minutes === 1 ? "" : "s"} ago`;
-  return "CRM data is available from the last successful sync";
+    return `Updated ${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+  return "Using the last successful CRM sync";
 }
 
 export default function Today() {
@@ -60,52 +47,29 @@ export default function Today() {
     }
   );
   const utils = trpc.useUtils();
-  const [reminder, setReminder] = useState("");
-  const [selected, setSelected] = useState(0);
-  const [showAllQueue, setShowAllQueue] = useState(false);
+  const syncAll = trpc.connectedSystems.syncAll.useMutation();
+  const [showAll, setShowAll] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const refreshInFlight = useRef(false);
-  const syncAll = trpc.connectedSystems.syncAll.useMutation();
 
-  const acknowledgeLead = trpc.sales.workAction.useMutation({
-    onSuccess: async () => {
-      await Promise.all([
-        utils.sales.today.invalidate(),
-        utils.sales.newLeadAlerts.invalidate(),
-      ]);
-    },
-  });
-  const saveReminder = trpc.memory.command.useMutation({
-    onSuccess: () => {
-      setReminder("");
-      void utils.sales.today.invalidate();
-      toast.success("Reminder saved.");
-    },
-    onError: () => toast.error("That reminder could not be saved. Try again."),
-  });
   const startCall = trpc.calls.startLive.useMutation({
     onSuccess: (result, variables) =>
       navigate(
-        `/calls?sessionId=${result.callSessionId}${variables.contactId ? `&contactId=${variables.contactId}` : ""}`
+        `/calls?sessionId=${result.callSessionId}${
+          variables.contactId ? `&contactId=${variables.contactId}` : ""
+        }`
       ),
     onError: () =>
-      toast.error(
-        "The call workspace could not open. Nothing was changed; try again."
-      ),
+      toast.error("The call workspace could not open. Nothing was changed."),
   });
 
   const callQueue = today.data?.queues.callQueue ?? [];
-  const newLeads = today.data?.queues.newLeads ?? [];
   const inboundQueue = today.data?.queues.inbound ?? [];
-  const visibleCallQueue = showAllQueue ? callQueue : callQueue.slice(0, 12);
-  const current = callQueue[selected];
+  const newLeads = today.data?.queues.newLeads ?? [];
+  const current = callQueue[0];
+  const visibleQueue = showAll ? callQueue.slice(1) : callQueue.slice(1, 8);
   const workspace = today.data?.workspace.organisation;
-
-  useEffect(() => {
-    setSelected(index =>
-      callQueue.length ? Math.min(index, callQueue.length - 1) : 0
-    );
-  }, [callQueue.length]);
+  const taskMetrics = today.data?.taskData.metrics;
 
   useEffect(() => {
     if (!organisationId) return;
@@ -126,7 +90,7 @@ export default function Today() {
         });
         if (active && response.ok) await utils.sales.today.invalidate();
       } catch {
-        // The last safe synchronized state remains usable.
+        // Last safe synchronized state remains available.
       }
     })();
     return () => {
@@ -147,57 +111,39 @@ export default function Today() {
         refetchToday: () => today.refetch(),
       });
       if (crmWarning)
-        toast.warning(
-          "Some CRM records could not refresh just now. Existing synchronized data remains available."
-        );
+        toast.warning("CRM refresh was incomplete. Existing data is still safe.");
       else if (mailboxWarning)
-        toast.warning(
-          "Sales data refreshed. Recent replies may take a moment to appear."
-        );
+        toast.warning("Sales data refreshed. Recent replies may take a moment.");
       else toast.success("Your sales day is up to date.");
     } catch {
-      toast.error(
-        "Refresh could not finish. Your existing sales data is still safe."
-      );
+      toast.error("Refresh could not finish. Existing sales data is still safe.");
     } finally {
       refreshInFlight.current = false;
       setRefreshing(false);
     }
   }
 
-  const ask = (prompt: string, contactId?: number) =>
-    navigate(
-      `/assistant?${contactId ? `contactId=${contactId}&` : ""}prompt=${encodeURIComponent(prompt)}`
-    );
-
-  const openLead = (lead: (typeof newLeads)[number], prepare = false) => {
-    const workItemId = lead.workItemIds[0];
-    if (organisationId && workItemId)
-      acknowledgeLead.mutate({
-        organisationId,
-        workItemId,
-        action: "start",
-        transitionKey: `today-new-lead:${workItemId}`,
-      });
-    navigate(
-      prepare
-        ? `/assistant?contactId=${lead.contactId}&prompt=${encodeURIComponent("Prepare me for this new lead. Summarise their course interest, enquiry context and what I should ask on the first call.")}`
-        : `/customers?contactId=${lead.contactId}`
-    );
-  };
-
   const dateLabel = (value?: Date | string | null) =>
     value
       ? formatOrganisationDate(new Date(value), workspace || {})
       : "No due time";
 
+  const openAssistant = () => {
+    if (!current) return navigate("/assistant");
+    navigate(
+      `/assistant?contactId=${current.contactId}&prompt=${encodeURIComponent(
+        "Prepare me for this customer. Tell me why they are next, what matters from the history, what I should ask on the call, and what follow-up will likely be needed."
+      )}`
+    );
+  };
+
   if (today.isLoading || organisation.isLoading)
     return (
       <DashboardLayout>
-        <div className="grid min-h-[55vh] place-items-center text-[#66758A]">
-          <div className="flex items-center gap-3 text-sm font-semibold">
-            <Loader2 className="h-5 w-5 animate-spin text-[#2F6FED]" />
-            Building your call day…
+        <div className="grid min-h-[55vh] place-items-center text-[#697386]">
+          <div className="flex items-center gap-3 text-base font-medium">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            Building your sales day…
           </div>
         </div>
       </DashboardLayout>
@@ -206,20 +152,15 @@ export default function Today() {
   if (today.isError)
     return (
       <DashboardLayout>
-        <div className="mx-auto max-w-xl rounded-3xl border border-[#DCE4EE] bg-white p-8 text-center text-[#26354A] shadow-sm">
-          <CircleAlert className="mx-auto h-7 w-7 text-amber-600" />
-          <h1 className="mt-4 font-display text-3xl font-bold tracking-[-.05em]">
+        <div className="mx-auto max-w-xl rounded-2xl bg-white p-8 text-center shadow-sm">
+          <h1 className="text-2xl font-semibold text-[#243247]">
             Your work queue could not be loaded.
           </h1>
-          <p className="mt-3 text-sm leading-6 text-[#66758A]">
+          <p className="mt-2 text-base leading-6 text-[#697386]">
             Nothing has been changed. Your last synchronized customer data is
             still safe.
           </p>
-          <Button
-            className="mt-5"
-            disabled={today.isFetching}
-            onClick={() => void today.refetch()}
-          >
+          <Button className="mt-5" onClick={() => void today.refetch()}>
             <RefreshCw className="mr-2 h-4 w-4" />
             Try again
           </Button>
@@ -227,44 +168,127 @@ export default function Today() {
       </DashboardLayout>
     );
 
-  const taskMetrics = today.data?.taskData.metrics;
-  const metrics = today.data?.metrics;
-
   return (
     <DashboardLayout>
-      <div data-today-workspace className="mx-auto max-w-[1280px] space-y-4 text-[#2D3A4E]">
-        <header className="rounded-2xl bg-white px-5 py-4 shadow-[0_6px_24px_rgba(35,49,70,.055)] sm:px-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[10px] font-black uppercase tracking-[.14em] text-[#2F6FED]">
-                  Today
-                </span>
-                <span className="text-xs font-semibold text-[#8290A3]">
-                  {freshnessLabel(
-                    today.data?.freshness.lastSuccessfulAt,
-                    today.data?.freshness.status
-                  )}
-                </span>
+      <div className="mx-auto max-w-[1180px] space-y-5 text-[#243247]">
+        <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-base font-medium text-[#788394]">Today</p>
+            <h1 className="mt-1 text-3xl font-semibold tracking-[-.035em]">
+              {current ? `Next: ${current.name}` : "You are caught up."}
+            </h1>
+            <p className="mt-1 text-sm text-[#697386]">
+              {freshnessLabel(
+                today.data?.freshness.lastSuccessfulAt,
+                today.data?.freshness.status
+              )}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => void refreshDay()}
+              disabled={refreshing}
+            >
+              {refreshing ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-2 h-4 w-4" />
+              )}
+              Refresh
+            </Button>
+            <Button variant="outline" onClick={() => navigate("/reviews")}>
+              <ClipboardCheck className="mr-2 h-4 w-4" />
+              Review
+            </Button>
+          </div>
+        </header>
+
+        {today.data?.requiresOwnerMapping ? (
+          <div className="rounded-xl bg-[#FFF8E8] px-4 py-3 text-base text-[#6E5720]">
+            Your CRM salesperson record needs to be matched before a personal
+            work queue can be shown safely.
+          </div>
+        ) : null}
+
+        <section className="border-y border-[#E2E0DB] py-3">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-[#697386]">
+            <strong className="font-semibold text-[#30353C]">
+              {callQueue.length} {callQueue.length === 1 ? "person" : "people"} to work
+            </strong>
+            <span>{inboundQueue.length} replies</span>
+            <span>{newLeads.length} new leads</span>
+            <span>{taskMetrics?.overdue ?? 0} overdue</span>
+            <span>{taskMetrics?.dueToday ?? 0} due today</span>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-[#7A7F86]">
+            <span className="font-semibold text-[#4B5663]">Today</span>
+            <ArrowRight className="h-3.5 w-3.5" />
+            <span>Context</span>
+            <ArrowRight className="h-3.5 w-3.5" />
+            <span>Call</span>
+            <ArrowRight className="h-3.5 w-3.5" />
+            <span>AmarktAI prepares admin</span>
+            <ArrowRight className="h-3.5 w-3.5" />
+            <span>Review</span>
+            <ArrowRight className="h-3.5 w-3.5" />
+            <span>Next</span>
+          </div>
+        </section>
+
+        {current ? (
+          <section className="rounded-2xl bg-white p-6 shadow-[0_8px_28px_rgba(38,50,71,.06)] sm:p-7">
+            <div className="grid gap-6 lg:grid-cols-[1fr_auto] lg:items-start">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-[#788394]">
+                  Why this person is next
+                </p>
+                <h2 className="mt-2 text-3xl font-semibold tracking-[-.035em]">
+                  {current.name}
+                </h2>
+                <p className="mt-2 text-base leading-6 text-[#4E5C70]">
+                  {current.headline}
+                </p>
+
+                <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-sm text-[#697386]">
+                  {current.courseInterest ? (
+                    <span>
+                      <strong className="font-semibold text-[#344257]">
+                        Interest:
+                      </strong>{" "}
+                      {current.courseInterest}
+                    </span>
+                  ) : null}
+                  {current.dueAt ? (
+                    <span>
+                      <strong className="font-semibold text-[#344257]">
+                        Due:
+                      </strong>{" "}
+                      {dateLabel(current.dueAt)}
+                    </span>
+                  ) : null}
+                  {current.phone ? <span>{current.phone}</span> : null}
+                  {current.email ? <span>{current.email}</span> : null}
+                </div>
+
+                {current.reasons.length ? (
+                  <div className="mt-5 space-y-1.5 text-base leading-6 text-[#5B687A]">
+                    {current.reasons.slice(0, 4).map(reason => (
+                      <p key={reason}>• {reason}</p>
+                    ))}
+                  </div>
+                ) : null}
               </div>
-              <h1 className="mt-1.5 truncate font-display text-2xl font-bold tracking-[-.04em] sm:text-3xl">
-                {current ? `Next: ${current.name}` : "Your priority queue is clear."}
-              </h1>
-              <p className="mt-1 max-w-3xl text-sm text-[#66758A]">
-                {current
-                  ? current.headline
-                  : "No customer work currently needs your attention."}
-              </p>
-            </div>
-            <div className="flex shrink-0 flex-wrap gap-2">
-              {current ? (
-                current.primaryKind === "inbound_reply" ? (
-                  <Button onClick={() => navigate("/inbox")}>
+
+              <div className="flex min-w-[190px] flex-col gap-2">
+                {current.primaryKind === "inbound_reply" ? (
+                  <Button size="lg" onClick={() => navigate("/inbox")}>
                     <Mail className="mr-2 h-4 w-4" />
-                    Open reply
+                    Read reply
                   </Button>
                 ) : (
                   <Button
+                    size="lg"
                     disabled={startCall.isPending}
                     onClick={() =>
                       startCall.mutate({
@@ -274,307 +298,98 @@ export default function Today() {
                     }
                   >
                     <Headphones className="mr-2 h-4 w-4" />
-                    {startCall.isPending ? "Opening…" : "Open call"}
+                    {startCall.isPending ? "Opening…" : "Start call"}
                   </Button>
-                )
-              ) : (
-                <Button onClick={() => navigate("/customers")}>
-                  <UserRound className="mr-2 h-4 w-4" />
-                  Customers
+                )}
+                <Button variant="outline" onClick={openAssistant}>
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  Prepare with AmarktAI
                 </Button>
-              )}
-              <Button variant="outline" onClick={() => navigate("/reviews")}>
-                <ClipboardCheck className="mr-2 h-4 w-4" />
-                Review
-              </Button>
-            </div>
-          </div>
-        </header>
-
-        {today.data?.requiresOwnerMapping ? (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
-            Your CRM salesperson record still needs to be matched before a safe
-            personal work queue can be shown.
-          </div>
-        ) : null}
-
-        <section className="flex flex-wrap items-center gap-x-5 gap-y-2 px-1 text-sm text-[#6F7D8F]">
-          <span className="font-semibold text-[#2D3A4E]">
-            {callQueue.length} {callQueue.length === 1 ? "person" : "people"} need attention
-          </span>
-          <span>{inboundQueue.length} replies</span>
-          <span>{newLeads.length} new leads</span>
-          <span>{taskMetrics?.overdue ?? 0} overdue</span>
-          <span>{taskMetrics?.dueToday ?? 0} due today</span>
-          <button
-            type="button"
-            onClick={() => void refreshDay()}
-            disabled={refreshing}
-            className="ml-auto inline-flex items-center gap-1.5 font-semibold text-[#5577B7] disabled:opacity-50"
-          >
-            {refreshing ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <RefreshCw className="h-3.5 w-3.5" />
-            )}
-            Refresh
-          </button>
-        </section>
-
-        <section className="grid gap-5 xl:grid-cols-[1fr_390px]">
-          <div className="rounded-2xl bg-white shadow-[0_6px_24px_rgba(35,49,70,.06)]">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#EDF0F4] px-5 py-4 sm:px-6">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#2F6FED]">
-                  Priority queue
-                </p>
-                <h2 className="mt-1 font-display text-2xl font-bold tracking-[-.04em]">
-                  Your active work, in priority order.
-                </h2>
+                <Button
+                  variant="ghost"
+                  onClick={() =>
+                    navigate(`/customers?contactId=${current.contactId}`)
+                  }
+                >
+                  <UserRound className="mr-2 h-4 w-4" />
+                  Customer context
+                </Button>
               </div>
-              <span className="rounded-full bg-[#EDF4FF] px-3 py-1 text-xs font-bold text-[#315EA8]">
-                {callQueue.length}{" "}
-                {callQueue.length === 1 ? "person" : "people"}
+            </div>
+
+            <div className="mt-6 border-t border-[#ECEEF2] pt-4 text-sm text-[#788394]">
+              After the conversation, AmarktAI prepares the follow-up and CRM
+              admin for Review. You stay focused on the customer.
+            </div>
+          </section>
+        ) : (
+          <section className="rounded-2xl bg-white p-8 text-center shadow-[0_8px_28px_rgba(38,50,71,.05)]">
+            <CheckCircle2 className="mx-auto h-8 w-8 text-[#5B8067]" />
+            <h2 className="mt-3 text-2xl font-semibold">
+              Immediate work is clear.
+            </h2>
+            <p className="mx-auto mt-2 max-w-xl text-base leading-6 text-[#697386]">
+              Future follow-ups remain scheduled, but nothing needs your
+              attention right now.
+            </p>
+          </section>
+        )}
+
+        {callQueue.length > 1 ? (
+          <section>
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="text-base font-semibold text-[#344257]">Up next</h2>
+              <span className="text-sm text-[#8992A0]">
+                {callQueue.length - 1} remaining
               </span>
             </div>
-
-            {callQueue.length ? (
-              <div className="divide-y divide-[#F0F2F5]">
-                {visibleCallQueue.map((item, index) => (
+            <div className="overflow-hidden rounded-2xl bg-white shadow-[0_6px_22px_rgba(38,50,71,.045)]">
+              {visibleQueue.map((item, offset) => {
+                const index = offset + 1;
+                return (
                   <button
                     key={item.key}
                     type="button"
-                    onClick={() => setSelected(index)}
-                    className={`flex w-full items-center gap-4 px-5 py-4 text-left transition sm:px-6 ${
-                      index === selected
-                        ? "bg-[#F4F6F8]"
-                        : "bg-white hover:bg-[#FAFBFC]"
-                    }`}
+                    onClick={() =>
+                      navigate(`/customers?contactId=${item.contactId}`)
+                    }
+                    className="flex w-full items-center gap-4 border-b border-[#F0F2F4] px-5 py-3.5 text-left last:border-b-0 hover:bg-[#FAFBFC]"
                   >
-                    <span
-                      className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl text-sm font-black ${
-                        index === selected
-                          ? "bg-[#5F708A] text-white"
-                          : "bg-[#F0F2F5] text-[#5F708A]"
-                      }`}
-                    >
+                    <span className="w-6 shrink-0 text-sm font-medium text-[#9AA2AE]">
                       {index + 1}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="flex flex-wrap items-center gap-2">
-                        <span className="truncate font-bold text-[#26354A]">
-                          {item.name}
-                        </span>
-                        {item.workCount > 1 ? (
-                          <span className="rounded-full bg-[#EFF2F6] px-2 py-0.5 text-[10px] font-bold text-[#617085]">
-                            {item.workCount} items
-                          </span>
-                        ) : null}
-                        {item.primaryKind === "new_lead" ? (
-                          <span className="rounded-full bg-[#2F6FED] px-2 py-0.5 text-[10px] font-black uppercase tracking-[.08em] text-white">
-                            New lead
-                          </span>
-                        ) : null}
+                      <span className="block truncate text-base font-semibold text-[#2F3D52]">
+                        {item.name}
                       </span>
-                      <span className="mt-1 block truncate text-sm text-[#5D6E83]">
+                      <span className="mt-0.5 block truncate text-sm text-[#6E7888]">
                         {item.headline}
                       </span>
-                      <span className="mt-1 block text-xs text-[#8290A3]">
-                        {item.reasons.join(" · ")}
-                        {item.dueAt ? ` · ${dateLabel(item.dueAt)}` : ""}
-                      </span>
                     </span>
-                    <ArrowRight className="h-4 w-4 shrink-0 text-[#8A99AB]" />
+                    {item.dueAt ? (
+                      <span className="hidden shrink-0 text-sm text-[#8A93A0] md:block">
+                        {dateLabel(item.dueAt)}
+                      </span>
+                    ) : null}
+                    <ArrowRight className="h-4 w-4 shrink-0 text-[#A3AAB4]" />
                   </button>
-                ))}
-                {callQueue.length > 12 ? (
-                  <div className="flex justify-center border-t border-[#EDF1F5] bg-[#FAFCFF] px-5 py-3">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setShowAllQueue(value => {
-                          if (value && selected >= 12) setSelected(0);
-                          return !value;
-                        });
-                      }}
-                    >
-                      {showAllQueue
-                        ? "Show priority view"
-                        : `Show all ${callQueue.length} people`}
-                    </Button>
-                  </div>
-                ) : null}
-              </div>
-            ) : (
-              <div className="p-8 text-center">
-                <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-600" />
-                <h3 className="mt-3 font-display text-2xl font-bold">
-                  Immediate queue clear.
-                </h3>
-                <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[#66758A]">
-                  No overdue tasks, due-today customer tasks or actionable
-                  replies are waiting right now. Future work remains scheduled
-                  without cluttering today.
-                </p>
-              </div>
-            )}
-          </div>
-
-          <aside className="rounded-2xl bg-white p-5 shadow-[0_6px_24px_rgba(35,49,70,.06)] sm:p-6">
-            <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#2F6FED]">
-              Next person
-            </p>
-            {current ? (
-              <>
-                <h2 className="mt-3 font-display text-3xl font-bold tracking-[-.05em]">
-                  {current.name}
-                </h2>
-                <p className="mt-2 text-sm font-semibold text-[#526277]">
-                  {current.headline}
-                </p>
-                {current.courseInterest ? (
-                  <p className="mt-2 rounded-xl bg-[#EDF4FF] px-3 py-2 text-sm font-bold text-[#315EA8]">
-                    Course interest: {current.courseInterest}
-                  </p>
-                ) : null}
-                <div className="mt-4 space-y-2 rounded-2xl bg-[#F7F9FC] p-4 text-sm text-[#526277]">
-                  {current.reasons.map((reason: string) => (
-                    <p key={reason}>• {reason}</p>
-                  ))}
-                  {current.dueAt ? (
-                    <p>• Due {dateLabel(current.dueAt)}</p>
-                  ) : null}
-                </div>
-                <div className="mt-4 grid gap-2 text-sm">
-                  {current.phone ? (
-                    <a
-                      href={`tel:${current.phone}`}
-                      className="flex items-center gap-2 rounded-xl border border-[#DCE4EE] px-3 py-2 font-semibold text-[#40536B]"
-                    >
-                      <Phone className="h-4 w-4 text-[#2F6FED]" />
-                      {current.phone}
-                    </a>
-                  ) : null}
-                  {current.email ? (
-                    <div className="flex items-center gap-2 rounded-xl border border-[#DCE4EE] px-3 py-2 font-semibold text-[#40536B]">
-                      <Mail className="h-4 w-4 text-[#2F6FED]" />
-                      <span className="truncate">{current.email}</span>
-                    </div>
-                  ) : null}
-                </div>
-                <div className="mt-5 grid gap-2">
-                  {current.primaryKind === "inbound_reply" ? (
-                    <Button onClick={() => navigate("/inbox")}>
-                      <Mail className="mr-2 h-4 w-4" />
-                      Read customer reply
-                    </Button>
-                  ) : (
-                    <Button
-                      disabled={startCall.isPending}
-                      onClick={() =>
-                        startCall.mutate({
-                          leadLabel: current.name,
-                          contactId: current.contactId,
-                        })
-                      }
-                    >
-                      <Headphones className="mr-2 h-4 w-4" />
-                      Open call companion
-                    </Button>
-                  )}
-                  <Button
-                    variant="outline"
-                    onClick={() =>
-                      ask(
-                        current.primaryKind === "inbound_reply"
-                          ? `Prepare a reply to ${current.name}. Use their latest inbound message and CRM history, explain what matters commercially, and draft the response without sending it.`
-                          : `Prepare me for my call with ${current.name}. Summarise what matters, what I need to ask, and the likely next step.`,
-                        current.contactId
-                      )
-                    }
-                  >
-                    <Bot className="mr-2 h-4 w-4" />
-                    Prepare with AmarktAI
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    onClick={() =>
-                      navigate(`/customers?contactId=${current.contactId}`)
-                    }
-                  >
-                    <UserRound className="mr-2 h-4 w-4" />
-                    Open customer context
-                  </Button>
-                </div>
-              </>
-            ) : (
-              <div className="mt-5 rounded-2xl bg-[#F7F9FC] p-5 text-sm leading-6 text-[#66758A]">
-                Your immediate queue is clear. Search Customers when you want to
-                work a specific person or ask AmarktAI who deserves proactive
-                attention.
-              </div>
-            )}
-          </aside>
-        </section>
-
-        {today.data?.paymentReview.enabled ? (
-          <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-950">
-            <strong>Manual payment check required.</strong> Payment source
-            verification is not automated yet.{" "}
-            {today.data.paymentReview.candidates.length} synchronized
-            opportunities are in a configured pending-payment stage. Confirm
-            payment in the source before preparing any stage change.
+                );
+              })}
+              {callQueue.length > 8 ? (
+                <button
+                  type="button"
+                  onClick={() => setShowAll(value => !value)}
+                  className="w-full px-5 py-3 text-center text-sm font-semibold text-[#596B84] hover:bg-[#FAFBFC]"
+                >
+                  {showAll
+                    ? "Show priority view"
+                    : `Show all ${callQueue.length} people`}
+                </button>
+              ) : null}
+            </div>
           </section>
         ) : null}
-
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#DCE4EE] bg-[#F8FAFD] px-4 py-3 text-xs text-[#66758A]">
-          <span>
-            Future follow-ups stay scheduled and return here automatically when
-            they are due.
-          </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={refreshing}
-            onClick={() => void refreshDay()}
-          >
-            {refreshing ? (
-              <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <RefreshCw className="mr-2 h-3.5 w-3.5" />
-            )}
-            Refresh sales day
-          </Button>
-        </div>
       </div>
     </DashboardLayout>
-  );
-}
-
-function Metric({
-  icon: Icon,
-  label,
-  value,
-  note,
-}: {
-  icon: typeof AlarmClock;
-  label: string;
-  value: number;
-  note: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-[#DCE4EE] bg-white p-5 shadow-sm">
-      <div className="flex items-center justify-between gap-3">
-        <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#EDF3FF] text-[#2F6FED]">
-          <Icon className="h-4 w-4" />
-        </span>
-        <span className="font-display text-3xl font-bold tracking-[-.04em]">
-          {value}
-        </span>
-      </div>
-      <p className="mt-3 text-sm font-bold text-[#40536B]">{label}</p>
-      <p className="mt-1 text-xs leading-5 text-[#8290A3]">{note}</p>
-    </div>
   );
 }

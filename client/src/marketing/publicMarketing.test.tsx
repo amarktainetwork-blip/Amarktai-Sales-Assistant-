@@ -15,7 +15,7 @@ import NotFound from "@/pages/NotFound";
 import { AI_CREDIT_ECONOMICS, PRICING_PLANS } from "@shared/pricing";
 
 const pages = [
-  ["/", HomePage, "Sell with more confidence."],
+  ["/", HomePage, "Get hours of your sales day back."],
   ["/how-it-works", HowItWorksPage, "Keep your CRM. Make the sales work around it easier."],
   ["/pricing", Pricing, "SIMPLE PRICING IN SOUTH AFRICAN RAND"],
   ["/about", AboutPage, "WHY AMARKTAI"],
@@ -81,11 +81,12 @@ describe("final public website", () => {
     expect(home).toContain("amk-photo-frame");
   });
 
-  it("leads with the conversion message and keeps the sales loop on the homepage", () => {
+  it("leads with the time-back promise and makes clear this is not another CRM", () => {
     const html = render("/", HomePage);
-    expect(html).toContain("Sell with more confidence.");
+    expect(html).toContain("Get hours of your sales day back.");
+    expect(html).toContain("Not another CRM");
     expect(html).toContain("Keep the CRM you already trust");
-    expect(html).toContain("ONE ASSISTANT ACROSS THE SALES LOOP");
+    expect(html).toContain("ONE ASSISTANT ACROSS THE ENTIRE SALES DAY");
     expect(html).toContain("Start free");
     expect(html).toContain("Book a demo");
   });
@@ -166,7 +167,7 @@ describe("final public website", () => {
     expect(css).not.toContain(".amk-auth");
     expect(readFileSync(path.resolve(process.cwd(), "client/src/index.css"), "utf8")).toContain(".amk-auth");
     expect(css).toContain(".amk-photo-frame");
-    expect(css).toContain("--navy: #10233d");
+    expect(css).toContain("--navy: #2e3944");
     expect(existsSync(path.resolve(process.cwd(), "client/src/pages/final-auth.css"))).toBe(false);
     expect(existsSync(path.resolve(process.cwd(), "client/src/marketing/visual-handover.css"))).toBe(false);
 
@@ -178,6 +179,6 @@ describe("final public website", () => {
     const dashboardCss = readFileSync(path.resolve(process.cwd(), "client/src/dashboard-final.css"), "utf8");
     expect(dashboardCss).toContain("One logged-in visual system");
     expect(dashboardCss).toContain('body:has([data-slot="sidebar-wrapper"])');
-    expect(dashboardCss).toContain("--dash-blue: #2f6fed");
+    expect(dashboardCss).toContain("--dash-blue: #526d9d");
   });
 });

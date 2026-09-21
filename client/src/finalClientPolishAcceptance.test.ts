@@ -12,9 +12,12 @@ describe("final client-facing handover polish", () => {
     expect(app).not.toContain("handover-final.css");
   });
 
-  it("uses one auth shell with form priority on laptops", () => {
+  it("uses one auth shell with a true 50/50 image split on laptops", () => {
     const css = read("index.css");
-    expect(css).toContain("@media (min-width: 1440px) and (min-height: 900px)");
+    expect(css).toContain("@media (min-width: 900px)");
+    expect(css).toContain(
+      "grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);"
+    );
     expect(css).toMatch(/\.amk-auth__visual\s*\{\s*display: none/);
     expect(css).toMatch(/\.amk-auth\.fixed\s*\{[^}]*overflow-y: auto/);
     expect(css).not.toContain("color: #ffffff !important");
@@ -53,6 +56,15 @@ describe("final client-facing handover polish", () => {
     expect(read("dashboard-final.css")).not.toContain(
       "display: none !important"
     );
+  });
+
+  it("returns signed-out workspace users to the public home page", () => {
+    const layout = read("components/DashboardLayout.tsx");
+    const app = read("App.tsx");
+    expect(layout).toContain('window.location.replace("/")');
+    expect(layout).toContain('window.location.assign("/")');
+    expect(layout).not.toContain("function SignedOut()");
+    expect(app).toContain('navigate("/", { replace: true })');
   });
 
   it("moves dashboard copyright into the sidebar footer", () => {

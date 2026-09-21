@@ -14,7 +14,12 @@ import {
 import { getCrmAdapter } from "./adapterRegistry";
 import { connectedSystemHasActiveCommissioning } from "./backgroundReadCommissioningGuard";
 import { assertPersonalBrowserOwnerScope } from "./personalOwnerScope";
-import { existingContactIds, upsertContacts } from "./sync";
+import {
+  existingContactIds,
+  reconcileNewLeadAlertsFromTaskHistory,
+  refreshActiveCustomerSourceTruth,
+  upsertContacts,
+} from "./sync";
 import { upsertSalesWorkFromCrm } from "../salesWork";
 import { isTransientBrowserExecutionFailure } from "../browserConnectors/runtimeFailure";
 
@@ -98,6 +103,9 @@ export async function runNewLeadWatchCycle(now = new Date()) {
   let checked = 0;
   let latestPageRecords = 0;
   let newLeads = 0;
+  let workedLeadsRetired = 0;
+  let taskCompletedLeadsRetired = 0;
+  let historyChecked = 0;
   let deferred = 0;
   let failed = 0;
   for (const system of systems) {
@@ -155,6 +163,27 @@ export async function runNewLeadWatchCycle(now = new Date()) {
           contactBaseline: { baselineComplete, existingExternalIds },
         });
         newLeads += candidates.filter(candidate => candidate.type === "NEW_LEAD").length;
+
+        const taskReconciliation =
+          await reconcileNewLeadAlertsFromTaskHistory({
+            userId,
+            organisationId: system.organisationId,
+            connectedSystemId: system.id,
+          });
+        taskCompletedLeadsRetired += taskReconciliation;
+
+        const historyReconciliation =
+          await refreshActiveCustomerSourceTruth({
+            userId,
+            organisationId: system.organisationId,
+            connectedSystemId: system.id,
+            adapter,
+            connection,
+            secret,
+            now,
+          });
+        historyChecked += historyReconciliation.checked;
+        workedLeadsRetired += historyReconciliation.resolvedNewLeads;
       } catch (error) {
         if (leadWatchFailureIsDeferral(error)) {
           deferred += 1;
@@ -175,7 +204,16 @@ export async function runNewLeadWatchCycle(now = new Date()) {
     }
   }
 
-  return { checked, latestPageRecords, newLeads, deferred, failed };
+  return {
+    checked,
+    latestPageRecords,
+    newLeads,
+    historyChecked,
+    workedLeadsRetired,
+    taskCompletedLeadsRetired,
+    deferred,
+    failed,
+  };
 }
 export function startNewLeadWatcher(
   intervalMs = newLeadPollIntervalMs(),

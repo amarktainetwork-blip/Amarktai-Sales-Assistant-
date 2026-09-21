@@ -515,6 +515,7 @@ export async function getTodayWork(input: {
     };
   });
   const callQueue = buildTodayCallQueue({
+    now,
     newLeads: newLeadWork.map(item => ({
       workItemId: item.id,
       connectedSystemId: item.connectedSystemId!,

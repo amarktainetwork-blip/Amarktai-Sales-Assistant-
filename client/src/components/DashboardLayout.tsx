@@ -20,10 +20,12 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
-import { startLogin } from "@/const";
 import { trpc } from "@/lib/trpc";
+import { timedWorkAttention } from "@/lib/timedWorkAttention";
 import {
   Building2,
+  AlertTriangle,
+  CalendarClock,
   Cable,
   ClipboardCheck,
   ContactRound,
@@ -59,6 +61,7 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const [location, navigate] = useLocation();
+  const [clock, setClock] = useState(() => Date.now());
   const { loading, user, logout, error: authError, refresh } = useAuth();
   const security = trpc.security.status.useQuery(undefined, {
     enabled: Boolean(user),
@@ -96,13 +99,22 @@ export default function DashboardLayout({
       refetchIntervalInBackground: true,
     }
   );
+  const dayPulse = trpc.sales.today.useQuery(
+    { organisationId: organisationId ?? 0 },
+    {
+      enabled: Boolean(user && security.data?.verified && organisationId),
+      retry: false,
+      refetchInterval: 30_000,
+      refetchIntervalInBackground: true,
+    }
+  );
   const connectedSystems = trpc.connectedSystems.list.useQuery(
     { organisationId: organisationId ?? 0 },
     {
-      enabled: Boolean(
-        user && security.data?.verified && canManage && organisationId
-      ),
+      enabled: Boolean(user && security.data?.verified && organisationId),
       retry: false,
+      refetchInterval: 30_000,
+      refetchIntervalInBackground: true,
     }
   );
   const integrationReadiness = trpc.integrations.list.useQuery(undefined, {
@@ -141,8 +153,27 @@ export default function DashboardLayout({
     connectedSystems.data,
     connectedSystems.isSuccess
   );
+  const crmProblem = connectedSystems.data?.find(system =>
+    [
+      "authentication_expired",
+      "needs_attention",
+      "limited_permissions",
+      "error",
+    ].includes(system.status)
+  );
+  const timedAttention = useMemo(
+    () => timedWorkAttention(dayPulse.data?.queues.callQueue ?? [], clock),
+    [clock, dayPulse.data?.queues.callQueue]
+  );
+  const dueAttention = timedAttention?.item;
+  const dueAttentionPhase = timedAttention?.phase ?? "soon";
   // Completed onboarding is durable; runtime CRM health is shown separately.
   const setupComplete = storedCompanyComplete;
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setClock(Date.now()), 15_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (
@@ -228,6 +259,52 @@ export default function DashboardLayout({
     }
   }, [inbox.data?.messages, organisationId, navigate]);
 
+  useEffect(() => {
+    if (!organisationId || !dueAttention?.dueAt) return;
+    try {
+      const dueAt = new Date(dueAttention.dueAt);
+      const key = `amarktai:timed-work-notified:${organisationId}:${dueAttention.key}:${dueAt.toISOString()}:${dueAttentionPhase}`;
+      if (localStorage.getItem(key)) return;
+      const minutes = Math.max(
+        0,
+        Math.ceil((dueAt.valueOf() - Date.now()) / 60_000)
+      );
+      const dueNow = dueAttentionPhase === "due";
+      const title = dueNow
+        ? `${dueAttention.name} is due now`
+        : `${dueAttention.name} is due in ${minutes} minute${minutes === 1 ? "" : "s"}`;
+      toast.info(title, {
+        description: dueAttention.headline,
+        action: { label: "Open Today", onClick: () => navigate("/today") },
+        duration: dueNow ? 20_000 : 12_000,
+      });
+      if (
+        typeof window !== "undefined" &&
+        "Notification" in window &&
+        Notification.permission === "granted"
+      ) {
+        new Notification(
+          dueNow
+            ? "AmarktAI · Sales task due now"
+            : "AmarktAI · Upcoming sales task",
+          {
+            body: dueNow
+              ? `${dueAttention.name}: ${dueAttention.headline}`
+              : `${dueAttention.name}: ${dueAttention.headline} · due in ${minutes} minute${minutes === 1 ? "" : "s"}`,
+          }
+        );
+      }
+      localStorage.setItem(key, "1");
+    } catch {
+      // The persistent Today queue remains the source of truth.
+    }
+  }, [
+    dueAttention,
+    dueAttentionPhase,
+    navigate,
+    organisationId,
+  ]);
+
   const secondaryMenu = useMemo<NavItem[]>(() => {
     if (!canManage) return [];
     return [
@@ -254,7 +331,7 @@ export default function DashboardLayout({
         </Button>
       </div>
     );
-  if (!user) return <SignedOut />;
+  if (!user) return <HomeRedirect />;
   if (!security.data?.verified)
     return (
       <SecondFactorGate
@@ -293,12 +370,12 @@ export default function DashboardLayout({
       (location === "/company-setup" && profileConfirmed));
 
   return (
-    <SidebarProvider>
+    <SidebarProvider className="sales-workspace">
       <Sidebar
         collapsible="icon"
-        className="amarktai-dashboard-sidebar border-r border-[#DCE4EE] bg-white text-[#26354A]"
+        className="amarktai-dashboard-sidebar bg-[#FAFBFC] text-[#2F3D52]"
       >
-        <SidebarHeader className="h-[82px] justify-center border-b border-[#E5EAF0] px-5">
+        <SidebarHeader className="h-[72px] justify-center px-5">
           <BrandMark />
         </SidebarHeader>
         <SidebarContent className="px-3 py-4">
@@ -311,7 +388,7 @@ export default function DashboardLayout({
             }
           />
 
-          <p className="mt-5 px-2 text-[10px] font-black uppercase tracking-[.14em] text-[#9AA6B5] group-data-[collapsible=icon]:hidden">
+          <p className="mt-5 px-2 text-xs font-semibold text-[#89909A] group-data-[collapsible=icon]:hidden">
             Daily flow
           </p>
           <SidebarMenu className="mt-2 gap-1">
@@ -329,7 +406,7 @@ export default function DashboardLayout({
           </SidebarMenu>
 
           {secondaryMenu.length ? (
-            <SidebarMenu className="mt-4 gap-1 border-t border-[#E7ECF2] pt-4">
+            <SidebarMenu className="mt-5 gap-1 pt-2">
               {secondaryMenu.map(item => (
                 <AppNavItem key={item.path} {...item} />
               ))}
@@ -337,27 +414,29 @@ export default function DashboardLayout({
           ) : null}
         </SidebarContent>
 
-        <SidebarFooter className="border-t border-[#E5EAF0] p-3">
+        <SidebarFooter className="p-3">
           <div className="flex items-center gap-2 px-1 py-1">
-            <Avatar className="size-9 shrink-0 border border-[#D5DEEA] bg-[#EAF1FF] group-data-[collapsible=icon]:hidden">
-              <AvatarFallback className="bg-[#EAF1FF] text-xs font-bold text-[#2F6FED]">
+            <Avatar className="size-9 shrink-0 bg-[#ECEFF3] group-data-[collapsible=icon]:hidden">
+              <AvatarFallback className="bg-[#ECEFF3] text-xs font-bold text-[#526174]">
                 {user.name?.slice(0, 1).toUpperCase() ?? "A"}
               </AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
-              <p className="truncate text-sm font-bold text-[#26354A]">
+              <p className="truncate text-sm font-semibold text-[#343A42]">
                 {user.name || "AmarktAI user"}
               </p>
-              <p className="truncate text-[11px] text-[#7B8798]">
+              <p className="truncate text-xs text-[#7C838C]">
                 {user.email || "Sales workspace"}
               </p>
             </div>
             <button
               type="button"
-              onClick={logout}
+              onClick={() => {
+                void logout().finally(() => window.location.assign("/"));
+              }}
               aria-label="Sign out"
               title="Sign out"
-              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-[#D7E0EA] bg-white px-2.5 text-xs font-semibold text-[#607086] transition hover:border-[#AFC1D8] hover:bg-[#F5F8FC] hover:text-[#26354A]"
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-transparent px-2.5 text-xs font-semibold text-[#748092] transition hover:bg-[#ECEFF3] hover:text-[#2F3D52]"
             >
               <LogOut className="size-4" />
               <span className="group-data-[collapsible=icon]:hidden">
@@ -368,19 +447,79 @@ export default function DashboardLayout({
         </SidebarFooter>
       </Sidebar>
 
-      <SidebarInset className="bg-[#F4F7FA]">
-        <AppTopbar title={pageTitle(location)} />
-        <main className="min-h-[calc(100vh-58px)] p-4 sm:p-5 lg:p-6">
+      <SidebarInset className="bg-[#F3F2EF]">
+        <AppTopbar />
+        <main className="min-h-[calc(100vh-46px)] px-4 pb-6 pt-1 sm:px-6 lg:px-8">
+          {dueAttention?.dueAt ? (
+            <div
+              role="status"
+              className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[#ECEBE6] px-4 py-3 text-sm text-[#3F454D]"
+            >
+              <div className="flex min-w-0 items-center gap-3">
+                <CalendarClock className="h-4 w-4 shrink-0 text-[#6B746E]" />
+                <span className="min-w-0">
+                  <strong className="font-semibold">{dueAttention.name}</strong>
+                  {" · "}
+                  {dueAttention.headline}
+                  {" · "}
+                  {dueAttentionPhase === "due"
+                    ? "due now"
+                    : `due in ${Math.max(
+                        0,
+                        Math.ceil(
+                          (new Date(dueAttention.dueAt).valueOf() - clock) /
+                            60_000
+                        )
+                      )} min`}
+                </span>
+              </div>
+              <Button size="sm" variant="ghost" onClick={() => navigate("/today")}>
+                Open Today
+              </Button>
+            </div>
+          ) : null}
+
+          {storedCompanyComplete && crmAttention && crmProblem ? (
+            <div
+              role="status"
+              className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[#F1EDE4] px-4 py-3 text-sm text-[#5D5341]"
+            >
+              <div className="flex min-w-0 items-center gap-3">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-[#8A7653]" />
+                <span>
+                  {crmProblem.status === "authentication_expired"
+                    ? "The CRM sign-in has expired. Fresh CRM changes are paused until the connection is restored."
+                    : "The CRM connection needs attention. AmarktAI is keeping the last safe synchronized data available."}
+                </span>
+              </div>
+              {canManage ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => navigate("/connections")}
+                >
+                  {crmProblem.status === "authentication_expired"
+                    ? "Sign in again"
+                    : "Check CRM"}
+                </Button>
+              ) : (
+                <span className="text-xs font-medium">
+                  Ask your manager to reconnect the company CRM.
+                </span>
+              )}
+            </div>
+          ) : null}
+
           {canManage &&
           !setupComplete &&
           location !== "/company-setup" &&
           !location.startsWith("/crm") ? (
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-950 shadow-sm">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[#F1EDE4] px-4 py-3 text-sm font-medium text-[#5D5341]">
               <span>
                 Finish company setup to bring your knowledge and CRM into the
                 workspace.
               </span>
-              <Button size="sm" onClick={() => navigate("/company-setup")}>
+              <Button size="sm" variant="ghost" onClick={() => navigate("/company-setup")}>
                 Continue setup
               </Button>
             </div>
@@ -390,21 +529,6 @@ export default function DashboardLayout({
               <ManagementElevation
                 showBrowserCommissioning={location === "/connections"}
               />
-            </div>
-          ) : null}
-          {storedCompanyComplete && crmAttention && location === "/today" ? (
-            <div
-              role="status"
-              className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs font-semibold text-amber-950"
-            >
-              <span>CRM sync needs attention. Existing synchronized work remains available.</span>
-              <button
-                type="button"
-                onClick={() => navigate("/crm")}
-                className="font-bold underline underline-offset-2"
-              >
-                Check CRM
-              </button>
             </div>
           ) : null}
           {children}
@@ -447,27 +571,11 @@ function WorkspaceSetupPending() {
   );
 }
 
-function SignedOut() {
-  return (
-    <div className="grid min-h-screen place-items-center bg-[#F5F7FA] p-5 text-[#26354A]">
-      <div className="w-full max-w-md rounded-2xl border border-[#DCE2E9] bg-white p-7 shadow-sm">
-        <BrandMark />
-        <h1 className="mt-8 text-3xl font-bold tracking-[-.04em]">
-          Sign in to your sales workspace.
-        </h1>
-        <p className="mt-3 leading-6 text-[#6C798B]">
-          Your customers, calls, priorities, follow-ups and connected CRM
-          context live here with AmarktAI.
-        </p>
-        <Button
-          onClick={() => startLogin()}
-          className="mt-6 h-12 w-full rounded-xl bg-[#3F70D8] font-bold text-white hover:bg-[#315BB6]"
-        >
-          Sign in
-        </Button>
-      </div>
-    </div>
-  );
+function HomeRedirect() {
+  useEffect(() => {
+    window.location.replace("/");
+  }, []);
+  return <DashboardLayoutSkeleton />;
 }
 
 function SecondFactorGate({
@@ -678,10 +786,10 @@ function AppNavItem({ icon: Icon, label, path, badge }: NavItem) {
         onClick={() => setLocation(path)}
         tooltip={label}
         aria-label={label}
-        className={`h-11 rounded-lg px-3 transition-all ${
+        className={`h-11 rounded-lg px-3 transition-colors ${
           active
-            ? "bg-[#EAF1FF] text-[#2459C2] hover:bg-[#E3ECFF] hover:text-[#2459C2]"
-            : "text-[#607086] hover:bg-[#F2F5F8] hover:text-[#26354A]"
+            ? "bg-[#ECEFF3] text-[#2F3D52] hover:bg-[#ECEFF3] hover:text-[#2F3D52]"
+            : "text-[#687587] hover:bg-[#F0F2F5] hover:text-[#2F3D52]"
         }`}
       >
         <Icon className="size-[18px]" />
@@ -689,7 +797,7 @@ function AppNavItem({ icon: Icon, label, path, badge }: NavItem) {
           {label}
         </span>
         {badge && badge > 0 ? (
-          <span className="ml-auto rounded-full bg-[#2F6FED] px-2 py-0.5 text-[10px] font-black text-white group-data-[collapsible=icon]:hidden">
+          <span className="ml-auto rounded-full bg-[#5E6D80] px-2 py-0.5 text-[10px] font-bold text-white group-data-[collapsible=icon]:hidden">
             {badge > 99 ? "99+" : badge}
           </span>
         ) : null}
@@ -698,11 +806,10 @@ function AppNavItem({ icon: Icon, label, path, badge }: NavItem) {
   );
 }
 
-function AppTopbar({ title }: { title: string }) {
+function AppTopbar() {
   return (
-    <header className="flex h-[58px] items-center gap-3 border-b border-[#DCE2E9] bg-white px-3 sm:px-5">
-      <SidebarTrigger className="rounded-lg text-[#26354A] hover:bg-[#EEF2F5]" />
-      <p className="text-sm font-bold text-[#33445B]">{title}</p>
+    <header className="flex h-[46px] items-center px-3 sm:px-5">
+      <SidebarTrigger className="rounded-lg text-[#66758A] hover:bg-[#ECEFF3] hover:text-[#2F3D52]" />
     </header>
   );
 }

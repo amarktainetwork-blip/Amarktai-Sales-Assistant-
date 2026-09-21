@@ -97,10 +97,10 @@ export default function Auth() {
             <BrandMark inverse />
           </div>
           <div className="amk-auth__message">
-            <h1>Your sales day, together.</h1>
+            <h1>Your sales day. Less admin.</h1>
             <p>
-              Secure access to company knowledge, CRM context, calls and
-              follow-through.
+              One assistant for priorities, customer context, calls, reminders
+              and follow-through — around the CRM you already use.
             </p>
           </div>
         </div>

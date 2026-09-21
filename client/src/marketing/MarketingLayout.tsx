@@ -91,8 +91,8 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
         <div className="amk-shell amk-footer__top">
           <div className="amk-footer__brand">
             <BrandMark large inverse />
-            <h2>Give your salespeople a better way to work around the CRM they already use.</h2>
-            <p><BrandName /> Sales Assistant helps with preparation, customer context, conversations and follow-through — while important actions stay visible and reviewable.</p>
+            <h2>Give your salespeople their time back without replacing the systems you already trust.</h2>
+            <p><BrandName /> Sales Assistant connects customer context, priorities, calls, reminders and follow-through into one working day — while the CRM remains the system of record and important actions stay visible and reviewable.</p>
           </div>
           <div className="amk-footer__links">
             <div>

@@ -1,19 +1,19 @@
 .amk-site {
-  --ink: #14243a;
-  --ink-soft: #334862;
-  --body: #52637a;
-  --muted: #728196;
-  --blue: #2f6fed;
-  --blue-dark: #1f55c8;
-  --teal: #169b95;
-  --navy: #10233d;
-  --navy-2: #173354;
-  --line: #dbe4ee;
-  --ice: #edf6fb;
-  --lavender: #f1f3ff;
-  --warm: #fff5e9;
-  --light: #f7f9fc;
-  --white: #ffffff;
+  --ink: #2c3238;
+  --ink-soft: #46505b;
+  --body: #626a70;
+  --muted: #7c827f;
+  --blue: #526d9d;
+  --blue-dark: #405879;
+  --teal: #68877c;
+  --navy: #2e3944;
+  --navy-2: #394753;
+  --line: #ddd9d1;
+  --ice: #eef1ef;
+  --lavender: #f0efed;
+  --warm: #f4efe7;
+  --light: #f5f3ef;
+  --white: #fbfaf7;
   min-width: 320px;
   overflow: clip;
   background: var(--white);
@@ -67,8 +67,8 @@
   position: sticky;
   top: 0;
   z-index: 50;
-  background: rgba(255, 255, 255, 0.9);
-  border-bottom: 1px solid rgba(20, 36, 58, 0.08);
+  background: rgba(251, 250, 247, 0.92);
+  border-bottom: 1px solid rgba(44, 50, 56, 0.08);
   backdrop-filter: blur(18px);
 }
 .amk-header__inner {
@@ -90,7 +90,7 @@
 .amk-nav a,
 .amk-signin {
   position: relative;
-  color: #41536b;
+  color: #59616a;
   font-size: 14px;
   font-weight: 750;
 }
@@ -157,13 +157,13 @@
   padding-inline: 17px;
 }
 .amk-button--primary {
-  background: linear-gradient(135deg, var(--blue), #3d7df2);
+  background: var(--blue);
   color: #fff !important;
-  box-shadow: 0 12px 28px rgba(47, 111, 237, 0.25);
+  box-shadow: 0 10px 24px rgba(64, 88, 121, 0.18);
 }
 .amk-button--primary:hover {
-  background: linear-gradient(135deg, var(--blue-dark), var(--blue));
-  box-shadow: 0 16px 34px rgba(47, 111, 237, 0.3);
+  background: var(--blue-dark);
+  box-shadow: 0 13px 28px rgba(64, 88, 121, 0.22);
 }
 .amk-button--secondary {
   border-color: #ccd7e4;
@@ -223,7 +223,7 @@
 .amk-hero {
   position: relative;
   padding: clamp(64px, 7vw, 96px) 0 84px;
-  background: linear-gradient(128deg, #f8fbff 0%, #eef5ff 52%, #f0fbf9 100%);
+  background: linear-gradient(128deg, #f7f5f1 0%, #efede8 55%, #eef1ef 100%);
 }
 .amk-hero::before {
   content: "";
@@ -235,8 +235,8 @@
   border-radius: 50%;
   background: radial-gradient(
     circle,
-    rgba(47, 111, 237, 0.15),
-    rgba(47, 111, 237, 0) 70%
+    rgba(82, 109, 157, 0.1),
+    rgba(82, 109, 157, 0) 70%
   );
   pointer-events: none;
 }
@@ -274,7 +274,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 11px 22px;
-  color: #43546b;
+  color: #5d6670;
   font-size: 13px;
   font-weight: 750;
 }
@@ -592,7 +592,7 @@
 
 .amk-final-cta {
   padding: 76px 0;
-  background: linear-gradient(120deg, #245fcf 0%, #2f6fed 42%, #169b95 125%);
+  background: linear-gradient(120deg, #34424f 0%, #526d9d 58%, #68877c 130%);
   color: #fff;
 }
 .amk-final-cta__inner {

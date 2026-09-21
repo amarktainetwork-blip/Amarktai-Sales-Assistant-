@@ -78,18 +78,19 @@ describe("final dashboard information architecture", () => {
     );
 
     expect(layout).not.toContain("data-new-lead-alert");
-    expect(layout).toContain('crmAttention && location === "/today"');
+    expect(layout).toContain("storedCompanyComplete && crmAttention && crmProblem");
     expect(today).not.toContain("Daily loop");
     expect(today).not.toContain("Work the hottest customer");
-    expect(today).toContain("Your priority queue is clear.");
+    expect(today).toContain("Immediate work is clear.");
+    expect(today).toContain("AmarktAI prepares admin");
     expect(customers).not.toContain("Know the person before you call.");
     expect(customers).toContain("Customer context");
     expect(review).not.toContain("Only stop here when AmarktAI needs your decision.");
     expect(review).toContain("Back to Today");
     expect(assistant).not.toContain("Give me the admin around the call.");
-    expect(assistant).toContain("Day controller");
-    expect(assistant).toContain("Your day is up to date.");
-    expect(assistant).toContain("Why now:");
+    expect(assistant).toContain("Your sales assistant is ready");
+    expect(assistant).toContain('label="Why now"');
+    expect(assistant).toContain("Draft first. Customer-facing actions remain reviewable.");
   });
 
   it("gives team managers factual workload and follow-up exceptions", () => {
@@ -157,7 +158,7 @@ describe("final dashboard information architecture", () => {
     expect(teamService).toContain("pipelineHasMixedCurrencies");
   });
 
-  it("uses a light navy-blue dashboard", () => {
+  it("uses a calm low-glare dashboard palette", () => {
     const css = readFileSync(
       path.resolve("client/src/dashboard-final.css"),
       "utf8"
@@ -167,17 +168,17 @@ describe("final dashboard information architecture", () => {
       "utf8"
     );
 
-    expect(css).toContain("--dash-canvas: #f4f6f8");
-    expect(css).toContain("--dash-paper: #ffffff");
-    expect(css).toContain("--dash-ink: #203047");
-    expect(css).toContain("--dash-blue: #2f6fed");
-    expect(css).toContain("--handover-blue: #2f6fed");
-    expect(css).toContain("--handover-canvas: #f4f7fb");
+    expect(css).toContain("--dash-canvas: #f2f0eb");
+    expect(css).toContain("--dash-paper: #fbfaf7");
+    expect(css).toContain("--dash-ink: #30363c");
+    expect(css).toContain("--dash-blue: #526d9d");
+    expect(css).toContain("--handover-blue: #526d9d");
+    expect(css).toContain("--handover-canvas: #f2f0eb");
     expect(css).toContain('[class*="whitespace-pre-wrap"]');
     expect(css).toContain("input::placeholder");
 
-    expect(layout).toContain("bg-white text-[#26354A]");
-    expect(layout).toContain("bg-[#EAF1FF] text-[#2459C2]");
+    expect(layout).toContain('SidebarInset className="bg-[#F3F2EF]"');
+    expect(layout).toContain("bg-[#ECEBE6]");
     expect(layout).not.toContain(
       'className="border-r border-[#1B2B44] bg-[#0B1B36] text-white"'
     );

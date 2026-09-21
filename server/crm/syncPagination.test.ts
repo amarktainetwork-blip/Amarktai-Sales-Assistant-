@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { drainCrmPages } from "./sync";
+import { drainCrmPages, rotatingHistoryWindow } from "./sync";
 
 describe("CRM pagination drain", () => {
   it("drains 170 records across a 100 + 70 page sequence in one sync run", async () => {
@@ -43,5 +43,38 @@ describe("CRM pagination drain", () => {
         onPage: async () => undefined,
       })
     ).rejects.toThrow("CRM_SYNC_PAGE_LIMIT_REACHED");
+  });
+});
+
+describe("CRM customer history rotation", () => {
+  it("covers every active lead across successive watcher slots instead of starving older rows", () => {
+    const leads = Array.from({ length: 31 }, (_, index) => index + 1);
+    const first = rotatingHistoryWindow(
+      leads,
+      15,
+      new Date("1970-01-01T00:00:00Z")
+    );
+    const second = rotatingHistoryWindow(
+      leads,
+      15,
+      new Date("1970-01-01T00:01:00Z")
+    );
+    const third = rotatingHistoryWindow(
+      leads,
+      15,
+      new Date("1970-01-01T00:02:00Z")
+    );
+
+    expect(first).toEqual(leads.slice(0, 15));
+    expect(second).toEqual(leads.slice(15, 30));
+    expect(third).toEqual(leads.slice(30));
+    expect(new Set([...first, ...second, ...third])).toEqual(new Set(leads));
+  });
+
+  it("wraps cleanly after the final rotation window", () => {
+    const leads = Array.from({ length: 31 }, (_, index) => index + 1);
+    expect(
+      rotatingHistoryWindow(leads, 15, new Date("1970-01-01T00:03:00Z"))
+    ).toEqual(leads.slice(0, 15));
   });
 });

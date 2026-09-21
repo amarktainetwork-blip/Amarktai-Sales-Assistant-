@@ -1,15 +1,12 @@
+import { useAuth } from "@/_core/hooks/useAuth";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { useAuth } from "@/_core/hooks/useAuth";
 import { friendlyError } from "@/lib/friendlyError";
 import { trpc } from "@/lib/trpc";
 import {
   ArrowRight,
-  BookOpen,
-  BriefcaseBusiness,
-  CalendarClock,
   Headphones,
   Loader2,
   RotateCcw,
@@ -35,14 +32,11 @@ type AssistantResponse = {
 };
 
 const suggestions = [
-  "Who should I call next?",
-  "Prepare my next call",
-  "Summarise this customer",
-  "Draft a follow-up — don't send",
+  "Prepare this call",
+  "Summarise the customer history",
+  "What should I ask next?",
+  "Draft the follow-up — don't send",
 ];
-
-const emptyState =
-  "Use me for the work around the call: prioritising, call preparation, customer summaries, follow-up drafts and reminders. Customer-facing actions stay reviewable.";
 
 async function askAssistant(input: {
   messages: Array<{ role: "user" | "assistant"; content: string }>;
@@ -62,15 +56,9 @@ async function askAssistant(input: {
   return body;
 }
 
-function AssistantMark({ compact = false }: { compact?: boolean }) {
-  const size = compact
-    ? "h-8 w-8 rounded-lg text-[10px]"
-    : "h-10 w-10 rounded-xl text-[12px]";
+function AssistantMark() {
   return (
-    <span
-      aria-label="AmarktAI"
-      className={`${size} grid shrink-0 place-items-center bg-gradient-to-br from-[#2F6FED] to-[#4FB9FF] font-black tracking-[-.04em] text-white shadow-[0_8px_20px_rgba(47,111,237,.20)]`}
-    >
+    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#E9EDF2] text-xs font-bold text-[#42536A]">
       AI
     </span>
   );
@@ -83,12 +71,9 @@ export default function Assistant() {
   const organisationId = organisation.data?.organisationId;
   const today = trpc.sales.today.useQuery(
     { organisationId: organisationId ?? 0 },
-    {
-      enabled: Boolean(organisationId),
-      retry: false,
-      refetchInterval: 30_000,
-    }
+    { enabled: Boolean(organisationId), retry: false, refetchInterval: 30_000 }
   );
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
   const [contactId, setContactId] = useState<number | undefined>();
@@ -109,6 +94,16 @@ export default function Assistant() {
   const dayItem = today.data?.queues.callQueue?.find(
     item => item.contactId === contactId
   );
+
+  const startCall = trpc.calls.startLive.useMutation({
+    onSuccess: (result, variables) =>
+      navigate(
+        `/calls?sessionId=${result.callSessionId}${
+          variables.contactId ? `&contactId=${variables.contactId}` : ""
+        }`
+      ),
+  });
+
   const contextOptions = useMemo(() => {
     const items = customers.data?.items ?? [];
     if (!selectedCustomer) return items;
@@ -207,50 +202,130 @@ export default function Assistant() {
     }
   }
 
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening";
-
   return (
     <DashboardLayout>
       <div
         data-assistant-workspace
-        className="mx-auto flex h-[calc(100dvh-86px)] min-h-[500px] max-w-[1120px] flex-col overflow-hidden text-[#2D3A4E]"
+        aria-label="AmarktAI"
+        className="mx-auto flex max-w-[1180px] flex-col gap-5 text-[#243247]"
       >
-        <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 pb-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <AssistantMark />
-            <div className="min-w-0">
-              <p className="text-xs font-black uppercase tracking-[.12em] text-[#6F7D8F]">
-                Amarkt<span className="text-[#5577B7]">AI</span> · Day controller
-              </p>
-              <h1 className="truncate text-lg font-semibold text-[#26364A]">
-                {selectedCustomer
-                  ? `Now: ${selectedCustomer.name}`
-                  : `Good ${greeting}, ${firstName}. Your day is up to date.`}
-              </h1>
-              <p className="mt-0.5 text-sm text-[#718096]">
-                {today.data?.queues.callQueue?.length
-                  ? `${today.data.queues.callQueue.length} customer${today.data.queues.callQueue.length === 1 ? "" : "s"} currently need attention.`
-                  : "No customer work currently needs attention."}
-              </p>
-            </div>
-          </div>
+        <header>
+          <p className="text-base font-medium text-[#788394]">AmarktAI</p>
+          <h1 className="mt-1 text-3xl font-semibold tracking-[-.035em]">
+            {selectedCustomer
+              ? `Work ${selectedCustomer.name} with me.`
+              : `Your sales assistant is ready, ${firstName}.`}
+          </h1>
+          <p className="mt-1 max-w-2xl text-base leading-6 text-[#697386]">
+            You handle the conversation. AmarktAI handles the preparation,
+            context and draft admin around it.
+          </p>
+        </header>
 
-          <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
-            <label className="flex min-w-0 items-center gap-2 text-xs font-semibold text-[#66758A]">
-              <Search className="h-4 w-4 shrink-0 text-[#2F6FED]" />
-              <span className="sr-only">Find customer context</span>
-              <Input
-                aria-label="Find customer context"
-                value={contextSearch}
-                onChange={event => setContextSearch(event.target.value)}
-                placeholder="Find customer…"
-                className="h-9 w-[170px] bg-white text-xs sm:w-[220px]"
-              />
-            </label>
-            <label className="flex min-w-0 items-center gap-2 text-xs font-semibold text-[#66758A]">
-              <UserRound className="h-4 w-4 shrink-0 text-[#2F6FED]" />
-              <span className="sr-only">Customer context</span>
+        <div className="grid min-h-[calc(100dvh-190px)] gap-5 lg:grid-cols-[330px_1fr]">
+          <aside className="flex flex-col rounded-2xl bg-white p-5 shadow-[0_6px_24px_rgba(38,50,71,.05)]">
+            <div className="flex items-center gap-3">
+              <AssistantMark />
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-[#788394]">
+                  Current customer
+                </p>
+                <p className="truncate text-base font-semibold text-[#344257]">
+                  {selectedCustomer?.name || "Choose a customer"}
+                </p>
+              </div>
+            </div>
+
+            {selectedCustomer ? (
+              <>
+                <div className="mt-5 space-y-4">
+                  <Fact
+                    label="Why now"
+                    value={
+                      dayItem?.headline ||
+                      selectedCustomer.nextAction?.title ||
+                      "Customer context is ready"
+                    }
+                  />
+                  <Fact
+                    label="Interest"
+                    value={
+                      selectedCustomer.interest.primary ||
+                      "Not yet identified"
+                    }
+                  />
+                  <Fact
+                    label="Next task"
+                    value={
+                      selectedCustomer.nextAction?.title || "No current task"
+                    }
+                  />
+                  <Fact
+                    label="Opportunity"
+                    value={
+                      selectedCustomer.openOpportunity?.name ||
+                      selectedCustomer.openOpportunity?.stage ||
+                      "No open opportunity"
+                    }
+                  />
+                </div>
+
+                {dayItem?.reasons?.length ? (
+                  <div className="mt-5 border-t border-[#EEF0F3] pt-4">
+                    <p className="text-sm font-medium text-[#788394]">
+                      Why this is in Today
+                    </p>
+                    <div className="mt-2 space-y-1 text-sm leading-5 text-[#5F6B7A]">
+                      {dayItem.reasons.slice(0, 4).map(reason => (
+                        <p key={reason}>• {reason}</p>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="mt-5 grid gap-2">
+                  <Button
+                    disabled={startCall.isPending}
+                    onClick={() =>
+                      startCall.mutate({
+                        leadLabel: selectedCustomer.name,
+                        contactId: selectedCustomer.id,
+                      })
+                    }
+                  >
+                    <Headphones className="mr-2 h-4 w-4" />
+                    {startCall.isPending ? "Opening…" : "Start call"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      navigate(`/customers?contactId=${selectedCustomer.id}`)
+                    }
+                  >
+                    <UserRound className="mr-2 h-4 w-4" />
+                    Full customer context
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <p className="mt-5 text-base leading-6 text-[#697386]">
+                When Today has work, the next customer is selected automatically.
+              </p>
+            )}
+
+            <div className="mt-auto border-t border-[#EEF0F3] pt-4">
+              <label className="text-sm font-medium text-[#788394]">
+                Change customer
+              </label>
+              <div className="mt-2 flex items-center gap-2">
+                <Search className="h-4 w-4 shrink-0 text-[#8A93A0]" />
+                <Input
+                  value={contextSearch}
+                  onChange={event => setContextSearch(event.target.value)}
+                  placeholder="Search…"
+                  className="h-10 border-[#E1E5EA] text-base"
+                />
+              </div>
               <select
                 aria-label="Customer context"
                 value={contactId ?? ""}
@@ -259,9 +334,9 @@ export default function Assistant() {
                     event.target.value ? Number(event.target.value) : undefined
                   )
                 }
-                className="h-9 max-w-[min(52vw,320px)] truncate rounded-xl border border-[#CAD6E4] bg-white px-3 text-xs font-semibold text-[#33445B] outline-none focus:border-[#2F6FED] focus:ring-2 focus:ring-[#DCE7F6]"
+                className="mt-2 h-11 w-full rounded-xl border border-[#E1E5EA] bg-white px-3 text-base text-[#344257] outline-none focus:border-[#A8B4C3]"
               >
-                <option value="">All customers</option>
+                <option value="">Select customer</option>
                 {contextOptions.map(customer => (
                   <option key={customer.id} value={customer.id}>
                     {customer.name}
@@ -269,146 +344,56 @@ export default function Assistant() {
                   </option>
                 ))}
               </select>
-            </label>
-          </div>
-        </header>
-
-        {selectedCustomer ? (
-          <div className="shrink-0 border-b border-[#E5EAF0] py-3">
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-[#F5F6F8] px-4 py-3">
-              <div className="min-w-0">
-                <p className="text-[10px] font-black uppercase tracking-[.12em] text-[#2F6FED]">
-                  Working on
-                </p>
-                <p className="mt-1 truncate font-bold text-[#33445B]">
-                  {selectedCustomer.name}
-                </p>
-                {selectedCustomer.interest.primary ? (
-                  <p className="mt-1 text-xs font-bold text-[#315EA8]">
-                    Course interest: {selectedCustomer.interest.primary}
-                  </p>
-                ) : null}
-                <p className="mt-1 text-sm text-[#6E7A89]">
-                  {dayItem?.headline ||
-                    selectedCustomer.nextAction?.title ||
-                    selectedCustomer.openOpportunity?.stage ||
-                    "Customer context loaded"}
-                </p>
-                {dayItem?.reasons?.length ? (
-                  <p className="mt-1 text-xs font-semibold text-[#586A83]">
-                    Why now: {dayItem.reasons.join(" · ")}
-                  </p>
-                ) : null}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() =>
-                    navigate(`/customers?contactId=${selectedCustomer.id}`)
-                  }
-                >
-                  <UserRound className="mr-2 h-3.5 w-3.5" />
-                  Full context
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() =>
-                    navigate(`/calls?contactId=${selectedCustomer.id}`)
-                  }
-                >
-                  <Headphones className="mr-2 h-3.5 w-3.5" />
-                  Open call
-                </Button>
-              </div>
             </div>
-          </div>
-        ) : null}
+          </aside>
 
-        <div className="flex min-h-0 flex-1 flex-col pt-3">
           <section
             data-assistant-conversation
-            className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl bg-white shadow-[0_8px_28px_rgba(35,49,70,.055)]"
+            className="flex min-h-0 flex-col overflow-hidden rounded-2xl bg-white shadow-[0_6px_24px_rgba(38,50,71,.05)]"
           >
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-7 sm:py-6">
-              <div
-                className={`mx-auto flex max-w-3xl flex-col ${!messages.length ? "pt-5" : "min-h-full"}`}
-              >
+            <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-7">
+              <div className="mx-auto max-w-3xl">
                 {!messages.length ? (
-                  <div className="flex max-w-2xl items-start gap-3">
-                    <AssistantMark compact />
-                    <div className="min-w-0 flex-1">
-                      <div className="rounded-2xl rounded-tl-md bg-[#F5F6F8] px-4 py-3 text-base leading-7 text-[#2D3F57]">
+                  <div>
+                    <div className="flex items-start gap-3">
+                      <AssistantMark />
+                      <div className="rounded-2xl bg-[#F5F6F8] px-4 py-3 text-base leading-7 text-[#344257]">
                         {selectedCustomer
-                          ? `I have ${selectedCustomer.name}'s context loaded. You focus on the conversation; I can prepare the call, summarise the history and draft the follow-up for Review.`
-                          : emptyState}
+                          ? `I have ${selectedCustomer.name}'s sales context. I can prepare the call, surface the important history, help with objections and draft the follow-up for Review.`
+                          : "I can prioritise your day, prepare calls, summarise customers and draft follow-ups for Review."}
                       </div>
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        {suggestions.map(prompt => (
-                          <button
-                            key={prompt}
-                            type="button"
-                            onClick={() => void send(prompt)}
-                            className="rounded-full border border-[#D7E1EE] bg-white px-3.5 py-2 text-xs font-semibold text-[#40516A] transition hover:border-[#9CB8E8] hover:bg-[#F1F6FF] hover:text-[#2F63C7]"
-                          >
-                            {prompt}
-                          </button>
-                        ))}
-                      </div>
-                      {selectedCustomer ? (
-                        <div className="mt-5 grid gap-2 sm:grid-cols-2">
-                          <ContextFact
-                            icon={BookOpen}
-                            label="Course interest"
-                            value={
-                              selectedCustomer.interest.primary ||
-                              "Not yet identified"
-                            }
-                          />
-                          <ContextFact
-                            icon={CalendarClock}
-                            label="Next task"
-                            value={
-                              selectedCustomer.nextAction?.title ||
-                              "No current task"
-                            }
-                          />
-                          <ContextFact
-                            icon={BriefcaseBusiness}
-                            label="Opportunity"
-                            value={
-                              selectedCustomer.openOpportunity?.name ||
-                              "No open opportunity"
-                            }
-                          />
-                        </div>
-                      ) : null}
+                    </div>
+
+                    <div className="mt-5 grid gap-2 sm:grid-cols-2">
+                      {suggestions.map(prompt => (
+                        <button
+                          key={prompt}
+                          type="button"
+                          onClick={() => void send(prompt)}
+                          className="rounded-xl bg-[#F8F9FA] px-4 py-3 text-left text-base font-medium text-[#425066] hover:bg-[#F0F2F5]"
+                        >
+                          <Sparkles className="mb-2 h-4 w-4 text-[#718096]" />
+                          {prompt}
+                        </button>
+                      ))}
                     </div>
                   </div>
                 ) : (
                   <div className="space-y-6">
-                    {selectedCustomer ? (
-                      <p className="flex items-center gap-2 text-xs font-semibold text-[#718096]">
-                        <UserRound className="h-3.5 w-3.5" />
-                        Customer context: {selectedCustomer.name}
-                      </p>
-                    ) : null}
-
                     {messages.map((message, index) => (
                       <div
                         key={`${message.role}-${index}`}
                         className={
                           message.role === "user"
-                            ? "ml-auto max-w-[min(82%,680px)] rounded-2xl rounded-br-md bg-[#2F6FED] px-4 py-3 text-[15px] leading-6 text-white"
-                            : "max-w-[min(94%,760px)]"
+                            ? "ml-auto max-w-[80%] rounded-2xl bg-[#43546B] px-4 py-3 text-base leading-6 text-white"
+                            : "max-w-[92%]"
                         }
                       >
                         {message.role === "assistant" ? (
                           <div className="flex gap-3">
-                            <AssistantMark compact />
+                            <AssistantMark />
                             <div className="min-w-0 flex-1">
-                              <div className="whitespace-pre-wrap text-[15px] leading-7 text-[#33445B]">
+                              <div className="whitespace-pre-wrap text-base leading-7 text-[#344257]">
                                 {message.content}
                               </div>
                               {message.action ? (
@@ -431,18 +416,15 @@ export default function Assistant() {
                     ))}
 
                     {busy ? (
-                      <div className="flex items-center gap-3 text-sm text-[#718096]">
-                        <AssistantMark compact />
+                      <div className="flex items-center gap-3 text-base text-[#697386]">
+                        <AssistantMark />
                         <Loader2 className="h-4 w-4 animate-spin" />
                         Working with the current sales context…
                       </div>
                     ) : null}
 
                     {error ? (
-                      <div
-                        role="alert"
-                        className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"
-                      >
+                      <div className="rounded-xl bg-[#FFF1F1] px-4 py-3 text-base text-[#8A3B3B]">
                         <p>{error}</p>
                         <Button
                           size="sm"
@@ -462,11 +444,8 @@ export default function Assistant() {
               </div>
             </div>
 
-            <div
-              data-assistant-composer
-              className="shrink-0 bg-[#FAFBFC] p-3 sm:p-4"
-            >
-              <div className="mx-auto max-w-3xl rounded-2xl bg-white p-2 shadow-[0_4px_18px_rgba(35,49,70,.07)] ring-1 ring-[#E5E8EC] focus-within:ring-[#AEBBD0]">
+            <div className="border-t border-[#EEF0F3] bg-[#FAFBFC] p-3 sm:p-4">
+              <div className="mx-auto max-w-3xl">
                 <Textarea
                   aria-label="Message AmarktAI"
                   value={draft}
@@ -479,15 +458,14 @@ export default function Assistant() {
                   }}
                   placeholder={
                     selectedCustomer
-                      ? `Ask AmarktAI about ${selectedCustomer.name}…`
-                      : "Ask AmarktAI to prioritise, prepare, summarise or draft…"
+                      ? `Ask about ${selectedCustomer.name}…`
+                      : "Ask AmarktAI about your day…"
                   }
-                  className="min-h-[62px] resize-none border-0 bg-transparent px-3 py-3 text-[15px] leading-6 shadow-none focus-visible:ring-0"
+                  className="min-h-[72px] resize-none rounded-xl border-[#E0E4E9] bg-white px-4 py-3 text-base leading-6 shadow-none focus-visible:ring-[#B9C2CE]"
                 />
-                <div className="flex items-center justify-between gap-3 border-t border-[#EEF2F6] px-2 pt-2">
-                  <p className="text-[11px] text-[#8290A3]">
-                    Draft first. Customer-facing actions remain governed and
-                    reviewable.
+                <div className="mt-2 flex items-center justify-between gap-3">
+                  <p className="text-sm text-[#8992A0]">
+                    Draft first. Customer-facing actions remain reviewable.
                   </p>
                   <Button
                     size="sm"
@@ -511,24 +489,11 @@ export default function Assistant() {
   );
 }
 
-function ContextFact({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: typeof CalendarClock;
-  label: string;
-  value: string;
-}) {
+function Fact({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-[#DCE4EE] bg-[#FAFCFF] p-3">
-      <div className="flex items-center gap-2 text-[#2F6FED]">
-        <Icon className="h-3.5 w-3.5" />
-        <p className="text-[10px] font-black uppercase tracking-[.1em] text-[#7B8CA2]">
-          {label}
-        </p>
-      </div>
-      <p className="mt-1.5 text-sm font-bold leading-5 text-[#33445B]">
+    <div>
+      <p className="text-sm font-medium text-[#8992A0]">{label}</p>
+      <p className="mt-1 text-base font-medium leading-6 text-[#3B495E]">
         {value}
       </p>
     </div>

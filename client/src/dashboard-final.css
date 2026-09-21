@@ -1,49 +1,49 @@
 /* One logged-in visual system for the AmarktAI Sales Assistant handover build. */
 body:has([data-slot="sidebar-wrapper"]) {
-  --handover-canvas: #f4f7fb;
-  --handover-surface: #ffffff;
-  --handover-surface-soft: #f8faff;
-  --handover-ink: #17263b;
-  --handover-muted: #66758a;
-  --handover-line: #dce4ee;
-  --handover-line-strong: #c8d4e3;
-  --handover-blue: #2f6fed;
-  --handover-blue-strong: #2457c8;
-  --handover-blue-soft: #edf3ff;
-  --handover-cyan: #37b7ff;
-  --handover-success: #16866f;
-  --handover-warning: #9c6d1e;
-  --handover-danger: #b44359;
-  --handover-shadow: 0 14px 38px rgba(29, 50, 84, 0.075);
-  --handover-shadow-hover: 0 22px 52px rgba(29, 50, 84, 0.11);
-  --dash-canvas: #f4f6f8;
-  --dash-paper: #ffffff;
-  --dash-ink: #203047;
-  --dash-blue: #2f6fed;
+  --handover-canvas: #f2f0eb;
+  --handover-surface: #fbfaf7;
+  --handover-surface-soft: #f6f4ef;
+  --handover-ink: #30363c;
+  --handover-muted: #6d736f;
+  --handover-line: #ddd8cf;
+  --handover-line-strong: #cbc5ba;
+  --handover-blue: #526d9d;
+  --handover-blue-strong: #405879;
+  --handover-blue-soft: #e9edf2;
+  --handover-cyan: #72899c;
+  --handover-success: #587563;
+  --handover-warning: #8a6d3b;
+  --handover-danger: #9a5b62;
+  --handover-shadow: 0 14px 38px rgba(45, 50, 56, 0.06);
+  --handover-shadow-hover: 0 22px 52px rgba(45, 50, 56, 0.09);
+  --dash-canvas: #f2f0eb;
+  --dash-paper: #fbfaf7;
+  --dash-ink: #30363c;
+  --dash-blue: #526d9d;
 
-  --dash-navy: #13233a;
-  --dash-navy-2: #1b3151;
+  --dash-navy: #323a42;
+  --dash-navy-2: #404a54;
   --dash-brand: var(--color-brand);
-  --dash-brand-dark: #2949d8;
-  --dash-brand-soft: #edf1ff;
-  --dash-teal: #12a594;
-  --dash-teal-soft: #e7f8f4;
-  --dash-violet: #7758e8;
-  --dash-violet-soft: #f0ecff;
-  --dash-warm: #fbf8f3;
-  --dash-surface: #ffffff;
-  --dash-canvas-premium: #f3f6fb;
-  --dash-surface-soft: #f8faff;
-  --dash-line: #dce4ef;
-  --dash-line-strong: #c9d5e5;
+  --dash-brand-dark: #405879;
+  --dash-brand-soft: #e9edf2;
+  --dash-teal: #68877c;
+  --dash-teal-soft: #eaf0ec;
+  --dash-violet: #7b7489;
+  --dash-violet-soft: #efedef;
+  --dash-warm: #f4efe7;
+  --dash-surface: #fbfaf7;
+  --dash-canvas-premium: #f3f2ef;
+  --dash-surface-soft: #f7f5f1;
+  --dash-line: #ddd9d1;
+  --dash-line-strong: #cbc5ba;
   --dash-text: var(--color-text);
   --dash-muted: var(--color-text-muted);
-  --dash-faint: #91a0b3;
-  --dash-success: #16866f;
-  --dash-warning: #9a691a;
-  --dash-danger: #b44359;
-  --dash-shadow: 0 14px 38px rgba(30, 48, 78, 0.08);
-  --dash-shadow-strong: 0 22px 60px rgba(24, 43, 75, 0.13);
+  --dash-faint: #8a8e8b;
+  --dash-success: #587563;
+  --dash-warning: #8a6d3b;
+  --dash-danger: #9a5b62;
+  --dash-shadow: 0 14px 38px rgba(45, 50, 56, 0.06);
+  --dash-shadow-strong: 0 22px 60px rgba(45, 50, 56, 0.09);
   --dashboard-content-max: 1480px;
   --dashboard-content-pad: 28px;
   --dashboard-sidebar-top: 68px;
@@ -69,7 +69,7 @@ body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-inset"] {
 body:has([data-slot="sidebar-wrapper"]) .amarktai-dashboard-sidebar,
 body:has([data-slot="sidebar-wrapper"]) [data-sidebar="sidebar"],
 body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-container"] {
-  background: linear-gradient(180deg, #ffffff 0%, #f8faff 58%, #f4f7fd 100%);
+  background: linear-gradient(180deg, #fbfaf7 0%, #f6f4ef 58%, #f1efe9 100%);
   color: var(--dash-text);
   border-color: var(--dash-line);
 }
@@ -82,7 +82,7 @@ body:has([data-slot="sidebar-wrapper"]) [data-sidebar="header"] {
 body:has([data-slot="sidebar-wrapper"]) [data-sidebar="content"] {
   padding-top: 14px;
   scrollbar-width: thin;
-  scrollbar-color: #cad6e8 transparent;
+  scrollbar-color: #cbc5ba transparent;
 }
 
 body:has([data-slot="sidebar-wrapper"]) [data-sidebar="content"] > p {
@@ -96,7 +96,7 @@ body:has([data-slot="sidebar-wrapper"]) [data-sidebar="content"] > p {
 
 body:has([data-slot="sidebar-wrapper"]) [data-sidebar="menu-button"] {
   position: relative;
-  color: #53657d;
+  color: #626a70;
   transition:
     background 0.16s ease,
     color 0.16s ease,
@@ -105,7 +105,7 @@ body:has([data-slot="sidebar-wrapper"]) [data-sidebar="menu-button"] {
 }
 
 body:has([data-slot="sidebar-wrapper"]) [data-sidebar="menu-button"]:hover {
-  background: #eef3fb;
+  background: #ebe9e4;
   color: var(--dash-navy);
   transform: translateX(1px);
 }
@@ -120,22 +120,22 @@ body:has([data-slot="sidebar-wrapper"])
   [data-sidebar="menu-button"]
   [data-sidebar="menu-badge"],
 body:has([data-slot="sidebar-wrapper"]) [data-sidebar="menu-badge"] {
-  border: 1px solid #d4def4;
-  background: #fff;
+  border: 1px solid #d5d0c7;
+  background: #fbfaf7;
   color: var(--dash-brand-dark);
-  box-shadow: 0 2px 8px rgba(39, 69, 121, 0.08);
+  box-shadow: 0 2px 8px rgba(45, 50, 56, 0.05);
 }
 
 body:has([data-slot="sidebar-wrapper"]) [data-sidebar="footer"] {
   border-color: var(--dash-line);
-  background: rgba(247, 250, 255, 0.9);
+  background: rgba(246, 244, 239, 0.92);
 }
 
 body:has([data-slot="sidebar-wrapper"]) [data-sidebar="footer"] > div {
   border-radius: 14px;
-  background: #fff;
+  background: #fbfaf7;
   border: 1px solid var(--dash-line);
-  box-shadow: 0 8px 22px rgba(28, 50, 86, 0.06);
+  box-shadow: 0 8px 22px rgba(45, 50, 56, 0.05);
 }
 
 body:has([data-slot="sidebar-wrapper"]) [data-sidebar="footer"] .text-white,
@@ -629,10 +629,10 @@ body:has([data-slot="sidebar-wrapper"])
 body:has([data-slot="sidebar-wrapper"])
   [data-slot="sidebar-inset"]
   [class*="bg-[#3F70D8]"] {
-  background: linear-gradient(135deg, var(--dash-brand), #4b72ff);
+  background: var(--dash-brand);
   color: #fff;
   border-color: var(--dash-brand);
-  box-shadow: 0 8px 20px rgba(59, 99, 255, 0.18);
+  box-shadow: 0 8px 20px rgba(64, 88, 121, 0.16);
 }
 
 body:has([data-slot="sidebar-wrapper"])
@@ -789,43 +789,39 @@ body:has([data-slot="sidebar-wrapper"]) [role="dialog"] {
 }
 
 body:has([data-slot="sidebar-wrapper"]) .handover-kicker {
-  color: var(--handover-blue);
-  font-size: 10px;
-  font-weight: 900;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  color: #788394;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
 }
 body:has([data-slot="sidebar-wrapper"]) .handover-status {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  min-height: 30px;
-  border: 1px solid #d7e2f1;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.9);
-  padding: 0 11px;
-  color: #50627b;
-  font-size: 11px;
-  font-weight: 750;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0;
+  color: #667387;
+  font-size: 14px;
+  font-weight: 600;
 }
 body:has([data-slot="sidebar-wrapper"]) .handover-status::before {
   content: "";
   width: 7px;
   height: 7px;
   border-radius: 999px;
-  background: #2bb79e;
-  box-shadow: 0 0 0 4px rgba(43, 183, 158, 0.11);
+  background: #6f8a78;
 }
 body:has([data-slot="sidebar-wrapper"]) .handover-surface {
-  border: 1px solid var(--handover-line);
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: var(--handover-shadow);
+  border: 0;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 6px 24px rgba(38, 50, 71, 0.045);
 }
 body:has([data-slot="sidebar-wrapper"]) .handover-soft-surface {
-  border: 1px solid #e0e8f2;
-  border-radius: 16px;
-  background: linear-gradient(180deg, #fbfdff 0%, #f7faff 100%);
+  border: 0;
+  border-radius: 14px;
+  background: #f7f8fa;
 }
 body:has([data-slot="sidebar-wrapper"]) .handover-primary-number {
   color: var(--handover-ink);
@@ -858,82 +854,56 @@ body:has(.amarktai-dashboard-sidebar) [data-sidebar="footer"]::after {
   border-radius: 0;
 }
 
-/* Calm production workspace: prioritise readability and task flow over decoration. */
-body:has([data-slot="sidebar-wrapper"]) {
-  --handover-canvas: #f7f8fa;
-  --handover-surface: #ffffff;
-  --handover-surface-soft: #f7f8fa;
-  --handover-ink: #26364a;
-  --handover-muted: #6f7d8f;
-  --handover-line: #e8ebef;
-  --handover-line-strong: #d8dde4;
-  --handover-blue: #60799f;
-  --handover-blue-strong: #4e668b;
-  --handover-blue-soft: #f0f3f7;
-  --handover-shadow: 0 6px 24px rgba(35, 49, 70, 0.05);
-  --handover-shadow-hover: 0 10px 30px rgba(35, 49, 70, 0.07);
-  --dash-canvas-premium: #f7f8fa;
-  --dash-surface-soft: #f7f8fa;
-  --dash-line: #e8ebef;
-  --dash-line-strong: #d8dde4;
-  --dash-text: #26364a;
-  --dash-muted: #6f7d8f;
-  --dash-faint: #9099a6;
-  --dash-brand: #60799f;
-  --dash-brand-dark: #4e668b;
-  --dash-brand-soft: #f0f3f7;
-  --dash-shadow: 0 6px 24px rgba(35, 49, 70, 0.05);
-  --dash-shadow-strong: 0 10px 30px rgba(35, 49, 70, 0.07);
+/* Authenticated sales workspace: calm, low-glare visual system. */
+.sales-workspace {
+  --background: #f3f2ef;
+  --foreground: #30353c;
+  --card: #fbfaf7;
+  --card-foreground: #30353c;
+  --border: #e3e1dc;
+  --primary: #667789;
+  --primary-foreground: #ffffff;
+  --ring: #9aa6b2;
+  --input: #dedcd7;
+  --muted: #efeeea;
+  --muted-foreground: #717780;
+  --accent: #eceae6;
+  --accent-foreground: #323840;
+  --secondary: #efeeea;
+  --secondary-foreground: #323840;
+  --destructive: #a45b5b;
+  background: #f3f2ef;
+  color: #30353c;
 }
 
-body:has([data-slot="sidebar-wrapper"]) .amarktai-dashboard-sidebar,
-body:has([data-slot="sidebar-wrapper"]) [data-sidebar="sidebar"],
-body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-container"] {
-  background: #fbfcfd;
-  border-color: #eceef2;
+.sales-workspace [data-slot="sidebar-container"],
+.sales-workspace [data-sidebar="sidebar"] {
+  background: #f8f7f4 !important;
+  color: #394049 !important;
 }
 
-body:has([data-slot="sidebar-wrapper"]) [data-sidebar="menu-button"]:hover {
-  background: #f1f3f6;
-  color: #26364a;
-  transform: none;
+.sales-workspace [data-sidebar="menu-button"][data-active="true"] {
+  background: #ebe9e4 !important;
+  color: #30353c !important;
+  box-shadow: none !important;
 }
 
-body:has([data-slot="sidebar-wrapper"])
-  [data-sidebar="menu-button"][data-active="true"] {
-  background: #edf0f4;
-  color: #26364a;
+.sales-workspace [data-sidebar="menu-button"]:hover {
+  background: #efede8 !important;
+  color: #30353c !important;
+}
+
+.sales-workspace input,
+.sales-workspace textarea,
+.sales-workspace select {
+  border-color: #dfddd8;
+  background: #fbfaf7;
+}
+
+.sales-workspace [data-slot="button"] {
   box-shadow: none;
 }
 
-body:has([data-slot="sidebar-wrapper"]) .handover-surface {
-  border-color: transparent;
-  border-radius: 16px;
-  box-shadow: 0 6px 24px rgba(35, 49, 70, 0.045);
-}
-
-[data-today-workspace] {
-  font-size: 16px;
-}
-
-[data-today-workspace] > header,
-[data-assistant-workspace],
-[data-assistant-conversation] {
-  border-color: transparent !important;
-}
-
-[data-assistant-workspace] {
-  border: 0 !important;
-  background: transparent !important;
-  border-radius: 0 !important;
-}
-
-[data-assistant-workspace] select,
-[data-assistant-workspace] input,
-[data-assistant-workspace] textarea {
-  font-size: 14px;
-}
-
-[data-assistant-conversation] {
-  box-shadow: 0 8px 28px rgba(35, 49, 70, 0.055);
+.sales-workspace :focus-visible {
+  outline-color: #9aa6b2;
 }

@@ -407,7 +407,10 @@ export function crmTaskProvesLeadProgress(task: Pick<NormalizedTask, "title">) {
 export function crmTaskHistoryProvesLeadWorked(
   task: Pick<NormalizedTask, "title" | "status">
 ) {
-  return isCompletedTask(task.status) || crmTaskProvesLeadProgress(task);
+  // A later-stage task title can be useful workflow context, but it is not
+  // authoritative evidence that the salesperson actually worked the lead.
+  // Automatic retirement requires completed task truth or verified activity.
+  return isCompletedTask(task.status);
 }
 
 export function crmActivityHistoryProvesLeadWorked(
@@ -538,16 +541,30 @@ export async function reconcileNewLeadAlertsFromTaskHistory(input: {
   return Number(result[0].affectedRows || 0);
 }
 
-const NEW_LEAD_HISTORY_CHECKS_PER_SYNC = 5;
+const NEW_LEAD_HISTORY_CHECKS_PER_SYNC = 15;
 const ROTATING_CUSTOMER_HISTORY_CHECKS_PER_SYNC = 10;
 
-async function refreshActiveCustomerSourceTruth(input: {
+export function rotatingHistoryWindow<T>(
+  items: T[],
+  batchSize: number,
+  now = new Date()
+) {
+  if (!items.length) return [];
+  const safeBatchSize = Math.max(1, Math.floor(batchSize));
+  const chunkCount = Math.max(1, Math.ceil(items.length / safeBatchSize));
+  const chunkIndex = Math.floor(now.valueOf() / 60_000) % chunkCount;
+  const start = chunkIndex * safeBatchSize;
+  return items.slice(start, start + safeBatchSize);
+}
+
+export async function refreshActiveCustomerSourceTruth(input: {
   userId: number;
   organisationId: number;
   connectedSystemId: number;
   adapter: CrmAdapter;
   connection: AdapterConnection;
   secret: ConnectionSecretPayload;
+  now?: Date;
 }) {
   if (!input.adapter.readContactHistory || !input.secret.crmUserExternalId)
     return { checked: 0, resolvedNewLeads: 0, deferred: 0 };
@@ -586,8 +603,7 @@ async function refreshActiveCustomerSourceTruth(input: {
     .orderBy(
       sql`CASE WHEN ${salesWorkItems.type} = 'NEW_LEAD' THEN 0 ELSE 1 END`,
       desc(salesWorkItems.id)
-    )
-    .limit(100);
+    );
 
   const candidates = new Map<
     string,
@@ -609,25 +625,24 @@ async function refreshActiveCustomerSourceTruth(input: {
   }
 
   const allCandidates = Array.from(candidates.values());
-  const leadCandidates = allCandidates
-    .filter(candidate => candidate.newLeadCreatedAt)
-    .slice(0, NEW_LEAD_HISTORY_CHECKS_PER_SYNC);
-  const regularCandidates = allCandidates.filter(candidate => !candidate.newLeadCreatedAt);
-  const chunkCount = Math.max(
-    1,
-    Math.ceil(
-      regularCandidates.length / ROTATING_CUSTOMER_HISTORY_CHECKS_PER_SYNC
-    )
+  const leadCandidates = allCandidates.filter(
+    candidate => candidate.newLeadCreatedAt
   );
-  const chunkIndex =
-    Math.floor(Date.now() / 120_000) % chunkCount;
-  const chunkStart =
-    chunkIndex * ROTATING_CUSTOMER_HISTORY_CHECKS_PER_SYNC;
+  const regularCandidates = allCandidates.filter(
+    candidate => !candidate.newLeadCreatedAt
+  );
+
+  const rotationTime = input.now ?? new Date();
   const selectedCandidates = [
-    ...leadCandidates,
-    ...regularCandidates.slice(
-      chunkStart,
-      chunkStart + ROTATING_CUSTOMER_HISTORY_CHECKS_PER_SYNC
+    ...rotatingHistoryWindow(
+      leadCandidates,
+      NEW_LEAD_HISTORY_CHECKS_PER_SYNC,
+      rotationTime
+    ),
+    ...rotatingHistoryWindow(
+      regularCandidates,
+      ROTATING_CUSTOMER_HISTORY_CHECKS_PER_SYNC,
+      rotationTime
     ),
   ];
 

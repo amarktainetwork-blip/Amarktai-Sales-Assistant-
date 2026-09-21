@@ -12,7 +12,7 @@ describe("commercial Sales Assistant product boundaries", () => {
     expect(app).toContain('<LegacyRedirect to="/assistant" />');
     expect(assistant).toContain("data-assistant-workspace");
     expect(assistant).toContain('aria-label="AmarktAI"');
-    expect(assistant).toContain("Good ");
+    expect(assistant).toContain("Your sales assistant is ready");
     expect(assistant).toContain("async function retry()");
     expect(assistant).not.toContain("agentKey");
   });

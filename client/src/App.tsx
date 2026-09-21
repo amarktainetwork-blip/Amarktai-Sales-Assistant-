@@ -125,7 +125,7 @@ function ManagementOnly({
 
   useEffect(() => {
     if (!loading && !user) {
-      navigate("/auth", { replace: true });
+      navigate("/", { replace: true });
       return;
     }
     if (!loading && user && security.data && !security.data.verified) {

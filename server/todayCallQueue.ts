@@ -79,6 +79,7 @@ function contactName(contact: TodayQueueContact) {
 }
 
 export function buildTodayCallQueue(input: {
+  now?: Date;
   newLeads?: Array<{
     workItemId: number;
     connectedSystemId: number;
@@ -91,6 +92,8 @@ export function buildTodayCallQueue(input: {
   reminders?: TodayQueueReminder[];
   contacts: TodayQueueContact[];
 }) {
+  const now = input.now ?? new Date();
+  const dueSoonCutoff = new Date(now.valueOf() + 30 * 60_000);
   const contacts = new Map(
     input.contacts.map(contact => [
       contactKey(contact.connectedSystemId, contact.externalId),
@@ -117,22 +120,31 @@ export function buildTodayCallQueue(input: {
   const addTask = (
     task: TodayQueueTask,
     kind: "overdue_task" | "due_today",
-    rank: number
+    defaultRank: number
   ) => {
     if (!task.contactExternalId) return;
     const contact = contacts.get(
       contactKey(task.connectedSystemId, task.contactExternalId)
     );
     if (!contact) return;
+    const timeCritical = Boolean(
+      task.dueAt && task.dueAt >= now && task.dueAt <= dueSoonCutoff
+    );
+    const overdue = Boolean(task.dueAt && task.dueAt < now);
     candidates.push({
-      rank,
+      rank: timeCritical ? 2 : overdue ? 3 : defaultRank,
       occurredAt: task.dueAt?.valueOf() ?? Number.MAX_SAFE_INTEGER,
       contact,
       kind,
       headline: task.title,
       dueAt: task.dueAt,
       receivedAt: null,
-      reason: kind === "overdue_task" ? "Overdue task" : "Task due today",
+      reason:
+        kind === "overdue_task"
+          ? "Overdue task"
+          : timeCritical
+            ? "Scheduled task due within 30 minutes"
+            : "Task due today",
       taskId: task.id,
     });
   };
@@ -143,7 +155,7 @@ export function buildTodayCallQueue(input: {
     );
     if (!contact) continue;
     candidates.push({
-      rank: 2,
+      rank: 5,
       occurredAt: lead.createdAt.valueOf(),
       contact,
       kind: "new_lead",
@@ -186,23 +198,29 @@ export function buildTodayCallQueue(input: {
     );
     if (matching.length !== 1) continue;
     const contact = matching[0];
+    const timeCritical =
+      reminder.dueAt >= now && reminder.dueAt <= dueSoonCutoff;
+    const overdue = reminder.dueAt < now;
     candidates.push({
-      rank: reminder.source === "call_commitment" ? 3 : 4,
+      rank: timeCritical ? 2 : overdue ? 3 : 4,
       occurredAt: reminder.dueAt.valueOf(),
       contact,
       kind: "confirmed_follow_up",
       headline: reminder.title,
       dueAt: reminder.dueAt,
       receivedAt: null,
-      reason:
-        reminder.source === "call_commitment"
-          ? "Confirmed follow-up is due"
-          : "Reminder is due",
+      reason: timeCritical
+        ? "Scheduled follow-up due within 30 minutes"
+        : overdue
+          ? "Confirmed follow-up is overdue"
+          : reminder.source === "call_commitment"
+            ? "Confirmed follow-up is due"
+            : "Reminder is due",
       reminderId: reminder.id,
     });
   }
-  input.overdueTasks.forEach(task => addTask(task, "overdue_task", 4));
-  input.dueToday.forEach(task => addTask(task, "due_today", 5));
+  input.overdueTasks.forEach(task => addTask(task, "overdue_task", 3));
+  input.dueToday.forEach(task => addTask(task, "due_today", 4));
 
   candidates.sort(
     (a, b) =>

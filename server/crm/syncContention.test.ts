@@ -160,10 +160,10 @@ describe("CRM task lead progression", () => {
         title: "#2 IT yes",
         status: "open",
       })
-    ).toBe(true);
+    ).toBe(false);
   });
 
-  it("treats later-stage CRM tasks as proof the lead has already been worked", () => {
+  it("classifies later-stage task titles as workflow progression context", () => {
     for (const title of [
       "#2 IT yes",
       "#3 cy no",

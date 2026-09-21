@@ -12,8 +12,8 @@ export const accountLinks = {
 
 export const publicPageMetadata: Record<string, { title: string; description: string }> = {
   "/": {
-    title: "AmarktAI Sales Assistant | Sell with more confidence. Follow up without the scramble.",
-    description: "AmarktAI helps salespeople prepare for customers, handle conversations and finish the follow-up around the CRM they already use.",
+    title: "AmarktAI Sales Assistant | Get Hours of Your Sales Day Back",
+    description: "AmarktAI connects to the CRM you already use and turns customer activity, replies, tasks, calls and follow-through into one guided sales day.",
   },
   "/how-it-works": {
     title: "How AmarktAI Sales Assistant Works | Keep Your CRM",
