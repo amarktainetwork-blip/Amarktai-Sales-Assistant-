@@ -39,6 +39,31 @@ export function handoverAllPassed(checks: Array<{ ok: boolean }>) {
   return checks.length > 0 && checks.every(c => c.ok);
 }
 
+export function reviewDraftProven(proposal: {
+  state: string;
+  governanceState: string;
+  executedAt: Date | string | null;
+  payload?: unknown;
+}) {
+  const payload =
+    proposal.payload &&
+    typeof proposal.payload === "object" &&
+    !Array.isArray(proposal.payload)
+      ? (proposal.payload as Record<string, unknown>)
+      : {};
+  const reviewLifecycle =
+    (proposal.state === "review_required" &&
+      ["PROPOSED", "READY_FOR_REVIEW"].includes(proposal.governanceState)) ||
+    (proposal.state === "skipped" && proposal.governanceState === "REJECTED");
+  return (
+    proposal.executedAt == null &&
+    payload.reviewRequired === true &&
+    payload.draftOnly === true &&
+    payload.executionReady === false &&
+    reviewLifecycle
+  );
+}
+
 export function exactInboundRecipientProven(input: {
   mailboxUserId: number | null;
   expectedUserId: number;

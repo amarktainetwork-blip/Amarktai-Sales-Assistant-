@@ -7,6 +7,7 @@ import {
   exactTaskCollectionProven,
   handoverAllPassed,
   handoverCheck,
+  reviewDraftProven,
 } from "./ameliaHandoverContract";
 import { calculateCurrentReadiness } from "./crm/currentReadiness";
 const parse = (v: any) => (typeof v === "string" ? JSON.parse(v) : v);
@@ -226,16 +227,16 @@ async function main() {
         Number.isFinite(Number(mailboxProof.rejectedForeignOwnerCount))
     );
     const proposals = await query(
-      "SELECT id,state,governanceState,executedAt FROM actionProposals WHERE organisationId=? AND userId=?",
+      "SELECT id,state,governanceState,executedAt,payload FROM actionProposals WHERE organisationId=? AND userId=?",
       [a.organisationId, a.userId]
     );
     check(
       "REVIEW_DRAFT_PROOF",
-      proposals.some(
-        p =>
-          p.executedAt === null &&
-          p.state === "review_required" &&
-          ["PROPOSED", "READY_FOR_REVIEW"].includes(p.governanceState)
+      proposals.some(p =>
+        reviewDraftProven({
+          ...p,
+          payload: parse(p.payload || {}),
+        })
       )
     );
     check(

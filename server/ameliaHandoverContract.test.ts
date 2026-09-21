@@ -6,6 +6,7 @@ import {
   exactOwnerCounts,
   exactTaskCollectionProven,
   handoverAllPassed,
+  reviewDraftProven,
 } from "./ameliaHandoverContract";
 describe("Amelia handover verifier fails closed", () => {
   it("does not pin live contact counts to the old baseline", () =>
@@ -117,6 +118,46 @@ describe("Amelia handover verifier fails closed", () => {
         expectedEmail: a.email,
         contactOwnerExternalId: "other-owner",
         expectedOwnerExternalId: a.ownerExternalId,
+      })
+    ).toBe(false);
+  });
+
+  it("accepts durable draft-only Review proof without requiring test clutter to remain queued", () => {
+    const payload = {
+      reviewRequired: true,
+      draftOnly: true,
+      executionReady: false,
+    };
+    expect(
+      reviewDraftProven({
+        state: "review_required",
+        governanceState: "READY_FOR_REVIEW",
+        executedAt: null,
+        payload,
+      })
+    ).toBe(true);
+    expect(
+      reviewDraftProven({
+        state: "skipped",
+        governanceState: "REJECTED",
+        executedAt: null,
+        payload,
+      })
+    ).toBe(true);
+    expect(
+      reviewDraftProven({
+        state: "skipped",
+        governanceState: "REJECTED",
+        executedAt: new Date(),
+        payload,
+      })
+    ).toBe(false);
+    expect(
+      reviewDraftProven({
+        state: "skipped",
+        governanceState: "REJECTED",
+        executedAt: null,
+        payload: { ...payload, draftOnly: false },
       })
     ).toBe(false);
   });
