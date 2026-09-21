@@ -80,6 +80,15 @@ export default function Assistant() {
   const [, navigate] = useLocation();
   const { user } = useAuth();
   const organisation = trpc.organisation.current.useQuery();
+  const organisationId = organisation.data?.organisationId;
+  const today = trpc.sales.today.useQuery(
+    { organisationId: organisationId ?? 0 },
+    {
+      enabled: Boolean(organisationId),
+      retry: false,
+      refetchInterval: 30_000,
+    }
+  );
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
   const [contactId, setContactId] = useState<number | undefined>();
@@ -97,6 +106,9 @@ export default function Assistant() {
     { enabled: Boolean(contactId), retry: false }
   );
   const selectedCustomer = customerDetail.data ?? undefined;
+  const dayItem = today.data?.queues.callQueue?.find(
+    item => item.contactId === contactId
+  );
   const contextOptions = useMemo(() => {
     const items = customers.data?.items ?? [];
     if (!selectedCustomer) return items;
@@ -118,6 +130,12 @@ export default function Assistant() {
     if (prompt) setDraft(prompt.slice(0, 12_000));
     if (Number.isInteger(selected) && selected > 0) setContactId(selected);
   }, []);
+
+  useEffect(() => {
+    if (contactId) return;
+    const next = today.data?.queues.callQueue?.[0];
+    if (next?.contactId) setContactId(next.contactId);
+  }, [contactId, today.data?.queues.callQueue]);
 
   useEffect(() => {
     chatEnd.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -196,18 +214,25 @@ export default function Assistant() {
     <DashboardLayout>
       <div
         data-assistant-workspace
-        className="mx-auto flex h-[calc(100dvh-92px)] min-h-[500px] max-w-[1180px] flex-col overflow-hidden text-[#24344A]"
+        className="mx-auto flex h-[calc(100dvh-86px)] min-h-[500px] max-w-[1120px] flex-col overflow-hidden text-[#2D3A4E]"
       >
-        <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[#D7E0EA] pb-4">
+        <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 pb-3">
           <div className="flex min-w-0 items-center gap-3">
             <AssistantMark />
             <div className="min-w-0">
-              <p className="text-sm font-black tracking-[-.01em] text-[#24344A]">
-                Amarkt<span className="text-[#2F6FED]">AI</span>
+              <p className="text-xs font-black uppercase tracking-[.12em] text-[#6F7D8F]">
+                Amarkt<span className="text-[#5577B7]">AI</span> · Day controller
               </p>
-              <h1 className="truncate text-base font-semibold text-[#40516A]">
-                Good {greeting}, {firstName}. What do you need for the next customer?
+              <h1 className="truncate text-lg font-semibold text-[#26364A]">
+                {selectedCustomer
+                  ? `Now: ${selectedCustomer.name}`
+                  : `Good ${greeting}, ${firstName}. Your day is up to date.`}
               </h1>
+              <p className="mt-0.5 text-sm text-[#718096]">
+                {today.data?.queues.callQueue?.length
+                  ? `${today.data.queues.callQueue.length} customer${today.data.queues.callQueue.length === 1 ? "" : "s"} currently need attention.`
+                  : "No customer work currently needs attention."}
+              </p>
             </div>
           </div>
 
@@ -250,7 +275,7 @@ export default function Assistant() {
 
         {selectedCustomer ? (
           <div className="shrink-0 border-b border-[#E5EAF0] py-3">
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#DCE4EE] bg-[#F8FAFD] px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-[#F5F6F8] px-4 py-3">
               <div className="min-w-0">
                 <p className="text-[10px] font-black uppercase tracking-[.12em] text-[#2F6FED]">
                   Working on
@@ -263,11 +288,17 @@ export default function Assistant() {
                     Course interest: {selectedCustomer.interest.primary}
                   </p>
                 ) : null}
-                <p className="mt-1 text-xs text-[#718096]">
-                  {selectedCustomer.nextAction?.title ||
+                <p className="mt-1 text-sm text-[#6E7A89]">
+                  {dayItem?.headline ||
+                    selectedCustomer.nextAction?.title ||
                     selectedCustomer.openOpportunity?.stage ||
                     "Customer context loaded"}
                 </p>
+                {dayItem?.reasons?.length ? (
+                  <p className="mt-1 text-xs font-semibold text-[#586A83]">
+                    Why now: {dayItem.reasons.join(" · ")}
+                  </p>
+                ) : null}
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button
@@ -298,7 +329,7 @@ export default function Assistant() {
         <div className="flex min-h-0 flex-1 flex-col pt-3">
           <section
             data-assistant-conversation
-            className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[#D7E0EA] bg-white"
+            className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl bg-white shadow-[0_8px_28px_rgba(35,49,70,.055)]"
           >
             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-7 sm:py-6">
               <div
@@ -308,8 +339,10 @@ export default function Assistant() {
                   <div className="flex max-w-2xl items-start gap-3">
                     <AssistantMark compact />
                     <div className="min-w-0 flex-1">
-                      <div className="rounded-2xl rounded-tl-md bg-[#F4F7FB] px-4 py-3 text-base leading-7 text-[#2D3F57]">
-                        {emptyState}
+                      <div className="rounded-2xl rounded-tl-md bg-[#F5F6F8] px-4 py-3 text-base leading-7 text-[#2D3F57]">
+                        {selectedCustomer
+                          ? `I have ${selectedCustomer.name}'s context loaded. You focus on the conversation; I can prepare the call, summarise the history and draft the follow-up for Review.`
+                          : emptyState}
                       </div>
                       <div className="mt-4 flex flex-wrap gap-2">
                         {suggestions.map(prompt => (
@@ -431,9 +464,9 @@ export default function Assistant() {
 
             <div
               data-assistant-composer
-              className="shrink-0 border-t border-[#E5EAF0] bg-[#FAFCFF] p-3 sm:p-4"
+              className="shrink-0 bg-[#FAFBFC] p-3 sm:p-4"
             >
-              <div className="mx-auto max-w-3xl rounded-2xl border border-[#CBD7E6] bg-white p-2 focus-within:border-[#8AACE6] focus-within:ring-2 focus-within:ring-[#E5EDFB]">
+              <div className="mx-auto max-w-3xl rounded-2xl bg-white p-2 shadow-[0_4px_18px_rgba(35,49,70,.07)] ring-1 ring-[#E5E8EC] focus-within:ring-[#AEBBD0]">
                 <Textarea
                   aria-label="Message AmarktAI"
                   value={draft}

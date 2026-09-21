@@ -10,6 +10,7 @@ import {
   assistantReminders,
   callbackTasks,
   connectedSystems,
+  crmActivities,
   crmContacts,
   connectorSyncJobs,
   crmOpportunities,
@@ -36,6 +37,42 @@ function ageDays(value?: Date | null, now = new Date()) {
 
 function normalizedTaskTitle(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+export function salespersonActivityProvesTaskHandled(
+  activity: {
+    activityType: string;
+    ownerExternalId: string | null;
+    occurredAt: Date;
+    raw: unknown;
+  },
+  ownerExternalId: string,
+  ownerEmail?: string | null
+) {
+  if (activity.ownerExternalId !== ownerExternalId) return false;
+  const type = String(activity.activityType || "").toLowerCase();
+  const raw =
+    activity.raw && typeof activity.raw === "object" && !Array.isArray(activity.raw)
+      ? (activity.raw as Record<string, unknown>)
+      : {};
+  if (type === "call") return true;
+  if (type === "note")
+    return String(raw.authorExternalId || "").trim() === ownerExternalId.trim();
+  if (!["email", "sms", "whatsapp", "communication"].includes(type))
+    return false;
+  if (String(raw.direction || "").toLowerCase() !== "outbound") return false;
+
+  const actorExternalId = String(raw.userExternalId || "").trim();
+  if (actorExternalId && actorExternalId === ownerExternalId.trim()) return true;
+
+  const email = String(ownerEmail || "").trim().toLowerCase();
+  const sender = String(raw.senderReference || "").trim().toLowerCase();
+  return Boolean(
+    type === "email" &&
+      email &&
+      sender &&
+      (sender === email || sender.includes(`<${email}>`) || sender.endsWith(` ${email}`))
+  );
 }
 
 /** Ordered task titles that an organisation explicitly says should drive its contact sequence. */
@@ -320,8 +357,68 @@ export async function getTodayWork(input: {
   ) =>
     !task.contactExternalId ||
     !futureCommitmentContacts.has(task.contactExternalId);
-  const overdueTasks = taskData.queues.overdueTasks.filter(currentTask);
-  const dueToday = taskData.queues.dueToday.filter(currentTask);
+
+  const taskContactExternalIds = Array.from(
+    new Set(
+      [
+        ...taskData.queues.overdueTasks,
+        ...taskData.queues.dueToday,
+      ]
+        .map(task => task.contactExternalId?.trim())
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+  const recentTaskActivities = taskContactExternalIds.length
+    ? await db
+        .select({
+          connectedSystemId: crmActivities.connectedSystemId,
+          contactExternalId: crmActivities.contactExternalId,
+          ownerExternalId: crmActivities.ownerExternalId,
+          activityType: crmActivities.activityType,
+          occurredAt: crmActivities.occurredAt,
+          raw: crmActivities.raw,
+        })
+        .from(crmActivities)
+        .where(
+          and(
+            eq(crmActivities.organisationId, input.organisationId),
+            inArray(crmActivities.contactExternalId, taskContactExternalIds)
+          )
+        )
+        .orderBy(desc(crmActivities.occurredAt))
+        .limit(5000)
+    : [];
+  const ownerEmailBySystemAndOwner = new Map(
+    mappings.map(mapping => [
+      `${mapping.connectedSystemId}:${mapping.externalUserId}`,
+      mapping.email,
+    ])
+  );
+  const taskWasAlreadyWorked = (task: (typeof taskData.queues.overdueTasks)[number]) => {
+    if (!task.contactExternalId || !task.ownerExternalId || !task.dueAt)
+      return false;
+    const ownerEmail =
+      ownerEmailBySystemAndOwner.get(
+        `${task.connectedSystemId}:${task.ownerExternalId}`
+      ) || null;
+    return recentTaskActivities.some(
+      activity =>
+        activity.connectedSystemId === task.connectedSystemId &&
+        activity.contactExternalId === task.contactExternalId &&
+        activity.occurredAt >= task.dueAt! &&
+        salespersonActivityProvesTaskHandled(
+          activity,
+          task.ownerExternalId!,
+          ownerEmail
+        )
+    );
+  };
+  const overdueTasks = taskData.queues.overdueTasks.filter(
+    task => currentTask(task) && !taskWasAlreadyWorked(task)
+  );
+  const dueToday = taskData.queues.dueToday.filter(
+    task => currentTask(task) && !taskWasAlreadyWorked(task)
+  );
   const unscheduledTasks = taskData.queues.unscheduled.filter(currentTask);
   const scopedTasks = [...overdueTasks, ...dueToday, ...unscheduledTasks];
   const scopedOpportunities = opportunities.filter(
@@ -369,8 +466,8 @@ export async function getTodayWork(input: {
   const workContactExternalIds = Array.from(
     new Set(
       [
-        ...taskData.queues.overdueTasks.map(task => task.contactExternalId),
-        ...taskData.queues.dueToday.map(task => task.contactExternalId),
+        ...overdueTasks.map(task => task.contactExternalId),
+        ...dueToday.map(task => task.contactExternalId),
         ...currentInbound.map(message => message.contactExternalId),
         ...reminders.map(reminder => reminder.contactExternalId),
         ...newLeadWork.map(item => item.contactExternalId),
@@ -496,10 +593,25 @@ export async function getTodayWork(input: {
         (b.valueMinor ?? 0) - (a.valueMinor ?? 0)
     )
     .slice(0, 20);
+  const visibleTaskData = {
+    ...taskData,
+    metrics: {
+      ...taskData.metrics,
+      overdue: overdueTasks.length,
+      dueToday: dueToday.length,
+    },
+    queues: {
+      ...taskData.queues,
+      overdueTasks,
+      dueToday,
+      unscheduled: unscheduledTasks,
+    },
+  };
+
   return {
     generatedAt: now,
     workspace,
-    taskData,
+    taskData: visibleTaskData,
     freshness: {
       status: syncJobs.some(job => job.status === "error")
         ? "attention"

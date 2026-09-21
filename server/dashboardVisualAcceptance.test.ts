@@ -87,7 +87,9 @@ describe("final dashboard information architecture", () => {
     expect(review).not.toContain("Only stop here when AmarktAI needs your decision.");
     expect(review).toContain("Back to Today");
     expect(assistant).not.toContain("Give me the admin around the call.");
-    expect(assistant).toContain("What do you need for the next customer?");
+    expect(assistant).toContain("Day controller");
+    expect(assistant).toContain("Your day is up to date.");
+    expect(assistant).toContain("Why now:");
   });
 
   it("gives team managers factual workload and follow-up exceptions", () => {

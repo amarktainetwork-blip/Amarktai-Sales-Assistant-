@@ -49,10 +49,13 @@ export function parsePersonalGenieEmail(
       : [];
   const recipients = rawRecipients.map(mailboxAddress).filter(Boolean);
   if (!recipients.length) return { kind: "excluded" as const };
+  const mailboxEmail = input.mailboxEmail.toLowerCase();
+  if (!recipients.includes(mailboxEmail))
+    return { kind: "foreign_recipient" as const };
   const sender = mailboxAddress(email.from);
   if (
     !sender ||
-    sender === input.mailboxEmail.toLowerCase() ||
+    sender === mailboxEmail ||
     typeof email.body !== "string" ||
     !email.body.trim()
   )
@@ -62,7 +65,7 @@ export function parsePersonalGenieEmail(
     message: {
       emailId: email.id as string,
       sender,
-      recipient: recipients[0],
+      recipient: mailboxEmail,
       body: email.body,
       subject: typeof email.subject === "string" ? email.subject : undefined,
       receivedAt,
@@ -430,6 +433,10 @@ export async function readPersonalGenieMailbox(input: {
               contactExternalId,
               since,
             });
+            if (parsed.kind === "foreign_recipient") {
+              rejectedForeignRecipientCount++;
+              continue;
+            }
             if (parsed.kind === "personal")
               records.set(emailId, {
                 externalMessageId: parsed.message.emailId,

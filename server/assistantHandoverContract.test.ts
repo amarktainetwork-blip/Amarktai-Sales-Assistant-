@@ -33,7 +33,9 @@ describe("client-handover AmarktAI contract", () => {
       "organisation.data?.memberOnboarding.preferredName"
     );
     expect(assistantPage).toContain("user?.name?.trim().split");
-    expect(assistantPage).toContain("Good {greeting}, {firstName}.");
+    expect(assistantPage).toContain(
+      "Good ${greeting}, ${firstName}. Your day is up to date."
+    );
   });
 
   it("wires scoped relevant memory and personal context into /api/assistant", () => {

@@ -857,3 +857,83 @@ body:has(.amarktai-dashboard-sidebar) [data-sidebar="footer"]::after {
   border: 0;
   border-radius: 0;
 }
+
+/* Calm production workspace: prioritise readability and task flow over decoration. */
+body:has([data-slot="sidebar-wrapper"]) {
+  --handover-canvas: #f7f8fa;
+  --handover-surface: #ffffff;
+  --handover-surface-soft: #f7f8fa;
+  --handover-ink: #26364a;
+  --handover-muted: #6f7d8f;
+  --handover-line: #e8ebef;
+  --handover-line-strong: #d8dde4;
+  --handover-blue: #60799f;
+  --handover-blue-strong: #4e668b;
+  --handover-blue-soft: #f0f3f7;
+  --handover-shadow: 0 6px 24px rgba(35, 49, 70, 0.05);
+  --handover-shadow-hover: 0 10px 30px rgba(35, 49, 70, 0.07);
+  --dash-canvas-premium: #f7f8fa;
+  --dash-surface-soft: #f7f8fa;
+  --dash-line: #e8ebef;
+  --dash-line-strong: #d8dde4;
+  --dash-text: #26364a;
+  --dash-muted: #6f7d8f;
+  --dash-faint: #9099a6;
+  --dash-brand: #60799f;
+  --dash-brand-dark: #4e668b;
+  --dash-brand-soft: #f0f3f7;
+  --dash-shadow: 0 6px 24px rgba(35, 49, 70, 0.05);
+  --dash-shadow-strong: 0 10px 30px rgba(35, 49, 70, 0.07);
+}
+
+body:has([data-slot="sidebar-wrapper"]) .amarktai-dashboard-sidebar,
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="sidebar"],
+body:has([data-slot="sidebar-wrapper"]) [data-slot="sidebar-container"] {
+  background: #fbfcfd;
+  border-color: #eceef2;
+}
+
+body:has([data-slot="sidebar-wrapper"]) [data-sidebar="menu-button"]:hover {
+  background: #f1f3f6;
+  color: #26364a;
+  transform: none;
+}
+
+body:has([data-slot="sidebar-wrapper"])
+  [data-sidebar="menu-button"][data-active="true"] {
+  background: #edf0f4;
+  color: #26364a;
+  box-shadow: none;
+}
+
+body:has([data-slot="sidebar-wrapper"]) .handover-surface {
+  border-color: transparent;
+  border-radius: 16px;
+  box-shadow: 0 6px 24px rgba(35, 49, 70, 0.045);
+}
+
+[data-today-workspace] {
+  font-size: 16px;
+}
+
+[data-today-workspace] > header,
+[data-assistant-workspace],
+[data-assistant-conversation] {
+  border-color: transparent !important;
+}
+
+[data-assistant-workspace] {
+  border: 0 !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+}
+
+[data-assistant-workspace] select,
+[data-assistant-workspace] input,
+[data-assistant-workspace] textarea {
+  font-size: 14px;
+}
+
+[data-assistant-conversation] {
+  box-shadow: 0 8px 28px rgba(35, 49, 70, 0.055);
+}
