@@ -19,6 +19,7 @@ describe("Phase 2 daily salesperson workflow", () => {
     expect(today).toContain("today.data?.queues.callQueue");
     expect(today).not.toContain("today.data?.queues.priority");
     expect(today).toContain("startCall.mutate");
+    expect(today).toContain("&contactId=${variables.contactId}");
     expect(today).toContain("/customers?contactId=");
     expect(today).toContain("/reviews");
 
@@ -86,6 +87,9 @@ describe("Phase 2 daily salesperson workflow", () => {
     expect(layout).toContain("Daily flow");
 
     expect(calls).toContain("trpc.sales.customerDetail.useQuery");
+    expect(calls).toContain(
+      "initialContactId > 0 ? initialContactId : undefined"
+    );
     expect(calls).not.toContain("trpc.sales.customers.useQuery");
     expect(calls).toContain('navigate("/reviews")');
     expect(calls).toContain('navigate("/today")');

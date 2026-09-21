@@ -60,6 +60,8 @@ describe("Amelia handover verifier fails closed", () => {
         channel: "email",
         recipientReference: a.email,
         expectedEmail: a.email,
+        contactOwnerExternalId: a.ownerExternalId,
+        expectedOwnerExternalId: a.ownerExternalId,
       })
     ).toBe(true);
     expect(
@@ -69,6 +71,8 @@ describe("Amelia handover verifier fails closed", () => {
         channel: "sms",
         recipientReference: "+447428000560",
         expectedEmail: a.email,
+        contactOwnerExternalId: a.ownerExternalId,
+        expectedOwnerExternalId: a.ownerExternalId,
       })
     ).toBe(true);
     expect(
@@ -78,6 +82,8 @@ describe("Amelia handover verifier fails closed", () => {
         channel: "whatsapp",
         recipientReference: "+447428000560",
         expectedEmail: a.email,
+        contactOwnerExternalId: a.ownerExternalId,
+        expectedOwnerExternalId: a.ownerExternalId,
       })
     ).toBe(true);
     expect(
@@ -87,6 +93,8 @@ describe("Amelia handover verifier fails closed", () => {
         channel: "sms",
         recipientReference: "+447428000560",
         expectedEmail: a.email,
+        contactOwnerExternalId: a.ownerExternalId,
+        expectedOwnerExternalId: a.ownerExternalId,
       })
     ).toBe(false);
     expect(
@@ -94,8 +102,21 @@ describe("Amelia handover verifier fails closed", () => {
         mailboxUserId: a.userId,
         expectedUserId: a.userId,
         channel: "email",
-        recipientReference: "someone-else@example.com",
+        recipientReference: "team@example.com",
         expectedEmail: a.email,
+        contactOwnerExternalId: a.ownerExternalId,
+        expectedOwnerExternalId: a.ownerExternalId,
+      })
+    ).toBe(true);
+    expect(
+      exactInboundRecipientProven({
+        mailboxUserId: a.userId,
+        expectedUserId: a.userId,
+        channel: "email",
+        recipientReference: "team@example.com",
+        expectedEmail: a.email,
+        contactOwnerExternalId: "other-owner",
+        expectedOwnerExternalId: a.ownerExternalId,
       })
     ).toBe(false);
   });

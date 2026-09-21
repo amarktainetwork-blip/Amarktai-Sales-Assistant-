@@ -83,6 +83,49 @@ export type PersonalGenieMailboxRecord = {
   conversationExternalId: string;
 };
 
+export type PersonalGenieOutboundEvidence = {
+  externalMessageId: string;
+  channel: "email" | "sms" | "chat";
+  contactExternalId: string;
+  conversationExternalId: string;
+  sentAt: Date;
+};
+
+export function parsePersonalGenieOutboundEmail(
+  value: any,
+  input: {
+    emailId: string;
+    locationId: string;
+    conversationId: string;
+    contactExternalId: string;
+    since: number;
+  }
+) {
+  const email = value?.emailMessage || value;
+  if (!email || email.deleted === true || email.direction !== "outbound")
+    return { kind: "excluded" as const };
+  if (
+    email.id !== input.emailId ||
+    email.locationId !== input.locationId ||
+    email.conversationId !== input.conversationId ||
+    email.contactId !== input.contactExternalId
+  )
+    throw Error("GENIE_MAILBOX_SCOPE_MISMATCH");
+  const sentAt = new Date(email.dateAdded);
+  if (!Number.isFinite(sentAt.getTime()) || sentAt.getTime() < input.since)
+    return { kind: "excluded" as const };
+  return {
+    kind: "outbound" as const,
+    evidence: {
+      externalMessageId: email.id as string,
+      channel: "email" as const,
+      contactExternalId: input.contactExternalId,
+      conversationExternalId: input.conversationId,
+      sentAt,
+    },
+  };
+}
+
 export function genieConversationChannel(value: any) {
   const messageType = String(
     value?.messageTypeString || value?.messageType || ""
@@ -243,6 +286,7 @@ export async function readPersonalGenieMailbox(input: {
     throw Error("GENIE_MAILBOX_SEARCH_INVALID");
 
   const records = new Map<string, PersonalGenieMailboxRecord>();
+  const outboundEvidence = new Map<string, PersonalGenieOutboundEvidence>();
   const visited = new Set<string>();
   let rejectedForeignRecipientCount = 0;
   let rejectedForeignOwnerCount = 0;
@@ -309,6 +353,17 @@ export async function readPersonalGenieMailbox(input: {
             visited.add(emailId);
             examined++;
             const raw = await read(`/conversations/messages/email/${emailId}`);
+            const outbound = parsePersonalGenieOutboundEmail(raw, {
+              emailId,
+              locationId,
+              conversationId,
+              contactExternalId,
+              since,
+            });
+            if (outbound.kind === "outbound") {
+              outboundEvidence.set(emailId, outbound.evidence);
+              continue;
+            }
             const parsed = parsePersonalGenieEmail(raw, {
               emailId,
               mailboxEmail: input.mailboxEmail,
@@ -335,6 +390,25 @@ export async function readPersonalGenieMailbox(input: {
           continue;
         }
 
+        if (thread.direction === "outbound") {
+          const messageId = id(thread.id);
+          const channel = genieConversationChannel(thread);
+          const sentAt = new Date(thread.dateAdded);
+          if (
+            messageId &&
+            channel &&
+            Number.isFinite(sentAt.getTime()) &&
+            sentAt.getTime() >= since
+          )
+            outboundEvidence.set(messageId, {
+              externalMessageId: messageId,
+              channel,
+              contactExternalId,
+              conversationExternalId: conversationId,
+              sentAt,
+            });
+          continue;
+        }
         if (thread.direction !== "inbound") continue;
         const messageId = id(thread.id);
         if (!messageId || visited.has(messageId)) continue;
@@ -374,6 +448,7 @@ export async function readPersonalGenieMailbox(input: {
   if (!unreadPreserved) throw Error("GENIE_MAILBOX_UNREAD_STATE_CHANGED");
   return {
     records: Array.from(records.values()),
+    outboundEvidence: Array.from(outboundEvidence.values()),
     checked: Math.min(conversations.length, 20),
     examined,
     rejectedForeignRecipientCount,

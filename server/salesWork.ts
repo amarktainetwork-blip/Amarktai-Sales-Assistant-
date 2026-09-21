@@ -701,6 +701,7 @@ export async function completeNewLeadWorkAfterVerifiedContact(input: {
     | "verified_call"
     | "verified_task_completion"
     | "verified_inbound_reply"
+    | "verified_outbound_reply"
     | "verified_customer_history";
 }) {
   const db = await getDb();
@@ -742,7 +743,9 @@ export async function completeNewLeadWorkAfterVerifiedContact(input: {
             ? "Verified CRM task completion resolved the first-contact lead alert."
             : input.reason === "verified_inbound_reply"
               ? "Verified inbound customer reply resolved the first-contact lead alert."
-              : "Verified customer history resolved the first-contact lead alert.",
+              : input.reason === "verified_outbound_reply"
+                ? "Verified salesperson reply resolved the first-contact lead alert."
+                : "Verified customer history resolved the first-contact lead alert.",
       metadata: { count, contactExternalId, reason: input.reason },
     });
   return count;
