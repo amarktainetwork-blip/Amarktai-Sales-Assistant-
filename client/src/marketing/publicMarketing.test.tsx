@@ -74,7 +74,7 @@ describe("final public website", () => {
     expect(combined).not.toMatch(/\bGenX\b/i);
   });
 
-  it("uses product-led visuals on the homepage instead of stock-photo storytelling", () => {
+  it("uses the client-selected local photography instead of remote or fake UI imagery", () => {
     const home = render("/", HomePage);
     const how = render("/how-it-works", HowItWorksPage);
     const about = render("/about", AboutPage);
@@ -83,16 +83,21 @@ describe("final public website", () => {
       expect(html).not.toContain("images.pexels.com");
       expect(html).not.toContain("images.unsplash.com");
     }
-    expect(home).toContain("AmarktAI Today workspace preview");
-    expect(home).toContain("Completed work retired");
-    expect(home).toContain("Everything that matters, before hello.");
-    expect(home).toContain("Approved template matched to context");
-    expect(home).toContain("Commitments protected");
-    expect(home).not.toContain(
+    expect(home).toContain(
       "/images/people/focuspurely-business-8779718_1920.png"
     );
-    expect(home).not.toContain(
+    expect(home).toContain("/images/people/pexels-gustavo-fring-5621969.jpg");
+    expect(home).toContain(
       "/images/people/thenikscape-ai-generated-9587004_1920.jpg"
+    );
+    expect(home).toContain("/images/people/pexels-pavel-danilyuk-7658351.jpg");
+    expect(how).toContain("/images/people/pexels-mart-production-7709175.jpg");
+    expect(about).toContain(
+      "/images/people/sohag_hawlader-business-8788636_1920.jpg"
+    );
+    expect(contact).toContain("/images/people/stocksnap-girl-2583442_1920.jpg");
+    expect(home).not.toContain(
+      "/images/people/thenikscape-ai-generated-9586971_1920.jpg"
     );
   });
 
@@ -233,7 +238,8 @@ describe("final public website", () => {
       readFileSync(path.resolve(process.cwd(), "client/src/index.css"), "utf8")
     ).toContain(".amk-auth");
     expect(css).toContain(".amk-photo-frame");
-    expect(css).toContain("--navy: #2e3944");
+    expect(css).toContain("--navy: #526774");
+    expect(css).toContain("--blue: #55788b");
     expect(
       existsSync(path.resolve(process.cwd(), "client/src/pages/final-auth.css"))
     ).toBe(false);
@@ -257,6 +263,6 @@ describe("final public website", () => {
     );
     expect(dashboardCss).toContain("One logged-in visual system");
     expect(dashboardCss).toContain('body:has([data-slot="sidebar-wrapper"])');
-    expect(dashboardCss).toContain("--dash-blue: #526d9d");
+    expect(dashboardCss).toContain("--dash-blue: #55788b");
   });
 });

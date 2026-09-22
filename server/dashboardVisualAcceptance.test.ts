@@ -66,31 +66,43 @@ describe("final dashboard information architecture", () => {
       path.resolve("client/src/components/DashboardLayout.tsx"),
       "utf8"
     );
-    const today = readFileSync(path.resolve("client/src/pages/Today.tsx"), "utf8");
+    const today = readFileSync(
+      path.resolve("client/src/pages/Today.tsx"),
+      "utf8"
+    );
     const customers = readFileSync(
       path.resolve("client/src/pages/Customers.tsx"),
       "utf8"
     );
-    const review = readFileSync(path.resolve("client/src/pages/Reviews.tsx"), "utf8");
+    const review = readFileSync(
+      path.resolve("client/src/pages/Reviews.tsx"),
+      "utf8"
+    );
     const assistant = readFileSync(
       path.resolve("client/src/pages/Assistant.tsx"),
       "utf8"
     );
 
     expect(layout).not.toContain("data-new-lead-alert");
-    expect(layout).toContain("storedCompanyComplete && crmAttention && crmProblem");
+    expect(layout).toContain(
+      "storedCompanyComplete && crmAttention && crmProblem"
+    );
     expect(today).not.toContain("Daily loop");
     expect(today).not.toContain("Work the hottest customer");
     expect(today).toContain("Immediate work is clear.");
     expect(today).toContain("AmarktAI prepares admin");
     expect(customers).not.toContain("Know the person before you call.");
     expect(customers).toContain("Customer context");
-    expect(review).not.toContain("Only stop here when AmarktAI needs your decision.");
+    expect(review).not.toContain(
+      "Only stop here when AmarktAI needs your decision."
+    );
     expect(review).toContain("Back to Today");
     expect(assistant).not.toContain("Give me the admin around the call.");
     expect(assistant).toContain("Your sales assistant is ready");
     expect(assistant).toContain('label="Why now"');
-    expect(assistant).toContain("Draft first. Customer-facing actions remain reviewable.");
+    expect(assistant).toContain(
+      "Draft first. Customer-facing actions remain reviewable."
+    );
   });
 
   it("gives team managers factual workload and follow-up exceptions", () => {
@@ -168,21 +180,23 @@ describe("final dashboard information architecture", () => {
       "utf8"
     );
 
-    expect(css).toContain("--dash-canvas: #f2f0eb");
-    expect(css).toContain("--dash-paper: #fbfaf7");
-    expect(css).toContain("--dash-ink: #30363c");
-    expect(css).toContain("--dash-blue: #526d9d");
-    expect(css).toContain("--handover-blue: #526d9d");
-    expect(css).toContain("--handover-canvas: #f2f0eb");
+    expect(css).toContain("--dash-canvas: #f3f6f7");
+    expect(css).toContain("--dash-paper: #ffffff");
+    expect(css).toContain("--dash-ink: #263843");
+    expect(css).toContain("--dash-blue: #55788b");
+    expect(css).toContain("--handover-blue: #55788b");
+    expect(css).toContain("--handover-canvas: #f3f6f7");
     expect(css).toContain('[class*="whitespace-pre-wrap"]');
     expect(css).toContain("input::placeholder");
 
-    expect(layout).toContain('SidebarInset className="bg-[#F3F2EF]"');
-    expect(layout).toContain("bg-[#ECEBE6]");
+    expect(layout).toContain('SidebarInset className="bg-[#F3F6F7]"');
+    expect(layout).toContain("bg-[#EDF2F3]");
     expect(layout).not.toContain(
       'className="border-r border-[#1B2B44] bg-[#0B1B36] text-white"'
     );
     expect(layout).not.toContain("bg-white/[.06]");
+    expect(layout).not.toContain("#F3F2EF");
+    expect(layout).not.toContain("#ECEBE6");
   });
 
   it("keeps the call workflow and does not rely on a deleted override layer", () => {

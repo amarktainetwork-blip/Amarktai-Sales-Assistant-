@@ -44,7 +44,12 @@ import { toast } from "sonner";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 
-type NavItem = { icon: LucideIcon; label: string; path: string; badge?: number };
+type NavItem = {
+  icon: LucideIcon;
+  label: string;
+  path: string;
+  badge?: number;
+};
 
 const dailyMenu: NavItem[] = [
   { icon: Home, label: "Today", path: "/today" },
@@ -228,7 +233,9 @@ export default function DashboardLayout({
     try {
       const key = `amarktai:inbox-notified:${organisationId}`;
       const stored = JSON.parse(localStorage.getItem(key) || "[]") as number[];
-      const actionable = inbox.data.messages.filter(message => message.needsAction);
+      const actionable = inbox.data.messages.filter(
+        message => message.needsAction
+      );
       const unseen = actionable.filter(message => !stored.includes(message.id));
       if (!unseen.length) return;
       const first = unseen[0];
@@ -236,7 +243,9 @@ export default function DashboardLayout({
         first.classification &&
         typeof first.classification === "object" &&
         !Array.isArray(first.classification)
-          ? String((first.classification as Record<string, unknown>).category || "")
+          ? String(
+              (first.classification as Record<string, unknown>).category || ""
+            )
           : "";
       toast.success(
         classification === "sale_intent"
@@ -249,10 +258,9 @@ export default function DashboardLayout({
       );
       localStorage.setItem(
         key,
-        JSON.stringify([
-          ...unseen.map(message => message.id),
-          ...stored,
-        ].slice(0, 100))
+        JSON.stringify(
+          [...unseen.map(message => message.id), ...stored].slice(0, 100)
+        )
       );
     } catch {
       // Inbox source truth remains in the database if browser storage is unavailable.
@@ -298,12 +306,7 @@ export default function DashboardLayout({
     } catch {
       // The persistent Today queue remains the source of truth.
     }
-  }, [
-    dueAttention,
-    dueAttentionPhase,
-    navigate,
-    organisationId,
-  ]);
+  }, [dueAttention, dueAttentionPhase, navigate, organisationId]);
 
   const secondaryMenu = useMemo<NavItem[]>(() => {
     if (!canManage) return [];
@@ -447,13 +450,13 @@ export default function DashboardLayout({
         </SidebarFooter>
       </Sidebar>
 
-      <SidebarInset className="bg-[#F3F2EF]">
+      <SidebarInset className="bg-[#F3F6F7]">
         <AppTopbar />
         <main className="min-h-[calc(100vh-46px)] px-4 pb-6 pt-1 sm:px-6 lg:px-8">
           {dueAttention?.dueAt ? (
             <div
               role="status"
-              className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[#ECEBE6] px-4 py-3 text-sm text-[#3F454D]"
+              className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[#EDF2F3] px-4 py-3 text-sm text-[#52636C]"
             >
               <div className="flex min-w-0 items-center gap-3">
                 <CalendarClock className="h-4 w-4 shrink-0 text-[#6B746E]" />
@@ -473,7 +476,11 @@ export default function DashboardLayout({
                       )} min`}
                 </span>
               </div>
-              <Button size="sm" variant="ghost" onClick={() => navigate("/today")}>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => navigate("/today")}
+              >
                 Open Today
               </Button>
             </div>
@@ -519,7 +526,11 @@ export default function DashboardLayout({
                 Finish company setup to bring your knowledge and CRM into the
                 workspace.
               </span>
-              <Button size="sm" variant="ghost" onClick={() => navigate("/company-setup")}>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => navigate("/company-setup")}
+              >
                 Continue setup
               </Button>
             </div>

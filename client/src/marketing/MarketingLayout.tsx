@@ -3,12 +3,13 @@ import { BrandName } from "@/components/BrandName";
 import { ArrowRight, Menu, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { accountLinks, marketingNavigation, publicPageMetadata } from "./site";
+import { accountLinks, publicPageMetadata } from "./site";
 import "./final-site.css";
 
 export function scrollPublicRouteToTop(
   location: string,
-  scrollTo: (options: ScrollToOptions) => void = options => window.scrollTo(options)
+  scrollTo: (options: ScrollToOptions) => void = options =>
+    window.scrollTo(options)
 ) {
   const pathname = location.split(/[?#]/, 1)[0];
   if (!Object.hasOwn(publicPageMetadata, pathname)) return false;
@@ -40,25 +41,31 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="amk-site">
-      <a className="amk-skip" href="#main-content">Skip to content</a>
+      <a className="amk-skip" href="#main-content">
+        Skip to content
+      </a>
       <header className="amk-header">
         <div className="amk-shell amk-header__inner">
-          <div className="amk-brand"><BrandMark large /></div>
+          <div className="amk-brand">
+            <BrandMark large />
+          </div>
           <nav className="amk-nav" aria-label="Main navigation">
-            {marketingNavigation.map(item => (
-              <Link
-                key={item.href}
-                href={item.href}
-                aria-current={location === item.href ? "page" : undefined}
-                className={location === item.href ? "is-active" : ""}
-              >
-                {item.label}
-              </Link>
-            ))}
+            <Link
+              href="/pricing"
+              aria-current={location === "/pricing" ? "page" : undefined}
+              className={location === "/pricing" ? "is-active" : ""}
+            >
+              Pricing
+            </Link>
           </nav>
           <div className="amk-header__actions">
-            <Link href={accountLinks.signIn} className="amk-signin">Sign In</Link>
-            <Link href={accountLinks.getStarted} className="amk-button amk-button--primary amk-button--small">
+            <Link href={accountLinks.signIn} className="amk-signin">
+              Sign In
+            </Link>
+            <Link
+              href={accountLinks.getStarted}
+              className="amk-button amk-button--primary amk-button--small"
+            >
               Start Free <ArrowRight size={15} />
             </Link>
             <button
@@ -75,11 +82,20 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
         {menuOpen ? (
-          <nav id="amk-mobile-navigation" className="amk-mobile-nav" aria-label="Mobile navigation">
+          <nav
+            id="amk-mobile-navigation"
+            className="amk-mobile-nav"
+            aria-label="Mobile navigation"
+          >
             <div className="amk-shell amk-mobile-nav__inner">
-              {marketingNavigation.map(item => <Link key={item.href} href={item.href}>{item.label}</Link>)}
+              <Link href="/pricing">Pricing</Link>
               <Link href={accountLinks.signIn}>Sign In</Link>
-              <Link href={accountLinks.getStarted} className="amk-button amk-button--primary">Start Free</Link>
+              <Link
+                href={accountLinks.getStarted}
+                className="amk-button amk-button--primary"
+              >
+                Start Free
+              </Link>
             </div>
           </nav>
         ) : null}
@@ -90,9 +106,16 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
       <footer className="amk-footer">
         <div className="amk-shell amk-footer__top">
           <div className="amk-footer__brand">
-            <BrandMark large inverse />
-            <h2>Give your salespeople their time back without replacing the systems you already trust.</h2>
-            <p><BrandName /> Sales Assistant connects customer context, priorities, calls, reminders and follow-through into one working day — while the CRM remains the system of record and important actions stay visible and reviewable.</p>
+            <BrandMark large />
+            <h2>
+              Give your salespeople a better way to work around the CRM they
+              already use.
+            </h2>
+            <p>
+              <BrandName /> Sales Assistant helps with preparation, customer
+              context, conversations and follow-through — while important
+              actions stay visible and reviewable.
+            </p>
           </div>
           <div className="amk-footer__links">
             <div>
@@ -110,7 +133,10 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
         <div className="amk-shell amk-footer__base">
-          <p>© {new Date().getFullYear()} <BrandName /> Sales Assistant · Part of Amarktai Network</p>
+          <p>
+            © {new Date().getFullYear()} <BrandName /> Sales Assistant · Part
+            of Amarktai Network
+          </p>
           <p>Keep your CRM. Make the sales day easier.</p>
         </div>
       </footer>

@@ -52,8 +52,8 @@ describe("AmarktAI customer-facing branding boundary", () => {
       path.resolve(process.cwd(), "client/index.html"),
       "utf8"
     );
-    expect(shell).toContain(
-      "<title>AmarktAI Sales Assistant | Sell with more confidence. Follow up without the scramble.</title>"
+    expect(shell.replace(/\s+/g, " ")).toContain(
+      "<title> AmarktAI Sales Assistant | Sell with more confidence. Follow up without the scramble. </title>"
     );
     expect(shell).toContain(
       'content="AmarktAI helps salespeople prepare for customers, handle conversations and finish the follow-up around the CRM they already use."'
@@ -79,11 +79,16 @@ describe("AmarktAI customer-facing branding boundary", () => {
     ]
       .map(file => readFileSync(path.resolve(process.cwd(), file), "utf8"))
       .join("\n");
-    expect(visibleSources).not.toContain("/images/people/");
+    const imagery = readFileSync(
+      path.resolve(process.cwd(), "client/src/marketing/imagery.ts"),
+      "utf8"
+    );
     expect(visibleSources).not.toMatch(/images\.pexels\.com/i);
     expect(visibleSources).not.toMatch(/images\.unsplash\.com/i);
     expect(visibleSources).toContain("MarketingArtwork");
-    expect(marketingCss).toContain(".amk-brand-art");
+    expect(imagery).toContain("/images/people/");
+    expect(imagery).not.toContain("thenikscape-ai-generated-9586971_1920.jpg");
+    expect(marketingCss).toContain(".amk-brand-art--photo");
     expect(css).toContain("Part of Amarktai Network");
     expect(css).toContain(".amk-auth__message h1");
     expect(css).not.toContain("content: url(");

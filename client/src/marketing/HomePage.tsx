@@ -11,6 +11,7 @@ import {
 import { Link } from "wouter";
 import { BrandName } from "@/components/BrandName";
 import { MarketingLayout } from "./MarketingLayout";
+import { marketingImagery } from "./imagery";
 import { accountLinks } from "./site";
 
 const benefits = [
@@ -103,7 +104,12 @@ export default function HomePage() {
           </div>
 
           <div className="amk-hero__media">
-            <SalesDayPreview />
+            <figure className="amk-photo-frame amk-photo-frame--hero">
+              <img
+                src={marketingImagery.hero.src}
+                alt={marketingImagery.hero.alt}
+              />
+            </figure>
           </div>
         </div>
       </section>
@@ -159,7 +165,13 @@ export default function HomePage() {
       <section className="amk-section amk-section--ice">
         <div className="amk-shell amk-split">
           <div className="amk-split__media">
-            <CallPreview />
+            <figure className="amk-photo-frame amk-photo-frame--story">
+              <img
+                src={marketingImagery.customerCall.src}
+                alt={marketingImagery.customerCall.alt}
+                loading="lazy"
+              />
+            </figure>
           </div>
           <div className="amk-split__copy">
             <p className="amk-eyebrow">BE READY BEFORE THE PHONE RINGS</p>
@@ -239,7 +251,13 @@ export default function HomePage() {
             </div>
           </div>
           <div className="amk-split__media">
-            <FollowUpPreview />
+            <figure className="amk-photo-frame amk-photo-frame--story">
+              <img
+                src={marketingImagery.focus.src}
+                alt={marketingImagery.focus.alt}
+                loading="lazy"
+              />
+            </figure>
           </div>
         </div>
       </section>
@@ -291,7 +309,13 @@ export default function HomePage() {
       <section className="amk-section amk-section--light">
         <div className="amk-shell amk-split">
           <div className="amk-split__media">
-            <TeamPreview />
+            <figure className="amk-photo-frame amk-photo-frame--story">
+              <img
+                src={marketingImagery.team.src}
+                alt={marketingImagery.team.alt}
+                loading="lazy"
+              />
+            </figure>
           </div>
           <div className="amk-split__copy">
             <p className="amk-eyebrow">FOR ONE SALESPERSON OR THE WHOLE TEAM</p>
@@ -341,164 +365,5 @@ export default function HomePage() {
         </div>
       </section>
     </MarketingLayout>
-  );
-}
-
-function SalesDayPreview() {
-  return (
-    <div
-      className="amk-product-visual amk-product-visual--hero"
-      aria-label="AmarktAI Today workspace preview"
-    >
-      <div className="amk-product-visual__top">
-        <span>Today</span>
-        <strong>3 people need you</strong>
-        <small>Live sales day</small>
-      </div>
-      <div className="amk-product-visual__focus">
-        <div>
-          <small>NEXT PERSON</small>
-          <h3>Customer reply needs attention</h3>
-          <p>IT Support Technician · replied 8 min ago</p>
-        </div>
-        <span className="amk-product-pill">Prepare me</span>
-      </div>
-      <div className="amk-product-visual__row">
-        <span>
-          <MessageSquareText size={17} /> Reply waiting
-        </span>
-        <strong>1</strong>
-      </div>
-      <div className="amk-product-visual__row">
-        <span>
-          <Clock3 size={17} /> Scheduled within 30 min
-        </span>
-        <strong>1</strong>
-      </div>
-      <div className="amk-product-visual__row">
-        <span>
-          <CheckCircle2 size={17} /> Completed work retired
-        </span>
-        <strong>✓</strong>
-      </div>
-      <div className="amk-product-visual__footer">
-        <span>Today</span>
-        <b>→</b>
-        <span>Context</span>
-        <b>→</b>
-        <span>Call</span>
-        <b>→</b>
-        <span>Review</span>
-      </div>
-    </div>
-  );
-}
-
-function CallPreview() {
-  return (
-    <div className="amk-product-visual">
-      <div className="amk-product-visual__top">
-        <span>Call brief</span>
-        <strong>Everything that matters, before hello.</strong>
-      </div>
-      <div className="amk-product-grid">
-        <div>
-          <small>INTEREST</small>
-          <strong>Cyber Security</strong>
-        </div>
-        <div>
-          <small>ENQUIRY</small>
-          <strong>Career change</strong>
-        </div>
-        <div>
-          <small>BEST TIME</small>
-          <strong>Evening</strong>
-        </div>
-        <div>
-          <small>EXPERIENCE</small>
-          <strong>Basic knowledge</strong>
-        </div>
-      </div>
-      <div className="amk-product-note">
-        <MessageSquareText size={18} />
-        <span>
-          <strong>Recent context</strong>
-          <small>Customer asked about funding and start dates.</small>
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function FollowUpPreview() {
-  return (
-    <div className="amk-product-visual">
-      <div className="amk-product-visual__top">
-        <span>After the call</span>
-        <strong>AmarktAI prepares the follow-through.</strong>
-      </div>
-      <div className="amk-review-stack">
-        <div>
-          <CheckCircle2 size={18} />
-          <span>
-            <strong>Call note</strong>
-            <small>Factual summary ready</small>
-          </span>
-          <em>Review</em>
-        </div>
-        <div>
-          <Clock3 size={18} />
-          <span>
-            <strong>Callback</strong>
-            <small>Suggested for Thursday 10:30</small>
-          </span>
-          <em>Review</em>
-        </div>
-        <div>
-          <MessageSquareText size={18} />
-          <span>
-            <strong>Follow-up email</strong>
-            <small>Approved template matched to context</small>
-          </span>
-          <em>Review</em>
-        </div>
-      </div>
-      <p className="amk-product-safety">
-        Nothing customer-facing runs before the approved workflow allows it.
-      </p>
-    </div>
-  );
-}
-
-function TeamPreview() {
-  return (
-    <div className="amk-product-visual">
-      <div className="amk-product-visual__top">
-        <span>Team coverage</span>
-        <strong>Give each salesperson the same safety net.</strong>
-      </div>
-      <div className="amk-team-preview">
-        <div>
-          <Users size={20} />
-          <strong>Personal queues</strong>
-          <small>Right work, right owner</small>
-        </div>
-        <div>
-          <MessageSquareText size={20} />
-          <strong>Replies surfaced</strong>
-          <small>Customer needs stay visible</small>
-        </div>
-        <div>
-          <Clock3 size={20} />
-          <strong>Commitments protected</strong>
-          <small>Due-soon reminders built in</small>
-        </div>
-        <div>
-          <ShieldCheck size={20} />
-          <strong>Review controls</strong>
-          <small>Consequential actions stay governed</small>
-        </div>
-      </div>
-    </div>
   );
 }
