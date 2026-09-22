@@ -376,10 +376,10 @@ export default function DashboardLayout({
     <SidebarProvider className="sales-workspace">
       <Sidebar
         collapsible="icon"
-        className="amarktai-dashboard-sidebar bg-[#FAFBFC] text-[#2F3D52]"
+        className="amarktai-dashboard-sidebar bg-[#101619] text-[#F2EEE7]"
       >
         <SidebarHeader className="h-[72px] justify-center px-5">
-          <BrandMark />
+          <BrandMark inverse />
         </SidebarHeader>
         <SidebarContent className="px-3 py-4">
           <OrganisationSwitcher
@@ -391,7 +391,7 @@ export default function DashboardLayout({
             }
           />
 
-          <p className="mt-5 px-2 text-xs font-semibold text-[#89909A] group-data-[collapsible=icon]:hidden">
+          <p className="mt-5 px-2 text-xs font-semibold text-[#7F8C89] group-data-[collapsible=icon]:hidden">
             Daily flow
           </p>
           <SidebarMenu className="mt-2 gap-1">
@@ -419,16 +419,16 @@ export default function DashboardLayout({
 
         <SidebarFooter className="p-3">
           <div className="flex items-center gap-2 px-1 py-1">
-            <Avatar className="size-9 shrink-0 bg-[#ECEFF3] group-data-[collapsible=icon]:hidden">
-              <AvatarFallback className="bg-[#ECEFF3] text-xs font-bold text-[#526174]">
+            <Avatar className="size-9 shrink-0 bg-[#1B252B] group-data-[collapsible=icon]:hidden">
+              <AvatarFallback className="bg-[#1B252B] text-xs font-bold text-[#B2BCB9]">
                 {user.name?.slice(0, 1).toUpperCase() ?? "A"}
               </AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
-              <p className="truncate text-sm font-semibold text-[#343A42]">
+              <p className="truncate text-sm font-semibold text-[#F2EEE7]">
                 {user.name || "AmarktAI user"}
               </p>
-              <p className="truncate text-xs text-[#7C838C]">
+              <p className="truncate text-xs text-[#7F8C89]">
                 {user.email || "Sales workspace"}
               </p>
             </div>
@@ -439,7 +439,7 @@ export default function DashboardLayout({
               }}
               aria-label="Sign out"
               title="Sign out"
-              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-transparent px-2.5 text-xs font-semibold text-[#748092] transition hover:bg-[#ECEFF3] hover:text-[#2F3D52]"
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-transparent px-2.5 text-xs font-semibold text-[#7F8C89] transition hover:bg-[#1B252B] hover:text-[#F2EEE7]"
             >
               <LogOut className="size-4" />
               <span className="group-data-[collapsible=icon]:hidden">
@@ -450,16 +450,16 @@ export default function DashboardLayout({
         </SidebarFooter>
       </Sidebar>
 
-      <SidebarInset className="bg-[#F3F6F7]">
+      <SidebarInset className="bg-[#0D1114]">
         <AppTopbar title={pageTitle(location)} />
         <main className="min-h-[calc(100vh-46px)] px-4 pb-6 pt-1 sm:px-6 lg:px-8">
           {dueAttention?.dueAt ? (
             <div
               role="status"
-              className="amk-attention amk-attention--time bg-[#EDF2F3]"
+              className="amk-attention amk-attention--time bg-[#151D21]"
             >
               <div className="flex min-w-0 items-center gap-3">
-                <CalendarClock className="h-4 w-4 shrink-0 text-[#6B746E]" />
+                <CalendarClock className="h-4 w-4 shrink-0 text-[#3FAE9D]" />
                 <span className="min-w-0">
                   <strong className="font-semibold">{dueAttention.name}</strong>
                   {" · "}
@@ -489,7 +489,7 @@ export default function DashboardLayout({
           {storedCompanyComplete && crmAttention && crmProblem ? (
             <div role="status" className="amk-attention amk-attention--warning">
               <div className="flex min-w-0 items-center gap-3">
-                <AlertTriangle className="h-4 w-4 shrink-0 text-[#8A7653]" />
+                <AlertTriangle className="h-4 w-4 shrink-0 text-[#D7A44F]" />
                 <span>
                   {crmProblem.status === "authentication_expired"
                     ? "The CRM sign-in has expired. Fresh CRM changes are paused until the connection is restored."
@@ -563,13 +563,13 @@ function pageTitle(location: string) {
 
 function WorkspaceSetupPending() {
   return (
-    <div className="grid min-h-screen place-items-center bg-[#F5F7FA] p-5 text-[#26354A]">
-      <div className="w-full max-w-xl rounded-2xl border border-[#DCE2E9] bg-white p-7 shadow-sm">
-        <BrandMark />
+    <div className="grid min-h-screen place-items-center bg-[#0D1114] p-5 text-[#F2EEE7]">
+      <div className="w-full max-w-xl rounded-2xl border border-[#2B363B] bg-[#161E23] p-7 shadow-sm">
+        <BrandMark inverse />
         <h1 className="mt-8 text-3xl font-bold tracking-[-.04em]">
           Your AmarktAI workspace is being prepared.
         </h1>
-        <p className="mt-3 text-sm leading-6 text-[#6C798B]">
+        <p className="mt-3 text-sm leading-6 text-[#B2BCB9]">
           Your manager is connecting company knowledge and the CRM. When setup
           is proven, your customers, tasks, opportunities and call context will
           be available here automatically.
@@ -618,15 +618,15 @@ function SecondFactorGate({
   });
 
   return (
-    <div className="grid min-h-screen place-items-center bg-[#F5F7FA] p-5 text-[#26354A]">
-      <div className="w-full max-w-lg rounded-2xl border border-[#DCE2E9] bg-white p-7 shadow-sm sm:p-8">
-        <BrandMark />
+    <div className="grid min-h-screen place-items-center bg-[#0D1114] p-5 text-[#F2EEE7]">
+      <div className="w-full max-w-lg rounded-2xl border border-[#2B363B] bg-[#161E23] p-7 shadow-sm sm:p-8">
+        <BrandMark inverse />
         <div className="mt-8 flex items-center gap-3">
-          <span className="grid size-10 place-items-center rounded-xl bg-[#EAF0F2] text-[#405F70]">
+          <span className="grid size-10 place-items-center rounded-xl bg-[#203536] text-[#3FAE9D]">
             <LockKeyhole size={19} />
           </span>
           <div>
-            <p className="text-xs font-bold uppercase tracking-[.12em] text-[#6C798B]">
+            <p className="text-xs font-bold uppercase tracking-[.12em] text-[#7F8C89]">
               Security check
             </p>
             <h1 className="text-2xl font-bold">Confirm access</h1>
@@ -646,7 +646,7 @@ function SecondFactorGate({
           <Notice text="Email verification is not available yet. Ask the administrator to finish email setup." />
         ) : !requested ? (
           <>
-            <p className="mt-4 text-sm leading-6 text-[#6C798B]">
+            <p className="mt-4 text-sm leading-6 text-[#B2BCB9]">
               We’ll send a six-digit code to your account email.
             </p>
             <Button
@@ -660,7 +660,7 @@ function SecondFactorGate({
           </>
         ) : (
           <>
-            <p className="mt-4 text-sm leading-6 text-[#6C798B]">
+            <p className="mt-4 text-sm leading-6 text-[#B2BCB9]">
               Enter the six-digit code.
             </p>
             <input
@@ -669,7 +669,7 @@ function SecondFactorGate({
               value={code}
               onChange={event => setCode(event.target.value.replace(/\D/g, ""))}
               placeholder="000000"
-              className="mt-5 h-14 w-full rounded-xl border-2 border-[#D5DDE7] text-center text-2xl font-bold tracking-[.3em] outline-none focus:border-[#7D9AAA]"
+              className="mt-5 h-14 w-full rounded-xl border-2 border-[#2B363B] bg-[#0D1114] text-center text-2xl font-bold tracking-[.3em] text-[#F2EEE7] outline-none focus:border-[#3FAE9D]"
             />
             <Button
               onClick={() => verifyCode.mutate({ code })}
@@ -680,7 +680,7 @@ function SecondFactorGate({
             </Button>
             <button
               onClick={() => requestCode.mutate()}
-              className="mt-4 w-full text-sm font-bold text-[#55788B]"
+              className="mt-4 w-full text-sm font-bold text-[#3FAE9D]"
             >
               Send a new code
             </button>
@@ -693,7 +693,7 @@ function SecondFactorGate({
 
 function Notice({ text }: { text: string }) {
   return (
-    <p className="mt-5 rounded-xl border border-[#D4DEEA] bg-[#F4F7FA] p-4 text-sm leading-6 text-[#56677C]">
+    <p className="mt-5 rounded-xl border border-[#2B363B] bg-[#11171B] p-4 text-sm leading-6 text-[#B2BCB9]">
       {text}
     </p>
   );
@@ -712,15 +712,15 @@ function OrganisationSwitcher({
 }) {
   if (organisations.length < 2)
     return (
-      <div className="rounded-lg border border-[#DCE4EE] bg-[#F8FAFC] px-3 py-2.5">
-        <p className="truncate text-xs font-bold text-[#33445B]">
+      <div className="rounded-lg border border-[#2B363B] bg-[#11171B] px-3 py-2.5">
+        <p className="truncate text-xs font-bold text-[#F2EEE7]">
           {currentName || "Sales workspace"}
         </p>
       </div>
     );
   return (
-    <label className="block rounded-lg border border-[#DCE4EE] bg-[#F8FAFC] px-3 py-2.5">
-      <span className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[.12em] text-[#7A889A]">
+    <label className="block rounded-lg border border-[#2B363B] bg-[#11171B] px-3 py-2.5">
+      <span className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[.12em] text-[#7F8C89]">
         <Building2 size={13} /> Workspace
       </span>
       <select
@@ -731,7 +731,7 @@ function OrganisationSwitcher({
             ?.organisationId ?? ""
         }
         onChange={event => onSelect(Number(event.target.value))}
-        className="mt-1 w-full bg-transparent text-sm font-bold text-[#33445B] outline-none"
+        className="mt-1 w-full bg-transparent text-sm font-bold text-[#F2EEE7] outline-none"
       >
         <option value="" disabled>
           Select workspace
@@ -740,7 +740,7 @@ function OrganisationSwitcher({
           <option
             key={item.organisationId}
             value={item.organisationId}
-            className="bg-white text-[#26354A]"
+            className="bg-[#161E23] text-[#F2EEE7]"
           >
             {item.organisationName}
           </option>
@@ -760,9 +760,9 @@ function OrganisationSelectionGate({
   onSelect: (organisationId: number) => void;
 }) {
   return (
-    <div className="grid min-h-screen place-items-center bg-[#F5F7FA] p-5 text-[#26354A]">
-      <div className="w-full max-w-xl rounded-2xl border border-[#DCE2E9] bg-white p-7 shadow-sm">
-        <BrandMark />
+    <div className="grid min-h-screen place-items-center bg-[#0D1114] p-5 text-[#F2EEE7]">
+      <div className="w-full max-w-xl rounded-2xl border border-[#2B363B] bg-[#161E23] p-7 shadow-sm">
+        <BrandMark inverse />
         <h1 className="mt-8 text-3xl font-bold tracking-[-.04em]">
           Which workspace are you using?
         </h1>
@@ -772,10 +772,10 @@ function OrganisationSelectionGate({
               key={item.organisationId}
               disabled={pending}
               onClick={() => onSelect(item.organisationId)}
-              className="flex items-center justify-between rounded-xl border border-[#DCE2E9] bg-[#F8FAFC] px-4 py-4 text-left font-bold transition hover:border-[#9AAFB8] hover:bg-[#EAF0F2]"
+              className="flex items-center justify-between rounded-xl border border-[#2B363B] bg-[#11171B] px-4 py-4 text-left font-bold transition hover:border-[#3FAE9D] hover:bg-[#1B252B]"
             >
               <span>{item.organisationName}</span>
-              <Building2 size={17} className="text-[#55788B]" />
+              <Building2 size={17} className="text-[#3FAE9D]" />
             </button>
           ))}
         </div>
@@ -796,8 +796,8 @@ function AppNavItem({ icon: Icon, label, path, badge }: NavItem) {
         aria-label={label}
         className={`h-11 rounded-lg px-3 transition-colors ${
           active
-            ? "bg-[#ECEFF3] text-[#2F3D52] hover:bg-[#ECEFF3] hover:text-[#2F3D52]"
-            : "text-[#687587] hover:bg-[#F0F2F5] hover:text-[#2F3D52]"
+            ? "bg-[#203536] text-[#F2EEE7] hover:bg-[#203536] hover:text-[#F2EEE7]"
+            : "text-[#A6B0AD] hover:bg-[#1B252B] hover:text-[#F2EEE7]"
         }`}
       >
         <Icon className="size-[18px]" />
@@ -805,7 +805,7 @@ function AppNavItem({ icon: Icon, label, path, badge }: NavItem) {
           {label}
         </span>
         {badge && badge > 0 ? (
-          <span className="ml-auto rounded-full bg-[#5E6D80] px-2 py-0.5 text-[10px] font-bold text-white group-data-[collapsible=icon]:hidden">
+          <span className="ml-auto rounded-full bg-[#3FAE9D] px-2 py-0.5 text-[10px] font-bold text-[#0D1114] group-data-[collapsible=icon]:hidden">
             {badge > 99 ? "99+" : badge}
           </span>
         ) : null}

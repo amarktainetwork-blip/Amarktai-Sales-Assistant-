@@ -6,17 +6,21 @@ const read = (file: string) =>
   readFileSync(path.resolve(process.cwd(), "client/src", file), "utf8");
 
 describe("final client-facing handover polish", () => {
-  it("keeps final polish in the canonical public, dashboard and base stylesheets", () => {
+  it("keeps all client polish in one canonical stylesheet", () => {
     const app = read("App.tsx");
-    expect(app).toContain('import "./dashboard-final.css";');
+    const css = read("index.css");
+    expect(app).not.toContain("dashboard-final.css");
     expect(app).not.toContain("handover-final.css");
+    expect(css).toContain(".amk-site");
+    expect(css).toContain(".amk-auth");
+    expect(css).toContain(".amarktai-dashboard-sidebar");
   });
 
   it("uses one auth shell with a true 50/50 image split on laptops", () => {
     const css = read("index.css");
     expect(css).toContain("@media (min-width: 900px)");
-    expect(css).toContain(
-      "grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);"
+    expect(css).toMatch(
+      /grid-template-columns:\s*minmax\(0,\s*1fr\)\s+minmax\(0,\s*1fr\);/
     );
     expect(css).toMatch(/\.amk-auth__visual\s*\{\s*display: none/);
     expect(css).toMatch(/\.amk-auth\.fixed\s*\{[^}]*overflow-y: auto/);
@@ -53,8 +57,8 @@ describe("final client-facing handover polish", () => {
     expect(assistant).toContain('params.get("contactId")');
     expect(assistant).toContain("/customers?contactId=");
     expect(assistant).toContain("data-assistant-conversation");
-    expect(read("dashboard-final.css")).not.toContain(
-      "display: none !important"
+    expect(read("index.css")).not.toContain(
+      "[data-assistant-conversation] { display: none"
     );
   });
 
@@ -68,18 +72,19 @@ describe("final client-facing handover polish", () => {
   });
 
   it("moves dashboard copyright into the sidebar footer", () => {
-    const css = read("dashboard-final.css");
+    const css = read("index.css");
     expect(css).toContain(
       'body:has(.amarktai-dashboard-sidebar) [data-sidebar="footer"]::after'
     );
     expect(css).toContain("Part of Amarktai Network");
   });
 
-  it("widens public pages and gives approved photography more presence", () => {
-    const css = read("marketing/final-site.css");
-    expect(css).toContain("width: min(1320px, calc(100% - 72px))");
-    expect(css).toContain("aspect-ratio: 4 / 5");
-    expect(css).not.toContain(".amk-photo-frame::after");
+  it("uses the approved dark editorial public layout and photography", () => {
+    const css = read("index.css");
+    expect(css).toContain(".amk-shell{width:min(1180px,calc(100% - 40px))");
+    expect(css).toContain(".amk-photo-frame--hero{height:570px");
+    expect(css).toContain("--site-bg:#0D1114");
+    expect(css).toContain("--site-warm:#C79A62");
     expect(css).not.toContain(".amk-float-card");
   });
 });

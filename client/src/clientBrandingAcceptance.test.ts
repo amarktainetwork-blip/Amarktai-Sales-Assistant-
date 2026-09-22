@@ -61,13 +61,9 @@ describe("AmarktAI customer-facing branding boundary", () => {
     expect(shell).not.toContain("Amarktai Sales Assistant");
   });
 
-  it("uses first-party product artwork instead of stock photography on visible sales and auth surfaces", () => {
+  it("uses local editorial photography and one canonical visual system", () => {
     const css = readFileSync(
       path.resolve(process.cwd(), "client/src/index.css"),
-      "utf8"
-    );
-    const marketingCss = readFileSync(
-      path.resolve(process.cwd(), "client/src/marketing/final-site.css"),
       "utf8"
     );
     const visibleSources = [
@@ -86,9 +82,10 @@ describe("AmarktAI customer-facing branding boundary", () => {
     expect(visibleSources).not.toMatch(/images\.pexels\.com/i);
     expect(visibleSources).not.toMatch(/images\.unsplash\.com/i);
     expect(visibleSources).toContain("MarketingArtwork");
-    expect(imagery).toContain("/images/people/");
-    expect(imagery).not.toContain("thenikscape-ai-generated-9586971_1920.jpg");
-    expect(marketingCss).toContain(".amk-brand-art--photo");
+    expect(imagery).toContain("/images/editorial/");
+    expect(imagery).not.toContain("/images/people/");
+    expect(imagery).not.toMatch(/ai-generated/i);
+    expect(css).toContain(".amk-brand-art");
     expect(css).toContain("Part of Amarktai Network");
     expect(css).toContain(".amk-auth__message h1");
     expect(css).not.toContain("content: url(");

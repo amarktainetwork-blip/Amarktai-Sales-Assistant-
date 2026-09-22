@@ -83,22 +83,15 @@ describe("final public website", () => {
       expect(html).not.toContain("images.pexels.com");
       expect(html).not.toContain("images.unsplash.com");
     }
-    expect(home).toContain(
-      "/images/people/focuspurely-business-8779718_1920.png"
-    );
-    expect(home).toContain("/images/people/pexels-gustavo-fring-5621969.jpg");
-    expect(home).toContain(
-      "/images/people/thenikscape-ai-generated-9587004_1920.jpg"
-    );
-    expect(home).toContain("/images/people/pexels-pavel-danilyuk-7658351.jpg");
-    expect(how).toContain("/images/people/pexels-mart-production-7709175.jpg");
-    expect(about).toContain(
-      "/images/people/sohag_hawlader-business-8788636_1920.jpg"
-    );
-    expect(contact).toContain("/images/people/stocksnap-girl-2583442_1920.jpg");
-    expect(home).not.toContain(
-      "/images/people/thenikscape-ai-generated-9586971_1920.jpg"
-    );
+    expect(home).toContain("/images/editorial/hero-phone.webp");
+    expect(home).toContain("/images/editorial/headset-work.webp");
+    expect(home).toContain("/images/editorial/focused-work.webp");
+    expect(home).toContain("/images/editorial/workshop.webp");
+    expect(how).toContain("/images/editorial/sales-call.webp");
+    expect(about).toContain("/images/editorial/team-meeting.webp");
+    expect(contact).toContain("/images/editorial/professional-portrait.webp");
+    expect(home).not.toContain("/images/people/");
+    expect(home).not.toMatch(/ai-generated/i);
   });
 
   it("leads with the time-back promise and makes clear this is not another CRM", () => {
@@ -159,7 +152,7 @@ describe("final public website", () => {
       );
     }
     expect(compactHtml).toContain(
-      `1000AIcredits·R${AI_CREDIT_ECONOMICS.retailPackZarCents / 100}`
+      `${AI_CREDIT_ECONOMICS.upstreamUnitsPerPack}AI-assistedtasks·R${AI_CREDIT_ECONOMICS.retailPackZarCents / 100}`
     );
     expect(html).not.toMatch(/Stripe|PayFast|buy now|checkout now/i);
   });
@@ -214,32 +207,37 @@ describe("final public website", () => {
     expect(combined).not.toContain("javascript:void");
   });
 
-  it("uses one public and one logged-in visual system with launch safeguards", () => {
+  it("uses one canonical dark visual system with launch safeguards", () => {
     const layout = readFileSync(
       path.resolve(process.cwd(), "client/src/marketing/MarketingLayout.tsx"),
       "utf8"
     );
-    expect(layout).toContain('import "./final-site.css"');
+    expect(layout).not.toContain("final-site.css");
     expect(layout).not.toContain("public-v6.css");
     expect(layout).not.toContain("marketing-v2.css");
     expect(layout).not.toContain("launch-v3.css");
 
     const css = readFileSync(
-      path.resolve(process.cwd(), "client/src/marketing/final-site.css"),
+      path.resolve(process.cwd(), "client/src/index.css"),
       "utf8"
     );
-    for (const breakpoint of ["1040px", "820px", "560px"])
-      expect(css).toContain(`max-width: ${breakpoint}`);
     expect(css).toContain("min-width: 320px");
-    expect(css).toContain("overflow: clip");
     expect(css).toContain("prefers-reduced-motion: reduce");
-    expect(css).not.toContain(".amk-auth");
-    expect(
-      readFileSync(path.resolve(process.cwd(), "client/src/index.css"), "utf8")
-    ).toContain(".amk-auth");
+    expect(css).toContain(".amk-auth");
     expect(css).toContain(".amk-photo-frame");
-    expect(css).toContain("--navy: #526774");
-    expect(css).toContain("--blue: #55788b");
+    expect(css).toContain("--site-bg:#0D1114");
+    expect(css).toContain("--site-accent:#3FAE9D");
+    expect(css).toContain("--dash-canvas: #0D1114");
+    expect(css).toContain("--dash-blue: #3FAE9D");
+    expect(css).toContain('body:has([data-slot="sidebar-wrapper"])');
+    expect(
+      existsSync(path.resolve(process.cwd(), "client/src/dashboard-final.css"))
+    ).toBe(false);
+    expect(
+      existsSync(
+        path.resolve(process.cwd(), "client/src/marketing/final-site.css")
+      )
+    ).toBe(false);
     expect(
       existsSync(path.resolve(process.cwd(), "client/src/pages/final-auth.css"))
     ).toBe(false);
@@ -248,21 +246,5 @@ describe("final public website", () => {
         path.resolve(process.cwd(), "client/src/marketing/visual-handover.css")
       )
     ).toBe(false);
-
-    const app = readFileSync(
-      path.resolve(process.cwd(), "client/src/App.tsx"),
-      "utf8"
-    );
-    expect(app).toContain('import "./dashboard-final.css"');
-    expect(app).not.toContain("dashboard-client-readability.css");
-    expect(app).not.toContain("final-release.css");
-
-    const dashboardCss = readFileSync(
-      path.resolve(process.cwd(), "client/src/dashboard-final.css"),
-      "utf8"
-    );
-    expect(dashboardCss).toContain("One logged-in visual system");
-    expect(dashboardCss).toContain('body:has([data-slot="sidebar-wrapper"])');
-    expect(dashboardCss).toContain("--dash-blue: #55788b");
   });
 });

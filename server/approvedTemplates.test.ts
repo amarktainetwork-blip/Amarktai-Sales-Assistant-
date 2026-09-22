@@ -8,6 +8,10 @@ const approved = {
   version: 3,
   title: "Product brochure",
   body: "Here is the brochure you requested.",
+  metadata: {
+    channel: "email" as const,
+    subject: "Your Course2Career information",
+  },
 };
 
 describe("approved closeout communication templates", () => {
@@ -28,7 +32,7 @@ describe("approved closeout communication templates", () => {
     }).find(item => item.actionType === "send_email_template");
     expect(action?.payload).toMatchObject({
       body: approved.body,
-      subject: approved.title,
+      subject: approved.metadata.subject,
       approvalTemplateId: 12,
       approvalTemplateVersion: 3,
     });

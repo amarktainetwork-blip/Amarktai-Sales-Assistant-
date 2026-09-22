@@ -3,9 +3,13 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 describe("final dashboard information architecture", () => {
-  it("uses one canonical dashboard stylesheet without restoring legacy generations", () => {
+  it("uses the single canonical client stylesheet without restoring legacy generations", () => {
     const app = readFileSync(path.resolve("client/src/App.tsx"), "utf8");
-    expect(app).toContain('import "./dashboard-final.css"');
+    const css = readFileSync(path.resolve("client/src/index.css"), "utf8");
+    expect(app).not.toContain('import "./dashboard-final.css"');
+    expect(existsSync(path.resolve("client/src/dashboard-final.css"))).toBe(false);
+    expect(css).toContain(".amarktai-dashboard-sidebar");
+    expect(css).toContain("--dash-canvas: #0D1114");
     expect(app).not.toContain('import "./workspace-handover.css"');
     expect(app).not.toContain('import "./dashboard-client-readability.css"');
     expect(app).not.toContain('import "./final-release.css"');
@@ -172,7 +176,7 @@ describe("final dashboard information architecture", () => {
 
   it("uses a calm low-glare dashboard palette", () => {
     const css = readFileSync(
-      path.resolve("client/src/dashboard-final.css"),
+      path.resolve("client/src/index.css"),
       "utf8"
     );
     const layout = readFileSync(
@@ -180,21 +184,20 @@ describe("final dashboard information architecture", () => {
       "utf8"
     );
 
-    expect(css).toContain("--dash-canvas: #f3f6f7");
-    expect(css).toContain("--dash-paper: #ffffff");
-    expect(css).toContain("--dash-ink: #263843");
-    expect(css).toContain("--dash-blue: #55788b");
-    expect(css).toContain("--handover-blue: #55788b");
-    expect(css).toContain("--handover-canvas: #f3f6f7");
+    expect(css).toContain("--dash-canvas: #0D1114");
+    expect(css).toContain("--dash-paper: #161E23");
+    expect(css).toContain("--dash-ink: #F2EEE7");
+    expect(css).toContain("--dash-blue: #3FAE9D");
+    expect(css).not.toContain("--handover-blue");
+    expect(css).not.toContain("--handover-canvas");
     expect(css).toContain('[class*="whitespace-pre-wrap"]');
     expect(css).toContain("input::placeholder");
 
-    expect(layout).toContain('SidebarInset className="bg-[#F3F6F7]"');
-    expect(layout).toContain("bg-[#EDF2F3]");
-    expect(layout).not.toContain(
-      'className="border-r border-[#1B2B44] bg-[#0B1B36] text-white"'
-    );
-    expect(layout).not.toContain("bg-white/[.06]");
+    expect(layout).toContain('SidebarInset className="bg-[#0D1114]"');
+    expect(layout).toContain("bg-[#151D21]");
+    expect(layout).toContain("bg-[#101619] text-[#F2EEE7]");
+    expect(layout).not.toContain("bg-[#F3F6F7]");
+    expect(layout).not.toContain("bg-[#FAFBFC]");
     expect(layout).not.toContain("#F3F2EF");
     expect(layout).not.toContain("#ECEBE6");
   });
@@ -205,11 +208,11 @@ describe("final dashboard information architecture", () => {
       "utf8"
     );
     const css = readFileSync(
-      path.resolve("client/src/dashboard-final.css"),
+      path.resolve("client/src/index.css"),
       "utf8"
     );
     expect(calls).toContain("data-call-workflow");
-    expect(css).toContain('[class*="bg-[#0E2142]"]');
+    expect(css).not.toContain("#0E2142");
     expect(css).toContain("background: var(--dash-paper)");
     for (const step of [
       "PRE-CALL BRIEF",

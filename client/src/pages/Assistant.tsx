@@ -222,17 +222,30 @@ export default function Assistant() {
         aria-label="AmarktAI"
         className="mx-auto flex max-w-[1180px] flex-col gap-5 text-[#20283A]"
       >
-        <header>
-          <p className="text-base font-medium text-[#7A8497]">AmarktAI</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-[-.035em]">
-            {selectedCustomer
-              ? `Work ${selectedCustomer.name} with me.`
-              : `Your sales assistant is ready, ${firstName}.`}
-          </h1>
-          <p className="mt-1 max-w-2xl text-base leading-6 text-[#667085]">
-            You handle the conversation. AmarktAI handles the preparation,
-            context and draft admin around it.
-          </p>
+        <header className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-base font-medium text-[#7A8497]">AmarktAI</p>
+            <h1 className="mt-1 text-3xl font-semibold tracking-[-.035em]">
+              {selectedCustomer
+                ? `Work ${selectedCustomer.name} with me.`
+                : `Your sales assistant is ready, ${firstName}.`}
+            </h1>
+            <p className="mt-1 max-w-2xl text-base leading-6 text-[#667085]">
+              You handle the conversation. AmarktAI handles the preparation,
+              context and draft admin around it.
+            </p>
+          </div>
+          {organisation.data?.role === "owner" ||
+          organisation.data?.role === "manager" ||
+          user?.role === "admin" ? (
+            <Button
+              variant="outline"
+              onClick={() => navigate("/settings?section=skills#skills")}
+            >
+              <Sparkles className="mr-2 h-4 w-4" />
+              Teach AmarktAI
+            </Button>
+          ) : null}
         </header>
 
         <div className="grid min-h-[calc(100dvh-190px)] gap-5 lg:grid-cols-[330px_1fr]">

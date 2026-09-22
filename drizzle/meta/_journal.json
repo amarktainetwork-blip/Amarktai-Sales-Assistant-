@@ -246,6 +246,13 @@
       "when": 1788857228646,
       "tag": "0034_luxuriant_squadron_supreme",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "5",
+      "when": 1790087173033,
+      "tag": "0035_template_metadata",
+      "breakpoints": true
     }
   ]
 }

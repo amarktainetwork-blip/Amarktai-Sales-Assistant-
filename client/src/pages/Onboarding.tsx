@@ -129,7 +129,7 @@ function SetupVisual() {
   return (
     <section className="amk-auth__visual amk-auth__visual--product">
       <img
-        src="/images/people/homestation-office-8780133_1920.jpg"
+        src="/images/editorial/focused-work.webp"
         alt="AmarktAI sales workspace"
       />
       <div className="amk-auth__shade" />
@@ -158,7 +158,7 @@ function SetupShell({
       <SetupVisual />
       <section className="amk-auth__form-side amk-auth__form-side--setup">
         <div className="amk-auth__mobile-brand">
-          <BrandMark />
+          <BrandMark inverse />
         </div>
         <div
           className={`amk-auth__form-wrap ${wide ? "amk-auth__form-wrap--wide" : "amk-auth__form-wrap--setup"}`}

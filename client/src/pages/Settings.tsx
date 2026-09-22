@@ -1,4 +1,5 @@
 import DashboardLayout from "@/components/DashboardLayout";
+import { SkillStudio } from "@/components/SkillStudio";
 import ManagementElevation from "@/components/ManagementElevation";
 import { Button } from "@/components/ui/button";
 import { friendlyError } from "@/lib/friendlyError";
@@ -527,6 +528,13 @@ export default function Settings() {
             </>
           )}
         </section>
+
+        {organisationId ? (
+          <SkillStudio
+            organisationId={organisationId}
+            connectedSystemId={genieSystem?.id}
+          />
+        ) : null}
 
         <section className="rounded-2xl border border-[#DCE4EE] bg-white p-5 shadow-sm sm:p-6">
           <div className="flex items-start gap-3">

@@ -92,15 +92,16 @@ describe("repository source of truth", () => {
     expect(runtime).not.toContain("createOutlookApplicationToken");
   });
 
-  it("keeps exactly one public, dashboard and shared base stylesheet", () => {
+  it("keeps one canonical client stylesheet instead of stacked visual generations", () => {
     expect(
       filesBelow("client/src")
         .filter(file => file.endsWith(".css"))
         .sort()
-    ).toEqual([
-      "client/src/dashboard-final.css",
-      "client/src/index.css",
-      "client/src/marketing/final-site.css",
-    ]);
+    ).toEqual(["client/src/index.css"]);
+    const css = read("client/src/index.css");
+    expect(css).toContain("--dash-canvas: #0D1114");
+    expect(css).toContain(".amk-site");
+    expect(css).toContain(".amk-auth");
+    expect(css).toContain(".amarktai-dashboard-sidebar");
   });
 });
