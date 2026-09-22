@@ -40,7 +40,7 @@ describe("AmarktAI customer-facing branding boundary", () => {
       path.resolve(process.cwd(), "client/src/components/BrandName.tsx"),
       "utf8"
     );
-    expect(mark).toContain('Amarkt<span className="text-[#2F6FED]">AI</span>');
+    expect(mark).toContain('Amarkt<span className="text-[#5E8CFF]">AI</span>');
     expect(mark).not.toContain(">ai</span>");
     expect(inline).toContain(
       'Amarkt<span className="amk-brand-name__ai">AI</span>'
@@ -53,11 +53,12 @@ describe("AmarktAI customer-facing branding boundary", () => {
       "utf8"
     );
     expect(shell.replace(/\s+/g, " ")).toContain(
-      "<title> AmarktAI Sales Assistant | Sell with more confidence. Follow up without the scramble. </title>"
+      "<title>AmarktAI Sales Assistant | Sell More. Admin Less.</title>"
     );
     expect(shell).toContain(
-      'content="AmarktAI helps salespeople prepare for customers, handle conversations and finish the follow-up around the CRM they already use."'
+      'content="AmarktAI learns how your company sells, works around the CRM you already use, prepares customer conversations and gets the follow-through ready while the salesperson stays in control."'
     );
+    expect(shell).toContain('name="theme-color" content="#0B1118"');
     expect(shell).not.toContain("Amarktai Sales Assistant");
   });
 
@@ -79,14 +80,28 @@ describe("AmarktAI customer-facing branding boundary", () => {
       path.resolve(process.cwd(), "client/src/marketing/imagery.ts"),
       "utf8"
     );
+    const publicImageRoot = path.resolve(process.cwd(), "client/public/images");
+    expect(readdirSync(publicImageRoot).sort()).toEqual(["sales"]);
+    const salesImages = readdirSync(path.join(publicImageRoot, "sales")).sort();
+    expect(salesImages).toHaveLength(12);
+    expect(salesImages.every(file => file.endsWith(".webp"))).toBe(true);
+    const mappedPaths = Array.from(
+      imagery.matchAll(/src:\s*"([^"]+)"/g),
+      match => match[1]
+    );
+    expect(mappedPaths).toHaveLength(12);
+    expect(new Set(mappedPaths).size).toBe(12);
     expect(visibleSources).not.toMatch(/images\.pexels\.com/i);
     expect(visibleSources).not.toMatch(/images\.unsplash\.com/i);
     expect(visibleSources).toContain("MarketingArtwork");
-    expect(imagery).toContain("/images/editorial/");
+    expect(imagery).toContain("/images/sales/");
+    expect(imagery).not.toContain("/images/editorial-v2/");
     expect(imagery).not.toContain("/images/people/");
     expect(imagery).not.toMatch(/ai-generated/i);
     expect(css).toContain(".amk-brand-art");
-    expect(css).toContain(".amk-brand-name__ai{color:#2F6FED}");
+    expect(css).toContain(".amk-brand-name__ai{color:var(--site-blue,#5E8CFF)}");
+    expect(css).toContain(".amk-site main{display:grid;gap:5px");
+    expect(css).toContain("filter:none");
     expect(css).toContain(".amk-auth__message h1");
     expect(css).not.toContain("content: url(");
   });

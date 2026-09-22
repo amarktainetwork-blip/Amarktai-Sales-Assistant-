@@ -10,20 +10,17 @@ import HomePage from "./HomePage";
 import { HowItWorksPage } from "./SecondaryPages";
 import Pricing from "@/pages/Pricing";
 import { accountLinks, marketingNavigation } from "./site";
+import { marketingImagery } from "./imagery";
 import { scrollPublicRouteToTop } from "./MarketingLayout";
 import NotFound from "@/pages/NotFound";
 import { PRICING_PLANS } from "@shared/pricing";
 
 const pages = [
-  ["/", HomePage, "Get hours of your sales day back."],
-  [
-    "/how-it-works",
-    HowItWorksPage,
-    "Keep your CRM. Make the sales work around it easier.",
-  ],
-  ["/pricing", Pricing, "SIMPLE PRICING IN SOUTH AFRICAN RAND"],
-  ["/about", AboutPage, "WHY AMARKTAI"],
-  ["/contact", ContactPage, "TALK TO US"],
+  ["/", HomePage, "Sell more."],
+  ["/how-it-works", HowItWorksPage, "Teach it how you sell."],
+  ["/pricing", Pricing, "Start small. Prove the time saved."],
+  ["/about", AboutPage, "Salespeople were hired to sell."],
+  ["/contact", ContactPage, "SHOW US YOUR SALES DAY"],
 ] as const;
 
 function render(pathname: string, Component: React.ComponentType) {
@@ -83,23 +80,33 @@ describe("final public website", () => {
       expect(html).not.toContain("images.pexels.com");
       expect(html).not.toContain("images.unsplash.com");
     }
-    expect(home).toContain("/images/editorial-v2/home-hero.jpg");
-    expect(home).toContain("/images/editorial-v2/home-call.jpg");
-    expect(home).toContain("/images/editorial/focused-work.webp");
-    expect(home).toContain("/images/editorial/workshop.webp");
-    expect(how).toContain("/images/editorial-v2/how-hero.jpg");
-    expect(about).toContain("/images/editorial/team-meeting.webp");
-    expect(contact).toContain("/images/editorial-v2/contact.jpg");
-    expect(home).not.toContain("/images/people/");
-    expect(home).not.toMatch(/ai-generated/i);
+    const paths = Object.values(marketingImagery).map(image => image.src);
+    expect(paths).toHaveLength(12);
+    expect(new Set(paths).size).toBe(paths.length);
+    for (const imagePath of paths) expect(imagePath).toMatch(/^\/images\/sales\/.+\.webp$/);
+    expect(home).toContain("/images/sales/home-hero.webp");
+    expect(home).toContain("/images/sales/home-context.webp");
+    expect(home).toContain("/images/sales/home-call.webp");
+    expect(home).toContain("/images/sales/home-team.webp");
+    expect(how).toContain("/images/sales/how-hero.webp");
+    expect(how).toContain("/images/sales/how-crm.webp");
+    expect(about).toContain("/images/sales/about-hero.webp");
+    expect(about).toContain("/images/sales/about-team.webp");
+    expect(contact).toContain("/images/sales/contact.webp");
+    for (const html of [home, how, about, contact]) {
+      expect(html).not.toContain("/images/editorial-v2/");
+      expect(html).not.toContain("/images/people/");
+      expect(html).not.toMatch(/ai-generated/i);
+    }
   });
 
-  it("leads with the time-back promise and makes clear this is not another CRM", () => {
+  it("shows the real product instead of a generic CRM assistant", () => {
     const html = render("/", HomePage);
-    expect(html).toContain("Get hours of your sales day back.");
-    expect(html).toContain("Not another CRM");
-    expect(html).toContain("Keep the CRM you already trust");
-    expect(html).toContain("ONE ASSISTANT ACROSS THE ENTIRE SALES DAY");
+    expect(html).toContain("Sell more.");
+    expect(html).toContain("NOT A CHATBOT. NOT ANOTHER CRM.");
+    expect(html).toContain("TEACH IT HOW YOUR COMPANY SELLS");
+    expect(html).toContain("ASSISTANT, NOT A BOSS");
+    expect(html).toContain("You talk.");
     expect(html).toContain("Start free");
     expect(html).toContain("Book a demo");
   });
@@ -177,8 +184,8 @@ describe("final public website", () => {
     ]);
     expect(html).toContain('aria-live="polite"');
     expect(html).toContain("/api/public/contact");
-    expect(html).toContain("BUILT AROUND YOUR PROCESS");
-    expect(html).toContain("Show us where the sales day gets stuck.");
+    expect(html).toContain("SHOW US YOUR SALES DAY");
+    expect(html).toContain("Show us where selling stops and admin starts.");
     expect(html).not.toContain("images.pexels.com");
   });
 
@@ -223,8 +230,11 @@ describe("final public website", () => {
     expect(css).toContain("prefers-reduced-motion: reduce");
     expect(css).toContain(".amk-auth");
     expect(css).toContain(".amk-photo-frame");
-    expect(css).toContain("--site-bg:#0D1114");
-    expect(css).toContain("--site-accent:#3FAE9D");
+    expect(css).toContain("--site-bg:#111820");
+    expect(css).toContain("--site-accent:#55C8B4");
+    expect(css).toContain(".amk-site main{display:grid;gap:5px");
+    expect(css).toContain(".amk-swirl--violet");
+    expect(css).toContain("filter:none");
     expect(css).toContain("--dash-canvas: #0D1114");
     expect(css).toContain("--dash-blue: #3FAE9D");
     expect(css).toContain('body:has([data-slot="sidebar-wrapper"])');

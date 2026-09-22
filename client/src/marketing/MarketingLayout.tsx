@@ -125,21 +125,18 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
         <div className="amk-shell amk-footer__top">
           <div className="amk-footer__brand">
             <BrandMark large inverse />
-            <h2>
-              Give your salespeople a better way to work around the CRM they
-              already use.
-            </h2>
+            <h2>Put the salesperson back in sales.</h2>
             <p>
-              <BrandName /> Sales Assistant helps with preparation, customer
-              context, conversations and follow-through — while important
-              actions stay visible and reviewable.
+              <BrandName /> learns how your company sells, works around the CRM
+              you already use and carries the preparation, context, reminders
+              and follow-through that steal time from customer conversations.
             </p>
           </div>
           <div className="amk-footer__links">
             <div>
               <span>Product</span>
               <Link href="/how-it-works">How It Works</Link>
-              <Link href="/about">Why AmarktAI</Link>
+              <Link href="/about">Why <BrandName /></Link>
               <Link href="/pricing">Pricing</Link>
             </div>
             <div>
@@ -155,7 +152,7 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
             © {new Date().getFullYear()} <BrandName /> Sales Assistant · Part
             of <BrandName /> Network
           </p>
-          <p>Keep your CRM. Make the sales day easier.</p>
+          <p>Keep your CRM. Teach the assistant. Give the time back.</p>
         </div>
       </footer>
     </div>

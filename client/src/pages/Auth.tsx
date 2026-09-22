@@ -64,7 +64,7 @@ export default function Auth() {
     : reset
       ? "Choose a new password."
       : isRegister
-        ? "Create your AmarktAI account."
+        ? <>Create your <BrandName /> account.</>
         : authView === "forgot"
           ? "Recover your account."
           : "Welcome back.";
@@ -95,10 +95,10 @@ export default function Auth() {
             </Link>
           </div>
           <div className="amk-auth__message">
-            <h1>Your sales day. Less admin.</h1>
+            <h1>You sell. <BrandName /> keeps the day moving.</h1>
             <p>
-              One assistant for priorities, customer context, calls, reminders
-              and follow-through — around the CRM you already use.
+              Your priorities, customer context, calls, reminders and
+              follow-through stay connected around the CRM you already use.
             </p>
           </div>
         </div>
@@ -382,13 +382,13 @@ function ManagedSignIn() {
     <>
       <p className="amk-auth__muted">
         Continue through your organisation's secure identity flow to open
-        AmarktAI Sales Assistant.
+        <BrandName /> Sales Assistant.
       </p>
       <button
         onClick={() => startLogin()}
         className="amk-auth__primary amk-auth__primary--spaced"
       >
-        Open AmarktAI Sales Assistant <ArrowRight size={17} />
+        Open <BrandName /> Sales Assistant <ArrowRight size={17} />
       </button>
       <Fineprint />
     </>
@@ -424,7 +424,7 @@ function LocalRegistrationForm() {
       className="amk-auth-form"
     >
       <p className="amk-auth__muted">
-        Create your personal AmarktAI Network account. Email verification stays
+        Create your personal <BrandName /> Network account. Email verification stays
         on this secure access page before any workspace or company setup opens.
       </p>
       <Field
@@ -515,7 +515,7 @@ function LocalLoginForm({ initialEmail = "" }: { initialEmail?: string }) {
         {login.isPending ? "Signing in…" : "Sign in"} <ArrowRight size={17} />
       </button>
       <p className="amk-auth__switch">
-        New to AmarktAI?{" "}
+        New to <BrandName />?{" "}
         <Link href="/auth?mode=register">Create an account</Link>
       </p>
       <Fineprint />
@@ -542,8 +542,8 @@ function PasswordRecoveryForm() {
     return (
       <>
         <p className="amk-auth__muted">
-          If that address belongs to an AmarktAI account, a recovery link has
-          been sent. Check your inbox and spam folder.
+          If that address belongs to an account, a recovery link has been sent.
+          Check your inbox and spam folder.
         </p>
         <button
           className="amk-auth__secondary"
@@ -693,7 +693,7 @@ function Field({
 function Fineprint() {
   return (
     <p className="amk-auth__fineprint">
-      By continuing, you agree to the AmarktAI Network Terms and Privacy Policy.
+      By continuing, you agree to the <BrandName /> Network Terms and Privacy Policy.
     </p>
   );
 }

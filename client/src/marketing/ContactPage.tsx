@@ -105,44 +105,45 @@ export default function ContactPage() {
 
   return (
     <MarketingLayout>
-      <section className="amk-contact-hero">
+      <section className="amk-contact-hero amk-swirl amk-swirl--blue">
         <div className="amk-shell amk-contact-hero__grid">
           <div>
-            <p className="amk-eyebrow">TALK TO US</p>
-            <h1>Show us how your sales team works today.</h1>
+            <p className="amk-eyebrow">SHOW US YOUR SALES DAY</p>
+            <h1>Show us where selling stops and admin starts.</h1>
             <p className="amk-lead">
-              <BrandName /> is designed to fit around the CRM and sales process
-              you already have. Tell us what you use and where the day gets
-              harder than it should be.
+              Bring the CRM, the process and the repetitive work your
+              salespeople carry today. <BrandName /> is designed to learn that
+              process and take as much of the work around the sale off their
+              hands as the company chooses to approve.
             </p>
             <div className="amk-contact-points">
               <div>
                 <MessageSquareMore size={20} />
                 <span>
-                  <strong>Want a useful demo?</strong>
+                  <strong>Bring one real workflow</strong>
                   <small>
-                    Tell us your CRM and the part of the sales day you most want
-                    to improve.
+                    Show us a process your salesperson repeats every day and we
+                    can demonstrate how the assistant would learn it.
                   </small>
                 </span>
               </div>
               <div>
                 <Mail size={20} />
                 <span>
-                  <strong>Setting up a team?</strong>
+                  <strong>Bring the CRM you already use</strong>
                   <small>
-                    Include your team size and the communication tools your
-                    salespeople use.
+                    We are not asking you to replace the customer system your
+                    business already trusts.
                   </small>
                 </span>
               </div>
               <div>
                 <ShieldCheck size={20} />
                 <span>
-                  <strong>Keep secrets out of the form</strong>
+                  <strong>Keep control of the rollout</strong>
                   <small>
-                    Never send passwords, one-time codes or connection secrets
-                    here.
+                    Start review-first and approve new write capabilities only
+                    when the company is ready.
                   </small>
                 </span>
               </div>
@@ -152,15 +153,15 @@ export default function ContactPage() {
         </div>
       </section>
 
-      <section className="amk-contact-section">
+      <section className="amk-contact-section amk-swirl amk-swirl--violet">
         <div className="amk-shell amk-contact-section__grid">
           <div className="amk-contact-section__intro">
-            <p className="amk-eyebrow">LET'S MAKE THE DEMO RELEVANT</p>
-            <h2>Tell us what is getting missed, repeated or copied by hand.</h2>
+            <p className="amk-eyebrow">MAKE THE DEMO ABOUT YOUR TEAM</p>
+            <h2>Tell us what your salespeople should never have to do by hand again.</h2>
             <p>
-              That might be poor call preparation, scattered customer context,
-              missed follow-ups, inconsistent CRM updates or too much admin
-              after the conversation.
+              Lead prioritisation, call preparation, reminders, note taking,
+              follow-up, message drafting, CRM housekeeping or a company rule
+              that currently lives in somebody's head.
             </p>
             <ul className="amk-check-list">
               <li>

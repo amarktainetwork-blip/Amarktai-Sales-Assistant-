@@ -80,12 +80,14 @@ describe("final client-facing handover polish", () => {
     expect(layout).toContain("<BrandMark inverse />");
   });
 
-  it("uses the approved dark editorial public layout and photography", () => {
+  it("uses the approved editorial public layout, unique photography and swirl system", () => {
     const css = read("index.css");
     expect(css).toContain(".amk-shell{width:min(1180px,calc(100% - 40px))");
-    expect(css).toContain(".amk-photo-frame--hero{height:570px");
-    expect(css).toContain("--site-bg:#0D1114");
-    expect(css).toContain("--site-warm:#C79A62");
+    expect(css).toContain(".amk-photo-frame--hero{height:560px");
+    expect(css).toContain("--site-bg:#111820");
+    expect(css).toContain("--site-warm:#E3A766");
+    expect(css).toContain(".amk-swirl--blue");
+    expect(css).toContain(".amk-site main{display:grid;gap:5px");
     expect(css).not.toContain(".amk-float-card");
   });
 });

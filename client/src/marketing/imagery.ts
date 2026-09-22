@@ -1,50 +1,50 @@
-/**
- * Licensed, real editorial photography from Pexels.
- * Source IDs and photographer credits are recorded in docs/visual-verification.md.
- */
 export const marketingImagery = {
-  hero: {
-    src: "/images/editorial-v2/home-hero.jpg",
-    alt: "Professional salesperson in a bright modern workspace",
+  homeHero: {
+    src: "/images/sales/home-hero.webp",
+    alt: "Smiling sales professional working in a modern call centre",
   },
-  customerCall: {
-    src: "/images/editorial-v2/home-call.jpg",
-    alt: "Professional salesperson speaking with a customer",
+  homeContext: {
+    src: "/images/sales/home-context.webp",
+    alt: "Sales team handling customer conversations in a modern office",
   },
-  team: {
-    src: "/images/editorial/workshop.webp",
-    alt: "Business team discussing a shared sales plan",
+  homeCall: {
+    src: "/images/sales/home-call.webp",
+    alt: "Sales professional focused on a customer conversation",
   },
-  focus: {
-    src: "/images/editorial/focused-work.webp",
-    alt: "Professional preparing customer context at her desk",
-  },
-  contact: {
-    src: "/images/editorial-v2/contact.jpg",
-    alt: "Professional business consultant in a modern workspace",
+  homeTeam: {
+    src: "/images/sales/home-team.webp",
+    alt: "Happy sales professional working with her team",
   },
   howHero: {
-    src: "/images/editorial-v2/how-hero.jpg",
-    alt: "Confident sales professional working with a customer",
+    src: "/images/sales/how-hero.webp",
+    alt: "Smiling sales professional ready for the next customer conversation",
   },
-  howFollowUp: {
-    src: "/images/editorial/hero-phone.webp",
-    alt: "Professional recording the next step after a call",
+  howCrm: {
+    src: "/images/sales/how-crm.webp",
+    alt: "Sales team working together with headsets and customer systems",
   },
   aboutHero: {
-    src: "/images/editorial/team-meeting.webp",
-    alt: "Colleagues working together in a modern office",
+    src: "/images/sales/about-hero.webp",
+    alt: "Sales professionals working with customers in a call centre",
   },
   aboutTeam: {
-    src: "/images/editorial/sales-call.webp",
-    alt: "Modern business team collaborating around a table",
+    src: "/images/sales/about-team.webp",
+    alt: "Smiling sales professional working alongside his team",
+  },
+  pricing: {
+    src: "/images/sales/pricing.webp",
+    alt: "Sales professional working at her customer desk",
+  },
+  contact: {
+    src: "/images/sales/contact.webp",
+    alt: "Sales professional speaking with customers from a modern call centre",
   },
   authLogin: {
-    src: "/images/editorial-v2/login.jpg",
-    alt: "Professional salesperson working confidently with customers",
+    src: "/images/sales/auth-login.webp",
+    alt: "Professional customer advisor wearing a headset",
   },
   authRegister: {
-    src: "/images/editorial-v2/register.jpg",
-    alt: "Professional salesperson preparing for a productive day",
+    src: "/images/sales/auth-register.webp",
+    alt: "Sales team working together in a bright office",
   },
 } as const;

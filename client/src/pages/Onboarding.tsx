@@ -128,10 +128,6 @@ function StepDot({
 function SetupVisual() {
   return (
     <section className="amk-auth__visual amk-auth__visual--product">
-      <img
-        src="/images/editorial/focused-work.webp"
-        alt="AmarktAI sales workspace"
-      />
       <div className="amk-auth__shade" />
       <div className="amk-auth__visual-inner">
         <div className="amk-auth__topline">

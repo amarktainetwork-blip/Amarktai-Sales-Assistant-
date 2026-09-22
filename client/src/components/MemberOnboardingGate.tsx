@@ -156,11 +156,7 @@ function StepIcon({ children }: { children: React.ReactNode }) {
 
 function SetupVisual() {
   return (
-    <section className="amk-auth__visual">
-      <img
-        src="/images/editorial/team-meeting.webp"
-        alt="AmarktAI sales intelligence workspace"
-      />
+    <section className="amk-auth__visual amk-auth__visual--product">
       <div className="amk-auth__shade" />
       <div className="amk-auth__visual-inner">
         <div className="amk-auth__topline">
