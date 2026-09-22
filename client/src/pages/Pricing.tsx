@@ -1,9 +1,9 @@
-import { ArrowRight, CheckCircle2, Sparkles } from "lucide-react";
+import { ArrowRight, CheckCircle2 } from "lucide-react";
 import { Link } from "wouter";
 import { BrandName } from "@/components/BrandName";
 import { MarketingLayout } from "@/marketing/MarketingLayout";
 import { accountLinks } from "@/marketing/site";
-import { AI_CREDIT_ECONOMICS, PRICING_PLANS } from "@shared/pricing";
+import { PRICING_PLANS } from "@shared/pricing";
 
 function money(cents: number) {
   return `R${(cents / 100).toLocaleString("en-ZA")}`;
@@ -52,17 +52,17 @@ export default function Pricing() {
                   <div className="amk-pricing-row__price">
                     <strong>{money(plan.monthlyZarCents)}</strong>
                     <span>{paid ? "per month" : "14-day trial"}</span>
-                    <small>
-                      {plan.includedAiCredits.toLocaleString("en-ZA")} AI-assisted
-                      tasks included
-                    </small>
+
                   </div>
                   <ul className="amk-pricing-row__features">
-                    {plan.features.slice(1, 5).map(feature => (
-                      <li key={feature}>
-                        <CheckCircle2 size={16} /> {feature}
-                      </li>
-                    ))}
+                    {plan.features
+                      .filter(feature => !/AI-assisted tasks/i.test(feature))
+                      .slice(1, 5)
+                      .map(feature => (
+                        <li key={feature}>
+                          <CheckCircle2 size={16} /> {feature}
+                        </li>
+                      ))}
                   </ul>
                   <div className="amk-pricing-row__action">
                     <Link
@@ -90,20 +90,6 @@ export default function Pricing() {
             })}
           </div>
 
-          <section className="amk-credit-strip">
-            <div>
-              <p className="amk-eyebrow">
-                <Sparkles size={14} /> OPTIONAL AI ASSIST TOP-UPS
-              </p>
-              <h2>
-                {AI_CREDIT_ECONOMICS.upstreamUnitsPerPack.toLocaleString("en-ZA")} AI-assisted tasks ·{" "}
-                {money(AI_CREDIT_ECONOMICS.retailPackZarCents)}
-              </h2>
-            </div>
-            <p>
-              Top-ups cover additional drafting, analysis and conversation help. CRM syncing, reminders, task handling and deterministic workflows do not use an AI-assisted task.
-            </p>
-          </section>
         </div>
       </section>
 

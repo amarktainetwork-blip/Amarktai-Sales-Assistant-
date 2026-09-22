@@ -86,7 +86,7 @@ describe("AmarktAI customer-facing branding boundary", () => {
     expect(imagery).not.toContain("/images/people/");
     expect(imagery).not.toMatch(/ai-generated/i);
     expect(css).toContain(".amk-brand-art");
-    expect(css).toContain("Part of Amarktai Network");
+    expect(css).toContain(".amk-brand-name__ai{color:#2F6FED}");
     expect(css).toContain(".amk-auth__message h1");
     expect(css).not.toContain("content: url(");
   });

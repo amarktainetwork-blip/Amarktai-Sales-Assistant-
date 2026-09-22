@@ -103,5 +103,23 @@ describe("repository source of truth", () => {
     expect(css).toContain(".amk-site");
     expect(css).toContain(".amk-auth");
     expect(css).toContain(".amarktai-dashboard-sidebar");
+    expect(css).toContain("Phase 1 readability bridge");
+    expect(css).toContain('[class*="bg-[#F"]');
+    expect(css).toContain('[class*="text-[#2"]');
+  });
+
+  it("keeps AI billing dormant unless deliberately enabled", () => {
+    const genx = read("server/genx.ts");
+    const core = read("server/_core/index.ts");
+    const pricing = read("client/src/pages/Pricing.tsx");
+    const controls = read("client/src/pages/AdminControls.tsx");
+
+    expect(genx).toContain('process.env.AI_BILLING_ENABLED === "true"');
+    expect(genx).toContain("if (billingEnabled && billing)");
+    expect(core).toContain('if (process.env.AI_BILLING_ENABLED === "true")');
+    expect(pricing).not.toContain("AI_CREDIT_ECONOMICS");
+    expect(pricing).not.toContain("amk-credit-strip");
+    expect(controls).not.toContain('request<Wallet>("/api/ai-credits")');
+    expect(controls).not.toContain("AI CREDIT POOL");
   });
 });

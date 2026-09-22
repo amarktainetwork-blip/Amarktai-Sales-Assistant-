@@ -424,9 +424,10 @@ export async function runGenxAgent(input: {
     };
   }
 
-  const charge = creditCost(billing);
-  let billingExempt = false;
-  if (billing && charge > 0) {
+  const billingEnabled = process.env.AI_BILLING_ENABLED === "true";
+  const charge = billingEnabled ? creditCost(billing) : 0;
+  let billingExempt = !billingEnabled;
+  if (billingEnabled && billing && charge > 0) {
     const wallet = await getAiCreditWallet({
       userId: billing.userId,
       organisationId: billing.organisationId,
@@ -506,7 +507,7 @@ export async function runGenxAgent(input: {
       totalTokens: payload.usage?.total_tokens,
     };
     // Record every real provider call, including zero-credit/exempt usage.
-    if (billing)
+    if (billingEnabled && billing)
       await consumeAiCredits({
         userId: billing.userId,
         organisationId: billing.organisationId,
