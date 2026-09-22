@@ -1,12 +1,13 @@
 import { marketingImagery } from "./imagery";
 
 type MarketingArtworkProps = {
-  variant?:
-    | "context"
-    | "team"
-    | "workflow"
+  variant:
+    | "howHero"
+    | "howCrm"
+    | "aboutHero"
+    | "aboutTeam"
+    | "pricing"
     | "contact"
-    | "knowledge"
     | "authLogin"
     | "authRegister";
   inverse?: boolean;
@@ -14,15 +15,12 @@ type MarketingArtworkProps = {
 };
 
 const content = {
-  context: { image: marketingImagery.customerCall, label: "Customer context" },
-  team: { image: marketingImagery.aboutTeam, label: "Team workspace" },
-  workflow: { image: marketingImagery.howHero, label: "Sales day" },
-  contact: {
-    image: marketingImagery.contact,
-    label:
-      "BUILT AROUND YOUR PROCESS — Show us where the sales day gets stuck.",
-  },
-  knowledge: { image: marketingImagery.aboutHero, label: "Company knowledge" },
+  howHero: { image: marketingImagery.howHero, label: "How AmarktAI works" },
+  howCrm: { image: marketingImagery.howCrm, label: "Works around your CRM" },
+  aboutHero: { image: marketingImagery.aboutHero, label: "Built for salespeople" },
+  aboutTeam: { image: marketingImagery.aboutTeam, label: "One company playbook" },
+  pricing: { image: marketingImagery.pricing, label: "Start with the team you have" },
+  contact: { image: marketingImagery.contact, label: "Show us your sales day" },
   authLogin: { image: marketingImagery.authLogin, label: "Secure sign in" },
   authRegister: {
     image: marketingImagery.authRegister,
@@ -31,7 +29,7 @@ const content = {
 } as const;
 
 export function MarketingArtwork({
-  variant = "workflow",
+  variant,
   inverse = false,
   compact = false,
 }: MarketingArtworkProps) {
@@ -40,7 +38,6 @@ export function MarketingArtwork({
     <figure
       className={[
         "amk-brand-art",
-        "amk-brand-art--photo",
         inverse ? "amk-brand-art--inverse" : "",
         compact ? "amk-brand-art--compact" : "",
       ]

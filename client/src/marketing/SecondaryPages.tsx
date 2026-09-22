@@ -5,6 +5,7 @@ import {
   MessagesSquare,
   ShieldCheck,
   Sparkles,
+  Workflow,
 } from "lucide-react";
 import { Link } from "wouter";
 import { BrandName } from "@/components/BrandName";
@@ -15,62 +16,61 @@ import { accountLinks } from "./site";
 const setupSteps = [
   [
     "01",
-    "Create your workspace",
-    "Every salesperson gets their own login, personal Assistant context and their own commissioned connections.",
+    "Keep the CRM you already use",
+    "The assistant connects around the system that already holds your customer record. There is no forced CRM migration just to get a better sales day.",
   ],
   [
     "02",
-    "Teach the business once",
-    "Provide approved company information so the team can work from the same products, services, customer fit, credentials and policies.",
+    "Give it the company knowledge",
+    "Products, services, policies, positioning and approved sales context become trusted company knowledge instead of living in scattered files and people's heads.",
   ],
   [
     "03",
-    "Connect the CRM",
-    "Keep the CRM as the customer record and bring the useful context into the salesperson's working view.",
+    "Teach it how your company sells",
+    "Describe a sales rule or workflow in plain English. The assistant identifies what data and CRM functions it needs and turns the approved process into a reusable skill.",
   ],
   [
     "04",
-    "Connect email and communication tools",
-    "Use the salesperson's own mailbox, calendar and commissioned channels instead of a shared generic account.",
+    "Prove the skill before relying on it",
+    "The system simulates the logic, checks mappings and shows what it would do. Anything that needs a CRM write or customer communication stays behind explicit approval.",
   ],
   [
     "05",
-    "Start review-first",
-    "Important actions appear in Review so the salesperson can see what will happen before it happens.",
+    "Let trust grow from evidence",
+    "Start review-first. As skills are proven and the company approves them, routine work can become more automated without taking control away from the salesperson.",
   ],
 ] as const;
 
 const dailyFlow = [
   {
     icon: Sparkles,
-    title: "Before the conversation",
-    copy: "See the customer story, current task, opportunity and useful company context together. Ask for a brief, talking points or objection help.",
+    title: "Before the call",
+    copy: "The assistant brings the task, customer history, opportunity, recent activity and relevant company knowledge together before the salesperson starts talking.",
   },
   {
     icon: MessagesSquare,
-    title: "During the conversation",
-    copy: "On a consented call, use transcription and timely assistance while the salesperson stays focused on the customer rather than the software.",
+    title: "During the call",
+    copy: "With consented assistance, the salesperson can focus on the customer while important facts, commitments and context are captured for the next step.",
   },
   {
     icon: CheckCircle2,
-    title: "After the conversation",
-    copy: "Confirm the real outcome, prepare the next action, review anything important and complete the follow-through through the right connection.",
+    title: "After the call",
+    copy: "The confirmed outcome becomes the note, reminder, callback, follow-up draft and commissioned CRM work ready for review.",
   },
 ] as const;
 
 export function HowItWorksPage() {
   return (
     <MarketingLayout>
-      <section className="amk-page-hero amk-page-hero--photo">
+      <section className="amk-page-hero amk-page-hero--photo amk-swirl amk-swirl--blue">
         <div className="amk-shell amk-page-hero__grid">
           <div>
-            <p className="amk-eyebrow">HOW IT WORKS</p>
-            <h1>Keep your CRM. Make the sales work around it easier.</h1>
+            <p className="amk-eyebrow">HOW <BrandName /> WORKS</p>
+            <h1>Teach it how you sell. Then let it carry the work.</h1>
             <p className="amk-lead">
-              <BrandName /> brings business knowledge, customer context,
-              conversation help and follow-through into one personal sales
-              workspace — without asking you to replace the CRM your team
-              already uses.
+              <BrandName /> learns the company process, works around the CRM you
+              already use and carries the salesperson from the next priority to
+              the customer conversation to the reviewed follow-through.
             </p>
             <div className="amk-actions">
               <Link
@@ -84,21 +84,21 @@ export function HowItWorksPage() {
               </Link>
             </div>
           </div>
-          <MarketingArtwork variant="workflow" />
+          <MarketingArtwork variant="howHero" />
         </div>
       </section>
 
-      <section className="amk-section amk-section--white">
+      <section className="amk-section amk-section--white amk-swirl amk-swirl--violet">
         <div className="amk-shell">
           <div className="amk-section__head">
             <div>
-              <p className="amk-eyebrow">SETUP WITHOUT STARTING OVER</p>
-              <h2>Five steps from sign-in to a working sales assistant.</h2>
+              <p className="amk-eyebrow">FROM SIGN-IN TO A REAL ASSISTANT</p>
+              <h2>Five steps. No rebuild of the sales operation.</h2>
             </div>
             <p>
-              You do not start with a CRM migration. You start with the business
-              knowledge, the salesperson's own access and the systems the team
-              already uses.
+              The goal is not to teach the salesperson another piece of
+              software. It is to teach <BrandName /> enough about the business that
+              it can remove work from the salesperson.
             </p>
           </div>
           <div className="amk-step-list">
@@ -113,47 +113,59 @@ export function HowItWorksPage() {
         </div>
       </section>
 
-      <section className="amk-section amk-section--ice">
-        <div className="amk-shell amk-split">
-          <div className="amk-split__media">
-            <MarketingArtwork variant="knowledge" compact />
-          </div>
-          <div className="amk-split__copy">
-            <p className="amk-eyebrow">SHARED COMPANY KNOWLEDGE</p>
-            <h2>
-              Give the team the same trusted business context without sharing
-              one identity.
-            </h2>
+      <section className="amk-section amk-section--ice amk-swirl amk-swirl--teal">
+        <div className="amk-shell amk-control-grid">
+          <div>
+            <p className="amk-eyebrow">THE SKILL BUILDER</p>
+            <h2>New company rules should not require new source code.</h2>
             <p>
-              Managers can review company knowledge once. Salespeople then work
-              from the same approved products, services, customer-fit
-              information, credentials and policies.
+              Tell <BrandName /> what the team needs to do. It works out whether the
+              CRM already exposes what is needed, whether a new CRM operation
+              must be learned, or whether the request truly needs engineering.
             </p>
-            <ul className="amk-check-list">
-              <li>
-                <CheckCircle2 size={18} /> Shared business knowledge
-              </li>
-              <li>
-                <CheckCircle2 size={18} /> Personal salesperson login
-              </li>
-              <li>
-                <CheckCircle2 size={18} /> Personal CRM and mailbox connections
-              </li>
-            </ul>
+            <p>
+              AI can help while a skill is being learned or repaired. Once the
+              skill is proven, routine execution should be deterministic and
+              repeatable.
+            </p>
+          </div>
+          <div className="amk-control-card">
+            <div>
+              <Sparkles size={24} />
+              <span>
+                <strong>Understand the rule</strong>
+                <small>Turn plain-English procedure into structured logic.</small>
+              </span>
+            </div>
+            <div>
+              <Workflow size={24} />
+              <span>
+                <strong>Test it before activation</strong>
+                <small>Simulate mappings, conditions and edge cases first.</small>
+              </span>
+            </div>
+            <div>
+              <ShieldCheck size={24} />
+              <span>
+                <strong>Ask before new write permissions</strong>
+                <small>
+                  Explain the exact write needed, what it would change and why,
+                  then wait for authorised approval.
+                </small>
+              </span>
+            </div>
           </div>
         </div>
       </section>
 
-      <section className="amk-section amk-section--light">
+      <section className="amk-section amk-section--light amk-swirl amk-swirl--warm">
         <div className="amk-shell">
           <div className="amk-section__head amk-section__head--center">
             <p className="amk-eyebrow">THE DAILY SALES LOOP</p>
-            <h2>
-              Useful help before, during and after the customer conversation.
-            </h2>
+            <h2>The assistant stays useful from one conversation to the next.</h2>
             <p>
-              The Assistant is built around the workday, not around a catalogue
-              of disconnected AI features.
+              The salesperson should not have to keep transferring context
+              between the CRM, inbox, notes and their own memory.
             </p>
           </div>
           <div className="amk-benefit-grid">
@@ -170,17 +182,16 @@ export function HowItWorksPage() {
         </div>
       </section>
 
-      <section className="amk-section amk-section--warm">
+      <section className="amk-section amk-section--warm amk-swirl amk-swirl--blue">
         <div className="amk-shell amk-split amk-split--reverse">
           <div className="amk-split__copy">
-            <p className="amk-eyebrow">THE CRM STAYS THE CRM</p>
-            <h2>
-              The customer record remains where your business already keeps it.
-            </h2>
+            <p className="amk-eyebrow">THE CRM STAYS THE SYSTEM OF RECORD</p>
+            <h2><BrandName /> becomes the working layer around it.</h2>
             <p>
-              <BrandName /> works around that record as the salesperson's
-              assistant. It does not ask the team to copy every customer into
-              another database just to get useful help.
+              Customer records stay where the business already keeps them.
+              <BrandName /> brings the useful information into the salesperson's
+              working flow and prepares the next action through commissioned
+              connections.
             </p>
             <div className="amk-feature-points">
               <div>
@@ -188,39 +199,35 @@ export function HowItWorksPage() {
                 <span>
                   <strong>Connection by connection</strong>
                   <small>
-                    CRM compatibility is commissioned and proven for the systems
-                    your team uses.
+                    Each CRM capability is learned, mapped and proven instead of
+                    pretending every system behaves the same.
                   </small>
                 </span>
               </div>
               <div>
                 <ShieldCheck size={19} />
                 <span>
-                  <strong>Review important actions</strong>
+                  <strong>Writes are explicit</strong>
                   <small>
-                    Customer-facing or destructive changes stay visible before
-                    execution.
+                    If a skill needs a new write capability, the user sees what
+                    it needs and approves it before commissioning.
                   </small>
                 </span>
               </div>
             </div>
           </div>
-          <MarketingArtwork variant="context" compact />
+          <MarketingArtwork variant="howCrm" compact />
         </div>
       </section>
 
-      <section className="amk-final-cta">
+      <section className="amk-final-cta amk-swirl amk-swirl--violet">
         <div className="amk-shell amk-final-cta__inner">
           <div>
-            <p className="amk-eyebrow amk-eyebrow--light">
-              SEE IT WITH YOUR SALES PROCESS
-            </p>
-            <h2>
-              Tell us which CRM you use and where your sales day gets stuck.
-            </h2>
+            <p className="amk-eyebrow">SHOW US ONE REAL SALES PROCESS</p>
+            <h2>We will show you what <BrandName /> can take off the salesperson.</h2>
             <p>
-              We will show you how the Assistant fits around the tools and
-              workflow you already have.
+              Bring the CRM, the process and the admin your team currently has
+              to carry by hand.
             </p>
           </div>
           <div className="amk-actions">

@@ -21,7 +21,7 @@ export function BrandMark({
       <span
         className={`font-display font-extrabold tracking-[-.045em] ${large ? "text-[25px]" : "text-[21px]"} ${brand}`}
       >
-        Amarkt<span className="text-[#2F6FED]">AI</span>{" "}
+        Amarkt<span className="text-[#5E8CFF]">AI</span>{" "}
         <span className="font-semibold tracking-[-.035em]">Network</span>
       </span>
       {!compact && (

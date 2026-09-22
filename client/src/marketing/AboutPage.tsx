@@ -14,35 +14,34 @@ import { MarketingArtwork } from "./MarketingArtwork";
 const reasons = [
   {
     icon: Layers3,
-    title: "The information is already scattered everywhere",
-    copy: "Customer history lives in the CRM. Company knowledge lives somewhere else. The conversation happens in another tool. The salesperson is left joining the pieces together.",
+    title: "The sales day is fragmented",
+    copy: "The CRM, inbox, notes, call tools, tasks and company knowledge all hold part of the picture. The salesperson is expected to keep joining it back together.",
   },
   {
     icon: Target,
-    title: "The hard part is knowing what matters now",
-    copy: "A useful assistant should help the salesperson understand this customer, this conversation and this next step — not just answer generic questions in a blank chat window.",
+    title: "Context disappears at the worst moment",
+    copy: "A salesperson should not have to rebuild the customer story just before a call or search through old notes while the customer is already on the line.",
   },
   {
     icon: Workflow,
-    title: "Follow-through is where good sales work often disappears",
-    copy: "The call can go well and the next step can still be missed. AmarktAI is designed to carry the confirmed outcome into the action that should happen afterwards.",
+    title: "Admin steals the time that should be spent selling",
+    copy: "A good conversation can still create ten minutes of notes, reminders, task changes, follow-up drafting and CRM housekeeping before the next customer gets attention.",
   },
 ] as const;
 
 export default function AboutPage() {
   return (
     <MarketingLayout>
-      <section className="amk-page-hero amk-page-hero--about">
+      <section className="amk-page-hero amk-page-hero--about amk-swirl amk-swirl--violet">
         <div className="amk-shell amk-page-hero__grid">
           <div>
-            <p className="amk-eyebrow">WHY AMARKTAI</p>
-            <h1>
-              Sales teams do not need another place to copy customer data.
-            </h1>
+            <p className="amk-eyebrow">WHY <BrandName /></p>
+            <h1>Salespeople were hired to sell. Software turned them into admins.</h1>
             <p className="amk-lead">
-              They need help using what they already have. <BrandName /> is
-              built around the real sales day — the business context, the
-              customer context, the conversation and the follow-through.
+              <BrandName /> is built to reverse that. It works around the CRM,
+              learns how the company sells and removes the preparation,
+              remembering and follow-through that pulls attention away from the
+              customer.
             </p>
             <div className="amk-actions">
               <Link
@@ -56,19 +55,20 @@ export default function AboutPage() {
               </Link>
             </div>
           </div>
-          <MarketingArtwork variant="context" />
+          <MarketingArtwork variant="aboutHero" />
         </div>
       </section>
 
-      <section className="amk-section amk-section--white">
+      <section className="amk-section amk-section--white amk-swirl amk-swirl--blue">
         <div className="amk-shell">
           <div className="amk-section__head amk-section__head--center">
-            <p className="amk-eyebrow">THE PROBLEM WE ARE SOLVING</p>
-            <h2>The sales day is bigger than the CRM screen.</h2>
+            <p className="amk-eyebrow">THE PROBLEM IS NOT A LACK OF SOFTWARE</p>
+            <h2>The salesperson is carrying too much of the system in their head.</h2>
             <p>
-              The CRM is important. It is just not the whole job. Salespeople
-              still have to prepare, remember, listen, decide, follow up and
-              keep customer records accurate afterwards.
+              The tools may already exist. The missing layer is the assistant
+              that understands the business, understands the customer and
+              carries the next step forward without making the salesperson do
+              the stitching.
             </p>
           </div>
           <div className="amk-benefit-grid">
@@ -85,118 +85,106 @@ export default function AboutPage() {
         </div>
       </section>
 
-      <section className="amk-section amk-section--ice">
-        <div className="amk-shell amk-split">
-          <div className="amk-split__media">
-            <MarketingArtwork variant="knowledge" compact />
-          </div>
-          <div className="amk-split__copy">
-            <p className="amk-eyebrow">OUR APPROACH</p>
-            <h2>
-              Keep the systems that already matter. Make the work between them
-              easier.
-            </h2>
+      <section className="amk-section amk-section--ice amk-swirl amk-swirl--teal">
+        <div className="amk-shell amk-control-grid">
+          <div>
+            <p className="amk-eyebrow">THE <BrandName /> IDEA</p>
+            <h2>Do not replace the systems. Add the intelligence between them.</h2>
             <p>
-              <BrandName /> is not trying to become another CRM. It is the
-              working layer around the salesperson: one place to bring together
-              the useful business facts, the current customer story, the
-              conversation and the next action.
+              The CRM remains the customer record. The mailbox remains the
+              mailbox. The salesperson remains the salesperson. <BrandName /> becomes
+              the working layer that brings the right information and next
+              action together at the right time.
             </p>
-            <ul className="amk-check-list">
-              <li>
-                <CheckCircle2 size={18} /> Keep the CRM your business already
-                trusts
-              </li>
-              <li>
-                <CheckCircle2 size={18} /> Give the team approved business
-                context
-              </li>
-              <li>
-                <CheckCircle2 size={18} /> Give every salesperson their own
-                workspace and identity
-              </li>
-            </ul>
+          </div>
+          <div className="amk-control-card">
+            <div>
+              <CheckCircle2 size={24} />
+              <span>
+                <strong>Company knowledge</strong>
+                <small>Approved products, policies, positioning and process.</small>
+              </span>
+            </div>
+            <div>
+              <Target size={24} />
+              <span>
+                <strong>Customer context</strong>
+                <small>The real task, opportunity, history, messages and commitments.</small>
+              </span>
+            </div>
+            <div>
+              <Workflow size={24} />
+              <span>
+                <strong>Learned sales skills</strong>
+                <small>Company-specific rules that can be taught, tested and reused.</small>
+              </span>
+            </div>
           </div>
         </div>
       </section>
 
-      <section className="amk-section amk-section--navy">
+      <section className="amk-section amk-section--navy amk-swirl amk-swirl--warm">
         <div className="amk-shell amk-control-grid">
           <div>
-            <p className="amk-eyebrow amk-eyebrow--light">
-              HELPFUL, BUT ACCOUNTABLE
-            </p>
-            <h2>
-              The Assistant should make work easier without becoming invisible
-              automation.
-            </h2>
+            <p className="amk-eyebrow">POWERFUL, BUT ACCOUNTABLE</p>
+            <h2>The system should earn trust instead of asking for blind trust.</h2>
             <p>
-              Important customer actions are designed to stay visible. The
-              salesperson should know which customer is affected, what will
-              happen and which connection will be used.
+              Important customer actions stay visible. If a new skill needs a
+              new write capability, <BrandName /> should explain exactly what it
+              needs to change, why it needs it and what the effect will be before
+              the user approves that capability.
             </p>
           </div>
           <div className="amk-control-card">
             <div>
               <ShieldCheck size={24} />
               <span>
-                <strong>Review Everything by default</strong>
-                <small>
-                  Start with control and earn more autonomy deliberately.
-                </small>
+                <strong>Review first</strong>
+                <small>Consequential work is visible before execution.</small>
               </span>
             </div>
             <div>
               <CheckCircle2 size={24} />
               <span>
-                <strong>Use the real customer context</strong>
-                <small>
-                  Do not guess destructive targets from names or labels.
-                </small>
+                <strong>Prove the result</strong>
+                <small>Where supported, read the external system back before calling work complete.</small>
               </span>
             </div>
             <div>
               <Workflow size={24} />
               <span>
-                <strong>Verify completed work</strong>
-                <small>
-                  Where the connection supports readback, check the external
-                  system before calling the action done.
-                </small>
+                <strong>Learn from evidence</strong>
+                <small>Improve from successful skills and user feedback, not uncontrolled guesses.</small>
               </span>
             </div>
           </div>
         </div>
       </section>
 
-      <section className="amk-section amk-section--warm">
+      <section className="amk-section amk-section--warm amk-swirl amk-swirl--violet">
         <div className="amk-shell amk-split amk-split--reverse">
           <div className="amk-split__copy">
-            <p className="amk-eyebrow">FOR REAL SALES TEAMS</p>
-            <h2>One company brain. Personal salesperson workspaces.</h2>
+            <p className="amk-eyebrow">ONE COMPANY BRAIN. PERSONAL ASSISTANTS.</p>
+            <h2>Teach the company once. Let every salesperson work their own way.</h2>
             <p>
-              Shared knowledge should be consistent across the team. Customer
-              work, CRM identity, mailbox access and personal Assistant context
-              should still belong to the individual salesperson.
+              Shared sales rules and approved company knowledge belong to the
+              organisation. Customer access, CRM identity, mailbox access and
+              working preferences stay personal to the salesperson.
             </p>
             <p>
-              That balance is what lets the product help a team without turning
-              everyone into one shared user.
+              That means the system can support one independent salesperson or
+              an entire team without turning everybody into the same user.
             </p>
           </div>
-          <MarketingArtwork variant="team" compact />
+          <MarketingArtwork variant="aboutTeam" compact />
         </div>
       </section>
 
-      <section className="amk-final-cta">
+      <section className="amk-final-cta amk-swirl amk-swirl--blue">
         <div className="amk-shell amk-final-cta__inner">
           <div>
-            <p className="amk-eyebrow amk-eyebrow--light">SEE WHERE IT FITS</p>
-            <h2>Show us how your team sells today.</h2>
-            <p>
-              Tell us the CRM you use and where time, context or follow-up keeps
-              getting lost.
-            </p>
+            <p className="amk-eyebrow">THE BEST DEMO IS YOUR REAL SALES DAY</p>
+            <h2>Show us where your team loses time. We will show you what <BrandName /> can carry.</h2>
           </div>
           <div className="amk-actions">
             <Link href="/contact" className="amk-button amk-button--light">
