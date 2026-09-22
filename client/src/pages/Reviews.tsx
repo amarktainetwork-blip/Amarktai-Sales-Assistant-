@@ -85,7 +85,7 @@ function lifecycleTone(lifecycle: ReviewLifecycle) {
     return "border-slate-200 bg-slate-50 text-slate-700";
   if (lifecycle === "executing")
     return "border-blue-200 bg-blue-50 text-blue-800";
-  return "border-[#C9D7E8] bg-[#F2F6FC] text-[#315EA8]";
+  return "border-[#C9D7E8] bg-[#F2F6FC] text-[#405F70]";
 }
 
 function evidenceValue(value: unknown) {
@@ -372,11 +372,14 @@ export default function Reviews() {
 
   return (
     <DashboardLayout>
-      <div className="mx-auto max-w-6xl space-y-5 text-[#26354A]">
+      <div
+        id="reviews-page"
+        className="mx-auto max-w-6xl space-y-5 text-[#26354A]"
+      >
         <header className="rounded-2xl border border-[#DCE4EE] bg-white px-5 py-4 shadow-sm sm:px-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <div className="flex items-center gap-2 text-[#3F70D8]">
+              <div className="flex items-center gap-2 text-[#55788B]">
                 <ShieldCheck className="h-4 w-4" />
                 <p className="text-[10px] font-black uppercase tracking-[.14em]">
                   Review
@@ -407,7 +410,7 @@ export default function Reviews() {
                 onClick={() => setFilter(option.key)}
                 className={`rounded-xl border px-3 py-2 text-xs font-bold transition ${
                   filter === option.key
-                    ? "border-[#3F70D8] bg-[#EDF4FF] text-[#315EA8]"
+                    ? "border-[#55788B] bg-[#EAF0F2] text-[#405F70]"
                     : "border-[#DCE4EE] bg-white text-[#66758A] hover:border-[#B8C7D9]"
                 }`}
               >

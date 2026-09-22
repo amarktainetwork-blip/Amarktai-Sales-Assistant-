@@ -529,9 +529,9 @@ export default function LiveCalls() {
 
   return (
     <DashboardLayout>
-      <div data-call-workflow className="text-[#26354A]">
+      <div id="calls-page" data-call-workflow className="text-[#26354A]">
         <header className="border-b border-[#DCE4EE] pb-6">
-          <p className="text-[10px] font-black uppercase tracking-[.16em] text-[#2F6FED]">
+          <p className="text-[10px] font-black uppercase tracking-[.16em] text-[#55788B]">
             AMARKTAI / LIVE CALL COMPANION
           </p>
           <h1 className="mt-3 font-display text-4xl font-bold tracking-[-.06em] text-[#203047] sm:text-5xl">
@@ -557,7 +557,7 @@ export default function LiveCalls() {
               {retryAction ? (
                 <Button
                   onClick={retryAction}
-                  className="bg-[#2F6FED] hover:bg-[#2459C2]"
+                  className="bg-[#55788B] hover:bg-[#405F70]"
                 >
                   Retry
                 </Button>
@@ -601,7 +601,7 @@ export default function LiveCalls() {
           )}
         {callContext.data?.context && (
           <section className="mt-6 rounded-[1.5rem] border border-[#DCE4EE] bg-white p-6">
-            <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#2F6FED]">
+            <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#55788B]">
               PRE-CALL BRIEF
             </p>
             <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-6">
@@ -654,11 +654,11 @@ export default function LiveCalls() {
           <section className="rounded-[1.5rem] border border-[#DCE4EE] bg-white p-6">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3">
-                <span className="grid size-10 place-items-center rounded-xl bg-[#EAF1FF] text-[#2F6FED]">
+                <span className="grid size-10 place-items-center rounded-xl bg-[#EAF0F2] text-[#55788B]">
                   <Headphones size={19} />
                 </span>
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#2F6FED]">
+                  <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#55788B]">
                     CALL AUDIO
                   </p>
                   <h2 className="font-display text-2xl font-bold tracking-[-.05em] text-[#26354A]">
@@ -692,7 +692,7 @@ export default function LiveCalls() {
               className="mt-2 border-[#CBD5E0] bg-white text-[#26354A] placeholder:text-[#95A2B2]"
             />
             {initialCustomer.data?.interest.primary ? (
-              <p className="mt-2 rounded-lg bg-[#EDF4FF] px-3 py-2 text-xs font-bold text-[#315EA8]">
+              <p className="mt-2 rounded-lg bg-[#EAF0F2] px-3 py-2 text-xs font-bold text-[#405F70]">
                 Course interest: {initialCustomer.data.interest.primary}
               </p>
             ) : null}
@@ -710,7 +710,7 @@ export default function LiveCalls() {
                       setSelectedContactId(contact.id);
                       setLeadLabel(contact.name);
                     }}
-                    className={`block w-full rounded-lg px-3 py-2 text-left text-xs ${selectedContactId === contact.id ? "bg-[#EAF1FF] text-[#2459C2]" : "text-[#52647A] hover:bg-[#F2F5F8]"}`}
+                    className={`block w-full rounded-lg px-3 py-2 text-left text-xs ${selectedContactId === contact.id ? "bg-[#EAF0F2] text-[#405F70]" : "text-[#52647A] hover:bg-[#F2F5F8]"}`}
                   >
                     <b>{contact.name}</b>
                     <span className="ml-2 text-[#7B8798]">
@@ -725,9 +725,9 @@ export default function LiveCalls() {
               <button
                 disabled={recording}
                 onClick={() => setCaptureMode("mixed")}
-                className={`rounded-xl border p-4 text-left transition ${captureMode === "mixed" ? "border-[#2F6FED] bg-[#EAF1FF]" : "border-[#DCE4EE] bg-[#F8FAFC] hover:border-[#B9C7D8]"}`}
+                className={`rounded-xl border p-4 text-left transition ${captureMode === "mixed" ? "border-[#55788B] bg-[#EAF0F2]" : "border-[#DCE4EE] bg-[#F8FAFC] hover:border-[#B9C7D8]"}`}
               >
-                <MonitorUp className="size-5 text-[#2F6FED]" />
+                <MonitorUp className="size-5 text-[#55788B]" />
                 <p className="mt-3 font-bold text-[#26354A]">
                   Call audio + microphone
                 </p>
@@ -739,9 +739,9 @@ export default function LiveCalls() {
               <button
                 disabled={recording}
                 onClick={() => setCaptureMode("microphone")}
-                className={`rounded-xl border p-4 text-left transition ${captureMode === "microphone" ? "border-[#2F6FED] bg-[#EAF1FF]" : "border-[#DCE4EE] bg-[#F8FAFC] hover:border-[#B9C7D8]"}`}
+                className={`rounded-xl border p-4 text-left transition ${captureMode === "microphone" ? "border-[#55788B] bg-[#EAF0F2]" : "border-[#DCE4EE] bg-[#F8FAFC] hover:border-[#B9C7D8]"}`}
               >
-                <Mic className="size-5 text-[#2F6FED]" />
+                <Mic className="size-5 text-[#55788B]" />
                 <p className="mt-3 font-bold text-[#26354A]">Microphone only</p>
                 <p className="mt-1 text-xs leading-5 text-[#66758A]">
                   Use this for speakerphone or headset calls where your
@@ -779,7 +779,7 @@ export default function LiveCalls() {
                     completing
                   }
                   onClick={() => void begin()}
-                  className="h-12 bg-[#2F6FED] hover:bg-[#2459C2]"
+                  className="h-12 bg-[#55788B] hover:bg-[#405F70]"
                 >
                   <Waves className="mr-2 size-4" />
                   Start Live Companion
@@ -823,7 +823,7 @@ export default function LiveCalls() {
             </div>
 
             <div className="mt-6 min-h-48 rounded-xl border border-[#DCE4EE] bg-[#F8FAFC] p-4">
-              <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#2F6FED]">
+              <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#55788B]">
                 LIVE TRANSCRIPT
               </p>
               <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-[#33445B]">
@@ -834,7 +834,7 @@ export default function LiveCalls() {
 
             {awaitingCloseout && (
               <section className="mt-5 rounded-xl border border-[#DCE4EE] bg-[#F8FAFC] p-5">
-                <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#2F6FED]">
+                <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#55788B]">
                   CALL OUTCOME
                 </p>
                 <h3 className="mt-2 font-display text-2xl font-bold text-[#26354A]">
@@ -909,7 +909,7 @@ export default function LiveCalls() {
                     />
                   </label>
                 </div>
-                <div className="mt-4 rounded-xl bg-[#EAF1FF] p-3 text-xs leading-5 text-[#35547A]">
+                <div className="mt-4 rounded-xl bg-[#EAF0F2] p-3 text-xs leading-5 text-[#405F70]">
                   {callContext.data?.context
                     ? "This call is linked to the selected customer. "
                     : "Choose a customer before preparing customer updates. "}
@@ -924,7 +924,7 @@ export default function LiveCalls() {
                 <Button
                   disabled={completing}
                   onClick={() => void completeCloseout()}
-                  className="mt-4 bg-[#2F6FED] hover:bg-[#2459C2]"
+                  className="mt-4 bg-[#55788B] hover:bg-[#405F70]"
                 >
                   {completing
                     ? "Preparing follow-up…"
@@ -956,7 +956,7 @@ export default function LiveCalls() {
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Button
                     onClick={() => navigate("/reviews")}
-                    className="bg-[#2F6FED] hover:bg-[#2459C2]"
+                    className="bg-[#55788B] hover:bg-[#405F70]"
                   >
                     <ClipboardCheck className="mr-2 h-4 w-4" />
                     Review prepared work
@@ -983,7 +983,7 @@ export default function LiveCalls() {
           <div className="grid gap-6">
             <section className="rounded-[1.5rem] border border-[#DCE4EE] bg-white p-6">
               <div className="flex items-center gap-3">
-                <AlertTriangle className="size-5 text-[#2F6FED]" />
+                <AlertTriangle className="size-5 text-[#55788B]" />
                 <h2 className="font-display text-2xl font-bold tracking-[-.05em] text-[#26354A]">
                   Live signals
                 </h2>
@@ -993,9 +993,9 @@ export default function LiveCalls() {
                   signals.map((signal, index) => (
                     <article
                       key={`${signal.type}-${index}`}
-                      className={`rounded-xl border p-4 ${signal.priority === "important" ? "border-[#B7CCF7] bg-[#EAF1FF]" : "border-[#DCE4EE] bg-[#F8FAFC]"}`}
+                      className={`rounded-xl border p-4 ${signal.priority === "important" ? "border-[#C9D8DE] bg-[#EAF0F2]" : "border-[#DCE4EE] bg-[#F8FAFC]"}`}
                     >
-                      <p className="text-xs font-black uppercase tracking-[.1em] text-[#2F6FED]">
+                      <p className="text-xs font-black uppercase tracking-[.1em] text-[#55788B]">
                         {signal.label}
                       </p>
                       <p className="mt-2 text-sm leading-6 text-[#33445B]">
@@ -1014,7 +1014,7 @@ export default function LiveCalls() {
 
             <section className="rounded-[1.5rem] border border-[#DCE4EE] bg-white p-6">
               <div className="flex items-center gap-3">
-                <CheckCircle2 className="size-5 text-[#2F6FED]" />
+                <CheckCircle2 className="size-5 text-[#55788B]" />
                 <h2 className="font-display text-2xl font-bold tracking-[-.05em] text-[#26354A]">
                   Current coaching
                 </h2>

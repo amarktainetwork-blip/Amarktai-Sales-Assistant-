@@ -3,7 +3,7 @@ import { BrandName } from "@/components/BrandName";
 import { ArrowRight, Menu, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { accountLinks, publicPageMetadata } from "./site";
+import { accountLinks, marketingNavigation, publicPageMetadata } from "./site";
 import "./final-site.css";
 
 export function scrollPublicRouteToTop(
@@ -50,13 +50,16 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
             <BrandMark large />
           </div>
           <nav className="amk-nav" aria-label="Main navigation">
-            <Link
-              href="/pricing"
-              aria-current={location === "/pricing" ? "page" : undefined}
-              className={location === "/pricing" ? "is-active" : ""}
-            >
-              Pricing
-            </Link>
+            {marketingNavigation.map(item => (
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-current={location === item.href ? "page" : undefined}
+                className={location === item.href ? "is-active" : ""}
+              >
+                {item.label}
+              </Link>
+            ))}
           </nav>
           <div className="amk-header__actions">
             <Link href={accountLinks.signIn} className="amk-signin">
@@ -88,7 +91,11 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
             aria-label="Mobile navigation"
           >
             <div className="amk-shell amk-mobile-nav__inner">
-              <Link href="/pricing">Pricing</Link>
+              {marketingNavigation.map(item => (
+                <Link key={item.href} href={item.href}>
+                  {item.label}
+                </Link>
+              ))}
               <Link href={accountLinks.signIn}>Sign In</Link>
               <Link
                 href={accountLinks.getStarted}

@@ -9,25 +9,27 @@ const liveCalls = readFileSync(
 describe("client-handover live calls presentation", () => {
   it("uses the final light dashboard system at source instead of legacy dark classes", () => {
     for (const rejected of [
-      'bg-[#071326]',
-      'bg-[#08172F]',
-      'bg-[#0B1B37]',
-      'bg-[#0E2142]',
-      'bg-[#153B7A]',
-      'border-white/10',
-      'border-white/15',
-      'bg-white/5',
-      'text-white',
+      "bg-[#071326]",
+      "bg-[#08172F]",
+      "bg-[#0B1B37]",
+      "bg-[#0E2142]",
+      "bg-[#153B7A]",
+      "border-white/10",
+      "border-white/15",
+      "bg-white/5",
+      "text-white",
+      "text-[#2F6FED]",
+      "bg-[#EAF1FF]",
     ])
       expect(liveCalls).not.toContain(rejected);
 
     for (const required of [
-      'border-[#DCE4EE]',
-      'bg-white',
-      'bg-[#F8FAFC]',
-      'bg-[#EAF1FF]',
-      'text-[#26354A]',
-      'text-[#2F6FED]',
+      "border-[#DCE4EE]",
+      "bg-white",
+      "bg-[#F8FAFC]",
+      "text-[#26354A]",
+      "text-[#55788B]",
+      "bg-[#EAF0F2]",
     ])
       expect(liveCalls).toContain(required);
   });
