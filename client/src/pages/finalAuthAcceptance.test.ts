@@ -45,7 +45,7 @@ describe("final account presentation", () => {
     expect(auth).toContain("/auth?step=verify");
     expect(auth).toContain("Verify your email.");
     expect(auth).toContain(
-      'MarketingArtwork variant="workflow" inverse compact'
+      'variant={isRegister ? "authRegister" : "authLogin"}'
     );
     expect(auth).not.toContain("images.pexels.com");
     expect(auth).not.toContain("images.unsplash.com");

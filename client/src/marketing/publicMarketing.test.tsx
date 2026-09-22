@@ -12,7 +12,7 @@ import Pricing from "@/pages/Pricing";
 import { accountLinks, marketingNavigation } from "./site";
 import { scrollPublicRouteToTop } from "./MarketingLayout";
 import NotFound from "@/pages/NotFound";
-import { AI_CREDIT_ECONOMICS, PRICING_PLANS } from "@shared/pricing";
+import { PRICING_PLANS } from "@shared/pricing";
 
 const pages = [
   ["/", HomePage, "Get hours of your sales day back."],
@@ -83,13 +83,13 @@ describe("final public website", () => {
       expect(html).not.toContain("images.pexels.com");
       expect(html).not.toContain("images.unsplash.com");
     }
-    expect(home).toContain("/images/editorial/hero-phone.webp");
-    expect(home).toContain("/images/editorial/headset-work.webp");
+    expect(home).toContain("/images/editorial-v2/home-hero.jpg");
+    expect(home).toContain("/images/editorial-v2/home-call.jpg");
     expect(home).toContain("/images/editorial/focused-work.webp");
     expect(home).toContain("/images/editorial/workshop.webp");
-    expect(how).toContain("/images/editorial/sales-call.webp");
+    expect(how).toContain("/images/editorial-v2/how-hero.jpg");
     expect(about).toContain("/images/editorial/team-meeting.webp");
-    expect(contact).toContain("/images/editorial/professional-portrait.webp");
+    expect(contact).toContain("/images/editorial-v2/contact.jpg");
     expect(home).not.toContain("/images/people/");
     expect(home).not.toMatch(/ai-generated/i);
   });
@@ -123,7 +123,8 @@ describe("final public website", () => {
     expect(html).toContain(">Sign In<");
     expect(html).toContain("Start Free");
     expect(html).not.toContain("Amarktai Sales Assistant");
-    expect(html).toContain("Part of Amarktai Network");
+    expect(html).toContain("Part of");
+    expect(html).toContain('class="amk-brand-name__ai">AI</span>');
   });
 
   it("restores scroll on public route transitions without touching dashboard routes", () => {
@@ -144,16 +145,13 @@ describe("final public website", () => {
     for (const plan of PRICING_PLANS) {
       expect(html).toContain(plan.name);
       expect(compactHtml).toContain(`R${plan.monthlyZarCents / 100}`);
-      expect(compactHtml).toContain(String(plan.includedAiCredits));
       expect(html).toContain(
         plan.includedUsers === 1
           ? "1 user"
           : `Up to ${plan.includedUsers} users`
       );
     }
-    expect(compactHtml).toContain(
-      `${AI_CREDIT_ECONOMICS.upstreamUnitsPerPack}AI-assistedtasks·R${AI_CREDIT_ECONOMICS.retailPackZarCents / 100}`
-    );
+    expect(html).not.toMatch(/AI-assisted tasks|AI credit|top-up/i);
     expect(html).not.toMatch(/Stripe|PayFast|buy now|checkout now/i);
   });
 

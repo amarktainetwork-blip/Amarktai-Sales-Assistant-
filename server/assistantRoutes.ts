@@ -72,8 +72,6 @@ function customerMessage(error: unknown) {
   if (/TWO_FACTOR_REQUIRED/i.test(detail))
     return "Please finish your Amarktai sign-in verification and try again.";
   if (/AUTH_REQUIRED/i.test(detail)) return "Please sign in to continue.";
-  if (/credit/i.test(detail))
-    return "Your organisation needs more AI credits before I can use intelligence for that request. Your CRM data and daily work remain available.";
   if (/GenX|intelligence model|not configured|advertised/i.test(detail))
     return "My AI guidance is temporarily unavailable. I can still show your tasks, priorities, reminders, callbacks and CRM workspace.";
   return "I couldn't complete that request just now. Nothing was changed. Please try again.";

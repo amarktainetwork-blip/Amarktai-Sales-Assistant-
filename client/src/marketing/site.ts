@@ -21,7 +21,7 @@ export const publicPageMetadata: Record<string, { title: string; description: st
   },
   "/pricing": {
     title: "AmarktAI Sales Assistant Pricing | Simple ZAR Plans",
-    description: "Simple South African pricing for individual salespeople and teams, with included AI credits and optional top-ups when more intelligence is needed.",
+    description: "Simple South African pricing for individual salespeople and teams using AmarktAI Sales Assistant around the CRM they already have.",
   },
   "/about": {
     title: "Why AmarktAI | A Better Way to Work Around Your CRM",

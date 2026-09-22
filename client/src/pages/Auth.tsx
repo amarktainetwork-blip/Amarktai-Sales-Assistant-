@@ -1,5 +1,6 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { BrandMark } from "@/components/BrandMark";
+import { BrandName } from "@/components/BrandName";
 import { startLogin } from "@/const";
 import { friendlyError } from "@/lib/friendlyError";
 import { trpc } from "@/lib/trpc";
@@ -79,15 +80,19 @@ export default function Auth() {
     <main className={`amk-auth${isRegister ? " amk-auth--register" : ""}`}>
       <section className="amk-auth__visual">
         <div className="amk-auth__scene" aria-hidden="true">
-          <MarketingArtwork variant="workflow" inverse compact />
+          <MarketingArtwork
+            variant={isRegister ? "authRegister" : "authLogin"}
+            inverse
+            compact
+          />
         </div>
         <div className="amk-auth__shade" />
         <div className="amk-auth__visual-inner">
           <div className="amk-auth__topline">
+            <BrandMark inverse />
             <Link href="/" className="amk-auth__back">
               <ChevronLeft size={16} /> Back to website
             </Link>
-            <BrandMark inverse />
           </div>
           <div className="amk-auth__message">
             <h1>Your sales day. Less admin.</h1>
@@ -138,6 +143,9 @@ export default function Auth() {
           )}
         </div>
       </section>
+      <div className="amk-auth__footer">
+        © 2026 <BrandName /> Sales Assistant · Part of <BrandName /> Network
+      </div>
     </main>
   );
 }

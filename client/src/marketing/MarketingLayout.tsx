@@ -46,7 +46,7 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
       <header className="amk-header">
         <div className="amk-shell amk-header__inner">
           <div className="amk-brand">
-            <BrandMark large />
+            <BrandMark large inverse />
           </div>
           <nav className="amk-nav" aria-label="Main navigation">
             {marketingNavigation.map(item => (
@@ -56,7 +56,13 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
                 aria-current={location === item.href ? "page" : undefined}
                 className={location === item.href ? "is-active" : ""}
               >
-                {item.label}
+                {item.href === "/about" ? (
+                  <>
+                    Why <BrandName />
+                  </>
+                ) : (
+                  item.label
+                )}
               </Link>
             ))}
           </nav>
@@ -92,7 +98,13 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
             <div className="amk-shell amk-mobile-nav__inner">
               {marketingNavigation.map(item => (
                 <Link key={item.href} href={item.href}>
-                  {item.label}
+                  {item.href === "/about" ? (
+                  <>
+                    Why <BrandName />
+                  </>
+                ) : (
+                  item.label
+                )}
                 </Link>
               ))}
               <Link href={accountLinks.signIn}>Sign In</Link>
@@ -112,7 +124,7 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
       <footer className="amk-footer">
         <div className="amk-shell amk-footer__top">
           <div className="amk-footer__brand">
-            <BrandMark large />
+            <BrandMark large inverse />
             <h2>
               Give your salespeople a better way to work around the CRM they
               already use.
@@ -141,7 +153,7 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
         <div className="amk-shell amk-footer__base">
           <p>
             © {new Date().getFullYear()} <BrandName /> Sales Assistant · Part
-            of Amarktai Network
+            of <BrandName /> Network
           </p>
           <p>Keep your CRM. Make the sales day easier.</p>
         </div>

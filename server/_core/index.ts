@@ -169,7 +169,9 @@ async function startServer() {
     rateLimit({ limit: 60, windowMs: 60_000 }),
     enforceAppOrigin
   );
-  registerAiCreditsRoutes(app);
+  if (process.env.AI_BILLING_ENABLED === "true") {
+    registerAiCreditsRoutes(app);
+  }
   app.use("/api/sidecar", allowSidecarOrigin);
   registerSidecarRoutes(app);
   app.use(

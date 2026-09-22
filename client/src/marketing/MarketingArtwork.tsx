@@ -1,7 +1,14 @@
 import { marketingImagery } from "./imagery";
 
 type MarketingArtworkProps = {
-  variant?: "context" | "team" | "workflow" | "contact" | "knowledge";
+  variant?:
+    | "context"
+    | "team"
+    | "workflow"
+    | "contact"
+    | "knowledge"
+    | "authLogin"
+    | "authRegister";
   inverse?: boolean;
   compact?: boolean;
 };
@@ -16,6 +23,11 @@ const content = {
       "BUILT AROUND YOUR PROCESS — Show us where the sales day gets stuck.",
   },
   knowledge: { image: marketingImagery.aboutHero, label: "Company knowledge" },
+  authLogin: { image: marketingImagery.authLogin, label: "Secure sign in" },
+  authRegister: {
+    image: marketingImagery.authRegister,
+    label: "Create your AmarktAI account",
+  },
 } as const;
 
 export function MarketingArtwork({

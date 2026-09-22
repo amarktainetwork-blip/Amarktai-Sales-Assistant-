@@ -71,12 +71,13 @@ describe("final client-facing handover polish", () => {
     expect(app).toContain('navigate("/", { replace: true })');
   });
 
-  it("moves dashboard copyright into the sidebar footer", () => {
+  it("keeps dashboard branding in the real wordmark instead of pseudo text", () => {
     const css = read("index.css");
-    expect(css).toContain(
+    const layout = read("components/DashboardLayout.tsx");
+    expect(css).not.toContain(
       'body:has(.amarktai-dashboard-sidebar) [data-sidebar="footer"]::after'
     );
-    expect(css).toContain("Part of Amarktai Network");
+    expect(layout).toContain("<BrandMark inverse />");
   });
 
   it("uses the approved dark editorial public layout and photography", () => {

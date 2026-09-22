@@ -3,7 +3,6 @@ import ManagementElevation from "@/components/ManagementElevation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  BadgeDollarSign,
   Bot,
   Loader2,
   Save,
@@ -50,19 +49,6 @@ type Policy = {
   requireReviewForStageChanges?: boolean;
 };
 type Capabilities = { policy: Policy; actionTypes: string[] };
-type Wallet = {
-  balance: number;
-  used: number;
-  purchased: number;
-  plan: { key: string; name: string; includedAiCredits: number };
-  entries: Array<{
-    id: number;
-    creditsDelta: number;
-    transactionType: string;
-    feature?: string;
-    occurredAt: string;
-  }>;
-};
 type Member = {
   userId: number;
   name: string | null;
@@ -125,7 +111,6 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 
 export default function AdminControls() {
   const [policy, setPolicy] = useState<Policy | null>(null);
-  const [wallet, setWallet] = useState<Wallet | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [targets, setTargets] = useState<TargetRow[]>([]);
   const [currency, setCurrency] = useState("USD");
@@ -138,17 +123,12 @@ export default function AdminControls() {
   async function load() {
     setLoading(true);
     try {
-      const [capabilityData, creditData, memberData, targetData] =
-        await Promise.all([
-          request<Capabilities>("/api/sales-automation/capabilities"),
-          request<Wallet>("/api/ai-credits"),
-          request<{ members: Member[] }>("/api/team-admin/members"),
-          request<{ targets: TargetRow[]; currency: string }>(
-            "/api/sales-targets"
-          ),
-        ]);
+      const [capabilityData, memberData, targetData] = await Promise.all([
+        request<Capabilities>("/api/sales-automation/capabilities"),
+        request<{ members: Member[] }>("/api/team-admin/members"),
+        request<{ targets: TargetRow[]; currency: string }>("/api/sales-targets"),
+      ]);
       setPolicy(capabilityData.policy);
-      setWallet(creditData);
       setMembers(memberData.members);
       setTargets(targetData.targets);
       setCurrency(targetData.currency);
@@ -379,13 +359,13 @@ export default function AdminControls() {
             Decide what Amarktai may do automatically.
           </h1>
           <p className="mt-3 max-w-4xl text-sm leading-6 text-[#A9BFDF]">
-            Set the automation boundary, salesperson targets and AI budget. CRM
-            monitoring, task arithmetic and management exceptions remain
-            deterministic and do not consume AI Credits.
+            Set the automation boundary and salesperson targets. Billing and
+            AI-credit controls stay disabled while the product is being proven
+            with the client.
           </p>
         </header>
 
-        <section className="grid gap-5 xl:grid-cols-[1.05fr_.95fr]">
+        <section className="grid gap-5">
           <article className="rounded-[1.75rem] border border-white/10 bg-[#0E2142] p-6">
             <div className="flex items-center gap-3">
               <span className="grid size-11 place-items-center rounded-xl bg-[#153B7A] text-[#9FC2FF]">
@@ -919,57 +899,6 @@ export default function AdminControls() {
             </Button>
           </article>
 
-          <article className="rounded-[1.75rem] border border-white/10 bg-[#0E2142] p-6">
-            <div className="flex items-center gap-3">
-              <span className="grid size-11 place-items-center rounded-xl bg-[#153B7A] text-[#9FC2FF]">
-                <BadgeDollarSign size={20} />
-              </span>
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#7FAAF8]">
-                  AI CREDIT POOL
-                </p>
-                <h2 className="font-display text-3xl font-bold text-white">
-                  {wallet?.balance ?? 0} credits available
-                </h2>
-              </div>
-            </div>
-            <div className="mt-5 grid grid-cols-3 gap-3">
-              <Metric label="Plan" value={wallet?.plan.name || "Trial"} />
-              <Metric label="Used" value={wallet?.used || 0} />
-              <Metric label="Purchased" value={wallet?.purchased || 0} />
-            </div>
-            <p className="mt-5 rounded-xl bg-[#08172F] p-4 text-sm leading-6 text-[#A9BFDF]">
-              Included allowance:{" "}
-              <strong className="text-white">
-                {wallet?.plan.includedAiCredits || 0}
-              </strong>{" "}
-              per plan period. AI Credits are reserved for language/reasoning
-              work; CRM sync, rules, management thresholds and deterministic
-              actions remain zero-credit operations.
-            </p>
-            <div className="mt-5 max-h-56 space-y-2 overflow-auto">
-              {wallet?.entries.slice(0, 8).map(entry => (
-                <div
-                  key={entry.id}
-                  className="flex items-center justify-between rounded-xl border border-white/8 px-3 py-2 text-xs"
-                >
-                  <span className="text-[#9DB3D5]">
-                    {entry.feature || entry.transactionType}
-                  </span>
-                  <span
-                    className={
-                      entry.creditsDelta >= 0
-                        ? "font-bold text-emerald-300"
-                        : "font-bold text-amber-200"
-                    }
-                  >
-                    {entry.creditsDelta >= 0 ? "+" : ""}
-                    {entry.creditsDelta}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </article>
         </section>
 
         <section className="rounded-[1.75rem] border border-white/10 bg-[#0E2142] p-6">
