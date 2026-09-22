@@ -94,7 +94,7 @@ describe("organisation skill builder contract", () => {
       "four-day-new-lead-contact",
       "last-try-no-response-closure",
       "renewal-sequence",
-      "invalid-contact-complete",
+      "invalid-contact-stage-1",
       "answered-first-call-consultation",
       "same-day-evening-first-call-reattempt",
       "opportunity-ownership-guard",
@@ -109,6 +109,20 @@ describe("organisation skill builder contract", () => {
       )
     ).toBe(true);
     expect(JSON.stringify(COURSE2CAREER_SKILL_PACK)).not.toMatch(/elcas|ppc/i);
+    expect(JSON.stringify(COURSE2CAREER_SKILL_PACK)).not.toContain("+447428000560");
+    expect(JSON.stringify(COURSE2CAREER_SKILL_PACK)).not.toContain("+44 7428 000560");
+    const invalidContact = COURSE2CAREER_SKILL_PACK.find(
+      skill => skill.key === "invalid-contact-stage-1"
+    )!;
+    expect(invalidContact.definition.parameters).toMatchObject({
+      ruleCompletionStatus: "NEEDS_RULE_COMPLETION",
+    });
+    expect(invalidContact.definition.steps.map(step => step.action)).not.toContain(
+      "prepare_opportunity_update"
+    );
+    expect(invalidContact.definition.steps.map(step => step.action)).not.toContain(
+      "prepare_contact_update"
+    );
   });
 
   it("captures Amy's same-day reattempt as a learned task-reschedule capability", () => {
