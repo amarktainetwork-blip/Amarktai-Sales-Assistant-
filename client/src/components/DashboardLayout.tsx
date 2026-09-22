@@ -451,12 +451,12 @@ export default function DashboardLayout({
       </Sidebar>
 
       <SidebarInset className="bg-[#F3F6F7]">
-        <AppTopbar />
+        <AppTopbar title={pageTitle(location)} />
         <main className="min-h-[calc(100vh-46px)] px-4 pb-6 pt-1 sm:px-6 lg:px-8">
           {dueAttention?.dueAt ? (
             <div
               role="status"
-              className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[#EDF2F3] px-4 py-3 text-sm text-[#52636C]"
+              className="amk-attention amk-attention--time bg-[#EDF2F3]"
             >
               <div className="flex min-w-0 items-center gap-3">
                 <CalendarClock className="h-4 w-4 shrink-0 text-[#6B746E]" />
@@ -487,10 +487,7 @@ export default function DashboardLayout({
           ) : null}
 
           {storedCompanyComplete && crmAttention && crmProblem ? (
-            <div
-              role="status"
-              className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[#F1EDE4] px-4 py-3 text-sm text-[#5D5341]"
-            >
+            <div role="status" className="amk-attention amk-attention--warning">
               <div className="flex min-w-0 items-center gap-3">
                 <AlertTriangle className="h-4 w-4 shrink-0 text-[#8A7653]" />
                 <span>
@@ -521,7 +518,7 @@ export default function DashboardLayout({
           !setupComplete &&
           location !== "/company-setup" &&
           !location.startsWith("/crm") ? (
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[#F1EDE4] px-4 py-3 text-sm font-medium text-[#5D5341]">
+            <div className="amk-attention amk-attention--setup">
               <span>
                 Finish company setup to bring your knowledge and CRM into the
                 workspace.
@@ -625,7 +622,7 @@ function SecondFactorGate({
       <div className="w-full max-w-lg rounded-2xl border border-[#DCE2E9] bg-white p-7 shadow-sm sm:p-8">
         <BrandMark />
         <div className="mt-8 flex items-center gap-3">
-          <span className="grid size-10 place-items-center rounded-xl bg-[#EDF3FF] text-[#315BB6]">
+          <span className="grid size-10 place-items-center rounded-xl bg-[#EAF0F2] text-[#405F70]">
             <LockKeyhole size={19} />
           </span>
           <div>
@@ -672,7 +669,7 @@ function SecondFactorGate({
               value={code}
               onChange={event => setCode(event.target.value.replace(/\D/g, ""))}
               placeholder="000000"
-              className="mt-5 h-14 w-full rounded-xl border-2 border-[#D5DDE7] text-center text-2xl font-bold tracking-[.3em] outline-none focus:border-[#6F91E2]"
+              className="mt-5 h-14 w-full rounded-xl border-2 border-[#D5DDE7] text-center text-2xl font-bold tracking-[.3em] outline-none focus:border-[#7D9AAA]"
             />
             <Button
               onClick={() => verifyCode.mutate({ code })}
@@ -683,7 +680,7 @@ function SecondFactorGate({
             </Button>
             <button
               onClick={() => requestCode.mutate()}
-              className="mt-4 w-full text-sm font-bold text-[#3F70D8]"
+              className="mt-4 w-full text-sm font-bold text-[#55788B]"
             >
               Send a new code
             </button>
@@ -775,10 +772,10 @@ function OrganisationSelectionGate({
               key={item.organisationId}
               disabled={pending}
               onClick={() => onSelect(item.organisationId)}
-              className="flex items-center justify-between rounded-xl border border-[#DCE2E9] bg-[#F8FAFC] px-4 py-4 text-left font-bold transition hover:border-[#8EACEB] hover:bg-[#EDF3FF]"
+              className="flex items-center justify-between rounded-xl border border-[#DCE2E9] bg-[#F8FAFC] px-4 py-4 text-left font-bold transition hover:border-[#9AAFB8] hover:bg-[#EAF0F2]"
             >
               <span>{item.organisationName}</span>
-              <Building2 size={17} className="text-[#3F70D8]" />
+              <Building2 size={17} className="text-[#55788B]" />
             </button>
           ))}
         </div>
@@ -817,10 +814,14 @@ function AppNavItem({ icon: Icon, label, path, badge }: NavItem) {
   );
 }
 
-function AppTopbar() {
+function AppTopbar({ title }: { title: string }) {
   return (
-    <header className="flex h-[46px] items-center px-3 sm:px-5">
-      <SidebarTrigger className="rounded-lg text-[#66758A] hover:bg-[#ECEFF3] hover:text-[#2F3D52]" />
+    <header className="amk-topbar">
+      <div className="amk-topbar__left">
+        <SidebarTrigger className="amk-topbar__trigger" />
+        <span className="amk-topbar__section">{title}</span>
+      </div>
+      <span className="amk-topbar__mode">Review-first workspace</span>
     </header>
   );
 }

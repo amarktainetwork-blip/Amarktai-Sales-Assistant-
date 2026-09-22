@@ -97,7 +97,10 @@ export default function Customers() {
 
   return (
     <DashboardLayout>
-      <div className="mx-auto max-w-[1440px] space-y-5 text-[#26354A]">
+      <div
+        id="customers-page"
+        className="mx-auto max-w-[1440px] space-y-5 text-[#26354A]"
+      >
         <header className="rounded-2xl border border-[#DCE4EE] bg-white px-5 py-4 shadow-sm sm:px-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -121,7 +124,7 @@ export default function Customers() {
         </header>
 
         <label className="flex items-center gap-3 rounded-2xl border border-[#DCE4EE] bg-white px-4 shadow-sm">
-          <Search className="h-4 w-4 text-[#2F6FED]" />
+          <Search className="h-4 w-4 text-[#55788B]" />
           <Input
             value={query}
             onChange={event => {
@@ -191,8 +194,8 @@ export default function Customers() {
                       <span
                         className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${
                           active
-                            ? "bg-[#2F6FED] text-white"
-                            : "bg-[#EDF3FF] text-[#2F6FED]"
+                            ? "bg-[#55788B] text-white"
+                            : "bg-[#EAF0F2] text-[#55788B]"
                         }`}
                       >
                         <UserRound className="h-4 w-4" />
@@ -212,7 +215,7 @@ export default function Customers() {
                       </span>
                       <ArrowRight
                         className={`mt-2 h-4 w-4 shrink-0 ${
-                          active ? "text-[#2F6FED]" : "text-[#9AA8B9]"
+                          active ? "text-[#55788B]" : "text-[#9AA8B9]"
                         }`}
                       />
                     </button>
@@ -251,7 +254,7 @@ export default function Customers() {
                         <h2 className="font-display text-3xl font-bold tracking-[-.045em] text-[#1D2D43] sm:text-4xl">
                           {selected.name}
                         </h2>
-                        <span className="rounded-full bg-[#EDF3FF] px-2.5 py-1 text-[10px] font-black uppercase tracking-[.08em] text-[#2F6FED]">
+                        <span className="rounded-full bg-[#EAF0F2] px-2.5 py-1 text-[10px] font-black uppercase tracking-[.08em] text-[#55788B]">
                           {selected.lifecycleStage || "Customer"}
                         </span>
                       </div>
@@ -450,7 +453,7 @@ export default function Customers() {
                         >
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div className="flex items-center gap-2">
-                              <span className="rounded-full bg-[#EDF3FF] px-2.5 py-1 text-[10px] font-black uppercase tracking-[.08em] text-[#2F6FED]">
+                              <span className="rounded-full bg-[#EAF0F2] px-2.5 py-1 text-[10px] font-black uppercase tracking-[.08em] text-[#55788B]">
                                 {message.channel} · {message.direction}
                               </span>
                               {message.needsAction ? (
@@ -534,14 +537,14 @@ export default function Customers() {
               </div>
             ) : (
               <section className="handover-surface grid place-items-center p-10 text-center">
-                <UserRound className="h-8 w-8 text-[#2F6FED]" />
+                <UserRound className="h-8 w-8 text-[#55788B]" />
                 <p className="mt-3 font-bold">Choose a customer to begin.</p>
               </section>
             )}
           </section>
         ) : (
           <section className="rounded-3xl border border-dashed border-[#C9D4E2] bg-white p-12 text-center shadow-sm">
-            <Users className="mx-auto h-9 w-9 text-[#2F6FED]" />
+            <Users className="mx-auto h-9 w-9 text-[#55788B]" />
             <h2 className="mt-4 font-display text-2xl font-bold tracking-[-.035em]">
               {query
                 ? "No customers match that search."
@@ -570,7 +573,7 @@ function ContactFact({
 }) {
   return (
     <div className="handover-soft-surface min-w-0 p-4">
-      <div className="flex items-center gap-2 text-[#2F6FED]">
+      <div className="flex items-center gap-2 text-[#55788B]">
         <Icon className="h-4 w-4" />
         <p className="text-[10px] font-black uppercase tracking-[.1em] text-[#7B8CA2]">
           {label}
@@ -615,7 +618,7 @@ function WorkPanel({
               {item.complete ? (
                 <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
               ) : (
-                <Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-[#2F6FED]" />
+                <Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-[#55788B]" />
               )}
               <div>
                 <p className="text-sm font-bold text-[#40536B]">{item.title}</p>

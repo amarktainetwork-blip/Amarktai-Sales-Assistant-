@@ -69,7 +69,7 @@ function AssistantMark() {
   return (
     <span
       aria-hidden="true"
-      className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#EEEFFF] text-[#5558C9]"
+      className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#EAF0F2] text-[#55788B]"
     >
       <Sparkles className="h-5 w-5" />
     </span>
@@ -217,6 +217,7 @@ export default function Assistant() {
   return (
     <DashboardLayout>
       <div
+        id="assistant-page"
         data-assistant-workspace
         aria-label="AmarktAI"
         className="mx-auto flex max-w-[1180px] flex-col gap-5 text-[#20283A]"
@@ -377,7 +378,7 @@ export default function Assistant() {
                     event.target.value ? Number(event.target.value) : undefined
                   )
                 }
-                className="mt-2 h-11 w-full rounded-xl border border-[#E2E5EE] bg-white px-3 text-base text-[#293145] outline-none focus:border-[#8F92DD]"
+                className="mt-2 h-11 w-full rounded-xl border border-[#E2E5EE] bg-white px-3 text-base text-[#293145] outline-none focus:border-[#7D9AAA]"
               >
                 <option value="">Select customer</option>
                 {contextOptions.map(customer => (
@@ -417,9 +418,9 @@ export default function Assistant() {
                           type="button"
                           onClick={() => void send(prompt)}
                           data-assistant-prompt
-                          className="rounded-xl bg-[#FAFBFE] px-4 py-3 text-left text-base font-medium text-[#4E586C] hover:bg-[#F1F2F8]"
+                          className="rounded-xl bg-[#FBFCF8] px-4 py-3 text-left text-base font-medium text-[#4E586C] hover:bg-[#F4F6F1]"
                         >
-                          <Sparkles className="mb-2 h-4 w-4 text-[#696BC8]" />
+                          <Sparkles className="mb-2 h-4 w-4 text-[#55788B]" />
                           {prompt}
                         </button>
                       ))}
@@ -432,7 +433,7 @@ export default function Assistant() {
                         key={`${message.role}-${index}`}
                         className={
                           message.role === "user"
-                            ? "ml-auto max-w-[80%] rounded-2xl bg-[#5558C9] px-4 py-3 text-base leading-6 text-white"
+                            ? "ml-auto max-w-[80%] rounded-2xl bg-[#55788B] px-4 py-3 text-base leading-6 text-white"
                             : "max-w-[92%]"
                         }
                       >
