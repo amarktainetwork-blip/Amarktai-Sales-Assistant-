@@ -1936,6 +1936,18 @@ export const approvalTemplates = mysqlTable(
     version: int("version").notNull(),
     title: varchar("title", { length: 220 }).notNull(),
     body: text("body").notNull(),
+    metadata: json("metadata")
+      .$type<{
+        channel?: "email" | "sms" | "whatsapp";
+        subject?: string;
+        folder?: string;
+        category?: string;
+        sourceReference?: string;
+        sourceVersion?: string;
+        purpose?: string;
+      }>()
+      .notNull()
+      .default({}),
     status: mysqlEnum("status", ["draft", "published", "archived"])
       .notNull()
       .default("draft"),

@@ -1,38 +1,42 @@
+/**
+ * Licensed, real editorial photography from Pexels.
+ * Source IDs and photographer credits are recorded in docs/visual-verification.md.
+ */
 export const marketingImagery = {
   hero: {
-    src: "/images/people/focuspurely-business-8779718_1920.png",
-    alt: "A professional working at her desk",
+    src: "/images/editorial/hero-phone.webp",
+    alt: "Sales professional taking customer notes during a phone call",
   },
   customerCall: {
-    src: "/images/people/pexels-gustavo-fring-5621969.jpg",
-    alt: "Colleagues preparing for a customer conversation",
+    src: "/images/editorial/headset-work.webp",
+    alt: "Sales professional reviewing customer information during a call",
   },
   team: {
-    src: "/images/people/pexels-pavel-danilyuk-7658351.jpg",
-    alt: "A team discussing its work",
+    src: "/images/editorial/workshop.webp",
+    alt: "Business team discussing a shared sales plan",
   },
   focus: {
-    src: "/images/people/thenikscape-ai-generated-9587004_1920.jpg",
-    alt: "A professional working at a desk",
+    src: "/images/editorial/focused-work.webp",
+    alt: "Professional preparing customer context at her desk",
   },
   contact: {
-    src: "/images/people/stocksnap-girl-2583442_1920.jpg",
-    alt: "A professional ready to help",
+    src: "/images/editorial/professional-portrait.webp",
+    alt: "Business professional ready to help",
   },
   howHero: {
-    src: "/images/people/pexels-mart-production-7709175.jpg",
-    alt: "Colleagues planning their next steps",
+    src: "/images/editorial/sales-call.webp",
+    alt: "Sales professional speaking with a customer by phone",
   },
   howFollowUp: {
-    src: "/images/people/startupstockphotos-startup-849804_1920.jpg",
-    alt: "Colleagues reviewing work together",
+    src: "/images/editorial/hero-phone.webp",
+    alt: "Professional recording the next step after a call",
   },
   aboutHero: {
-    src: "/images/people/sohag_hawlader-business-8788636_1920.jpg",
-    alt: "A business conversation",
+    src: "/images/editorial/team-meeting.webp",
+    alt: "Colleagues working together in a modern office",
   },
   aboutTeam: {
-    src: "/images/people/startupstockphotos-student-849828_1920.jpg",
-    alt: "A team sharing ideas",
+    src: "/images/editorial/workshop.webp",
+    alt: "Modern business team collaborating around a table",
   },
 } as const;

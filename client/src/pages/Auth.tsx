@@ -101,7 +101,7 @@ export default function Auth() {
 
       <section className="amk-auth__form-side">
         <div className="amk-auth__mobile-brand">
-          <BrandMark />
+          <BrandMark inverse />
         </div>
         <div className="amk-auth__form-wrap">
           {invite ? (

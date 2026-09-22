@@ -158,7 +158,7 @@ function SetupVisual() {
   return (
     <section className="amk-auth__visual">
       <img
-        src="/images/people/pexels-kampus-8204317.jpg"
+        src="/images/editorial/team-meeting.webp"
         alt="AmarktAI sales intelligence workspace"
       />
       <div className="amk-auth__shade" />
@@ -412,7 +412,7 @@ export default function MemberOnboardingGate() {
         <SetupVisual />
         <section className="amk-auth__form-side">
           <div className="amk-auth__mobile-brand">
-            <BrandMark />
+            <BrandMark inverse />
           </div>
           <div className="amk-auth__form-wrap">
             <p className="amk-auth__panel-eyebrow">SECURE ONBOARDING</p>
@@ -432,7 +432,7 @@ export default function MemberOnboardingGate() {
         <SetupVisual />
         <section className="amk-auth__form-side">
           <div className="amk-auth__mobile-brand">
-            <BrandMark />
+            <BrandMark inverse />
           </div>
           <div className="amk-auth__form-wrap">
             <p className="amk-auth__panel-eyebrow">SETUP NEEDS ATTENTION</p>
@@ -460,7 +460,7 @@ export default function MemberOnboardingGate() {
       <SetupVisual />
       <section className="amk-auth__form-side">
         <div className="amk-auth__mobile-brand">
-          <BrandMark />
+          <BrandMark inverse />
         </div>
         <div className="amk-auth__form-wrap">
           {snapshot.member.complete &&

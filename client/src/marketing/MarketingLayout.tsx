@@ -4,7 +4,6 @@ import { ArrowRight, Menu, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { accountLinks, marketingNavigation, publicPageMetadata } from "./site";
-import "./final-site.css";
 
 export function scrollPublicRouteToTop(
   location: string,

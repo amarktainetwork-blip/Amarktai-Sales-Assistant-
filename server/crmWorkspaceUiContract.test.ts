@@ -12,7 +12,7 @@ describe("CRM workspace customer interaction contract", () => {
     expect(source).toContain("data-crm-workspace-root");
     expect(
       readFileSync(
-        new URL("../client/src/dashboard-final.css", import.meta.url),
+        new URL("../client/src/index.css", import.meta.url),
         "utf8"
       )
     ).toContain("main:has(> [data-crm-workspace-root])");

@@ -10,7 +10,6 @@ import { Route, Switch, useLocation } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { DashboardLayoutSkeleton } from "./components/DashboardLayoutSkeleton";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import "./dashboard-final.css";
 import AboutPage from "./marketing/AboutPage";
 import ContactPage from "./marketing/ContactPage";
 import {
@@ -301,7 +300,7 @@ function PageMetadata() {
 function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider defaultTheme="light">
+      <ThemeProvider defaultTheme="dark">
         <TooltipProvider>
           <Toaster />
           <PersonalSetupBoundary />

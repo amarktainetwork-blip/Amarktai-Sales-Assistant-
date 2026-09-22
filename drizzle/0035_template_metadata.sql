@@ -1,0 +1,1 @@
+ALTER TABLE `approvalTemplates` ADD `metadata` json DEFAULT ('{}') NOT NULL;

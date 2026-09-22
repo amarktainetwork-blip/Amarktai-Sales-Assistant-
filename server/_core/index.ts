@@ -8,6 +8,7 @@ import { registerCrmOAuthRoutes } from "../crm/oauthRoutes";
 import { registerSidecarRoutes } from "../sidecar/routes";
 import { registerLiveCallRoutes } from "../liveCalls/routes";
 import { registerTeamAdminRoutes } from "../teamAdmin/routes";
+import { registerSkillBuilderRoutes } from "../teamAdmin/skillRoutes";
 import { registerManagementSettingsRoutes } from "../managementSettingsRoutes";
 import { registerConnectedSystemAdminRoutes } from "../connectedSystemAdminRoutes";
 import { registerConnectedSystemLifecycleRoutes } from "../connectedSystemLifecycleRoutes";
@@ -103,6 +104,7 @@ async function startServer() {
     enforceAppOrigin
   );
   registerTeamAdminRoutes(app);
+  registerSkillBuilderRoutes(app);
   app.use(
     "/api/user-onboarding",
     rateLimit({ limit: 45, windowMs: 60_000 }),

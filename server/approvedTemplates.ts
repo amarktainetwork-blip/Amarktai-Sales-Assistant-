@@ -52,6 +52,15 @@ export function materializeApprovedCommunicationTemplate(input: {
     version: number;
     title: string;
     body: string;
+    metadata?: {
+      channel?: "email" | "sms" | "whatsapp";
+      subject?: string;
+      folder?: string;
+      category?: string;
+      sourceReference?: string;
+      sourceVersion?: string;
+      purpose?: string;
+    } | null;
   };
 }) {
   const approved = input.approved;
@@ -59,10 +68,20 @@ export function materializeApprovedCommunicationTemplate(input: {
     throw new Error(
       "TEMPLATE_NOT_FOUND: the named published organisation template could not be resolved."
     );
+  if (approved.metadata?.channel && approved.metadata.channel !== input.channel)
+    throw new Error(
+      `TEMPLATE_CHANNEL_MISMATCH: '${approved.title}' is catalogued for ${approved.metadata.channel}, not ${input.channel}.`
+    );
+  const emailSubject =
+    input.channel === "email" ? approved.metadata?.subject?.trim() : undefined;
+  if (input.channel === "email" && !emailSubject)
+    throw new Error(
+      `TEMPLATE_SUBJECT_REQUIRED: '${approved.title}' has no exact catalogued email subject. Re-sync the CRM template before execution.`
+    );
   const message = validateSalesMessage({
     channel: input.channel,
     to: input.to,
-    subject: input.channel === "email" ? approved.title : undefined,
+    subject: emailSubject,
     body: approved.body,
     templateName: approved.title,
   });

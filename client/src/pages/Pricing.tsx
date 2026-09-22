@@ -53,8 +53,8 @@ export default function Pricing() {
                     <strong>{money(plan.monthlyZarCents)}</strong>
                     <span>{paid ? "per month" : "14-day trial"}</span>
                     <small>
-                      {plan.includedAiCredits.toLocaleString("en-ZA")} AI
-                      credits included
+                      {plan.includedAiCredits.toLocaleString("en-ZA")} AI-assisted
+                      tasks included
                     </small>
                   </div>
                   <ul className="amk-pricing-row__features">
@@ -93,17 +93,15 @@ export default function Pricing() {
           <section className="amk-credit-strip">
             <div>
               <p className="amk-eyebrow">
-                <Sparkles size={14} /> OPTIONAL AI CREDIT TOP-UPS
+                <Sparkles size={14} /> OPTIONAL AI ASSIST TOP-UPS
               </p>
               <h2>
-                1,000 AI credits ·{" "}
+                {AI_CREDIT_ECONOMICS.upstreamUnitsPerPack.toLocaleString("en-ZA")} AI-assisted tasks ·{" "}
                 {money(AI_CREDIT_ECONOMICS.retailPackZarCents)}
               </h2>
             </div>
             <p>
-              Use top-ups for additional drafting, analysis and conversation
-              assistance. Ordinary CRM syncing, reminders and routine workflow
-              handling are not intended to consume an AI credit on every action.
+              Top-ups cover additional drafting, analysis and conversation help. CRM syncing, reminders, task handling and deterministic workflows do not use an AI-assisted task.
             </p>
           </section>
         </div>
