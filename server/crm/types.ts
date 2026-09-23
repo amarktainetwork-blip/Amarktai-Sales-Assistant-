@@ -212,7 +212,7 @@ export type CrmAdapter = {
     connection: AdapterConnection;
     secret: ConnectionSecretPayload;
     publishByUserId: number;
-    resource: "contacts" | "tasks" | "opportunities";
+    resource: "contacts" | "tasks" | "opportunities" | "activities";
   }) => Promise<{ recordCount: number }>;
   syncCompanies: (input: {
     connection: AdapterConnection;

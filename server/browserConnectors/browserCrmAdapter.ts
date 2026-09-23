@@ -1933,7 +1933,7 @@ export function browserCrmAdapter(
             connection: AdapterConnection;
             secret: ConnectionSecretPayload;
             publishByUserId: number;
-            resource: "contacts" | "tasks" | "opportunities";
+            resource: "contacts" | "tasks" | "opportunities" | "activities";
           }) => {
             if (!input.secret.crmUserExternalId)
               throw new Error("CRM_READ_REPROOF_OWNER_REQUIRED");
@@ -1944,7 +1944,11 @@ export function browserCrmAdapter(
               publishByUserId: input.publishByUserId,
             };
             if (input.resource === "contacts") {
-              if (!input.connection.allowedReadCapabilities.includes("contacts.read"))
+              if (
+                !input.connection.allowedReadCapabilities.includes(
+                  "contacts.read"
+                )
+              )
                 throw new Error("CRM_READ_REPROOF_CAPABILITY_NOT_AUTHORIZED");
               const result = await list(
                 "syncContacts",
@@ -1956,12 +1960,40 @@ export function browserCrmAdapter(
               return { recordCount: result.records.length };
             }
             if (input.resource === "tasks") {
-              if (!input.connection.allowedReadCapabilities.includes("tasks.read"))
+              if (
+                !input.connection.allowedReadCapabilities.includes("tasks.read")
+              )
                 throw new Error("CRM_READ_REPROOF_CAPABILITY_NOT_AUTHORIZED");
-              const result = await list("syncTasks", task, input, {}, verification);
+              const result = await list(
+                "syncTasks",
+                task,
+                input,
+                {},
+                verification
+              );
               return { recordCount: result.records.length };
             }
-            if (!input.connection.allowedReadCapabilities.includes("opportunities.read"))
+            if (input.resource === "activities") {
+              if (
+                !input.connection.allowedReadCapabilities.includes(
+                  "activities.read"
+                )
+              )
+                throw new Error("CRM_READ_REPROOF_CAPABILITY_NOT_AUTHORIZED");
+              const result = await list(
+                "syncActivities",
+                activity,
+                input,
+                {},
+                verification
+              );
+              return { recordCount: result.records.length };
+            }
+            if (
+              !input.connection.allowedReadCapabilities.includes(
+                "opportunities.read"
+              )
+            )
               throw new Error("CRM_READ_REPROOF_CAPABILITY_NOT_AUTHORIZED");
             const result = await list(
               "syncOpportunities",

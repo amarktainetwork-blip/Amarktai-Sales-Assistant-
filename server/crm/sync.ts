@@ -71,7 +71,8 @@ export function routineOpportunitySnapshotDue(
       ? Math.floor(intervalMs)
       : DEFAULT_ROUTINE_OPPORTUNITY_SYNC_INTERVAL_MS;
   return (
-    !lastSuccessfulAt || now.valueOf() - lastSuccessfulAt.valueOf() >= safeInterval
+    !lastSuccessfulAt ||
+    now.valueOf() - lastSuccessfulAt.valueOf() >= safeInterval
   );
 }
 
@@ -440,10 +441,15 @@ export function crmActivityHistoryProvesLeadWorked(
   if (direction !== "outbound") return false;
 
   const actorExternalId = String(raw.userExternalId || "").trim();
-  if (actorExternalId && actorExternalId === ownerExternalId.trim()) return true;
+  if (actorExternalId && actorExternalId === ownerExternalId.trim())
+    return true;
 
-  const senderReference = String(raw.senderReference || "").trim().toLowerCase();
-  const ownerEmail = String(crmUserEmail || "").trim().toLowerCase();
+  const senderReference = String(raw.senderReference || "")
+    .trim()
+    .toLowerCase();
+  const ownerEmail = String(crmUserEmail || "")
+    .trim()
+    .toLowerCase();
   return Boolean(
     type === "email" &&
       ownerEmail &&
@@ -1034,11 +1040,17 @@ async function syncConnectedSystemRoutineDeterministically(input: {
       ["contacts", "contact.sync"],
       ["tasks", "task.sync"],
       ["opportunities", "opportunity.sync"],
+      ["activities", "activity.sync"],
     ] as const;
     let attempted = false;
     for (const [resource, operationKey] of recoverable) {
       if (resource === "opportunities" && !opportunitySnapshotDue) continue;
-      if (operationStatuses.get(operationKey) !== "DEGRADED") continue;
+      if (
+        !["DEGRADED", "BLOCKED"].includes(
+          String(operationStatuses.get(operationKey) || "")
+        )
+      )
+        continue;
       attempted = true;
       try {
         const proof = await adapter.reproveRoutineRead({
@@ -1218,7 +1230,6 @@ async function syncConnectedSystemRoutineDeterministically(input: {
       failureTransient.tasks = isTransientBrowserExecutionFailure(error);
     }
   } else summary.tasks = 0;
-
 
   summary.opportunitySnapshot = opportunitySnapshotDue ? "due" : "cached";
   if (
