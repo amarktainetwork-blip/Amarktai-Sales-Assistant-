@@ -156,8 +156,9 @@ describe("canonical Genie provider pack", () => {
           selector: 'button[aria-label="All"]',
         }),
         expect.objectContaining({
-          action: "click",
+          action: "press",
           selector: 'button[aria-label="All"]',
+          value: "Enter",
         }),
       ])
     );
