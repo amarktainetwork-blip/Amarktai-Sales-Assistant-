@@ -7,9 +7,11 @@ describe("final dashboard information architecture", () => {
     const app = readFileSync(path.resolve("client/src/App.tsx"), "utf8");
     const css = readFileSync(path.resolve("client/src/index.css"), "utf8");
     expect(app).not.toContain('import "./dashboard-final.css"');
-    expect(existsSync(path.resolve("client/src/dashboard-final.css"))).toBe(false);
+    expect(existsSync(path.resolve("client/src/dashboard-final.css"))).toBe(
+      false
+    );
     expect(css).toContain(".amarktai-dashboard-sidebar");
-    expect(css).toContain("--dash-canvas: #0D1114");
+    expect(css.toLowerCase()).toContain("--dash-canvas: #e8eceb");
     expect(app).not.toContain('import "./workspace-handover.css"');
     expect(app).not.toContain('import "./dashboard-client-readability.css"');
     expect(app).not.toContain('import "./final-release.css"');
@@ -41,8 +43,8 @@ describe("final dashboard information architecture", () => {
 
     for (const label of ["Today", "Customers", "Calls", "AmarktAI", "Review"])
       expect(layout).toContain(`label: "${label}"`);
-    expect(layout).toContain('label: "CRM setup"');
-    expect(layout).toContain('path: "/connections"');
+    expect(layout).toContain('label: "CRM"');
+    expect(layout).toContain('path: "/crm"');
     expect(layout).toContain('label: "Settings"');
     expect(layout).not.toContain('label: "Connections"');
     expect(layout).not.toContain('label: "Knowledge"');
@@ -56,13 +58,25 @@ describe("final dashboard information architecture", () => {
     expect(layout).toMatch(/>\s*Sign out\s*<\/span>/);
 
     expect(app).toContain('<Route path="/dashboard" component={Today} />');
-    expect(app).toContain('<Route path="/settings">');
+    expect(app).toContain('<Route path="/settings" component={Settings} />');
     expect(app).toContain("<PersonalSetupBoundary />");
 
-    expect(settings).toContain('title="Company setup"');
-    expect(settings).toContain('title="CRM connection"');
-    expect(settings).toContain('title="Company knowledge"');
-    expect(settings).toContain('title="Team members"');
+    for (const section of [
+      "Profile",
+      "Workspace",
+      "CRM & mailbox",
+      "Skills",
+      "Notifications",
+      "Permissions",
+      "Security",
+      "Templates",
+      "Company",
+      "Team",
+      "Knowledge",
+    ])
+      expect(settings).toContain(`label: "${section}"`);
+    expect(settings).toContain("<ReadOnlySkillList />");
+    expect(settings).toContain('fetch("/api/skills"');
   });
 
   it("keeps the salesperson flow action-first instead of repeating decorative banners", () => {
@@ -100,6 +114,9 @@ describe("final dashboard information architecture", () => {
     expect(review).not.toContain(
       "Only stop here when AmarktAI needs your decision."
     );
+    expect(review).toContain("data-review-bundle");
+    expect(review).toContain("Customer interaction");
+    expect(review).toContain("bundle.entries.map");
     expect(review).toContain("Back to Today");
     expect(assistant).not.toContain("Give me the admin around the call.");
     expect(assistant).toContain("Your sales assistant is ready");
@@ -149,10 +166,14 @@ describe("final dashboard information architecture", () => {
     );
 
     expect(settings).toContain("Reports & exports");
-    expect(settings).toContain('kind: "operational_report", format: "csv"');
-    expect(settings).toContain('kind: "conversation_log", format: "pdf"');
-    expect(settings).toContain("Download sales activity CSV");
-    expect(settings).toContain("Download call log PDF");
+    expect(settings).toMatch(
+      /kind:\s*"operational_report"[\s\S]*format:\s*"csv"/
+    );
+    expect(settings).toMatch(
+      /kind:\s*"conversation_log"[\s\S]*format:\s*"pdf"/
+    );
+    expect(settings).toContain("Sales activity CSV");
+    expect(settings).toContain("Call log PDF");
     expect(layout).not.toContain('label: "Reports"');
   });
 
@@ -175,31 +196,27 @@ describe("final dashboard information architecture", () => {
   });
 
   it("uses a calm low-glare dashboard palette", () => {
-    const css = readFileSync(
-      path.resolve("client/src/index.css"),
-      "utf8"
-    );
+    const css = readFileSync(path.resolve("client/src/index.css"), "utf8");
     const layout = readFileSync(
       path.resolve("client/src/components/DashboardLayout.tsx"),
       "utf8"
     );
 
-    expect(css).toContain("--dash-canvas: #0D1114");
-    expect(css).toContain("--dash-paper: #161E23");
-    expect(css).toContain("--dash-ink: #F2EEE7");
-    expect(css).toContain("--dash-blue: #3FAE9D");
+    expect(css.toLowerCase()).toContain("--dash-canvas: #e8eceb");
+    expect(css.toLowerCase()).toContain("--dash-paper: #f7f5f0");
+    expect(css.toLowerCase()).toContain("--dash-ink: #18242e");
+    expect(css.toLowerCase()).toContain("--dash-blue: #315fdd");
     expect(css).not.toContain("--handover-blue");
     expect(css).not.toContain("--handover-canvas");
     expect(css).toContain('[class*="whitespace-pre-wrap"]');
     expect(css).toContain("input::placeholder");
 
-    expect(layout).toContain('SidebarInset className="bg-[#0D1114]"');
-    expect(layout).toContain("bg-[#151D21]");
-    expect(layout).toContain("bg-[#101619] text-[#F2EEE7]");
-    expect(layout).not.toContain("bg-[#F3F6F7]");
-    expect(layout).not.toContain("bg-[#FAFBFC]");
-    expect(layout).not.toContain("#F3F2EF");
-    expect(layout).not.toContain("#ECEBE6");
+    expect(layout).toContain('SidebarInset className="bg-[#E8ECEB]"');
+    expect(layout).toContain("bg-[#E5F0EC]");
+    expect(layout).toContain("bg-[#F3F1EC] text-[#18242E]");
+    expect(layout).not.toContain(
+      'className="amarktai-dashboard-sidebar bg-[#101619]'
+    );
   });
 
   it("keeps the call workflow and does not rely on a deleted override layer", () => {
@@ -207,12 +224,9 @@ describe("final dashboard information architecture", () => {
       path.resolve("client/src/pages/LiveCalls.tsx"),
       "utf8"
     );
-    const css = readFileSync(
-      path.resolve("client/src/index.css"),
-      "utf8"
-    );
+    const css = readFileSync(path.resolve("client/src/index.css"), "utf8");
     expect(calls).toContain("data-call-workflow");
-    expect(css).not.toContain("#0E2142");
+    expect(css.toLowerCase()).not.toContain("#0e2142");
     expect(css).toContain("background: var(--dash-paper)");
     for (const step of [
       "PRE-CALL BRIEF",

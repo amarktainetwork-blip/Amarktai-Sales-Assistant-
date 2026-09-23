@@ -213,13 +213,7 @@ function Router() {
             </ManagementOnly>
           )}
         </Route>
-        <Route path="/settings">
-          {() => (
-            <ManagementOnly>
-              <Settings />
-            </ManagementOnly>
-          )}
-        </Route>
+        <Route path="/settings" component={Settings} />
         <Route path="/connections">
           {() => (
             <ManagementOnly>

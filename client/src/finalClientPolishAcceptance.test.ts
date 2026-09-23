@@ -24,7 +24,9 @@ describe("final client-facing handover polish", () => {
     );
     expect(css).toMatch(/\.amk-auth__visual\s*\{\s*display: none/);
     expect(css).toMatch(/\.amk-auth\.fixed\s*\{[^}]*overflow-y: auto/);
-    expect(css).not.toContain("color: #ffffff !important");
+    expect(css).not.toMatch(
+      /\.amk-auth[^{]*\{[^}]*color:\s*#fff(?:fff)?\s*!important/i
+    );
     expect(css).not.toContain("content: url(");
   });
 
@@ -77,17 +79,21 @@ describe("final client-facing handover polish", () => {
     expect(css).not.toContain(
       'body:has(.amarktai-dashboard-sidebar) [data-sidebar="footer"]::after'
     );
-    expect(layout).toContain("<BrandMark inverse />");
+    expect(layout).toContain("<BrandMark />");
   });
 
   it("uses the approved editorial public layout, unique photography and swirl system", () => {
     const css = read("index.css");
-    expect(css).toContain(".amk-shell{width:min(1180px,calc(100% - 40px))");
-    expect(css).toContain(".amk-photo-frame--hero{height:560px");
-    expect(css).toContain("--site-bg:#111820");
-    expect(css).toContain("--site-warm:#E3A766");
+    expect(css).toMatch(
+      /\.amk-shell\s*\{[^}]*width:\s*min\(1180px,\s*calc\(100% - 40px\)\)/i
+    );
+    expect(css).toMatch(/\.amk-photo-frame--hero\s*\{[^}]*height:\s*560px/i);
+    expect(css).toMatch(/--site-bg:\s*#e8eceb/i);
+    expect(css).toMatch(/--site-warm:\s*#a46f37/i);
     expect(css).toContain(".amk-swirl--blue");
-    expect(css).toContain(".amk-site main{display:grid;gap:5px");
+    expect(css).toMatch(
+      /\.amk-site main\s*\{[^}]*display:\s*block[^}]*background:\s*#e8eceb/i
+    );
     expect(css).not.toContain(".amk-float-card");
   });
 });

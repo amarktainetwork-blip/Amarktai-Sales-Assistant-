@@ -309,13 +309,12 @@ export default function DashboardLayout({
   }, [dueAttention, dueAttentionPhase, navigate, organisationId]);
 
   const secondaryMenu = useMemo<NavItem[]>(() => {
-    if (!canManage) return [];
     return [
-      ...(workspaceMode === "team"
+      { icon: Cable, label: "CRM", path: "/crm" },
+      { icon: Settings2, label: "Settings", path: "/settings" },
+      ...(canManage && workspaceMode === "team"
         ? [{ icon: Users, label: "Team", path: "/team" } satisfies NavItem]
         : []),
-      { icon: Cable, label: "CRM setup", path: "/connections" },
-      { icon: Settings2, label: "Settings", path: "/settings" },
     ];
   }, [canManage, workspaceMode]);
 
@@ -376,10 +375,10 @@ export default function DashboardLayout({
     <SidebarProvider className="sales-workspace">
       <Sidebar
         collapsible="icon"
-        className="amarktai-dashboard-sidebar bg-[#101619] text-[#F2EEE7]"
+        className="amarktai-dashboard-sidebar bg-[#F3F1EC] text-[#18242E]"
       >
         <SidebarHeader className="h-[72px] justify-center px-5">
-          <BrandMark inverse />
+          <BrandMark />
         </SidebarHeader>
         <SidebarContent className="px-3 py-4">
           <OrganisationSwitcher
@@ -391,7 +390,7 @@ export default function DashboardLayout({
             }
           />
 
-          <p className="mt-5 px-2 text-xs font-semibold text-[#7F8C89] group-data-[collapsible=icon]:hidden">
+          <p className="mt-5 px-2 text-xs font-semibold text-[#6B7881] group-data-[collapsible=icon]:hidden">
             Daily flow
           </p>
           <SidebarMenu className="mt-2 gap-1">
@@ -419,16 +418,16 @@ export default function DashboardLayout({
 
         <SidebarFooter className="p-3">
           <div className="flex items-center gap-2 px-1 py-1">
-            <Avatar className="size-9 shrink-0 bg-[#1B252B] group-data-[collapsible=icon]:hidden">
-              <AvatarFallback className="bg-[#1B252B] text-xs font-bold text-[#B2BCB9]">
+            <Avatar className="size-9 shrink-0 bg-[#E1E7E8] group-data-[collapsible=icon]:hidden">
+              <AvatarFallback className="bg-[#E1E7E8] text-xs font-bold text-[#45535D]">
                 {user.name?.slice(0, 1).toUpperCase() ?? "A"}
               </AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
-              <p className="truncate text-sm font-semibold text-[#F2EEE7]">
+              <p className="truncate text-sm font-semibold text-[#18242E]">
                 {user.name || "AmarktAI user"}
               </p>
-              <p className="truncate text-xs text-[#7F8C89]">
+              <p className="truncate text-xs text-[#6B7881]">
                 {user.email || "Sales workspace"}
               </p>
             </div>
@@ -439,7 +438,7 @@ export default function DashboardLayout({
               }}
               aria-label="Sign out"
               title="Sign out"
-              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-transparent px-2.5 text-xs font-semibold text-[#7F8C89] transition hover:bg-[#1B252B] hover:text-[#F2EEE7]"
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-transparent px-2.5 text-xs font-semibold text-[#6B7881] transition hover:bg-[#E1E7E8] hover:text-[#18242E]"
             >
               <LogOut className="size-4" />
               <span className="group-data-[collapsible=icon]:hidden">
@@ -450,16 +449,16 @@ export default function DashboardLayout({
         </SidebarFooter>
       </Sidebar>
 
-      <SidebarInset className="bg-[#0D1114]">
+      <SidebarInset className="bg-[#E8ECEB]">
         <AppTopbar title={pageTitle(location)} />
         <main className="min-h-[calc(100vh-46px)] px-4 pb-6 pt-1 sm:px-6 lg:px-8">
           {dueAttention?.dueAt ? (
             <div
               role="status"
-              className="amk-attention amk-attention--time bg-[#151D21]"
+              className="amk-attention amk-attention--time bg-[#E5F0EC]"
             >
               <div className="flex min-w-0 items-center gap-3">
-                <CalendarClock className="h-4 w-4 shrink-0 text-[#3FAE9D]" />
+                <CalendarClock className="h-4 w-4 shrink-0 text-[#247B74]" />
                 <span className="min-w-0">
                   <strong className="font-semibold">{dueAttention.name}</strong>
                   {" · "}

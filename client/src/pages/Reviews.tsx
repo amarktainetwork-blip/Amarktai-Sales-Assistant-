@@ -29,6 +29,7 @@ import { useLocation } from "wouter";
 
 type ReviewItem = {
   id: number;
+  workflowRunId?: number | null;
   actionType: string;
   title: string;
   targetLabel: string;
@@ -359,6 +360,23 @@ export default function Reviews() {
   const visible = withLifecycle.filter(entry =>
     filterMatches(filter, entry.lifecycle)
   );
+  const bundles = useMemo(() => {
+    const grouped = new Map<string, typeof visible>();
+    for (const entry of visible) {
+      const key = entry.item.workflowRunId
+        ? `workflow:${entry.item.workflowRunId}`
+        : `proposal:${entry.item.id}`;
+      const current = grouped.get(key) ?? [];
+      current.push(entry);
+      grouped.set(key, current);
+    }
+    return Array.from(grouped.entries()).map(([key, entries]) => ({
+      key,
+      workflowRunId: entries[0]?.item.workflowRunId ?? null,
+      customer: entries[0]?.item.targetLabel || "Customer",
+      entries,
+    }));
+  }, [visible]);
 
   const filters: Array<{ key: ReviewFilter; label: string }> = [
     { key: "pending", label: "Pending" },
@@ -452,7 +470,33 @@ export default function Reviews() {
           </section>
         ) : visible.length ? (
           <section className="space-y-4">
-            {visible.map(({ item, lifecycle }) => {
+            {bundles.map(bundle => (
+              <article
+                key={bundle.key}
+                data-review-bundle
+                className="overflow-hidden rounded-3xl border border-[#D7E0E4] bg-[#F7F5F0] shadow-sm"
+              >
+                <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#D7E0E4] bg-[#EEF0ED] px-5 py-4 sm:px-6">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#315FDD]">
+                      Customer interaction
+                    </p>
+                    <h2 className="mt-1 text-xl font-bold tracking-[-.03em]">
+                      {bundle.customer}
+                    </h2>
+                    {bundle.workflowRunId ? (
+                      <p className="mt-1 text-xs text-[#6B7881]">
+                        Interaction #{bundle.workflowRunId}
+                      </p>
+                    ) : null}
+                  </div>
+                  <span className="rounded-full border border-[#C6D0D2] bg-[#F7F5F0] px-3 py-1.5 text-xs font-bold text-[#45535D]">
+                    {bundle.entries.length} prepared{" "}
+                    {bundle.entries.length === 1 ? "action" : "actions"}
+                  </span>
+                </header>
+                <div className="divide-y divide-[#D7E0E4]">
+                  {bundle.entries.map(({ item, lifecycle }) => {
               const payload = object(item.payload);
               const route = object(payload.crmRoute);
               const draftOnly = payload.draftOnly === true;
@@ -481,9 +525,9 @@ export default function Reviews() {
               const statusCopy = REVIEW_LIFECYCLE_COPY[lifecycle];
 
               return (
-                <article
+                <section
                   key={item.id}
-                  className="rounded-3xl border border-[#DCE4EE] bg-white p-5 shadow-sm sm:p-6"
+                  className="bg-[#F7F5F0] p-5 sm:p-6"
                 >
                   <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0 flex-1">
@@ -747,9 +791,12 @@ export default function Reviews() {
                       ) : null}
                     </div>
                   </div>
-                </article>
+                </section>
               );
             })}
+                </div>
+              </article>
+            ))}
           </section>
         ) : (
           <section className="rounded-3xl border border-dashed border-[#C9D4E2] bg-white p-10 text-center shadow-sm">

@@ -1,6 +1,7 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import { SkillStudio } from "@/components/SkillStudio";
 import ManagementElevation from "@/components/ManagementElevation";
+import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { friendlyError } from "@/lib/friendlyError";
 import { trpc } from "@/lib/trpc";
@@ -11,6 +12,7 @@ import {
   type AutonomySettings,
 } from "@shared/autonomyPolicy";
 import {
+  Bell,
   BookOpenCheck,
   Building2,
   Cable,
@@ -21,11 +23,12 @@ import {
   Save,
   ShieldCheck,
   SlidersHorizontal,
+  UserRound,
   Users,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 
 const permissionLabels: Record<AutonomyPermission, string> = {
   email_replies: "Email replies",
@@ -104,7 +107,9 @@ function downloadExport(file: {
 }
 
 export default function Settings() {
+  const { user } = useAuth();
   const [, navigate] = useLocation();
+  const search = useSearch();
   const [autonomy, setAutonomy] = useState<AutonomySettings>(
     reviewEverythingAutonomy
   );
@@ -117,10 +122,24 @@ export default function Settings() {
   const [mailbox, setMailbox] = useState<MailboxStatus | null>(null);
   const [mailboxLoading, setMailboxLoading] = useState(true);
   const [mailboxError, setMailboxError] = useState("");
+  const [notificationPermission, setNotificationPermission] = useState<
+    NotificationPermission | "unsupported"
+  >(() =>
+    typeof window === "undefined" || !("Notification" in window)
+      ? "unsupported"
+      : Notification.permission
+  );
   const organisation = trpc.organisation.current.useQuery(undefined, {
     retry: false,
   });
-  const company = trpc.companySetup.get.useQuery(undefined, { retry: false });
+  const canManage =
+    organisation.data?.role === "owner" ||
+    organisation.data?.role === "manager" ||
+    user?.role === "admin";
+  const company = trpc.companySetup.get.useQuery(undefined, {
+    enabled: Boolean(canManage),
+    retry: false,
+  });
   const organisationId = organisation.data?.organisationId;
   const systems = trpc.connectedSystems.list.useQuery(
     { organisationId: organisationId ?? 0 },
@@ -148,6 +167,28 @@ export default function Settings() {
   const workspaceWriteEnabled = Boolean(
     systems.data?.some(system => system.allowedWriteCapabilities.length > 0)
   );
+  const settingsTabs = [
+    { key: "profile", label: "Profile" },
+    { key: "workspace", label: "Workspace" },
+    { key: "crm", label: "CRM & mailbox" },
+    { key: "skills", label: "Skills" },
+    { key: "notifications", label: "Notifications" },
+    { key: "permissions", label: "Permissions" },
+    { key: "security", label: "Security" },
+    ...(canManage
+      ? [
+          { key: "templates", label: "Templates" },
+          { key: "company", label: "Company" },
+          { key: "team", label: "Team" },
+          { key: "knowledge", label: "Knowledge" },
+        ]
+      : []),
+  ];
+  const requestedSection =
+    new URLSearchParams(search).get("section")?.trim().toLowerCase() || "profile";
+  const activeSection = settingsTabs.some(tab => tab.key === requestedSection)
+    ? requestedSection
+    : "profile";
 
   useEffect(() => {
     let active = true;
@@ -231,9 +272,27 @@ export default function Settings() {
     }
   }
 
+  async function enableBrowserNotifications() {
+    if (
+      typeof window === "undefined" ||
+      !("Notification" in window) ||
+      notificationPermission === "unsupported"
+    )
+      return;
+    const permission = await Notification.requestPermission();
+    setNotificationPermission(permission);
+    if (permission === "granted")
+      toast.success("High-value sales reminders can now appear on this device.");
+    else if (permission === "denied")
+      toast.warning("Browser notifications are blocked on this device.");
+  }
+
   return (
     <DashboardLayout>
-      <div className="mx-auto max-w-5xl space-y-5 text-[#26354A]">
+      <div
+        data-settings-workspace
+        className="mx-auto max-w-6xl space-y-5 text-[#26354A]"
+      >
         <div>
           <p className="text-xs font-bold uppercase tracking-[.12em] text-[#6B7A90]">
             Workspace
@@ -242,66 +301,234 @@ export default function Settings() {
             Settings
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-[#66758A]">
-            Company setup, CRM connection, trusted knowledge and team access are
-            managed here. Daily sales work stays out of the settings area.
+            Your personal workspace, CRM, skills, notifications and approval
+            controls in one place. Company administration only appears when
+            your role allows it.
           </p>
         </div>
 
-        <ManagementElevation showBrowserCommissioning={false} />
+        <nav
+          role="tablist"
+          aria-label="Settings sections"
+          className="flex gap-1 overflow-x-auto rounded-2xl border border-[#D7E0E4] bg-[#F3F1EC] p-1.5"
+        >
+          {settingsTabs.map(tab => (
+            <button
+              key={tab.key}
+              type="button"
+              role="tab"
+              aria-selected={activeSection === tab.key}
+              onClick={() =>
+                navigate(`/settings?section=${tab.key}`, { replace: true })
+              }
+              className={`min-h-10 shrink-0 rounded-xl px-3.5 text-sm font-semibold transition ${
+                activeSection === tab.key
+                  ? "bg-[#E2E8FA] text-[#244FC3]"
+                  : "text-[#596A75] hover:bg-[#E8ECEB] hover:text-[#18242E]"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
 
-        <section className="grid gap-4 md:grid-cols-2">
-          <SettingCard
-            icon={Building2}
-            title="Company setup"
-            detail={
-              profile
-                ? `${profile.companyName} · ${profile.discoveryStatus === "confirmed" ? "business knowledge confirmed" : "setup still in progress"}`
-                : "Start or continue the guided company onboarding."
-            }
-            action="Open company setup"
-            onClick={() => navigate("/company-setup")}
-          />
-          <SettingCard
-            icon={Cable}
-            title="CRM connection"
-            detail={
-              crmCount
-                ? `${crmCount} CRM connection${crmCount === 1 ? "" : "s"} configured. Open this area to sign in, reconnect or review status.`
-                : "Connect the company CRM and complete the secure sign-in."
-            }
-            action={crmCount ? "Manage CRM" : "Connect CRM"}
-            onClick={() => navigate("/connections")}
-          />
-          <SettingCard
-            icon={BookOpenCheck}
-            title="Company knowledge"
-            detail="Review the trusted business facts AmarktAI uses when helping the sales team."
-            action="Review knowledge"
-            onClick={() => navigate("/knowledge")}
-          />
-          {workspaceMode === "team" ? (
+        {canManage &&
+        ["crm", "permissions", "skills", "templates", "security"].includes(
+          activeSection
+        ) ? (
+          <ManagementElevation showBrowserCommissioning={false} />
+        ) : null}
+
+        {activeSection === "profile" ? (
+          <section className="grid gap-4 md:grid-cols-2">
+            <SettingCard
+              icon={UserRound}
+              title={user?.name || "Your profile"}
+              detail={user?.email || "Your secure AmarktAI account"}
+              action="Signed in securely"
+            />
+            <SettingCard
+              icon={ShieldCheck}
+              title="Workspace role"
+              detail={`You are signed in as ${organisation.data?.role || user?.role || "salesperson"} in ${organisation.data?.organisationName || "this workspace"}.`}
+              action="Role protections active"
+            />
+          </section>
+        ) : null}
+
+        {activeSection === "workspace" ? (
+          <section className="grid gap-4 md:grid-cols-2">
+            <SettingCard
+              icon={Building2}
+              title={organisation.data?.organisationName || "Sales workspace"}
+              detail={`Working mode: ${workspaceMode === "team" ? "Team" : "Individual"}. Daily sales work stays centred on Today.`}
+              action="Open Today"
+              onClick={() => navigate("/today")}
+            />
+            <SettingCard
+              icon={Cable}
+              title="CRM workspace"
+              detail={
+                crmCount
+                  ? `${crmCount} CRM connection${crmCount === 1 ? "" : "s"} available to this workspace.`
+                  : "No CRM connection is currently visible to this workspace."
+              }
+              action="Open CRM"
+              onClick={() =>
+                genieSystem
+                  ? navigate(`/crm/${genieSystem.id}`)
+                  : navigate("/crm")
+              }
+            />
+          </section>
+        ) : null}
+
+        {activeSection === "company" && canManage ? (
+          <section className="grid gap-4 md:grid-cols-2">
+            <SettingCard
+              icon={Building2}
+              title="Company setup"
+              detail={
+                profile
+                  ? `${profile.companyName} · ${profile.discoveryStatus === "confirmed" ? "business knowledge confirmed" : "setup still in progress"}`
+                  : "Start or continue the guided company onboarding."
+              }
+              action="Open company setup"
+              onClick={() => navigate("/company-setup")}
+            />
+            <SettingCard
+              icon={Cable}
+              title="CRM commissioning"
+              detail="Manage company-level CRM connections and their proven capabilities."
+              action="Manage connections"
+              onClick={() => navigate("/connections")}
+            />
+          </section>
+        ) : null}
+
+        {activeSection === "team" && canManage ? (
+          <section className="grid gap-4 md:grid-cols-2">
             <SettingCard
               icon={Users}
               title="Team members"
-              detail="Invite, link and manage the people who use this sales workspace."
-              action="Manage team members"
-              onClick={() => navigate("/team/manage")}
+              detail={
+                workspaceMode === "team"
+                  ? "Invite, link and manage the people who use this sales workspace."
+                  : "This workspace is currently configured for individual use."
+              }
+              action={
+                workspaceMode === "team"
+                  ? "Manage team members"
+                  : "Team management not active"
+              }
+              onClick={
+                workspaceMode === "team"
+                  ? () => navigate("/team/manage")
+                  : undefined
+              }
             />
-          ) : (
+            <SettingCard
+              icon={Users}
+              title="Manager view"
+              detail="Team attention and management surfaces remain role-protected."
+              action={workspaceMode === "team" ? "Open team view" : "Team view not active"}
+              onClick={
+                workspaceMode === "team" ? () => navigate("/team") : undefined
+              }
+            />
+          </section>
+        ) : null}
+
+        {activeSection === "knowledge" && canManage ? (
+          <section className="grid gap-4 md:grid-cols-2">
+            <SettingCard
+              icon={BookOpenCheck}
+              title="Company knowledge"
+              detail="Review the trusted business facts AmarktAI uses when helping the sales team."
+              action="Review knowledge"
+              onClick={() => navigate("/knowledge")}
+            />
             <SettingCard
               icon={ShieldCheck}
-              title="Security"
-              detail="Sensitive company and CRM changes require a short management-access confirmation."
-              action="Security is active"
+              title="Private by organisation"
+              detail="Company SOPs, terminology, templates and rules stay scoped to this organisation."
+              action="Tenant isolation active"
             />
-          )}
-        </section>
+          </section>
+        ) : null}
 
-        <section
-          id="mailbox"
-          data-personal-mailbox
-          className="rounded-2xl border border-[#DCE4EE] bg-white p-5 shadow-sm sm:p-6"
-        >
+        {activeSection === "crm" ? (
+          <>
+            <section
+              data-crm-settings
+              className="rounded-2xl border border-[#D7E0E4] bg-[#F7F5F0] p-5 shadow-sm sm:p-6"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#E2E8FA] text-[#315FDD]">
+                    <Cable className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#315FDD]">
+                      CRM connection
+                    </p>
+                    <h2 className="mt-1 text-lg font-bold">
+                      {genieSystem ? "Genie CRM" : "CRM workspace"}
+                    </h2>
+                    <p className="mt-1 max-w-2xl text-sm leading-6 text-[#596A75]">
+                      {genieSystem
+                        ? genieSystem.status === "ready"
+                          ? "Live CRM reads are available for your sales workspace."
+                          : genieSystem.status === "limited_permissions"
+                            ? "CRM reads are available, with some capabilities still restricted."
+                            : genieSystem.status === "authentication_expired"
+                              ? "Your CRM session has expired. Reconnect before relying on fresh customer data."
+                              : "The CRM connection needs attention before current customer data can be trusted."
+                        : "No CRM connection is currently available to this workspace."}
+                    </p>
+                    {genieSystem ? (
+                      <p
+                        className={`mt-3 text-sm font-semibold ${
+                          genieReady ? "text-emerald-700" : "text-amber-800"
+                        }`}
+                      >
+                        {genieSystem.status === "ready"
+                          ? "Live proven"
+                          : genieSystem.status
+                              .replaceAll("_", " ")
+                              .replace(/^./, value => value.toUpperCase())}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      genieSystem
+                        ? navigate(`/crm/${genieSystem.id}`)
+                        : navigate("/crm")
+                    }
+                  >
+                    Open CRM
+                  </Button>
+                  {canManage ? (
+                    <Button
+                      variant="outline"
+                      onClick={() => navigate("/connections")}
+                    >
+                      Manage connection
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            </section>
+
+            <section
+              id="mailbox"
+              data-personal-mailbox
+              className="rounded-2xl border border-[#D7E0E4] bg-[#F7F5F0] p-5 shadow-sm sm:p-6"
+            >
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="flex items-start gap-3">
               <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#EEF3F8] text-[#405B7A]">
@@ -384,12 +611,15 @@ export default function Settings() {
               {mailboxError}
             </p>
           ) : null}
-        </section>
+            </section>
+          </>
+        ) : null}
 
-        <section
-          data-autonomy-settings
-          className="rounded-2xl border border-[#DCE4EE] bg-white p-5 shadow-sm sm:p-6"
-        >
+        {activeSection === "permissions" ? (
+          <section
+            data-autonomy-settings
+            className="rounded-2xl border border-[#D7E0E4] bg-[#F7F5F0] p-5 shadow-sm sm:p-6"
+          >
           <div className="flex items-start gap-3">
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#EEF3F8] text-[#405B7A]">
               <SlidersHorizontal className="h-5 w-5" />
@@ -527,51 +757,144 @@ export default function Settings() {
               </Button>
             </>
           )}
-        </section>
+          </section>
+        ) : null}
 
-        {organisationId ? (
+        {activeSection === "skills" ? (
+          canManage && organisationId ? (
+            <SkillStudio
+              organisationId={organisationId}
+              connectedSystemId={genieSystem?.id}
+              initialView="skills"
+            />
+          ) : (
+            <ReadOnlySkillList />
+          )
+        ) : null}
+
+        {activeSection === "templates" && canManage && organisationId ? (
           <SkillStudio
             organisationId={organisationId}
             connectedSystemId={genieSystem?.id}
+            initialView="templates"
           />
         ) : null}
 
-        <section className="rounded-2xl border border-[#DCE4EE] bg-white p-5 shadow-sm sm:p-6">
-          <div className="flex items-start gap-3">
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#EEF3F8] text-[#405B7A]">
-              <Download className="h-5 w-5" />
-            </span>
-            <div>
-              <h2 className="text-lg font-bold">Reports & exports</h2>
-              <p className="mt-1 max-w-2xl text-sm leading-6 text-[#66758A]">
-                Download a portable record of sales activity or the call and
-                conversation history for this workspace.
-              </p>
+        {activeSection === "notifications" ? (
+          <section className="rounded-2xl border border-[#D7E0E4] bg-[#F7F5F0] p-5 shadow-sm sm:p-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#E2E8FA] text-[#315FDD]">
+                  <Bell className="h-5 w-5" />
+                </span>
+                <div>
+                  <h2 className="text-lg font-bold">Useful alerts only</h2>
+                  <p className="mt-1 max-w-2xl text-sm leading-6 text-[#596A75]">
+                    AmarktAI alerts you for genuinely new leads and replies,
+                    review work that needs attention, blocking connection
+                    problems and scheduled sales work as it approaches.
+                  </p>
+                </div>
+              </div>
+              {notificationPermission !== "unsupported" ? (
+                <Button
+                  variant="outline"
+                  disabled={notificationPermission === "granted"}
+                  onClick={() => void enableBrowserNotifications()}
+                >
+                  {notificationPermission === "granted"
+                    ? "Browser alerts enabled"
+                    : notificationPermission === "denied"
+                      ? "Browser alerts blocked"
+                      : "Enable browser alerts"}
+                </Button>
+              ) : null}
             </div>
-          </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              disabled={exportData.isPending}
-              onClick={() =>
-                exportData.mutate({ kind: "operational_report", format: "csv" })
-              }
-            >
-              <Download className="mr-2 h-4 w-4" />
-              Download sales activity CSV
-            </Button>
-            <Button
-              variant="outline"
-              disabled={exportData.isPending}
-              onClick={() =>
-                exportData.mutate({ kind: "conversation_log", format: "pdf" })
-              }
-            >
-              <Download className="mr-2 h-4 w-4" />
-              Download call log PDF
-            </Button>
-          </div>
-        </section>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              {[
+                "Scheduled call or task approaching its reminder window",
+                "Genuinely new lead",
+                "Genuine customer reply needing action",
+                "Review item requiring your attention",
+                "Connection or workflow failure blocking sales work",
+              ].map(item => (
+                <div
+                  key={item}
+                  className="rounded-xl border border-[#D7E0E4] bg-[#EEF0ED] px-4 py-3 text-sm text-[#45535D]"
+                >
+                  {item}
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {activeSection === "security" ? (
+          <section className="rounded-2xl border border-[#D7E0E4] bg-[#F7F5F0] p-5 shadow-sm sm:p-6">
+            <div className="flex items-start gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#E5F0EC] text-[#247B74]">
+                <ShieldCheck className="h-5 w-5" />
+              </span>
+              <div>
+                <h2 className="text-lg font-bold">Security & control</h2>
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-[#596A75]">
+                  Your workspace identity is verified before entry. Company
+                  management changes and CRM commissioning remain separately
+                  protected. A skill needing a new write capability cannot
+                  silently grant or execute that permission.
+                </p>
+                <p className="mt-4 text-sm font-semibold text-emerald-700">
+                  Secure workspace access is active.
+                </p>
+              </div>
+            </div>
+          </section>
+        ) : null}
+
+        {activeSection === "workspace" ? (
+          <section className="rounded-2xl border border-[#D7E0E4] bg-[#F7F5F0] p-5 shadow-sm sm:p-6">
+            <div className="flex items-start gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#E2E8FA] text-[#315FDD]">
+                <Download className="h-5 w-5" />
+              </span>
+              <div>
+                <h2 className="text-lg font-bold">Reports & exports</h2>
+                <p className="mt-1 max-w-2xl text-sm leading-6 text-[#596A75]">
+                  Download your operational activity or conversation history
+                  without changing CRM or customer data.
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                disabled={exportData.isPending}
+                onClick={() =>
+                  exportData.mutate({
+                    kind: "operational_report",
+                    format: "csv",
+                  })
+                }
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Sales activity CSV
+              </Button>
+              <Button
+                variant="outline"
+                disabled={exportData.isPending}
+                onClick={() =>
+                  exportData.mutate({
+                    kind: "conversation_log",
+                    format: "pdf",
+                  })
+                }
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Call log PDF
+              </Button>
+            </div>
+          </section>
+        ) : null}
       </div>
     </DashboardLayout>
   );
@@ -610,5 +933,133 @@ function SettingCard({
         <p className="mt-4 text-xs font-bold text-emerald-700">{action}</p>
       )}
     </article>
+  );
+}
+type ReadOnlySkill = {
+  id: number;
+  playbookKey: string;
+  version: number;
+  title: string;
+  instructions: string;
+  status: string;
+  simulation: { valid: boolean };
+  requiredWriteCapabilities: string[];
+  writeStatus: string;
+};
+
+function ReadOnlySkillList() {
+  const [skills, setSkills] = useState<ReadOnlySkill[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    void fetch("/api/skills", { credentials: "include" })
+      .then(async response => {
+        const body = (await response.json().catch(() => ({}))) as {
+          skills?: ReadOnlySkill[];
+          error?: string;
+        };
+        if (!response.ok) throw new Error(body.error || "Skills are unavailable.");
+        if (active) setSkills(body.skills || []);
+      })
+      .catch(cause => {
+        if (active)
+          setError(
+            friendlyError(
+              cause,
+              "Organisation skills could not be loaded right now."
+            )
+          );
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  return (
+    <section
+      data-readonly-skills
+      className="rounded-2xl border border-[#D7E0E4] bg-[#F7F5F0] p-5 shadow-sm sm:p-6"
+    >
+      <div>
+        <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#315FDD]">
+          Company skills
+        </p>
+        <h2 className="mt-1 text-xl font-bold">What AmarktAI has learned</h2>
+        <p className="mt-1 max-w-3xl text-sm leading-6 text-[#596A75]">
+          These are organisation skills available to your sales workspace.
+          Publishing, rollback and new CRM write commissioning stay protected
+          by management approval.
+        </p>
+      </div>
+      {loading ? (
+        <p className="mt-5 flex items-center gap-2 text-sm text-[#596A75]">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading company skills…
+        </p>
+      ) : error ? (
+        <p
+          role="alert"
+          className="mt-5 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-900"
+        >
+          {error}
+        </p>
+      ) : skills.length ? (
+        <div className="mt-5 grid gap-3 md:grid-cols-2">
+          {skills.map(skill => {
+            const writeRequired =
+              skill.requiredWriteCapabilities.length > 0 ||
+              skill.writeStatus !== "not_required";
+            return (
+              <article
+                key={skill.id}
+                className="rounded-xl border border-[#D7E0E4] bg-[#EEF0ED] p-4"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <strong>{skill.title}</strong>
+                  <span className="rounded-full border border-[#C6D0D2] px-2 py-1 text-[10px] font-black uppercase tracking-[.08em] text-[#596A75]">
+                    {skill.status.replaceAll("_", " ")}
+                  </span>
+                </div>
+                <p className="mt-2 text-sm leading-6 text-[#596A75]">
+                  {skill.instructions}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
+                  <span
+                    className={
+                      skill.simulation.valid
+                        ? "text-emerald-700"
+                        : "text-amber-800"
+                    }
+                  >
+                    {skill.simulation.valid
+                      ? "Simulation passed"
+                      : "Simulation needs attention"}
+                  </span>
+                  <span className="text-[#6B7881]">Version {skill.version}</span>
+                  {writeRequired ? (
+                    <span className="text-amber-800">
+                      {skill.writeStatus === "approved_for_commissioning"
+                        ? "Write approval recorded; commissioning still required"
+                        : "Write commissioning required"}
+                    </span>
+                  ) : (
+                    <span className="text-emerald-700">No CRM write required</span>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="mt-5 rounded-xl border border-[#D7E0E4] bg-[#EEF0ED] p-4 text-sm text-[#596A75]">
+          No organisation skills are available yet.
+        </p>
+      )}
+    </section>
   );
 }

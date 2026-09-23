@@ -99,9 +99,11 @@ describe("AmarktAI customer-facing branding boundary", () => {
     expect(imagery).not.toContain("/images/people/");
     expect(imagery).not.toMatch(/ai-generated/i);
     expect(css).toContain(".amk-brand-art");
-    expect(css).toContain(".amk-brand-name__ai{color:var(--site-blue,#5E8CFF)}");
-    expect(css).toContain(".amk-site main{display:block");
-    expect(css).toContain("filter:none");
+    expect(css).toMatch(
+      /\.amk-brand-name__ai\s*\{[^}]*color:\s*var\(--site-blue,\s*#5e8cff\)/i
+    );
+    expect(css).toMatch(/\.amk-site main\s*\{[^}]*display:\s*block/i);
+    expect(css).toMatch(/filter:\s*none/i);
     expect(css).toContain(".amk-auth__message h1");
     expect(css).not.toContain("content: url(");
   });

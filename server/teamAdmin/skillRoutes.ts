@@ -327,6 +327,45 @@ export function registerSkillBuilderRoutes(app: Express) {
     }
   });
 
+  app.get("/api/skills", async (req, res) => {
+    try {
+      const { membership } = await requireLocalHttpContext(req);
+      const db = await getDb();
+      if (!db) throw new Error("Database connection is unavailable.");
+      const skills = await db
+        .select()
+        .from(playbookVersions)
+        .where(eq(playbookVersions.organisationId, membership.organisationId))
+        .orderBy(desc(playbookVersions.updatedAt), desc(playbookVersions.version));
+      return res.json({
+        skills: skills.map(skill => {
+          const definition = normalizeSkillDefinition(skill.inputSchema);
+          return {
+            id: skill.id,
+            playbookKey: skill.playbookKey,
+            version: skill.version,
+            title: skill.title,
+            instructions: skill.instructions,
+            status: skill.status,
+            updatedAt: skill.updatedAt,
+            publishedAt: skill.publishedAt,
+            simulation: simulateSkillDefinition(skill.inputSchema),
+            requiredWriteCapabilities: definition.requiredWriteCapabilities,
+            writeStatus:
+              definition.requiredWriteCapabilities.length > 0 ||
+              definition.requiredOperations.some(operation =>
+                operation.startsWith("custom.write.")
+              )
+                ? definition.writeApproval.status
+                : "not_required",
+          };
+        }),
+      });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  });
+
   app.get("/api/team-admin/skills", async (req, res) => {
     try {
       const { membership } = await requireManager(req);
