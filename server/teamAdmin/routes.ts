@@ -5,6 +5,10 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { jwtVerify, SignJWT } from "jose";
 import { COOKIE_NAME } from "@shared/const";
 import {
+  normalizeSkillDefinition,
+  simulateSkillDefinition,
+} from "@shared/skillBuilder";
+import {
   approvalTemplates,
   connectedSystems,
   connectorSyncJobs,
@@ -808,6 +812,21 @@ export function registerTeamAdminRoutes(app: Express) {
         throw new Error(
           "Playbook version was not found in the active organisation."
         );
+      const definition = normalizeSkillDefinition(version.inputSchema);
+      if (definition.demoReserved)
+        throw new Error(
+          "This skill is reserved for the live teaching demonstration and cannot be published."
+        );
+      if (definition.steps.length > 0) {
+        const simulation = simulateSkillDefinition(definition);
+        if (!simulation.valid)
+          throw new Error(
+            `Skill simulation failed: ${simulation.checks
+              .filter(check => !check.passed)
+              .map(check => check.detail)
+              .join(" ")}`
+          );
+      }
       await db.transaction(async tx => {
         await tx
           .update(playbookVersions)

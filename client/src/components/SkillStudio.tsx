@@ -109,11 +109,13 @@ function statusLabel(status: string) {
 
 export function SkillStudio({
   connectedSystemId,
+  initialView = "skills",
 }: {
   organisationId: number;
   connectedSystemId?: number;
+  initialView?: "skills" | "templates";
 }) {
-  const [view, setView] = useState<"skills" | "templates">("skills");
+  const [view, setView] = useState<"skills" | "templates">(initialView);
   const [data, setData] = useState<SkillList | null>(null);
   const [catalogue, setCatalogue] = useState<Catalogue | null>(null);
   const [simulation, setSimulation] = useState<Record<number, Simulation>>({});

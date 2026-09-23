@@ -237,13 +237,13 @@ describe("final public website", () => {
     expect(css).toContain("prefers-reduced-motion: reduce");
     expect(css).toContain(".amk-auth");
     expect(css).toContain(".amk-photo-frame");
-    expect(css).toContain("--site-bg:#E8ECEB");
-    expect(css).toContain("--site-accent:#315FDD");
-    expect(css).toContain(".amk-site main{display:block");
+    expect(css).toMatch(/--site-bg:\s*#e8eceb/i);
+    expect(css).toMatch(/--site-accent:\s*#315fdd/i);
+    expect(css).toMatch(/\.amk-site main\s*\{[^}]*display:\s*block/i);
     expect(css).toContain(".amk-skill-section");
-    expect(css).toContain("filter:none");
-    expect(css.toLowerCase()).toContain("--dash-canvas: #0d1114");
-    expect(css.toLowerCase()).toContain("--dash-blue: #3fae9d");
+    expect(css).toMatch(/filter:\s*none/i);
+    expect(css).toMatch(/--dash-canvas:\s*#e8eceb/i);
+    expect(css).toMatch(/--dash-blue:\s*#315fdd/i);
     expect(css).toContain('body:has([data-slot="sidebar-wrapper"])');
     expect(
       existsSync(path.resolve(process.cwd(), "client/src/dashboard-final.css"))

@@ -99,11 +99,13 @@ describe("repository source of truth", () => {
         .sort()
     ).toEqual(["client/src/index.css"]);
     const css = read("client/src/index.css");
-    expect(css).toContain("--dash-canvas: #0D1114");
+    expect(css).toMatch(/--dash-canvas:\s*#e8eceb/i);
     expect(css).toContain(".amk-site");
     expect(css).toContain(".amk-auth");
     expect(css).toContain(".amarktai-dashboard-sidebar");
-    expect(css).toContain("Phase 1 readability bridge");
+    expect(css).toContain(
+      "Compatibility bridge while page components converge on the canonical light palette."
+    );
     expect(css).toContain('[class*="bg-[#F"]');
     expect(css).toContain('[class*="text-[#2"]');
   });

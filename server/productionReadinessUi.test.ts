@@ -44,7 +44,9 @@ describe("commercial Sales Assistant product boundaries", () => {
         )
       );
     expect(app).toContain('navigate("/assistant", { replace: true })');
-    expect(layout).toContain("if (!canManage) return []");
+    expect(layout).toContain('label: "CRM", path: "/crm"');
+    expect(layout).toContain('label: "Settings", path: "/settings"');
+    expect(layout).toContain("canManage && workspaceMode === \"team\"");
   });
 
   it("completes setup only after final CRM commissioning READY and full requested-read proof", () => {
