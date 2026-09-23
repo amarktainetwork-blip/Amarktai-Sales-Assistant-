@@ -107,6 +107,7 @@ describe("final dashboard information architecture", () => {
       path.resolve("client/src/pages/Assistant.tsx"),
       "utf8"
     );
+    const css = readFileSync(path.resolve("client/src/index.css"), "utf8");
 
     expect(layout).not.toContain("data-new-lead-alert");
     expect(layout).toContain(
@@ -126,6 +127,19 @@ describe("final dashboard information architecture", () => {
     expect(today).toContain('activeTab === "replies"');
     expect(customers).not.toContain("Know the person before you call.");
     expect(customers).toContain("Customer context");
+    for (const tab of [
+      "Overview",
+      "Conversation",
+      "Tasks",
+      "Opportunity",
+      "CRM fields",
+    ])
+      expect(customers).toContain(`"${tab}"`);
+    expect(customers).toContain('aria-label="Customer workspace"');
+    expect(customers).toContain('className="amk-customer-tab-body"');
+    expect(css).toContain(".amk-customers-page");
+    expect(css).toContain("height: calc(100vh - 70px)");
+    expect(css).toContain(".amk-customer-list-scroll");
     expect(review).not.toContain(
       "Only stop here when AmarktAI needs your decision."
     );

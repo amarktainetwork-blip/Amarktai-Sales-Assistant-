@@ -85,6 +85,19 @@ export function calculateCurrentReadiness(input: {
 }
 
 /** Recompute current presentation from durable proofs, never from historical job snapshots. */
+export function healthSummaryAfterReadiness(input: {
+  currentReady: boolean;
+  previousSummary?: string | null;
+}) {
+  const previous = String(input.previousSummary || "");
+  if (
+    input.currentReady &&
+    isTransientBrowserExecutionFailure(new Error(previous))
+  )
+    return "Browser CRM reads are current; proven capabilities are available.";
+  return input.previousSummary;
+}
+
 export function shouldPreserveConnectionStatus(
   status: string,
   authenticationVerified = false
@@ -164,6 +177,10 @@ export async function reconcileCurrentBrowserReadiness(input: {
             }
           : {}),
         lastHealthCheckAt: new Date(),
+        lastHealthSummary: healthSummaryAfterReadiness({
+          currentReady: current.ready,
+          previousSummary: system.lastHealthSummary,
+        }),
         ...(input.authenticationVerified &&
         (system.status === "authentication_expired" ||
           /authentication expired/i.test(system.lastHealthSummary || ""))

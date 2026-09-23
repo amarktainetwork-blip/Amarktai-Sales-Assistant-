@@ -4,6 +4,7 @@ import {
   compareSalesWork,
   deriveCrmWorkCandidates,
   isSalesWorkTransitionReplay,
+  isSyntheticTestContact,
   NEW_LEAD_ALERT_STATUSES,
   nextSalesWorkStatus,
   selectCallbackWorkForVerifiedCall,
@@ -29,6 +30,39 @@ describe("normalized sales work", () => {
 
   it("keeps open and in-progress leads in the first-contact alert count", () => {
     expect(NEW_LEAD_ALERT_STATUSES).toEqual(["open", "in_progress"]);
+  });
+
+  it("never creates salesperson work for obvious synthetic CRM test contacts", () => {
+    expect(isSyntheticTestContact({ email: "tabassum@istesting.app" })).toBe(
+      true
+    );
+    expect(isSyntheticTestContact({ email: "person@example.com" })).toBe(true);
+    expect(isSyntheticTestContact({ email: "buyer@real-company.co.uk" })).toBe(
+      false
+    );
+    expect(
+      deriveCrmWorkCandidates(
+        9,
+        {
+          type: "contacts",
+          records: [
+            {
+              externalId: "test-lead",
+              ownerExternalId: "owner-2",
+              firstName: "Tab",
+              lastName: "Test",
+              email: "tabassum@istesting.app",
+              raw: {},
+            },
+          ],
+        },
+        now,
+        {
+          baselineComplete: true,
+          existingExternalIds: new Set(),
+        }
+      )
+    ).toHaveLength(0);
   });
 
   it("creates no NEW_LEAD work for an initial historical baseline", () => {

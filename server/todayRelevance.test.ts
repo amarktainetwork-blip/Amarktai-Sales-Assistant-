@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  activityFallsWithinWorkedTaskWindow,
   configuredTaskPriorityTitles,
   paymentReviewCandidates,
   isCurrentActionableInbound,
@@ -95,6 +96,28 @@ describe("current sales day relevance", () => {
         },
         owner,
         "sales@example.com"
+      )
+    ).toBe(false);
+  });
+
+  it("counts verified work performed shortly before a task is due", () => {
+    const dueAt = new Date("2026-09-07T12:00:00.000Z");
+    expect(
+      activityFallsWithinWorkedTaskWindow(
+        new Date("2026-09-07T11:59:31.000Z"),
+        dueAt
+      )
+    ).toBe(true);
+    expect(
+      activityFallsWithinWorkedTaskWindow(
+        new Date("2026-09-07T11:30:00.000Z"),
+        dueAt
+      )
+    ).toBe(true);
+    expect(
+      activityFallsWithinWorkedTaskWindow(
+        new Date("2026-09-07T11:29:59.999Z"),
+        dueAt
       )
     ).toBe(false);
   });

@@ -114,6 +114,22 @@ export function nextSalesWorkStatus(
   throw new Error(`WORK_ITEM_TRANSITION_INVALID:${current}:${action}`);
 }
 
+const SYNTHETIC_CONTACT_EMAIL_DOMAINS = new Set([
+  "example.com",
+  "example.org",
+  "example.net",
+  "istesting.app",
+]);
+
+export function isSyntheticTestContact(
+  contact: Pick<NormalizedContact, "email">
+) {
+  const email = String(contact.email || "").trim().toLowerCase();
+  const at = email.lastIndexOf("@");
+  if (at < 0) return false;
+  return SYNTHETIC_CONTACT_EMAIL_DOMAINS.has(email.slice(at + 1));
+}
+
 function explicitNewContact(record: NormalizedContact) {
   const event = String(
     record.raw.eventType || record.raw.event || record.raw.changeType || ""
@@ -136,6 +152,7 @@ export function deriveCrmWorkCandidates(
 ): SalesWorkCandidate[] {
   if (resource.type === "contacts")
     return resource.records
+      .filter(contact => !isSyntheticTestContact(contact))
       .filter(
         contact =>
           explicitNewContact(contact) ||
@@ -287,6 +304,38 @@ export async function upsertSalesWorkFromCrm(input: {
   const usersByExternalOwner = new Map(
     mappings.map(mapping => [mapping.externalUserId, mapping.userId])
   );
+  if (input.resource.type === "contacts") {
+    const syntheticContactIds = input.resource.records
+      .filter(isSyntheticTestContact)
+      .map(contact => contact.externalId)
+      .filter(Boolean);
+    if (syntheticContactIds.length) {
+      const now = input.now ?? new Date();
+      await db
+        .update(salesWorkItems)
+        .set({
+          status: "completed",
+          completedAt: now,
+          freshness: "current",
+          syncedAt: now,
+          stateVersion: sql`${salesWorkItems.stateVersion} + 1`,
+        })
+        .where(
+          and(
+            eq(salesWorkItems.organisationId, input.organisationId),
+            eq(salesWorkItems.connectedSystemId, input.connectedSystemId),
+            eq(salesWorkItems.type, "NEW_LEAD"),
+            inArray(salesWorkItems.contactExternalId, syntheticContactIds),
+            inArray(salesWorkItems.status, [
+              "open",
+              "in_progress",
+              "snoozed",
+              "blocked",
+            ])
+          )
+        );
+    }
+  }
   const candidates = deriveCrmWorkCandidates(
     input.connectedSystemId,
     input.resource,

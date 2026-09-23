@@ -48,6 +48,9 @@ export default function Customers() {
   const utils = trpc.useUtils();
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(initialContactId);
+  const [activeCustomerTab, setActiveCustomerTab] = useState<
+    "overview" | "conversation" | "tasks" | "opportunity" | "crm"
+  >("overview");
   const [page, setPage] = useState(1);
 
   const workspace = trpc.sales.workspaceContext.useQuery(undefined, {
@@ -81,6 +84,7 @@ export default function Customers() {
 
   function selectCustomer(id: number) {
     setSelectedId(id);
+    setActiveCustomerTab("overview");
     window.history.replaceState({}, "", `/customers?contactId=${id}`);
   }
 
@@ -99,7 +103,7 @@ export default function Customers() {
     <DashboardLayout>
       <div
         id="customers-page"
-        className="mx-auto max-w-[1440px] space-y-5 text-[#26354A]"
+        className="amk-customers-page mx-auto max-w-[1440px] text-[#26354A]"
       >
         <header className="rounded-2xl border border-[#DCE4EE] bg-white px-5 py-4 shadow-sm sm:px-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -167,7 +171,7 @@ export default function Customers() {
             Loading your customer workspace…
           </section>
         ) : visible.length || selected ? (
-          <section className="grid min-h-[620px] gap-5 xl:grid-cols-[360px_1fr]">
+          <section className="amk-customers-workspace grid gap-5 xl:grid-cols-[360px_1fr]">
             <aside className="handover-surface overflow-hidden">
               <div className="border-b border-[#E3E9F1] bg-[#FAFCFF] px-5 py-4">
                 <p className="text-xs font-black uppercase tracking-[.12em] text-[#7A899C]">
@@ -177,7 +181,7 @@ export default function Customers() {
                   Select a person. Their working context stays with you.
                 </p>
               </div>
-              <div className="max-h-[720px] overflow-y-auto p-2">
+              <div className="amk-customer-list-scroll overflow-y-auto p-2">
                 {visible.map(customer => {
                   const active = customer.id === selectedId;
                   return (
@@ -246,7 +250,7 @@ export default function Customers() {
             </aside>
 
             {selected ? (
-              <div className="space-y-5">
+              <div className="amk-customer-detail">
                 <section className="handover-surface p-5 sm:p-6">
                   <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0">
@@ -330,7 +334,77 @@ export default function Customers() {
                   </div>
                 </section>
 
-                {selected.mappedFields.length ? (
+                <div
+                  className="amk-customer-tabs"
+                  role="tablist"
+                  aria-label="Customer workspace"
+                >
+                  {[
+                    ["overview", "Overview"],
+                    ["conversation", "Conversation"],
+                    ["tasks", "Tasks"],
+                    ["opportunity", "Opportunity"],
+                    ["crm", "CRM fields"],
+                  ].map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      role="tab"
+                      aria-selected={activeCustomerTab === key}
+                      className={activeCustomerTab === key ? "is-active" : ""}
+                      onClick={() =>
+                        setActiveCustomerTab(
+                          key as
+                            | "overview"
+                            | "conversation"
+                            | "tasks"
+                            | "opportunity"
+                            | "crm"
+                        )
+                      }
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="amk-customer-tab-body">
+                  {activeCustomerTab === "overview" ? (
+                    <section className="amk-customer-overview handover-surface p-5 sm:p-6">
+                      <div>
+                        <p className="handover-kicker">What matters now</p>
+                        <h3 className="mt-2 font-display text-2xl font-bold tracking-[-.035em]">
+                          {selected.nextAction?.title || "No current task"}
+                        </h3>
+                        <p className="mt-2 text-sm leading-6 text-[#66758A]">
+                          {history[0]
+                            ? `Latest context: ${history[0].channel} · ${dateLabel(history[0].occurredAt)}`
+                            : "No recent customer conversation is recorded yet."}
+                        </p>
+                      </div>
+                      <div className="amk-customer-overview__actions">
+                        <Button
+                          onClick={() =>
+                            navigate(`/calls?contactId=${selected.id}`)
+                          }
+                        >
+                          <Headphones className="mr-2 h-4 w-4" /> Start call
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() =>
+                            ask(
+                              `Prepare me for my call with ${selected.name}. Give me the important history, what they asked about, what I need to ask, and the best next step.`
+                            )
+                          }
+                        >
+                          <Bot className="mr-2 h-4 w-4" /> Prepare with AmarktAI
+                        </Button>
+                      </div>
+                    </section>
+                  ) : null}
+
+                  {activeCustomerTab === "crm" && selected.mappedFields.length ? (
                   <section className="handover-surface p-5 sm:p-6">
                     <p className="handover-kicker">Customer context</p>
                     <h3 className="mt-2 font-display text-2xl font-bold tracking-[-.035em]">
@@ -371,6 +445,7 @@ export default function Customers() {
                   </section>
                 ) : null}
 
+                {activeCustomerTab === "tasks" ? (
                 <section className="grid gap-5 lg:grid-cols-2">
                   <WorkPanel
                     title="Current work"
@@ -399,7 +474,9 @@ export default function Customers() {
                     }))}
                   />
                 </section>
+                ) : null}
 
+                {activeCustomerTab === "conversation" ? (
                 <section className="handover-surface p-5 sm:p-6">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                     <div>
@@ -483,7 +560,9 @@ export default function Customers() {
                     )}
                   </div>
                 </section>
+                ) : null}
 
+                {activeCustomerTab === "opportunity" ? (
                 <section>
                   <div className="handover-surface p-5 sm:p-6">
                     <p className="handover-kicker">Opportunity context</p>
@@ -519,7 +598,9 @@ export default function Customers() {
                     )}
                   </div>
                 </section>
+                ) : null}
 
+                {activeCustomerTab === "crm" ? (
                 <section className="flex flex-col gap-3 rounded-2xl border border-[#DCE4EE] bg-[#F8FAFD] p-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-sm font-bold text-[#33445B]">
@@ -534,6 +615,8 @@ export default function Customers() {
                     <MonitorUp className="mr-2 h-4 w-4" /> Open source CRM
                   </Button>
                 </section>
+                ) : null}
+                </div>
               </div>
             ) : (
               <section className="handover-surface grid place-items-center p-10 text-center">
