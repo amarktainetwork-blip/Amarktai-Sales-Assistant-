@@ -88,17 +88,14 @@ export default function Inbox() {
         id="inbox-page"
         className="mx-auto max-w-[1380px] space-y-5 text-[#26354A]"
       >
-        <header className="flex flex-col gap-4 rounded-3xl border border-[#DCE4EE] bg-white p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <header className="amk-page-intro">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#55788B]">
-              Sales inbox
-            </p>
-            <h1 className="mt-2 font-display text-4xl font-bold tracking-[-.05em]">
-              Customer replies, without the CRM hunt.
-            </h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-[#66758A]">
-              Read incoming sales messages here. AmarktAI can prepare the reply
-              and customer admin, but nothing is sent without Review approval.
+            <p className="handover-kicker">Sales inbox</p>
+            <h1>Replies that still need you.</h1>
+            <p>
+              This is an action queue, not message history. Once a reply has
+              genuinely been handled, it leaves this list and stays retired
+              unless a newer customer reply needs attention.
             </p>
           </div>
           <Button
@@ -111,20 +108,26 @@ export default function Inbox() {
             <RefreshCw
               className={`mr-2 h-4 w-4 ${syncInbox.isPending ? "animate-spin" : ""}`}
             />
-            Check inbox now
+            Check inbox
           </Button>
         </header>
 
-        <section className="grid gap-3 sm:grid-cols-3">
-          <InboxMetric label="Recent messages" value={messages.length} />
-          <InboxMetric
-            label="Need action"
-            value={inbox.data?.needsActionCount ?? 0}
-          />
-          <InboxMetric
-            label="Possible sales"
-            value={inbox.data?.saleIntentCount ?? 0}
-          />
+        <section className="amk-inbox-summary" aria-label="Inbox summary">
+          <div>
+            <strong>{messages.length}</strong>
+            <span>
+              {messages.length === 1
+                ? "reply needs action"
+                : "replies need action"}
+            </span>
+          </div>
+          <div>
+            <strong>{inbox.data?.saleIntentCount ?? 0}</strong>
+            <span>possible sales</span>
+          </div>
+          <p>
+            Handled communication is removed automatically after reconciliation.
+          </p>
         </section>
 
         <section className="grid min-h-[590px] gap-5 xl:grid-cols-[430px_1fr]">
@@ -261,18 +264,5 @@ export default function Inbox() {
         </section>
       </div>
     </DashboardLayout>
-  );
-}
-
-function InboxMetric({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-2xl border border-[#DCE4EE] bg-white px-5 py-4 shadow-sm">
-      <p className="text-xs font-bold uppercase tracking-[.1em] text-[#8290A3]">
-        {label}
-      </p>
-      <p className="mt-1 font-display text-3xl font-bold tracking-[-.04em] text-[#26354A]">
-        {value}
-      </p>
-    </div>
   );
 }

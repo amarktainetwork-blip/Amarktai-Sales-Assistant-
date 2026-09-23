@@ -242,8 +242,8 @@ describe("final public website", () => {
     expect(css).toMatch(/\.amk-site main\s*\{[^}]*display:\s*block/i);
     expect(css).toContain(".amk-skill-section");
     expect(css).toMatch(/filter:\s*none/i);
-    expect(css).toMatch(/--dash-canvas:\s*#e8eceb/i);
-    expect(css).toMatch(/--dash-blue:\s*#315fdd/i);
+    expect(css).toMatch(/--dash-canvas:\s*#e9e7e2/i);
+    expect(css).toMatch(/--dash-blue:\s*#526f7d/i);
     expect(css).toContain('body:has([data-slot="sidebar-wrapper"])');
     expect(
       existsSync(path.resolve(process.cwd(), "client/src/dashboard-final.css"))

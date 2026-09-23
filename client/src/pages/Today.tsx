@@ -78,6 +78,28 @@ export default function Today() {
   const visibleQueue = showAll ? callQueue.slice(1) : callQueue.slice(1, 8);
   const workspace = today.data?.workspace.organisation;
   const taskMetrics = today.data?.taskData.metrics;
+  const preferredName =
+    organisation.data?.memberOnboarding.preferredName?.trim() ||
+    "there";
+  const localHour = (() => {
+    try {
+      return Number(
+        new Intl.DateTimeFormat("en-GB", {
+          timeZone: workspace?.timezone || "UTC",
+          hour: "2-digit",
+          hour12: false,
+        }).format(new Date())
+      );
+    } catch {
+      return new Date().getHours();
+    }
+  })();
+  const greeting =
+    localHour < 12
+      ? "Good morning"
+      : localHour < 18
+        ? "Good afternoon"
+        : "Good evening";
 
   useEffect(() => {
     if (!organisationId) return;
@@ -188,13 +210,14 @@ export default function Today() {
         <header className="amk-day__header">
           <div>
             <p className="amk-day__eyebrow">Your sales day</p>
-            <h1>
+            <h1>{greeting}, {preferredName}.</h1>
+            <p className="amk-day__orientation">
               {assignedTaskExceptions.length
-                ? "An assigned task needs attention."
+                ? "There is assigned work that needs safe CRM context before you continue."
                 : current
-                  ? `Next: ${current.name}`
-                  : "You are caught up."}
-            </h1>
+                  ? `${callQueue.length} ${callQueue.length === 1 ? "person needs" : "people need"} your attention. Start with ${current.name}.`
+                  : "Nothing needs immediate attention. Upcoming commitments stay protected below."}
+            </p>
             <p className="amk-day__freshness">
               <span aria-hidden="true" />
               {freshnessLabel(

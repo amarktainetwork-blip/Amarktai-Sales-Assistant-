@@ -56,7 +56,8 @@ describe("final client-facing handover polish", () => {
     const assistant = read("pages/Assistant.tsx");
     expect(assistant).toContain("trpc.sales.customerDirectory.useQuery");
     expect(assistant).toContain("trpc.sales.customerDetail.useQuery");
-    expect(assistant).toContain('params.get("contactId")');
+    expect(assistant).toContain("requestedAssistantContactId()");
+    expect(assistant).toContain("if (contactId || explicitContactId) return;");
     expect(assistant).toContain("/customers?contactId=");
     expect(assistant).toContain("data-assistant-conversation");
     expect(read("index.css")).not.toContain(

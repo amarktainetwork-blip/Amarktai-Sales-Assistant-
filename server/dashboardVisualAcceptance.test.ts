@@ -11,7 +11,7 @@ describe("final dashboard information architecture", () => {
       false
     );
     expect(css).toContain(".amarktai-dashboard-sidebar");
-    expect(css.toLowerCase()).toContain("--dash-canvas: #e8eceb");
+    expect(css.toLowerCase()).toContain("--dash-canvas: #e9e7e2");
     expect(app).not.toContain('import "./workspace-handover.css"');
     expect(app).not.toContain('import "./dashboard-client-readability.css"');
     expect(app).not.toContain('import "./final-release.css"');
@@ -202,18 +202,18 @@ describe("final dashboard information architecture", () => {
       "utf8"
     );
 
-    expect(css.toLowerCase()).toContain("--dash-canvas: #e8eceb");
+    expect(css.toLowerCase()).toContain("--dash-canvas: #e9e7e2");
     expect(css.toLowerCase()).toContain("--dash-paper: #f7f5f0");
-    expect(css.toLowerCase()).toContain("--dash-ink: #18242e");
-    expect(css.toLowerCase()).toContain("--dash-blue: #315fdd");
+    expect(css.toLowerCase()).toContain("--dash-ink: #202b30");
+    expect(css.toLowerCase()).toContain("--dash-blue: #526f7d");
     expect(css).not.toContain("--handover-blue");
     expect(css).not.toContain("--handover-canvas");
     expect(css).toContain('[class*="whitespace-pre-wrap"]');
     expect(css).toContain("input::placeholder");
 
-    expect(layout).toContain('SidebarInset className="bg-[#E8ECEB]"');
-    expect(layout).toContain("bg-[#E5F0EC]");
-    expect(layout).toContain("bg-[#F3F1EC] text-[#18242E]");
+    expect(layout).toContain('SidebarInset className="bg-[#E9E7E2]"');
+    expect(layout).toContain("bg-[#E2EBE6]");
+    expect(layout).toContain("bg-[#EFEDE7] text-[#202B30]");
     expect(layout).not.toContain(
       'className="amarktai-dashboard-sidebar bg-[#101619]'
     );
