@@ -201,6 +201,41 @@ function safeText(value: unknown, maximum = 500) {
   return typeof value === "string" ? value.trim().slice(0, maximum) : "";
 }
 
+export function deterministicContactVerificationSeed(
+  value: unknown,
+  baseUrl?: string
+) {
+  if (!Array.isArray(value)) return undefined;
+  for (const candidate of value) {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate))
+      continue;
+    const source = candidate as Record<string, unknown>;
+    const rawExternalId = safeText(source.externalId, 1_000);
+    const query = safeText(source.name, 180).replace(/\s+/g, " ");
+    const words = query.split(" ").filter(Boolean);
+    if (
+      !rawExternalId ||
+      query.length < 5 ||
+      words.length < 2 ||
+      !/[A-Za-z0-9]/.test(query) ||
+      /^(?:[-–—_.]+|n\/?a|unknown|none|null)$/i.test(query)
+    )
+      continue;
+    try {
+      return {
+        externalId: baseUrl
+          ? new URL(rawExternalId, baseUrl).toString()
+          : rawExternalId,
+        query,
+        derivedFrom: "deterministic_contact_catalogue",
+      };
+    } catch {
+      continue;
+    }
+  }
+  return undefined;
+}
+
 const SAFE_DISCOVERY_LABEL =
   /^(?:home|dashboard|contacts?|customers?|leads?|prospects?|companies|accounts?|organisations?|organizations?|tasks?|manual actions?|callbacks?|reminders?|notes?|history|timeline|opportunities|deals?|pipelines?|stages?|status|owners?|assignees?|salespeople|activities|interactions?|email|sms|text message|whatsapp|sequences?|cadences?|calls?|dialler|appointments?|meetings?|calendars?|quotes?|proposals?|workflows?|automations?|custom fields?|properties|settings|search|open|view|add|create|update|edit|save|cancel|next|previous)(?:\s+(?:and|or|new|all|my|current|latest|sales|crm|record|records|action|actions|details?))*$/i;
 
@@ -1460,27 +1495,10 @@ async function testOperations(input: {
       >;
       const serialized = resultData.records;
       const parsed = serialized ? (JSON.parse(serialized) as unknown) : [];
-      const row = Array.isArray(parsed)
-        ? parsed.find(
-            value => value && typeof value === "object" && !Array.isArray(value)
-          )
-        : undefined;
-      const source = (row || {}) as Record<string, unknown>;
-      const rawExternalId = safeText(source.externalId, 1_000);
-      const name = safeText(source.name, 180);
-      if (!rawExternalId) throw new Error("VERIFICATION_TARGET_NOT_DERIVED");
       const baseUrl = resultData.actualPageUrl || system.baseUrl || undefined;
-      const externalId = baseUrl
-        ? new URL(rawExternalId, baseUrl).toString()
-        : rawExternalId;
-      derivedContact = {
-        externalId,
-        query:
-          name ||
-          rawExternalId.split("/").filter(Boolean).at(-1) ||
-          rawExternalId,
-        derivedFrom: "deterministic_contact_catalogue",
-      };
+      derivedContact = deterministicContactVerificationSeed(parsed, baseUrl);
+      if (!derivedContact)
+        throw new Error("VERIFICATION_TARGET_NOT_DERIVED");
     }
   };
   for (const operation of selected.slice(0, 80)) {
