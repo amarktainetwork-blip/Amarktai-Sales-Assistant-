@@ -37,6 +37,7 @@ export async function getSalesInbox(input: {
     .where(
       and(
         eq(inboundMessages.organisationId, input.organisationId),
+        eq(inboundMessages.needsAction, true),
         or(
           eq(inboundMessages.mailboxUserId, input.userId),
           and(

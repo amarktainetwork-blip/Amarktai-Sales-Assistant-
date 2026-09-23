@@ -90,9 +90,9 @@ export default function Customers() {
       selected?.workspace.organisation || workspace.data?.organisation || {}
     );
 
-  const ask = (prompt: string) =>
+  const ask = (prompt: string, contactId = selected?.id ?? selectedId) =>
     navigate(
-      `/assistant?${selectedId ? `contactId=${selectedId}&` : ""}prompt=${encodeURIComponent(prompt)}`
+      `/assistant?${contactId ? `contactId=${contactId}&` : ""}prompt=${encodeURIComponent(prompt)}`
     );
 
   return (

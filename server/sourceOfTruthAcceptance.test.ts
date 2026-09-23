@@ -99,7 +99,7 @@ describe("repository source of truth", () => {
         .sort()
     ).toEqual(["client/src/index.css"]);
     const css = read("client/src/index.css");
-    expect(css).toMatch(/--dash-canvas:\s*#e8eceb/i);
+    expect(css).toMatch(/--dash-canvas:\s*#e9e7e2/i);
     expect(css).toContain(".amk-site");
     expect(css).toContain(".amk-auth");
     expect(css).toContain(".amarktai-dashboard-sidebar");

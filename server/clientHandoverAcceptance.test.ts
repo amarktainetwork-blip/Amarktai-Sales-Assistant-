@@ -93,7 +93,8 @@ describe("client handover acceptance guards", () => {
 
   it("makes confirmed follow-up commitments the next work item instead of leaving stale CRM work on Today", () => {
     expect(today).toContain("futureCommitmentContacts");
-    expect(today).toContain("reminders: reminders.map");
+    expect(today).toContain("reminderWasAlreadyWorked");
+    expect(today).toContain("reminders: currentReminders.map");
     expect(today).toContain(
       "!futureCommitmentContacts.has(item.contactExternalId)"
     );

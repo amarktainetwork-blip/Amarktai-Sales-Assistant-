@@ -12,8 +12,9 @@ describe("Phase 2 daily salesperson workflow", () => {
     const queue = read("server/todayCallQueue.ts");
 
     expect(today).toContain("assignedTaskExceptions.length");
-    expect(today).toContain("An assigned task needs attention.");
-    expect(today).toContain("`Next: ${current.name}`");
+    expect(today).toContain("Good morning");
+    expect(today).toContain("people need");
+    expect(today).toContain("Start with ${current.name}");
     expect(today).toContain('"Start call"');
     expect(today).not.toContain(
       "Work the hottest customer. AmarktAI handles the admin around it."
@@ -61,6 +62,7 @@ describe("Phase 2 daily salesperson workflow", () => {
     const customers = read("client/src/pages/Customers.tsx");
     const assistant = read("client/src/pages/Assistant.tsx");
     const inbox = read("client/src/pages/Inbox.tsx");
+    const inboxService = read("server/salesInbox.ts");
     const app = read("client/src/App.tsx");
     const layout = read("client/src/components/DashboardLayout.tsx");
     const calls = read("client/src/pages/LiveCalls.tsx");
@@ -78,13 +80,20 @@ describe("Phase 2 daily salesperson workflow", () => {
     expect(assistant).toContain("trpc.sales.customerDirectory.useQuery");
     expect(assistant).toContain("trpc.sales.customerDetail.useQuery");
     expect(assistant).not.toContain("trpc.sales.customers.useQuery");
-    expect(assistant).toContain('params.get("contactId")');
+    expect(assistant).toContain("requestedAssistantContactId()");
+    expect(assistant).toContain(
+      "if (contactId || explicitContactId) return;"
+    );
+    expect(assistant).toContain("explicitContactId");
+    expect(customers).toContain("selected?.id ?? selectedId");
     expect(assistant).toContain('label: "Open Review"');
 
     expect(inbox).toContain("trpc.sales.inbox.useQuery");
     expect(inbox).toContain("trpc.sales.syncInbox.useMutation");
     expect(inbox).toContain("Draft reply");
-    expect(inbox).toContain("nothing is sent without Review approval");
+    expect(inbox).toContain("does not send a response");
+    expect(inbox).toContain("Draft reply prepares work for");
+    expect(inboxService).toContain("eq(inboundMessages.needsAction, true)");
     expect(app).toContain('<Route path="/inbox" component={Inbox} />');
 
     expect(layout).toContain('label: "Today"');

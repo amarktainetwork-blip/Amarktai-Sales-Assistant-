@@ -49,6 +49,9 @@ export default function Today() {
   );
   const utils = trpc.useUtils();
   const syncAll = trpc.connectedSystems.syncAll.useMutation();
+  const [activeTab, setActiveTab] = useState<
+    "now" | "queue" | "schedule" | "replies"
+  >("now");
   const [showAll, setShowAll] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const refreshInFlight = useRef(false);
@@ -71,6 +74,9 @@ export default function Today() {
     today.data?.queues.assignedTaskExceptions ?? [];
   const upcoming = today.data?.queues.upcoming ?? [];
   const current = callQueue[0];
+  const replyQueue = callQueue.filter(
+    item => item.primaryKind === "inbound_reply"
+  );
   const currentCustomer = trpc.sales.customerDetail.useQuery(
     { contactId: current?.contactId ?? 1 },
     { enabled: Boolean(current?.contactId), retry: false }
@@ -78,6 +84,28 @@ export default function Today() {
   const visibleQueue = showAll ? callQueue.slice(1) : callQueue.slice(1, 8);
   const workspace = today.data?.workspace.organisation;
   const taskMetrics = today.data?.taskData.metrics;
+  const preferredName =
+    organisation.data?.memberOnboarding.preferredName?.trim() ||
+    "there";
+  const localHour = (() => {
+    try {
+      return Number(
+        new Intl.DateTimeFormat("en-GB", {
+          timeZone: workspace?.timezone || "UTC",
+          hour: "2-digit",
+          hour12: false,
+        }).format(new Date())
+      );
+    } catch {
+      return new Date().getHours();
+    }
+  })();
+  const greeting =
+    localHour < 12
+      ? "Good morning"
+      : localHour < 18
+        ? "Good afternoon"
+        : "Good evening";
 
   useEffect(() => {
     if (!organisationId) return;
@@ -188,13 +216,14 @@ export default function Today() {
         <header className="amk-day__header">
           <div>
             <p className="amk-day__eyebrow">Your sales day</p>
-            <h1>
+            <h1>{greeting}, {preferredName}.</h1>
+            <p className="amk-day__orientation">
               {assignedTaskExceptions.length
-                ? "An assigned task needs attention."
+                ? "There is assigned work that needs safe CRM context before you continue."
                 : current
-                  ? `Next: ${current.name}`
-                  : "You are caught up."}
-            </h1>
+                  ? `${callQueue.length} ${callQueue.length === 1 ? "person needs" : "people need"} your attention. Start with ${current.name}.`
+                  : "Nothing needs immediate attention. Upcoming commitments stay protected below."}
+            </p>
             <p className="amk-day__freshness">
               <span aria-hidden="true" />
               {freshnessLabel(
@@ -270,7 +299,37 @@ export default function Today() {
           </div>
         </section>
 
-        {assignedTaskExceptions.length ? (
+        <div
+          className="amk-day__tabs"
+          role="tablist"
+          aria-label="Today workspace"
+        >
+          {[
+            ["now", "Now", callQueue.length],
+            ["queue", "Queue", Math.max(0, callQueue.length - 1)],
+            ["schedule", "Schedule", upcoming.length],
+            ["replies", "Replies", replyQueue.length],
+          ].map(([key, label, count]) => (
+            <button
+              key={String(key)}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === key}
+              className={activeTab === key ? "is-active" : ""}
+              onClick={() =>
+                setActiveTab(
+                  key as "now" | "queue" | "schedule" | "replies"
+                )
+              }
+            >
+              <span>{String(label)}</span>
+              <small>{Number(count)}</small>
+            </button>
+          ))}
+        </div>
+
+        <div className="amk-day__body">
+        {activeTab === "now" && assignedTaskExceptions.length ? (
           <section data-today-task-safety className="amk-day__safety">
             <div className="amk-day__safety-head">
               <span className="amk-day__safety-icon">
@@ -324,7 +383,7 @@ export default function Today() {
           </section>
         ) : null}
 
-        {current ? (
+        {activeTab === "now" ? (current ? (
           <section data-today-primary className="amk-now">
             <div className="amk-now__topline">
               <div>
@@ -498,9 +557,9 @@ export default function Today() {
               </div>
             ) : null}
           </section>
-        )}
+        )) : null}
 
-        {upcoming.length ? (
+        {activeTab === "schedule" && upcoming.length ? (
           <section className="amk-schedule">
             <div className="amk-schedule__intro">
               <p className="amk-day__eyebrow">Protected schedule</p>
@@ -524,61 +583,126 @@ export default function Today() {
           </section>
         ) : null}
 
-        {callQueue.length > 1 ? (
-          <section data-today-queue className="amk-queue">
+        {activeTab === "queue" ? (
+          callQueue.length > 1 ? (
+            <section data-today-queue className="amk-queue">
+              <div className="amk-queue__head">
+                <div>
+                  <p className="amk-day__eyebrow">Up next</p>
+                  <h2>Keep moving without deciding who to find next.</h2>
+                </div>
+                <span>{callQueue.length - 1} remaining</span>
+              </div>
+              <div className="amk-queue__list">
+                {visibleQueue.map((item, offset) => {
+                  const index = offset + 1;
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() =>
+                        navigate(`/customers?contactId=${item.contactId}`)
+                      }
+                      className="amk-queue__row"
+                    >
+                      <span className="amk-queue__number">
+                        {String(index + 1).padStart(2, "0")}
+                      </span>
+                      <span className="amk-queue__person">
+                        <strong>{item.name}</strong>
+                        <small>
+                          {item.courseInterest
+                            ? item.headline + " · " + item.courseInterest
+                            : item.headline}
+                        </small>
+                      </span>
+                      {item.dueAt ? (
+                        <span className="amk-queue__due">
+                          {dateLabel(item.dueAt)}
+                        </span>
+                      ) : null}
+                      <ArrowRight className="amk-queue__arrow" />
+                    </button>
+                  );
+                })}
+                {callQueue.length > 8 ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowAll(value => !value)}
+                    className="amk-queue__more"
+                  >
+                    {showAll
+                      ? "Show priority view"
+                      : `Show all ${callQueue.length} people`}
+                  </button>
+                ) : null}
+              </div>
+            </section>
+          ) : (
+            <section className="amk-day__empty amk-day__empty--compact">
+              <CheckCircle2 />
+              <h2>No additional people are waiting.</h2>
+              <p>The current customer is the only person needing attention.</p>
+            </section>
+          )
+        ) : null}
+
+        {activeTab === "schedule" && !upcoming.length ? (
+          <section className="amk-day__empty amk-day__empty--compact">
+            <CheckCircle2 />
+            <h2>No future commitments are scheduled.</h2>
+            <p>New timed work will appear here when the CRM provides it.</p>
+          </section>
+        ) : null}
+
+        {activeTab === "replies" ? (
+          <section className="amk-replies">
             <div className="amk-queue__head">
               <div>
-                <p className="amk-day__eyebrow">Up next</p>
-                <h2>Keep moving without deciding who to find next.</h2>
+                <p className="amk-day__eyebrow">Customer replies</p>
+                <h2>Only replies that still need action.</h2>
               </div>
-              <span>{callQueue.length - 1} remaining</span>
+              <span>{replyQueue.length} open</span>
             </div>
-            <div className="amk-queue__list">
-              {visibleQueue.map((item, offset) => {
-                const index = offset + 1;
-                return (
+            {replyQueue.length ? (
+              <div className="amk-queue__list">
+                {replyQueue.map((item, index) => (
                   <button
                     key={item.key}
                     type="button"
-                    onClick={() =>
-                      navigate(`/customers?contactId=${item.contactId}`)
-                    }
                     className="amk-queue__row"
+                    onClick={() =>
+                      navigate(
+                        `/inbox?contactId=${encodeURIComponent(item.contactId)}`
+                      )
+                    }
                   >
                     <span className="amk-queue__number">
                       {String(index + 1).padStart(2, "0")}
                     </span>
                     <span className="amk-queue__person">
                       <strong>{item.name}</strong>
-                      <small>
-                        {item.courseInterest
-                          ? item.headline + " · " + item.courseInterest
-                          : item.headline}
-                      </small>
+                      <small>{item.headline}</small>
                     </span>
                     {item.dueAt ? (
                       <span className="amk-queue__due">
                         {dateLabel(item.dueAt)}
                       </span>
                     ) : null}
-                    <ArrowRight className="amk-queue__arrow" />
+                    <Mail className="amk-queue__arrow" />
                   </button>
-                );
-              })}
-              {callQueue.length > 8 ? (
-                <button
-                  type="button"
-                  onClick={() => setShowAll(value => !value)}
-                  className="amk-queue__more"
-                >
-                  {showAll
-                    ? "Show priority view"
-                    : `Show all ${callQueue.length} people`}
-                </button>
-              ) : null}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="amk-day__empty amk-day__empty--compact">
+                <CheckCircle2 />
+                <h2>No customer replies need action.</h2>
+                <p>Handled communication stays out of this queue.</p>
+              </div>
+            )}
           </section>
         ) : null}
+        </div>
       </div>
     </DashboardLayout>
   );

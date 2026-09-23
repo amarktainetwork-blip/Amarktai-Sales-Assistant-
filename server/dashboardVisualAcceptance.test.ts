@@ -11,7 +11,7 @@ describe("final dashboard information architecture", () => {
       false
     );
     expect(css).toContain(".amarktai-dashboard-sidebar");
-    expect(css.toLowerCase()).toContain("--dash-canvas: #e8eceb");
+    expect(css.toLowerCase()).toContain("--dash-canvas: #e9e7e2");
     expect(app).not.toContain('import "./workspace-handover.css"');
     expect(app).not.toContain('import "./dashboard-client-readability.css"');
     expect(app).not.toContain('import "./final-release.css"');
@@ -41,7 +41,14 @@ describe("final dashboard information architecture", () => {
     );
     const app = readFileSync(path.resolve("client/src/App.tsx"), "utf8");
 
-    for (const label of ["Today", "Customers", "Calls", "AmarktAI", "Review"])
+    for (const label of [
+      "Today",
+      "Customers",
+      "Inbox",
+      "Calls",
+      "AmarktAI",
+      "Review",
+    ])
       expect(layout).toContain(`label: "${label}"`);
     expect(layout).toContain('label: "CRM"');
     expect(layout).toContain('path: "/crm"');
@@ -109,6 +116,14 @@ describe("final dashboard information architecture", () => {
     expect(today).not.toContain("Work the hottest customer");
     expect(today).toContain("Immediate work is clear.");
     expect(today).toContain("AmarktAI prepares admin");
+    for (const tab of ["Now", "Queue", "Schedule", "Replies"])
+      expect(today).toContain(`"${tab}"`);
+    expect(today).toContain('role="tablist"');
+    expect(today).toContain('className="amk-day__body"');
+    expect(today).toContain('activeTab === "now"');
+    expect(today).toContain('activeTab === "queue"');
+    expect(today).toContain('activeTab === "schedule"');
+    expect(today).toContain('activeTab === "replies"');
     expect(customers).not.toContain("Know the person before you call.");
     expect(customers).toContain("Customer context");
     expect(review).not.toContain(
@@ -202,18 +217,18 @@ describe("final dashboard information architecture", () => {
       "utf8"
     );
 
-    expect(css.toLowerCase()).toContain("--dash-canvas: #e8eceb");
+    expect(css.toLowerCase()).toContain("--dash-canvas: #e9e7e2");
     expect(css.toLowerCase()).toContain("--dash-paper: #f7f5f0");
-    expect(css.toLowerCase()).toContain("--dash-ink: #18242e");
-    expect(css.toLowerCase()).toContain("--dash-blue: #315fdd");
+    expect(css.toLowerCase()).toContain("--dash-ink: #202b30");
+    expect(css.toLowerCase()).toContain("--dash-blue: #526f7d");
     expect(css).not.toContain("--handover-blue");
     expect(css).not.toContain("--handover-canvas");
     expect(css).toContain('[class*="whitespace-pre-wrap"]');
     expect(css).toContain("input::placeholder");
 
-    expect(layout).toContain('SidebarInset className="bg-[#E8ECEB]"');
-    expect(layout).toContain("bg-[#E5F0EC]");
-    expect(layout).toContain("bg-[#F3F1EC] text-[#18242E]");
+    expect(layout).toContain('SidebarInset className="bg-[#E9E7E2]"');
+    expect(layout).toContain("bg-[#E2EBE6]");
+    expect(layout).toContain("bg-[#EFEDE7] text-[#202B30]");
     expect(layout).not.toContain(
       'className="amarktai-dashboard-sidebar bg-[#101619]'
     );

@@ -387,8 +387,12 @@ export async function getTodayWork(input: {
 
   const taskContactExternalIds = Array.from(
     new Set(
-      [...taskData.queues.overdueTasks, ...taskData.queues.dueToday]
-        .map(task => task.contactExternalId?.trim())
+      [
+        ...taskData.queues.overdueTasks,
+        ...taskData.queues.dueToday,
+        ...reminders,
+      ]
+        .map(item => item.contactExternalId?.trim())
         .filter((value): value is string => Boolean(value))
     )
   );
@@ -439,6 +443,32 @@ export async function getTodayWork(input: {
         )
     );
   };
+  const reminderWasAlreadyWorked = (
+    reminder: (typeof reminders)[number]
+  ) => {
+    if (!reminder.contactExternalId || !reminder.dueAt) return false;
+    return recentTaskActivities.some(activity => {
+      if (
+        activity.contactExternalId !== reminder.contactExternalId ||
+        activity.occurredAt < reminder.dueAt ||
+        !activity.ownerExternalId ||
+        !belongsToUser(activity.ownerExternalId, activity.connectedSystemId)
+      )
+        return false;
+      const ownerEmail =
+        ownerEmailBySystemAndOwner.get(
+          `${activity.connectedSystemId}:${activity.ownerExternalId}`
+        ) || null;
+      return salespersonActivityProvesTaskHandled(
+        activity,
+        activity.ownerExternalId,
+        ownerEmail
+      );
+    });
+  };
+  const currentReminders = reminders.filter(
+    reminder => !reminderWasAlreadyWorked(reminder)
+  );
   const overdueTasks = taskData.queues.overdueTasks.filter(
     task => currentTask(task) && !taskWasAlreadyWorked(task)
   );
@@ -517,7 +547,7 @@ export async function getTodayWork(input: {
         ...overdueTasks.map(task => task.contactExternalId),
         ...dueToday.map(task => task.contactExternalId),
         ...currentInbound.map(message => message.contactExternalId),
-        ...reminders.map(reminder => reminder.contactExternalId),
+        ...currentReminders.map(reminder => reminder.contactExternalId),
         ...newLeadWork.map(item => item.contactExternalId),
       ].filter((value): value is string => Boolean(value))
     )
@@ -573,7 +603,7 @@ export async function getTodayWork(input: {
     overdueTasks,
     dueToday,
     inbound: currentInbound,
-    reminders: reminders.map(reminder => ({
+    reminders: currentReminders.map(reminder => ({
       id: reminder.id,
       contactExternalId: reminder.contactExternalId,
       title: reminder.title,
@@ -719,13 +749,14 @@ export async function getTodayWork(input: {
     role: membership.role,
     requiresOwnerMapping: ownerIds.size === 0,
     metrics: {
-      dueToday: dueToday.length + reminders.length + callbacks.length,
+      dueToday:
+        dueToday.length + currentReminders.length + callbacks.length,
       overdue: overdueTasks.length,
       staleOpportunities: staleOpportunities.length,
       noNextStep: noNextStep.length,
       priorityRecords: priority.length,
       inboundNeedsAction: currentInbound.length,
-      remindersDue: reminders.length,
+      remindersDue: currentReminders.length,
       callbacksDue: callbacks.length,
       awaitingTaskReview: pendingTaskExternalIds.length,
       newLeads: newLeadQueue.length,
@@ -737,7 +768,7 @@ export async function getTodayWork(input: {
       dueToday: dueToday.slice(0, 12),
       overdueTasks: overdueTasks.slice(0, 12),
       inbound: currentInbound.slice(0, 20),
-      reminders: reminders.slice(0, 20),
+      reminders: currentReminders.slice(0, 20),
       callbacks: callbacks.slice(0, 20),
       priority,
       callQueue,

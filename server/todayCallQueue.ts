@@ -132,7 +132,7 @@ export function buildTodayCallQueue(input: {
     );
     const overdue = Boolean(task.dueAt && task.dueAt < now);
     candidates.push({
-      rank: timeCritical ? 2 : overdue ? 3 : defaultRank,
+      rank: overdue ? 2 : timeCritical ? 3 : defaultRank,
       occurredAt: task.dueAt?.valueOf() ?? Number.MAX_SAFE_INTEGER,
       contact,
       kind,
@@ -155,7 +155,7 @@ export function buildTodayCallQueue(input: {
     );
     if (!contact) continue;
     candidates.push({
-      rank: 5,
+      rank: 0,
       occurredAt: lead.createdAt.valueOf(),
       contact,
       kind: "new_lead",
@@ -176,7 +176,7 @@ export function buildTodayCallQueue(input: {
     if (!contact) continue;
     const saleIntent = message.classification?.category === "sale_intent";
     candidates.push({
-      rank: saleIntent ? 0 : 1,
+      rank: 1,
       occurredAt: message.receivedAt.valueOf(),
       contact,
       kind: "inbound_reply",
@@ -202,7 +202,7 @@ export function buildTodayCallQueue(input: {
       reminder.dueAt >= now && reminder.dueAt <= dueSoonCutoff;
     const overdue = reminder.dueAt < now;
     candidates.push({
-      rank: timeCritical ? 2 : overdue ? 3 : 4,
+      rank: overdue ? 2 : timeCritical ? 3 : 4,
       occurredAt: reminder.dueAt.valueOf(),
       contact,
       kind: "confirmed_follow_up",

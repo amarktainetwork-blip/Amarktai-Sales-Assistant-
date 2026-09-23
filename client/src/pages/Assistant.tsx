@@ -76,8 +76,15 @@ function AssistantMark() {
   );
 }
 
+function requestedAssistantContactId() {
+  const value = Number(
+    new URLSearchParams(window.location.search).get("contactId")
+  );
+  return Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
 export default function Assistant() {
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
   const { user } = useAuth();
   const organisation = trpc.organisation.current.useQuery();
   const organisationId = organisation.data?.organisationId;
@@ -88,7 +95,10 @@ export default function Assistant() {
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
-  const [contactId, setContactId] = useState<number | undefined>();
+  const explicitContactId = requestedAssistantContactId();
+  const [contactId, setContactId] = useState<number | undefined>(
+    () => explicitContactId
+  );
   const [contextSearch, setContextSearch] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -133,16 +143,18 @@ export default function Assistant() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const prompt = params.get("prompt")?.trim();
-    const selected = Number(params.get("contactId"));
+    const selected = requestedAssistantContactId();
     if (prompt) setDraft(prompt.slice(0, 12_000));
-    if (Number.isInteger(selected) && selected > 0) setContactId(selected);
-  }, []);
+    if (selected && selected !== contactId) setContactId(selected);
+  }, [location, contactId]);
 
   useEffect(() => {
-    if (contactId) return;
+    // An explicit customer in the URL is authoritative. Today is only a
+    // fallback when AmarktAI is opened without customer context.
+    if (contactId || explicitContactId) return;
     const next = today.data?.queues.callQueue?.[0];
     if (next?.contactId) setContactId(next.contactId);
-  }, [contactId, today.data?.queues.callQueue]);
+  }, [contactId, explicitContactId, today.data?.queues.callQueue]);
 
   useEffect(() => {
     chatEnd.current?.scrollIntoView({ behavior: "smooth", block: "end" });

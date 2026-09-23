@@ -188,16 +188,19 @@ describe("Today call queue", () => {
     });
 
     expect(queue.map(item => item.name)).toEqual([
-      "Alice Example",
-      "Bob",
-      "Cara",
-      "Dan",
       "Erin",
+      "Alice Example",
+      "Cara",
+      "Bob",
+      "Dan",
     ]);
-    expect(queue[1].reasons).toContain("Scheduled task due within 30 minutes");
+    expect(queue[0].primaryKind).toBe("new_lead");
+    expect(queue[1].primaryKind).toBe("inbound_reply");
     expect(queue[2].reasons).toEqual(["Overdue task"]);
-    expect(queue[3].reasons).toEqual(["Task due today"]);
-    expect(queue[4].primaryKind).toBe("new_lead");
+    expect(queue[3].reasons).toContain(
+      "Scheduled task due within 30 minutes"
+    );
+    expect(queue[4].reasons).toEqual(["Task due today"]);
   });
 
   it("treats a task due now as urgent but does not relabel overdue work as due-soon", () => {
@@ -238,9 +241,11 @@ describe("Today call queue", () => {
       ],
     });
 
-    expect(queue.map(item => item.name)).toEqual(["Bob", "Cara"]);
-    expect(queue[0].reasons).toEqual(["Scheduled task due within 30 minutes"]);
-    expect(queue[1].reasons).toEqual(["Overdue task"]);
+    expect(queue.map(item => item.name)).toEqual(["Cara", "Bob"]);
+    expect(queue[0].reasons).toEqual(["Overdue task"]);
+    expect(queue[1].reasons).toEqual([
+      "Scheduled task due within 30 minutes",
+    ]);
   });
 
   it("never queues work without an exact owned normalized contact", () => {
@@ -299,7 +304,7 @@ describe("Today call queue", () => {
 });
 
 describe("Today new lead priority", () => {
-  it("puts a possible-sale inbound reply ahead of an untouched new lead", () => {
+  it("puts an untouched new lead ahead of an inbound reply", () => {
     const queue = buildTodayCallQueue({
       contacts,
       newLeads: [
@@ -323,14 +328,18 @@ describe("Today new lead priority", () => {
       overdueTasks: [],
       dueToday: [],
     });
-    expect(queue.map(item => item.name)).toEqual(["Bob", "Alice Example"]);
+    expect(queue.map(item => item.name)).toEqual(["Alice Example", "Bob"]);
     expect(queue[0]).toMatchObject({
+      primaryKind: "new_lead",
+      workItemIds: [90],
+    });
+    expect(queue[1]).toMatchObject({
       primaryKind: "inbound_reply",
       reasons: ["Possible sale or payment step needs attention"],
     });
   });
 
-  it("keeps overdue work ahead of an ordinary new lead while carrying course context", () => {
+  it("keeps a genuine new lead ahead of overdue work while carrying course context", () => {
     const queue = buildTodayCallQueue({
       now: new Date("2026-09-17T10:00:00Z"),
       contacts: [
@@ -361,15 +370,15 @@ describe("Today new lead priority", () => {
       inbound: [],
       dueToday: [],
     });
-    expect(queue.map(item => item.name)).toEqual(["Bob", "Alice Example"]);
+    expect(queue.map(item => item.name)).toEqual(["Alice Example", "Bob"]);
     expect(queue[0]).toMatchObject({
-      primaryKind: "overdue_task",
-      reasons: ["Overdue task"],
-    });
-    expect(queue[1]).toMatchObject({
       primaryKind: "new_lead",
       courseInterest: "Cyber Security",
       workItemIds: [90],
+    });
+    expect(queue[1]).toMatchObject({
+      primaryKind: "overdue_task",
+      reasons: ["Overdue task"],
     });
   });
 });

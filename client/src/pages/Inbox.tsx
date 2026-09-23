@@ -86,19 +86,16 @@ export default function Inbox() {
     <DashboardLayout>
       <div
         id="inbox-page"
-        className="mx-auto max-w-[1380px] space-y-5 text-[#26354A]"
+        className="amk-inbox-page mx-auto max-w-[1380px] text-[#26354A]"
       >
-        <header className="flex flex-col gap-4 rounded-3xl border border-[#DCE4EE] bg-white p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <header className="amk-page-intro">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#55788B]">
-              Sales inbox
-            </p>
-            <h1 className="mt-2 font-display text-4xl font-bold tracking-[-.05em]">
-              Customer replies, without the CRM hunt.
-            </h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-[#66758A]">
-              Read incoming sales messages here. AmarktAI can prepare the reply
-              and customer admin, but nothing is sent without Review approval.
+            <p className="handover-kicker">Sales inbox</p>
+            <h1>Replies that still need you.</h1>
+            <p>
+              This is an action queue, not message history. Once a reply has
+              genuinely been handled, it leaves this list and stays retired
+              unless a newer customer reply needs attention.
             </p>
           </div>
           <Button
@@ -111,24 +108,30 @@ export default function Inbox() {
             <RefreshCw
               className={`mr-2 h-4 w-4 ${syncInbox.isPending ? "animate-spin" : ""}`}
             />
-            Check inbox now
+            Check inbox
           </Button>
         </header>
 
-        <section className="grid gap-3 sm:grid-cols-3">
-          <InboxMetric label="Recent messages" value={messages.length} />
-          <InboxMetric
-            label="Need action"
-            value={inbox.data?.needsActionCount ?? 0}
-          />
-          <InboxMetric
-            label="Possible sales"
-            value={inbox.data?.saleIntentCount ?? 0}
-          />
+        <section className="amk-inbox-summary" aria-label="Inbox summary">
+          <div>
+            <strong>{messages.length}</strong>
+            <span>
+              {messages.length === 1
+                ? "reply needs action"
+                : "replies need action"}
+            </span>
+          </div>
+          <div>
+            <strong>{inbox.data?.saleIntentCount ?? 0}</strong>
+            <span>possible sales</span>
+          </div>
+          <p>
+            Handled communication is removed automatically after reconciliation.
+          </p>
         </section>
 
-        <section className="grid min-h-[590px] gap-5 xl:grid-cols-[430px_1fr]">
-          <div className="overflow-hidden rounded-3xl border border-[#DCE4EE] bg-white shadow-sm">
+        <section className="amk-inbox-workspace grid gap-5 xl:grid-cols-[430px_1fr]">
+          <div className="amk-inbox-list overflow-hidden rounded-2xl border border-[#DCE4EE] bg-white shadow-sm">
             <div className="border-b border-[#E6EBF2] px-5 py-4">
               <h2 className="font-display text-2xl font-bold tracking-[-.04em]">
                 Latest messages
@@ -142,7 +145,7 @@ export default function Inbox() {
                 Loading the sales inbox…
               </p>
             ) : messages.length ? (
-              <div className="max-h-[620px] divide-y divide-[#EDF1F5] overflow-y-auto">
+              <div className="amk-inbox-list-scroll divide-y divide-[#EDF1F5] overflow-y-auto">
                 {messages.map(message => {
                   const category = categoryOf(message.classification);
                   return (
@@ -183,12 +186,12 @@ export default function Inbox() {
             ) : (
               <div className="p-8 text-center text-sm text-[#66758A]">
                 <Mail className="mx-auto mb-3 h-7 w-7 text-[#55788B]" />
-                No synchronized sales messages yet.
+                No customer replies need action.
               </div>
             )}
           </div>
 
-          <article className="rounded-3xl border border-[#DCE4EE] bg-white p-6 shadow-sm">
+          <article className="amk-inbox-detail rounded-2xl border border-[#DCE4EE] bg-white p-6 shadow-sm">
             {selected ? (
               <>
                 <div className="flex flex-col gap-4 border-b border-[#E6EBF2] pb-5 sm:flex-row sm:items-start sm:justify-between">
@@ -261,18 +264,5 @@ export default function Inbox() {
         </section>
       </div>
     </DashboardLayout>
-  );
-}
-
-function InboxMetric({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-2xl border border-[#DCE4EE] bg-white px-5 py-4 shadow-sm">
-      <p className="text-xs font-bold uppercase tracking-[.1em] text-[#8290A3]">
-        {label}
-      </p>
-      <p className="mt-1 font-display text-3xl font-bold tracking-[-.04em] text-[#26354A]">
-        {value}
-      </p>
-    </div>
   );
 }

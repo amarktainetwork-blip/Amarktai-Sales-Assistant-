@@ -375,7 +375,7 @@ export default function DashboardLayout({
     <SidebarProvider className="sales-workspace">
       <Sidebar
         collapsible="icon"
-        className="amarktai-dashboard-sidebar bg-[#F3F1EC] text-[#18242E]"
+        className="amarktai-dashboard-sidebar bg-[#EFEDE7] text-[#202B30]"
       >
         <SidebarHeader className="h-[72px] justify-center px-5">
           <BrandMark />
@@ -418,16 +418,16 @@ export default function DashboardLayout({
 
         <SidebarFooter className="p-3">
           <div className="flex items-center gap-2 px-1 py-1">
-            <Avatar className="size-9 shrink-0 bg-[#E1E7E8] group-data-[collapsible=icon]:hidden">
-              <AvatarFallback className="bg-[#E1E7E8] text-xs font-bold text-[#45535D]">
+            <Avatar className="size-9 shrink-0 bg-[#E5E8E5] group-data-[collapsible=icon]:hidden">
+              <AvatarFallback className="bg-[#E5E8E5] text-xs font-bold text-[#556068]">
                 {user.name?.slice(0, 1).toUpperCase() ?? "A"}
               </AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
-              <p className="truncate text-sm font-semibold text-[#18242E]">
+              <p className="truncate text-sm font-semibold text-[#202B30]">
                 {user.name || "AmarktAI user"}
               </p>
-              <p className="truncate text-xs text-[#6B7881]">
+              <p className="truncate text-xs text-[#7A8286]">
                 {user.email || "Sales workspace"}
               </p>
             </div>
@@ -438,7 +438,7 @@ export default function DashboardLayout({
               }}
               aria-label="Sign out"
               title="Sign out"
-              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-transparent px-2.5 text-xs font-semibold text-[#6B7881] transition hover:bg-[#E1E7E8] hover:text-[#18242E]"
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-transparent px-2.5 text-xs font-semibold text-[#7A8286] transition hover:bg-[#E5E8E5] hover:text-[#202B30]"
             >
               <LogOut className="size-4" />
               <span className="group-data-[collapsible=icon]:hidden">
@@ -449,16 +449,16 @@ export default function DashboardLayout({
         </SidebarFooter>
       </Sidebar>
 
-      <SidebarInset className="bg-[#E8ECEB]">
+      <SidebarInset className="bg-[#E9E7E2]">
         <AppTopbar title={pageTitle(location)} />
         <main className="min-h-[calc(100vh-46px)] px-4 pb-6 pt-1 sm:px-6 lg:px-8">
           {dueAttention?.dueAt ? (
             <div
               role="status"
-              className="amk-attention amk-attention--time bg-[#E5F0EC]"
+              className="amk-attention amk-attention--time bg-[#E2EBE6]"
             >
               <div className="flex min-w-0 items-center gap-3">
-                <CalendarClock className="h-4 w-4 shrink-0 text-[#247B74]" />
+                <CalendarClock className="h-4 w-4 shrink-0 text-[#5F7D69]" />
                 <span className="min-w-0">
                   <strong className="font-semibold">{dueAttention.name}</strong>
                   {" · "}
@@ -795,8 +795,8 @@ function AppNavItem({ icon: Icon, label, path, badge }: NavItem) {
         aria-label={label}
         className={`h-11 rounded-lg px-3 transition-colors ${
           active
-            ? "bg-[#203536] text-[#F2EEE7] hover:bg-[#203536] hover:text-[#F2EEE7]"
-            : "text-[#A6B0AD] hover:bg-[#1B252B] hover:text-[#F2EEE7]"
+            ? "bg-[#DFE7E9] text-[#3F5966] hover:bg-[#DFE7E9] hover:text-[#3F5966]"
+            : "text-[#6F787D] hover:bg-[#E5E8E5] hover:text-[#202B30]"
         }`}
       >
         <Icon className="size-[18px]" />
@@ -804,7 +804,7 @@ function AppNavItem({ icon: Icon, label, path, badge }: NavItem) {
           {label}
         </span>
         {badge && badge > 0 ? (
-          <span className="ml-auto rounded-full bg-[#3FAE9D] px-2 py-0.5 text-[10px] font-bold text-[#0D1114] group-data-[collapsible=icon]:hidden">
+          <span className="ml-auto rounded-full bg-[#526F7D] px-2 py-0.5 text-[10px] font-bold text-white group-data-[collapsible=icon]:hidden">
             {badge > 99 ? "99+" : badge}
           </span>
         ) : null}
