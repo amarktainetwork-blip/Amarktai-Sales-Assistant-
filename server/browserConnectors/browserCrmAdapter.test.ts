@@ -273,9 +273,7 @@ describe("Genie task owner picker safety", () => {
   it("recognizes an already-active exact owner quick filter in the Tasks URL", () => {
     const owner = "yZrFI0ptOyvG3ZXvs7iZ";
     const quickFilters = encodeURIComponent(
-      JSON.stringify([
-        { field: "owners", operator: "eq", value: [owner] },
-      ])
+      JSON.stringify([{ field: "owners", operator: "eq", value: [owner] }])
     );
     expect(
       genieTaskUrlContainsOwnerFilter(
@@ -317,7 +315,9 @@ describe("browser profile", () => {
     );
     expect(source).toContain('operationKey === "task.sync"');
     expect(source).toContain("isCanonicalGenieTaskGridScript(script)");
-    expect(source).toContain('GENIE_TASK_GRID_PATH = "/objects/task/records/search"');
+    expect(source).toContain(
+      'GENIE_TASK_GRID_PATH = "/objects/task/records/search"'
+    );
     expect(source).toContain("executeGenieTaskGridRead");
     expect(source).toContain('locator("div.quick-filter.button")');
     expect(source).toContain("Assignee\\s*:");
@@ -345,9 +345,12 @@ describe("browser profile", () => {
     expect(source).toContain("CRM_READ_REPROOF_OWNER_REQUIRED");
     expect(source).toContain("CRM_READ_REPROOF_USER_SCOPE_MISMATCH");
     expect(source).toContain("CRM_READ_REPROOF_CAPABILITY_NOT_AUTHORIZED");
-    expect(source).toContain('resource: "contacts" | "tasks" | "opportunities"');
+    expect(source).toContain(
+      'resource: "contacts" | "tasks" | "opportunities" | "activities"'
+    );
     expect(source).toContain('list("syncTasks", task');
     expect(source).toContain('"syncOpportunities"');
+    expect(source).toContain('"syncActivities"');
     expect(source).toContain("allowTestReady: true");
     expect(source).toContain("publishByUserId: input.publishByUserId");
   });
