@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   calculateCurrentReadiness,
+  healthSummaryAfterReadiness,
   shouldPreserveConnectionStatus,
 } from "./currentReadiness";
 import { browserOperationStatusAfterResult } from "../browserConnectors/learnedOperations";
@@ -14,6 +15,21 @@ const base = {
   ],
 };
 describe("current readiness convergence", () => {
+  it("clears stale transient browser-control health text after current reads recover", () => {
+    expect(
+      healthSummaryAfterReadiness({
+        currentReady: true,
+        previousSummary: "CRM_VIEWER_AGENT_CONTROL_ACTIVE",
+      })
+    ).toBe("Browser CRM reads are current; proven capabilities are available.");
+    expect(
+      healthSummaryAfterReadiness({
+        currentReady: false,
+        previousSummary: "CRM_VIEWER_AGENT_CONTROL_ACTIVE",
+      })
+    ).toBe("CRM_VIEWER_AGENT_CONTROL_ACTIVE");
+  });
+
   it("recovers authentication_expired only after a successful authenticated browser proof", () => {
     expect(
       shouldPreserveConnectionStatus("authentication_expired", false)

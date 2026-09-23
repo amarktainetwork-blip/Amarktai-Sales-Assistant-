@@ -110,6 +110,16 @@ describe("CRM workspace customer interaction contract", () => {
     expect(source).not.toContain("readyCapabilities.map");
   });
 
+  it("separates proven CRM data health from the interactive browser viewer state", () => {
+    expect(source).toContain('backendReady={["ready", "limited_permissions"].includes(');
+    expect(source).toContain('"CRM data connected"');
+    expect(source).toContain('"CRM data needs attention"');
+    expect(source).toContain(
+      "AmarktAI's CRM reads are connected. Reconnect the browser only when you need the interactive Genie window."
+    );
+    expect(source).toContain("backendHealthSummary || status");
+  });
+
   it("forces a fresh isolated session when the customer reconnects", () => {
     expect(source).toContain(
       "const openViewer = async (forceReconnect = false)"

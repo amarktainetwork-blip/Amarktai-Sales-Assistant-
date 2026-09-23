@@ -369,6 +369,10 @@ export default function CrmWorkspace() {
             key={selected.id}
             connectedSystemId={selected.id}
             crmName={selected.displayName}
+            backendReady={["ready", "limited_permissions"].includes(
+              selected.status
+            )}
+            backendHealthSummary={selected.lastHealthSummary}
             systems={systems.data ?? []}
             onChoose={id => navigate(`/crm/${id}`)}
             onToday={() => navigate("/today")}
@@ -493,6 +497,8 @@ export default function CrmWorkspace() {
 function LiveWorkspace({
   connectedSystemId,
   crmName,
+  backendReady,
+  backendHealthSummary,
   systems,
   onChoose,
   onToday,
@@ -500,6 +506,8 @@ function LiveWorkspace({
 }: {
   connectedSystemId: number;
   crmName: string;
+  backendReady: boolean;
+  backendHealthSummary?: string | null;
   systems: Array<{ id: number; displayName: string; baseUrl?: string | null }>;
   onChoose: (id: number) => void;
   onToday: () => void;
@@ -1038,6 +1046,9 @@ function LiveWorkspace({
   })();
 
   const authReady = authenticationState === "AUTHENTICATED";
+  const backendStatus = backendReady
+    ? "CRM data connected"
+    : "CRM data needs attention";
   const availableSystems = systems.filter(system => system.baseUrl);
 
   return (
@@ -1109,11 +1120,14 @@ function LiveWorkspace({
         <div className="hidden min-w-0 items-center gap-2 lg:flex">
           <span
             className={`h-2 w-2 shrink-0 rounded-full ${
-              authReady ? "bg-emerald-500" : "bg-amber-400"
+              backendReady ? "bg-emerald-500" : "bg-amber-400"
             }`}
           />
-          <span className="max-w-52 truncate text-xs font-semibold text-[#526277]">
-            {status}
+          <span
+            className="max-w-52 truncate text-xs font-semibold text-[#526277]"
+            title={backendHealthSummary || status}
+          >
+            {backendStatus}
           </span>
         </div>
 
@@ -1215,11 +1229,15 @@ function LiveWorkspace({
 
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
               <div className="rounded-xl border border-[#DCE7F6] bg-[#F4F8FF] p-3">
-                <p className="text-xs font-bold text-[#26354A]">{status}</p>
+                <p className="text-xs font-bold text-[#26354A]">
+                  {backendStatus}
+                </p>
                 <p className="mt-1 text-xs leading-5 text-[#6C798B]">
                   {authReady
-                    ? "Your private CRM session is connected. Ask me to work with the customer or use the CRM yourself."
-                    : "Finish signing in inside the CRM. Your password and verification code stay between you and the CRM."}
+                    ? "Your CRM data connection and private browser session are both available."
+                    : backendReady
+                      ? "AmarktAI's CRM reads are connected. Reconnect the browser only when you need the interactive Genie window."
+                      : "Finish signing in inside the CRM. Your password and verification code stay between you and the CRM."}
                 </p>
               </div>
 

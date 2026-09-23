@@ -21,6 +21,7 @@ import {
   salesWorkItems,
 } from "../drizzle/schema";
 import { getDb } from "./db";
+import { isSyntheticTestContact } from "./salesWork";
 import { requireOrganisationMembership } from "./organisation";
 import {
   getClientActionConfiguration,
@@ -38,6 +39,16 @@ function ageDays(value?: Date | null, now = new Date()) {
 
 function normalizedTaskTitle(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+export const TASK_WORK_EARLY_WINDOW_MS = 30 * 60_000;
+
+export function activityFallsWithinWorkedTaskWindow(
+  activityAt: Date,
+  dueAt: Date,
+  earlyWindowMs = TASK_WORK_EARLY_WINDOW_MS
+) {
+  return activityAt.getTime() >= dueAt.getTime() - earlyWindowMs;
 }
 
 export function salespersonActivityProvesTaskHandled(
@@ -435,7 +446,7 @@ export async function getTodayWork(input: {
       activity =>
         activity.connectedSystemId === task.connectedSystemId &&
         activity.contactExternalId === task.contactExternalId &&
-        activity.occurredAt >= task.dueAt! &&
+        activityFallsWithinWorkedTaskWindow(activity.occurredAt, task.dueAt!) &&
         salespersonActivityProvesTaskHandled(
           activity,
           task.ownerExternalId!,
@@ -450,7 +461,10 @@ export async function getTodayWork(input: {
     return recentTaskActivities.some(activity => {
       if (
         activity.contactExternalId !== reminder.contactExternalId ||
-        activity.occurredAt < reminder.dueAt ||
+        !activityFallsWithinWorkedTaskWindow(
+          activity.occurredAt,
+          reminder.dueAt
+        ) ||
         !activity.ownerExternalId ||
         !belongsToUser(activity.ownerExternalId, activity.connectedSystemId)
       )
@@ -579,7 +593,20 @@ export async function getTodayWork(input: {
         )
     : [];
 
-  const enrichedWorkContacts = workContacts.map(contact => {
+  const syntheticContactIds = new Set(
+    workContacts
+      .filter(contact =>
+        isSyntheticTestContact({ email: contact.email ?? undefined })
+      )
+      .map(contact => contact.externalId)
+  );
+  const activeNewLeadWork = newLeadWork.filter(
+    item => !syntheticContactIds.has(item.contactExternalId!)
+  );
+
+  const enrichedWorkContacts = workContacts
+    .filter(contact => !syntheticContactIds.has(contact.externalId))
+    .map(contact => {
     const interest = deriveCustomerInterest({
       mappings: workspace.customerFieldMappings,
       attributes: normalizedCustomerAttributes(contact.raw),
@@ -591,10 +618,10 @@ export async function getTodayWork(input: {
       interestValues: interest.values,
       tags: interest.tags,
     };
-  });
+    });
   const callQueue = buildTodayCallQueue({
     now,
-    newLeads: newLeadWork.map(item => ({
+    newLeads: activeNewLeadWork.map(item => ({
       workItemId: item.id,
       connectedSystemId: item.connectedSystemId!,
       contactExternalId: item.contactExternalId!,
