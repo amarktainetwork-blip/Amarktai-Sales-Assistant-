@@ -6,6 +6,7 @@ import {
   connectorSupportsTemporaryTestRecord,
   controlledWritePayload,
   coreBrowserCommissioningReady,
+  deterministicContactVerificationSeed,
   inferBrowserOperationCandidates,
   hasStructuredBrowserReadResult,
   shouldInstallCanonicalGenieOperation,
@@ -120,6 +121,28 @@ describe("automatic CRM commissioning product contract", () => {
     expect(
       safeReadCommissioningPassed({ attempted: 1, proven: ["contact.read"] })
     ).toBe(true);
+  });
+
+  it("skips placeholder contact names when deriving a deterministic search target", () => {
+    expect(
+      deterministicContactVerificationSeed(
+        [
+          { externalId: "/contact/placeholder", name: "-" },
+          { externalId: "/contact/unknown", name: "Unknown" },
+          { externalId: "/contact/daniel", name: "Daniel Shovlar" },
+        ],
+        "https://genie.example.test/v2/location/location-1/"
+      )
+    ).toEqual({
+      externalId: "https://genie.example.test/contact/daniel",
+      query: "Daniel Shovlar",
+      derivedFrom: "deterministic_contact_catalogue",
+    });
+    expect(
+      deterministicContactVerificationSeed([
+        { externalId: "/contact/placeholder", name: "-" },
+      ])
+    ).toBeUndefined();
   });
 
   it("retains reads already proven during the same commissioning job but retests older proof", () => {
