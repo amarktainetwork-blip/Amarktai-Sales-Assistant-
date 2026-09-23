@@ -118,6 +118,11 @@ describe("canonical Genie provider pack", () => {
           action: "expect_visible",
           selector: '[tabulator-field="properties.name"]',
         }),
+        expect.objectContaining({
+          action: "read_rows",
+          selector:
+            '.tabulator-row:has([tabulator-field="properties.name"] a[href])',
+        }),
       ])
     );
     expect(taskScript.steps.at(-1)).toMatchObject({
@@ -144,6 +149,18 @@ describe("canonical Genie provider pack", () => {
     ).toContain("pipelineDropdDown-listview");
     const activityScript = GENIE_PROVIDER_PACK.scripts.genie_activity_sync;
     expect(JSON.stringify(activityScript)).toContain("conversations-layout");
+    expect(activityScript.steps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "expect_visible",
+          selector: 'button[aria-label="All"]',
+        }),
+        expect.objectContaining({
+          action: "click",
+          selector: 'button[aria-label="All"]',
+        }),
+      ])
+    );
     expect(JSON.stringify(activityScript)).toContain(
       "conversation-card-checkbox-"
     );
