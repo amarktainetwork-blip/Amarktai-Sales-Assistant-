@@ -53,12 +53,12 @@ describe("AmarktAI customer-facing branding boundary", () => {
       "utf8"
     );
     expect(shell.replace(/\s+/g, " ")).toContain(
-      "<title>AmarktAI Sales Assistant | Sell More. Admin Less.</title>"
+      "<title>AmarktAI Sales Assistant | The Work Around Every Sale</title>"
     );
     expect(shell).toContain(
-      'content="AmarktAI learns how your company sells, works around the CRM you already use, prepares customer conversations and gets the follow-through ready while the salesperson stays in control."'
+      'content="AmarktAI works around the CRM you already use, learns how your company sells, organises the sales day, prepares customer conversations and gets the follow-through ready."'
     );
-    expect(shell).toContain('name="theme-color" content="#0B1118"');
+    expect(shell).toContain('name="theme-color" content="#E8ECEB"');
     expect(shell).not.toContain("Amarktai Sales Assistant");
   });
 
@@ -100,7 +100,7 @@ describe("AmarktAI customer-facing branding boundary", () => {
     expect(imagery).not.toMatch(/ai-generated/i);
     expect(css).toContain(".amk-brand-art");
     expect(css).toContain(".amk-brand-name__ai{color:var(--site-blue,#5E8CFF)}");
-    expect(css).toContain(".amk-site main{display:grid;gap:5px");
+    expect(css).toContain(".amk-site main{display:block");
     expect(css).toContain("filter:none");
     expect(css).toContain(".amk-auth__message h1");
     expect(css).not.toContain("content: url(");

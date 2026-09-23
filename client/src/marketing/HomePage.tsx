@@ -1,12 +1,14 @@
 import {
   ArrowRight,
-  BriefcaseBusiness,
+  BellRing,
+  BrainCircuit,
   Check,
   CheckCircle2,
-  Clock3,
-  MessageSquareText,
+  MessagesSquare,
+  PhoneCall,
   ShieldCheck,
-  Users,
+  Sparkles,
+  Workflow,
 } from "lucide-react";
 import { Link } from "wouter";
 import { BrandName } from "@/components/BrandName";
@@ -14,63 +16,77 @@ import { MarketingLayout } from "./MarketingLayout";
 import { marketingImagery } from "./imagery";
 import { accountLinks } from "./site";
 
-const benefits = [
-  {
-    icon: BriefcaseBusiness,
-    title: "It runs the sales day around you",
-    copy: "New leads, replies, overdue work, scheduled calls and follow-ups become one clear recommended queue. You can reorder it at any time — the assistant guides, you decide.",
-  },
-  {
-    icon: MessageSquareText,
-    title: "It brings the customer story to the call",
-    copy: "The current task, CRM history, opportunity, recent messages, useful notes and approved company knowledge arrive together before you start the conversation.",
-  },
-  {
-    icon: Clock3,
-    title: "It takes the admin off the salesperson",
-    copy: "After the call, the assistant turns the confirmed outcome into notes, reminders, callbacks, follow-up drafts and CRM work ready for review instead of leaving it in somebody's head.",
-  },
-] as const;
-
-const salesLoop = [
+const daySteps = [
   [
     "01",
-    "Start with the work that matters",
-    "The assistant watches the live sources you already use and recommends the customers who need attention now — without locking the salesperson into its order.",
+    "Know who needs you",
+    "New leads, replies, overdue work and timed calls become one clear recommended day.",
   ],
   [
     "02",
-    "Open the customer with context already loaded",
-    "See why this person is here, what happened before, what they asked for, what was promised and what the next conversation needs to achieve.",
+    "Open the full customer story",
+    "The reason for the task, history, messages, opportunity and useful company context are ready together.",
   ],
   [
     "03",
-    "Sell while the assistant keeps track",
-    "With consented call support, the salesperson can stay in the conversation while the assistant captures the important facts and keeps the customer story current.",
+    "Have the conversation",
+    "Go into the call prepared and keep attention on the customer instead of rebuilding context or taking duplicate notes.",
   ],
   [
     "04",
-    "Review the follow-through and move on",
-    "The note, next task, reminder, message draft and commissioned CRM action can be prepared immediately so the salesperson can focus on the next customer.",
+    "Let AmarktAI prepare the follow-through",
+    "Confirmed facts become the summary, reminder, next task, draft and proposed CRM work.",
+  ],
+  [
+    "05",
+    "Review what matters and move on",
+    "Edit, approve or reject consequential work, then continue to the next customer.",
+  ],
+] as const;
+
+const capabilities = [
+  [
+    BellRing,
+    "A current sales day",
+    "Priorities, new leads, replies, overdue work and scheduled calls stay visible without turning the CRM into another to-do list.",
+  ],
+  [
+    PhoneCall,
+    "Prepared calls",
+    "Customer context, history, commitments and relevant company knowledge are assembled before the conversation.",
+  ],
+  [
+    MessagesSquare,
+    "Professional follow-through",
+    "Notes, reminders and context-aware message drafts are prepared from the real interaction rather than from a blank screen.",
+  ],
+  [
+    BrainCircuit,
+    "Company knowledge",
+    "Products, policies, terminology and approved sales context become part of the assistant's working understanding.",
   ],
 ] as const;
 
 export default function HomePage() {
   return (
     <MarketingLayout>
-      <section className="amk-hero amk-swirl amk-swirl--blue">
+      <section className="amk-hero">
         <div className="amk-shell amk-hero__grid">
           <div className="amk-hero__copy">
-            <p className="amk-eyebrow">YOUR SALES DAY, RUN AROUND YOU</p>
+            <p className="amk-eyebrow">
+              AI SALES ASSISTANT · WORKS WITH YOUR CRM
+            </p>
             <h1>
-              Sell more.
-              <span>Let <BrandName /> handle the work around the sale.</span>
+              Your sales team sells.
+              <span>
+                <BrandName /> runs the work around the sale.
+              </span>
             </h1>
             <p className="amk-lead">
-              Keep the CRM your business already uses. <BrandName /> learns how
-              your company sells, keeps the day current, prepares every
-              conversation and gets the follow-through ready — while the
-              salesperson stays in control.
+              Keep the CRM you already use. <BrandName /> learns how your
+              company sells, organises the day, prepares every customer
+              conversation and gets the follow-through ready — while your people
+              stay in control.
             </p>
             <div className="amk-actions">
               <Link
@@ -80,25 +96,24 @@ export default function HomePage() {
                 Start free <ArrowRight size={17} />
               </Link>
               <Link
-                href="/how-it-works"
-                className="amk-button amk-button--ghost"
+                href="/contact"
+                className="amk-button amk-button--secondary"
               >
-                See the sales day
+                Book a demo
               </Link>
             </div>
-            <div className="amk-proofline" aria-label="Product benefits">
+            <div className="amk-proofline" aria-label="Core product principles">
               <span>
                 <Check size={15} /> Keep your CRM
               </span>
               <span>
-                <Check size={15} /> Learns your sales process
+                <Check size={15} /> Teach your process
               </span>
               <span>
-                <Check size={15} /> You stay in control
+                <Check size={15} /> Stay in control
               </span>
             </div>
           </div>
-
           <div className="amk-hero__media">
             <figure className="amk-photo-frame amk-photo-frame--hero">
               <img
@@ -106,44 +121,45 @@ export default function HomePage() {
                 alt={marketingImagery.homeHero.alt}
               />
             </figure>
+            <div className="amk-hero-note">
+              <span>One assistant across the sales day</span>
+              <strong>Priority → Context → Call → Follow-through</strong>
+            </div>
           </div>
         </div>
       </section>
 
-      <section className="amk-benefit-band">
-        <div className="amk-shell amk-benefit-band__grid">
-          <div>
-            <strong>Know who needs you now</strong>
-            <span>Live work becomes a clear recommended next-customer queue.</span>
-          </div>
-          <div>
-            <strong>Stay present in the conversation</strong>
-            <span>The customer story is ready before the call begins.</span>
-          </div>
-          <div>
-            <strong>Move on without losing the admin</strong>
-            <span>Notes, reminders and follow-through are prepared behind you.</span>
-          </div>
+      <section className="amk-intro-strip">
+        <div className="amk-shell amk-intro-strip__inner">
+          <p className="amk-kicker">
+            THE MISSING LAYER BETWEEN YOUR SALESPEOPLE AND THEIR SOFTWARE
+          </p>
+          <h2>Not another CRM. Not another dashboard to manage.</h2>
+          <p>
+            The CRM stores the customer record. Your inbox holds conversations.
+            Your call tools handle calls. <BrandName /> joins the work together
+            so the salesperson does not have to.
+          </p>
         </div>
       </section>
 
-      <section className="amk-section amk-section--light amk-swirl amk-swirl--violet">
+      <section className="amk-section amk-section--soft">
         <div className="amk-shell">
           <div className="amk-section__head amk-section__head--center">
-            <p className="amk-eyebrow">NOT A CHATBOT. NOT ANOTHER CRM.</p>
-            <h2>A sales assistant that actually works through the day with you.</h2>
+            <p className="amk-eyebrow">THE SALES DAY, MADE SIMPLE</p>
+            <h2>
+              One continuous flow from “who needs me?” to “what happens next?”
+            </h2>
             <p>
-              <BrandName /> is built around the moments that steal selling time:
-              deciding what to do next, rebuilding context, taking notes,
-              remembering commitments and doing the admin after the call.
+              Instead of making the salesperson stitch together tasks, messages,
+              customer history and admin, the assistant carries the context
+              forward.
             </p>
           </div>
-          <div className="amk-benefit-grid">
-            {benefits.map(({ icon: Icon, title, copy }) => (
-              <article className="amk-benefit-card" key={title}>
-                <span className="amk-icon-tile">
-                  <Icon size={21} />
-                </span>
+          <div className="amk-day-flow">
+            {daySteps.map(([number, title, copy]) => (
+              <article className="amk-day-step" key={number}>
+                <span className="amk-day-step__number">{number}</span>
                 <h3>{title}</h3>
                 <p>{copy}</p>
               </article>
@@ -152,178 +168,199 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="amk-section amk-section--ice amk-swirl amk-swirl--blue">
-        <div className="amk-shell amk-split">
-          <div className="amk-split__media">
-            <figure className="amk-photo-frame amk-photo-frame--story">
-              <img
-                src={marketingImagery.homeContext.src}
-                alt={marketingImagery.homeContext.alt}
-                loading="lazy"
-              />
-            </figure>
-          </div>
-          <div className="amk-split__copy">
+      <section className="amk-section amk-section--plain">
+        <div className="amk-shell amk-feature-story">
+          <div className="amk-feature-story__copy">
             <p className="amk-eyebrow">KNOW MORE BEFORE YOU SAY HELLO</p>
-            <h2>Open a lead and the customer story is already there.</h2>
+            <h2>
+              Open a customer. The reason for the conversation is already clear.
+            </h2>
             <p>
-              No tab hunt. No rebuilding the history from memory. <BrandName />
-              assembles the useful CRM facts, recent activity, messages,
-              business knowledge and reason for the next action in one place.
+              <BrandName /> brings the useful CRM facts, recent activity,
+              messages, commitments and approved company knowledge into the
+              salesperson's working context before the call begins.
             </p>
             <ul className="amk-check-list">
               <li>
-                <CheckCircle2 size={18} /> What they asked for and why they came in
+                <CheckCircle2 size={18} /> Why this customer needs attention now
               </li>
               <li>
-                <CheckCircle2 size={18} /> What happened in the last conversation
+                <CheckCircle2 size={18} /> What happened before and what was
+                promised
               </li>
               <li>
-                <CheckCircle2 size={18} /> What was promised and when it is due
+                <CheckCircle2 size={18} /> What the next conversation needs to
+                achieve
               </li>
             </ul>
-            <Link href="/how-it-works" className="amk-text-link">
-              See how the sales day works <ArrowRight size={16} />
-            </Link>
           </div>
+          <figure className="amk-photo-frame amk-photo-frame--story">
+            <img
+              src={marketingImagery.homeContext.src}
+              alt={marketingImagery.homeContext.alt}
+              loading="lazy"
+            />
+          </figure>
         </div>
       </section>
 
-      <section className="amk-section amk-section--white amk-swirl amk-swirl--teal">
+      <section className="amk-section amk-section--mist">
+        <div className="amk-shell amk-feature-story amk-feature-story--reverse">
+          <div className="amk-feature-story__copy">
+            <p className="amk-eyebrow">STAY IN THE CONVERSATION</p>
+            <h2>
+              You talk to the customer. <BrandName /> keeps track of what
+              matters.
+            </h2>
+            <p>
+              Where call assistance is enabled with the right consent, important
+              facts and commitments can be captured while the salesperson stays
+              focused on listening, understanding and selling.
+            </p>
+            <div className="amk-inline-points">
+              <span>Call preparation</span>
+              <span>Consented transcript</span>
+              <span>Fact capture</span>
+              <span>Customer context</span>
+            </div>
+          </div>
+          <figure className="amk-photo-frame amk-photo-frame--story">
+            <img
+              src={marketingImagery.homeCall.src}
+              alt={marketingImagery.homeCall.alt}
+              loading="lazy"
+            />
+          </figure>
+        </div>
+      </section>
+
+      <section className="amk-section amk-section--plain">
         <div className="amk-shell">
           <div className="amk-section__head">
             <div>
-              <p className="amk-eyebrow">ONE ASSISTANT ACROSS THE WHOLE DAY</p>
-              <h2>Before the call. During the call. After the call.</h2>
+              <p className="amk-eyebrow">WHAT THE ASSISTANT CARRIES</p>
+              <h2>
+                Less remembering. Less tab hunting. Less admin after every
+                conversation.
+              </h2>
             </div>
             <p>
-              The value is not another screen to manage. It is continuity:
-              <BrandName /> carries the work from priority, to context, to
-              conversation, to the reviewed next step.
+              The product is designed around the work that repeatedly steals
+              time from selling — not around adding another place to type data.
             </p>
           </div>
-          <div className="amk-process-grid">
-            {salesLoop.map(([number, title, copy]) => (
-              <article className="amk-process-card" key={number}>
-                <span>{number}</span>
-                <h3>{title}</h3>
-                <p>{copy}</p>
+          <div className="amk-capability-grid">
+            {capabilities.map(([Icon, title, copy]) => (
+              <article className="amk-capability" key={title}>
+                <span className="amk-icon-tile">
+                  <Icon size={21} />
+                </span>
+                <div>
+                  <h3>{title}</h3>
+                  <p>{copy}</p>
+                </div>
               </article>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="amk-section amk-section--warm amk-swirl amk-swirl--warm">
-        <div className="amk-shell amk-split amk-split--reverse">
-          <div className="amk-split__copy">
-            <p className="amk-eyebrow">THE CALL STAYS HUMAN</p>
-            <h2>You talk. <BrandName /> remembers.</h2>
-            <p>
-              When call assistance is enabled with the right consent, the
-              salesperson can focus on listening and selling while <BrandName />
-              captures the important facts, keeps customer context current and
-              prepares the work that follows.
-            </p>
-            <div className="amk-chip-row">
-              <span>Call context</span>
-              <span>Consented transcript</span>
-              <span>Facts captured</span>
-              <span>Customer notes</span>
-              <span>Callback</span>
-              <span>Follow-up draft</span>
-            </div>
-          </div>
-          <div className="amk-split__media">
-            <figure className="amk-photo-frame amk-photo-frame--story">
-              <img
-                src={marketingImagery.homeCall.src}
-                alt={marketingImagery.homeCall.alt}
-                loading="lazy"
-              />
-            </figure>
-          </div>
-        </div>
-      </section>
-
-      <section className="amk-section amk-section--navy amk-swirl amk-swirl--violet">
-        <div className="amk-shell amk-control-grid">
+      <section className="amk-skill-section">
+        <div className="amk-shell amk-skill-grid">
           <div>
-            <p className="amk-eyebrow">ASSISTANT, NOT A BOSS</p>
-            <h2>It recommends the day. The salesperson still decides.</h2>
+            <p className="amk-eyebrow amk-eyebrow--on-dark">SKILL BUILDER</p>
+            <h2>
+              Your sales process changes. Your software should not need a new
+              development project every time.
+            </h2>
             <p>
-              Work the third lead before the second. Snooze something. Pick
-              another customer. Edit a draft. Reject a suggestion. <BrandName /> is
-              there to remove friction, not replace the salesperson's judgement.
+              Describe a company rule or workflow in plain English.{" "}
+              <BrandName />
+              can map the logic, inspect available CRM capabilities, test the
+              workflow and turn an approved process into a reusable company
+              skill.
             </p>
-          </div>
-          <div className="amk-control-card">
-            <div>
-              <Users size={24} />
-              <span>
-                <strong>Reorder the day</strong>
-                <small>The queue is recommended, never enforced.</small>
-              </span>
-            </div>
-            <div>
-              <ShieldCheck size={24} />
-              <span>
-                <strong>Review important actions</strong>
-                <small>See and change consequential work before it runs.</small>
-              </span>
-            </div>
-            <div>
-              <CheckCircle2 size={24} />
-              <span>
-                <strong>Earn more autonomy deliberately</strong>
-                <small>Trust grows from proven skills and explicit permission.</small>
-              </span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="amk-section amk-section--light amk-swirl amk-swirl--blue">
-        <div className="amk-shell amk-split">
-          <div className="amk-split__media">
-            <figure className="amk-photo-frame amk-photo-frame--story">
-              <img
-                src={marketingImagery.homeTeam.src}
-                alt={marketingImagery.homeTeam.alt}
-                loading="lazy"
-              />
-            </figure>
-          </div>
-          <div className="amk-split__copy">
-            <p className="amk-eyebrow">TEACH IT HOW YOUR COMPANY SELLS</p>
-            <h2>Teach a skill once. Let the whole sales operation benefit.</h2>
-            <p>
-              A manager can describe a real sales rule or workflow in plain
-              English. <BrandName /> maps what it needs, tests the logic, shows what
-              permissions are required and turns the approved process into a
-              reusable company skill — without rebuilding the product for every
-              new rule.
-            </p>
-            <p>
-              Company rules stay with the company. Each salesperson can still
-              develop their own working preferences without overriding policy.
-            </p>
-            <Link href="/how-it-works" className="amk-text-link">
-              See how <BrandName /> learns <ArrowRight size={16} />
+            <Link
+              href="/how-it-works"
+              className="amk-text-link amk-text-link--on-dark"
+            >
+              See how skills are learned <ArrowRight size={16} />
             </Link>
           </div>
+          <div className="amk-skill-flow">
+            <div>
+              <Sparkles size={19} />
+              <span>
+                <strong>Teach</strong>
+                <small>Explain the real process in plain English.</small>
+              </span>
+            </div>
+            <div>
+              <Workflow size={19} />
+              <span>
+                <strong>Map & test</strong>
+                <small>Validate the logic, data and CRM capability.</small>
+              </span>
+            </div>
+            <div>
+              <ShieldCheck size={19} />
+              <span>
+                <strong>Approve permissions</strong>
+                <small>
+                  If a new write is needed, see exactly what it changes before
+                  approving it.
+                </small>
+              </span>
+            </div>
+            <div>
+              <CheckCircle2 size={19} />
+              <span>
+                <strong>Reuse the proven skill</strong>
+                <small>
+                  Run routine logic consistently without rebuilding it each
+                  time.
+                </small>
+              </span>
+            </div>
+          </div>
         </div>
       </section>
 
-      <section className="amk-final-cta amk-swirl amk-swirl--teal">
+      <section className="amk-section amk-section--soft">
+        <div className="amk-shell">
+          <div className="amk-audience-grid">
+            <article>
+              <p className="amk-kicker">FOR THE SALESPERSON</p>
+              <h3>Spend the day with customers, not with admin.</h3>
+              <p>
+                See what matters now, walk into calls prepared, capture the
+                facts and leave with the next step already taking shape.
+              </p>
+            </article>
+            <article>
+              <p className="amk-kicker">FOR THE COMPANY</p>
+              <h3>
+                Teach the process once and keep control of how it is used.
+              </h3>
+              <p>
+                Share approved knowledge and sales rules, support individuals or
+                teams, and commission new external permissions deliberately.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section className="amk-final-cta">
         <div className="amk-shell amk-final-cta__inner">
           <div>
-            <p className="amk-eyebrow">PUT THE SALESPERSON BACK IN SALES</p>
-            <h2>Show <BrandName /> how you sell. Let it give the time back.</h2>
-            <p>
-              Start with one salesperson or bring a team. Keep the CRM and the
-              process you already trust.
+            <p className="amk-eyebrow amk-eyebrow--on-dark">
+              PUT THE SALESPERSON BACK IN SALES
             </p>
+            <h2>
+              Keep your CRM. Keep your people in control. Give them an assistant
+              that carries the work.
+            </h2>
           </div>
           <div className="amk-actions">
             <Link

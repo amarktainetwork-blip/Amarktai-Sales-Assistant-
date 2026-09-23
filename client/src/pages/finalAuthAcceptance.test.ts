@@ -14,7 +14,9 @@ describe("final account presentation", () => {
 
   it("uses account language and the canonical branded AmarktAI wordmark", () => {
     expect(auth).toContain("CREATE ACCOUNT");
-    expect(auth).toContain("<>Create your <BrandName /> account.</>");
+    expect(auth).toContain("Create your");
+    expect(auth).toContain("<BrandName />");
+    expect(auth).toContain("account.");
     expect(auth).toContain("Create account");
     expect(auth).not.toContain("Create your Amarktai account.");
     expect(auth).not.toContain("CREATE WORKSPACE");

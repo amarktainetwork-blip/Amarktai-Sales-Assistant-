@@ -45,9 +45,13 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
       </a>
       <header className="amk-header">
         <div className="amk-shell amk-header__inner">
-          <div className="amk-brand">
-            <BrandMark large inverse />
-          </div>
+          <Link
+            href="/"
+            className="amk-brand"
+            aria-label="AmarktAI Sales Assistant home"
+          >
+            <BrandMark large />
+          </Link>
           <nav className="amk-nav" aria-label="Main navigation">
             {marketingNavigation.map(item => (
               <Link
@@ -68,13 +72,13 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
           </nav>
           <div className="amk-header__actions">
             <Link href={accountLinks.signIn} className="amk-signin">
-              Sign In
+              Sign in
             </Link>
             <Link
               href={accountLinks.getStarted}
               className="amk-button amk-button--primary amk-button--small"
             >
-              Start Free <ArrowRight size={15} />
+              Start free <ArrowRight size={15} />
             </Link>
             <button
               ref={menuButton}
@@ -99,20 +103,20 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
               {marketingNavigation.map(item => (
                 <Link key={item.href} href={item.href}>
                   {item.href === "/about" ? (
-                  <>
-                    Why <BrandName />
-                  </>
-                ) : (
-                  item.label
-                )}
+                    <>
+                      Why <BrandName />
+                    </>
+                  ) : (
+                    item.label
+                  )}
                 </Link>
               ))}
-              <Link href={accountLinks.signIn}>Sign In</Link>
+              <Link href={accountLinks.signIn}>Sign in</Link>
               <Link
                 href={accountLinks.getStarted}
                 className="amk-button amk-button--primary"
               >
-                Start Free
+                Start free
               </Link>
             </div>
           </nav>
@@ -127,23 +131,25 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
             <BrandMark large inverse />
             <h2>Put the salesperson back in sales.</h2>
             <p>
-              <BrandName /> learns how your company sells, works around the CRM
-              you already use and carries the preparation, context, reminders
+              <BrandName /> works around the CRM you already use, learns how
+              your company sells and carries the preparation, context, reminders
               and follow-through that steal time from customer conversations.
             </p>
           </div>
           <div className="amk-footer__links">
             <div>
               <span>Product</span>
-              <Link href="/how-it-works">How It Works</Link>
-              <Link href="/about">Why <BrandName /></Link>
+              <Link href="/how-it-works">How it works</Link>
+              <Link href="/about">
+                Why <BrandName />
+              </Link>
               <Link href="/pricing">Pricing</Link>
             </div>
             <div>
               <span>Get started</span>
-              <Link href={accountLinks.getStarted}>Start Free</Link>
-              <Link href="/contact">Book a Demo</Link>
-              <Link href={accountLinks.signIn}>Sign In</Link>
+              <Link href={accountLinks.getStarted}>Start free</Link>
+              <Link href="/contact">Book a demo</Link>
+              <Link href={accountLinks.signIn}>Sign in</Link>
             </div>
           </div>
         </div>

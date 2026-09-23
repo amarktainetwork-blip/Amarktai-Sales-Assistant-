@@ -59,15 +59,19 @@ export default function Auth() {
     <LocalLoginForm />
   );
 
-  const title = verifying
-    ? "Verify your email."
-    : reset
-      ? "Choose a new password."
-      : isRegister
-        ? <>Create your <BrandName /> account.</>
-        : authView === "forgot"
-          ? "Recover your account."
-          : "Welcome back.";
+  const title = verifying ? (
+    "Verify your email."
+  ) : reset ? (
+    "Choose a new password."
+  ) : isRegister ? (
+    <>
+      Create your <BrandName /> account.
+    </>
+  ) : authView === "forgot" ? (
+    "Recover your account."
+  ) : (
+    "Welcome back."
+  );
   const eyebrow = verifying
     ? "STEP 2 OF 2 · SECURE ACCESS"
     : isRegister
@@ -95,7 +99,9 @@ export default function Auth() {
             </Link>
           </div>
           <div className="amk-auth__message">
-            <h1>You sell. <BrandName /> keeps the day moving.</h1>
+            <h1>
+              You sell. <BrandName /> keeps the day moving.
+            </h1>
             <p>
               Your priorities, customer context, calls, reminders and
               follow-through stay connected around the CRM you already use.
@@ -106,7 +112,7 @@ export default function Auth() {
 
       <section className="amk-auth__form-side">
         <div className="amk-auth__mobile-brand">
-          <BrandMark inverse />
+          <BrandMark />
         </div>
         <div className="amk-auth__form-wrap">
           {invite ? (
@@ -424,8 +430,9 @@ function LocalRegistrationForm() {
       className="amk-auth-form"
     >
       <p className="amk-auth__muted">
-        Create your personal <BrandName /> Network account. Email verification stays
-        on this secure access page before any workspace or company setup opens.
+        Create your personal <BrandName /> Network account. Email verification
+        stays on this secure access page before any workspace or company setup
+        opens.
       </p>
       <Field
         name="register-name"
@@ -693,7 +700,8 @@ function Field({
 function Fineprint() {
   return (
     <p className="amk-auth__fineprint">
-      By continuing, you agree to the <BrandName /> Network Terms and Privacy Policy.
+      By continuing, you agree to the <BrandName /> Network Terms and Privacy
+      Policy.
     </p>
   );
 }

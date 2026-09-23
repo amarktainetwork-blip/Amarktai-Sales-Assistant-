@@ -16,8 +16,12 @@ import NotFound from "@/pages/NotFound";
 import { PRICING_PLANS } from "@shared/pricing";
 
 const pages = [
-  ["/", HomePage, "Sell more."],
-  ["/how-it-works", HowItWorksPage, "Teach it how you sell."],
+  ["/", HomePage, "Your sales team sells."],
+  [
+    "/how-it-works",
+    HowItWorksPage,
+    "Teach the assistant how your company sells.",
+  ],
   ["/pricing", Pricing, "Start small. Prove the time saved."],
   ["/about", AboutPage, "Salespeople were hired to sell."],
   ["/contact", ContactPage, "SHOW US YOUR SALES DAY"],
@@ -83,11 +87,12 @@ describe("final public website", () => {
     const paths = Object.values(marketingImagery).map(image => image.src);
     expect(paths).toHaveLength(12);
     expect(new Set(paths).size).toBe(paths.length);
-    for (const imagePath of paths) expect(imagePath).toMatch(/^\/images\/sales\/.+\.webp$/);
+    for (const imagePath of paths)
+      expect(imagePath).toMatch(/^\/images\/sales\/.+\.webp$/);
     expect(home).toContain("/images/sales/home-hero.webp");
     expect(home).toContain("/images/sales/home-context.webp");
     expect(home).toContain("/images/sales/home-call.webp");
-    expect(home).toContain("/images/sales/home-team.webp");
+    expect(home).not.toContain("/images/sales/home-team.webp");
     expect(how).toContain("/images/sales/how-hero.webp");
     expect(how).toContain("/images/sales/how-crm.webp");
     expect(about).toContain("/images/sales/about-hero.webp");
@@ -102,11 +107,13 @@ describe("final public website", () => {
 
   it("shows the real product instead of a generic CRM assistant", () => {
     const html = render("/", HomePage);
-    expect(html).toContain("Sell more.");
-    expect(html).toContain("NOT A CHATBOT. NOT ANOTHER CRM.");
-    expect(html).toContain("TEACH IT HOW YOUR COMPANY SELLS");
-    expect(html).toContain("ASSISTANT, NOT A BOSS");
-    expect(html).toContain("You talk.");
+    expect(html).toContain("Your sales team sells.");
+    expect(html).toContain(
+      "THE MISSING LAYER BETWEEN YOUR SALESPEOPLE AND THEIR SOFTWARE"
+    );
+    expect(html).toContain("SKILL BUILDER");
+    expect(html).toContain("STAY IN THE CONVERSATION");
+    expect(html).toContain("Keep the CRM you already use.");
     expect(html).toContain("Start free");
     expect(html).toContain("Book a demo");
   });
@@ -127,8 +134,8 @@ describe("final public website", () => {
       `href="${accountLinks.getStarted.replace("&", "&amp;")}"`
     );
     expect(html).toContain(">How It Works<");
-    expect(html).toContain(">Sign In<");
-    expect(html).toContain("Start Free");
+    expect(html).toContain(">Sign in<");
+    expect(html).toContain("Start free");
     expect(html).not.toContain("Amarktai Sales Assistant");
     expect(html).toContain("Part of");
     expect(html).toContain('class="amk-brand-name__ai">AI</span>');
@@ -212,7 +219,7 @@ describe("final public website", () => {
     expect(combined).not.toContain("javascript:void");
   });
 
-  it("uses one canonical dark visual system with launch safeguards", () => {
+  it("uses one canonical soft visual system with launch safeguards", () => {
     const layout = readFileSync(
       path.resolve(process.cwd(), "client/src/marketing/MarketingLayout.tsx"),
       "utf8"
@@ -230,13 +237,13 @@ describe("final public website", () => {
     expect(css).toContain("prefers-reduced-motion: reduce");
     expect(css).toContain(".amk-auth");
     expect(css).toContain(".amk-photo-frame");
-    expect(css).toContain("--site-bg:#111820");
-    expect(css).toContain("--site-accent:#55C8B4");
-    expect(css).toContain(".amk-site main{display:grid;gap:5px");
-    expect(css).toContain(".amk-swirl--violet");
+    expect(css).toContain("--site-bg:#E8ECEB");
+    expect(css).toContain("--site-accent:#315FDD");
+    expect(css).toContain(".amk-site main{display:block");
+    expect(css).toContain(".amk-skill-section");
     expect(css).toContain("filter:none");
-    expect(css).toContain("--dash-canvas: #0D1114");
-    expect(css).toContain("--dash-blue: #3FAE9D");
+    expect(css.toLowerCase()).toContain("--dash-canvas: #0d1114");
+    expect(css.toLowerCase()).toContain("--dash-blue: #3fae9d");
     expect(css).toContain('body:has([data-slot="sidebar-wrapper"])');
     expect(
       existsSync(path.resolve(process.cwd(), "client/src/dashboard-final.css"))
