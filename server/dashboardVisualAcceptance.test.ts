@@ -41,7 +41,14 @@ describe("final dashboard information architecture", () => {
     );
     const app = readFileSync(path.resolve("client/src/App.tsx"), "utf8");
 
-    for (const label of ["Today", "Customers", "Calls", "AmarktAI", "Review"])
+    for (const label of [
+      "Today",
+      "Customers",
+      "Inbox",
+      "Calls",
+      "AmarktAI",
+      "Review",
+    ])
       expect(layout).toContain(`label: "${label}"`);
     expect(layout).toContain('label: "CRM"');
     expect(layout).toContain('path: "/crm"');
@@ -109,6 +116,14 @@ describe("final dashboard information architecture", () => {
     expect(today).not.toContain("Work the hottest customer");
     expect(today).toContain("Immediate work is clear.");
     expect(today).toContain("AmarktAI prepares admin");
+    for (const tab of ["Now", "Queue", "Schedule", "Replies"])
+      expect(today).toContain(`"${tab}"`);
+    expect(today).toContain('role="tablist"');
+    expect(today).toContain('className="amk-day__body"');
+    expect(today).toContain('activeTab === "now"');
+    expect(today).toContain('activeTab === "queue"');
+    expect(today).toContain('activeTab === "schedule"');
+    expect(today).toContain('activeTab === "replies"');
     expect(customers).not.toContain("Know the person before you call.");
     expect(customers).toContain("Customer context");
     expect(review).not.toContain(

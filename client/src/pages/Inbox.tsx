@@ -86,7 +86,7 @@ export default function Inbox() {
     <DashboardLayout>
       <div
         id="inbox-page"
-        className="mx-auto max-w-[1380px] space-y-5 text-[#26354A]"
+        className="amk-inbox-page mx-auto max-w-[1380px] text-[#26354A]"
       >
         <header className="amk-page-intro">
           <div>
@@ -130,8 +130,8 @@ export default function Inbox() {
           </p>
         </section>
 
-        <section className="grid min-h-[590px] gap-5 xl:grid-cols-[430px_1fr]">
-          <div className="overflow-hidden rounded-3xl border border-[#DCE4EE] bg-white shadow-sm">
+        <section className="amk-inbox-workspace grid gap-5 xl:grid-cols-[430px_1fr]">
+          <div className="amk-inbox-list overflow-hidden rounded-2xl border border-[#DCE4EE] bg-white shadow-sm">
             <div className="border-b border-[#E6EBF2] px-5 py-4">
               <h2 className="font-display text-2xl font-bold tracking-[-.04em]">
                 Latest messages
@@ -145,7 +145,7 @@ export default function Inbox() {
                 Loading the sales inbox…
               </p>
             ) : messages.length ? (
-              <div className="max-h-[620px] divide-y divide-[#EDF1F5] overflow-y-auto">
+              <div className="amk-inbox-list-scroll divide-y divide-[#EDF1F5] overflow-y-auto">
                 {messages.map(message => {
                   const category = categoryOf(message.classification);
                   return (
@@ -186,12 +186,12 @@ export default function Inbox() {
             ) : (
               <div className="p-8 text-center text-sm text-[#66758A]">
                 <Mail className="mx-auto mb-3 h-7 w-7 text-[#55788B]" />
-                No synchronized sales messages yet.
+                No customer replies need action.
               </div>
             )}
           </div>
 
-          <article className="rounded-3xl border border-[#DCE4EE] bg-white p-6 shadow-sm">
+          <article className="amk-inbox-detail rounded-2xl border border-[#DCE4EE] bg-white p-6 shadow-sm">
             {selected ? (
               <>
                 <div className="flex flex-col gap-4 border-b border-[#E6EBF2] pb-5 sm:flex-row sm:items-start sm:justify-between">
