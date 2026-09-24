@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  BACKGROUND_ROUTINE_REFRESH_CUSTOMER_HISTORY,
   CRM_SYNC_POLL_INTERVAL_MS,
   DEFAULT_CRM_SYNC_INTERVAL_MS,
   crmSyncIntervalMs,
@@ -18,11 +19,12 @@ describe("connection-scoped CRM synchronization schedule", () => {
     expect(crmSyncIntervalMs("not-a-number")).toBe(120_000);
   });
 
-  it("uses bounded routine reconciliation for browser CRMs only", () => {
+  it("uses bounded routine reconciliation for browser CRMs without duplicating lead-watcher history reads", () => {
     expect(crmBackgroundSyncMode("browser")).toBe("routine");
     expect(crmBackgroundSyncMode("sidecar")).toBe("routine");
     expect(crmBackgroundSyncMode("oauth")).toBe("full");
     expect(crmBackgroundSyncMode("api_key")).toBe("full");
+    expect(BACKGROUND_ROUTINE_REFRESH_CUSTOMER_HISTORY).toBe(false);
   });
 
   it("retries expired browser authentication only through the bounded read-only recovery path", () => {

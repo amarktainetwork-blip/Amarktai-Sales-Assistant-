@@ -989,6 +989,7 @@ async function syncConnectedSystemRoutineDeterministically(input: {
   userId: number;
   organisationId: number;
   connectedSystemId: number;
+  refreshCustomerHistory?: boolean;
 }) {
   await reconcileCurrentBrowserReadiness(input);
   const system = await getConnectedSystemForUser(
@@ -1146,6 +1147,7 @@ async function syncConnectedSystemRoutineDeterministically(input: {
   // This retires already-worked NEW_LEAD alerts before slower opportunity/task
   // scans can delay the salesperson's live queue.
   if (
+    input.refreshCustomerHistory !== false &&
     crmResourceSyncEligible(
       connection,
       "contacts.read",
@@ -1299,15 +1301,18 @@ async function syncConnectedSystemRoutineDeterministically(input: {
 }
 
 /**
- * Unattended read-only reconciliation for browser CRMs. It keeps recent
- * contacts, owner-scoped opportunities, the complete current pending-task
- * snapshot and exact history for active customers aligned with source truth.
+ * Bounded read-only reconciliation for browser CRMs. It keeps recent contacts,
+ * owner-scoped opportunities and the complete current pending-task snapshot
+ * aligned with source truth. Manual refreshes also reconcile exact active-
+ * customer history; the background worker leaves that work to the lead watcher
+ * so the shared browser lane is not forced to repeat the same expensive reads.
  * It never performs a CRM write.
  */
 export async function syncConnectedSystemRoutine(input: {
   userId: number;
   organisationId: number;
   connectedSystemId: number;
+  refreshCustomerHistory?: boolean;
 }) {
   const result = await runModelFreeOperation(
     {
