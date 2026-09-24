@@ -1,5 +1,3 @@
-[Reading 70 lines from start (total: 70 lines, 0 remaining)]
-
 import { it, expect } from "vitest";
 import {
   organisationDayBounds,
@@ -70,5 +68,3 @@ it("a consumer is valid without a company", () =>
   expect(customerModelContext("individual_consumer").companyOptional).toBe(
     true
   ));
-
-[executed on device: amarktaisal (60c82bca-dc19-41e6-8ff8-d16e682f865e)]
