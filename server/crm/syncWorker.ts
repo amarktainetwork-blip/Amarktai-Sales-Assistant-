@@ -1,5 +1,3 @@
-[Reading 477 lines from start (total: 477 lines, 0 remaining)]
-
 import {
   isTransientCrmSyncFailure,
   reconcileNewLeadAlertsFromTaskHistory,
@@ -477,5 +475,3 @@ export function startConnectionScopedCrmSyncWorker(
     Math.min(intervalMs, CRM_SYNC_POLL_INTERVAL_MS)
   );
 }
-
-[executed on device: amarktaisal (60c82bca-dc19-41e6-8ff8-d16e682f865e)]
