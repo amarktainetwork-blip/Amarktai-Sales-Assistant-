@@ -1,4 +1,4 @@
-import { formatOrganisationDate } from "@shared/organisationWorkspace";
+import { formatOrganisationWorkDueDate } from "@shared/organisationWorkspace";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { refreshSalesDay } from "@/lib/refreshSalesDay";
@@ -167,7 +167,7 @@ export default function Today() {
 
   const dateLabel = (value?: Date | string | null) =>
     value
-      ? formatOrganisationDate(new Date(value), workspace || {})
+      ? formatOrganisationWorkDueDate(new Date(value), workspace || {})
       : "No due time";
 
   const openAssistant = () => {

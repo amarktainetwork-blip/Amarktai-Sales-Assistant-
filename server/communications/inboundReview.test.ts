@@ -17,5 +17,14 @@ describe("inbound review-first communications", () => {
       reasons: ["message includes a question or request"],
     });
   });
+  it("keeps a direct negative customer answer visible for salesperson review", () => {
+    expect(classifyInboundMessage({ body: "I don't have alternative" })).toEqual({
+      category: "reply_needed",
+      reasons: ["message contains a direct customer answer that needs review"],
+    });
+    expect(classifyInboundMessage({ body: "Not yet" })).toMatchObject({
+      category: "reply_needed",
+    });
+  });
   it("does not permit a draft or rejected reply to be sent", () => { expect(canSendReviewedReply("draft")).toBe(false); expect(canSendReviewedReply("rejected")).toBe(false); expect(canSendReviewedReply("approved")).toBe(true); });
 });
