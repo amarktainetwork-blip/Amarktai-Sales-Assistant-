@@ -1,8 +1,11 @@
+[Reading 70 lines from start (total: 70 lines, 0 remaining)]
+
 import { it, expect } from "vitest";
 import {
   organisationDayBounds,
   classifyLocalDueDate,
   formatOrganisationMoney,
+  formatOrganisationWorkDueDate,
   customerModelContext,
 } from "./organisationWorkspace";
 it.each([
@@ -44,6 +47,21 @@ it("formats GBP with organisation locale", () =>
   expect(
     formatOrganisationMoney(123456, { currency: "GBP", locale: "en-GB" })
   ).toBe("£1,234.56"));
+
+it("does not present date-only UK work as a midnight appointment", () => {
+  expect(
+    formatOrganisationWorkDueDate(new Date("2026-09-24T23:00:00Z"), {
+      locale: "en-GB",
+      timezone: "Europe/London",
+    })
+  ).toBe("25 Sept 2026 · time not set");
+  expect(
+    formatOrganisationWorkDueDate(new Date("2026-09-25T07:00:00Z"), {
+      locale: "en-GB",
+      timezone: "Europe/London",
+    })
+  ).toBe("25 Sept 2026, 08:00");
+});
 it.each(["individual_consumer", "account_business", "hybrid"] as const)(
   "supports %s with optional opportunities",
   model => expect(customerModelContext(model).opportunityOptional).toBe(true)
@@ -52,3 +70,5 @@ it("a consumer is valid without a company", () =>
   expect(customerModelContext("individual_consumer").companyOptional).toBe(
     true
   ));
+
+[executed on device: amarktaisal (60c82bca-dc19-41e6-8ff8-d16e682f865e)]
