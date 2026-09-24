@@ -1,5 +1,3 @@
-[Reading 146 lines from start (total: 146 lines, 0 remaining)]
-
 export const CUSTOMER_MODELS = [
   "individual_consumer",
   "account_business",
@@ -146,5 +144,3 @@ export function formatOrganisationWorkDueDate(
   }
   return formatOrganisationDate(date, org);
 }
-
-[executed on device: amarktaisal (60c82bca-dc19-41e6-8ff8-d16e682f865e)]
