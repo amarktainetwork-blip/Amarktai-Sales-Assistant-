@@ -159,9 +159,13 @@ async function genxFetch(
   let lastError: unknown;
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     try {
+      const timeoutSignal = AbortSignal.timeout(timeoutMs);
+      const signal = init.signal
+        ? AbortSignal.any([init.signal, timeoutSignal])
+        : timeoutSignal;
       const response = await fetch(url, {
         ...init,
-        signal: AbortSignal.timeout(timeoutMs),
+        signal,
       });
       if (
         (response.status === 429 || response.status >= 500) &&
@@ -174,7 +178,7 @@ async function genxFetch(
       return response;
     } catch (error) {
       lastError = error;
-      if (attempt >= retries) break;
+      if (init.signal?.aborted || attempt >= retries) break;
       await delay(Math.min(4_000, 300 * 2 ** attempt));
     }
   }

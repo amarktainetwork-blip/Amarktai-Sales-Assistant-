@@ -1,7 +1,9 @@
 import {
+  getExactCustomerDetail,
   normalizedCustomerAttributes,
   refreshExactCustomerHistoryIfDue,
 } from "../customerData";
+import { customerHistory } from "../../shared/customerHistory";
 import { deriveCustomerInterest } from "../customerInterest";
 import { getOrganisationWorkspaceContext } from "../organisationWorkspace";
 import { INCOMPLETE_TASK_STATUSES } from "../../shared/taskState";
@@ -28,6 +30,7 @@ export type LiveCallCrmContext = {
   source: "today" | "manual_resolved";
   connectedSystemId: number;
   provider: string;
+  contactId: number;
   contactExternalId: string;
   contactName: string;
   firstName?: string;
@@ -52,6 +55,23 @@ export type LiveCallCrmContext = {
   recentInbound?: string;
   recentInboundSubject?: string;
   recentInboundBody?: string;
+  conversationHistory?: Array<{
+    occurredAt: string;
+    channel: string;
+    direction: string;
+    subject?: string;
+    body: string;
+    needsAction: boolean;
+  }>;
+  completedTaskHistory?: Array<{
+    title: string;
+    completedAt?: string;
+  }>;
+  opportunityHistory?: Array<{
+    name: string;
+    stage?: string;
+    updatedAt?: string;
+  }>;
   reasons: string[];
   objective?: string;
   diallerLaunch?: {
@@ -67,6 +87,31 @@ async function dbOrThrow() {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
   return db;
+}
+
+function liveContextBody(value: string) {
+  const quoteIndex = value.search(
+    /<blockquote|<div[^>]*gmail_quote|\bOn .{0,220}\bwrote:/i
+  );
+  const current = quoteIndex >= 0 ? value.slice(0, quoteIndex) : value;
+  return current
+    .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<br\s*\/?\s*>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .slice(0, 700);
+}
+
+function iso(value: Date | string | null | undefined) {
+  if (!value) return undefined;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.valueOf()) ? undefined : date.toISOString();
 }
 
 async function contextForContact(input: {
@@ -242,10 +287,46 @@ async function contextForContact(input: {
     mappings: workspace.customerFieldMappings,
     attributes: customerAttributes,
   });
+  const exactDetail = await getExactCustomerDetail({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    contactId: input.contact.id,
+  }).catch(() => null);
+  const conversationHistory = exactDetail
+    ? customerHistory(
+        exactDetail.activities.items,
+        exactDetail.communications.items
+      )
+        .slice(0, 36)
+        .map(item => ({
+          occurredAt: iso(item.occurredAt)!,
+          channel: item.channel,
+          direction: item.direction,
+          subject: item.subject || undefined,
+          body: liveContextBody(item.body),
+          needsAction: item.needsAction,
+        }))
+        .filter(item => item.occurredAt && item.body)
+    : [];
+  const completedTaskHistory = exactDetail
+    ? exactDetail.tasks.completed.slice(0, 12).map(item => ({
+        title: item.title,
+        completedAt:
+          iso(item.completedAt) || iso(item.sourceUpdatedAt) || iso(item.dueAt),
+      }))
+    : [];
+  const opportunityHistory = exactDetail
+    ? exactDetail.opportunities.items.slice(0, 8).map(item => ({
+        name: item.name,
+        stage: item.stage || undefined,
+        updatedAt: iso(item.updatedAt),
+      }))
+    : [];
   return {
     source: input.source,
     connectedSystemId: system.id,
     provider: system.provider,
+    contactId: input.contact.id,
     contactExternalId: input.contact.externalId,
     contactName,
     customerAttributes,
@@ -288,6 +369,9 @@ async function contextForContact(input: {
       : undefined,
     recentInboundSubject: inbound?.subject?.slice(0, 500) || undefined,
     recentInboundBody: inbound?.body?.slice(0, 2_500) || undefined,
+    conversationHistory,
+    completedTaskHistory,
+    opportunityHistory,
     reasons: input.reasons || [],
     objective:
       task?.title || opportunity?.raw?.nextStep?.toString() || undefined,

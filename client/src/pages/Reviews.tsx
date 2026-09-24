@@ -69,6 +69,13 @@ function displayTime(value: unknown) {
   return date.toLocaleString();
 }
 
+function reviewContactId(item: ReviewItem, fallback?: number) {
+  const payload = object(item.payload);
+  const context = object(payload.customerContext);
+  const candidate = Number(payload.contactId ?? context.contactId ?? fallback ?? 0);
+  return Number.isInteger(candidate) && candidate > 0 ? candidate : undefined;
+}
+
 function filterMatches(filter: ReviewFilter, lifecycle: ReviewLifecycle) {
   if (filter === "all") return true;
   if (filter === "ready")
@@ -262,6 +269,9 @@ function Evidence({ label, value }: { label: string; value?: string }) {
 
 export default function Reviews() {
   const [, navigate] = useLocation();
+  const initialContactId = Number(
+    new URLSearchParams(window.location.search).get("contactId") || 0
+  );
   const actions = trpc.assistant.actions.useQuery(undefined, {
     retry: false,
     refetchInterval: 4_000,
@@ -523,6 +533,7 @@ export default function Reviews() {
                     : text(payload.actionPurpose);
               const resultDetail = reviewResultDetail(item);
               const statusCopy = REVIEW_LIFECYCLE_COPY[lifecycle];
+              const contactId = reviewContactId(item, initialContactId);
 
               return (
                 <section
@@ -663,6 +674,26 @@ export default function Reviews() {
                     </div>
 
                     <div className="flex shrink-0 flex-wrap gap-2 lg:max-w-48 lg:flex-col">
+                      {contactId ? (
+                        <>
+                          <Button
+                            variant="outline"
+                            onClick={() =>
+                              navigate(`/customers?contactId=${contactId}`)
+                            }
+                          >
+                            Customer context
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() =>
+                              navigate(`/assistant?contactId=${contactId}`)
+                            }
+                          >
+                            AmarktAI for customer
+                          </Button>
+                        </>
+                      ) : null}
                       {["pending", "approved", "blocked"].includes(lifecycle) &&
                       draftOnly ? (
                         <>
@@ -678,12 +709,6 @@ export default function Reviews() {
                           >
                             <X className="mr-2 h-4 w-4" />
                             Dismiss draft
-                          </Button>
-                          <Button
-                            variant="outline"
-                            onClick={() => navigate("/assistant")}
-                          >
-                            Back to AmarktAI
                           </Button>
                           <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold leading-5 text-blue-900">
                             {executionReady

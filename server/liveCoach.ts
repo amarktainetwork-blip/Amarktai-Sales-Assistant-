@@ -1,4 +1,5 @@
 import { runGenxAgent, type GenxBillingContext } from "./genx";
+import { streamGenxAgent } from "./genxStreaming";
 
 export async function prepareLiveCoachingTip(input: {
   leadLabel: string;
@@ -23,6 +24,44 @@ export async function prepareLiveCoachingTip(input: {
     ],
   });
   return { ...result, mode: "live_coaching" as const };
+}
+
+export async function streamLiveCoachingTip(input: {
+  leadLabel: string;
+  transcript: string;
+  approvedContext?: string;
+  billing: GenxBillingContext;
+  signal?: AbortSignal;
+  onDelta: (delta: string) => void | Promise<void>;
+}) {
+  const workingContext = input.approvedContext
+    ? input.approvedContext.slice(0, 8_000)
+    : undefined;
+  const result = await streamGenxAgent({
+    agentKey: "conversation_coach",
+    billing: { ...input.billing, feature: "live_call_coaching" },
+    workingContext,
+    signal: input.signal,
+    onDelta: input.onDelta,
+    maxOutputTokens: 180,
+    messages: [
+      {
+        role: "user",
+        content: [
+          `Customer: ${input.leadLabel}`,
+          "Recent live transcript:",
+          input.transcript.slice(-8_000),
+          "",
+          "Give one short live sales-assist card, no preamble:",
+          "- Heard: the one most important current fact/objection/question.",
+          "- Say/ask now: one specific response or question.",
+          "- Watch for: one immediate signal or unresolved item.",
+          "Use prior customer context when supplied. Do not repeat discovery already answered in that context. Do not invent facts.",
+        ].join("\n"),
+      },
+    ],
+  });
+  return { ...result, mode: "live_coaching_stream" as const };
 }
 
 export async function preparePostCallSummary(input: {

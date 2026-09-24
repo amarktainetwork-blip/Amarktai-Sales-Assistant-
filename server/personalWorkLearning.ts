@@ -29,9 +29,12 @@ type GraphPage<T> = {
 };
 
 const STYLE_SOURCE_PREFIX = "personal_email_style:v2:";
+const WORK_STYLE_SOURCE_PREFIX = "personal_sales_work_style:v1:";
 const MAX_SENT_MESSAGES = 40;
 const MIN_STYLE_MESSAGES = 5;
+const MIN_WORK_STYLE_SAMPLES = 8;
 const MAX_STYLE_CORPUS_CHARS = 24_000;
+const MAX_WORK_STYLE_CORPUS_CHARS = 30_000;
 
 function dbOrThrow() {
   return getDb().then(db => {
@@ -42,6 +45,10 @@ function dbOrThrow() {
 
 function personalStyleSourceReference(userId: number) {
   return `${STYLE_SOURCE_PREFIX}${userId}`;
+}
+
+function personalWorkStyleSourceReference(userId: number) {
+  return `${WORK_STYLE_SOURCE_PREFIX}${userId}`;
 }
 
 function cleanPlainBody(value: string) {
@@ -130,15 +137,25 @@ export function crmActivityStyleEvidence(
   identity: { externalUserId: string; email?: string | null }
 ) {
   const raw =
-    activity.raw && typeof activity.raw === "object" && !Array.isArray(activity.raw)
+    activity.raw &&
+    typeof activity.raw === "object" &&
+    !Array.isArray(activity.raw)
       ? (activity.raw as Record<string, unknown>)
       : {};
-  if (String(raw.direction || "").trim().toLowerCase() !== "outbound")
+  if (
+    String(raw.direction || "")
+      .trim()
+      .toLowerCase() !== "outbound"
+  )
     return undefined;
   const externalUserId = identity.externalUserId.trim();
   const actorExternalId = String(raw.userExternalId || "").trim();
-  const email = String(identity.email || "").trim().toLowerCase();
-  const sender = String(raw.senderReference || "").trim().toLowerCase();
+  const email = String(identity.email || "")
+    .trim()
+    .toLowerCase();
+  const sender = String(raw.senderReference || "")
+    .trim()
+    .toLowerCase();
   const authoredByUser =
     Boolean(externalUserId && actorExternalId === externalUserId) ||
     Boolean(
@@ -149,7 +166,9 @@ export function crmActivityStyleEvidence(
           sender.endsWith(` ${email}`))
     );
   if (!authoredByUser) return undefined;
-  const body = redactStyleEvidence(stripQuotedEmailHistory(activity.body || ""));
+  const body = redactStyleEvidence(
+    stripQuotedEmailHistory(activity.body || "")
+  );
   if (body.length < 30) return undefined;
   const subject = redactStyleEvidence(String(raw.subject || "")).slice(0, 180);
   return {
@@ -157,6 +176,66 @@ export function crmActivityStyleEvidence(
     sentAt: activity.occurredAt,
     sample: `SUBJECT: ${subject || "[no subject]"}\nBODY:\n${body.slice(0, 2_500)}`,
   };
+}
+
+export function crmActivityWorkingStyleEvidence(
+  activity: {
+    externalId: string;
+    activityType: string;
+    occurredAt: Date;
+    body: string | null;
+    raw: unknown;
+  },
+  identity: { externalUserId: string; email?: string | null }
+) {
+  const raw =
+    activity.raw &&
+    typeof activity.raw === "object" &&
+    !Array.isArray(activity.raw)
+      ? (activity.raw as Record<string, unknown>)
+      : {};
+  if (/amarktai/i.test(JSON.stringify(raw))) return undefined;
+  const actorExternalId = String(
+    raw.authorExternalId || raw.userExternalId || ""
+  ).trim();
+  if (!identity.externalUserId || actorExternalId !== identity.externalUserId)
+    return undefined;
+  const type = activity.activityType.trim().toLowerCase();
+  const direction = String(raw.direction || "").trim().toLowerCase();
+  if (
+    ["email", "sms", "communication"].includes(type) &&
+    direction !== "outbound"
+  )
+    return undefined;
+  if (!["email", "sms", "note", "communication"].includes(type))
+    return undefined;
+  const body = redactStyleEvidence(
+    type === "email"
+      ? stripQuotedEmailHistory(activity.body || "")
+      : cleanPlainBody(activity.body || "")
+  );
+  if (body.length < 20) return undefined;
+  return {
+    id: activity.externalId,
+    type,
+    occurredAt: activity.occurredAt,
+    sample: `TYPE: ${type.toUpperCase()}\nCONTENT:\n${body.slice(0, 2_000)}`,
+  };
+}
+
+export function buildSalesWorkingProfilePrompt(samples: string[]) {
+  return [
+    "Learn only stable salesperson working preferences and habits supported by these positively attributed user-authored CRM records.",
+    "Return a compact inferred working profile for future assistance, not customer-facing copy and not company policy.",
+    "Describe only patterns actually supported across multiple records: communication style by channel, how follow-ups are framed, how callbacks/next steps are recorded, how objections or delays are handled, note structure, level of detail, and recurring decision/workflow habits.",
+    "Do not infer a call script or objection rule from one isolated record. Say evidence is limited when a pattern is not repeated.",
+    "Do not copy customer names, contact details, prices, salaries, dates, programme promises, eligibility claims, company policies, or customer-specific facts into the profile.",
+    "Do not infer protected or sensitive personal traits.",
+    "A learned preference is advisory only: it never authorises a CRM write, message send, task change, opportunity change, or any other external action.",
+    "Keep the result under 450 words using short labelled lines.",
+    "",
+    ...samples.map((sample, index) => `EVIDENCE ${index + 1}\n${sample}`),
+  ].join("\n\n");
 }
 
 export function buildPersonalEmailStyleLearningPrompt(samples: string[]) {
@@ -244,6 +323,32 @@ async function currentStyleMemory(userId: number, organisationId: number) {
           eq(
             assistantMemories.subject,
             "Personal email writing style and recurring patterns"
+          ),
+          eq(assistantMemories.status, "active")
+        )
+      )
+      .orderBy(desc(assistantMemories.updatedAt))
+      .limit(1)
+  )[0];
+}
+
+async function currentWorkStyleMemory(
+  userId: number,
+  organisationId: number
+) {
+  const db = await dbOrThrow();
+  return (
+    await db
+      .select()
+      .from(assistantMemories)
+      .where(
+        and(
+          eq(assistantMemories.userId, userId),
+          eq(assistantMemories.organisationId, organisationId),
+          eq(assistantMemories.memoryType, "user_preference"),
+          eq(
+            assistantMemories.subject,
+            "Sales working style and follow-up patterns"
           ),
           eq(assistantMemories.status, "active")
         )
@@ -487,6 +592,163 @@ export async function learnPersonalEmailStyleFromCrm(input: {
   return { learned: true as const, sampleCount: samples.length, content };
 }
 
+export async function learnSalesWorkingProfileFromCrm(input: {
+  userId: number;
+  organisationId: number;
+  connectedSystemId: number;
+  externalUserId: string;
+  email?: string | null;
+}) {
+  const db = await dbOrThrow();
+  const rows = await db
+    .select({
+      externalId: crmActivities.externalId,
+      activityType: crmActivities.activityType,
+      occurredAt: crmActivities.occurredAt,
+      body: crmActivities.body,
+      raw: crmActivities.raw,
+    })
+    .from(crmActivities)
+    .where(
+      and(
+        eq(crmActivities.organisationId, input.organisationId),
+        eq(crmActivities.connectedSystemId, input.connectedSystemId)
+      )
+    )
+    .orderBy(desc(crmActivities.occurredAt))
+    .limit(240);
+  const evidence = rows
+    .map(activity =>
+      crmActivityWorkingStyleEvidence(activity, {
+        externalUserId: input.externalUserId,
+        email: input.email,
+      })
+    )
+    .filter((item): item is NonNullable<typeof item> => Boolean(item));
+  if (evidence.length < MIN_WORK_STYLE_SAMPLES)
+    return {
+      learned: false as const,
+      reason: "not_enough_verified_working_evidence" as const,
+    };
+
+  const previous = await currentWorkStyleMemory(
+    input.userId,
+    input.organisationId
+  );
+  const newestAt = evidence[0].occurredAt;
+  if (
+    previous?.occurredAt &&
+    previous.occurredAt.valueOf() >= newestAt.valueOf()
+  )
+    return {
+      learned: false as const,
+      reason: "no_new_verified_working_evidence" as const,
+    };
+
+  const samples: string[] = [];
+  let characters = 0;
+  const typeCounts = new Map<string, number>();
+  for (const item of evidence) {
+    if (characters >= MAX_WORK_STYLE_CORPUS_CHARS) break;
+    const count = typeCounts.get(item.type) || 0;
+    if (count >= 18) continue;
+    const remaining = MAX_WORK_STYLE_CORPUS_CHARS - characters;
+    const sample = item.sample.slice(0, remaining);
+    if (sample.length < 20) continue;
+    samples.push(sample);
+    characters += sample.length;
+    typeCounts.set(item.type, count + 1);
+  }
+  if (samples.length < MIN_WORK_STYLE_SAMPLES)
+    return {
+      learned: false as const,
+      reason: "not_enough_bounded_working_evidence" as const,
+    };
+
+  const response = await runGenxAgent({
+    agentKey: "conversation_coach",
+    messages: [
+      {
+        role: "user",
+        content: buildSalesWorkingProfilePrompt(samples),
+      },
+    ],
+    workingContext:
+      "Private user-scoped preference learning from positively attributed CRM records. Learn how the salesperson tends to work, never what the company requires and never what the system is authorised to execute.",
+    billing: {
+      userId: input.userId,
+      organisationId: input.organisationId,
+      feature: "personal_working_style_learning",
+      reference: `crm-work-style:${input.connectedSystemId}:${newestAt.toISOString()}`,
+    },
+    maxContextChars: 36_000,
+    maxOutputTokens: 650,
+  });
+  const content = response.content.trim().slice(0, 10_000);
+  if (
+    !content ||
+    /intelligence is not connected|cannot run safely/i.test(content) ||
+    !isSafeAssistantMemory(content)
+  )
+    return {
+      learned: false as const,
+      reason: "working_profile_unavailable" as const,
+    };
+
+  const sourceReference =
+    previous?.sourceReference ||
+    personalWorkStyleSourceReference(input.userId);
+  await createAssistantMemory({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    memoryType: "user_preference",
+    subject: "Sales working style and follow-up patterns",
+    content,
+    provenance: "approved_ai_extraction",
+    trust: "inferred",
+    sourceReference,
+    occurredAt: newestAt,
+  });
+  await recordAudit({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    eventType: "personal_sales_working_style_learned",
+    entityType: "assistant_memory",
+    entityId: sourceReference,
+    summary:
+      "Amarktai refreshed the salesperson's private inferred working profile from positively attributed read-only CRM activity.",
+    metadata: {
+      connectedSystemId: input.connectedSystemId,
+      sampleCount: samples.length,
+      evidenceTypes: Object.fromEntries(typeCounts),
+      exactMappedUser: input.externalUserId,
+      trust: "inferred",
+      permissionGranted: false,
+    },
+  });
+  return {
+    learned: true as const,
+    sampleCount: samples.length,
+    content,
+  };
+}
+
+export function shouldApplyPersonalStyleToDraft(input: {
+  actionType: string;
+  payload: Record<string, unknown>;
+}) {
+  const route = input.payload.crmRoute as { provider?: string } | undefined;
+  const body =
+    typeof input.payload.body === "string" ? input.payload.body.trim() : "";
+  return (
+    ["send_email", "send_email_template"].includes(input.actionType) &&
+    Boolean(body) &&
+    input.payload.personalStyleApplied !== true &&
+    (route?.provider === "microsoft_delegated" ||
+      input.payload.draftOnly === true)
+  );
+}
+
 function cleanRewrite(value: string) {
   return value
     .replace(/^```(?:html|markdown|text)?\s*/i, "")
@@ -517,17 +779,15 @@ export async function applyPersonalEmailStyleToPendingDrafts(input: {
 
   let styled = 0;
   for (const proposal of proposals) {
-    if (!["send_email", "send_email_template"].includes(proposal.actionType))
-      continue;
     const payload = (proposal.payload || {}) as Record<string, unknown>;
-    const route = payload.crmRoute as { provider?: string } | undefined;
-    const body = typeof payload.body === "string" ? payload.body.trim() : "";
     if (
-      route?.provider !== "microsoft_delegated" ||
-      !body ||
-      payload.personalStyleApplied === true
+      !shouldApplyPersonalStyleToDraft({
+        actionType: proposal.actionType,
+        payload,
+      })
     )
       continue;
+    const body = String(payload.body).trim();
     const response = await runGenxAgent({
       agentKey: "communications",
       messages: [
@@ -603,12 +863,21 @@ export async function runPersonalWorkLearning() {
   ]);
 
   let learned = 0;
+  let workProfilesLearned = 0;
   let styled = 0;
   let failed = 0;
   const microsoftUsers = new Set(
-    mailboxes.map(
-      mailbox => `${mailbox.organisationId}:${mailbox.userId}`
-    )
+    mailboxes.map(mailbox => `${mailbox.organisationId}:${mailbox.userId}`)
+  );
+  const allCrmMappings = Array.from(
+    mappings
+      .filter(mapping => mapping.userId != null)
+      .reduce((unique, mapping) => {
+        const key = `${mapping.organisationId}:${mapping.userId}`;
+        if (!unique.has(key)) unique.set(key, mapping);
+        return unique;
+      }, new Map<string, (typeof mappings)[number]>())
+      .values()
   );
   for (const mailbox of mailboxes) {
     try {
@@ -641,21 +910,9 @@ export async function runPersonalWorkLearning() {
     }
   }
 
-  const crmMappings = Array.from(
-    mappings
-      .filter(
-        mapping =>
-          mapping.userId != null &&
-          !microsoftUsers.has(
-            `${mapping.organisationId}:${mapping.userId}`
-          )
-      )
-      .reduce((unique, mapping) => {
-        const key = `${mapping.organisationId}:${mapping.userId}`;
-        if (!unique.has(key)) unique.set(key, mapping);
-        return unique;
-      }, new Map<string, (typeof mappings)[number]>())
-      .values()
+  const crmMappings = allCrmMappings.filter(
+    mapping =>
+      !microsoftUsers.has(`${mapping.organisationId}:${mapping.userId}`)
   );
   for (const mapping of crmMappings) {
     try {
@@ -667,6 +924,12 @@ export async function runPersonalWorkLearning() {
         email: mapping.email,
       });
       if (result.learned) learned += 1;
+      styled += (
+        await applyPersonalEmailStyleToPendingDrafts({
+          userId: mapping.userId!,
+          organisationId: mapping.organisationId,
+        })
+      ).styled;
     } catch (error) {
       failed += 1;
       console.error(
@@ -684,10 +947,40 @@ export async function runPersonalWorkLearning() {
       );
     }
   }
+  for (const mapping of allCrmMappings) {
+    try {
+      const result = await learnSalesWorkingProfileFromCrm({
+        userId: mapping.userId!,
+        organisationId: mapping.organisationId,
+        connectedSystemId: mapping.connectedSystemId,
+        externalUserId: mapping.externalUserId,
+        email: mapping.email,
+      });
+      if (result.learned) workProfilesLearned += 1;
+    } catch (error) {
+      failed += 1;
+      console.error(
+        JSON.stringify({
+          event: "personal_work_learning_failed",
+          source: "crm_working_profile",
+          userId: mapping.userId,
+          organisationId: mapping.organisationId,
+          connectedSystemId: mapping.connectedSystemId,
+          detail:
+            error instanceof Error
+              ? error.message.slice(0, 400)
+              : String(error).slice(0, 400),
+        })
+      );
+    }
+  }
+
   return {
     mailboxes: mailboxes.length,
     crmMappings: crmMappings.length,
+    workingProfileMappings: allCrmMappings.length,
     learned,
+    workProfilesLearned,
     styled,
     failed,
   };
@@ -705,7 +998,12 @@ export function startPersonalWorkLearningWorker(
     running = true;
     try {
       const result = await runPersonalWorkLearning();
-      if (result.learned || result.styled || result.failed)
+      if (
+        result.learned ||
+        result.workProfilesLearned ||
+        result.styled ||
+        result.failed
+      )
         console.log(
           JSON.stringify({ event: "personal_work_learning", ...result })
         );

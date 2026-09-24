@@ -3,10 +3,13 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   buildPersonalEmailStyleLearningPrompt,
+  buildSalesWorkingProfilePrompt,
   crmActivityStyleEvidence,
+  crmActivityWorkingStyleEvidence,
   isAmarktaiGeneratedSentMessage,
   redactStyleEvidence,
   rewritePreservesProtectedLiterals,
+  shouldApplyPersonalStyleToDraft,
   stripQuotedEmailHistory,
 } from "./personalWorkLearning";
 
@@ -115,6 +118,70 @@ describe("personal work self-learning", () => {
     ).toBeUndefined();
   });
 
+  it("learns working patterns only from positively attributed salesperson CRM evidence", () => {
+    const note = {
+      externalId: "note-1",
+      activityType: "note",
+      occurredAt: new Date("2026-09-24T12:00:00Z"),
+      body:
+        "Follow-up completed. Candidate asked for more time. Next action: follow up tomorrow.",
+      raw: {
+        sourceKind: "contact_note",
+        authorExternalId: "amelia-owner",
+      },
+    };
+    expect(
+      crmActivityWorkingStyleEvidence(note, {
+        externalUserId: "amelia-owner",
+      })?.sample
+    ).toContain("Next action: follow up tomorrow");
+    expect(
+      crmActivityWorkingStyleEvidence(
+        {
+          ...note,
+          raw: { ...note.raw, authorExternalId: "other-user" },
+        },
+        { externalUserId: "amelia-owner" }
+      )
+    ).toBeUndefined();
+    expect(
+      crmActivityWorkingStyleEvidence(
+        {
+          ...note,
+          activityType: "sms",
+          raw: {
+            direction: "inbound",
+            userExternalId: "amelia-owner",
+          },
+        },
+        { externalUserId: "amelia-owner" }
+      )
+    ).toBeUndefined();
+    expect(
+      crmActivityWorkingStyleEvidence(
+        {
+          ...note,
+          raw: {
+            sourceKind: "amarktai_generated",
+            authorExternalId: "amelia-owner",
+          },
+        },
+        { externalUserId: "amelia-owner" }
+      )
+    ).toBeUndefined();
+  });
+
+  it("keeps learned working patterns advisory rather than policy or permission", () => {
+    const prompt = buildSalesWorkingProfilePrompt([
+      "TYPE: NOTE\nCONTENT:\nFollow-up completed. Next action recorded.",
+      "TYPE: SMS\nCONTENT:\nI will check back tomorrow.",
+    ]);
+    expect(prompt).toContain("never authorises a CRM write");
+    expect(prompt).toContain("not company policy");
+    expect(prompt).toContain("patterns actually supported across multiple records");
+    expect(prompt).toContain("Do not copy customer names");
+  });
+
   it("excludes Amarktai-generated sent messages from the personal style evidence", () => {
     expect(
       isAmarktaiGeneratedSentMessage({
@@ -138,8 +205,44 @@ describe("personal work self-learning", () => {
       "SUBJECT: Follow up\nBODY:\nGood speaking with you.",
     ]);
     expect(prompt).toContain("at least two separate samples");
-    expect(prompt).toContain("Do not infer protected/sensitive personal traits");
+    expect(prompt).toContain(
+      "Do not infer protected/sensitive personal traits"
+    );
     expect(prompt).toContain("recurring template structures");
+  });
+
+  it("reuses learned style for delegated and read-only CRM review drafts only", () => {
+    expect(
+      shouldApplyPersonalStyleToDraft({
+        actionType: "send_email",
+        payload: {
+          body: "A grounded review draft",
+          crmRoute: { provider: "microsoft_delegated" },
+        },
+      })
+    ).toBe(true);
+    expect(
+      shouldApplyPersonalStyleToDraft({
+        actionType: "send_email",
+        payload: { body: "A grounded review draft", draftOnly: true },
+      })
+    ).toBe(true);
+    expect(
+      shouldApplyPersonalStyleToDraft({
+        actionType: "send_email",
+        payload: {
+          body: "Already styled",
+          draftOnly: true,
+          personalStyleApplied: true,
+        },
+      })
+    ).toBe(false);
+    expect(
+      shouldApplyPersonalStyleToDraft({
+        actionType: "update_crm",
+        payload: { body: "Not a communication", draftOnly: true },
+      })
+    ).toBe(false);
   });
 
   it("rejects style rewrites that alter protected factual literals", () => {

@@ -864,6 +864,27 @@ export async function hasUserConnectionSecret(input: {
   return Boolean(await loadUserConnectionSecret(input));
 }
 
+export function isTransientConnectionVerificationFailure(summary: string) {
+  return /CRM_VIEWER_(?:HUMAN|AGENT)_CONTROL_ACTIVE|CRM_BROWSER_CONTROL_(?:LEASE_LOST|COORDINATION_UNAVAILABLE)|(?:BROWSER|SESSION|WORKER)[A-Z_]*(?:BUSY|CONTENTION)|HTTP[ _]+(?:429|502|503|504|520|521|522|523|524)\b|timeout|timed out|ECONN|network|transport|websocket|CDP|fetch failed/i.test(
+    summary
+  );
+}
+
+export function connectionStatusAfterVerification(input: {
+  currentStatus: ConnectedSystemRow["status"];
+  testStatus: ConnectionTest["status"];
+  summary: string;
+}) {
+  if (input.testStatus === "ready") return "ready" as const;
+  if (input.testStatus === "limited") return "limited_permissions" as const;
+  if (
+    ["ready", "limited_permissions"].includes(input.currentStatus) &&
+    isTransientConnectionVerificationFailure(input.summary)
+  )
+    return input.currentStatus;
+  return "needs_attention" as const;
+}
+
 /** Only this backend service is permitted to transition a system into ready. */
 export async function recordConnectionVerification(input: {
   organisationId: number;
@@ -890,12 +911,17 @@ export async function recordConnectionVerification(input: {
   const verifiedCapabilities = input.test.capabilities
     .filter(result => result.available)
     .map(result => result.capability);
-  const status =
-    input.test.status === "ready"
-      ? "ready"
-      : input.test.status === "limited"
-        ? "limited_permissions"
-        : ("needs_attention" as const);
+  const status = connectionStatusAfterVerification({
+    currentStatus: system.status,
+    testStatus: input.test.status,
+    summary: input.test.summary,
+  });
+  const preserveProvenHealth =
+    input.test.status === "failed" &&
+    status === system.status &&
+    ["ready", "limited_permissions"].includes(system.status) &&
+    isTransientConnectionVerificationFailure(input.test.summary);
+  const healthCheckedAt = new Date();
   await db.transaction(async tx => {
     await tx.insert(connectorVerificationRuns).values({
       connectedSystemId: system.id,
@@ -922,17 +948,30 @@ export async function recordConnectionVerification(input: {
       .update(connectedSystems)
       .set({
         status,
-        verifiedCapabilities,
+        verifiedCapabilities: preserveProvenHealth
+          ? system.verifiedCapabilities
+          : verifiedCapabilities,
         accountExternalId:
           input.test.accountExternalId ?? system.accountExternalId,
         scopes: input.test.scopes ?? system.scopes,
-        lastHealthCheckAt: new Date(),
-        lastHealthSummary: input.test.summary,
-        readyAt: input.test.status === "ready" ? new Date() : null,
+        lastHealthCheckAt: healthCheckedAt,
+        lastHealthSummary: preserveProvenHealth
+          ? system.lastHealthSummary
+          : input.test.summary,
+        readyAt: preserveProvenHealth
+          ? system.readyAt
+          : input.test.status === "ready"
+            ? healthCheckedAt
+            : null,
       })
       .where(eq(connectedSystems.id, system.id));
   });
-  return { status, verifiedCapabilities };
+  return {
+    status,
+    verifiedCapabilities: preserveProvenHealth
+      ? system.verifiedCapabilities
+      : verifiedCapabilities,
+  };
 }
 
 export { toAdapterConnection };

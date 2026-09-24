@@ -38,6 +38,9 @@ services:
       STT_TRANSCRIPTIONS_URL: http://stt:8080/inference
       STT_HEALTH_URL: http://stt:8080/
       STT_MODEL: ggml-base-q5_1
+      STT_EN_TRANSCRIPTIONS_URL: http://stt-en:8080/inference
+      STT_EN_HEALTH_URL: http://stt-en:8080/
+      STT_EN_MODEL: ggml-tiny.en-q5_1
       TTS_PROVIDER_LABEL: Self-hosted Piper 1.7.0
       TTS_BASE_URL: http://tts:5000
       TTS_DEFAULT_VOICE: en_US-lessac-medium
@@ -52,6 +55,8 @@ services:
       browser:
         condition: service_healthy
       stt:
+        condition: service_healthy
+      stt-en:
         condition: service_healthy
       tts:
         condition: service_healthy
@@ -208,6 +213,41 @@ services:
     security_opt:
       - no-new-privileges:true
     mem_limit: 1500m
+    cpus: 2.5
+    pids_limit: 128
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=128m,uid=10002,gid=10002
+
+  # Fast English lane for live calls. The multilingual base service remains
+  # available as the fallback for other organisation locales.
+  stt-en:
+    build:
+      context: ../..
+      dockerfile: deploy/stt/Dockerfile
+    command:
+      [
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8080",
+        "--model",
+        "/models/ggml-tiny.en-q5_1.bin",
+        "--language",
+        "en",
+        "--threads",
+        "4",
+        "--processors",
+        "1",
+        "--no-timestamps",
+      ]
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 750m
     cpus: 2.5
     pids_limit: 128
     tmpfs:

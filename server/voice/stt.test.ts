@@ -11,6 +11,9 @@ afterEach(() => {
   delete process.env.STT_TRANSCRIPTIONS_URL;
   delete process.env.STT_HEALTH_URL;
   delete process.env.STT_MODEL;
+  delete process.env.STT_EN_TRANSCRIPTIONS_URL;
+  delete process.env.STT_EN_HEALTH_URL;
+  delete process.env.STT_EN_MODEL;
 });
 
 describe("built-in speech transcription", () => {
@@ -41,5 +44,56 @@ describe("built-in speech transcription", () => {
     vi.stubGlobal("fetch", fetchMock);
     await expect(probeSttHealth()).resolves.toMatchObject({ ready: true });
     await expect(transcribeAudio(Buffer.from("RIFF-test-audio"), "audio/wav", "en")).resolves.toBe("The sales assistant voice test");
+  });
+
+  it("routes English live audio to the fast lane and keeps multilingual fallback", async () => {
+    process.env.STT_TRANSCRIPTIONS_URL = "http://stt.test/inference";
+    process.env.STT_MODEL = "ggml-base-q5_1";
+    process.env.STT_EN_TRANSCRIPTIONS_URL = "http://stt-en.test/inference";
+    process.env.STT_EN_MODEL = "ggml-tiny.en-q5_1";
+    const urls: string[] = [];
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      urls.push(url);
+      const form = init?.body as FormData;
+      expect(form).toBeInstanceOf(FormData);
+      if (url === "http://stt-en.test/inference") {
+        expect(form.get("model")).toBe("ggml-tiny.en-q5_1");
+        expect(form.get("language")).toBe("en");
+        return new Response(JSON.stringify({ text: "Fast English transcript" }));
+      }
+      expect(form.get("model")).toBe("ggml-base-q5_1");
+      return new Response(JSON.stringify({ text: "Multilingual transcript" }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      transcribeAudio(Buffer.from("RIFF-test-audio"), "audio/wav", "en-GB")
+    ).resolves.toBe("Fast English transcript");
+    await expect(
+      transcribeAudio(Buffer.from("RIFF-test-audio"), "audio/wav", "fr-FR")
+    ).resolves.toBe("Multilingual transcript");
+    expect(urls).toEqual([
+      "http://stt-en.test/inference",
+      "http://stt.test/inference",
+    ]);
+  });
+
+  it("falls back to the multilingual lane when the fast English lane is unavailable", async () => {
+    process.env.STT_TRANSCRIPTIONS_URL = "http://stt.test/inference";
+    process.env.STT_MODEL = "ggml-base-q5_1";
+    process.env.STT_EN_TRANSCRIPTIONS_URL = "http://stt-en.test/inference";
+    process.env.STT_EN_MODEL = "ggml-tiny.en-q5_1";
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url === "http://stt-en.test/inference")
+        return new Response("temporary failure", { status: 503 });
+      return new Response(JSON.stringify({ text: "Fallback transcript" }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      transcribeAudio(Buffer.from("RIFF-test-audio"), "audio/wav", "en")
+    ).resolves.toBe("Fallback transcript");
   });
 });

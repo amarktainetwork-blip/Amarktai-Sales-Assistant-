@@ -46,6 +46,38 @@ describe("background browser read lane", () => {
     ]);
   });
 
+  it("coalesces duplicate cycles with the same label", async () => {
+    let runs = 0;
+    let release!: () => void;
+    let markStarted!: () => void;
+    const gate = new Promise<void>(resolve => {
+      release = resolve;
+    });
+    const started = new Promise<void>(resolve => {
+      markStarted = resolve;
+    });
+
+    const first = runBackgroundBrowserReadLane("crm", async () => {
+      runs += 1;
+      markStarted();
+      await gate;
+      return "shared";
+    });
+    const duplicate = runBackgroundBrowserReadLane("crm", async () => {
+      runs += 1;
+      return "duplicate";
+    });
+
+    await started;
+    expect(runs).toBe(1);
+    release();
+    await expect(Promise.all([first, duplicate])).resolves.toEqual([
+      "shared",
+      "shared",
+    ]);
+    expect(runs).toBe(1);
+  });
+
   it("releases the lane after a failed cycle", async () => {
     await expect(
       runBackgroundBrowserReadLane("broken", async () => {

@@ -295,6 +295,16 @@ describe("Genie personal email isolation", () => {
         evidence
       )
     ).toBe(false);
+    expect(
+      outboundGenieReplyMatchesInbound(
+        {
+          contactExternalId: "contact-other",
+          receivedAt: new Date("2026-09-17T10:00:00Z"),
+          classification: { conversationExternalId: "conversation-1" },
+        },
+        evidence
+      )
+    ).toBe(false);
   });
 
   it("fails closed when immutable Genie scope disagrees", () => {

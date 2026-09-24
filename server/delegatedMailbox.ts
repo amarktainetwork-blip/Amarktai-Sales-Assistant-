@@ -1,8 +1,10 @@
 import { randomBytes } from "node:crypto";
-import { and, eq, gt, isNull, or } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, or } from "drizzle-orm";
 import {
   actionProposals,
   contactCommunicationSuppressions,
+  inboundMessages,
+  salesWorkItems,
   userMailboxConnections,
   userMailboxOAuthStates,
 } from "../drizzle/schema";
@@ -569,6 +571,7 @@ export async function createDelegatedOutlookCalendarEvent(input: {
 
 type GraphInboxMessage = {
   id?: string;
+  conversationId?: string;
   subject?: string;
   bodyPreview?: string;
   body?: { content?: string };
@@ -580,6 +583,41 @@ type GraphInboxPage = {
   value?: GraphInboxMessage[];
   "@odata.nextLink"?: string;
 };
+
+type GraphSentMessage = {
+  id?: string;
+  conversationId?: string;
+  sentDateTime?: string;
+};
+
+type GraphSentPage = {
+  value?: GraphSentMessage[];
+  "@odata.nextLink"?: string;
+};
+
+export function delegatedInboundConversationId(classification: unknown) {
+  if (
+    !classification ||
+    typeof classification !== "object" ||
+    Array.isArray(classification)
+  )
+    return undefined;
+  const value = (classification as Record<string, unknown>)
+    .conversationExternalId;
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+export function delegatedReplyResolvesInbound(
+  inbound: { receivedAt: Date; classification: unknown },
+  sent: { conversationId?: string; sentAt: Date }
+) {
+  const conversationId = delegatedInboundConversationId(inbound.classification);
+  return Boolean(
+    conversationId &&
+      sent.conversationId === conversationId &&
+      sent.sentAt >= inbound.receivedAt
+  );
+}
 
 function plainMessageBody(message: GraphInboxMessage) {
   const value = message.body?.content || message.bodyPreview || "";
@@ -599,6 +637,94 @@ function cleanDraft(value: string) {
     .replace(/\s*```$/i, "")
     .trim()
     .slice(0, 20_000);
+}
+
+async function reconcileDelegatedOutboundReplies(input: {
+  db: Awaited<ReturnType<typeof dbOrThrow>>;
+  accessToken: string;
+  userId: number;
+  organisationId: number;
+}) {
+  const query = new URLSearchParams({
+    $top: "50",
+    $orderby: "sentDateTime desc",
+    $select: "id,conversationId,sentDateTime",
+  });
+  let next: string | undefined =
+    `/me/mailFolders/sentitems/messages?${query.toString()}`;
+  const sent: Array<{ conversationId: string; sentAt: Date }> = [];
+  while (next && sent.length < 100) {
+    const page: GraphSentPage =
+      await delegatedMicrosoftGraphRequest<GraphSentPage>(
+        input.accessToken,
+        next
+      );
+    for (const message of page.value || []) {
+      const conversationId = message.conversationId?.trim();
+      const sentAt = message.sentDateTime
+        ? new Date(message.sentDateTime)
+        : undefined;
+      if (conversationId && sentAt && Number.isFinite(sentAt.valueOf()))
+        sent.push({ conversationId, sentAt });
+      if (sent.length >= 100) break;
+    }
+    next = page["@odata.nextLink"];
+  }
+  if (!sent.length) return 0;
+
+  const actionable = await input.db
+    .select({
+      id: inboundMessages.id,
+      receivedAt: inboundMessages.receivedAt,
+      classification: inboundMessages.classification,
+    })
+    .from(inboundMessages)
+    .where(
+      and(
+        eq(inboundMessages.organisationId, input.organisationId),
+        eq(inboundMessages.mailboxUserId, input.userId),
+        eq(inboundMessages.channel, "email"),
+        eq(inboundMessages.needsAction, true)
+      )
+    )
+    .limit(500);
+  const resolvedIds = actionable
+    .filter(message =>
+      sent.some(evidence => delegatedReplyResolvesInbound(message, evidence))
+    )
+    .map(message => message.id);
+  if (!resolvedIds.length) return 0;
+
+  const completedAt = new Date();
+  await input.db
+    .update(inboundMessages)
+    .set({ needsAction: false, status: "archived" })
+    .where(inArray(inboundMessages.id, resolvedIds));
+  await input.db
+    .update(salesWorkItems)
+    .set({
+      status: "completed",
+      completedAt,
+      freshness: "current",
+      syncedAt: completedAt,
+    })
+    .where(
+      and(
+        eq(salesWorkItems.organisationId, input.organisationId),
+        eq(salesWorkItems.salespersonUserId, input.userId),
+        inArray(
+          salesWorkItems.sourceKey,
+          resolvedIds.map(id => `mailbox:inbound:${id}`)
+        ),
+        inArray(salesWorkItems.status, [
+          "open",
+          "in_progress",
+          "snoozed",
+          "blocked",
+        ])
+      )
+    );
+  return resolvedIds.length;
 }
 
 /**
@@ -626,7 +752,7 @@ async function syncDelegatedMailboxInternal(input: {
   const query = new URLSearchParams({
     $top: "25",
     $orderby: "receivedDateTime asc",
-    $select: "id,subject,bodyPreview,body,receivedDateTime,from",
+    $select: "id,conversationId,subject,bodyPreview,body,receivedDateTime,from",
     $filter: `receivedDateTime ge ${since.toISOString()}`,
   });
 
@@ -663,6 +789,7 @@ async function syncDelegatedMailboxInternal(input: {
         externalMessageId: item.id,
         channel: "email",
         senderReference: sender,
+        conversationExternalId: item.conversationId,
         subject: item.subject,
         body,
         receivedAt,
@@ -775,6 +902,12 @@ async function syncDelegatedMailboxInternal(input: {
     draftsPrepared += 1;
   }
 
+  const handledReplies = await reconcileDelegatedOutboundReplies({
+    db,
+    accessToken: mailbox.accessToken,
+    userId: input.userId,
+    organisationId: input.organisationId,
+  });
   const watermark = newestProcessedAt
     ? new Date(Math.max(since.valueOf(), newestProcessedAt.valueOf() - 1_000))
     : syncStartedAt;
@@ -793,12 +926,18 @@ async function syncDelegatedMailboxInternal(input: {
     metadata: {
       received,
       draftsPrepared,
+      handledReplies,
       messageLimit: MAX_INBOX_SYNC_MESSAGES,
       morePagesPending: Boolean(next),
       watermark: watermark.toISOString(),
     },
   });
-  return { received, draftsPrepared, morePagesPending: Boolean(next) };
+  return {
+    received,
+    draftsPrepared,
+    handledReplies,
+    morePagesPending: Boolean(next),
+  };
 }
 
 export async function syncDelegatedMailbox(input: {

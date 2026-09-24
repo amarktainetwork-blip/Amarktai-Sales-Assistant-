@@ -1,4 +1,4 @@
-import { showCrmAttention } from "@/lib/workspaceHealth";
+import { crmAttentionDelayMs, crmAttentionStatus } from "@/lib/workspaceHealth";
 import {
   rememberNewLeadNotifications,
   unseenNewLeadNotifications,
@@ -67,6 +67,9 @@ export default function DashboardLayout({
 }) {
   const [location, navigate] = useLocation();
   const [clock, setClock] = useState(() => Date.now());
+  const [stableCrmAttention, setStableCrmAttention] = useState<
+    string | undefined
+  >();
   const { loading, user, logout, error: authError, refresh } = useAuth();
   const security = trpc.security.status.useQuery(undefined, {
     enabled: Boolean(user),
@@ -154,17 +157,13 @@ export default function DashboardLayout({
   const storedCompanyComplete = onboarding?.complete === true;
   const profileConfirmed =
     companySetup.data?.profile?.discoveryStatus === "confirmed";
-  const crmAttention = showCrmAttention(
+  const observedCrmAttention = crmAttentionStatus(
     connectedSystems.data,
     connectedSystems.isSuccess
   );
-  const crmProblem = connectedSystems.data?.find(system =>
-    [
-      "authentication_expired",
-      "needs_attention",
-      "limited_permissions",
-      "error",
-    ].includes(system.status)
+  const crmAttention = Boolean(stableCrmAttention);
+  const crmProblem = connectedSystems.data?.find(
+    system => system.status === stableCrmAttention
   );
   const timedAttention = useMemo(
     () => timedWorkAttention(dayPulse.data?.queues.callQueue ?? [], clock),
@@ -179,6 +178,26 @@ export default function DashboardLayout({
     const timer = window.setInterval(() => setClock(Date.now()), 15_000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (!observedCrmAttention) {
+      setStableCrmAttention(undefined);
+      return;
+    }
+
+    const delayMs = crmAttentionDelayMs(observedCrmAttention);
+    if (delayMs === 0) {
+      setStableCrmAttention(observedCrmAttention);
+      return;
+    }
+
+    setStableCrmAttention(undefined);
+    const timer = window.setTimeout(
+      () => setStableCrmAttention(observedCrmAttention),
+      delayMs
+    );
+    return () => window.clearTimeout(timer);
+  }, [observedCrmAttention]);
 
   useEffect(() => {
     if (
