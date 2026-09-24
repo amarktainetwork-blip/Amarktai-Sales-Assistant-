@@ -1,5 +1,8 @@
+[Reading 100 lines from start (total: 100 lines, 0 remaining)]
+
 import { describe, expect, it } from "vitest";
 import {
+  BACKGROUND_ROUTINE_REFRESH_CUSTOMER_HISTORY,
   CRM_SYNC_POLL_INTERVAL_MS,
   DEFAULT_CRM_SYNC_INTERVAL_MS,
   crmSyncIntervalMs,
@@ -18,11 +21,12 @@ describe("connection-scoped CRM synchronization schedule", () => {
     expect(crmSyncIntervalMs("not-a-number")).toBe(120_000);
   });
 
-  it("uses bounded routine reconciliation for browser CRMs only", () => {
+  it("uses bounded routine reconciliation for browser CRMs without duplicating lead-watcher history reads", () => {
     expect(crmBackgroundSyncMode("browser")).toBe("routine");
     expect(crmBackgroundSyncMode("sidecar")).toBe("routine");
     expect(crmBackgroundSyncMode("oauth")).toBe("full");
     expect(crmBackgroundSyncMode("api_key")).toBe("full");
+    expect(BACKGROUND_ROUTINE_REFRESH_CUSTOMER_HISTORY).toBe(false);
   });
 
   it("retries expired browser authentication only through the bounded read-only recovery path", () => {
@@ -96,3 +100,5 @@ it("waits an interval after a long successful drain rather than starting another
     )
   ).toBe(true);
 });
+
+[executed on device: amarktaisal (60c82bca-dc19-41e6-8ff8-d16e682f865e)]
