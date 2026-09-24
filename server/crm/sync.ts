@@ -1,5 +1,3 @@
-[Reading 1000 lines from start (total: 1397 lines, 397 remaining)]
-
 import { reconcileCurrentBrowserReadiness } from "./currentReadiness";
 import { isTransientBrowserExecutionFailure } from "../browserConnectors/runtimeFailure";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
@@ -1000,5 +998,400 @@ async function syncConnectedSystemRoutineDeterministically(input: {
     input.connectedSystemId
   );
   if (system.status !== "ready" && system.status !== "limited_permissions")
+    throw new Error(
+      "This connected system must pass backend verification before synchronization."
+    );
+  const connection = toAdapterConnection(system);
+  const adapter = getCrmAdapter(connection.provider);
+  const browserConnection = ["browser", "sidecar"].includes(
+    connection.connectionMethod
+  );
+  if (!browserConnection || !adapter.syncRecentContacts)
+    return syncConnectedSystemDeterministically(input);
 
-[executed on device: amarktaisal (60c82bca-dc19-41e6-8ff8-d16e682f865e)]
+  const secret = await usableSecret({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    connection,
+  });
+  if (!secret.crmUserExternalId)
+    throw new Error("CRM_SALESPERSON_IDENTITY_REQUIRED");
+  const routineNow = new Date();
+  const opportunityCursor = await cursorFor(system.id, "opportunities");
+  const opportunitySnapshotDue = routineOpportunitySnapshotDue(
+    opportunityCursor?.lastSuccessfulAt,
+    routineNow
+  );
+  let operationStatuses = new Map(
+    (
+      await browserOperationReadinessForSystem({
+        organisationId: input.organisationId,
+        connectedSystemId: system.id,
+      })
+    ).operations.map(operation => [operation.key, operation.status])
+  );
+
+  // A short authentication interruption can degrade task/opportunity reads even
+  // after the same browser session is healthy again. Re-prove only the closed
+  // set of exact-owner routine READ operations before deciding they are
+  // unavailable. The adapter hard-locks this path to read definitions and never
+  // exposes a write operation.
+  if (adapter.reproveRoutineRead) {
+    const recoverable = [
+      ["contacts", "contact.sync"],
+      ["tasks", "task.sync"],
+      ["opportunities", "opportunity.sync"],
+      ["activities", "activity.sync"],
+    ] as const;
+    let attempted = false;
+    for (const [resource, operationKey] of recoverable) {
+      if (resource === "opportunities" && !opportunitySnapshotDue) continue;
+      if (
+        !["DEGRADED", "BLOCKED"].includes(
+          String(operationStatuses.get(operationKey) || "")
+        )
+      )
+        continue;
+      attempted = true;
+      try {
+        const proof = await adapter.reproveRoutineRead({
+          connection,
+          secret,
+          publishByUserId: input.userId,
+          resource,
+        });
+        console.log(
+          JSON.stringify({
+            event: "crm_degraded_read_reproved",
+            connectedSystemId: system.id,
+            userId: input.userId,
+            resource,
+            operationKey,
+            recordCount: proof.recordCount,
+            externalWritePerformed: false,
+          })
+        );
+      } catch (error) {
+        console.warn(
+          JSON.stringify({
+            event: "crm_degraded_read_reproof_deferred",
+            connectedSystemId: system.id,
+            userId: input.userId,
+            resource,
+            operationKey,
+            detail:
+              error instanceof Error
+                ? error.message.slice(0, 300)
+                : String(error).slice(0, 300),
+            externalWritePerformed: false,
+          })
+        );
+      }
+    }
+    if (attempted)
+      operationStatuses = new Map(
+        (
+          await browserOperationReadinessForSystem({
+            organisationId: input.organisationId,
+            connectedSystemId: system.id,
+          })
+        ).operations.map(operation => [operation.key, operation.status])
+      );
+  }
+
+  const summary: Record<string, number | string> = { mode: "routine" };
+  const failures: Record<string, string> = {};
+  const failureTransient: Record<string, boolean> = {};
+
+  if (
+    crmResourceSyncEligible(
+      connection,
+      "contacts.read",
+      operationStatuses.get("contact.sync")
+    )
+  ) {
+    try {
+      const existing = await cursorFor(system.id, "contacts");
+      const page = await adapter.syncRecentContacts({ connection, secret });
+      assertPersonalBrowserOwnerScope({
+        resourceType: "contacts",
+        expectedOwnerExternalId: secret.crmUserExternalId,
+        records: page.records,
+      });
+      const existingExternalIds = await existingContactIds(
+        input.organisationId,
+        system.id,
+        page.records.map(record => record.externalId)
+      );
+      await upsertContacts(input.organisationId, system.id, page.records);
+      await upsertSalesWorkFromCrm({
+        organisationId: input.organisationId,
+        connectedSystemId: system.id,
+        resource: { type: "contacts", records: page.records },
+        contactBaseline: {
+          baselineComplete: Boolean(existing?.lastSuccessfulAt),
+          existingExternalIds,
+        },
+      });
+      summary.contacts = page.records.length;
+    } catch (error) {
+      failures.contacts =
+        error instanceof Error
+          ? error.message.slice(0, 800)
+          : "Unknown sync error";
+      failureTransient.contacts = isTransientBrowserExecutionFailure(error);
+    }
+  } else summary.contacts = 0;
+
+  // Reconcile exact customer history immediately after the newest contacts.
+  // This retires already-worked NEW_LEAD alerts before slower opportunity/task
+  // scans can delay the salesperson's live queue.
+  if (
+    input.refreshCustomerHistory !== false &&
+    crmResourceSyncEligible(
+      connection,
+      "contacts.read",
+      operationStatuses.get("contact.read")
+    )
+  ) {
+    try {
+      const history = await refreshActiveCustomerSourceTruth({
+        userId: input.userId,
+        organisationId: input.organisationId,
+        connectedSystemId: system.id,
+        adapter,
+        connection,
+        secret,
+      });
+      summary.customerHistoryChecked = history.checked;
+      summary.newLeadHistoryResolved = history.resolvedNewLeads;
+      summary.customerHistoryDeferred = history.deferred;
+    } catch {
+      summary.customerHistoryDeferred = 1;
+    }
+  }
+
+  if (
+    crmResourceSyncEligible(
+      connection,
+      "tasks.read",
+      operationStatuses.get("task.sync")
+    )
+  ) {
+    const existing = await cursorFor(system.id, "tasks");
+    try {
+      const currentTaskExternalIds = new Set<string>();
+      const drained = await drainCrmPages<NormalizedTask>({
+        // The Genie task reader is a complete current-pending snapshot. Never
+        // resume from an old historical cursor or missing tasks cannot be retired.
+        initialCursor: undefined,
+        fetchPage: cursor => adapter.syncTasks({ connection, secret, cursor }),
+        onPage: async records => {
+          assertPersonalBrowserOwnerScope({
+            resourceType: "tasks",
+            expectedOwnerExternalId: secret.crmUserExternalId || "",
+            records,
+          });
+          for (const record of records)
+            currentTaskExternalIds.add(record.externalId);
+          await upsertTasks(input.organisationId, system.id, records);
+          await upsertSalesWorkFromCrm({
+            organisationId: input.organisationId,
+            connectedSystemId: system.id,
+            resource: { type: "tasks", records },
+          });
+        },
+      });
+      await reconcileOpenTaskSnapshot({
+        organisationId: input.organisationId,
+        connectedSystemId: system.id,
+        ownerExternalId: secret.crmUserExternalId,
+        currentOpenIds: currentTaskExternalIds,
+      });
+      await reconcileNewLeadAlertsFromTaskHistory({
+        userId: input.userId,
+        organisationId: input.organisationId,
+        connectedSystemId: system.id,
+      });
+      await saveCursor(system.id, "tasks", undefined);
+      summary.tasks = drained.total;
+    } catch (error) {
+      const detail =
+        error instanceof Error
+          ? error.message.slice(0, 800)
+          : "Unknown sync error";
+      if (!isTransientBrowserExecutionFailure(error))
+        await saveCursor(
+          system.id,
+          "tasks",
+          undefined,
+          detail,
+          existing?.lastSuccessfulAt
+        );
+      failures.tasks = detail;
+      failureTransient.tasks = isTransientBrowserExecutionFailure(error);
+    }
+  } else summary.tasks = 0;
+
+  summary.opportunitySnapshot = opportunitySnapshotDue ? "due" : "cached";
+  if (
+    opportunitySnapshotDue &&
+    crmResourceSyncEligible(
+      connection,
+      "opportunities.read",
+      operationStatuses.get("opportunity.sync")
+    )
+  ) {
+    const existing = opportunityCursor;
+    try {
+      const drained = await drainCrmPages<NormalizedOpportunity>({
+        initialCursor: undefined,
+        fetchPage: cursor =>
+          adapter.syncOpportunities({ connection, secret, cursor }),
+        onPage: async records => {
+          assertPersonalBrowserOwnerScope({
+            resourceType: "opportunities",
+            expectedOwnerExternalId: secret.crmUserExternalId || "",
+            records,
+          });
+          await upsertOpportunities(input.organisationId, system.id, records);
+          await upsertSalesWorkFromCrm({
+            organisationId: input.organisationId,
+            connectedSystemId: system.id,
+            resource: { type: "opportunities", records },
+          });
+        },
+      });
+      await saveCursor(system.id, "opportunities", undefined);
+      summary.opportunities = drained.total;
+    } catch (error) {
+      const detail =
+        error instanceof Error
+          ? error.message.slice(0, 800)
+          : "Unknown sync error";
+      if (!isTransientBrowserExecutionFailure(error))
+        await saveCursor(
+          system.id,
+          "opportunities",
+          undefined,
+          detail,
+          existing?.lastSuccessfulAt
+        );
+      failures.opportunities = detail;
+      failureTransient.opportunities =
+        isTransientBrowserExecutionFailure(error);
+    }
+  } else summary.opportunities = 0;
+
+  await reconcileCurrentBrowserReadiness(input);
+  if (Object.keys(failures).length) {
+    const error = new Error(
+      `CRM_SYNC_PARTIAL_FAILURE: ${Object.entries(failures)
+        .map(([resource, detail]) => `${resource}: ${detail}`)
+        .join("; ")}`
+    );
+    Object.assign(error, {
+      transient: Object.keys(failures).every(
+        key => failureTransient[key] === true
+      ),
+    });
+    throw error;
+  }
+  return summary;
+}
+
+/**
+ * Bounded read-only reconciliation for browser CRMs. It keeps recent contacts,
+ * owner-scoped opportunities and the complete current pending-task snapshot
+ * aligned with source truth. Manual refreshes also reconcile exact active-
+ * customer history; the background worker leaves that work to the lead watcher
+ * so the shared browser lane is not forced to repeat the same expensive reads.
+ * It never performs a CRM write.
+ */
+export async function syncConnectedSystemRoutine(input: {
+  userId: number;
+  organisationId: number;
+  connectedSystemId: number;
+  refreshCustomerHistory?: boolean;
+}) {
+  const result = await runModelFreeOperation(
+    {
+      purpose: "crm_sync",
+      organisationId: input.organisationId,
+      connectedSystemId: input.connectedSystemId,
+      reference: `crm-routine-sync:${input.connectedSystemId}:${Date.now()}`,
+    },
+    () => syncConnectedSystemRoutineDeterministically(input)
+  );
+  return {
+    ...result.value,
+    lastSuccessfulAt: new Date().toISOString(),
+    modelUsed: result.evidence.modelUsed,
+    providerCallCount: result.evidence.providerCallCount,
+  };
+}
+
+export async function syncConnectedSystem(input: {
+  userId: number;
+  organisationId: number;
+  connectedSystemId: number;
+}) {
+  const result = await runModelFreeOperation(
+    {
+      purpose: "crm_sync",
+      organisationId: input.organisationId,
+      connectedSystemId: input.connectedSystemId,
+      reference: `crm-sync:${input.connectedSystemId}:${Date.now()}`,
+    },
+    () => syncConnectedSystemDeterministically(input)
+  );
+  return {
+    ...result.value,
+    lastSuccessfulAt: new Date().toISOString(),
+    modelUsed: result.evidence.modelUsed,
+    providerCallCount: result.evidence.providerCallCount,
+  };
+}
+
+/** Canonical Refresh-now path: the user's own commissioned connection(s). */
+export async function syncConnectedSystemsForUser(input: {
+  userId: number;
+  organisationId: number;
+}) {
+  const systems = (
+    await listConnectedSystemsForUser(input.userId, input.organisationId)
+  ).filter(system => ["ready", "limited_permissions"].includes(system.status));
+  const results: Array<Record<string, unknown>> = [];
+  const failures: Array<{ connectedSystemId: number; error: string }> = [];
+  for (const system of systems) {
+    try {
+      const sync = ["browser", "sidecar"].includes(system.connectionMethod)
+        ? syncConnectedSystemRoutine
+        : syncConnectedSystem;
+      results.push(
+        await sync({
+          ...input,
+          connectedSystemId: system.id,
+        })
+      );
+    } catch (error) {
+      failures.push({
+        connectedSystemId: system.id,
+        error:
+          error instanceof Error
+            ? error.message.slice(0, 800)
+            : String(error).slice(0, 800),
+      });
+    }
+  }
+  const lastSuccessfulAt = results.length ? new Date().toISOString() : null;
+  return {
+    checked: systems.length,
+    synchronized: results.length,
+    failed: failures.length,
+    failures,
+    lastSuccessfulAt,
+    modelUsed: false as const,
+    providerCallCount: 0 as const,
+  };
+}
