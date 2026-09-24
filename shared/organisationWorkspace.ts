@@ -1,3 +1,5 @@
+[Reading 146 lines from start (total: 146 lines, 0 remaining)]
+
 export const CUSTOMER_MODELS = [
   "individual_consumer",
   "account_business",
@@ -117,3 +119,32 @@ export function formatOrganisationDate(
     timeStyle: "short",
   }).format(date);
 }
+
+export function formatOrganisationWorkDueDate(
+  date: Date,
+  org: { locale?: string; timezone?: string }
+) {
+  const locale = getOrganisationLocale(org);
+  const timeZone = getOrganisationTimezone(org);
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    })
+      .formatToParts(date)
+      .filter(part => part.type !== "literal")
+      .map(part => [part.type, Number(part.value)])
+  );
+  if (parts.hour === 0 && parts.minute === 0) {
+    const day = new Intl.DateTimeFormat(locale, {
+      timeZone,
+      dateStyle: "medium",
+    }).format(date);
+    return day + " · time not set";
+  }
+  return formatOrganisationDate(date, org);
+}
+
+[executed on device: amarktaisal (60c82bca-dc19-41e6-8ff8-d16e682f865e)]
