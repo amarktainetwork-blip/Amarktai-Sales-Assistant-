@@ -1,4 +1,5 @@
 import { formatOrganisationDate } from "../shared/organisationWorkspace";
+import { customerHistory } from "../shared/customerHistory";
 import { getOrganisationWorkspaceContext } from "./organisationWorkspace";
 import type { Express, Response } from "express";
 import {
@@ -12,6 +13,7 @@ import { requireLocalHttpContext } from "./httpAuth";
 import { routeSalesCommand } from "./supervisor";
 import { getTodayWork } from "./today";
 import { getWorkingContextForContact } from "./liveCalls/context";
+import { getExactCustomerDetail } from "./customerData";
 import { runGenxAgent, type ChatMessage } from "./genx";
 import { isGovernedEvidenceAgent } from "./governedEvidenceAgents";
 import { getSalesWatchtower } from "./salesCommsWatchtower";
@@ -291,6 +293,138 @@ function compactPriority(item: {
     stage: item.stage,
     reasons: item.reasons,
     nextStepAt: item.nextStepAt,
+  };
+}
+
+function assistantContextValue(value: unknown): unknown {
+  if (value == null) return undefined;
+  if (Array.isArray(value))
+    return value
+      .map(item => assistantContextValue(item))
+      .filter(value => value !== undefined);
+  if (typeof value === "object") return JSON.stringify(value).slice(0, 1_200);
+  const text = String(value).trim();
+  return text ? text.slice(0, 1_200) : undefined;
+}
+
+function assistantTimelineBody(value: string) {
+  const quoteIndex = value.search(
+    /<blockquote|<div[^>]*gmail_quote|\bOn .{0,220}\bwrote:/i
+  );
+  const current = quoteIndex >= 0 ? value.slice(0, quoteIndex) : value;
+  return current
+    .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<br\s*\/?\s*>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .slice(0, 1_000);
+}
+
+export function assistantCustomerEvidence(
+  detail: NonNullable<Awaited<ReturnType<typeof getExactCustomerDetail>>>
+) {
+  const timeline = customerHistory(
+    detail.activities.items,
+    detail.communications.items
+  )
+    .slice(0, 50)
+    .map(item => ({
+      occurredAt: item.occurredAt,
+      channel: item.channel,
+      direction: item.direction,
+      subject: item.subject || undefined,
+      body: assistantTimelineBody(item.body),
+      needsAction: item.needsAction,
+    }));
+  return {
+    name: detail.name,
+    lifecycleStage: detail.lifecycleStage,
+    companyName: detail.companyName,
+    interest: detail.interest,
+    source: detail.attributes.source,
+    tags: detail.attributes.tags,
+    mappedFields: detail.mappedFields
+      .map(field => ({
+        label: field.label,
+        purpose: field.purpose,
+        value: assistantContextValue(field.value),
+      }))
+      .filter(field => field.value !== undefined),
+    openOpportunity: detail.openOpportunity
+      ? {
+          name: detail.openOpportunity.name,
+          pipeline: detail.openOpportunity.pipeline,
+          stage: detail.openOpportunity.stage,
+          nextStep:
+            assistantContextValue(detail.openOpportunity.raw?.nextStep) ||
+            undefined,
+          updatedAt: detail.openOpportunity.updatedAt,
+        }
+      : null,
+    currentTasks: detail.tasks.current.slice(0, 25).map(task => ({
+      title: task.title,
+      status: task.status,
+      dueAt: task.dueAt,
+      sourceUpdatedAt: task.sourceUpdatedAt,
+    })),
+    completedTasks: detail.tasks.completed.slice(0, 25).map(task => ({
+      title: task.title,
+      status: task.status,
+      dueAt: task.dueAt,
+      completedAt: task.completedAt,
+      sourceUpdatedAt: task.sourceUpdatedAt,
+    })),
+    opportunityHistory: detail.opportunities.items.slice(0, 12).map(item => ({
+      name: item.name,
+      pipeline: item.pipeline,
+      stage: item.stage,
+      updatedAt: item.updatedAt,
+    })),
+    conversationTimeline: {
+      order: "newest_first",
+      items: timeline,
+      retainedItems: timeline.length,
+      availableActivityCount: detail.activities.total,
+      availableInboundCount: detail.communications.items.length,
+    },
+  };
+}
+
+export function selectedCustomerResponseContract(input: {
+  agentKey: string;
+  hasCustomer: boolean;
+}) {
+  if (!input.hasCustomer) return undefined;
+  if (input.agentKey === "conversation_coach")
+    return {
+      mode: "customer_specific_call_preparation",
+      requirements: [
+        "Base the preparation on the selected customer's verified conversation timeline, current tasks, opportunity and known fields.",
+        "Start from where the conversation actually left off: identify the latest customer request, the latest salesperson communication, unresolved questions or objections, and any explicit commitments.",
+        "Do not ask discovery questions the customer has already answered unless verification is genuinely necessary.",
+        "Respect source chronology. A later call, note, task or message supersedes an older plan when the evidence says so.",
+        "Interpret words such as today, tomorrow and yesterday relative to the timestamp of that source record, not relative to the time of this Assistant request.",
+        "Separate known facts from items that still need verification; never convert an unlabeled field into an assumed fact.",
+        "Give the salesperson a concise call objective, a customer-specific opening, the few questions that still matter, likely objections only when supported by evidence, and the exact next-step decision the call should reach.",
+        "Finish the answer completely. Do not end mid-sentence or with an unfinished script.",
+      ],
+    };
+  return {
+    mode: "selected_customer_evidence",
+    requirements: [
+      "Answer from the selected customer's verified history, not a generic sales template.",
+      "Prefer the newest communication when it changes or supersedes an older plan.",
+      "Do not imply an action happened unless execution evidence confirms it.",
+      "Finish the answer completely.",
+    ],
   };
 }
 
@@ -680,6 +814,16 @@ export function registerAssistantRoutes(app: Express) {
             contactId,
           })
         : undefined;
+      const customerDetail = contactId
+        ? await getExactCustomerDetail({
+            userId,
+            organisationId: membership.organisationId,
+            contactId,
+          })
+        : undefined;
+      const selectedCustomerEvidence = customerDetail
+        ? assistantCustomerEvidence(customerDetail)
+        : undefined;
       const [
         sources,
         operationalContext,
@@ -715,6 +859,16 @@ export function registerAssistantRoutes(app: Express) {
             .join("\n\n---\n\n")
         : undefined;
       const workingContext = JSON.stringify({
+        selectedCustomer: contactContext
+          ? {
+              ...contactContext,
+              evidence: selectedCustomerEvidence,
+            }
+          : null,
+        responseContract: selectedCustomerResponseContract({
+          agentKey: route.agentKey,
+          hasCustomer: Boolean(contactContext),
+        }),
         workspace: await getOrganisationWorkspaceContext(
           membership.organisationId
         ),
@@ -727,7 +881,6 @@ export function registerAssistantRoutes(app: Express) {
           personalSalesGoal: membership.memberOnboarding.primaryGoal || null,
           workingStyle: membership.memberOnboarding.workingStyle || null,
         },
-        selectedCustomer: contactContext ?? null,
         relevantMemory: relevantMemory.map(memory => ({
           type: memory.memoryType,
           subject: memory.subject,
@@ -808,6 +961,9 @@ export function registerAssistantRoutes(app: Express) {
         messages,
         approvedKnowledge,
         workingContext,
+        maxContextChars: contactContext ? 50_000 : 32_000,
+        maxWorkingContextChars: contactContext ? 30_000 : 12_000,
+        maxOutputTokens: 2_200,
       });
       await recordAudit({
         userId,

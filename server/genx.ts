@@ -379,6 +379,7 @@ export async function runGenxAgent(input: {
   modelTier?: "fast" | "default" | "reasoning";
   billing?: GenxBillingContext;
   maxContextChars?: number;
+  maxWorkingContextChars?: number;
   maxOutputTokens?: number;
 }) {
   assertModelSpendAllowed("genx", input.billing?.feature);
@@ -459,7 +460,13 @@ export async function runGenxAgent(input: {
   const approvedKnowledge = input.approvedKnowledge
     ?.trim()
     .slice(0, knowledgeBudget);
-  const workingContext = input.workingContext?.trim().slice(0, 10_000);
+  const maxWorkingContextChars = Math.min(
+    30_000,
+    Math.max(4_000, input.maxWorkingContextChars || 10_000)
+  );
+  const workingContext = input.workingContext
+    ?.trim()
+    .slice(0, maxWorkingContextChars);
   const conversationBudget = Math.max(
     4_000,
     maxContextChars -
