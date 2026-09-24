@@ -34,6 +34,14 @@ describe("client-handover live calls presentation", () => {
       expect(liveCalls).toContain(required);
   });
 
+  it("records self-contained chunks for the live transcription boundary", () => {
+    expect(liveCalls).toContain("function startRecordingCycle");
+    expect(liveCalls).toContain("recorder.start();");
+    expect(liveCalls).toContain("recorder.stop();");
+    expect(liveCalls).toContain("}, 5000);");
+    expect(liveCalls).not.toContain("recorder.start(5000)");
+  });
+
   it("keeps the complete prepare-call-assist-closeout workflow", () => {
     for (const required of [
       "PRE-CALL BRIEF",
