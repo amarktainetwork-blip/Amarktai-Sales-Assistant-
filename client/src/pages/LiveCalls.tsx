@@ -178,6 +178,8 @@ export default function LiveCalls() {
   const [workflowError, setWorkflowError] = useState("");
   const [retryAction, setRetryAction] = useState<(() => void) | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
+  const recordingRef = useRef(false);
+  const chunkTimerRef = useRef<number | undefined>(undefined);
   const sourcesRef = useRef<MediaStream[]>([]);
   const audioContextRef = useRef<AudioContext | undefined>(undefined);
   const pendingRef = useRef<Promise<void>>(Promise.resolve());
@@ -264,6 +266,9 @@ export default function LiveCalls() {
       });
 
     return () => {
+      recordingRef.current = false;
+      if (chunkTimerRef.current !== undefined)
+        window.clearTimeout(chunkTimerRef.current);
       if (recorderRef.current && recorderRef.current.state !== "inactive")
         recorderRef.current.stop();
       sourcesRef.current.forEach(stream =>
@@ -343,6 +348,51 @@ export default function LiveCalls() {
     }
   }
 
+  function startRecordingCycle(stream: MediaStream, activeSessionId: number) {
+    const preferred = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+      ? "audio/webm;codecs=opus"
+      : "";
+    const recorder = preferred
+      ? new MediaRecorder(stream, {
+          mimeType: preferred,
+          audioBitsPerSecond: 64000,
+        })
+      : new MediaRecorder(stream);
+    const chunks: Blob[] = [];
+    recorderRef.current = recorder;
+    recorder.ondataavailable = event => {
+      if (event.data.size) chunks.push(event.data);
+    };
+    recorder.onstop = () => {
+      if (chunkTimerRef.current !== undefined) {
+        window.clearTimeout(chunkTimerRef.current);
+        chunkTimerRef.current = undefined;
+      }
+      const blob = new Blob(chunks, {
+        type: recorder.mimeType || preferred || "audio/webm",
+      });
+      if (blob.size) {
+        pendingRef.current = pendingRef.current
+          .then(() => uploadChunk(blob, activeSessionId))
+          .catch(error => {
+            const detail = callError(
+              error,
+              "Live transcription was interrupted. Your existing call notes are still available."
+            );
+            setWorkflowError(detail);
+            setRetryAction(() => () => void uploadChunk(blob, activeSessionId));
+            toast.error(detail);
+          });
+      }
+      if (recordingRef.current)
+        startRecordingCycle(stream, activeSessionId);
+    };
+    recorder.start();
+    chunkTimerRef.current = window.setTimeout(() => {
+      if (recorder.state !== "inactive") recorder.stop();
+    }, 5000);
+  }
+
   async function begin() {
     if (!leadLabel.trim())
       return toast.error("Choose the customer before starting.");
@@ -368,33 +418,8 @@ export default function LiveCalls() {
       const capture = await getCaptureStream(captureMode);
       sourcesRef.current = capture.sources;
       audioContextRef.current = capture.context;
-      const preferred = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-        ? "audio/webm;codecs=opus"
-        : "";
-      const recorder = preferred
-        ? new MediaRecorder(capture.stream, {
-            mimeType: preferred,
-            audioBitsPerSecond: 64000,
-          })
-        : new MediaRecorder(capture.stream);
-      recorderRef.current = recorder;
-      recorder.ondataavailable = event => {
-        if (!event.data.size) return;
-        pendingRef.current = pendingRef.current
-          .then(() => uploadChunk(event.data, activeSessionId))
-          .catch(error => {
-            const detail = callError(
-              error,
-              "Live transcription was interrupted. Your existing call notes are still available."
-            );
-            setWorkflowError(detail);
-            setRetryAction(
-              () => () => void uploadChunk(event.data, activeSessionId)
-            );
-            toast.error(detail);
-          });
-      };
-      recorder.start(5000);
+      recordingRef.current = true;
+      startRecordingCycle(capture.stream, activeSessionId);
       setRecording(true);
       toast.success(
         captureMode === "mixed"
@@ -402,6 +427,11 @@ export default function LiveCalls() {
           : "Microphone transcription started."
       );
     } catch (error) {
+      recordingRef.current = false;
+      if (chunkTimerRef.current !== undefined) {
+        window.clearTimeout(chunkTimerRef.current);
+        chunkTimerRef.current = undefined;
+      }
       sourcesRef.current.forEach(stream =>
         stream.getTracks().forEach(track => track.stop())
       );
@@ -420,6 +450,11 @@ export default function LiveCalls() {
 
   async function stop() {
     const recorder = recorderRef.current;
+    recordingRef.current = false;
+    if (chunkTimerRef.current !== undefined) {
+      window.clearTimeout(chunkTimerRef.current);
+      chunkTimerRef.current = undefined;
+    }
     if (!recorder || recorder.state === "inactive") return;
     await new Promise<void>(resolve => {
       recorder.addEventListener("stop", () => resolve(), { once: true });
