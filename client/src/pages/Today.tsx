@@ -1,4 +1,6 @@
-import { formatOrganisationDate } from "@shared/organisationWorkspace";
+[Reading 718 lines from start (total: 718 lines, 0 remaining)]
+
+import { formatOrganisationWorkDueDate } from "@shared/organisationWorkspace";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { refreshSalesDay } from "@/lib/refreshSalesDay";
@@ -167,7 +169,7 @@ export default function Today() {
 
   const dateLabel = (value?: Date | string | null) =>
     value
-      ? formatOrganisationDate(new Date(value), workspace || {})
+      ? formatOrganisationWorkDueDate(new Date(value), workspace || {})
       : "No due time";
 
   const openAssistant = () => {
@@ -716,3 +718,5 @@ function TodayContextFact({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+
+[executed on device: amarktaisal (60c82bca-dc19-41e6-8ff8-d16e682f865e)]
