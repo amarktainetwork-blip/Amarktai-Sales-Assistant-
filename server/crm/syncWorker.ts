@@ -1,3 +1,5 @@
+[Reading 477 lines from start (total: 477 lines, 0 remaining)]
+
 import {
   isTransientCrmSyncFailure,
   reconcileNewLeadAlertsFromTaskHistory,
@@ -22,6 +24,7 @@ import {
 
 export const DEFAULT_CRM_SYNC_INTERVAL_MS = 120_000;
 export const CRM_SYNC_POLL_INTERVAL_MS = 30_000;
+export const BACKGROUND_ROUTINE_REFRESH_CUSTOMER_HISTORY = false;
 const MAX_CONNECTIONS_PER_CYCLE = 50;
 export const CRM_SYNC_STALE_LEASE_MS = 10 * 60_000;
 
@@ -380,16 +383,24 @@ export async function runConnectionScopedCrmSyncCycle(now = new Date()) {
         connectedSystemId: row.system.id,
         connectionMethod: row.system.connectionMethod,
       });
-      const sync =
-        crmBackgroundSyncMode(row.system.connectionMethod) === "routine"
-          ? syncConnectedSystemRoutine
-          : syncConnectedSystem;
-      for (const userId of userIds)
-        await sync({
+      const routine =
+        crmBackgroundSyncMode(row.system.connectionMethod) === "routine";
+      for (const userId of userIds) {
+        const syncInput = {
           userId,
           organisationId: row.system.organisationId,
           connectedSystemId: row.system.id,
-        });
+        };
+        if (routine)
+          await syncConnectedSystemRoutine({
+            ...syncInput,
+            // The 60-second lead watcher owns exact active-customer history.
+            // Avoid duplicating those expensive browser reads in reconciliation.
+            refreshCustomerHistory:
+              BACKGROUND_ROUTINE_REFRESH_CUSTOMER_HISTORY,
+          });
+        else await syncConnectedSystem(syncInput);
+      }
       if (userIds.length) synchronized += 1;
       await db
         .update(connectorSyncJobs)
@@ -466,3 +477,5 @@ export function startConnectionScopedCrmSyncWorker(
     Math.min(intervalMs, CRM_SYNC_POLL_INTERVAL_MS)
   );
 }
+
+[executed on device: amarktaisal (60c82bca-dc19-41e6-8ff8-d16e682f865e)]
