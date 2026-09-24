@@ -22,6 +22,9 @@ ARG VCS_REF=unknown
 LABEL org.opencontainers.image.revision=$VCS_REF
 ENV NODE_ENV=production
 WORKDIR /app
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ffmpeg \
+  && rm -rf /var/lib/apt/lists/*
 RUN groupadd --system amarktai && useradd --system --gid amarktai --create-home amarktai
 COPY --from=build --chown=amarktai:amarktai /app/dist ./dist
 COPY --from=build --chown=amarktai:amarktai /app/drizzle ./drizzle
