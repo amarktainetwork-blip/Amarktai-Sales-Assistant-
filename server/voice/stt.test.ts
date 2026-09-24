@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { decodeAudio, probeSttHealth, transcribeAudio } from "./stt";
+import {
+  decodeAudio,
+  probeSttHealth,
+  requiresWhisperWavNormalization,
+  transcribeAudio,
+} from "./stt";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -9,6 +14,15 @@ afterEach(() => {
 });
 
 describe("built-in speech transcription", () => {
+  it("normalizes browser recording formats to WAV for whisper.cpp", () => {
+    expect(requiresWhisperWavNormalization("audio/webm")).toBe(true);
+    expect(requiresWhisperWavNormalization("audio/ogg")).toBe(true);
+    expect(requiresWhisperWavNormalization("audio/mp4")).toBe(true);
+    expect(requiresWhisperWavNormalization("audio/mpeg")).toBe(true);
+    expect(requiresWhisperWavNormalization("audio/wav")).toBe(false);
+    expect(requiresWhisperWavNormalization("audio/x-wav")).toBe(false);
+  });
+
   it("rejects malformed and oversized audio before network use", () => {
     expect(() => decodeAudio("not base64!")).toThrow("valid base64");
     expect(() => decodeAudio(Buffer.alloc(800_001).toString("base64"))).toThrow("too large");
@@ -29,4 +43,3 @@ describe("built-in speech transcription", () => {
     await expect(transcribeAudio(Buffer.from("RIFF-test-audio"), "audio/wav", "en")).resolves.toBe("The sales assistant voice test");
   });
 });
-
