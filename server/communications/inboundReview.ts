@@ -1,5 +1,3 @@
-[Reading 93 lines from start (total: 93 lines, 0 remaining)]
-
 export type InboundClassification = {
   category:
     | "sale_intent"
@@ -93,5 +91,3 @@ export function canSendReviewedReply(
 ) {
   return status === "approved";
 }
-
-[executed on device: amarktaisal (60c82bca-dc19-41e6-8ff8-d16e682f865e)]
