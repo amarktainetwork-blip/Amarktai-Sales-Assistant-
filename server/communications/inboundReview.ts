@@ -1,3 +1,5 @@
+[Reading 93 lines from start (total: 93 lines, 0 remaining)]
+
 export type InboundClassification = {
   category:
     | "sale_intent"
@@ -66,6 +68,20 @@ export function classifyInboundMessage(input: {
       category: "reply_needed",
       reasons: ["message includes a question or request"],
     };
+
+  // Short customer answers are still genuine replies even when they contain
+  // no question mark or explicit request. Keep these visible so Amelia does
+  // not miss a response such as "I don't have alternative".
+  if (
+    /\b(?:i\s+(?:do not|don't|dont|cannot|can't|cant)\s+have|i\s+have\s+no|no\s+alternative|not\s+yet|not\s+currently|none)\b/.test(
+      latestBody
+    )
+  )
+    return {
+      category: "reply_needed",
+      reasons: ["message contains a direct customer answer that needs review"],
+    };
+
   return {
     category: "information",
     reasons: ["no deterministic reply trigger was found"],
@@ -77,3 +93,5 @@ export function canSendReviewedReply(
 ) {
   return status === "approved";
 }
+
+[executed on device: amarktaisal (60c82bca-dc19-41e6-8ff8-d16e682f865e)]
