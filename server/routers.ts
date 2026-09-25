@@ -127,6 +127,7 @@ import { crmOAuthCallbackUrl } from "./crm/oauthRoutes";
 import { syncConnectedSystem, syncConnectedSystemsForUser } from "./crm/sync";
 import { getTodayWork } from "./today";
 import { getSalesInbox, syncSalesInbox } from "./salesInbox";
+import { getSalesTracker } from "./salesTracker";
 import { listPersonalCrmCustomers } from "./personalCrmCustomers";
 import {
   listNewLeadAlerts,
@@ -1527,6 +1528,15 @@ export const appRouter = router({
       }),
   }),
   sales: router({
+    tracker: secondFactorProcedure
+      .input(z.object({ organisationId: z.number().int().positive() }))
+      .query(({ ctx, input }) => {
+        requireActiveOrganisationContext(ctx, input.organisationId);
+        return getSalesTracker({
+          userId: ctx.user.id,
+          organisationId: input.organisationId,
+        });
+      }),
     today: secondFactorProcedure
       .input(z.object({ organisationId: z.number().int().positive() }))
       .query(({ ctx, input }) => {

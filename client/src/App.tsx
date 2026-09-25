@@ -32,6 +32,7 @@ import Inbox from "./pages/Inbox";
 import LiveCalls from "./pages/LiveCalls";
 import Pricing from "./pages/Pricing";
 import Reviews from "./pages/Reviews";
+import SalesTracker from "./pages/SalesTracker";
 import Settings from "./pages/Settings";
 import SetupWelcome from "./pages/SetupWelcome";
 import TeamIntelligence from "./pages/TeamIntelligence";
@@ -49,6 +50,7 @@ const workspacePrefixes = [
   "/calls",
   "/crm",
   "/reviews",
+  "/sales-tracker",
   "/team",
   "/settings",
   "/welcome",
@@ -198,6 +200,7 @@ function Router() {
         <Route path="/crm/:connectedSystemId" component={CrmWorkspace} />
         <Route path="/crm" component={CrmWorkspace} />
         <Route path="/reviews" component={Reviews} />
+        <Route path="/sales-tracker" component={SalesTracker} />
 
         <Route path="/team">
           {() => (
