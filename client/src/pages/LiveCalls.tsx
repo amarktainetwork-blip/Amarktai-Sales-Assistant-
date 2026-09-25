@@ -99,6 +99,39 @@ function blobToBase64(blob: Blob) {
   });
 }
 
+function encodePcmWav(samples: Float32Array, sampleRate: number) {
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+  const write = (offset: number, value: string) => {
+    for (let i = 0; i < value.length; i++)
+      view.setUint8(offset + i, value.charCodeAt(i));
+  };
+  write(0, "RIFF");
+  view.setUint32(4, 36 + samples.length * 2, true);
+  write(8, "WAVE");
+  write(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  write(36, "data");
+  view.setUint32(40, samples.length * 2, true);
+  let offset = 44;
+  for (let index = 0; index < samples.length; index++) {
+    const clamped = Math.max(-1, Math.min(1, samples[index]));
+    view.setInt16(
+      offset,
+      clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff,
+      true
+    );
+    offset += 2;
+  }
+  return new Blob([buffer], { type: "audio/wav" });
+}
+
 async function postLive<T>(
   path: string,
   body: Record<string, unknown>
@@ -487,19 +520,21 @@ export default function LiveCalls() {
   }
 
   function startRecordingCycle(stream: MediaStream, activeSessionId: number) {
-    const preferred = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-      ? "audio/webm;codecs=opus"
-      : "";
-    const recorder = preferred
-      ? new MediaRecorder(stream, {
-          mimeType: preferred,
-          audioBitsPerSecond: 64000,
-        })
-      : new MediaRecorder(stream);
-    recorderRef.current = recorder;
-    recorder.ondataavailable = event => {
-      if (!event.data.size) return;
-      const blob = event.data;
+    const context = audioContextRef.current || new AudioContext();
+    audioContextRef.current = context;
+    const source = context.createMediaStreamSource(stream);
+    const processor = context.createScriptProcessor(4096, 1, 1);
+    const sink = context.createGain();
+    sink.gain.value = 0;
+    const samples: number[] = [];
+    let lastFlushAt = performance.now();
+
+    const flush = () => {
+      if (!samples.length) return;
+      const blob = encodePcmWav(
+        Float32Array.from(samples.splice(0)),
+        context.sampleRate
+      );
       pendingRef.current = pendingRef.current
         .then(() => uploadChunk(blob, activeSessionId))
         .catch(error => {
@@ -512,13 +547,30 @@ export default function LiveCalls() {
           toast.error(detail);
         });
     };
-    recorder.onstop = () => {
-      if (chunkTimerRef.current !== undefined) {
-        window.clearTimeout(chunkTimerRef.current);
-        chunkTimerRef.current = undefined;
+
+    processor.onaudioprocess = event => {
+      if (!recordingRef.current) return;
+      const input = event.inputBuffer.getChannelData(0);
+      for (let index = 0; index < input.length; index++)
+        samples.push(input[index]);
+      if (performance.now() - lastFlushAt >= LIVE_AUDIO_CHUNK_MS) {
+        lastFlushAt = performance.now();
+        flush();
       }
     };
-    recorder.start(LIVE_AUDIO_CHUNK_MS);
+    source.connect(processor);
+    processor.connect(sink);
+    sink.connect(context.destination);
+    recorderRef.current = null;
+    chunkTimerRef.current = window.setInterval(() => {
+      if (
+        recordingRef.current &&
+        performance.now() - lastFlushAt >= LIVE_AUDIO_CHUNK_MS
+      ) {
+        lastFlushAt = performance.now();
+        flush();
+      }
+    }, 250);
   }
 
   async function begin() {
@@ -560,7 +612,9 @@ export default function LiveCalls() {
       setSessionId(activeSessionId);
       const capture = await getCaptureStream(captureMode);
       sourcesRef.current = capture.sources;
-      audioContextRef.current = capture.context;
+      audioContextRef.current = capture.context || new AudioContext();
+      if (audioContextRef.current.state === "suspended")
+        await audioContextRef.current.resume();
       recordingRef.current = true;
       startRecordingCycle(capture.stream, activeSessionId);
       setRecording(true);
@@ -595,14 +649,15 @@ export default function LiveCalls() {
     const recorder = recorderRef.current;
     recordingRef.current = false;
     if (chunkTimerRef.current !== undefined) {
-      window.clearTimeout(chunkTimerRef.current);
+      window.clearInterval(chunkTimerRef.current);
       chunkTimerRef.current = undefined;
     }
-    if (!recorder || recorder.state === "inactive") return;
-    await new Promise<void>(resolve => {
-      recorder.addEventListener("stop", () => resolve(), { once: true });
-      recorder.stop();
-    });
+    if (recorder && recorder.state !== "inactive") {
+      await new Promise<void>(resolve => {
+        recorder.addEventListener("stop", () => resolve(), { once: true });
+        recorder.stop();
+      });
+    }
     setRecording(false);
     sourcesRef.current.forEach(stream =>
       stream.getTracks().forEach(track => track.stop())
@@ -642,8 +697,7 @@ export default function LiveCalls() {
     }
   }
 
-  async function completeCloseout() {
-    if (!sessionId || !awaitingCloseout) return;
+  async function completeCloseout() {    if (!sessionId || !awaitingCloseout) return;
     if (!closeoutConfirmed)
       return toast.error(
         "Confirm the outcome, callback and next-step details before preparing follow-up."
@@ -897,7 +951,9 @@ export default function LiveCalls() {
                       setLeadLabel(contact.name);
                     }}
                     className={`block w-full rounded-lg px-3 py-2 text-left text-xs ${selectedContactId === contact.id ? "bg-[#EAF0F2] text-[#405F70]" : "text-[#52647A] hover:bg-[#F2F5F8]"}`}
-                  >                    <b>{contact.name}</b>
+                  >
+                    {" "}
+                    <b>{contact.name}</b>
                     <span className="ml-2 text-[#7B8798]">
                       {contact.email || contact.phone || "Customer"}
                     </span>
@@ -1027,16 +1083,46 @@ export default function LiveCalls() {
                 </span>
               </div>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <LiveNoteGroup label="Goals / intentions heard" items={structuredNotes.goals} />
-                <LiveNoteGroup label="Facts / context heard" items={structuredNotes.facts} />
-                <LiveNoteGroup label="Customer questions" items={structuredNotes.questions} />
-                <LiveNoteGroup label="Objections" items={structuredNotes.objections} />
-                <LiveNoteGroup label="Buying signals" items={structuredNotes.buyingSignals} />
-                <LiveNoteGroup label="Commitments heard — confirm speaker" items={structuredNotes.commitments} />
-                <LiveNoteGroup label="Callback requests" items={structuredNotes.callbackRequests} />
-                <LiveNoteGroup label="Dates / times mentioned" items={structuredNotes.datesTimes} />
-                <LiveNoteGroup label="Likely next steps" items={structuredNotes.nextSteps} />
-                <LiveNoteGroup label="Still unresolved" items={structuredNotes.unresolvedItems} />
+                <LiveNoteGroup
+                  label="Goals / intentions heard"
+                  items={structuredNotes.goals}
+                />
+                <LiveNoteGroup
+                  label="Facts / context heard"
+                  items={structuredNotes.facts}
+                />
+                <LiveNoteGroup
+                  label="Customer questions"
+                  items={structuredNotes.questions}
+                />
+                <LiveNoteGroup
+                  label="Objections"
+                  items={structuredNotes.objections}
+                />
+                <LiveNoteGroup
+                  label="Buying signals"
+                  items={structuredNotes.buyingSignals}
+                />
+                <LiveNoteGroup
+                  label="Commitments heard — confirm speaker"
+                  items={structuredNotes.commitments}
+                />
+                <LiveNoteGroup
+                  label="Callback requests"
+                  items={structuredNotes.callbackRequests}
+                />
+                <LiveNoteGroup
+                  label="Dates / times mentioned"
+                  items={structuredNotes.datesTimes}
+                />
+                <LiveNoteGroup
+                  label="Likely next steps"
+                  items={structuredNotes.nextSteps}
+                />
+                <LiveNoteGroup
+                  label="Still unresolved"
+                  items={structuredNotes.unresolvedItems}
+                />
               </div>
             </section>
 
@@ -1133,13 +1219,16 @@ export default function LiveCalls() {
                   <input
                     type="checkbox"
                     checked={closeoutConfirmed}
-                    onChange={event => setCloseoutConfirmed(event.target.checked)}
+                    onChange={event =>
+                      setCloseoutConfirmed(event.target.checked)
+                    }
                     className="mt-0.5 h-4 w-4"
                   />
                   <span>
-                    I have checked the outcome, callback time and next step above.
-                    Treat these closeout details as salesperson-confirmed. Transcript-derived
-                    notes remain suggestions until confirmed here.
+                    I have checked the outcome, callback time and next step
+                    above. Treat these closeout details as
+                    salesperson-confirmed. Transcript-derived notes remain
+                    suggestions until confirmed here.
                   </span>
                 </label>
                 <Button
