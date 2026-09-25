@@ -39,8 +39,8 @@ type TranscriptionResult = {
 };
 
 const LIVE_AUDIO_CHUNK_MS = 2_500;
-const LIVE_COACH_INTERVAL_MS = 5_000;
-const LIVE_COACH_STALE_MS = 9_000;
+const LIVE_COACH_INTERVAL_MS = 750;
+const LIVE_COACH_STALE_MS = 3_500;
 type CoachingResult = {
   content: string;
   usage?: Record<string, number>;
@@ -336,6 +336,7 @@ export default function LiveCalls() {
   const lastCoachAtRef = useRef(0);
   const coachingRef = useRef(false);
   const coachAbortRef = useRef<AbortController | null>(null);
+  const coachedSignalRef = useRef<Map<string, number>>(new Map());
   const coachStartedAtRef = useRef(0);
   const pendingCoachRef = useRef<{
     activeSessionId: number;
@@ -563,11 +564,29 @@ export default function LiveCalls() {
           )
           .slice(0, 12)
       );
-      const needsCoach = result.signals.some(
+      // Coaching is event-driven: do not repeatedly spend AI credits on the
+      // rolling transcript or on the same unresolved signal. A compact event
+      // packet is enough for coaching; the server adds approved CRM context.
+      const now = Date.now();
+      const coachable = result.signals.filter(
         signal => signal.priority === "important" || signal.type === "question"
       );
-      if (needsCoach)
-        scheduleCoaching(activeSessionId, transcriptRef.current.slice(-8_000));
+      const fresh = coachable.filter(signal => {
+        const key = `${signal.type}:${signal.evidence.toLowerCase().replace(/\\s+/g, " ").trim()}`;
+        const previous = coachedSignalRef.current.get(key) || 0;
+        if (now - previous < 120_000) return false;
+        coachedSignalRef.current.set(key, now);
+        return true;
+      });
+      if (fresh.length) {
+        const eventPacket = [
+          `Latest speech: ${text.slice(-700)}`,
+          ...fresh.map(signal =>
+            `Signal: ${signal.label} | Evidence: ${signal.evidence}`
+          ),
+        ].join("\n");
+        scheduleCoaching(activeSessionId, eventPacket.slice(-1_500));
+      }
     }
   }
 
