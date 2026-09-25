@@ -14,6 +14,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { friendlyError } from "@/lib/friendlyError";
 import { nextRequiredOnboardingPath } from "@/lib/onboardingNextStep";
+import { useAuth } from "@/_core/hooks/useAuth";
 
 type Persona =
   | "individual"
@@ -175,6 +176,7 @@ function SetupVisual() {
 }
 
 export default function MemberOnboardingGate() {
+  const { logout } = useAuth();
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -185,6 +187,29 @@ export default function MemberOnboardingGate() {
   const [workingStyle, setWorkingStyle] = useState("");
   const [identityRefreshAttempted, setIdentityRefreshAttempted] =
     useState(false);
+
+  async function signOut() {
+    setSaving(true);
+    setError("");
+    try {
+      await logout();
+      window.location.assign("/");
+    } catch {
+      setError("Sign out could not finish. Please try again.");
+      setSaving(false);
+    }
+  }
+
+  const signOutControl = (
+    <button
+      type="button"
+      onClick={() => void signOut()}
+      disabled={saving}
+      className="absolute right-5 top-5 z-10 rounded-lg px-3 py-2 text-sm font-semibold text-[#5D6A73] transition hover:bg-[#F2F1EC] hover:text-[#18242E] disabled:opacity-50"
+    >
+      Sign out
+    </button>
+  );
 
   async function refresh() {
     try {
@@ -406,7 +431,8 @@ export default function MemberOnboardingGate() {
     return (
       <main className="amk-auth fixed inset-0 z-[250] overflow-y-auto">
         <SetupVisual />
-        <section className="amk-auth__form-side">
+        <section className="amk-auth__form-side relative">
+          {signOutControl}
           <div className="amk-auth__mobile-brand">
             <BrandMark inverse />
           </div>
@@ -426,7 +452,8 @@ export default function MemberOnboardingGate() {
     return (
       <main className="amk-auth fixed inset-0 z-[250] overflow-y-auto">
         <SetupVisual />
-        <section className="amk-auth__form-side">
+        <section className="amk-auth__form-side relative">
+          {signOutControl}
           <div className="amk-auth__mobile-brand">
             <BrandMark inverse />
           </div>
@@ -454,7 +481,8 @@ export default function MemberOnboardingGate() {
   return (
     <main className="amk-auth fixed inset-0 z-[250] overflow-y-auto">
       <SetupVisual />
-      <section className="amk-auth__form-side">
+      <section className="amk-auth__form-side relative">
+        {signOutControl}
         <div className="amk-auth__mobile-brand">
           <BrandMark inverse />
         </div>
@@ -542,16 +570,18 @@ export default function MemberOnboardingGate() {
                   />
                 </label>
                 <details>
-                  <summary className="cursor-pointer text-sm font-semibold">Working preferences (optional)</summary>
+                  <summary className="cursor-pointer text-sm font-semibold">
+                    Working preferences (optional)
+                  </summary>
                   <label className="amk-auth-field mt-3">
-                  <span className="sr-only">Working preferences</span>
-                  <Textarea
-                    maxLength={2000}
-                    value={workingStyle}
-                    onChange={event => setWorkingStyle(event.target.value)}
-                    placeholder="Optional — working style, priorities or preferences"
-                    className="min-h-24 rounded-xl border-[#CBD7E6] bg-white text-[#26354A]"
-                  />
+                    <span className="sr-only">Working preferences</span>
+                    <Textarea
+                      maxLength={2000}
+                      value={workingStyle}
+                      onChange={event => setWorkingStyle(event.target.value)}
+                      placeholder="Optional — working style, priorities or preferences"
+                      className="min-h-24 rounded-xl border-[#CBD7E6] bg-white text-[#26354A]"
+                    />
                   </label>
                 </details>
                 <Button
@@ -674,7 +704,9 @@ export default function MemberOnboardingGate() {
                     </button>
                     <button
                       type="button"
-                      disabled={!snapshot.mailbox.microsoft.configured || saving}
+                      disabled={
+                        !snapshot.mailbox.microsoft.configured || saving
+                      }
                       onClick={() => void chooseEmailSource("microsoft")}
                       className="rounded-xl border border-[#DCE4EE] bg-white p-4 text-left transition enabled:hover:border-[#8EACEB] enabled:hover:bg-[#F2F6FF] disabled:cursor-not-allowed disabled:opacity-50"
                     >

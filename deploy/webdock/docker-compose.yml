@@ -94,7 +94,9 @@ services:
       CRM_HEALTH_INTERVAL_MS: 43200000
       COMPANY_KNOWLEDGE_WORKER_ENABLED: "true"
       COMPANY_KNOWLEDGE_WORKER_CONCURRENCY: 1
+      WORKER_MEMORY_RECYCLE_MB: 1200
     command: ["node", "dist/genie/healthWorker.js"]
+    mem_limit: 1500m
     healthcheck:
       test: ["CMD", "node", "-e", "const fs=require('fs');process.exit(Date.now()-Number(fs.readFileSync('/tmp/amarktai-worker-heartbeat','utf8'))<90000?0:1)"]
       interval: 30s
