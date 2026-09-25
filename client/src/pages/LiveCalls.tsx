@@ -1,3 +1,5 @@
+[Reading 1000 lines from start (total: 1573 lines, 573 remaining)]
+
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -333,6 +335,8 @@ export default function LiveCalls() {
   const audioContextRef = useRef<AudioContext | undefined>(undefined);
   const pendingRef = useRef<Promise<void>>(Promise.resolve());
   const transcriptRef = useRef("");
+  const conversationStateRef = useRef("");
+  const [showTranscript, setShowTranscript] = useState(false);
   const lastCoachAtRef = useRef(0);
   const coachingRef = useRef(false);
   const coachAbortRef = useRef<AbortController | null>(null);
@@ -476,6 +480,7 @@ export default function LiveCalls() {
           callSessionId: activeSessionId,
           leadLabel,
           transcriptChunk: text,
+          conversationState: conversationStateRef.current,
         },
         controller.signal,
         partial => {
@@ -498,7 +503,8 @@ export default function LiveCalls() {
       );
       setRetryAction(() => () => void requestCoaching(activeSessionId, text));
     } finally {
-      if (coachAbortRef.current === controller) coachAbortRef.current = null;      coachingRef.current = false;
+      if (coachAbortRef.current === controller) coachAbortRef.current = null;
+      coachingRef.current = false;
       const pending = pendingCoachRef.current;
       pendingCoachRef.current = null;
       if (pending) scheduleCoaching(pending.activeSessionId, pending.text);
@@ -538,12 +544,42 @@ export default function LiveCalls() {
         durationMs: LIVE_AUDIO_CHUNK_MS,
       }
     );
-    setStructuredNotes(current =>
-      mergeLiveStructuredNotes(
+    setStructuredNotes(current => {
+      const merged = mergeLiveStructuredNotes(
         current,
         result.structuredNotes || emptyLiveStructuredNotes()
-      )
-    );
+      );
+      conversationStateRef.current = [
+        merged.topics.length
+          ? `Current topics: ${merged.topics.slice(0, 4).join(" | ")}`
+          : "",
+        merged.goals.length
+          ? `Customer goals: ${merged.goals.slice(0, 3).join(" | ")}`
+          : "",
+        merged.questions.length
+          ? `Questions: ${merged.questions.slice(0, 3).join(" | ")}`
+          : "",
+        merged.objections.length
+          ? `Objections: ${merged.objections.slice(0, 3).join(" | ")}`
+          : "",
+        merged.buyingSignals.length
+          ? `Buying intent: ${merged.buyingSignals.slice(0, 3).join(" | ")}`
+          : "",
+        merged.commitments.length
+          ? `Commitments: ${merged.commitments.slice(0, 3).join(" | ")}`
+          : "",
+        merged.nextSteps.length
+          ? `Next steps: ${merged.nextSteps.slice(0, 3).join(" | ")}`
+          : "",
+        merged.unresolvedItems.length
+          ? `Unresolved: ${merged.unresolvedItems.slice(0, 3).join(" | ")}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n")
+        .slice(-4_000);
+      return merged;
+    });
     const text = result.text?.trim();
     if (!text) return;
     transcriptRef.current =
@@ -580,9 +616,10 @@ export default function LiveCalls() {
       });
       if (fresh.length) {
         const eventPacket = [
-          `Latest speech: ${text.slice(-700)}`,
-          ...fresh.map(signal =>
-            `Signal: ${signal.label} | Evidence: ${signal.evidence}`
+          `Latest meaningful speech: ${text.slice(-900)}`,
+          conversationStateRef.current,
+          ...fresh.map(
+            signal => `Signal: ${signal.label} | Evidence: ${signal.evidence}`
           ),
         ].join("\n");
         scheduleCoaching(activeSessionId, eventPacket.slice(-1_500));
@@ -680,6 +717,7 @@ export default function LiveCalls() {
       const activeSessionId = sessionId ?? started!.callSessionId;
       if (started) {
         transcriptRef.current = "";
+        conversationStateRef.current = "";
         coachAbortRef.current?.abort();
         coachAbortRef.current = null;
         pendingCoachRef.current = null;
@@ -962,545 +1000,5 @@ export default function LiveCalls() {
                   `${callContext.data.context.reasons.join(" · ") || "Selected customer"}\n${callContext.data.context.objective || "Confirm the next factual step"}`,
                 ],
               ].map(([label, value]) => (
-                <div
-                  key={label}
-                  className="rounded-xl border border-[#E5EAF0] bg-[#F8FAFC] p-4"
-                >
-                  <p className="text-[10px] font-black uppercase text-[#728197]">
-                    {label}
-                  </p>
-                  <p className="mt-2 whitespace-pre-line text-sm leading-6 text-[#33445B]">
-                    {value}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
 
-        <div className="mt-6 grid gap-6 xl:grid-cols-[1.05fr_.95fr]">
-          <section className="rounded-[1.5rem] border border-[#DCE4EE] bg-white p-6">
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <span className="grid size-10 place-items-center rounded-xl bg-[#EAF0F2] text-[#55788B]">
-                  <Headphones size={19} />
-                </span>
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#55788B]">
-                    CALL AUDIO
-                  </p>
-                  <h2 className="font-display text-2xl font-bold tracking-[-.05em] text-[#26354A]">
-                    Live session
-                  </h2>
-                </div>
-              </div>
-              <span
-                className={`rounded-full px-3 py-1 text-xs font-bold ${sttReady ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}
-              >
-                {sttReady === null
-                  ? "Checking transcription…"
-                  : sttReady
-                    ? "Transcription ready"
-                    : "Transcription unavailable"}
-              </span>
-            </div>
-
-            <label className="mt-6 block text-xs font-black uppercase tracking-[.12em] text-[#66758A]">
-              Customer / contact
-            </label>
-            <Input
-              aria-label="Customer"
-              disabled={recording}
-              value={leadLabel}
-              onChange={event => {
-                setLeadLabel(event.target.value);
-                setSelectedContactId(undefined);
-              }}              placeholder="Jane Smith, email, or phone"
-              className="mt-2 border-[#CBD5E0] bg-white text-[#26354A] placeholder:text-[#95A2B2]"
-            />
-            {initialCustomer.data?.interest.primary ? (
-              <p className="mt-2 rounded-lg bg-[#EAF0F2] px-3 py-2 text-xs font-bold text-[#405F70]">
-                Course interest: {initialCustomer.data.interest.primary}
-              </p>
-            ) : null}
-
-            {!sessionId && !!contactMatches.data?.length && (
-              <div className="mt-2 space-y-1 rounded-xl border border-[#DCE4EE] bg-white p-2 shadow-sm">
-                <p className="px-2 py-1 text-[10px] font-black uppercase text-[#728197]">
-                  Choose the customer
-                </p>
-                {contactMatches.data.map(contact => (
-                  <button
-                    key={contact.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedContactId(contact.id);
-                      setLeadLabel(contact.name);
-                    }}
-                    className={`block w-full rounded-lg px-3 py-2 text-left text-xs ${selectedContactId === contact.id ? "bg-[#EAF0F2] text-[#405F70]" : "text-[#52647A] hover:bg-[#F2F5F8]"}`}
-                  >
-                    {" "}
-                    <b>{contact.name}</b>
-                    <span className="ml-2 text-[#7B8798]">
-                      {contact.email || contact.phone || "Customer"}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <div className="mt-5 grid gap-3 md:grid-cols-2">
-              <button
-                disabled={recording}
-                onClick={() => setCaptureMode("mixed")}
-                className={`rounded-xl border p-4 text-left transition ${captureMode === "mixed" ? "border-[#55788B] bg-[#EAF0F2]" : "border-[#DCE4EE] bg-[#F8FAFC] hover:border-[#B9C7D8]"}`}
-              >
-                <MonitorUp className="size-5 text-[#55788B]" />
-                <p className="mt-3 font-bold text-[#26354A]">
-                  Call audio + microphone
-                </p>
-                <p className="mt-1 text-xs leading-5 text-[#66758A]">
-                  Best for browser calls. Select the call tab and share its
-                  audio; AmarktAI combines it with your microphone.
-                </p>
-              </button>
-              <button
-                disabled={recording}
-                onClick={() => setCaptureMode("microphone")}
-                className={`rounded-xl border p-4 text-left transition ${captureMode === "microphone" ? "border-[#55788B] bg-[#EAF0F2]" : "border-[#DCE4EE] bg-[#F8FAFC] hover:border-[#B9C7D8]"}`}
-              >
-                <Mic className="size-5 text-[#55788B]" />
-                <p className="mt-3 font-bold text-[#26354A]">Microphone only</p>
-                <p className="mt-1 text-xs leading-5 text-[#66758A]">
-                  Use this for speakerphone or headset calls where your
-                  microphone can capture the authorised conversation.
-                </p>
-              </button>
-            </div>
-
-            <div className="mt-4 rounded-xl border border-[#DCE4EE] bg-white p-4">
-              <label className="block text-xs font-bold text-[#26354A]">
-                Microphone input
-              </label>
-              <select
-                value={microphoneDeviceId}
-                disabled={recording}
-                onChange={event => setMicrophoneDeviceId(event.target.value)}
-                className="mt-2 w-full rounded-lg border border-[#DCE4EE] bg-white px-3 py-2 text-sm text-[#26354A]"
-              >
-                {microphones.length ? (
-                  microphones.map((device, index) => (
-                    <option
-                      key={device.deviceId || index}
-                      value={device.deviceId}
-                    >
-                      {device.label || `Microphone ${index + 1}`}
-                    </option>
-                  ))
-                ) : (
-                  <option value="">Default microphone</option>
-                )}
-              </select>
-              <div className="mt-3 flex items-center gap-3">
-                <div className="h-2 flex-1 overflow-hidden rounded-full bg-[#E7ECF1]">
-                  <div
-                    className="h-full bg-[#55788B] transition-[width]"
-                    style={{ width: `${Math.min(100, micLevel * 900)}%` }}
-                  />
-                </div>
-                <span className="min-w-28 text-xs font-semibold text-[#66758A]">
-                  {!recording
-                    ? "Meter starts with call"
-                    : micLevel < 0.003
-                      ? "No voice detected"
-                      : micLevel < 0.012
-                        ? "Voice is very quiet"
-                        : "Voice detected"}
-                </span>
-              </div>
-              {recording ? (
-                <p className="mt-2 text-xs text-[#66758A]">
-                  Capturing: {activeMicLabel || "Browser microphone"}
-                </p>
-              ) : null}
-              {recording && micLevel < 0.003 ? (
-                <p className="mt-2 text-xs font-semibold text-amber-700">
-                  AmarktAI is receiving silence from this input. Choose another
-                  microphone after stopping the test, or enable this microphone
-                  in Windows and Chrome.
-                </p>
-              ) : null}
-            </div>
-
-            <label className="mt-5 flex cursor-pointer gap-3 rounded-xl border border-[#DCE4EE] bg-[#F8FAFC] p-4 text-sm leading-6 text-[#52647A]">
-              <input
-                type="checkbox"
-                checked={consent}
-                disabled={recording}
-                onChange={event => setConsent(event.target.checked)}
-                className="mt-1 size-4"
-              />
-              <span>
-                I confirm that my organisation allows transcription assistance
-                for this call and that any required participant notice or
-                consent has been handled.
-              </span>
-            </label>
-
-            <div className="mt-5 flex flex-wrap gap-3">
-              {!recording ? (
-                <Button
-                  disabled={
-                    !leadLabel.trim() ||
-                    !consent ||
-                    !sttReady ||
-                    (!!contactMatches.data &&
-                      contactMatches.data.length > 1 &&
-                      !selectedContactId) ||
-                    startSession.isPending ||
-                    completing
-                  }
-                  onClick={() => void begin()}
-                  className="h-12 bg-[#55788B] hover:bg-[#405F70]"
-                >
-                  <Waves className="mr-2 size-4" />
-                  Start Live Companion
-                </Button>
-              ) : (
-                <Button
-                  onClick={() => void stop()}
-                  className="h-12 bg-rose-600 hover:bg-rose-500"
-                >
-                  <Square className="mr-2 size-4" />
-                  Stop & prepare follow-up
-                </Button>
-              )}
-              {!recording && (
-                <Button
-                  variant="outline"
-                  disabled={
-                    !leadLabel.trim() ||
-                    startSession.isPending ||
-                    (!!contactMatches.data &&
-                      contactMatches.data.length > 1 &&
-                      !selectedContactId)
-                  }
-                  onClick={() => void recordAttemptWithoutAudio()}
-                  className="h-12 border-[#D7E0EA] bg-white text-[#52647A] hover:bg-[#F5F8FC]"
-                >
-                  Record no-answer / voicemail
-                </Button>
-              )}
-              {recording && (
-                <span className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 px-4 text-sm font-bold text-emerald-700">
-                  <span className="size-2 animate-pulse rounded-full bg-emerald-500" />
-                  Listening
-                </span>
-              )}
-              {completing && (
-                <span className="inline-flex items-center rounded-xl bg-[#F2F5F8] px-4 text-sm font-bold text-[#52647A]">
-                  Preparing follow-up…
-                </span>
-              )}
-            </div>
-
-            <div className="mt-6 min-h-48 rounded-xl border border-[#DCE4EE] bg-[#F8FAFC] p-4">
-              <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#55788B]">
-                LIVE TRANSCRIPT
-              </p>
-              <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-[#33445B]">
-                {transcript ||
-                  "Call notes will appear here while the conversation is running."}
-              </p>
-            </div>
-
-            <section className="mt-5 rounded-xl border border-[#DCE4EE] bg-white p-4">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#55788B]">
-                  LIVE STRUCTURED NOTES
-                </p>
-                <span className="text-xs text-[#66758A]">
-                  Updated from verified transcript signals
-                </span>
-              </div>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <LiveNoteGroup
-                  label="Goals / intentions heard"
-                  items={structuredNotes.goals}
-                />
-                <LiveNoteGroup
-                  label="Facts / context heard"
-                  items={structuredNotes.facts}
-                />
-                <LiveNoteGroup
-                  label="Customer questions"
-                  items={structuredNotes.questions}
-                />
-                <LiveNoteGroup
-                  label="Objections"
-                  items={structuredNotes.objections}
-                />
-                <LiveNoteGroup
-                  label="Buying signals"
-                  items={structuredNotes.buyingSignals}
-                />
-                <LiveNoteGroup
-                  label="Commitments heard — confirm speaker"
-                  items={structuredNotes.commitments}
-                />
-                <LiveNoteGroup
-                  label="Callback requests"
-                  items={structuredNotes.callbackRequests}
-                />
-                <LiveNoteGroup
-                  label="Dates / times mentioned"
-                  items={structuredNotes.datesTimes}
-                />
-                <LiveNoteGroup
-                  label="Likely next steps"
-                  items={structuredNotes.nextSteps}
-                />
-                <LiveNoteGroup
-                  label="Still unresolved"
-                  items={structuredNotes.unresolvedItems}
-                />
-              </div>
-            </section>
-
-            {awaitingCloseout && (
-              <section className="mt-5 rounded-xl border border-[#DCE4EE] bg-[#F8FAFC] p-5">
-                <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#55788B]">
-                  CALL OUTCOME
-                </p>
-                <h3 className="mt-2 font-display text-2xl font-bold text-[#26354A]">
-                  Confirm what happened and prepare the next step.
-                </h3>
-                <div className="mt-4 grid gap-3 md:grid-cols-2">
-                  <label className="grid gap-2 text-xs font-bold text-[#66758A]">
-                    Outcome
-                    <select
-                      value={outcome}
-                      onChange={event => setOutcome(event.target.value)}
-                      className="h-10 rounded-xl border border-[#CBD5E0] bg-white px-3 text-[#26354A]"
-                    >
-                      <option value="interested">Interested</option>
-                      <option value="information_requested">
-                        Information requested
-                      </option>
-                      <option value="callback">Callback requested</option>
-                      <option value="meeting_booked">Meeting booked</option>
-                      <option value="no_answer">No answer</option>
-                      <option value="voicemail">Voicemail</option>
-                      <option value="wrong_number">Wrong number</option>
-                      <option value="not_interested">Not interested</option>
-                      <option value="qualified">Qualified</option>
-                      <option value="unqualified">Unqualified</option>
-                      <option value="sale_won">Sale / won</option>
-                      <option value="lost">Lost</option>
-                      <option value="other">Other</option>
-                    </select>
-                  </label>
-                  <label className="grid gap-2 text-xs font-bold text-[#66758A]">
-                    Callback date/time
-                    <Input
-                      type="datetime-local"
-                      value={callbackAt}
-                      onChange={event => setCallbackAt(event.target.value)}
-                      className="border-[#CBD5E0] bg-white text-[#26354A]"
-                    />
-                  </label>
-                  <label className="grid gap-2 text-xs font-bold text-[#66758A] md:col-span-2">
-                    Next step
-                    <Input
-                      value={nextStep}
-                      onChange={event => setNextStep(event.target.value)}
-                      placeholder="Send product information"
-                      className="border-[#CBD5E0] bg-white text-[#26354A]"
-                    />
-                  </label>
-                  <label className="grid gap-2 text-xs font-bold text-[#66758A]">
-                    Follow-up
-                    <select
-                      value={communicationChannel}
-                      onChange={event =>
-                        setCommunicationChannel(event.target.value)
-                      }
-                      className="h-10 rounded-xl border border-[#CBD5E0] bg-white px-3 text-[#26354A]"
-                    >
-                      <option value="">None</option>
-                      <option value="email">Email template</option>
-                      <option value="sms">SMS template</option>
-                      <option value="whatsapp">WhatsApp template</option>
-                    </select>
-                  </label>
-                  <label className="grid gap-2 text-xs font-bold text-[#66758A]">
-                    Template name
-                    <Input
-                      disabled={!communicationChannel}
-                      value={templateName}
-                      onChange={event => setTemplateName(event.target.value)}
-                      placeholder="Product brochure"
-                      className="border-[#CBD5E0] bg-white text-[#26354A]"
-                    />
-                  </label>
-                </div>
-                <div className="mt-4 rounded-xl bg-[#EAF0F2] p-3 text-xs leading-5 text-[#405F70]">
-                  {callContext.data?.context
-                    ? "This call is linked to the selected customer. "
-                    : "Choose a customer before preparing customer updates. "}
-                  AmarktAI will prepare a factual note and call activity
-                  {taskExternalId ? " + complete the current task" : ""}
-                  {callbackAt ? " + create a callback" : ""}
-                  {communicationChannel
-                    ? ` + prepare a ${communicationChannel} template for your review`
-                    : ""}
-                  . You can review any external change before it is made.
-                </div>
-                <label className="mt-4 flex items-start gap-3 rounded-xl border border-[#DCE4EE] bg-white p-3 text-xs leading-5 text-[#405F70]">
-                  <input
-                    type="checkbox"
-                    checked={closeoutConfirmed}
-                    onChange={event =>
-                      setCloseoutConfirmed(event.target.checked)
-                    }
-                    className="mt-0.5 h-4 w-4"
-                  />
-                  <span>
-                    I have checked the outcome, callback time and next step
-                    above. Treat these closeout details as
-                    salesperson-confirmed. Transcript-derived notes remain
-                    suggestions until confirmed here.
-                  </span>
-                </label>
-                <Button
-                  disabled={completing || !closeoutConfirmed}
-                  onClick={() => void completeCloseout()}
-                  className="mt-4 bg-[#55788B] hover:bg-[#405F70]"
-                >
-                  {completing
-                    ? "Preparing follow-up…"
-                    : "Confirm outcome and prepare follow-up"}
-                </Button>
-              </section>
-            )}
-
-            {!!closeoutActions?.length && (
-              <section className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-5">
-                <p className="text-[10px] font-black uppercase tracking-[.13em] text-emerald-700">
-                  FOLLOW-UP
-                </p>
-                <div className="mt-3 space-y-2">
-                  {closeoutActions.map(action => (
-                    <div
-                      key={action.id}
-                      className="flex items-center justify-between gap-3 rounded-lg border border-emerald-100 bg-white p-3"
-                    >
-                      <span className="text-sm font-semibold text-[#26354A]">
-                        {action.title}
-                      </span>
-                      <span className="text-[10px] font-black uppercase text-emerald-700">
-                        {actionStatus(action.state)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <Button
-                    onClick={() =>
-                      navigate(
-                        selectedContactId
-                          ? `/reviews?contactId=${selectedContactId}`
-                          : "/reviews"
-                      )
-                    }
-                    className="bg-[#55788B] hover:bg-[#405F70]"
-                  >
-                    <ClipboardCheck className="mr-2 h-4 w-4" />
-                    Review prepared work
-                  </Button>
-                  <Button variant="outline" onClick={() => navigate("/today")}>
-                    Next person
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                  {selectedContactId ? (
-                    <Button
-                      variant="ghost"
-                      onClick={() =>
-                        navigate(`/customers?contactId=${selectedContactId}`)
-                      }
-                    >
-                      Open customer context
-                    </Button>
-                  ) : null}
-                </div>
-              </section>
-            )}
-          </section>
-
-          <div className="grid gap-6">
-            <section className="rounded-[1.5rem] border border-[#DCE4EE] bg-white p-6">
-              <div className="flex items-center gap-3">
-                <AlertTriangle className="size-5 text-[#55788B]" />
-                <h2 className="font-display text-2xl font-bold tracking-[-.05em] text-[#26354A]">
-                  Live signals
-                </h2>
-              </div>
-              <div className="mt-4 space-y-3">
-                {signals.length ? (
-                  signals.map((signal, index) => (
-                    <article
-                      key={`${signal.type}-${index}`}
-                      className={`rounded-xl border p-4 ${signal.priority === "important" ? "border-[#C9D8DE] bg-[#EAF0F2]" : "border-[#DCE4EE] bg-[#F8FAFC]"}`}
-                    >
-                      <p className="text-xs font-black uppercase tracking-[.1em] text-[#55788B]">
-                        {signal.label}
-                      </p>
-                      <p className="mt-2 text-sm leading-6 text-[#33445B]">
-                        {signal.evidence}
-                      </p>
-                    </article>
-                  ))
-                ) : (
-                  <p className="text-sm leading-6 text-[#66758A]">
-                    Questions, objections, commitments, callback requests and
-                    buying signals noticed during the call will appear here.
-                  </p>
-                )}
-              </div>
-            </section>
-
-            <section className="rounded-[1.5rem] border border-[#DCE4EE] bg-white p-6">
-              <div className="flex items-center gap-3">
-                <CheckCircle2 className="size-5 text-[#55788B]" />
-                <h2 className="font-display text-2xl font-bold tracking-[-.05em] text-[#26354A]">
-                  Current coaching
-                </h2>
-              </div>
-              <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-[#33445B]">
-                {tip ||
-                  "Coaching appears when an important question or signal needs help. Routine transcription stays focused on accurate notes."}
-              </p>
-            </section>
-          </div>
-        </div>
-      </div>
-    </DashboardLayout>
-  );
-}
-
-function LiveNoteGroup({ label, items }: { label: string; items: string[] }) {
-  return (
-    <div className="rounded-lg bg-[#F8FAFC] p-3">
-      <p className="text-xs font-bold text-[#52647A]">{label}</p>
-      {items.length ? (
-        <ul className="mt-2 space-y-1 text-sm leading-5 text-[#33445B]">
-          {items.map(item => (
-            <li key={item}>• {item}</li>
-          ))}
-        </ul>
-      ) : (
-        <p className="mt-2 text-xs text-[#8A96A8]">Nothing captured yet.</p>
-      )}
-    </div>
-  );
-}
+[executed on device: amarktaisal (60c82bca-dc19-41e6-8ff8-d16e682f865e)]
