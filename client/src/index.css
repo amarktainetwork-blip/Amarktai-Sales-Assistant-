@@ -1222,6 +1222,17 @@ body:has(.amarktai-dashboard-sidebar) [data-slot="sidebar-inset"] section {
   color: var(--dash-blue-dark);
   box-shadow: 0 1px 3px rgba(35, 45, 50, .08);
 }
+.amk-day__tabs button.has-internal {
+  color: #a73535;
+}
+.amk-day__tabs button.has-internal small {
+  background: #b53d3d;
+  color: #fff;
+}
+.amk-day__tabs button.has-internal.is-active {
+  background: #fff5f5;
+  color: #8f2929;
+}
 .amk-day__body {
   min-height: 0;
   overflow: hidden;

@@ -293,7 +293,7 @@ export default function LiveCalls() {
   const [sessionId, setSessionId] = useState<number | null>(
     initialSessionId > 0 ? initialSessionId : null
   );
-  const [captureMode, setCaptureMode] = useState<CaptureMode>("mixed");
+  const [captureMode, setCaptureMode] = useState<CaptureMode>("microphone");
   const [microphones, setMicrophones] = useState<MediaDeviceInfo[]>([]);
   const [microphoneDeviceId, setMicrophoneDeviceId] = useState("");
   const [micLevel, setMicLevel] = useState(0);
