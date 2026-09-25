@@ -126,9 +126,12 @@ export function configuredNewLeadTaskTitles(
 ) {
   const titles: string[] = [];
   for (const [key, workflow] of Object.entries(configuration.workflows)) {
-    if (!(key === "first_contact" || key.startsWith("first_contact:"))) continue;
+    if (!(key === "first_contact" || key.startsWith("first_contact:")))
+      continue;
     const firstPurpose = workflow.taskSequence[0];
-    const title = firstPurpose ? workflow.taskAliases[firstPurpose]?.trim() : "";
+    const title = firstPurpose
+      ? workflow.taskAliases[firstPurpose]?.trim()
+      : "";
     if (
       title &&
       !titles.some(
@@ -394,8 +397,7 @@ export async function getTodayWork(input: {
     mappings
       .filter(mapping => mapping.connectedSystemId && mapping.externalUserId)
       .map(mapping => `${mapping.connectedSystemId}:${mapping.externalUserId}`)
-  );
-  const belongsToUser = (
+  );  const belongsToUser = (
     ownerExternalId: string | null,
     connectedSystemId: number | null
   ) =>
@@ -473,9 +475,7 @@ export async function getTodayWork(input: {
         )
     );
   };
-  const reminderWasAlreadyWorked = (
-    reminder: (typeof reminders)[number]
-  ) => {
+  const reminderWasAlreadyWorked = (reminder: (typeof reminders)[number]) => {
     if (!reminder.contactExternalId || !reminder.dueAt) return false;
     return recentTaskActivities.some(activity => {
       if (
@@ -626,17 +626,17 @@ export async function getTodayWork(input: {
   const enrichedWorkContacts = workContacts
     .filter(contact => !syntheticContactIds.has(contact.externalId))
     .map(contact => {
-    const interest = deriveCustomerInterest({
-      mappings: workspace.customerFieldMappings,
-      attributes: normalizedCustomerAttributes(contact.raw),
-    });
-    return {
-      ...contact,
-      raw: undefined,
-      courseInterest: interest.primary,
-      interestValues: interest.values,
-      tags: interest.tags,
-    };
+      const interest = deriveCustomerInterest({
+        mappings: workspace.customerFieldMappings,
+        attributes: normalizedCustomerAttributes(contact.raw),
+      });
+      return {
+        ...contact,
+        raw: undefined,
+        courseInterest: interest.primary,
+        interestValues: interest.values,
+        tags: interest.tags,
+      };
     });
   const callQueue = buildTodayCallQueue({
     now,
@@ -683,10 +683,30 @@ export async function getTodayWork(input: {
         task.raw && typeof task.raw === "object" && !Array.isArray(task.raw)
           ? (task.raw as Record<string, unknown>)
           : {};
-      const detail =
-        typeof raw.description === "string" && raw.description.trim()
-          ? raw.description.trim().slice(0, 500)
-          : null;
+      const rawDetail =
+        typeof raw.description === "string" ? raw.description.trim() : "";
+      const detail = rawDetail
+        ? rawDetail
+            .replace(/<br\s*\/?>/gi, " ")
+            .replace(/<[^>]+>/g, " ")
+            .replace(/&nbsp;/gi, " ")
+            .replace(/&amp;/gi, "&")
+            .replace(/&lt;/gi, "<")
+            .replace(/&gt;/gi, ">")
+            .replace(/&quot;/gi, '"')
+            .replace(/&#39;/gi, "'")
+            .replace(/\s+/g, " ")
+            .trim()
+            .slice(0, 500)
+        : null;
+      const normalizedTitle = normalizedTaskTitle(task.title);
+      const internalSupport =
+        /\b(check|assist|help|support|internal|colleague|snap)\b/.test(
+          normalizedTitle
+        ) && !newLeadTaskTitles.has(normalizedTitle);
+      const supportLabel = internalSupport
+        ? ("Internal / colleague support" as const)
+        : null;
       return {
         id: task.id,
         connectedSystemId: task.connectedSystemId,
@@ -696,8 +716,12 @@ export async function getTodayWork(input: {
         detail,
         dueAt: task.dueAt,
         status: task.status,
-        reason:
-          task.dueAt && task.dueAt < now
+        workType: supportLabel || ("Assigned CRM task" as const),
+        reason: internalSupport
+          ? task.dueAt && task.dueAt < now
+            ? ("Internal check overdue" as const)
+            : ("Internal check due today" as const)
+          : task.dueAt && task.dueAt < now
             ? ("Overdue assigned task" as const)
             : ("Assigned task due today" as const),
       };
@@ -772,8 +796,7 @@ export async function getTodayWork(input: {
       ...taskData.queues,
       overdueTasks,
       dueToday,
-      unscheduled: unscheduledTasks,
-    },
+      unscheduled: unscheduledTasks,    },
   };
 
   return {
@@ -807,8 +830,7 @@ export async function getTodayWork(input: {
     role: membership.role,
     requiresOwnerMapping: ownerIds.size === 0,
     metrics: {
-      dueToday:
-        dueToday.length + currentReminders.length + callbacks.length,
+      dueToday: dueToday.length + currentReminders.length + callbacks.length,
       overdue: overdueTasks.length,
       staleOpportunities: staleOpportunities.length,
       noNextStep: noNextStep.length,
