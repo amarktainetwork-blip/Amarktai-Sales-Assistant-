@@ -1,5 +1,3 @@
-[Reading 269 lines from start (total: 269 lines, 0 remaining)]
-
 import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -269,5 +267,3 @@ describe("final dashboard information architecture", () => {
       expect(calls).toContain(step);
   });
 });
-
-[executed on device: amarktaisal (60c82bca-dc19-41e6-8ff8-d16e682f865e)]
