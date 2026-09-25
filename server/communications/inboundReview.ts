@@ -67,22 +67,36 @@ export function classifyInboundMessage(input: {
       reasons: ["message includes a question or request"],
     };
 
-  // Short customer answers are still genuine replies even when they contain
-  // no question mark or explicit request. Keep these visible so Amelia does
-  // not miss a response such as "I don't have alternative".
+  // Safe acknowledgements and automated mailbox notices do not need to occupy
+  // the salesperson action queue. Everything else from a matched customer is
+  // treated conservatively as a real reply: a statement can change timing,
+  // funding, intent or the agreed next step even when it contains no question.
+  const acknowledgement = latestBody
+    .replace(/[^a-z0-9' ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   if (
-    /\b(?:i\s+(?:do not|don't|dont|cannot|can't|cant)\s+have|i\s+have\s+no|no\s+alternative|not\s+yet|not\s+currently|none)\b/.test(
-      latestBody
+    /^(?:ok|okay|ok thanks|okay thanks|thanks|thanks a lot|thank you|thank you very much|great|perfect|got it|understood|noted|cheers|cool|all good|no problem|sounds good|that(?:'s| is) fine)$/.test(
+      acknowledgement
+    ) ||
+    /\b(?:automatic reply|out of office|delivery (?:failed|failure)|undeliverable|mailer-daemon)\b/.test(
+      text
     )
   )
     return {
+      category: "information",
+      reasons: ["message is a simple acknowledgement or automated notice"],
+    };
+
+  if (latestBody)
+    return {
       category: "reply_needed",
-      reasons: ["message contains a direct customer answer that needs review"],
+      reasons: ["substantive customer reply needs salesperson review"],
     };
 
   return {
     category: "information",
-    reasons: ["no deterministic reply trigger was found"],
+    reasons: ["message contains no current customer text"],
   };
 }
 

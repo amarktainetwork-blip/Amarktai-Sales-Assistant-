@@ -65,13 +65,44 @@ export function decodeAudio(input: unknown) {
   return bytes;
 }
 
+function isEnglishLanguage(language?: string) {
+  return /^en(?:-|$)/i.test(language?.trim() || "");
+}
+
+function transcriptionTarget(language?: string) {
+  const defaultEndpoint = process.env.STT_TRANSCRIPTIONS_URL?.trim();
+  const defaultModel = process.env.STT_MODEL?.trim();
+  const fastEnglishEndpoint = process.env.STT_EN_TRANSCRIPTIONS_URL?.trim();
+  const fastEnglishModel = process.env.STT_EN_MODEL?.trim();
+  if (
+    isEnglishLanguage(language) &&
+    fastEnglishEndpoint &&
+    fastEnglishModel
+  )
+    return {
+      endpoint: fastEnglishEndpoint,
+      model: fastEnglishModel,
+      fastEnglish: true as const,
+    };
+  return {
+    endpoint: defaultEndpoint,
+    model: defaultModel,
+    fastEnglish: false as const,
+  };
+}
+
 export function getSttConfiguration() {
   const endpoint = process.env.STT_TRANSCRIPTIONS_URL?.trim();
   const model = process.env.STT_MODEL?.trim();
+  const fastEnglishEndpoint = process.env.STT_EN_TRANSCRIPTIONS_URL?.trim();
+  const fastEnglishModel = process.env.STT_EN_MODEL?.trim();
   return {
     configured: Boolean(endpoint && model),
     endpoint,
     model,
+    fastEnglishConfigured: Boolean(
+      fastEnglishEndpoint && fastEnglishModel
+    ),
     provider: process.env.STT_PROVIDER_LABEL?.trim() || "Self-hosted whisper.cpp",
     queue: { active: activeTranscriptions, waiting: waitingTranscriptions },
   };
@@ -188,38 +219,87 @@ async function normalizeAudioForWhisper(bytes: Buffer, mimeType: string) {
   });
 }
 
-export async function transcribeAudio(bytes: Buffer, mimeType: string, language?: string) {
-  const { endpoint, model } = getSttConfiguration();
-  if (!endpoint || !model) throw new Error("Speech-to-text is not configured.");
-  if (!ALLOWED_STT_MIME.has(mimeType)) throw new Error("Unsupported audio type.");
+async function requestTranscription(input: {
+  endpoint: string;
+  model: string;
+  normalized: Buffer;
+  language?: string;
+}) {
+  const form = new FormData();
+  form.append(
+    "file",
+    new Blob([new Uint8Array(input.normalized)], { type: "audio/wav" }),
+    "call-chunk.wav"
+  );
+  form.append("model", input.model);
+  form.append("response_format", "json");
+  if (
+    input.language &&
+    /^[a-z]{2,8}(?:-[A-Za-z0-9]{2,8})?$/.test(input.language)
+  )
+    form.append("language", input.language.split("-")[0].toLowerCase());
+  const headers: Record<string, string> = {};
+  if (process.env.STT_API_KEY?.trim())
+    headers.Authorization = `Bearer ${process.env.STT_API_KEY.trim()}`;
+  const response = await fetch(input.endpoint, {
+    method: "POST",
+    headers,
+    body: form,
+    signal: AbortSignal.timeout(
+      Math.min(
+        90_000,
+        positiveInt(process.env.STT_TIMEOUT_MS, DEFAULT_TIMEOUT_MS)
+      )
+    ),
+  });
+  const raw = await response.text();
+  if (!response.ok)
+    throw new Error(
+      `Speech-to-text failed with ${response.status}${raw ? `: ${raw.slice(0, 240)}` : ""}`
+    );
+  if (!raw.trim()) return "";
+  try {
+    return ((JSON.parse(raw) as { text?: string }).text || "").trim();
+  } catch {
+    return raw.trim();
+  }
+}
+
+export async function transcribeAudio(
+  bytes: Buffer,
+  mimeType: string,
+  language?: string
+) {
+  const target = transcriptionTarget(language);
+  if (!target.endpoint || !target.model)
+    throw new Error("Speech-to-text is not configured.");
+  if (!ALLOWED_STT_MIME.has(mimeType))
+    throw new Error("Unsupported audio type.");
   await enterQueue();
   try {
     const normalized = await normalizeAudioForWhisper(bytes, mimeType);
-    const form = new FormData();
-    form.append(
-      "file",
-      new Blob([new Uint8Array(normalized)], { type: "audio/wav" }),
-      "call-chunk.wav"
-    );
-    form.append("model", model);
-    form.append("response_format", "json");
-    if (language && /^[a-z]{2,8}(?:-[A-Za-z0-9]{2,8})?$/.test(language)) form.append("language", language);
-    const headers: Record<string, string> = {};
-    if (process.env.STT_API_KEY?.trim()) headers.Authorization = `Bearer ${process.env.STT_API_KEY.trim()}`;
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers,
-      body: form,
-      signal: AbortSignal.timeout(Math.min(90_000, positiveInt(process.env.STT_TIMEOUT_MS, DEFAULT_TIMEOUT_MS))),
-    });
-    const raw = await response.text();
-    if (!response.ok)
-      throw new Error(`Speech-to-text failed with ${response.status}${raw ? `: ${raw.slice(0, 240)}` : ""}`);
-    if (!raw.trim()) return "";
     try {
-      return ((JSON.parse(raw) as { text?: string }).text || "").trim();
-    } catch {
-      return raw.trim();
+      return await requestTranscription({
+        endpoint: target.endpoint,
+        model: target.model,
+        normalized,
+        language,
+      });
+    } catch (error) {
+      const fallback = transcriptionTarget(undefined);
+      if (
+        !target.fastEnglish ||
+        !fallback.endpoint ||
+        !fallback.model ||
+        (fallback.endpoint === target.endpoint && fallback.model === target.model)
+      )
+        throw error;
+      return requestTranscription({
+        endpoint: fallback.endpoint,
+        model: fallback.model,
+        normalized,
+        language,
+      });
     }
   } finally {
     leaveQueue();

@@ -41,6 +41,22 @@ describe("client-handover AmarktAI contract", () => {
     );
   });
 
+  it("isolates chat state and asynchronous responses when the customer changes", () => {
+    expect(assistantPage).toContain("const switchCustomer = useCallback");
+    expect(assistantPage).toContain("requestVersion.current += 1");
+    expect(assistantPage).toContain("setMessages([])");
+    expect(assistantPage).toContain('setDraft("")');
+    expect(assistantPage).toContain(
+      "if (requestVersion.current !== activeRequest) return"
+    );
+    expect(assistantPage).toContain("switchCustomer(next.contactId)");
+    expect(assistantPage).toContain("window.history.replaceState");
+    expect(assistantPage).toContain('params.set("contactId"');
+    expect(assistantPage).toContain(
+      "The call workspace could not open. Nothing was changed."
+    );
+  });
+
   it("wires scoped relevant memory and personal context into /api/assistant", () => {
     expect(assistantRoute).toContain("listRelevantAssistantMemories");
     expect(assistantRoute).toContain(
@@ -56,6 +72,8 @@ describe("client-handover AmarktAI contract", () => {
     expect(assistantRoute).toContain("relevantMemory: relevantMemory.map");
     expect(assistantRoute).toContain("isSafeAssistantMemory");
     expect(assistantRoute).toContain("getClientActionConfiguration");
-    expect(assistantRoute).toContain("No approved communication templates are commissioned");
+    expect(assistantRoute).toContain(
+      "No approved communication templates are commissioned"
+    );
   });
 });

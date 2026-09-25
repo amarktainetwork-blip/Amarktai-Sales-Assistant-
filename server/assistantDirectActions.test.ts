@@ -4,6 +4,7 @@ const m = vi.hoisted(() => ({
   route: vi.fn(),
   auto: vi.fn(),
   genx: vi.fn(),
+  exactCustomer: vi.fn(),
 }));
 vi.mock("./db", () => ({
   getDb: vi.fn(async () => ({
@@ -32,6 +33,9 @@ vi.mock("./organisationWorkspace", () => ({
 vi.mock("./connectedSystems", () => ({
   listConnectedSystemsForUser: vi.fn(async () => []),
 }));
+vi.mock("./customerData", () => ({
+  getExactCustomerDetail: m.exactCustomer,
+}));
 vi.mock("./memory", () => ({
   listRelevantAssistantMemories: vi.fn(async () => []),
 }));
@@ -44,6 +48,7 @@ vi.mock("./governedActions", () => ({ executeAutoPreapprovedActions: m.auto }));
 vi.mock("./assistantCustomerContext", () => ({
   requestUsesCurrentCustomerReference: () => true,
   resolveAssistantCustomerContext: vi.fn(async () => ({
+    contactId: 301,
     contactName: "Alex",
     firstName: "Alex",
     contactExternalId: "contact-301",
@@ -75,6 +80,50 @@ describe("draft preparation is separate from sending", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     m.create.mockResolvedValue(123);
+    m.exactCustomer.mockResolvedValue({
+      activities: {
+        items: [
+          {
+            id: 11,
+            externalId: "activity-11",
+            activityType: "note",
+            occurredAt: new Date("2026-09-24T15:05:00Z"),
+            body: "Customer has already reviewed the course and funding remains the blocker.",
+            raw: {},
+          },
+        ],
+      },
+      communications: {
+        items: [
+          {
+            id: 12,
+            externalMessageId: "message-12",
+            channel: "email",
+            receivedAt: new Date("2026-09-24T12:36:00Z"),
+            body: "Can you call me at 16:00 today?<div class=\"gmail_quote\">Old quoted chain</div>",
+            subject: "Re: Cyber Security",
+            needsAction: true,
+          },
+        ],
+      },
+      tasks: {
+        completed: [
+          {
+            title: "Previous follow-up",
+            completedAt: new Date("2026-09-24T15:06:00Z"),
+          },
+        ],
+      },
+      opportunities: {
+        items: [
+          {
+            name: "Cyber Security enquiry",
+            stage: "Discovery Completed",
+            updatedAt: new Date("2026-09-24T15:07:00Z"),
+          },
+        ],
+      },
+    });
     m.genx.mockResolvedValue({
       content:
         "Hi Alex, I am following up on your enquiry. Please let me know a convenient time to talk.",
@@ -118,12 +167,22 @@ describe("draft preparation is separate from sending", () => {
     expect(m.genx.mock.calls[0][0].messages[0].content).toContain(
       "VOICE: Warm and factual"
     );
+    expect(m.genx.mock.calls[0][0].messages[0].content).toContain(
+      "funding remains the blocker"
+    );
+    expect(m.genx.mock.calls[0][0].messages[0].content).toContain(
+      "Can you call me at 16:00 today?"
+    );
+    expect(m.genx.mock.calls[0][0].messages[0].content).not.toContain(
+      "Old quoted chain"
+    );
     expect(m.auto).not.toHaveBeenCalled();
     expect(
-      JSON.parse(m.genx.mock.calls[0][0].workingContext).workspace
+      JSON.parse(m.genx.mock.calls[0][0].workingContext)
     ).toMatchObject({
-      customerModel: "individual_consumer",
-      businessContext: { industry: "training" },
+      selectedCustomerId: 301,
+      contactExternalId: "contact-301",
+      channel: "email",
     });
   });
   it("blocks normal send without a route", async () => {

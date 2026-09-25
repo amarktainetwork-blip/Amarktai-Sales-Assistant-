@@ -111,6 +111,45 @@ describe("organisation skill builder contract", () => {
     expect(JSON.stringify(COURSE2CAREER_SKILL_PACK)).not.toMatch(/elcas|ppc/i);
   });
 
+  it("keeps invalid-contact handling limited to the confirmed Stage 1 rule", () => {
+    const skill = COURSE2CAREER_SKILL_PACK.find(
+      item => item.key === "invalid-contact-complete"
+    )!;
+    const actions = skill.definition.steps.map(step => step.action);
+    expect(skill.title).toBe("Invalid contact details — Stage 1");
+    expect(skill.definition.parameters).toMatchObject({
+      ruleCompletionStatus: "NEEDS_RULE_COMPLETION",
+    });
+    expect(skill.definition.requiredMappings).toEqual([
+      "Consultant Contact Emails / Invalid Phone Number",
+    ]);
+    expect(skill.definition.requiredWriteCapabilities).toEqual(
+      expect.arrayContaining(["email.send", "notes.write"])
+    );
+    expect(skill.definition.requiredWriteCapabilities).not.toEqual(
+      expect.arrayContaining([
+        "sms.send",
+        "whatsapp.send",
+        "tasks.write",
+        "opportunities.write",
+        "contacts.write",
+      ])
+    );
+    expect(actions).toContain("prepare_email");
+    expect(actions).toContain("prepare_note");
+    expect(actions).not.toContain("prepare_sms");
+    expect(actions).not.toContain("prepare_whatsapp");
+    expect(actions).not.toContain("prepare_task");
+    expect(actions).not.toContain("complete_task_after_review");
+    expect(actions).not.toContain("prepare_opportunity_update");
+    expect(actions).not.toContain("prepare_contact_update");
+    expect(skill.definition.parameters).not.toHaveProperty(
+      "specialSmsDestinationOverride"
+    );
+    expect(skill.definition.parameters).not.toHaveProperty("lostStage");
+    expect(skill.definition.parameters).not.toHaveProperty("lostStatus");
+  });
+
   it("captures Amy's same-day reattempt as a learned task-reschedule capability", () => {
     const skill = COURSE2CAREER_SKILL_PACK.find(
       item => item.key === "same-day-evening-first-call-reattempt"

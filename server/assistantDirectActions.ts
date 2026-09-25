@@ -8,6 +8,8 @@ import {
 } from "./db";
 import { users } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
+import { getExactCustomerDetail } from "./customerData";
+import { customerHistory } from "../shared/customerHistory";
 import { listConnectedSystemsForUser } from "./connectedSystems";
 import { routeConnectedSystemActionsForUser } from "./crmRouter";
 import { runGenxAgent } from "./genx";
@@ -72,6 +74,67 @@ export function isDraftOnly(value: string) {
 
 function isReply(value: string) {
   return /\b(reply|respond)\b/i.test(value);
+}
+
+function draftTimelineBody(value: string) {
+  const quoteIndex = value.search(
+    /<blockquote|<div[^>]*gmail_quote|\bOn .{0,220}\bwrote:/i
+  );
+  const current = quoteIndex >= 0 ? value.slice(0, quoteIndex) : value;
+  return current
+    .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<br\s*\/?\s*>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .slice(0, 700);
+}
+
+export function groundedDraftCustomerHistory(
+  detail: NonNullable<Awaited<ReturnType<typeof getExactCustomerDetail>>>
+) {
+  const timeline = customerHistory(
+    detail.activities.items,
+    detail.communications.items
+  )
+    .slice(0, 36)
+    .map(item => {
+      const body = draftTimelineBody(item.body);
+      const subject = item.subject ? ` | ${item.subject.slice(0, 180)}` : "";
+      return `${new Date(item.occurredAt).toISOString()} | ${item.channel} | ${item.direction}${subject}\n${body || "[No body recorded]"}`;
+    });
+
+  const completed = detail.tasks.completed
+    .slice(0, 12)
+    .map(
+      task =>
+        `${task.completedAt || task.sourceUpdatedAt || task.dueAt || ""} | Completed task | ${task.title}`
+    );
+  const opportunities = detail.opportunities.items
+    .slice(0, 8)
+    .map(
+      opportunity =>
+        `${opportunity.updatedAt || ""} | Opportunity | ${opportunity.name} | ${opportunity.stage || "stage not recorded"}`
+    );
+
+  return [
+    "VERIFIED CONVERSATION HISTORY — NEWEST FIRST:",
+    ...timeline,
+    completed.length ? "RECENT COMPLETED TASKS:" : "",
+    ...completed,
+    opportunities.length ? "OPPORTUNITY HISTORY:" : "",
+    ...opportunities,
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .slice(0, 14_000);
 }
 
 function cleanDraft(value: string) {
@@ -274,16 +337,13 @@ export async function tryPrepareDirectAssistantAction(input: {
           .limit(1)
       )[0]
     : undefined;
-  const draftingPreferences =
-    channel === "email"
-      ? await listRelevantAssistantMemories({
-          userId: input.userId,
-          organisationId: input.organisationId,
-          query: `email writing style ${input.request}`,
-          contactExternalId: customer.contactExternalId,
-          maximum: 8,
-        })
-      : [];
+  const draftingPreferences = await listRelevantAssistantMemories({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    query: `${channel} communication writing style ${input.request}`,
+    contactExternalId: customer.contactExternalId,
+    maximum: 8,
+  });
   const personalStyle = draftingPreferences
     .filter(
       memory =>
@@ -341,6 +401,17 @@ export async function tryPrepareDirectAssistantAction(input: {
         source => `${source.title}\n${source.content || source.sourceUrl || ""}`
       )
       .join("\n\n");
+    const exactDetail = await getExactCustomerDetail({
+      userId: input.userId,
+      organisationId: input.organisationId,
+      contactId: customer.contactId,
+    });
+    if (!exactDetail)
+      return {
+        content:
+          "I could not verify the selected customer's current history, so nothing was prepared or sent.",
+      };
+    const verifiedHistory = groundedDraftCustomerHistory(exactDetail);
     const grounding: GroundedDraftContext = {
       request: input.request,
       channel,
@@ -361,6 +432,7 @@ export async function tryPrepareDirectAssistantAction(input: {
       stage: customer.stage,
       courseInterest: customer.courseInterest,
       customerContext: [
+        verifiedHistory,
         mappedCustomerContext,
         ...(customer.operationalRecordState?.openTasks || [])
           .slice(0, 3)
@@ -388,8 +460,8 @@ export async function tryPrepareDirectAssistantAction(input: {
       ],
       approvedKnowledge,
       workingContext: JSON.stringify({
-        selectedCustomer: grounding,
-        workspace,
+        selectedCustomerId: customer.contactId,
+        contactExternalId: customer.contactExternalId,
         channel,
         executionBoundary:
           channel === "email"
@@ -402,6 +474,8 @@ export async function tryPrepareDirectAssistantAction(input: {
         feature: `assistant_${channel}_draft`,
         reference: `contact:${customer.contactExternalId}`,
       },
+      maxContextChars: 50_000,
+      maxWorkingContextChars: 6_000,
       maxOutputTokens: channel === "email" ? 700 : 220,
     });
     body = cleanDraft(draft.content);
@@ -417,9 +491,9 @@ export async function tryPrepareDirectAssistantAction(input: {
         ],
         approvedKnowledge,
         workingContext: JSON.stringify({
-          selectedCustomer: grounding,
+          selectedCustomerId: customer.contactId,
+          contactExternalId: customer.contactExternalId,
           channel,
-          workspace,
         }),
         billing: {
           userId: input.userId,
@@ -427,6 +501,8 @@ export async function tryPrepareDirectAssistantAction(input: {
           feature: `assistant_${channel}_draft_grounding_repair`,
           reference: `contact:${customer.contactExternalId}`,
         },
+        maxContextChars: 50_000,
+        maxWorkingContextChars: 6_000,
         maxOutputTokens: channel === "email" ? 700 : 220,
       });
       body = cleanDraft(repaired.content);
@@ -510,6 +586,7 @@ export async function tryPrepareDirectAssistantAction(input: {
       ...(validated.subject ? { subject: validated.subject } : {}),
       ...(templateName ? { templateName } : {}),
       ...(senderIdentity ? { senderIdentity } : {}),
+      contactId: customer.contactId,
       contactExternalId: customer.contactExternalId,
       opportunityExternalId: customer.opportunityExternalId,
       preferredConnectedSystemId: customer.connectedSystemId,
@@ -521,12 +598,15 @@ export async function tryPrepareDirectAssistantAction(input: {
       },
       customerContext: {
         source: customer.targetVerification.source,
+        contactId: customer.contactId,
         connectedSystemId: customer.connectedSystemId,
         contactExternalId: customer.contactExternalId,
       },
       contentSource,
       executionOwner:
-        channel === "email" ? "member_selected_email_source" : "commissioned_crm",
+        channel === "email"
+          ? "member_selected_email_source"
+          : "commissioned_crm",
       actionVerification: {
         targetVerified: true,
         recipientVerified: true,
@@ -583,6 +663,7 @@ export async function tryPrepareDirectAssistantAction(input: {
     payload: {
       source: "shared_assistant_action_planner",
       channel,
+      contactId: customer.contactId,
       contactExternalId: customer.contactExternalId,
       draftOnly: isDraftOnly(input.request),
     },
@@ -625,12 +706,16 @@ export async function tryPrepareDirectAssistantAction(input: {
     content:
       `I prepared the ${channel === "email" ? "email" : channel === "sms" ? "SMS" : "WhatsApp message"} for ${customer.contactName}. ` +
       "Nothing has been sent yet. Review shows the exact target, content source and execution owner before approval.",
-    suggestedAction: { label: "Open Review", path: "/reviews" },
+    suggestedAction: {
+      label: "Open Review",
+      path: `/reviews?contactId=${customer.contactId}`,
+    },
     reviewRequired: true,
     workflowRunId,
     proposalCount: 1,
     actionPreview: {
       target: customer.contactName,
+      contactId: customer.contactId,
       contactExternalId: customer.contactExternalId,
       recipient: validated.to,
       channel,

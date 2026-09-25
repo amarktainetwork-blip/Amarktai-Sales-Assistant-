@@ -1486,6 +1486,27 @@ export async function appendLiveTranscript(input: {
   return { transcript };
 }
 
+export async function saveLiveCoachTip(input: {
+  userId: number;
+  organisationId: number;
+  callSessionId: number;
+  coachTip: string;
+}) {
+  const db = await requireDb();
+  const coachNotes = input.coachTip.trim().slice(0, 20_000);
+  await db
+    .update(callSessions)
+    .set({ coachNotes, status: "in_progress" })
+    .where(
+      and(
+        eq(callSessions.id, input.callSessionId),
+        eq(callSessions.userId, input.userId),
+        eq(callSessions.organisationId, input.organisationId)
+      )
+    );
+  return { coachNotes };
+}
+
 export async function completeLiveCallSession(input: {
   userId: number;
   organisationId: number;

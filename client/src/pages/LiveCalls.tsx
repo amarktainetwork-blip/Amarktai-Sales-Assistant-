@@ -4,6 +4,11 @@ import { Input } from "@/components/ui/input";
 import { friendlyError } from "@/lib/friendlyError";
 import { trpc } from "@/lib/trpc";
 import {
+  emptyLiveStructuredNotes,
+  mergeLiveStructuredNotes,
+  type LiveStructuredNotes,
+} from "@shared/liveCallNotes";
+import {
   AlertTriangle,
   ArrowRight,
   CheckCircle2,
@@ -28,9 +33,14 @@ type CaptureMode = "microphone" | "mixed";
 type TranscriptionResult = {
   text: string;
   signals: Signal[];
+  structuredNotes: LiveStructuredNotes;
   durationMs: number;
   rawAudioRetained: boolean;
 };
+
+const LIVE_AUDIO_CHUNK_MS = 2_500;
+const LIVE_COACH_INTERVAL_MS = 5_000;
+const LIVE_COACH_STALE_MS = 9_000;
 type CoachingResult = {
   content: string;
   usage?: Record<string, number>;
@@ -109,6 +119,74 @@ async function postLive<T>(
   return result;
 }
 
+async function streamLiveCoach(
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+  onDelta: (content: string) => void
+) {
+  const response = await fetch("/api/live-calls/coach-stream", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!response.ok) {
+    const result = (await response.json().catch(() => ({}))) as {
+      error?: string;
+    };
+    throw new Error(
+      result.error || `Live coaching request failed (${response.status}).`
+    );
+  }
+  if (!response.body) throw new Error("Live coaching stream is unavailable.");
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let partial = "";
+  let finalContent = "";
+
+  const consumeEvent = (raw: string) => {
+    let event = "message";
+    let data = "";
+    for (const line of raw.split("\n")) {
+      if (line.startsWith("event:")) event = line.slice(6).trim();
+      if (line.startsWith("data:")) data += line.slice(5).trim();
+    }
+    if (!data) return;
+    const payload = JSON.parse(data) as {
+      delta?: string;
+      content?: string;
+      error?: string;
+    };
+    if (event === "delta" && payload.delta) {
+      partial += payload.delta;
+      onDelta(partial);
+    } else if (event === "done") {
+      finalContent = payload.content || partial;
+      if (finalContent) onDelta(finalContent);
+    } else if (event === "error") {
+      throw new Error(payload.error || "Live coaching stream failed.");
+    }
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let boundary = buffer.indexOf("\n\n");
+    while (boundary >= 0) {
+      consumeEvent(buffer.slice(0, boundary));
+      buffer = buffer.slice(boundary + 2);
+      boundary = buffer.indexOf("\n\n");
+    }
+  }
+  buffer += decoder.decode();
+  if (buffer.trim()) consumeEvent(buffer);
+  return finalContent || partial;
+}
+
 async function getCaptureStream(mode: CaptureMode) {
   const mic = await navigator.mediaDevices.getUserMedia({
     audio: { echoCancellation: true, noiseSuppression: true },
@@ -157,6 +235,9 @@ export default function LiveCalls() {
   const [recording, setRecording] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [signals, setSignals] = useState<Signal[]>([]);
+  const [structuredNotes, setStructuredNotes] = useState<LiveStructuredNotes>(
+    emptyLiveStructuredNotes
+  );
   const [tip, setTip] = useState("");
   const [sttReady, setSttReady] = useState<boolean | null>(null);
   const [completing, setCompleting] = useState(false);
@@ -164,6 +245,7 @@ export default function LiveCalls() {
   const [outcome, setOutcome] = useState("interested");
   const [nextStep, setNextStep] = useState("");
   const [callbackAt, setCallbackAt] = useState("");
+  const [closeoutConfirmed, setCloseoutConfirmed] = useState(false);
   const [taskExternalId, setTaskExternalId] = useState("");
   const [contactExternalId, setContactExternalId] = useState("");
   const [opportunityExternalId, setOpportunityExternalId] = useState("");
@@ -186,6 +268,13 @@ export default function LiveCalls() {
   const transcriptRef = useRef("");
   const lastCoachAtRef = useRef(0);
   const coachingRef = useRef(false);
+  const coachAbortRef = useRef<AbortController | null>(null);
+  const coachStartedAtRef = useRef(0);
+  const pendingCoachRef = useRef<{
+    activeSessionId: number;
+    text: string;
+  } | null>(null);
+  const coachTimerRef = useRef<number | undefined>(undefined);
 
   const startSession = trpc.calls.startLive.useMutation();
   const initialSelectionApplied = useRef(0);
@@ -269,6 +358,11 @@ export default function LiveCalls() {
       recordingRef.current = false;
       if (chunkTimerRef.current !== undefined)
         window.clearTimeout(chunkTimerRef.current);
+      if (coachTimerRef.current !== undefined)
+        window.clearTimeout(coachTimerRef.current);
+      coachAbortRef.current?.abort();
+      coachAbortRef.current = null;
+      pendingCoachRef.current = null;
       if (recorderRef.current && recorderRef.current.state !== "inactive")
         recorderRef.current.stop();
       sourcesRef.current.forEach(stream =>
@@ -279,26 +373,70 @@ export default function LiveCalls() {
   }, []);
 
   async function requestCoaching(activeSessionId: number, text: string) {
-    if (coachingRef.current) return;
+    if (coachingRef.current) {
+      pendingCoachRef.current = { activeSessionId, text };
+      if (Date.now() - coachStartedAtRef.current > LIVE_COACH_STALE_MS)
+        coachAbortRef.current?.abort();
+      return;
+    }
+    const controller = new AbortController();
     coachingRef.current = true;
+    coachAbortRef.current = controller;
+    coachStartedAtRef.current = Date.now();
     try {
-      const result = await postLive<CoachingResult>("/api/live-calls/coach", {
-        callSessionId: activeSessionId,
-        leadLabel,
-        transcriptChunk: text,
-      });
-      setTip(result.content);
+      const content = await streamLiveCoach(
+        {
+          callSessionId: activeSessionId,
+          leadLabel,
+          transcriptChunk: text,
+        },
+        controller.signal,
+        partial => {
+          if (!controller.signal.aborted) setTip(partial);
+        }
+      );
+      if (!controller.signal.aborted && content) {
+        lastCoachAtRef.current = Date.now();
+        setTip(content);
+        setWorkflowError("");
+        setRetryAction(null);
+      }
     } catch (error) {
+      if (controller.signal.aborted) return;
       setWorkflowError(
         callError(
           error,
-          "Live coaching is temporarily unavailable. Your call notes are still safe."
+          "Live coaching is temporarily unavailable. Your transcript and live notes are still safe."
         )
       );
       setRetryAction(() => () => void requestCoaching(activeSessionId, text));
     } finally {
+      if (coachAbortRef.current === controller) coachAbortRef.current = null;
       coachingRef.current = false;
+      const pending = pendingCoachRef.current;
+      pendingCoachRef.current = null;
+      if (pending) scheduleCoaching(pending.activeSessionId, pending.text);
     }
+  }
+
+  function scheduleCoaching(activeSessionId: number, text: string) {
+    pendingCoachRef.current = { activeSessionId, text };
+    if (coachingRef.current) {
+      if (Date.now() - coachStartedAtRef.current > LIVE_COACH_STALE_MS)
+        coachAbortRef.current?.abort();
+      return;
+    }
+    if (coachTimerRef.current !== undefined) return;
+    const delay = Math.max(
+      0,
+      LIVE_COACH_INTERVAL_MS - (Date.now() - lastCoachAtRef.current)
+    );
+    coachTimerRef.current = window.setTimeout(() => {
+      coachTimerRef.current = undefined;
+      const pending = pendingCoachRef.current;
+      pendingCoachRef.current = null;
+      if (pending) void requestCoaching(pending.activeSessionId, pending.text);
+    }, delay);
   }
 
   async function uploadChunk(blob: Blob, activeSessionId: number) {
@@ -311,8 +449,14 @@ export default function LiveCalls() {
         callSessionId: activeSessionId,
         audioBase64: base64,
         mimeType,
-        durationMs: 5000,
+        durationMs: LIVE_AUDIO_CHUNK_MS,
       }
+    );
+    setStructuredNotes(current =>
+      mergeLiveStructuredNotes(
+        current,
+        result.structuredNotes || emptyLiveStructuredNotes()
+      )
     );
     const text = result.text?.trim();
     if (!text) return;
@@ -337,14 +481,8 @@ export default function LiveCalls() {
       const needsCoach = result.signals.some(
         signal => signal.priority === "important" || signal.type === "question"
       );
-      if (
-        needsCoach &&
-        Date.now() - lastCoachAtRef.current > 15_000 &&
-        !coachingRef.current
-      ) {
-        lastCoachAtRef.current = Date.now();
-        void requestCoaching(activeSessionId, text);
-      }
+      if (needsCoach)
+        scheduleCoaching(activeSessionId, transcriptRef.current.slice(-8_000));
     }
   }
 
@@ -384,13 +522,12 @@ export default function LiveCalls() {
             toast.error(detail);
           });
       }
-      if (recordingRef.current)
-        startRecordingCycle(stream, activeSessionId);
+      if (recordingRef.current) startRecordingCycle(stream, activeSessionId);
     };
     recorder.start();
     chunkTimerRef.current = window.setTimeout(() => {
       if (recorder.state !== "inactive") recorder.stop();
-    }, 5000);
+    }, LIVE_AUDIO_CHUNK_MS);
   }
 
   async function begin() {
@@ -413,6 +550,21 @@ export default function LiveCalls() {
             contactId: selectedContactId,
           });
       const activeSessionId = sessionId ?? started!.callSessionId;
+      if (started) {
+        transcriptRef.current = "";
+        coachAbortRef.current?.abort();
+        coachAbortRef.current = null;
+        pendingCoachRef.current = null;
+        lastCoachAtRef.current = 0;
+        if (coachTimerRef.current !== undefined) {
+          window.clearTimeout(coachTimerRef.current);
+          coachTimerRef.current = undefined;
+        }
+        setTranscript("");
+        setSignals([]);
+        setStructuredNotes(emptyLiveStructuredNotes());
+        setTip("");
+      }
       if (started?.leadLabel) setLeadLabel(started.leadLabel);
       setSessionId(activeSessionId);
       const capture = await getCaptureStream(captureMode);
@@ -468,7 +620,10 @@ export default function LiveCalls() {
     await audioContextRef.current?.close().catch(() => undefined);
     audioContextRef.current = undefined;
     await pendingRef.current;
-    if (sessionId) setAwaitingCloseout(true);
+    if (sessionId) {
+      setCloseoutConfirmed(false);
+      setAwaitingCloseout(true);
+    }
   }
 
   async function recordAttemptWithoutAudio() {
@@ -483,6 +638,7 @@ export default function LiveCalls() {
       setSessionId(activeSessionId);
       if (started?.leadLabel) setLeadLabel(started.leadLabel);
       setOutcome("no_answer");
+      setCloseoutConfirmed(false);
       setAwaitingCloseout(true);
     } catch (error) {
       const detail = callError(
@@ -497,6 +653,10 @@ export default function LiveCalls() {
 
   async function completeCloseout() {
     if (!sessionId || !awaitingCloseout) return;
+    if (!closeoutConfirmed)
+      return toast.error(
+        "Confirm the outcome, callback and next-step details before preparing follow-up."
+      );
     if (communicationChannel && !templateName.trim())
       return toast.error(
         "Choose the approved communication template before preparing a follow-up."
@@ -528,7 +688,7 @@ export default function LiveCalls() {
           ].includes(outcome)
             ? outcome
             : undefined,
-          commitmentsConfirmed: true,
+          commitmentsConfirmed: closeoutConfirmed,
           contactExternalId: contactExternalId.trim() || undefined,
           taskExternalId: taskExternalId.trim() || undefined,
           opportunityExternalId: opportunityExternalId.trim() || undefined,
@@ -867,6 +1027,29 @@ export default function LiveCalls() {
               </p>
             </div>
 
+            <section className="mt-5 rounded-xl border border-[#DCE4EE] bg-white p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#55788B]">
+                  LIVE STRUCTURED NOTES
+                </p>
+                <span className="text-xs text-[#66758A]">
+                  Updated from verified transcript signals
+                </span>
+              </div>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <LiveNoteGroup label="Goals / intentions heard" items={structuredNotes.goals} />
+                <LiveNoteGroup label="Facts / context heard" items={structuredNotes.facts} />
+                <LiveNoteGroup label="Customer questions" items={structuredNotes.questions} />
+                <LiveNoteGroup label="Objections" items={structuredNotes.objections} />
+                <LiveNoteGroup label="Buying signals" items={structuredNotes.buyingSignals} />
+                <LiveNoteGroup label="Commitments heard — confirm speaker" items={structuredNotes.commitments} />
+                <LiveNoteGroup label="Callback requests" items={structuredNotes.callbackRequests} />
+                <LiveNoteGroup label="Dates / times mentioned" items={structuredNotes.datesTimes} />
+                <LiveNoteGroup label="Likely next steps" items={structuredNotes.nextSteps} />
+                <LiveNoteGroup label="Still unresolved" items={structuredNotes.unresolvedItems} />
+              </div>
+            </section>
+
             {awaitingCloseout && (
               <section className="mt-5 rounded-xl border border-[#DCE4EE] bg-[#F8FAFC] p-5">
                 <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#55788B]">
@@ -956,8 +1139,21 @@ export default function LiveCalls() {
                     : ""}
                   . You can review any external change before it is made.
                 </div>
+                <label className="mt-4 flex items-start gap-3 rounded-xl border border-[#DCE4EE] bg-white p-3 text-xs leading-5 text-[#405F70]">
+                  <input
+                    type="checkbox"
+                    checked={closeoutConfirmed}
+                    onChange={event => setCloseoutConfirmed(event.target.checked)}
+                    className="mt-0.5 h-4 w-4"
+                  />
+                  <span>
+                    I have checked the outcome, callback time and next step above.
+                    Treat these closeout details as salesperson-confirmed. Transcript-derived
+                    notes remain suggestions until confirmed here.
+                  </span>
+                </label>
                 <Button
-                  disabled={completing}
+                  disabled={completing || !closeoutConfirmed}
                   onClick={() => void completeCloseout()}
                   className="mt-4 bg-[#55788B] hover:bg-[#405F70]"
                 >
@@ -990,7 +1186,13 @@ export default function LiveCalls() {
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Button
-                    onClick={() => navigate("/reviews")}
+                    onClick={() =>
+                      navigate(
+                        selectedContactId
+                          ? `/reviews?contactId=${selectedContactId}`
+                          : "/reviews"
+                      )
+                    }
                     className="bg-[#55788B] hover:bg-[#405F70]"
                   >
                     <ClipboardCheck className="mr-2 h-4 w-4" />
@@ -1063,5 +1265,22 @@ export default function LiveCalls() {
         </div>
       </div>
     </DashboardLayout>
+  );
+}
+
+function LiveNoteGroup({ label, items }: { label: string; items: string[] }) {
+  return (
+    <div className="rounded-lg bg-[#F8FAFC] p-3">
+      <p className="text-xs font-bold text-[#52647A]">{label}</p>
+      {items.length ? (
+        <ul className="mt-2 space-y-1 text-sm leading-5 text-[#33445B]">
+          {items.map(item => (
+            <li key={item}>• {item}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-2 text-xs text-[#8A96A8]">Nothing captured yet.</p>
+      )}
+    </div>
   );
 }

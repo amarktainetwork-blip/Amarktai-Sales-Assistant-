@@ -135,6 +135,31 @@ setTimeout(
 process.on("SIGTERM", () => process.exit(0));
 process.on("SIGINT", () => process.exit(0));
 
+const workerMemoryLimitMb = Math.max(
+  512,
+  Number(process.env.WORKER_MEMORY_RECYCLE_MB || 1_200)
+);
+let workerMemoryOverLimitChecks = 0;
+const workerMemoryGuard = setInterval(() => {
+  const rssMb = process.memoryUsage().rss / 1024 / 1024;
+  if (rssMb <= workerMemoryLimitMb) {
+    workerMemoryOverLimitChecks = 0;
+    return;
+  }
+  workerMemoryOverLimitChecks += 1;
+  console.warn(
+    JSON.stringify({
+      event: "worker_memory_pressure",
+      rssMb: Math.round(rssMb),
+      limitMb: workerMemoryLimitMb,
+      consecutiveChecks: workerMemoryOverLimitChecks,
+      action: workerMemoryOverLimitChecks >= 3 ? "recycle" : "observe",
+    })
+  );
+  if (workerMemoryOverLimitChecks >= 3) process.exit(75);
+}, 60_000);
+workerMemoryGuard.unref();
+
 // A fresh event-loop heartbeat distinguishes a live worker from a stuck process.
 const heartbeat = () =>
   writeFileSync("/tmp/amarktai-worker-heartbeat", String(Date.now()));

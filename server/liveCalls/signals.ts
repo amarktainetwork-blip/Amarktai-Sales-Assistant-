@@ -1,5 +1,5 @@
 export type LiveSignal = {
-  type: "price_objection" | "timing_objection" | "trust_objection" | "competitor" | "question" | "salesperson_commitment" | "customer_callback" | "buying_signal";
+  type: "price_objection" | "timing_objection" | "trust_objection" | "competitor" | "question" | "commitment" | "customer_callback" | "buying_signal";
   label: string;
   evidence: string;
   priority: "normal" | "important";
@@ -27,7 +27,7 @@ export function detectLiveSignals(transcript: string): LiveSignal[] {
   add("timing_objection", "Timing objection", firstMatch(text, [/not (?:the )?right time[^.!?]*/i, /(?:call|contact) me (?:later|next|after)[^.!?]*/i, /need (?:more )?time[^.!?]*/i, /(?:too busy|busy right now)[^.!?]*/i]));
   add("trust_objection", "Trust / proof concern", firstMatch(text, [/(?:not sure|unsure) (?:about|if|whether)[^.!?]*/i, /(?:is this|are you) (?:legit|legitimate|accredited|registered)[^.!?]*/i, /(?:proof|guarantee|reviews?|references?)[^.!?]*/i]));
   add("competitor", "Competitor mentioned", firstMatch(text, [/(?:another|other) (?:company|provider|supplier|course|service)[^.!?]*/i, /(?:competitor|alternative|elsewhere)[^.!?]*/i]));
-  add("salesperson_commitment", "Salesperson commitment", firstMatch(text, [/(?:i(?:'ll| will)|we(?:'ll| will)) (?:send|email|call|phone|message|follow up|check|confirm|come back)[^.!?]*/i]), "important");
+  add("commitment", "Commitment heard — confirm speaker", firstMatch(text, [/(?:i(?:'ll| will)|we(?:'ll| will)) (?:send|email|call|phone|message|follow up|check|confirm|come back|review|decide|let you know)[^.!?]*/i]), "important");
   add("customer_callback", "Callback requested", firstMatch(text, [/(?:call|phone|contact|message) me (?:back )?(?:on|at|after|tomorrow|later|next)[^.!?]*/i]), "important");
   add("buying_signal", "Buying signal", firstMatch(text, [/(?:how do i|how can i|where do i) (?:sign up|pay|start|enrol|enroll|buy|order)[^.!?]*/i, /(?:i(?:'m| am) interested|sounds good|let(?:'s| us) do it|i want to)[^.!?]*/i]), "important");
 

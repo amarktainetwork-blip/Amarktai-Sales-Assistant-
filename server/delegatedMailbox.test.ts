@@ -1,7 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { userMailboxConnections } from "../drizzle/schema";
-import { mailboxOwnershipMatches, microsoftGraphUrl } from "./delegatedMailbox";
+import {
+  delegatedReplyResolvesInbound,
+  mailboxOwnershipMatches,
+  microsoftGraphUrl,
+} from "./delegatedMailbox";
 
 const source = readFileSync(
   new URL("./delegatedMailbox.ts", import.meta.url),
@@ -94,6 +98,33 @@ describe("per-user delegated Microsoft mailbox", () => {
     expect(source).toContain("newestProcessedAt.valueOf() - 1_000");
     expect(source).toContain("mailboxUserId: input.userId");
     expect(source).not.toContain("(inbox.value || []).slice(0, 25)");
+  });
+
+  it("archives an inbound thread only after a later sent message proves it was handled", () => {
+    const inbound = {
+      receivedAt: new Date("2026-09-24T10:00:00Z"),
+      classification: { conversationExternalId: "conversation-7" },
+    };
+    expect(
+      delegatedReplyResolvesInbound(inbound, {
+        conversationId: "conversation-7",
+        sentAt: new Date("2026-09-24T10:05:00Z"),
+      })
+    ).toBe(true);
+    expect(
+      delegatedReplyResolvesInbound(inbound, {
+        conversationId: "conversation-8",
+        sentAt: new Date("2026-09-24T10:05:00Z"),
+      })
+    ).toBe(false);
+    expect(
+      delegatedReplyResolvesInbound(inbound, {
+        conversationId: "conversation-7",
+        sentAt: new Date("2026-09-24T09:55:00Z"),
+      })
+    ).toBe(false);
+    expect(source).toContain("/me/mailFolders/sentitems/messages");
+    expect(source).toContain("handledReplies");
   });
 
   it("accepts only Microsoft Graph paging URLs", () => {

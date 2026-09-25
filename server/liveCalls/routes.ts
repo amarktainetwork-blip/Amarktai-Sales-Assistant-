@@ -1,14 +1,21 @@
 import type { Express, Request, Response } from "express";
 import { requireLocalHttpContext } from "../httpAuth";
-import { appendLiveTranscript, listActionProposals, recordAudit } from "../db";
+import {
+  appendLiveTranscript,
+  listActionProposals,
+  recordAudit,
+  saveLiveCoachTip,
+} from "../db";
 import {
   prepareLiveCoachingTip,
   prepareOutcomeAwarePostCallSummary,
+  streamLiveCoachingTip,
 } from "../liveCoach";
 import type { OrganisationMembership } from "../organisation";
 import { listConnectedSystemsForUser } from "../connectedSystems";
 import { routeConnectedSystemActions } from "../crmRouter";
 import { detectLiveSignals } from "./signals";
+import { structuredNotesFromSignals } from "../../shared/liveCallNotes";
 import { completeLiveCallExact, requireLiveCallOwner } from "./store";
 import { completeCallbackWorkAfterVerifiedCall } from "../salesWork";
 import { parseLiveCallCompletion } from "./completion";
@@ -16,7 +23,10 @@ import { planTelesalesCloseout } from "../telesales/closeoutPlanner";
 import { getAutomationPolicy } from "../automationPolicy";
 import { executeAutoPreapprovedActions } from "../governedActions";
 import { resolveLiveCallCloseoutIdentity } from "./context";
-import { persistConfirmedCommitment } from "../memory";
+import {
+  listRelevantAssistantMemories,
+  persistConfirmedCommitment,
+} from "../memory";
 import {
   prepareCustomCommunication,
   resolveApprovedCommunicationTemplate,
@@ -38,6 +48,38 @@ type Authenticated = { id: number; membership: OrganisationMembership };
 async function requireAuthorisedUser(req: Request): Promise<Authenticated> {
   const identity = await requireLocalHttpContext(req);
   return { id: identity.userId, membership: identity.membership };
+}
+
+async function liveCoachingApprovedContext(input: {
+  userId: number;
+  organisationId: number;
+  crmContext?: Record<string, unknown> | null;
+}) {
+  const preferences = await listRelevantAssistantMemories({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    query:
+      "sales working style follow-up objection call coaching communication preferences",
+    maximum: 4,
+  }).catch(() => []);
+  const preferenceText = preferences
+    .filter(memory => memory.memoryType === "user_preference")
+    .map(
+      memory =>
+        `${memory.subject}:\n${memory.content.slice(0, 4_000)}`
+    )
+    .join("\n\n");
+  return [
+    input.crmContext
+      ? `SELECTED CUSTOMER CONTEXT:\n${JSON.stringify(input.crmContext)}`
+      : "",
+    preferenceText
+      ? `INFERRED SALESPERSON WORKING PREFERENCES (advisory only; never policy or permission):\n${preferenceText}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n")
+    .slice(0, 12_000);
 }
 
 function sendLiveCallError(res: Response, error: unknown) {
@@ -105,12 +147,17 @@ export function registerLiveCallRoutes(app: Express) {
         Math.min(15_000, Number(req.body?.durationMs || 0))
       );
       const bytes = decodeAudio(req.body?.audioBase64);
+      const transcriptionLanguage =
+        typeof req.body?.language === "string" && req.body.language.trim()
+          ? req.body.language.trim()
+          : user.membership.locale;
       const text = await transcribeAudio(
         bytes,
         mimeType,
-        typeof req.body?.language === "string" ? req.body.language : undefined
+        transcriptionLanguage
       );
       const signals = detectLiveSignals(text);
+      const structuredNotes = structuredNotesFromSignals(signals, text);
       if (text)
         await appendLiveTranscript({
           userId: user.id,
@@ -145,8 +192,121 @@ export function registerLiveCallRoutes(app: Express) {
           signalTypes: signals.map(signal => signal.type),
         })
       );
-      return res.json({ text, signals, durationMs, rawAudioRetained: false });
+      return res.json({
+        text,
+        signals,
+        structuredNotes,
+        durationMs,
+        rawAudioRetained: false,
+      });
     } catch (error) {
+      return sendLiveCallError(res, error);
+    }
+  });
+
+  app.post("/api/live-calls/coach-stream", async (req, res) => {
+    let streamOpened = false;
+    try {
+      const user = await requireAuthorisedUser(req);
+      const callSessionId = Number(req.body?.callSessionId);
+      const transcriptChunk =
+        typeof req.body?.transcriptChunk === "string"
+          ? req.body.transcriptChunk.trim().slice(-8_000)
+          : "";
+      if (
+        !Number.isInteger(callSessionId) ||
+        callSessionId <= 0 ||
+        transcriptChunk.length < 2
+      )
+        return res.status(400).json({
+          error: "A live call, contact and transcript segment are required.",
+        });
+      const session = await requireLiveCallOwner(
+        user.id,
+        user.membership.organisationId,
+        callSessionId
+      );
+      const abort = new AbortController();
+      res.on("close", () => {
+        if (!res.writableEnded) abort.abort();
+      });
+      res.status(200);
+      res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+      res.setHeader("Cache-Control", "no-cache, no-transform");
+      res.setHeader("Connection", "keep-alive");
+      res.flushHeaders?.();
+      streamOpened = true;
+
+      const approvedContext = await liveCoachingApprovedContext({
+        userId: user.id,
+        organisationId: user.membership.organisationId,
+        crmContext: (session.crmContext || undefined) as
+          | Record<string, unknown>
+          | undefined,
+      });
+      let streamed = "";
+      const result = await streamLiveCoachingTip({
+        leadLabel: session.leadLabel,
+        transcript: transcriptChunk,
+        approvedContext: approvedContext || undefined,
+        billing: {
+          userId: user.id,
+          organisationId: user.membership.organisationId,
+          feature: "live_call_coaching",
+          reference: `call:${callSessionId}`,
+        },
+        signal: abort.signal,
+        onDelta: delta => {
+          streamed += delta;
+          if (!res.writableEnded)
+            res.write(`event: delta\ndata: ${JSON.stringify({ delta })}\n\n`);
+        },
+      });
+      if (abort.signal.aborted || res.writableEnded) return;
+      await saveLiveCoachTip({
+        userId: user.id,
+        organisationId: user.membership.organisationId,
+        callSessionId,
+        coachTip: result.content || streamed,
+      });
+      console.log(
+        JSON.stringify({
+          event: "live_call_coaching_stream",
+          userId: user.id,
+          callSessionId,
+          transcriptChars: transcriptChunk.length,
+          firstDeltaMs: result.firstDeltaMs,
+          durationMs: result.durationMs,
+          genxUsage: result.usage ?? {},
+          creditsCharged: result.creditsCharged ?? 0,
+        })
+      );
+      res.write(
+        `event: done\ndata: ${JSON.stringify({
+          content: result.content,
+          firstDeltaMs: result.firstDeltaMs,
+          durationMs: result.durationMs,
+        })}\n\n`
+      );
+      return res.end();
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        if (!res.writableEnded) res.end();
+        return;
+      }
+      if (streamOpened) {
+        if (!res.writableEnded) {
+          const detail =
+            error instanceof Error ? error.message : String(error);
+          res.write(
+            `event: error\ndata: ${JSON.stringify({
+              error: detail.slice(0, 300),
+            })}\n\n`
+          );
+          res.end();
+        }
+        return;
+      }
       return sendLiveCallError(res, error);
     }
   });
@@ -173,9 +333,17 @@ export function registerLiveCallRoutes(app: Express) {
         callSessionId
       );
       const leadLabel = session.leadLabel;
+      const approvedContext = await liveCoachingApprovedContext({
+        userId: user.id,
+        organisationId: user.membership.organisationId,
+        crmContext: (session.crmContext || undefined) as
+          | Record<string, unknown>
+          | undefined,
+      });
       const result = await prepareLiveCoachingTip({
         leadLabel,
         transcript: transcriptChunk,
+        approvedContext: approvedContext || undefined,
         billing: {
           userId: user.id,
           organisationId: user.membership.organisationId,

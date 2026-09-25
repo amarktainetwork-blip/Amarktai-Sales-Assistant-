@@ -105,7 +105,7 @@ describe("Phase 2 daily salesperson workflow", () => {
       "initialContactId > 0 ? initialContactId : undefined"
     );
     expect(calls).not.toContain("trpc.sales.customers.useQuery");
-    expect(calls).toContain('navigate("/reviews")');
+    expect(calls).toContain("/reviews?contactId=${selectedContactId}");
     expect(calls).toContain('navigate("/today")');
 
     expect(review).toContain("const draftOnly = payload.draftOnly === true");

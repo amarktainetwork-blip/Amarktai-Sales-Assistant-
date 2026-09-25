@@ -15,7 +15,8 @@ import {
   Sparkles,
   UserRound,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { useLocation } from "wouter";
 
 type Message = {
@@ -103,6 +104,31 @@ export default function Assistant() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const chatEnd = useRef<HTMLDivElement>(null);
+  const requestVersion = useRef(0);
+
+  const switchCustomer = useCallback(
+    (nextContactId?: number, updateLocation = false) => {
+      requestVersion.current += 1;
+      setContactId(nextContactId);
+      setMessages([]);
+      setDraft("");
+      setError("");
+      setBusy(false);
+      if (updateLocation) {
+        const params = new URLSearchParams(window.location.search);
+        params.delete("prompt");
+        if (nextContactId) params.set("contactId", String(nextContactId));
+        else params.delete("contactId");
+        const query = params.toString();
+        window.history.replaceState(
+          window.history.state,
+          "",
+          `${window.location.pathname}${query ? `?${query}` : ""}`
+        );
+      }
+    },
+    []
+  );
 
   const customers = trpc.sales.customerDirectory.useQuery(
     { page: 1, pageSize: 25, search: contextSearch, sort: "updated" },
@@ -124,6 +150,13 @@ export default function Assistant() {
           variables.contactId ? `&contactId=${variables.contactId}` : ""
         }`
       ),
+    onError: error =>
+      toast.error(
+        friendlyError(
+          error,
+          "The call workspace could not open. Nothing was changed."
+        )
+      ),
   });
 
   const contextOptions = useMemo(() => {
@@ -144,17 +177,22 @@ export default function Assistant() {
     const params = new URLSearchParams(window.location.search);
     const prompt = params.get("prompt")?.trim();
     const selected = requestedAssistantContactId();
+    if (selected && selected !== contactId) switchCustomer(selected);
     if (prompt) setDraft(prompt.slice(0, 12_000));
-    if (selected && selected !== contactId) setContactId(selected);
-  }, [location, contactId]);
+  }, [location, contactId, switchCustomer]);
 
   useEffect(() => {
     // An explicit customer in the URL is authoritative. Today is only a
     // fallback when AmarktAI is opened without customer context.
     if (contactId || explicitContactId) return;
     const next = today.data?.queues.callQueue?.[0];
-    if (next?.contactId) setContactId(next.contactId);
-  }, [contactId, explicitContactId, today.data?.queues.callQueue]);
+    if (next?.contactId) switchCustomer(next.contactId);
+  }, [
+    contactId,
+    explicitContactId,
+    switchCustomer,
+    today.data?.queues.callQueue,
+  ]);
 
   useEffect(() => {
     chatEnd.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -175,6 +213,7 @@ export default function Assistant() {
   async function send(prompt = draft) {
     const content = prompt.trim();
     if (!content || busy) return;
+    const activeRequest = ++requestVersion.current;
     const nextMessages: Message[] = [...messages, { role: "user", content }];
     setMessages(nextMessages);
     setDraft("");
@@ -188,8 +227,10 @@ export default function Assistant() {
           content: message.content,
         })),
       });
+      if (requestVersion.current !== activeRequest) return;
       setMessages(current => [...current, responseMessage(response)]);
     } catch (cause) {
+      if (requestVersion.current !== activeRequest) return;
       setError(
         friendlyError(
           cause,
@@ -197,12 +238,13 @@ export default function Assistant() {
         )
       );
     } finally {
-      setBusy(false);
+      if (requestVersion.current === activeRequest) setBusy(false);
     }
   }
 
   async function retry() {
     if (busy || !messages.length) return;
+    const activeRequest = ++requestVersion.current;
     setError("");
     setBusy(true);
     try {
@@ -213,8 +255,10 @@ export default function Assistant() {
           content: message.content,
         })),
       });
+      if (requestVersion.current !== activeRequest) return;
       setMessages(current => [...current, responseMessage(response)]);
     } catch (cause) {
+      if (requestVersion.current !== activeRequest) return;
       setError(
         friendlyError(
           cause,
@@ -222,7 +266,7 @@ export default function Assistant() {
         )
       );
     } finally {
-      setBusy(false);
+      if (requestVersion.current === activeRequest) setBusy(false);
     }
   }
 
@@ -399,8 +443,9 @@ export default function Assistant() {
                 aria-label="Customer context"
                 value={contactId ?? ""}
                 onChange={event =>
-                  setContactId(
-                    event.target.value ? Number(event.target.value) : undefined
+                  switchCustomer(
+                    event.target.value ? Number(event.target.value) : undefined,
+                    true
                   )
                 }
                 className="mt-2 h-11 w-full rounded-xl border border-[#E2E5EE] bg-white px-3 text-base text-[#293145] outline-none focus:border-[#7D9AAA]"

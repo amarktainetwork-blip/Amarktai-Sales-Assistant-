@@ -37,6 +37,11 @@ const companyLearningRuntime = fs.readFileSync(
   "server/companyKnowledgePartialBatchRuntime.ts",
   "utf8"
 );
+const reviews = fs.readFileSync("client/src/pages/Reviews.tsx", "utf8");
+const assistantDirectActions = fs.readFileSync(
+  "server/assistantDirectActions.ts",
+  "utf8"
+);
 
 function compact(value: string) {
   return value.replace(/\s+/g, " ");
@@ -153,6 +158,16 @@ describe("client handover acceptance guards", () => {
     expect(db).toContain("const coverageIncomplete = completeness?.status");
     expect(companySetup).toContain("you do not need to");
     expect(companySetup).toContain("rerun the paid website crawl");
+  });
+
+  it("preserves the exact customer when work moves through Review", () => {
+    expect(assistantDirectActions).toContain("contactId: customer.contactId");
+    expect(assistantDirectActions).toContain(
+      "/reviews?contactId=${customer.contactId}"
+    );
+    expect(reviews).toContain("reviewContactId(item, initialContactId)");
+    expect(reviews).toContain("/customers?contactId=${contactId}");
+    expect(reviews).toContain("/assistant?contactId=${contactId}");
   });
 
   it("prioritises career programmes and rejects placeholder offering names", () => {

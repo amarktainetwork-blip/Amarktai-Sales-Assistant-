@@ -6,8 +6,26 @@
  * timers from fighting over that lease between individual read operations.
  */
 let tail: Promise<void> = Promise.resolve();
+const inFlightByLabel = new Map<string, Promise<unknown>>();
 
-export async function runBackgroundBrowserReadLane<T>(
+export function runBackgroundBrowserReadLane<T>(
+  label: string,
+  run: () => Promise<T>
+): Promise<T> {
+  const existing = inFlightByLabel.get(label);
+  if (existing) return existing as Promise<T>;
+
+  const task = runQueuedBackgroundRead(label, run);
+  inFlightByLabel.set(label, task);
+  void task
+    .finally(() => {
+      if (inFlightByLabel.get(label) === task) inFlightByLabel.delete(label);
+    })
+    .catch(() => undefined);
+  return task;
+}
+
+async function runQueuedBackgroundRead<T>(
   label: string,
   run: () => Promise<T>
 ): Promise<T> {
@@ -39,4 +57,5 @@ export async function runBackgroundBrowserReadLane<T>(
 
 export function resetBackgroundBrowserReadLaneForTests() {
   tail = Promise.resolve();
+  inFlightByLabel.clear();
 }

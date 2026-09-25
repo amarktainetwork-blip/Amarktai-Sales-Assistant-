@@ -159,9 +159,13 @@ async function genxFetch(
   let lastError: unknown;
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     try {
+      const timeoutSignal = AbortSignal.timeout(timeoutMs);
+      const signal = init.signal
+        ? AbortSignal.any([init.signal, timeoutSignal])
+        : timeoutSignal;
       const response = await fetch(url, {
         ...init,
-        signal: AbortSignal.timeout(timeoutMs),
+        signal,
       });
       if (
         (response.status === 429 || response.status >= 500) &&
@@ -174,7 +178,7 @@ async function genxFetch(
       return response;
     } catch (error) {
       lastError = error;
-      if (attempt >= retries) break;
+      if (init.signal?.aborted || attempt >= retries) break;
       await delay(Math.min(4_000, 300 * 2 ** attempt));
     }
   }
@@ -379,6 +383,7 @@ export async function runGenxAgent(input: {
   modelTier?: "fast" | "default" | "reasoning";
   billing?: GenxBillingContext;
   maxContextChars?: number;
+  maxWorkingContextChars?: number;
   maxOutputTokens?: number;
 }) {
   assertModelSpendAllowed("genx", input.billing?.feature);
@@ -459,7 +464,13 @@ export async function runGenxAgent(input: {
   const approvedKnowledge = input.approvedKnowledge
     ?.trim()
     .slice(0, knowledgeBudget);
-  const workingContext = input.workingContext?.trim().slice(0, 10_000);
+  const maxWorkingContextChars = Math.min(
+    30_000,
+    Math.max(4_000, input.maxWorkingContextChars || 10_000)
+  );
+  const workingContext = input.workingContext
+    ?.trim()
+    .slice(0, maxWorkingContextChars);
   const conversationBudget = Math.max(
     4_000,
     maxContextChars -

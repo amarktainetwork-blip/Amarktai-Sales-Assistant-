@@ -38,8 +38,20 @@ describe("client-handover live calls presentation", () => {
     expect(liveCalls).toContain("function startRecordingCycle");
     expect(liveCalls).toContain("recorder.start();");
     expect(liveCalls).toContain("recorder.stop();");
-    expect(liveCalls).toContain("}, 5000);");
-    expect(liveCalls).not.toContain("recorder.start(5000)");
+    expect(liveCalls).toContain("const LIVE_AUDIO_CHUNK_MS = 2_500");
+    expect(liveCalls).toContain("}, LIVE_AUDIO_CHUNK_MS);");
+    expect(liveCalls).not.toContain("recorder.start(LIVE_AUDIO_CHUNK_MS)");
+  });
+
+  it("queues incremental coaching so a busy request cannot drop a newer signal", () => {
+    expect(liveCalls).toContain("const LIVE_COACH_INTERVAL_MS = 5_000");
+    expect(liveCalls).toContain('fetch("/api/live-calls/coach-stream"');
+    expect(liveCalls).toContain("setTip(partial)");
+    expect(liveCalls).toContain(
+      "pendingCoachRef.current = { activeSessionId, text }"
+    );
+    expect(liveCalls).toContain("function scheduleCoaching");
+    expect(liveCalls).toContain("transcriptRef.current.slice(-8_000)");
   });
 
   it("keeps the complete prepare-call-assist-closeout workflow", () => {
@@ -47,6 +59,17 @@ describe("client-handover live calls presentation", () => {
       "PRE-CALL BRIEF",
       "Start Live Companion",
       "LIVE TRANSCRIPT",
+      "LIVE STRUCTURED NOTES",
+      "Goals / intentions heard",
+      "Facts / context heard",
+      "Customer questions",
+      "Objections",
+      "Buying signals",
+      "Commitments heard",
+      "Callback requests",
+      "Dates / times mentioned",
+      "Likely next steps",
+      "Still unresolved",
       "CALL OUTCOME",
       "Confirm outcome and prepare follow-up",
       "Live signals",

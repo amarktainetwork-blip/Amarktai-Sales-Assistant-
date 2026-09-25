@@ -121,6 +121,25 @@ export function configuredTaskPriorityTitles(
   return titles;
 }
 
+export function configuredNewLeadTaskTitles(
+  configuration: ClientActionConfiguration
+) {
+  const titles: string[] = [];
+  for (const [key, workflow] of Object.entries(configuration.workflows)) {
+    if (!(key === "first_contact" || key.startsWith("first_contact:"))) continue;
+    const firstPurpose = workflow.taskSequence[0];
+    const title = firstPurpose ? workflow.taskAliases[firstPurpose]?.trim() : "";
+    if (
+      title &&
+      !titles.some(
+        item => normalizedTaskTitle(item) === normalizedTaskTitle(title)
+      )
+    )
+      titles.push(title);
+  }
+  return titles;
+}
+
 export function sortTasksByConfiguredPriority<
   T extends { title: string; dueAt: Date | null },
 >(tasks: T[], configuredTitles: string[]) {
@@ -639,7 +658,19 @@ export async function getTodayWork(input: {
     })),
     contacts: enrichedWorkContacts,
   });
-  const newLeadQueue = callQueue.filter(item => item.workItemIds.length > 0);
+  const newLeadTaskTitles = new Set(
+    configuredNewLeadTaskTitles(actionConfiguration).map(normalizedTaskTitle)
+  );
+  const newLeadTaskIds = new Set(
+    [...overdueTasks, ...dueToday]
+      .filter(task => newLeadTaskTitles.has(normalizedTaskTitle(task.title)))
+      .map(task => task.id)
+  );
+  const newLeadQueue = callQueue.filter(
+    item =>
+      item.workItemIds.length > 0 ||
+      item.taskIds.some(taskId => newLeadTaskIds.has(taskId))
+  );
   const unlinkedTaskIds = new Set(
     unrepresentedTodayTasks(callQueue, [...overdueTasks, ...dueToday]).map(
       task => task.id
