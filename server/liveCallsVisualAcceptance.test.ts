@@ -36,11 +36,11 @@ describe("client-handover live calls presentation", () => {
 
   it("records self-contained chunks for the live transcription boundary", () => {
     expect(liveCalls).toContain("function startRecordingCycle");
-    expect(liveCalls).toContain("recorder.start();");
+    expect(liveCalls).not.toContain("recorder.start();");
     expect(liveCalls).toContain("recorder.stop();");
     expect(liveCalls).toContain("const LIVE_AUDIO_CHUNK_MS = 2_500");
-    expect(liveCalls).toContain("}, LIVE_AUDIO_CHUNK_MS);");
-    expect(liveCalls).not.toContain("recorder.start(LIVE_AUDIO_CHUNK_MS)");
+    expect(liveCalls).toContain("recorder.start(LIVE_AUDIO_CHUNK_MS)");
+    expect(liveCalls).not.toContain("recorder.state !== \"inactive\") recorder.stop()");
   });
 
   it("queues incremental coaching so a busy request cannot drop a newer signal", () => {
