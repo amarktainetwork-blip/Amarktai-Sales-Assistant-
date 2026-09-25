@@ -40,7 +40,7 @@ services:
       STT_MODEL: ggml-base-q5_1
       STT_EN_TRANSCRIPTIONS_URL: http://stt-en:8080/inference
       STT_EN_HEALTH_URL: http://stt-en:8080/
-      STT_EN_MODEL: ggml-base-q5_1
+      STT_EN_MODEL: ggml-tiny.en-q5_1
       TTS_PROVIDER_LABEL: Self-hosted Piper 1.7.0
       TTS_BASE_URL: http://tts:5000
       TTS_DEFAULT_VOICE: en_US-lessac-medium
@@ -233,7 +233,7 @@ services:
         "--port",
         "8080",
         "--model",
-        "/models/ggml-base-q5_1.bin",
+        "/models/ggml-tiny.en-q5_1.bin",
         "--language",
         "en",
         "--threads",
