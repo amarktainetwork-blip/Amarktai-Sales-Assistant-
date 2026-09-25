@@ -496,38 +496,29 @@ export default function LiveCalls() {
           audioBitsPerSecond: 64000,
         })
       : new MediaRecorder(stream);
-    const chunks: Blob[] = [];
     recorderRef.current = recorder;
     recorder.ondataavailable = event => {
-      if (event.data.size) chunks.push(event.data);
+      if (!event.data.size) return;
+      const blob = event.data;
+      pendingRef.current = pendingRef.current
+        .then(() => uploadChunk(blob, activeSessionId))
+        .catch(error => {
+          const detail = callError(
+            error,
+            "Live transcription was interrupted. Your existing call notes are still available."
+          );
+          setWorkflowError(detail);
+          setRetryAction(() => () => void uploadChunk(blob, activeSessionId));
+          toast.error(detail);
+        });
     };
     recorder.onstop = () => {
       if (chunkTimerRef.current !== undefined) {
         window.clearTimeout(chunkTimerRef.current);
         chunkTimerRef.current = undefined;
       }
-      const blob = new Blob(chunks, {
-        type: recorder.mimeType || preferred || "audio/webm",
-      });
-      if (blob.size) {
-        pendingRef.current = pendingRef.current
-          .then(() => uploadChunk(blob, activeSessionId))
-          .catch(error => {
-            const detail = callError(
-              error,
-              "Live transcription was interrupted. Your existing call notes are still available."
-            );
-            setWorkflowError(detail);
-            setRetryAction(() => () => void uploadChunk(blob, activeSessionId));
-            toast.error(detail);
-          });
-      }
-      if (recordingRef.current) startRecordingCycle(stream, activeSessionId);
     };
-    recorder.start();
-    chunkTimerRef.current = window.setTimeout(() => {
-      if (recorder.state !== "inactive") recorder.stop();
-    }, LIVE_AUDIO_CHUNK_MS);
+    recorder.start(LIVE_AUDIO_CHUNK_MS);
   }
 
   async function begin() {
@@ -906,8 +897,7 @@ export default function LiveCalls() {
                       setLeadLabel(contact.name);
                     }}
                     className={`block w-full rounded-lg px-3 py-2 text-left text-xs ${selectedContactId === contact.id ? "bg-[#EAF0F2] text-[#405F70]" : "text-[#52647A] hover:bg-[#F2F5F8]"}`}
-                  >
-                    <b>{contact.name}</b>
+                  >                    <b>{contact.name}</b>
                     <span className="ml-2 text-[#7B8798]">
                       {contact.email || contact.phone || "Customer"}
                     </span>
