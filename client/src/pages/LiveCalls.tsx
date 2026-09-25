@@ -333,6 +333,8 @@ export default function LiveCalls() {
   const audioContextRef = useRef<AudioContext | undefined>(undefined);
   const pendingRef = useRef<Promise<void>>(Promise.resolve());
   const transcriptRef = useRef("");
+  const conversationStateRef = useRef("");
+  const [showTranscript, setShowTranscript] = useState(false);
   const lastCoachAtRef = useRef(0);
   const coachingRef = useRef(false);
   const coachAbortRef = useRef<AbortController | null>(null);
@@ -476,6 +478,7 @@ export default function LiveCalls() {
           callSessionId: activeSessionId,
           leadLabel,
           transcriptChunk: text,
+          conversationState: conversationStateRef.current,
         },
         controller.signal,
         partial => {
@@ -498,7 +501,8 @@ export default function LiveCalls() {
       );
       setRetryAction(() => () => void requestCoaching(activeSessionId, text));
     } finally {
-      if (coachAbortRef.current === controller) coachAbortRef.current = null;      coachingRef.current = false;
+      if (coachAbortRef.current === controller) coachAbortRef.current = null;
+      coachingRef.current = false;
       const pending = pendingCoachRef.current;
       pendingCoachRef.current = null;
       if (pending) scheduleCoaching(pending.activeSessionId, pending.text);
@@ -538,12 +542,42 @@ export default function LiveCalls() {
         durationMs: LIVE_AUDIO_CHUNK_MS,
       }
     );
-    setStructuredNotes(current =>
-      mergeLiveStructuredNotes(
+    setStructuredNotes(current => {
+      const merged = mergeLiveStructuredNotes(
         current,
         result.structuredNotes || emptyLiveStructuredNotes()
-      )
-    );
+      );
+      conversationStateRef.current = [
+        merged.topics.length
+          ? `Current topics: ${merged.topics.slice(0, 4).join(" | ")}`
+          : "",
+        merged.goals.length
+          ? `Customer goals: ${merged.goals.slice(0, 3).join(" | ")}`
+          : "",
+        merged.questions.length
+          ? `Questions: ${merged.questions.slice(0, 3).join(" | ")}`
+          : "",
+        merged.objections.length
+          ? `Objections: ${merged.objections.slice(0, 3).join(" | ")}`
+          : "",
+        merged.buyingSignals.length
+          ? `Buying intent: ${merged.buyingSignals.slice(0, 3).join(" | ")}`
+          : "",
+        merged.commitments.length
+          ? `Commitments: ${merged.commitments.slice(0, 3).join(" | ")}`
+          : "",
+        merged.nextSteps.length
+          ? `Next steps: ${merged.nextSteps.slice(0, 3).join(" | ")}`
+          : "",
+        merged.unresolvedItems.length
+          ? `Unresolved: ${merged.unresolvedItems.slice(0, 3).join(" | ")}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n")
+        .slice(-4_000);
+      return merged;
+    });
     const text = result.text?.trim();
     if (!text) return;
     transcriptRef.current =
@@ -580,9 +614,10 @@ export default function LiveCalls() {
       });
       if (fresh.length) {
         const eventPacket = [
-          `Latest speech: ${text.slice(-700)}`,
-          ...fresh.map(signal =>
-            `Signal: ${signal.label} | Evidence: ${signal.evidence}`
+          `Latest meaningful speech: ${text.slice(-900)}`,
+          conversationStateRef.current,
+          ...fresh.map(
+            signal => `Signal: ${signal.label} | Evidence: ${signal.evidence}`
           ),
         ].join("\n");
         scheduleCoaching(activeSessionId, eventPacket.slice(-1_500));
@@ -680,6 +715,7 @@ export default function LiveCalls() {
       const activeSessionId = sessionId ?? started!.callSessionId;
       if (started) {
         transcriptRef.current = "";
+        conversationStateRef.current = "";
         coachAbortRef.current?.abort();
         coachAbortRef.current = null;
         pendingCoachRef.current = null;
@@ -1015,7 +1051,8 @@ export default function LiveCalls() {
               onChange={event => {
                 setLeadLabel(event.target.value);
                 setSelectedContactId(undefined);
-              }}              placeholder="Jane Smith, email, or phone"
+              }}
+              placeholder="Jane Smith, email, or phone"
               className="mt-2 border-[#CBD5E0] bg-white text-[#26354A] placeholder:text-[#95A2B2]"
             />
             {initialCustomer.data?.interest.primary ? (
@@ -1204,14 +1241,40 @@ export default function LiveCalls() {
               )}
             </div>
 
-            <div className="mt-6 min-h-48 rounded-xl border border-[#DCE4EE] bg-[#F8FAFC] p-4">
-              <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#55788B]">
-                LIVE TRANSCRIPT
-              </p>
+            <div className="mt-6 rounded-xl border border-[#DCE4EE] bg-[#F8FAFC] p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#55788B]">
+                    LIVE CONVERSATION
+                  </p>
+                  <p className="mt-1 text-xs text-[#66758A]">
+                    Sales-relevant context stays visible; the raw transcript is
+                    available when you need evidence.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowTranscript(value => !value)}
+                >
+                  {showTranscript ? "Hide transcript" : "View transcript"}
+                </Button>
+              </div>
               <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-[#33445B]">
-                {transcript ||
-                  "Call notes will appear here while the conversation is running."}
+                {conversationStateRef.current ||
+                  "Listening for the customer's needs, questions, objections and next step…"}
               </p>
+              {showTranscript ? (
+                <div className="mt-4 max-h-64 overflow-y-auto border-t border-[#DCE4EE] pt-4">
+                  <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#728197]">
+                    FULL TRANSCRIPT
+                  </p>
+                  <p className="mt-2 whitespace-pre-wrap text-xs leading-6 text-[#52647A]">
+                    {transcript || "No transcript yet."}
+                  </p>
+                </div>
+              ) : null}
             </div>
 
             <section className="mt-5 rounded-xl border border-[#DCE4EE] bg-white p-4">
@@ -1224,6 +1287,10 @@ export default function LiveCalls() {
                 </span>
               </div>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <LiveNoteGroup
+                  label="Current product / topic"
+                  items={structuredNotes.topics}
+                />
                 <LiveNoteGroup
                   label="Goals / intentions heard"
                   items={structuredNotes.goals}
@@ -1473,12 +1540,12 @@ export default function LiveCalls() {
               <div className="flex items-center gap-3">
                 <CheckCircle2 className="size-5 text-[#55788B]" />
                 <h2 className="font-display text-2xl font-bold tracking-[-.05em] text-[#26354A]">
-                  Current coaching
+                  Sales assist
                 </h2>
               </div>
               <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-[#33445B]">
                 {tip ||
-                  "Coaching appears when an important question or signal needs help. Routine transcription stays focused on accurate notes."}
+                  "Sales help appears only when the conversation contains a product question, objection, buying signal or meaningful next step. Greetings and routine chat do not trigger coaching."}
               </p>
             </section>
           </div>

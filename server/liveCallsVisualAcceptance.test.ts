@@ -60,7 +60,7 @@ describe("client-handover live calls presentation", () => {
     for (const required of [
       "PRE-CALL BRIEF",
       "Start Live Companion",
-      "LIVE TRANSCRIPT",
+      "LIVE CONVERSATION",
       "LIVE STRUCTURED NOTES",
       "Goals / intentions heard",
       "Facts / context heard",
@@ -75,7 +75,7 @@ describe("client-handover live calls presentation", () => {
       "CALL OUTCOME",
       "Confirm outcome and prepare follow-up",
       "Live signals",
-      "Current coaching",
+      "Sales assist",
     ])
       expect(liveCalls).toContain(required);
   });

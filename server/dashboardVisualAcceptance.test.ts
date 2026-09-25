@@ -260,7 +260,7 @@ describe("final dashboard information architecture", () => {
     for (const step of [
       "PRE-CALL BRIEF",
       "CALL AUDIO",
-      "LIVE TRANSCRIPT",
+      "LIVE CONVERSATION",
       "CALL OUTCOME",
       "FOLLOW-UP",
     ])

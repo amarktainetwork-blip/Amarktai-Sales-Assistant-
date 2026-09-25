@@ -5,6 +5,7 @@ import {
   listActionProposals,
   recordAudit,
   saveLiveCoachTip,
+  searchApprovedKnowledge,
 } from "../db";
 import {
   prepareLiveCoachingTip,
@@ -14,7 +15,7 @@ import {
 import type { OrganisationMembership } from "../organisation";
 import { listConnectedSystemsForUser } from "../connectedSystems";
 import { routeConnectedSystemActions } from "../crmRouter";
-import { detectLiveSignals } from "./signals";
+import { detectLiveSignals, isRoutineCallSpeech } from "./signals";
 import { structuredNotesFromSignals } from "../../shared/liveCallNotes";
 import { completeLiveCallExact, requireLiveCallOwner } from "./store";
 import { completeCallbackWorkAfterVerifiedCall } from "../salesWork";
@@ -224,7 +225,11 @@ export function registerLiveCallRoutes(app: Express) {
       const callSessionId = Number(req.body?.callSessionId);
       const transcriptChunk =
         typeof req.body?.transcriptChunk === "string"
-          ? req.body.transcriptChunk.trim().slice(-1_500)
+          ? req.body.transcriptChunk.trim().slice(-1_800)
+          : "";
+      const conversationState =
+        typeof req.body?.conversationState === "string"
+          ? req.body.conversationState.trim().slice(-4_000)
           : "";
       if (
         !Number.isInteger(callSessionId) ||
@@ -250,6 +255,10 @@ export function registerLiveCallRoutes(app: Express) {
       res.flushHeaders?.();
       streamOpened = true;
 
+      if (isRoutineCallSpeech(transcriptChunk)) {
+        res.write(`event: done\ndata: ${JSON.stringify({ content: "" })}\n\n`);
+        return res.end();
+      }
       const approvedContext = await liveCoachingApprovedContext({
         userId: user.id,
         organisationId: user.membership.organisationId,
@@ -257,11 +266,36 @@ export function registerLiveCallRoutes(app: Express) {
           | Record<string, unknown>
           | undefined,
       });
+      const knowledgeQuery = [
+        transcriptChunk,
+        conversationState,
+        String(
+          (session.crmContext as Record<string, unknown> | null)
+            ?.courseInterest || ""
+        ),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .slice(-3_500);
+      const knowledgeSources = await searchApprovedKnowledge(
+        user.id,
+        user.membership.organisationId,
+        knowledgeQuery
+      ).catch(() => []);
+      const approvedKnowledge = knowledgeSources
+        .map(
+          source =>
+            `[${source.title}]\n${source.content ?? source.sourceUrl ?? ""}`
+        )
+        .join("\n\n---\n\n")
+        .slice(0, 6_000);
       let streamed = "";
       const result = await streamLiveCoachingTip({
         leadLabel: session.leadLabel,
         transcript: transcriptChunk,
         approvedContext: approvedContext || undefined,
+        approvedKnowledge: approvedKnowledge || undefined,
+        conversationState: conversationState || undefined,
         billing: {
           userId: user.id,
           organisationId: user.membership.organisationId,
@@ -329,7 +363,11 @@ export function registerLiveCallRoutes(app: Express) {
       const callSessionId = Number(req.body?.callSessionId);
       const transcriptChunk =
         typeof req.body?.transcriptChunk === "string"
-          ? req.body.transcriptChunk.trim().slice(-1_500)
+          ? req.body.transcriptChunk.trim().slice(-1_800)
+          : "";
+      const conversationState =
+        typeof req.body?.conversationState === "string"
+          ? req.body.conversationState.trim().slice(-4_000)
           : "";
       if (
         !Number.isInteger(callSessionId) ||
@@ -497,7 +535,8 @@ export function registerLiveCallRoutes(app: Express) {
                     organisationId: user.membership.organisationId,
                     channel: communicationIntent.channel,
                     templateName: communicationIntent.templateName,
-                    to: destination,                  })
+                    to: destination,
+                  })
                 : prepareCustomCommunication({
                     channel: communicationIntent.channel,
                     to: destination,

@@ -14,6 +14,7 @@ export type LiveStructuredNotes = {
   datesTimes: string[];
   nextSteps: string[];
   unresolvedItems: string[];
+  topics: string[];
 };
 
 export function emptyLiveStructuredNotes(): LiveStructuredNotes {
@@ -28,6 +29,7 @@ export function emptyLiveStructuredNotes(): LiveStructuredNotes {
     datesTimes: [],
     nextSteps: [],
     unresolvedItems: [],
+    topics: [],
   };
 }
 
@@ -74,6 +76,16 @@ export function structuredNotesFromSignals(
   const callbackRequests = signals
     .filter(signal => signal.type === "customer_callback")
     .map(signal => signal.evidence);
+  const topics = signals
+    .filter(signal =>
+      [
+        "course_question",
+        "funding_question",
+        "eligibility_question",
+        "interest",
+      ].includes(signal.type)
+    )
+    .map(signal => signal.evidence);
   const goals = lines.filter(line =>
     /\b(?:i|we)\s+(?:want|need|would like|hope|plan|aim|am looking|are looking|am trying|are trying)\b/i.test(
       line
@@ -103,6 +115,7 @@ export function structuredNotesFromSignals(
     datesTimes: uniqueBounded(datesTimes),
     nextSteps: uniqueBounded(nextSteps),
     unresolvedItems: uniqueBounded(unresolvedItems),
+    topics: uniqueBounded(topics),
   };
 }
 
@@ -133,5 +146,6 @@ export function mergeLiveStructuredNotes(
       ...incoming.unresolvedItems,
       ...current.unresolvedItems,
     ]),
+    topics: uniqueBounded([...incoming.topics, ...current.topics]),
   };
 }
