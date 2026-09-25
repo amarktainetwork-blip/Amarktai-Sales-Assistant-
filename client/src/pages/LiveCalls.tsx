@@ -697,8 +697,7 @@ export default function LiveCalls() {
     }
   }
 
-  async function completeCloseout() {
-    if (!sessionId || !awaitingCloseout) return;
+  async function completeCloseout() {    if (!sessionId || !awaitingCloseout) return;
     if (!closeoutConfirmed)
       return toast.error(
         "Confirm the outcome, callback and next-step details before preparing follow-up."
@@ -897,7 +896,8 @@ export default function LiveCalls() {
               <div className="flex items-center gap-3">
                 <span className="grid size-10 place-items-center rounded-xl bg-[#EAF0F2] text-[#55788B]">
                   <Headphones size={19} />
-                </span>                <div>
+                </span>
+                <div>
                   <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#55788B]">
                     CALL AUDIO
                   </p>
@@ -1315,3 +1315,51 @@ export default function LiveCalls() {
                         {signal.label}
                       </p>
                       <p className="mt-2 text-sm leading-6 text-[#33445B]">
+                        {signal.evidence}
+                      </p>
+                    </article>
+                  ))
+                ) : (
+                  <p className="text-sm leading-6 text-[#66758A]">
+                    Questions, objections, commitments, callback requests and
+                    buying signals noticed during the call will appear here.
+                  </p>
+                )}
+              </div>
+            </section>
+
+            <section className="rounded-[1.5rem] border border-[#DCE4EE] bg-white p-6">
+              <div className="flex items-center gap-3">
+                <CheckCircle2 className="size-5 text-[#55788B]" />
+                <h2 className="font-display text-2xl font-bold tracking-[-.05em] text-[#26354A]">
+                  Current coaching
+                </h2>
+              </div>
+              <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-[#33445B]">
+                {tip ||
+                  "Coaching appears when an important question or signal needs help. Routine transcription stays focused on accurate notes."}
+              </p>
+            </section>
+          </div>
+        </div>
+      </div>
+    </DashboardLayout>
+  );
+}
+
+function LiveNoteGroup({ label, items }: { label: string; items: string[] }) {
+  return (
+    <div className="rounded-lg bg-[#F8FAFC] p-3">
+      <p className="text-xs font-bold text-[#52647A]">{label}</p>
+      {items.length ? (
+        <ul className="mt-2 space-y-1 text-sm leading-5 text-[#33445B]">
+          {items.map(item => (
+            <li key={item}>• {item}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-2 text-xs text-[#8A96A8]">Nothing captured yet.</p>
+      )}
+    </div>
+  );
+}
