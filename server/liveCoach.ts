@@ -43,14 +43,14 @@ export async function streamLiveCoachingTip(input: {
     workingContext,
     signal: input.signal,
     onDelta: input.onDelta,
-    maxOutputTokens: 180,
+    maxOutputTokens: 120,
     messages: [
       {
         role: "user",
         content: [
           `Customer: ${input.leadLabel}`,
           "Recent live transcript:",
-          input.transcript.slice(-8_000),
+          input.transcript.slice(-1_500),
           "",
           "Give one short live sales-assist card, no preamble:",
           "- Heard: the one most important current fact/objection/question.",

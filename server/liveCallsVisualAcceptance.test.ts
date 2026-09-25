@@ -45,14 +45,15 @@ describe("client-handover live calls presentation", () => {
   });
 
   it("queues incremental coaching so a busy request cannot drop a newer signal", () => {
-    expect(liveCalls).toContain("const LIVE_COACH_INTERVAL_MS = 5_000");
+    expect(liveCalls).toContain("const LIVE_COACH_INTERVAL_MS = 750");
     expect(liveCalls).toContain('fetch("/api/live-calls/coach-stream"');
     expect(liveCalls).toContain("setTip(partial)");
     expect(liveCalls).toContain(
       "pendingCoachRef.current = { activeSessionId, text }"
     );
     expect(liveCalls).toContain("function scheduleCoaching");
-    expect(liveCalls).toContain("transcriptRef.current.slice(-8_000)");
+    expect(liveCalls).toContain("eventPacket.slice(-1_500)");
+    expect(liveCalls).toContain("coachedSignalRef");
   });
 
   it("keeps the complete prepare-call-assist-closeout workflow", () => {
