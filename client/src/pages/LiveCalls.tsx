@@ -99,6 +99,25 @@ function blobToBase64(blob: Blob) {
   });
 }
 
+function downsamplePcm(
+  samples: Float32Array,
+  inputRate: number,
+  outputRate = 16_000
+) {
+  if (inputRate <= outputRate) return samples;
+  const ratio = inputRate / outputRate;
+  const length = Math.max(1, Math.round(samples.length / ratio));
+  const output = new Float32Array(length);
+  for (let index = 0; index < length; index++) {
+    const start = Math.floor(index * ratio);
+    const end = Math.min(samples.length, Math.floor((index + 1) * ratio));
+    let sum = 0;
+    for (let source = start; source < end; source++) sum += samples[source];
+    output[index] = sum / Math.max(1, end - start);
+  }
+  return output;
+}
+
 function encodePcmWav(samples: Float32Array, sampleRate: number) {
   const buffer = new ArrayBuffer(44 + samples.length * 2);
   const view = new DataView(buffer);
@@ -222,7 +241,12 @@ async function streamLiveCoach(
 
 async function getCaptureStream(mode: CaptureMode) {
   const mic = await navigator.mediaDevices.getUserMedia({
-    audio: { echoCancellation: true, noiseSuppression: true },
+    audio: {
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: true,
+      channelCount: 1,
+    },
     video: false,
   });
   if (mode === "microphone")
@@ -531,10 +555,9 @@ export default function LiveCalls() {
 
     const flush = () => {
       if (!samples.length) return;
-      const blob = encodePcmWav(
-        Float32Array.from(samples.splice(0)),
-        context.sampleRate
-      );
+      const captured = Float32Array.from(samples.splice(0));
+      const normalized = downsamplePcm(captured, context.sampleRate);
+      const blob = encodePcmWav(normalized, 16_000);
       pendingRef.current = pendingRef.current
         .then(() => uploadChunk(blob, activeSessionId))
         .catch(error => {
@@ -674,8 +697,7 @@ export default function LiveCalls() {
 
   async function recordAttemptWithoutAudio() {
     try {
-      const started = sessionId
-        ? undefined
+      const started = sessionId        ? undefined
         : await startSession.mutateAsync({
             leadLabel: leadLabel.trim(),
             contactId: selectedContactId,
@@ -697,7 +719,8 @@ export default function LiveCalls() {
     }
   }
 
-  async function completeCloseout() {    if (!sessionId || !awaitingCloseout) return;
+  async function completeCloseout() {
+    if (!sessionId || !awaitingCloseout) return;
     if (!closeoutConfirmed)
       return toast.error(
         "Confirm the outcome, callback and next-step details before preparing follow-up."
