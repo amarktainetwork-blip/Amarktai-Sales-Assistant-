@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   activityFallsWithinWorkedTaskWindow,
   configuredTaskPriorityTitles,
+  configuredNewLeadTaskTitles,
   paymentReviewCandidates,
   isCurrentActionableInbound,
   salespersonActivityProvesTaskHandled,
@@ -120,6 +121,36 @@ describe("current sales day relevance", () => {
         dueAt
       )
     ).toBe(false);
+  });
+
+  it("treats the configured first contact task as new-lead work", () => {
+    const configuration = {
+      workflows: {
+        first_contact: {
+          taskAliases: {
+            attempt_one: "First Call",
+            attempt_two: "Call 2",
+          },
+          taskSequence: ["attempt_one", "attempt_two"],
+          sequence: [],
+          eligibilityStatuses: [],
+          stopStatuses: [],
+          opportunityMappings: {},
+          statusMappings: {},
+          templates: {},
+          timingRules: {},
+          duplicateRules: [],
+          requiredPostconditions: [],
+        },
+      },
+      templates: {},
+      approvedSenders: {},
+      duplicateRules: [],
+      closureMapping: {},
+      requiredPostconditions: {},
+      currentRecordRules: [],
+    };
+    expect(configuredNewLeadTaskTitles(configuration)).toEqual(["First Call"]);
   });
 
   it("prioritises configured contact-attempt task titles without client-specific constants", () => {
