@@ -1,5 +1,3 @@
-[Reading 82 lines from start (total: 82 lines, 0 remaining)]
-
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
@@ -82,5 +80,3 @@ describe("client-handover live calls presentation", () => {
       expect(liveCalls).toContain(required);
   });
 });
-
-[executed on device: amarktaisal (60c82bca-dc19-41e6-8ff8-d16e682f865e)]
