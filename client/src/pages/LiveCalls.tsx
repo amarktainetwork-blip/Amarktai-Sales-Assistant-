@@ -297,6 +297,7 @@ export default function LiveCalls() {
   const [microphones, setMicrophones] = useState<MediaDeviceInfo[]>([]);
   const [microphoneDeviceId, setMicrophoneDeviceId] = useState("");
   const [micLevel, setMicLevel] = useState(0);
+  const [activeMicLabel, setActiveMicLabel] = useState("");
   const [consent, setConsent] = useState(false);
   const [recording, setRecording] = useState(false);
   const [transcript, setTranscript] = useState("");
@@ -496,8 +497,8 @@ export default function LiveCalls() {
       );
       setRetryAction(() => () => void requestCoaching(activeSessionId, text));
     } finally {
-      if (coachAbortRef.current === controller) coachAbortRef.current = null;
-      coachingRef.current = false;      const pending = pendingCoachRef.current;
+      if (coachAbortRef.current === controller) coachAbortRef.current = null;      coachingRef.current = false;
+      const pending = pendingCoachRef.current;
       pendingCoachRef.current = null;
       if (pending) scheduleCoaching(pending.activeSessionId, pending.text);
     }
@@ -576,7 +577,13 @@ export default function LiveCalls() {
     const source = context.createMediaStreamSource(stream);
     const processor = context.createScriptProcessor(4096, 1, 1);
     const sink = context.createGain();
-    sink.gain.value = 0;
+    // ScriptProcessor callbacks are only guaranteed while the node participates
+    // in an audible render graph. Muting the processor output itself to zero can
+    // cause Chromium to optimise the branch away and deliver silent buffers.
+    // Keep the processor branch alive and mute the source through a parallel
+    // zero-gain monitor instead.
+    const silentMonitor = context.createGain();
+    silentMonitor.gain.value = 0;
     const samples: number[] = [];
     let lastFlushAt = performance.now();
     let lastMeterAt = 0;
@@ -617,8 +624,9 @@ export default function LiveCalls() {
       }
     };
     source.connect(processor);
-    processor.connect(sink);
-    sink.connect(context.destination);
+    processor.connect(context.destination);
+    source.connect(silentMonitor);
+    silentMonitor.connect(context.destination);
     recorderRef.current = null;
     chunkTimerRef.current = window.setInterval(() => {
       if (
@@ -669,6 +677,8 @@ export default function LiveCalls() {
       if (started?.leadLabel) setLeadLabel(started.leadLabel);
       setSessionId(activeSessionId);
       const capture = await getCaptureStream(captureMode, microphoneDeviceId);
+      const micTrack = capture.sources[0]?.getAudioTracks()[0];
+      setActiveMicLabel(micTrack?.label || "Browser microphone");
       sourcesRef.current = capture.sources;
       audioContextRef.current = capture.context || new AudioContext();
       if (audioContextRef.current.state === "suspended")
@@ -986,8 +996,7 @@ export default function LiveCalls() {
               onChange={event => {
                 setLeadLabel(event.target.value);
                 setSelectedContactId(undefined);
-              }}
-              placeholder="Jane Smith, email, or phone"
+              }}              placeholder="Jane Smith, email, or phone"
               className="mt-2 border-[#CBD5E0] bg-white text-[#26354A] placeholder:text-[#95A2B2]"
             />
             {initialCustomer.data?.interest.primary ? (
@@ -996,7 +1005,8 @@ export default function LiveCalls() {
               </p>
             ) : null}
 
-            {!sessionId && !!contactMatches.data?.length && (              <div className="mt-2 space-y-1 rounded-xl border border-[#DCE4EE] bg-white p-2 shadow-sm">
+            {!sessionId && !!contactMatches.data?.length && (
+              <div className="mt-2 space-y-1 rounded-xl border border-[#DCE4EE] bg-white p-2 shadow-sm">
                 <p className="px-2 py-1 text-[10px] font-black uppercase text-[#728197]">
                   Choose the customer
                 </p>
@@ -1089,6 +1099,18 @@ export default function LiveCalls() {
                         : "Voice detected"}
                 </span>
               </div>
+              {recording ? (
+                <p className="mt-2 text-xs text-[#66758A]">
+                  Capturing: {activeMicLabel || "Browser microphone"}
+                </p>
+              ) : null}
+              {recording && micLevel < 0.003 ? (
+                <p className="mt-2 text-xs font-semibold text-amber-700">
+                  AmarktAI is receiving silence from this input. Choose another
+                  microphone after stopping the test, or enable this microphone
+                  in Windows and Chrome.
+                </p>
+              ) : null}
             </div>
 
             <label className="mt-5 flex cursor-pointer gap-3 rounded-xl border border-[#DCE4EE] bg-[#F8FAFC] p-4 text-sm leading-6 text-[#52647A]">
