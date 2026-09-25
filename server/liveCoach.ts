@@ -1,3 +1,5 @@
+[Reading 169 lines from start (total: 169 lines, 0 remaining)]
+
 import { runGenxAgent, type GenxBillingContext } from "./genx";
 import { streamGenxAgent } from "./genxStreaming";
 
@@ -30,33 +32,44 @@ export async function streamLiveCoachingTip(input: {
   leadLabel: string;
   transcript: string;
   approvedContext?: string;
+  approvedKnowledge?: string;
+  conversationState?: string;
   billing: GenxBillingContext;
   signal?: AbortSignal;
   onDelta: (delta: string) => void | Promise<void>;
 }) {
-  const workingContext = input.approvedContext
-    ? input.approvedContext.slice(0, 8_000)
-    : undefined;
+  const workingContext = [
+    input.approvedContext ? input.approvedContext.slice(0, 8_000) : "",
+    input.conversationState
+      ? `LIVE CONVERSATION STATE:\n${input.conversationState.slice(0, 4_000)}`
+      : "",
+    input.approvedKnowledge
+      ? `APPROVED PRODUCT KNOWLEDGE:\n${input.approvedKnowledge.slice(0, 6_000)}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
   const result = await streamGenxAgent({
     agentKey: "conversation_coach",
     billing: { ...input.billing, feature: "live_call_coaching" },
-    workingContext,
+    workingContext: workingContext || undefined,
     signal: input.signal,
     onDelta: input.onDelta,
-    maxOutputTokens: 120,
+    maxOutputTokens: 150,
     messages: [
       {
         role: "user",
         content: [
           `Customer: ${input.leadLabel}`,
-          "Recent live transcript:",
-          input.transcript.slice(-1_500),
+          "CURRENT SALES EVENT:",
+          input.transcript.slice(-1_800),
           "",
-          "Give one short live sales-assist card, no preamble:",
-          "- Heard: the one most important current fact/objection/question.",
-          "- Say/ask now: one specific response or question.",
-          "- Watch for: one immediate signal or unresolved item.",
-          "Use prior customer context when supplied. Do not repeat discovery already answered in that context. Do not invent facts.",
+          "Help the salesperson SELL the product. Never coach greetings, pleasantries or generic rapport.",
+          "Return only a compact live card:",
+          "ANSWER NOW: If the customer asked a product/course/pricing/funding/eligibility question, give the factual answer from approved knowledge. If knowledge does not support an answer, say exactly what must be checked.",
+          "SELLING MOVE: One specific next sentence or question that advances this customer's sale based on their need, objection or buying intent.",
+          "WATCH: One unresolved sales fact, objection, commitment or next step only if material.",
+          "Do not repeat old coaching. Prioritise the newest event and current topic. Do not invent company facts.",
         ].join("\n"),
       },
     ],
@@ -156,3 +169,5 @@ export async function prepareOutcomeAwarePostCallSummary(input: {
   });
   return { ...result, mode: "post_call_summary" as const, genxCalls: 1 };
 }
+
+[executed on device: amarktaisal (60c82bca-dc19-41e6-8ff8-d16e682f865e)]
