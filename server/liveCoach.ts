@@ -1,5 +1,3 @@
-[Reading 169 lines from start (total: 169 lines, 0 remaining)]
-
 import { runGenxAgent, type GenxBillingContext } from "./genx";
 import { streamGenxAgent } from "./genxStreaming";
 
@@ -169,5 +167,3 @@ export async function prepareOutcomeAwarePostCallSummary(input: {
   });
   return { ...result, mode: "post_call_summary" as const, genxCalls: 1 };
 }
-
-[executed on device: amarktaisal (60c82bca-dc19-41e6-8ff8-d16e682f865e)]
