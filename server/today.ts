@@ -397,7 +397,8 @@ export async function getTodayWork(input: {
     mappings
       .filter(mapping => mapping.connectedSystemId && mapping.externalUserId)
       .map(mapping => `${mapping.connectedSystemId}:${mapping.externalUserId}`)
-  );  const belongsToUser = (
+  );
+  const belongsToUser = (
     ownerExternalId: string | null,
     connectedSystemId: number | null
   ) =>
@@ -701,9 +702,16 @@ export async function getTodayWork(input: {
         : null;
       const normalizedTitle = normalizedTaskTitle(task.title);
       const internalSupport =
-        /\b(check|assist|help|support|internal|colleague|snap)\b/.test(
+        !newLeadTaskTitles.has(normalizedTitle) &&
+        (/\b(check|assist|help|support|internal|colleague|snap)\b/.test(
           normalizedTitle
-        ) && !newLeadTaskTitles.has(normalizedTitle);
+        ) ||
+          !task.contactExternalId ||
+          !recentTaskActivities.some(
+            activity =>
+              activity.connectedSystemId === task.connectedSystemId &&
+              activity.contactExternalId === task.contactExternalId
+          ));
       const supportLabel = internalSupport
         ? ("Internal / colleague support" as const)
         : null;
@@ -796,7 +804,8 @@ export async function getTodayWork(input: {
       ...taskData.queues,
       overdueTasks,
       dueToday,
-      unscheduled: unscheduledTasks,    },
+      unscheduled: unscheduledTasks,
+    },
   };
 
   return {

@@ -114,7 +114,10 @@ describe("client handover acceptance guards", () => {
     expect(crmSync).toContain('["tasks", "task.sync"]');
     expect(crmSync).toContain('["opportunities", "opportunity.sync"]');
     expect(crmSync).toContain("externalWritePerformed: false");
-    expect(managedCrmSession).toContain("lastSucceededAt: null");
+    expect(managedCrmSession).not.toContain("lastSucceededAt: null");
+    expect(managedCrmSession).toContain(
+      "Reauthentication must not erase reconciliation history"
+    );
     expect(managedCrmSession).toContain('"crm_reconciliation"');
   });
 

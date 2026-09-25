@@ -40,6 +40,28 @@ describe("Genie opportunity read", () => {
       value: "25",
     });
   });
+  it("uses the authoritative Won status-change time as the sale time", () => {
+    const normalized = normalizeGenieOpportunities(
+      {
+        opportunities: [
+          {
+            ...row("won-1"),
+            status: "won",
+            lastStatusChangeAt: "2026-09-24T10:15:00.000Z",
+            updatedAt: "2026-09-25T11:30:00.000Z",
+          },
+        ],
+      },
+      "owner",
+      "loc",
+      pipelines
+    )[0];
+    expect(normalized.closeAt).toBe("2026-09-24T10:15:00.000Z");
+    expect(normalized.lastStatusChangeAt).toBe(
+      "2026-09-24T10:15:00.000Z"
+    );
+  });
+
   it.each([
     { assignedTo: "foreign" },
     { assignedTo: null },

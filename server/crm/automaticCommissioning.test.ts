@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import {
   automaticRepairStatusAfterProof,
+  commissioningInitialSyncMode,
   buildSecretFreeDiscoveryPrompt,
   connectorSupportsTemporaryTestRecord,
   controlledWritePayload,
@@ -211,6 +212,39 @@ describe("automatic CRM commissioning product contract", () => {
         initialSyncReady: true,
       })
     ).toBe(false);
+  });
+
+  it("uses bounded routine sync when a browser CRM already has a proven contact baseline", () => {
+    expect(
+      commissioningInitialSyncMode({
+        connectionMethod: "browser",
+        contactBaselineSuccessful: true,
+      })
+    ).toBe("routine");
+    expect(
+      commissioningInitialSyncMode({
+        connectionMethod: "sidecar",
+        contactBaselineSuccessful: true,
+      })
+    ).toBe("routine");
+    expect(
+      commissioningInitialSyncMode({
+        connectionMethod: "browser",
+        contactBaselineSuccessful: false,
+      })
+    ).toBe("full");
+    expect(
+      commissioningInitialSyncMode({
+        connectionMethod: "oauth",
+        contactBaselineSuccessful: true,
+      })
+    ).toBe("full");
+    const service = readFileSync(
+      new URL("./automaticCommissioning.ts", import.meta.url),
+      "utf8"
+    );
+    expect(service).toContain("runBackgroundBrowserReadLane");
+    expect(service).toContain("crm_commissioning_initial_sync");
   });
 
   it("creates bounded Other CRM candidates without making a CRM write", () => {

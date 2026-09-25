@@ -50,7 +50,7 @@ export default function Today() {
   const utils = trpc.useUtils();
   const syncAll = trpc.connectedSystems.syncAll.useMutation();
   const [activeTab, setActiveTab] = useState<
-    "now" | "queue" | "schedule" | "replies"
+    "now" | "queue" | "schedule" | "replies" | "internal"
   >("now");
   const [showAll, setShowAll] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -219,11 +219,9 @@ export default function Today() {
               {greeting}, {preferredName}.
             </h1>
             <p className="amk-day__orientation">
-              {assignedTaskExceptions.length
-                ? "There is assigned work that needs safe CRM context before you continue."
-                : current
-                  ? `${callQueue.length} ${callQueue.length === 1 ? "person needs" : "people need"} your attention. Start with ${current.name}.`
-                  : "Nothing needs immediate attention. Upcoming commitments stay protected below."}
+              {current
+                ? `${callQueue.length} ${callQueue.length === 1 ? "person needs" : "people need"} your attention. Start with ${current.name}.`
+                : "Nothing needs immediate attention. Upcoming commitments stay protected below."}
             </p>
             <p className="amk-day__freshness">
               <span aria-hidden="true" />
@@ -310,15 +308,18 @@ export default function Today() {
             ["queue", "Queue", Math.max(0, callQueue.length - 1)],
             ["schedule", "Schedule", upcoming.length],
             ["replies", "Replies", replyQueue.length],
+            ["internal", "Internal", assignedTaskExceptions.length],
           ].map(([key, label, count]) => (
             <button
               key={String(key)}
               type="button"
               role="tab"
               aria-selected={activeTab === key}
-              className={activeTab === key ? "is-active" : ""}
+              className={`${activeTab === key ? "is-active" : ""}${key === "internal" && Number(count) > 0 ? " has-internal" : ""}`}
               onClick={() =>
-                setActiveTab(key as "now" | "queue" | "schedule" | "replies")
+                setActiveTab(
+                  key as "now" | "queue" | "schedule" | "replies" | "internal"
+                )
               }
             >
               <span>{String(label)}</span>
@@ -328,7 +329,7 @@ export default function Today() {
         </div>
 
         <div className="amk-day__body">
-          {activeTab === "now" && assignedTaskExceptions.length ? (
+          {activeTab === "internal" && assignedTaskExceptions.length ? (
             <section data-today-task-safety className="amk-day__safety">
               <div className="amk-day__safety-head">
                 <span className="amk-day__safety-icon">
@@ -357,7 +358,7 @@ export default function Today() {
                 </Button>
               </div>
               <div className="amk-day__safety-list">
-                {assignedTaskExceptions.slice(0, 4).map(item => (
+                {assignedTaskExceptions.map(item => (
                   <div key={item.id} className="amk-day__safety-row">
                     <div>
                       <div className="amk-day__safety-meta">
@@ -397,7 +398,8 @@ export default function Today() {
                         : current.primaryKind === "confirmed_follow_up"
                           ? "Scheduled follow-up"
                           : current.primaryKind === "overdue_task"
-                            ? "Overdue"                            : current.primaryKind === "due_today"
+                            ? "Overdue"
+                            : current.primaryKind === "due_today"
                               ? "Due today"
                               : "New lead"}
                     </span>

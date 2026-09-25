@@ -6,6 +6,7 @@ import {
   connectedSystems,
   connectorSyncJobs,
   crmCommissioningJobs,
+  crmSyncCursors,
   externalUserMappings,
   type CrmCommissioningJob,
 } from "../../drizzle/schema";
@@ -50,8 +51,9 @@ import { accountBrowserCapabilities } from "./capabilityAccounting";
 import { coreBrowserCommissioningReady } from "./commissioningReadiness";
 export { coreBrowserCommissioningReady };
 import { ensureConnectionScopedCrmSyncJob } from "./syncWorker";
+import { runBackgroundBrowserReadLane } from "./backgroundReadLane";
 import { isTransientBrowserExecutionFailure } from "../browserConnectors/runtimeFailure";
-import { syncConnectedSystem } from "./sync";
+import { syncConnectedSystem, syncConnectedSystemRoutine } from "./sync";
 import {
   GENIE_PROVIDER_PACK_VERSION,
   providerPackFingerprint,
@@ -199,6 +201,16 @@ const discoveryMatchers: Array<{
 
 function safeText(value: unknown, maximum = 500) {
   return typeof value === "string" ? value.trim().slice(0, maximum) : "";
+}
+
+export function commissioningInitialSyncMode(input: {
+  connectionMethod: string;
+  contactBaselineSuccessful: boolean;
+}) {
+  return ["browser", "sidecar"].includes(input.connectionMethod) &&
+    input.contactBaselineSuccessful
+    ? ("routine" as const)
+    : ("full" as const);
 }
 
 export function deterministicContactVerificationSeed(
@@ -2309,14 +2321,44 @@ export async function advanceAutomaticCommissioning(jobId: number) {
           organisationId: job.organisationId,
           connectedSystemId: job.connectedSystemId,
         });
-        const initialSync = await syncConnectedSystem({
-          userId: job.requestedByUserId!,
-          organisationId: job.organisationId,
-          connectedSystemId: job.connectedSystemId,
-        });
         const commissioningDb = await getDb();
         if (!commissioningDb)
           throw new Error("Database connection is unavailable.");
+        const [contactBaseline] = await commissioningDb
+          .select({ lastSuccessfulAt: crmSyncCursors.lastSuccessfulAt })
+          .from(crmSyncCursors)
+          .where(
+            and(
+              eq(crmSyncCursors.connectedSystemId, job.connectedSystemId),
+              eq(crmSyncCursors.resourceType, "contacts")
+            )
+          )
+          .limit(1);
+        const initialSyncMode = commissioningInitialSyncMode({
+          connectionMethod: system.connectionMethod,
+          contactBaselineSuccessful: Boolean(contactBaseline?.lastSuccessfulAt),
+        });
+        const runInitialSync = () =>
+          initialSyncMode === "routine"
+            ? syncConnectedSystemRoutine({
+                userId: job.requestedByUserId!,
+                organisationId: job.organisationId,
+                connectedSystemId: job.connectedSystemId,
+                refreshCustomerHistory: false,
+              })
+            : syncConnectedSystem({
+                userId: job.requestedByUserId!,
+                organisationId: job.organisationId,
+                connectedSystemId: job.connectedSystemId,
+              });
+        const initialSync = ["browser", "sidecar"].includes(
+          system.connectionMethod
+        )
+          ? await runBackgroundBrowserReadLane(
+              `crm_commissioning_initial_sync:${job.connectedSystemId}`,
+              runInitialSync
+            )
+          : await runInitialSync();
         await commissioningDb
           .update(connectorSyncJobs)
           .set({

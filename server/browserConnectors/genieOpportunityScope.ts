@@ -28,6 +28,13 @@ export function normalizeGenieOpportunities(
       stageExternalId: row.pipelineStageId || "",
       value:
         typeof row.monetaryValue === "number" ? String(row.monetaryValue) : "",
+      closeAt:
+        row.status === "won"
+          ? row.lastStatusChangeAt || row.updatedAt || ""
+          : "",
+      lastStatusChangeAt: row.lastStatusChangeAt || "",
+      lastStageChangeAt: row.lastStageChangeAt || "",
+      createdAt: row.createdAt || "",
       sourceUpdatedAt: row.updatedAt || "",
       sourceRevision: row.updatedAt || "",
     };

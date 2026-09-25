@@ -346,7 +346,10 @@ async function ownsSharedCommissioningSession(
 }
 
 export function shouldDemoteConnectionForAuthenticatedSession(status: string) {
-  return !["ready", "limited_permissions"].includes(status);
+  // An authenticated browser proves identity/session availability, not capability
+  // readiness. Keep terminal readiness truth intact and let commissioning/current
+  // readiness promote or restrict the connection from durable operation proofs.
+  return ["new", "authentication_expired", "error"].includes(status);
 }
 
 async function persistAuthenticatedSession(
@@ -415,8 +418,8 @@ async function persistAuthenticatedSession(
             .update(connectorSyncJobs)
             .set({
               status: "ready",
-              lastStartedAt: null,
-              lastSucceededAt: null,
+              // Reauthentication must not erase reconciliation history. Freshness
+              // is advanced only by an actual successful reconciliation cycle.
               lastError: null,
             })
             .where(

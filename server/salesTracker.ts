@@ -33,6 +33,14 @@ function contactName(contact: typeof crmContacts.$inferSelect | undefined) {
   );
 }
 
+export function authoritativeOpportunityStatus(raw: unknown) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const value = String((raw as Record<string, unknown>).status || "")
+    .trim()
+    .toLowerCase();
+  return value && value !== "unknown" ? value : null;
+}
+
 export async function getSalesTracker(input: {
   userId: number;
   organisationId: number;
@@ -78,7 +86,10 @@ export async function getSalesTracker(input: {
   const wonStages = new Set(
     stageMappings
       .filter(mapping => mapping.category === "won")
-      .map(mapping => `${mapping.connectedSystemId}:${mapping.externalStageId}`)
+      .flatMap(mapping => [
+        `${mapping.connectedSystemId}:${mapping.externalStageId}`,
+        `${mapping.connectedSystemId}:${mapping.stageLabel}`,
+      ])
   );
   const contactsByKey = new Map(
     contacts.map(contact => [
@@ -96,11 +107,16 @@ export async function getSalesTracker(input: {
       opportunity =>
         opportunity.ownerExternalId && ownerIds.has(opportunity.ownerExternalId)
     )
-    .filter(
-      opportunity =>
+    .filter(opportunity => {
+      const sourceStatus = authoritativeOpportunityStatus(opportunity.raw);
+      if (sourceStatus && sourceStatus !== "won") return false;
+      return Boolean(
         opportunity.stage &&
-        wonStages.has(`${opportunity.connectedSystemId}:${opportunity.stage}`)
-    )
+          wonStages.has(
+            `${opportunity.connectedSystemId}:${opportunity.stage}`
+          )
+      );
+    })
     .map(opportunity => {
       const soldAt = opportunity.closeAt ?? opportunity.sourceUpdatedAt;
       const contact = opportunity.contactExternalId

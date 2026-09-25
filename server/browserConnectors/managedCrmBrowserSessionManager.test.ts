@@ -184,9 +184,14 @@ describe("managed CRM browser recovery", () => {
     expect(
       shouldDemoteConnectionForAuthenticatedSession("limited_permissions")
     ).toBe(false);
-    expect(shouldDemoteConnectionForAuthenticatedSession("testing")).toBe(true);
+    expect(shouldDemoteConnectionForAuthenticatedSession("testing")).toBe(
+      false
+    );
     expect(
       shouldDemoteConnectionForAuthenticatedSession("needs_attention")
+    ).toBe(false);
+    expect(
+      shouldDemoteConnectionForAuthenticatedSession("authentication_expired")
     ).toBe(true);
   });
 

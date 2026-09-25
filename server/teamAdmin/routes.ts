@@ -34,6 +34,10 @@ import { getSmtpReadiness, sendEmail } from "../smtp";
 import { requireManagementHttpContext } from "../managementElevation";
 import { classifyInboundMessage } from "../communications/inboundReview";
 import { requireLocalHttpContext } from "../httpAuth";
+import {
+  saveCrmPipelineStageMapping,
+  type CrmPipelineStageCategory,
+} from "../crm/pipelineStageMappings";
 
 const INVITE_TTL_SECONDS = 48 * 60 * 60;
 type ManagedRole = "manager" | "salesperson" | "auditor";
@@ -1403,75 +1407,16 @@ export function registerTeamAdminRoutes(app: Express) {
         )
       )
         throw new Error("A valid reporting category is required.");
-      const db = await getDb();
-      if (!db) throw new Error("Database connection is unavailable.");
-      const system = (
-        await db
-          .select({ id: connectedSystems.id, status: connectedSystems.status })
-          .from(connectedSystems)
-          .where(
-            and(
-              eq(connectedSystems.id, connectedSystemId),
-              eq(connectedSystems.organisationId, membership.organisationId)
-            )
-          )
-          .limit(1)
-      )[0];
-      if (!system)
-        throw new Error(
-          "Connected system was not found in the active organisation."
-        );
-      if (system.status !== "ready")
-        throw new Error(
-          "Pipeline mappings can only be saved for a backend-verified connected system."
-        );
-      await db
-        .insert(crmPipelineStageMappings)
-        .values({
-          organisationId: membership.organisationId,
-          connectedSystemId,
-          externalPipelineId,
-          externalStageId,
-          pipelineLabel,
-          stageLabel,
-          category: category as
-            | "open"
-            | "qualified"
-            | "proposal"
-            | "won"
-            | "lost"
-            | "other",
-          isActive,
-        })
-        .onDuplicateKeyUpdate({
-          set: {
-            externalPipelineId,
-            pipelineLabel,
-            stageLabel,
-            category: category as
-              | "open"
-              | "qualified"
-              | "proposal"
-              | "won"
-              | "lost"
-              | "other",
-            isActive,
-          },
-        });
-      await recordAudit({
-        userId: actor.id,
-        eventType: "crm_pipeline_stage_mapping_saved",
-        entityType: "crm_pipeline_stage_mapping",
-        entityId: `${connectedSystemId}:${externalStageId}`,
-        summary: `CRM stage '${stageLabel}' mapping was saved.`,
-        metadata: {
-          organisationId: membership.organisationId,
-          connectedSystemId,
-          externalPipelineId,
-          externalStageId,
-          category,
-          isActive,
-        },
+      await saveCrmPipelineStageMapping({
+        organisationId: membership.organisationId,
+        actorUserId: actor.id,
+        connectedSystemId,
+        externalPipelineId,
+        externalStageId,
+        pipelineLabel,
+        stageLabel,
+        category: category as CrmPipelineStageCategory,
+        isActive,
       });
       return res.json({ ok: true });
     } catch (error) {
