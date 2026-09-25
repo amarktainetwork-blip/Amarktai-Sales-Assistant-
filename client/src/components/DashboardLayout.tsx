@@ -36,6 +36,7 @@ import {
   MailCheck,
   MessageSquareText,
   Settings2,
+  TrendingUp,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -58,6 +59,7 @@ const dailyMenu: NavItem[] = [
   { icon: Headphones, label: "Calls", path: "/calls" },
   { icon: MessageSquareText, label: "AmarktAI", path: "/assistant" },
   { icon: ClipboardCheck, label: "Review", path: "/reviews" },
+  { icon: TrendingUp, label: "Sales Tracker", path: "/sales-tracker" },
 ];
 
 export default function DashboardLayout({
