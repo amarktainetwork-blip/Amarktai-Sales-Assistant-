@@ -1,5 +1,3 @@
-[Reading 38 lines from start (total: 38 lines, 0 remaining)]
-
 import { describe, expect, it } from "vitest";
 import { detectLiveSignals } from "./signals";
 
@@ -38,5 +36,3 @@ it("ignores greetings but detects product, funding and eligibility sales events"
     ])
   );
 });
-
-[executed on device: amarktaisal (60c82bca-dc19-41e6-8ff8-d16e682f865e)]
