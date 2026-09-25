@@ -1,5 +1,3 @@
-[Reading 160 lines from start (total: 160 lines, 0 remaining)]
-
 export type LiveSignal = {
   type:
     | "price_objection"
@@ -160,5 +158,3 @@ export function detectLiveSignals(transcript: string): LiveSignal[] {
   add("question", "Customer question", questionEvidence, "important");
   return signals.slice(0, 10);
 }
-
-[executed on device: amarktaisal (60c82bca-dc19-41e6-8ff8-d16e682f865e)]
