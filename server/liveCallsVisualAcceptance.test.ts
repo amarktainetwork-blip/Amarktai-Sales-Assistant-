@@ -34,13 +34,14 @@ describe("client-handover live calls presentation", () => {
       expect(liveCalls).toContain(required);
   });
 
-  it("records self-contained chunks for the live transcription boundary", () => {
-    expect(liveCalls).toContain("function startRecordingCycle");
-    expect(liveCalls).not.toContain("recorder.start();");
-    expect(liveCalls).toContain("recorder.stop();");
+  it("records independently decodable PCM WAV chunks for live transcription", () => {
+    expect(liveCalls).toContain("function encodePcmWav");
+    expect(liveCalls).toContain('write(0, "RIFF")');
+    expect(liveCalls).toContain('write(8, "WAVE")');
+    expect(liveCalls).toContain('type: "audio/wav"');
     expect(liveCalls).toContain("const LIVE_AUDIO_CHUNK_MS = 2_500");
-    expect(liveCalls).toContain("recorder.start(LIVE_AUDIO_CHUNK_MS)");
-    expect(liveCalls).not.toContain("recorder.state !== \"inactive\") recorder.stop()");
+    expect(liveCalls).toContain("context.createScriptProcessor");
+    expect(liveCalls).not.toContain("recorder.start(LIVE_AUDIO_CHUNK_MS)");
   });
 
   it("queues incremental coaching so a busy request cannot drop a newer signal", () => {
