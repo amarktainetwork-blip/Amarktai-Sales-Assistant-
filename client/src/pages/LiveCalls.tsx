@@ -239,13 +239,19 @@ async function streamLiveCoach(
   return finalContent || partial;
 }
 
-async function getCaptureStream(mode: CaptureMode) {
+async function getCaptureStream(
+  mode: CaptureMode,
+  microphoneDeviceId?: string
+) {
   const mic = await navigator.mediaDevices.getUserMedia({
     audio: {
       echoCancellation: false,
       noiseSuppression: false,
       autoGainControl: true,
       channelCount: 1,
+      ...(microphoneDeviceId
+        ? { deviceId: { exact: microphoneDeviceId } }
+        : {}),
     },
     video: false,
   });
@@ -288,6 +294,9 @@ export default function LiveCalls() {
     initialSessionId > 0 ? initialSessionId : null
   );
   const [captureMode, setCaptureMode] = useState<CaptureMode>("mixed");
+  const [microphones, setMicrophones] = useState<MediaDeviceInfo[]>([]);
+  const [microphoneDeviceId, setMicrophoneDeviceId] = useState("");
+  const [micLevel, setMicLevel] = useState(0);
   const [consent, setConsent] = useState(false);
   const [recording, setRecording] = useState(false);
   const [transcript, setTranscript] = useState("");
@@ -391,6 +400,21 @@ export default function LiveCalls() {
   }, [contactMatches.data, selectedContactId]);
 
   useEffect(() => {
+    const refreshMicrophones = async () => {
+      if (!navigator.mediaDevices?.enumerateDevices) return;
+      const devices = (await navigator.mediaDevices.enumerateDevices()).filter(
+        device => device.kind === "audioinput"
+      );
+      setMicrophones(devices);
+      if (!microphoneDeviceId && devices[0]?.deviceId)
+        setMicrophoneDeviceId(devices[0].deviceId);
+    };
+    void refreshMicrophones();
+    navigator.mediaDevices?.addEventListener?.(
+      "devicechange",
+      refreshMicrophones
+    );
+
     fetch("/api/live-calls/readiness", { credentials: "include" })
       .then(async response => {
         const body = await response.json().catch(() => ({}));
@@ -412,6 +436,10 @@ export default function LiveCalls() {
       });
 
     return () => {
+      navigator.mediaDevices?.removeEventListener?.(
+        "devicechange",
+        refreshMicrophones
+      );
       recordingRef.current = false;
       if (chunkTimerRef.current !== undefined)
         window.clearTimeout(chunkTimerRef.current);
@@ -469,8 +497,7 @@ export default function LiveCalls() {
       setRetryAction(() => () => void requestCoaching(activeSessionId, text));
     } finally {
       if (coachAbortRef.current === controller) coachAbortRef.current = null;
-      coachingRef.current = false;
-      const pending = pendingCoachRef.current;
+      coachingRef.current = false;      const pending = pendingCoachRef.current;
       pendingCoachRef.current = null;
       if (pending) scheduleCoaching(pending.activeSessionId, pending.text);
     }
@@ -552,6 +579,7 @@ export default function LiveCalls() {
     sink.gain.value = 0;
     const samples: number[] = [];
     let lastFlushAt = performance.now();
+    let lastMeterAt = 0;
 
     const flush = () => {
       if (!samples.length) return;
@@ -574,8 +602,15 @@ export default function LiveCalls() {
     processor.onaudioprocess = event => {
       if (!recordingRef.current) return;
       const input = event.inputBuffer.getChannelData(0);
-      for (let index = 0; index < input.length; index++)
+      let energy = 0;
+      for (let index = 0; index < input.length; index++) {
         samples.push(input[index]);
+        energy += input[index] * input[index];
+      }
+      if (performance.now() - lastMeterAt > 250) {
+        lastMeterAt = performance.now();
+        setMicLevel(Math.sqrt(energy / Math.max(1, input.length)));
+      }
       if (performance.now() - lastFlushAt >= LIVE_AUDIO_CHUNK_MS) {
         lastFlushAt = performance.now();
         flush();
@@ -633,7 +668,7 @@ export default function LiveCalls() {
       }
       if (started?.leadLabel) setLeadLabel(started.leadLabel);
       setSessionId(activeSessionId);
-      const capture = await getCaptureStream(captureMode);
+      const capture = await getCaptureStream(captureMode, microphoneDeviceId);
       sourcesRef.current = capture.sources;
       audioContextRef.current = capture.context || new AudioContext();
       if (audioContextRef.current.state === "suspended")
@@ -697,7 +732,8 @@ export default function LiveCalls() {
 
   async function recordAttemptWithoutAudio() {
     try {
-      const started = sessionId        ? undefined
+      const started = sessionId
+        ? undefined
         : await startSession.mutateAsync({
             leadLabel: leadLabel.trim(),
             contactId: selectedContactId,
@@ -960,8 +996,7 @@ export default function LiveCalls() {
               </p>
             ) : null}
 
-            {!sessionId && !!contactMatches.data?.length && (
-              <div className="mt-2 space-y-1 rounded-xl border border-[#DCE4EE] bg-white p-2 shadow-sm">
+            {!sessionId && !!contactMatches.data?.length && (              <div className="mt-2 space-y-1 rounded-xl border border-[#DCE4EE] bg-white p-2 shadow-sm">
                 <p className="px-2 py-1 text-[10px] font-black uppercase text-[#728197]">
                   Choose the customer
                 </p>
@@ -1012,6 +1047,48 @@ export default function LiveCalls() {
                   microphone can capture the authorised conversation.
                 </p>
               </button>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-[#DCE4EE] bg-white p-4">
+              <label className="block text-xs font-bold text-[#26354A]">
+                Microphone input
+              </label>
+              <select
+                value={microphoneDeviceId}
+                disabled={recording}
+                onChange={event => setMicrophoneDeviceId(event.target.value)}
+                className="mt-2 w-full rounded-lg border border-[#DCE4EE] bg-white px-3 py-2 text-sm text-[#26354A]"
+              >
+                {microphones.length ? (
+                  microphones.map((device, index) => (
+                    <option
+                      key={device.deviceId || index}
+                      value={device.deviceId}
+                    >
+                      {device.label || `Microphone ${index + 1}`}
+                    </option>
+                  ))
+                ) : (
+                  <option value="">Default microphone</option>
+                )}
+              </select>
+              <div className="mt-3 flex items-center gap-3">
+                <div className="h-2 flex-1 overflow-hidden rounded-full bg-[#E7ECF1]">
+                  <div
+                    className="h-full bg-[#55788B] transition-[width]"
+                    style={{ width: `${Math.min(100, micLevel * 900)}%` }}
+                  />
+                </div>
+                <span className="min-w-28 text-xs font-semibold text-[#66758A]">
+                  {!recording
+                    ? "Meter starts with call"
+                    : micLevel < 0.003
+                      ? "No voice detected"
+                      : micLevel < 0.012
+                        ? "Voice is very quiet"
+                        : "Voice detected"}
+                </span>
+              </div>
             </div>
 
             <label className="mt-5 flex cursor-pointer gap-3 rounded-xl border border-[#DCE4EE] bg-[#F8FAFC] p-4 text-sm leading-6 text-[#52647A]">
