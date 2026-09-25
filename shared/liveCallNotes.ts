@@ -1,5 +1,3 @@
-[Reading 151 lines from start (total: 151 lines, 0 remaining)]
-
 export type LiveSignalLike = {
   type: string;
   evidence: string;
@@ -151,5 +149,3 @@ export function mergeLiveStructuredNotes(
     topics: uniqueBounded([...incoming.topics, ...current.topics]),
   };
 }
-
-[executed on device: amarktaisal (60c82bca-dc19-41e6-8ff8-d16e682f865e)]
