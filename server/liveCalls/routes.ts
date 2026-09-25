@@ -224,7 +224,7 @@ export function registerLiveCallRoutes(app: Express) {
       const callSessionId = Number(req.body?.callSessionId);
       const transcriptChunk =
         typeof req.body?.transcriptChunk === "string"
-          ? req.body.transcriptChunk.trim().slice(-8_000)
+          ? req.body.transcriptChunk.trim().slice(-1_500)
           : "";
       if (
         !Number.isInteger(callSessionId) ||
@@ -329,7 +329,7 @@ export function registerLiveCallRoutes(app: Express) {
       const callSessionId = Number(req.body?.callSessionId);
       const transcriptChunk =
         typeof req.body?.transcriptChunk === "string"
-          ? req.body.transcriptChunk.trim().slice(-8_000)
+          ? req.body.transcriptChunk.trim().slice(-1_500)
           : "";
       if (
         !Number.isInteger(callSessionId) ||
