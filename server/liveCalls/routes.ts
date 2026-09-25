@@ -1,5 +1,3 @@
-[Reading 699 lines from start (total: 699 lines, 0 remaining)]
-
 import type { Express, Request, Response } from "express";
 import { requireLocalHttpContext } from "../httpAuth";
 import {
@@ -699,5 +697,3 @@ export function registerLiveCallRoutes(app: Express) {
     }
   });
 }
-
-[executed on device: amarktaisal (60c82bca-dc19-41e6-8ff8-d16e682f865e)]
