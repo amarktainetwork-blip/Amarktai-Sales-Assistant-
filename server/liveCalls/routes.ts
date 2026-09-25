@@ -64,10 +64,7 @@ async function liveCoachingApprovedContext(input: {
   }).catch(() => []);
   const preferenceText = preferences
     .filter(memory => memory.memoryType === "user_preference")
-    .map(
-      memory =>
-        `${memory.subject}:\n${memory.content.slice(0, 4_000)}`
-    )
+    .map(memory => `${memory.subject}:\n${memory.content.slice(0, 4_000)}`)
     .join("\n\n");
   return [
     input.crmContext
@@ -151,11 +148,23 @@ export function registerLiveCallRoutes(app: Express) {
         typeof req.body?.language === "string" && req.body.language.trim()
           ? req.body.language.trim()
           : user.membership.locale;
-      const text = await transcribeAudio(
+      const transcribeStartedAt = Date.now();
+      const rawText = await transcribeAudio(
         bytes,
         mimeType,
         transcriptionLanguage
       );
+      const normalizedText = rawText.replace(/\s+/g, " ").trim();
+      const words = normalizedText.toLowerCase().split(/\s+/).filter(Boolean);
+      const repetitiveGarbage =
+        (words.length >= 3 && new Set(words).size === 1) ||
+        normalizedText.toLowerCase() === "you";
+      const implausiblyTinyAudio = bytes.length < 1_500;
+      const text =
+        repetitiveGarbage || (implausiblyTinyAudio && words.length <= 2)
+          ? ""
+          : normalizedText;
+      const transcriptionMs = Date.now() - transcribeStartedAt;
       const signals = detectLiveSignals(text);
       const structuredNotes = structuredNotesFromSignals(signals, text);
       if (text)
@@ -178,6 +187,8 @@ export function registerLiveCallRoutes(app: Express) {
           durationMs,
           mimeType,
           textChars: text.length,
+          transcriptionMs,
+          discardedAsGarbage: repetitiveGarbage,
           rawAudioRetained: false,
         },
       });
@@ -189,6 +200,8 @@ export function registerLiveCallRoutes(app: Express) {
           bytes: bytes.length,
           durationMs,
           textChars: text.length,
+          transcriptionMs,
+          discardedAsGarbage: repetitiveGarbage,
           signalTypes: signals.map(signal => signal.type),
         })
       );
@@ -296,8 +309,7 @@ export function registerLiveCallRoutes(app: Express) {
       }
       if (streamOpened) {
         if (!res.writableEnded) {
-          const detail =
-            error instanceof Error ? error.message : String(error);
+          const detail = error instanceof Error ? error.message : String(error);
           res.write(
             `event: error\ndata: ${JSON.stringify({
               error: detail.slice(0, 300),
@@ -485,8 +497,7 @@ export function registerLiveCallRoutes(app: Express) {
                     organisationId: user.membership.organisationId,
                     channel: communicationIntent.channel,
                     templateName: communicationIntent.templateName,
-                    to: destination,
-                  })
+                    to: destination,                  })
                 : prepareCustomCommunication({
                     channel: communicationIntent.channel,
                     to: destination,
