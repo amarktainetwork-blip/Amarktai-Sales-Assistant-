@@ -5,6 +5,7 @@ import {
   crmContacts,
   externalUserMappings,
   inboundMessages,
+  salesActivityEvents,
   salesWorkItems,
   organisations,
 } from "../../drizzle/schema";
@@ -312,6 +313,43 @@ export async function ingestInboundMessage(input: {
       .limit(1)
   )[0];
   if (!message) throw new Error("Inbound message could not be persisted.");
+  if (!existing && contact) {
+    await db
+      .insert(salesActivityEvents)
+      .values({
+        organisationId: input.organisationId,
+        connectedSystemId:
+          input.connectedSystemId ?? contact.connectedSystemId ?? null,
+        salespersonUserId: input.mailboxUserId ?? null,
+        externalOwnerId: contact.ownerExternalId ?? null,
+        contactExternalId: contact.externalId,
+        eventType: "customer_reply",
+        source: "inbound_message",
+        occurredAt: input.envelope.receivedAt,
+        externalId: `reply:${idempotencyKey}`,
+        metadata: {
+          channel: input.envelope.channel,
+          sourceChannel:
+            input.envelope.sourceChannel || input.envelope.channel,
+          category: classification.category,
+          needsAction: shouldSurfaceInbound(classification),
+          inboundMessageId: message.id,
+        },
+      })
+      .onDuplicateKeyUpdate({
+        set: {
+          occurredAt: input.envelope.receivedAt,
+          metadata: {
+            channel: input.envelope.channel,
+            sourceChannel:
+              input.envelope.sourceChannel || input.envelope.channel,
+            category: classification.category,
+            needsAction: shouldSurfaceInbound(classification),
+            inboundMessageId: message.id,
+          },
+        },
+      });
+  }
   const policyOrganisation = (
     await db
       .select({ settings: organisations.settings })

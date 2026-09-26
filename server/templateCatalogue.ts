@@ -7,7 +7,7 @@ import {
 } from "../drizzle/schema";
 import { getDb, recordAudit } from "./db";
 import {
-  loadConnectionSecret,
+  loadUserConnectionSecret,
   toAdapterConnection,
 } from "./connectedSystems";
 import { getCrmAdapter } from "./crm/adapterRegistry";
@@ -76,7 +76,7 @@ function rowsFromEvidence(value: unknown): TemplateRow[] {
       .trim()
       .slice(0, 30_000);
     const templateKey = safeKey(
-      String(row.templateKey || row.key || row.id || title)
+      String(row.templateKey || row.key || row.externalId || row.id || title)
     );
     if (!templateKey || !title || !body) continue;
     const rawChannel = String(row.channel || row.type || "").trim().toLowerCase();
@@ -93,8 +93,12 @@ function rowsFromEvidence(value: unknown): TemplateRow[] {
         subject: String(row.subject || row.emailSubject || "").trim().slice(0, 500) || undefined,
         folder: String(row.folder || row.folderName || "").trim().slice(0, 220) || undefined,
         category: String(row.category || "").trim().slice(0, 220) || undefined,
-        sourceReference: String(row.sourceReference || row.id || "").trim().slice(0, 300) || undefined,
-        sourceVersion: String(row.sourceVersion || row.version || "").trim().slice(0, 120) || undefined,
+        sourceReference: String(
+          row.sourceReference || row.externalId || row.id || ""
+        ).trim().slice(0, 300) || undefined,
+        sourceVersion: String(
+          row.sourceVersion || row.version || row.sourceUpdatedAt || ""
+        ).trim().slice(0, 120) || undefined,
         purpose: String(row.purpose || row.semanticPurpose || "").trim().slice(0, 220) || undefined,
       },
     });
@@ -170,7 +174,8 @@ export async function syncTemplateCatalogue(input: {
   const adapter = getCrmAdapter(system.provider);
   if (!adapter.executeCustomAction)
     throw new Error("This CRM cannot run a learned template catalogue read.");
-  const secret = await loadConnectionSecret({
+  const secret = await loadUserConnectionSecret({
+    userId: input.actorUserId,
     organisationId: input.organisationId,
     connectedSystemId: system.id,
     secretKind: "browser",

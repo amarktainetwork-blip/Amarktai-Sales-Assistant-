@@ -20,6 +20,7 @@ import {
   crmOpportunities,
   externalUserMappings,
   inboundMessages,
+  salesActivityEvents,
 } from "../drizzle/schema";
 import { getDb } from "./db";
 import { requireOrganisationMembership } from "./organisation";
@@ -261,6 +262,7 @@ export async function getExactCustomerDetail(input: {
     opportunities,
     companies,
     communications,
+    recentChanges,
     taskTotal,
     activityTotal,
     opportunityTotal,
@@ -333,6 +335,37 @@ export async function getExactCustomerDetail(input: {
       )
       .orderBy(desc(inboundMessages.receivedAt), desc(inboundMessages.id))
       .limit(50),
+    db
+      .select({
+        eventType: salesActivityEvents.eventType,
+        occurredAt: salesActivityEvents.occurredAt,
+        source: salesActivityEvents.source,
+        metadata: salesActivityEvents.metadata,
+      })
+      .from(salesActivityEvents)
+      .where(
+        and(
+          eq(salesActivityEvents.organisationId, input.organisationId),
+          eq(salesActivityEvents.connectedSystemId, contact.connectedSystemId),
+          eq(salesActivityEvents.contactExternalId, contact.externalId),
+          inArray(salesActivityEvents.eventType, [
+            "new_lead",
+            "customer_reply",
+            "customer_owner_changed",
+            "customer_state_changed",
+            "opportunity_created",
+            "opportunity_stage_changed",
+            "opportunity_owner_changed",
+            "opportunity_next_step_changed",
+            "sale_won",
+            "task_assigned",
+            "task_completed_in_crm",
+            "task_rescheduled",
+          ])
+        )
+      )
+      .orderBy(desc(salesActivityEvents.occurredAt))
+      .limit(50),
     db.select({ total: count() }).from(crmTasks).where(taskScope),
     db.select({ total: count() }).from(crmActivities).where(activityScope),
     db
@@ -395,6 +428,7 @@ export async function getExactCustomerDetail(input: {
       limit: 100,
     },
     communications: { items: communications, limit: 50 },
+    recentChanges: { items: recentChanges, limit: 50 },
   };
 }
 

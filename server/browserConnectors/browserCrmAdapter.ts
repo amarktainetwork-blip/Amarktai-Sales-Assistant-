@@ -1,5 +1,6 @@
 import { readGenieContactHistory } from "./genieContactHistory";
 import { readOwnerScopedGenieOpportunities } from "./genieOpportunityScope";
+import { readGenieCommunicationTemplates } from "./genieTemplateRead";
 import { genieTaskCompletion } from "./genieTaskCompletion";
 import { readOwnerScopedGenieTasks } from "./genieTaskScope";
 import { readFile } from "node:fs/promises";
@@ -575,21 +576,18 @@ export async function inspectBrowserCrmNavigation(input: {
               const name = html.getAttribute("name")?.trim();
               const role = html.getAttribute("role")?.trim() || tag;
               const href = (html as HTMLAnchorElement).href || undefined;
-              const safeAttribute = (key: string, value?: string | null) =>
-                value && /^[a-zA-Z0-9_.:-]{1,120}$/.test(value)
-                  ? `[${key}="${CSS.escape(value)}"]`
-                  : "";
-              const selector = testId
-                ? safeAttribute("data-testid", testId)
-                : dataField
-                  ? safeAttribute("data-field", dataField)
-                  : id && /^[a-zA-Z][a-zA-Z0-9_.:-]{0,119}$/.test(id)
-                    ? `#${CSS.escape(id)}`
-                    : aria
-                      ? safeAttribute("aria-label", aria)
-                      : name
-                        ? safeAttribute("name", name)
-                        : tag;
+              const selector =
+                testId && /^[a-zA-Z0-9_.:-]{1,120}$/.test(testId)
+                  ? `[data-testid="${CSS.escape(testId)}"]`
+                  : dataField && /^[a-zA-Z0-9_.:-]{1,120}$/.test(dataField)
+                    ? `[data-field="${CSS.escape(dataField)}"]`
+                    : id && /^[a-zA-Z][a-zA-Z0-9_.:-]{0,119}$/.test(id)
+                      ? `#${CSS.escape(id)}`
+                      : aria && /^[a-zA-Z0-9_.:-]{1,120}$/.test(aria)
+                        ? `[aria-label="${CSS.escape(aria)}"]`
+                        : name && /^[a-zA-Z0-9_.:-]{1,120}$/.test(name)
+                          ? `[name="${CSS.escape(name)}"]`
+                          : tag;
               return {
                 tag,
                 role,
@@ -1391,7 +1389,13 @@ async function runDeterministicOperation(input: RunOperationInput) {
                       ownerExternalId,
                       assertControl: () => assertBrowserOperationCanRun(owner),
                     })
-                  : await runScript(page, script, "execute");
+                  : input.provider === "genie" &&
+                      operationKey === "custom.read.templates"
+                    ? await readGenieCommunicationTemplates({
+                        page,
+                        assertControl: () => assertBrowserOperationCanRun(owner),
+                      })
+                    : await runScript(page, script, "execute");
           if (!execution.success) throw new Error(execution.detail);
           execution.data.actualPageUrl = page.url();
           if (learned?.definition.mode === "write") {

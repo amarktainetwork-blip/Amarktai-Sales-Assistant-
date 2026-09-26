@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { friendlyError } from "@/lib/friendlyError";
+import { trpc } from "@/lib/trpc";
 import {
   BookOpenCheck,
   CheckCircle2,
@@ -116,6 +117,10 @@ export function SkillStudio({
   initialView?: "skills" | "templates";
 }) {
   const [view, setView] = useState<"skills" | "templates">(initialView);
+  const elevation = trpc.managementElevation.status.useQuery(undefined, {
+    retry: false,
+    refetchInterval: 15_000,
+  });
   const [data, setData] = useState<SkillList | null>(null);
   const [catalogue, setCatalogue] = useState<Catalogue | null>(null);
   const [simulation, setSimulation] = useState<Record<number, Simulation>>({});
@@ -180,8 +185,16 @@ export function SkillStudio({
   }, [connectedSystemId]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (elevation.data?.eligible && !elevation.data.elevated) {
+      setLoading(false);
+      setData(null);
+      setCatalogue(null);
+      setCapabilityPlans({});
+      setError("");
+      return;
+    }
+    if (elevation.data?.elevated) void load();
+  }, [elevation.data?.eligible, elevation.data?.elevated, load]);
 
   const groups = useMemo(() => {
     const grouped = new Map<string, SkillRow[]>();
@@ -328,6 +341,19 @@ export function SkillStudio({
       setBusy("");
     }
   }
+
+  if (elevation.data?.eligible && !elevation.data.elevated)
+    return (
+      <section id="skills" className="amk-skill-studio" data-skill-builder>
+        <div className="amk-skill-alert">
+          <strong>Confirm management access above to manage Teach AmarktAI.</strong>
+          <p>
+            Skills and Genie templates stay hidden until the short management
+            elevation is active. They will load automatically after confirmation.
+          </p>
+        </div>
+      </section>
+    );
 
   return (
     <section id="skills" className="amk-skill-studio" data-skill-builder>

@@ -18,6 +18,7 @@ import {
   crmTasks,
   externalUserMappings,
   inboundMessages,
+  salesActivityEvents,
 } from "../../drizzle/schema";
 import { createLiveCallSession, getDb, recordAudit } from "../db";
 import { getTodayWork } from "../today";
@@ -71,6 +72,11 @@ export type LiveCallCrmContext = {
     name: string;
     stage?: string;
     updatedAt?: string;
+  }>;
+  recentChanges?: Array<{
+    eventType: string;
+    occurredAt: string;
+    metadata: Record<string, unknown>;
   }>;
   reasons: string[];
   objective?: string;
@@ -322,6 +328,25 @@ async function contextForContact(input: {
         updatedAt: iso(item.updatedAt),
       }))
     : [];
+  const recentChanges = await db
+    .select({
+      eventType: salesActivityEvents.eventType,
+      occurredAt: salesActivityEvents.occurredAt,
+      metadata: salesActivityEvents.metadata,
+    })
+    .from(salesActivityEvents)
+    .where(
+      and(
+        eq(salesActivityEvents.organisationId, input.organisationId),
+        eq(
+          salesActivityEvents.connectedSystemId,
+          input.contact.connectedSystemId
+        ),
+        eq(salesActivityEvents.contactExternalId, input.contact.externalId)
+      )
+    )
+    .orderBy(desc(salesActivityEvents.occurredAt))
+    .limit(20);
   return {
     source: input.source,
     connectedSystemId: system.id,
@@ -372,6 +397,11 @@ async function contextForContact(input: {
     conversationHistory,
     completedTaskHistory,
     opportunityHistory,
+    recentChanges: recentChanges.map(change => ({
+      eventType: change.eventType,
+      occurredAt: change.occurredAt.toISOString(),
+      metadata: change.metadata,
+    })),
     reasons: input.reasons || [],
     objective:
       task?.title || opportunity?.raw?.nextStep?.toString() || undefined,

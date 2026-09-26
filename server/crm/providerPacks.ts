@@ -292,6 +292,20 @@ const scripts: BrowserProfile["scripts"] = {
       },
     ],
   },
+  genie_template_catalogue: {
+    steps: [
+      { action: "expect_visible", selector: "#sb_contacts" },
+      {
+        action: "read_rows",
+        selector: "#sb_contacts",
+        key: "records",
+        fields: {
+          externalId: { attribute: "href" },
+          label: {},
+        },
+      },
+    ],
+  },
 };
 
 export const GENIE_PROVIDER_PACK: Pick<
@@ -410,6 +424,18 @@ export const GENIE_PROVIDER_PACK: Pick<
       prerequisites: {
         providerPack: "genie",
         providerPackVersion: GENIE_PROVIDER_PACK_VERSION,
+      },
+    },
+    "custom.read.templates": {
+      definition: {
+        mode: "read",
+        executeScript: "genie_template_catalogue",
+        resultKey: "records",
+      },
+      prerequisites: {
+        providerPack: "genie",
+        providerPackVersion: GENIE_PROVIDER_PACK_VERSION,
+        nativeRead: "leadconnector_location_templates",
       },
     },
   },

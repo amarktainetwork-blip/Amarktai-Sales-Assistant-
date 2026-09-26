@@ -45,6 +45,12 @@ import {
 } from "../../shared/taskState";
 import { crmResourceSyncEligible } from "./syncEligibility";
 import { assertPersonalBrowserOwnerScope } from "./personalOwnerScope";
+import {
+  deriveContactChangeEvents,
+  deriveOpportunityChangeEvents,
+  deriveTaskChangeEvents,
+  persistCrmChangeEvents,
+} from "./changeEvents";
 export { crmResourceSyncEligible } from "./syncEligibility";
 
 export function isTransientCrmSyncFailure(error: unknown) {
@@ -206,11 +212,29 @@ async function upsertCompanies(
 export async function upsertContacts(
   organisationId: number,
   systemId: number,
-  records: NormalizedContact[]
+  records: NormalizedContact[],
+  options: { baselineComplete?: boolean } = {}
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
   for (const record of records) {
+    const previous = (
+      await db
+        .select()
+        .from(crmContacts)
+        .where(
+          and(
+            eq(crmContacts.connectedSystemId, systemId),
+            eq(crmContacts.externalId, record.externalId)
+          )
+        )
+        .limit(1)
+    )[0];
+    const changes = deriveContactChangeEvents({
+      previous,
+      current: record,
+      baselineComplete: options.baselineComplete,
+    });
     const normalizedEmail = normalizeCrmEmail(record.email);
     const normalizedPhone = normalizeCrmPhone(record.phone);
     await db
@@ -238,6 +262,11 @@ export async function upsertContacts(
           raw: record.raw,
         },
       });
+    await persistCrmChangeEvents({
+      organisationId,
+      connectedSystemId: systemId,
+      changes,
+    });
   }
 }
 
@@ -267,14 +296,52 @@ export async function existingContactIds(
   return found;
 }
 
-async function upsertOpportunities(
-  organisationId: number,
+async function previousOpportunitiesByExternalId(
   systemId: number,
-  records: NormalizedOpportunity[]
+  externalIds: string[]
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
-  for (const record of records)
+  const previous = new Map<
+    string,
+    typeof crmOpportunities.$inferSelect
+  >();
+  for (let offset = 0; offset < externalIds.length; offset += 500) {
+    const chunk = externalIds.slice(offset, offset + 500);
+    if (!chunk.length) continue;
+    const rows = await db
+      .select()
+      .from(crmOpportunities)
+      .where(
+        and(
+          eq(crmOpportunities.connectedSystemId, systemId),
+          inArray(crmOpportunities.externalId, chunk)
+        )
+      );
+    for (const row of rows) previous.set(row.externalId, row);
+  }
+  return previous;
+}
+
+async function upsertOpportunities(
+  organisationId: number,
+  systemId: number,
+  records: NormalizedOpportunity[],
+  options: { baselineComplete?: boolean } = {}
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const previousByExternalId = await previousOpportunitiesByExternalId(
+    systemId,
+    records.map(record => record.externalId)
+  );
+  for (const record of records) {
+    const previous = previousByExternalId.get(record.externalId);
+    const changes = deriveOpportunityChangeEvents({
+      previous,
+      current: record,
+      baselineComplete: options.baselineComplete,
+    });
     await db
       .insert(crmOpportunities)
       .values({ organisationId, connectedSystemId: systemId, ...record })
@@ -296,16 +363,40 @@ async function upsertOpportunities(
           raw: record.raw,
         },
       });
+    await persistCrmChangeEvents({
+      organisationId,
+      connectedSystemId: systemId,
+      changes,
+    });
+  }
 }
 
 async function upsertTasks(
   organisationId: number,
   systemId: number,
-  records: NormalizedTask[]
+  records: NormalizedTask[],
+  options: { baselineComplete?: boolean } = {}
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
-  for (const record of records)
+  for (const record of records) {
+    const previous = (
+      await db
+        .select()
+        .from(crmTasks)
+        .where(
+          and(
+            eq(crmTasks.connectedSystemId, systemId),
+            eq(crmTasks.externalId, record.externalId)
+          )
+        )
+        .limit(1)
+    )[0];
+    const changes = deriveTaskChangeEvents({
+      previous,
+      current: record,
+      baselineComplete: options.baselineComplete,
+    });
     await db
       .insert(crmTasks)
       .values({ organisationId, connectedSystemId: systemId, ...record })
@@ -323,6 +414,12 @@ async function upsertTasks(
           raw: record.raw,
         },
       });
+    await persistCrmChangeEvents({
+      organisationId,
+      connectedSystemId: systemId,
+      changes,
+    });
+  }
 }
 
 export function missingTaskIdsFromSnapshot(
@@ -347,7 +444,12 @@ async function reconcileOpenTaskSnapshot(input: {
     .select({
       externalId: crmTasks.externalId,
       contactExternalId: crmTasks.contactExternalId,
+      opportunityExternalId: crmTasks.opportunityExternalId,
+      ownerExternalId: crmTasks.ownerExternalId,
       title: crmTasks.title,
+      status: crmTasks.status,
+      dueAt: crmTasks.dueAt,
+      sourceUpdatedAt: crmTasks.sourceUpdatedAt,
     })
     .from(crmTasks)
     .where(
@@ -375,6 +477,26 @@ async function reconcileOpenTaskSnapshot(input: {
         inArray(crmTasks.externalId, missing)
       )
     );
+  for (const previous of cached.filter(row => missing.includes(row.externalId))) {
+    await persistCrmChangeEvents({
+      organisationId: input.organisationId,
+      connectedSystemId: input.connectedSystemId,
+      changes: deriveTaskChangeEvents({
+        previous,
+        current: {
+          externalId: previous.externalId,
+          contactExternalId: previous.contactExternalId || undefined,
+          opportunityExternalId: previous.opportunityExternalId || undefined,
+          ownerExternalId: previous.ownerExternalId || undefined,
+          title: previous.title,
+          status: "closed",
+          dueAt: previous.dueAt || undefined,
+          sourceUpdatedAt: reconciledAt,
+          raw: { reconciledFromOpenSnapshot: true },
+        },
+      }),
+    });
+  }
   await db
     .update(salesWorkItems)
     .set({
@@ -922,7 +1044,28 @@ async function syncConnectedSystemDeterministically(input: {
                   ),
                 }
               : undefined;
-          await persist(input.organisationId, system.id, records as never[]);
+          if (resourceType === "contacts")
+            await upsertContacts(
+              input.organisationId,
+              system.id,
+              records as NormalizedContact[],
+              { baselineComplete: Boolean(existing?.lastSuccessfulAt) }
+            );
+          else if (resourceType === "tasks")
+            await upsertTasks(
+              input.organisationId,
+              system.id,
+              records as NormalizedTask[],
+              { baselineComplete: Boolean(existing?.lastSuccessfulAt) }
+            );
+          else if (resourceType === "opportunities")
+            await upsertOpportunities(
+              input.organisationId,
+              system.id,
+              records as NormalizedOpportunity[],
+              { baselineComplete: Boolean(existing?.lastSuccessfulAt) }
+            );
+          else await persist(input.organisationId, system.id, records as never[]);
           await upsertSalesWorkFromCrm({
             organisationId: input.organisationId,
             connectedSystemId: system.id,
@@ -1123,7 +1266,9 @@ async function syncConnectedSystemRoutineDeterministically(input: {
         system.id,
         page.records.map(record => record.externalId)
       );
-      await upsertContacts(input.organisationId, system.id, page.records);
+      await upsertContacts(input.organisationId, system.id, page.records, {
+        baselineComplete: Boolean(existing?.lastSuccessfulAt),
+      });
       await upsertSalesWorkFromCrm({
         organisationId: input.organisationId,
         connectedSystemId: system.id,
@@ -1194,7 +1339,9 @@ async function syncConnectedSystemRoutineDeterministically(input: {
           });
           for (const record of records)
             currentTaskExternalIds.add(record.externalId);
-          await upsertTasks(input.organisationId, system.id, records);
+          await upsertTasks(input.organisationId, system.id, records, {
+            baselineComplete: Boolean(existing?.lastSuccessfulAt),
+          });
           await upsertSalesWorkFromCrm({
             organisationId: input.organisationId,
             connectedSystemId: system.id,
@@ -1254,7 +1401,9 @@ async function syncConnectedSystemRoutineDeterministically(input: {
             expectedOwnerExternalId: secret.crmUserExternalId || "",
             records,
           });
-          await upsertOpportunities(input.organisationId, system.id, records);
+          await upsertOpportunities(input.organisationId, system.id, records, {
+            baselineComplete: Boolean(existing?.lastSuccessfulAt),
+          });
           await upsertSalesWorkFromCrm({
             organisationId: input.organisationId,
             connectedSystemId: system.id,

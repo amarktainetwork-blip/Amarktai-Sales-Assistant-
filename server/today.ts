@@ -18,6 +18,7 @@ import {
   crmTasks,
   externalUserMappings,
   inboundMessages,
+  salesActivityEvents,
   salesWorkItems,
 } from "../drizzle/schema";
 import { getDb } from "./db";
@@ -407,6 +408,48 @@ export async function getTodayWork(input: {
         connectedSystemId &&
         ownerIds.has(`${connectedSystemId}:${ownerExternalId}`)
     );
+  const recentChanges = await db
+    .select({
+      id: salesActivityEvents.id,
+      connectedSystemId: salesActivityEvents.connectedSystemId,
+      contactExternalId: salesActivityEvents.contactExternalId,
+      opportunityExternalId: salesActivityEvents.opportunityExternalId,
+      eventType: salesActivityEvents.eventType,
+      source: salesActivityEvents.source,
+      occurredAt: salesActivityEvents.occurredAt,
+      metadata: salesActivityEvents.metadata,
+    })
+    .from(salesActivityEvents)
+    .where(
+      and(
+        eq(salesActivityEvents.organisationId, input.organisationId),
+        gt(salesActivityEvents.occurredAt, new Date(now.valueOf() - 7 * 86_400_000)),
+        inArray(salesActivityEvents.eventType, [
+          "new_lead",
+          "customer_reply",
+          "customer_owner_changed",
+          "customer_state_changed",
+          "opportunity_created",
+          "opportunity_stage_changed",
+          "opportunity_owner_changed",
+          "opportunity_next_step_changed",
+          "sale_won",
+          "task_assigned",
+          "task_completed_in_crm",
+          "task_rescheduled",
+        ]),
+        or(
+          eq(salesActivityEvents.salespersonUserId, input.userId),
+          personalOwnerSql(
+            input,
+            salesActivityEvents.connectedSystemId,
+            salesActivityEvents.externalOwnerId
+          )
+        )
+      )
+    )
+    .orderBy(desc(salesActivityEvents.occurredAt), desc(salesActivityEvents.id))
+    .limit(40);
   const futureCommitmentContacts = new Set(
     futureCommitments
       .map(item => item.contactExternalId?.trim())
@@ -838,6 +881,7 @@ export async function getTodayWork(input: {
     },
     role: membership.role,
     requiresOwnerMapping: ownerIds.size === 0,
+    recentChanges,
     metrics: {
       dueToday: dueToday.length + currentReminders.length + callbacks.length,
       overdue: overdueTasks.length,
