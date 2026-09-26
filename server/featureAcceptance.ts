@@ -126,6 +126,28 @@ export function result(
   return { status, detail, ...(evidence ? { evidence } : {}) };
 }
 
+export function callCrmReadbackAcceptance(input: {
+  writesEnabled: boolean;
+  hasReadback: boolean;
+  evidence?: Record<string, unknown>;
+}): FeatureAcceptanceResult {
+  if (!input.writesEnabled)
+    return result(
+      "NOT_APPLICABLE",
+      "Call CRM readback is intentionally unavailable while CRM writes are disabled by review-only policy."
+    );
+  return input.hasReadback
+    ? result(
+        "LIVE_PROVEN",
+        "The completed production call has an executed closeout proposal with stored CRM result/readback.",
+        input.evidence
+      )
+    : result(
+        "NOT_CONFIGURED",
+        "CRM writes are enabled but no production call-to-CRM execution and readback evidence was found."
+      );
+}
+
 export function operationStatus(
   statuses: Map<string, string>,
   keys: string[],
