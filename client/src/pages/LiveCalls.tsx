@@ -665,10 +665,24 @@ export default function LiveCalls() {
     const pauseForBackpressure = () => {
       recordingRef.current = false;
       setRecording(false);
+      if (chunkTimerRef.current !== undefined) {
+        window.clearInterval(chunkTimerRef.current);
+        chunkTimerRef.current = undefined;
+      }
+      processor.onaudioprocess = null;
+      source.disconnect();
+      highPass.disconnect();
+      compressor.disconnect();
+      processor.disconnect();
+      silentMonitor.disconnect();
       sourcesRef.current.forEach(sourceStream =>
         sourceStream.getTracks().forEach(track => track.stop())
       );
       sourcesRef.current = [];
+      if (audioContextRef.current === context) {
+        audioContextRef.current = undefined;
+        void context.close().catch(() => undefined);
+      }
       const detail =
         "Live transcription paused because speech processing fell more than 30 seconds behind. The transcript already captured is safe; restart the microphone to continue.";
       setWorkflowError(detail);
