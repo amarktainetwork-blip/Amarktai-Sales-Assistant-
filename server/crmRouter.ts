@@ -13,6 +13,7 @@ export type ConnectedSystemRoute = {
   status: string;
   connectionMethod: string;
   verifiedCapabilities: string[];
+  allowedWriteCapabilities: string[];
   learnedOperations?: RuntimeLearnedOperation[];
   configuration?: Record<string, unknown>;
 };
@@ -64,6 +65,20 @@ function isBrowserConnection(system: ConnectedSystemRoute) {
   );
 }
 
+function capabilityNeedsExplicitWriteAuthority(capability: string) {
+  return !capability.endsWith(".read");
+}
+
+function writeAuthorityAllows(
+  system: ConnectedSystemRoute,
+  capability: string
+) {
+  return (
+    !capabilityNeedsExplicitWriteAuthority(capability) ||
+    system.allowedWriteCapabilities.includes(capability)
+  );
+}
+
 export function connectedSystemSupportsAction(
   system: ConnectedSystemRoute,
   actionType: string,
@@ -81,6 +96,8 @@ export function connectedSystemSupportsAction(
     return Boolean(
       customOperationKey &&
         isCustomOperationKey(customOperationKey) &&
+        (!customOperationKey.startsWith("custom.write.") ||
+          system.allowedWriteCapabilities.includes(customOperationKey)) &&
         productionOperationAvailable(
           system.learnedOperations,
           customOperationKey
@@ -92,8 +109,10 @@ export function connectedSystemSupportsAction(
     ["activities.write"],
   ];
   return alternatives.some(required =>
-    required.every(capability =>
-      system.verifiedCapabilities.includes(capability)
+    required.every(
+      capability =>
+        system.verifiedCapabilities.includes(capability) &&
+        writeAuthorityAllows(system, capability)
     )
   );
 }
