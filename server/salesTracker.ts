@@ -41,6 +41,17 @@ export function authoritativeOpportunityStatus(raw: unknown) {
   return value && value !== "unknown" ? value : null;
 }
 
+export function opportunityCountsAsWon(input: {
+  raw: unknown;
+  closeAt: Date | null;
+  mappedWonStage: boolean;
+}) {
+  const sourceStatus = authoritativeOpportunityStatus(input.raw);
+  if (sourceStatus === "won") return Boolean(input.closeAt);
+  if (sourceStatus) return false;
+  return input.mappedWonStage;
+}
+
 export async function getSalesTracker(input: {
   userId: number;
   organisationId: number;
@@ -107,16 +118,18 @@ export async function getSalesTracker(input: {
       opportunity =>
         opportunity.ownerExternalId && ownerIds.has(opportunity.ownerExternalId)
     )
-    .filter(opportunity => {
-      const sourceStatus = authoritativeOpportunityStatus(opportunity.raw);
-      if (sourceStatus && sourceStatus !== "won") return false;
-      return Boolean(
-        opportunity.stage &&
-          wonStages.has(
-            `${opportunity.connectedSystemId}:${opportunity.stage}`
-          )
-      );
-    })
+    .filter(opportunity =>
+      opportunityCountsAsWon({
+        raw: opportunity.raw,
+        closeAt: opportunity.closeAt,
+        mappedWonStage: Boolean(
+          opportunity.stage &&
+            wonStages.has(
+              `${opportunity.connectedSystemId}:${opportunity.stage}`
+            )
+        ),
+      })
+    )
     .map(opportunity => {
       const soldAt = opportunity.closeAt ?? opportunity.sourceUpdatedAt;
       const contact = opportunity.contactExternalId
