@@ -22,9 +22,18 @@ function positiveInt(value: string | undefined, fallback: number) {
 let activeTranscriptions = 0;
 let waitingTranscriptions = 0;
 
+export function getSttQueueLimits() {
+  return {
+    concurrency: Math.min(
+      8,
+      positiveInt(process.env.STT_MAX_CONCURRENCY, 1)
+    ),
+    maxWaiting: Math.min(40, positiveInt(process.env.STT_MAX_QUEUE, 8)),
+  };
+}
+
 async function enterQueue() {
-  const concurrency = Math.min(8, positiveInt(process.env.STT_MAX_CONCURRENCY, 1));
-  const maxWaiting = Math.min(40, positiveInt(process.env.STT_MAX_QUEUE, 8));
+  const { concurrency, maxWaiting } = getSttQueueLimits();
   if (activeTranscriptions < concurrency) {
     activeTranscriptions += 1;
     return {
@@ -114,7 +123,11 @@ export function getSttConfiguration() {
       fastEnglishEndpoint && fastEnglishModel
     ),
     provider: process.env.STT_PROVIDER_LABEL?.trim() || "Self-hosted whisper.cpp",
-    queue: { active: activeTranscriptions, waiting: waitingTranscriptions },
+    queue: {
+      active: activeTranscriptions,
+      waiting: waitingTranscriptions,
+      ...getSttQueueLimits(),
+    },
   };
 }
 

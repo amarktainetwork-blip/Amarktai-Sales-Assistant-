@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   decodeAudio,
+  getSttConfiguration,
+  getSttQueueLimits,
   probeSttHealth,
   requiresWhisperWavNormalization,
   transcribeAudio,
@@ -14,9 +16,24 @@ afterEach(() => {
   delete process.env.STT_EN_TRANSCRIPTIONS_URL;
   delete process.env.STT_EN_HEALTH_URL;
   delete process.env.STT_EN_MODEL;
+  delete process.env.STT_MAX_CONCURRENCY;
+  delete process.env.STT_MAX_QUEUE;
 });
 
 describe("built-in speech transcription", () => {
+  it("exposes bounded queue limits in readiness telemetry", () => {
+    expect(getSttQueueLimits()).toEqual({ concurrency: 1, maxWaiting: 8 });
+    process.env.STT_MAX_CONCURRENCY = "3";
+    process.env.STT_MAX_QUEUE = "12";
+    expect(getSttQueueLimits()).toEqual({ concurrency: 3, maxWaiting: 12 });
+    expect(getSttConfiguration().queue).toMatchObject({
+      concurrency: 3,
+      maxWaiting: 12,
+      active: 0,
+      waiting: 0,
+    });
+  });
+
   it("normalizes browser recording formats to WAV for whisper.cpp", () => {
     expect(requiresWhisperWavNormalization("audio/webm")).toBe(true);
     expect(requiresWhisperWavNormalization("audio/ogg")).toBe(true);

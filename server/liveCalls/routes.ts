@@ -21,8 +21,6 @@ import { completeLiveCallExact, requireLiveCallOwner } from "./store";
 import { completeCallbackWorkAfterVerifiedCall } from "../salesWork";
 import { parseLiveCallCompletion } from "./completion";
 import { planTelesalesCloseout } from "../telesales/closeoutPlanner";
-import { getAutomationPolicy } from "../automationPolicy";
-import { executeAutoPreapprovedActions } from "../governedActions";
 import { resolveLiveCallCloseoutIdentity } from "./context";
 import {
   listRelevantAssistantMemories,
@@ -650,7 +648,7 @@ export function registerLiveCallRoutes(app: Express) {
               summaryResult: summary,
             },
             verificationSummary:
-              "The salesperson confirmed this structured outcome. Actions use the existing policy, review, claim, deterministic execution, postcondition evidence, and idempotency path.",
+              "The salesperson confirmed this structured outcome. Post-call external actions are prepared for Review only; nothing customer-facing or CRM-writing executes automatically from call closeout.",
             actions: proposed,
           });
           const proposals = await listActionProposals(
@@ -658,16 +656,10 @@ export function registerLiveCallRoutes(app: Express) {
             user.membership.organisationId,
             workflowRunId
           );
-          const policy = await getAutomationPolicy({
-            userId: user.id,
-            organisationId: user.membership.organisationId,
-          });
-          const autoExecutions = await executeAutoPreapprovedActions({
-            userId: user.id,
-            organisationId: user.membership.organisationId,
-            proposals,
-            policy,
-          });
+          // Live-call closeout is deliberately review-only. A confirmed outcome
+          // is authority to record the internal call result and prepare proposals,
+          // not authority to send a message or write back to the CRM.
+          const autoExecutions: Array<Record<string, unknown>> = [];
           const blockedActionCount = proposed.filter(
             action =>
               (action.payload.crmRoute as { routable?: boolean } | undefined)
@@ -701,9 +693,7 @@ export function registerLiveCallRoutes(app: Express) {
               actionType: proposal.actionType,
               title: proposal.title,
               state: proposal.state,
-              autoEligible:
-                policy.mode === "auto_preapproved" &&
-                policy.autoActionTypes.includes(proposal.actionType),
+              autoEligible: false,
             })),
           };
         }
