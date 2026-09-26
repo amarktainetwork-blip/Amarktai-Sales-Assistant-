@@ -33,6 +33,7 @@ describe("canonical connected-system capability router", () => {
           "activities.read",
           "activities.write",
         ],
+        allowedWriteCapabilities: ["contacts.write", "notes.write", "activities.write"],
       },
       {
         id: 2,
@@ -41,6 +42,7 @@ describe("canonical connected-system capability router", () => {
         status: "needs_attention",
         connectionMethod: "browser",
         verifiedCapabilities: ["activities.read", "sms.send"],
+        allowedWriteCapabilities: ["sms.send"],
       },
     ];
     const [note] = routeConnectedSystemActions(
@@ -65,6 +67,7 @@ describe("canonical connected-system capability router", () => {
       status: "ready",
       connectionMethod: "browser",
       verifiedCapabilities: ["contacts.read", "tasks.read"],
+      allowedWriteCapabilities: [],
     };
     expect(connectedSystemSupportsAction(incomplete, "verify_contact_context")).toBe(
       false
@@ -93,6 +96,7 @@ describe("canonical connected-system capability router", () => {
       status: "limited_permissions",
       connectionMethod: "browser",
       verifiedCapabilities: ["sms.send"],
+      allowedWriteCapabilities: ["sms.send"],
     };
     const [sms] = routeConnectedSystemActions(
       [{ actionType: "send_sms", payload: {} }],
@@ -113,6 +117,7 @@ describe("canonical connected-system capability router", () => {
       status: "limited_permissions",
       connectionMethod: "browser",
       verifiedCapabilities: ["activities.read", "whatsapp.send"],
+      allowedWriteCapabilities: ["whatsapp.send"],
     };
     const [proposal] = routeConnectedSystemActions(
       [{ actionType: "send_whatsapp", payload: {} }],
@@ -133,6 +138,7 @@ describe("canonical connected-system capability router", () => {
       status: "ready",
       connectionMethod: "oauth",
       verifiedCapabilities: ["tasks.write", "opportunities.write"],
+      allowedWriteCapabilities: ["tasks.write", "opportunities.write"],
     };
     expect(connectedSystemSupportsAction(writeOnly, "complete_active_task")).toBe(
       false
@@ -166,6 +172,7 @@ describe("canonical connected-system capability router", () => {
         status: "ready",
         connectionMethod: "oauth",
         verifiedCapabilities: ["contacts.read", "activities.read"],
+        allowedWriteCapabilities: [],
       },
     ];
     const [sms] = routeConnectedSystemActions(
@@ -187,6 +194,7 @@ describe("canonical connected-system capability router", () => {
         status: "ready",
         connectionMethod: "oauth",
         verifiedCapabilities: ["activities.write"],
+        allowedWriteCapabilities: ["activities.write"],
         learnedOperations: [],
       },
       {
@@ -196,6 +204,7 @@ describe("canonical connected-system capability router", () => {
         status: "limited_permissions",
         connectionMethod: "browser",
         verifiedCapabilities: [],
+        allowedWriteCapabilities: ["custom.write.send.quote"],
         learnedOperations: [liveCustom],
       },
     ];
@@ -233,6 +242,44 @@ describe("canonical connected-system capability router", () => {
     ).toBe(false);
   });
 
+  it("fails closed immediately when write authority is revoked even if verification remains", () => {
+    const system = {
+      id: 8,
+      provider: "genie",
+      displayName: "Genie",
+      status: "ready",
+      connectionMethod: "browser",
+      verifiedCapabilities: ["activities.read", "sms.send"],
+      allowedWriteCapabilities: [],
+    };
+    expect(connectedSystemSupportsAction(system, "send_sms")).toBe(false);
+    const [proposal] = routeConnectedSystemActions(
+      [{ actionType: "send_sms", payload: {} }],
+      [system]
+    );
+    expect(proposal.payload.crmRoute).toMatchObject({ routable: false });
+  });
+
+  it("fails closed when a LIVE_PROVEN custom write is not explicitly allowed", () => {
+    const system = {
+      id: 6,
+      provider: "genie",
+      displayName: "Genie",
+      status: "limited_permissions",
+      connectionMethod: "browser",
+      verifiedCapabilities: [],
+      allowedWriteCapabilities: [],
+      learnedOperations: [liveCustom],
+    };
+    expect(
+      connectedSystemSupportsAction(
+        system,
+        "custom_crm_action",
+        "custom.write.send.quote"
+      )
+    ).toBe(false);
+  });
+
   it("does not route an unknown or TEST_READY custom operation in production", () => {
     const system = {
       id: 6,
@@ -241,6 +288,7 @@ describe("canonical connected-system capability router", () => {
       status: "limited_permissions",
       connectionMethod: "browser",
       verifiedCapabilities: [],
+      allowedWriteCapabilities: ["custom.write.send.quote"],
       learnedOperations: [
         { ...liveCustom, status: "TEST_READY", productionReady: false },
       ],
@@ -272,6 +320,7 @@ describe("canonical connected-system capability router", () => {
         status: "ready",
         connectionMethod: "oauth",
         verifiedCapabilities: ["contacts.read", "contacts.write"],
+        allowedWriteCapabilities: ["contacts.write"],
       },
       {
         id: 2,
@@ -280,6 +329,7 @@ describe("canonical connected-system capability router", () => {
         status: "ready",
         connectionMethod: "oauth",
         verifiedCapabilities: ["contacts.read", "contacts.write"],
+        allowedWriteCapabilities: ["contacts.write"],
       },
     ];
     const [proposal] = routeConnectedSystemActions(
@@ -307,6 +357,7 @@ describe("canonical connected-system capability router", () => {
         status: "ready",
         connectionMethod: "browser",
         verifiedCapabilities: ["notes.read", "notes.write"],
+        allowedWriteCapabilities: ["notes.write"],
       },
       {
         id: 12,
@@ -315,6 +366,7 @@ describe("canonical connected-system capability router", () => {
         status: "ready",
         connectionMethod: "browser",
         verifiedCapabilities: ["notes.read", "notes.write"],
+        allowedWriteCapabilities: ["notes.write"],
       },
     ];
     const [note] = routeConnectedSystemActions(
@@ -399,6 +451,7 @@ describe("canonical connected-system capability router", () => {
       status: "ready",
       connectionMethod: "browser",
       verifiedCapabilities: ["email.send"],
+      allowedWriteCapabilities: ["email.send"],
     };
     const [ready] = routeConnectedSystemActions(
       [{ actionType: "send_email", payload: {} }],
