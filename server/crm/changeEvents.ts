@@ -29,6 +29,19 @@ function text(value: unknown) {
 function iso(value?: Date | null) {
   return value?.toISOString() || "";
 }
+function sameSourceTimestamp(left?: Date | null, right?: Date | null) {
+  if (!left && !right) return true;
+  if (!left || !right) return false;
+  return Math.floor(left.valueOf() / 1000) === Math.floor(right.valueOf() / 1000);
+}
+function sourceRevisionDidNotAdvance(
+  previous?: Date | null,
+  current?: Date | null
+) {
+  return Boolean(
+    previous && current && current.valueOf() <= previous.valueOf()
+  );
+}
 function rawStatus(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return "";
   return text((value as Record<string, unknown>).status).toLowerCase();
@@ -67,6 +80,13 @@ export function deriveContactChangeEvents(input: {
         ]
       : [];
   }
+  if (
+    sourceRevisionDidNotAdvance(
+      input.previous.sourceUpdatedAt,
+      current.sourceUpdatedAt
+    )
+  )
+    return [];
   const output: CrmChangeEvent[] = [];
   if (
     text(input.previous.ownerExternalId) !== text(current.ownerExternalId) &&
@@ -150,6 +170,10 @@ export function deriveOpportunityChangeEvents(input: {
     opportunityExternalId: current.externalId,
     occurredAt: current.sourceUpdatedAt || current.closeAt || new Date(),
   };
+  if (
+    sourceRevisionDidNotAdvance(previous.sourceUpdatedAt, current.sourceUpdatedAt)
+  )
+    return [];
   const output: CrmChangeEvent[] = [];
   const previousStatus = rawStatus(previous.raw);
   const currentStatus = rawStatus(current.raw);
@@ -186,7 +210,7 @@ export function deriveOpportunityChangeEvents(input: {
         currentOwnerExternalId: current.ownerExternalId || null,
       })
     );
-  if (iso(previous.nextStepAt) !== iso(current.nextStepAt))
+  if (!sameSourceTimestamp(previous.nextStepAt, current.nextStepAt))
     output.push(
       event(base, "opportunity_next_step_changed", {
         previousNextStepAt: iso(previous.nextStepAt) || null,
@@ -233,6 +257,10 @@ export function deriveTaskChangeEvents(input: {
       : [];
   }
   const previous = input.previous;
+  if (
+    sourceRevisionDidNotAdvance(previous.sourceUpdatedAt, current.sourceUpdatedAt)
+  )
+    return [];
   const output: CrmChangeEvent[] = [];
   if (
     text(previous.ownerExternalId) !== text(current.ownerExternalId) &&
@@ -253,7 +281,7 @@ export function deriveTaskChangeEvents(input: {
         currentStatus: current.status,
       })
     );
-  if (iso(previous.dueAt) !== iso(current.dueAt))
+  if (!sameSourceTimestamp(previous.dueAt, current.dueAt))
     output.push(
       event(base, "task_rescheduled", {
         title: current.title,

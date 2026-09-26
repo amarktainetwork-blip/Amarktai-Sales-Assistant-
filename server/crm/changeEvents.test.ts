@@ -140,6 +140,32 @@ describe("CRM change events", () => {
     expect(events.some(event => event.eventType === "sale_won")).toBe(false);
   });
 
+  it("ignores database precision drift when the source revision did not advance", () => {
+    const events = deriveTaskChangeEvents({
+      previous: {
+        externalId: "t-precision",
+        contactExternalId: "c1",
+        opportunityExternalId: null,
+        ownerExternalId: "owner-1",
+        title: "Follow up",
+        status: "open",
+        dueAt: new Date("2026-09-30T07:59:59.000Z"),
+        sourceUpdatedAt: new Date("2026-09-13T13:41:33.000Z"),
+      },
+      current: {
+        externalId: "t-precision",
+        contactExternalId: "c1",
+        ownerExternalId: "owner-1",
+        title: "Follow up",
+        status: "open",
+        dueAt: new Date("2026-09-30T07:59:59.493Z"),
+        sourceUpdatedAt: new Date("2026-09-13T13:41:33.000Z"),
+        raw: {},
+      },
+    });
+    expect(events).toEqual([]);
+  });
+
   it("emits task assignment, reschedule and CRM completion without guessing who completed it", () => {
     const events = deriveTaskChangeEvents({
       previous: {
