@@ -32,6 +32,16 @@ type TemplateRow = {
   templateKey: string;
   version: number;
   title: string;
+  body: string;
+  metadata?: {
+    channel?: "email" | "sms" | "whatsapp";
+    subject?: string;
+    folder?: string;
+    category?: string;
+    sourceReference?: string;
+    sourceVersion?: string;
+    purpose?: string;
+  } | null;
   status: "draft" | "published" | "archived";
   updatedAt: string;
 };
@@ -108,6 +118,17 @@ function statusLabel(status: string) {
   return status.replace(/_/g, " ").toLowerCase();
 }
 
+function readableTemplateBody(body: string) {
+  if (typeof DOMParser === "undefined") return body;
+  const doc = new DOMParser().parseFromString(body, "text/html");
+  doc.querySelectorAll("style, script, head").forEach(node => node.remove());
+  return (doc.body.textContent || body)
+    .replace(/\u00a0/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export function SkillStudio({
   connectedSystemId,
   initialView = "skills",
@@ -132,6 +153,7 @@ export function SkillStudio({
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
   const [sop, setSop] = useState("");
+  const [templateSearch, setTemplateSearch] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -195,6 +217,33 @@ export function SkillStudio({
     }
     if (elevation.data?.elevated) void load();
   }, [elevation.data?.eligible, elevation.data?.elevated, load]);
+
+  const currentTemplates = useMemo(() => {
+    const latest = new Map<string, TemplateRow>();
+    for (const template of catalogue?.templates || []) {
+      const existing = latest.get(template.templateKey);
+      if (!existing || template.version > existing.version)
+        latest.set(template.templateKey, template);
+    }
+    const query = templateSearch.trim().toLowerCase();
+    return Array.from(latest.values())
+      .filter(template =>
+        !query
+          ? true
+          : [
+              template.title,
+              template.templateKey,
+              template.metadata?.channel,
+              template.metadata?.subject,
+              template.metadata?.purpose,
+              template.metadata?.category,
+              template.metadata?.folder,
+            ]
+              .filter(Boolean)
+              .some(value => String(value).toLowerCase().includes(query))
+      )
+      .sort((a, b) => a.title.localeCompare(b.title));
+  }, [catalogue?.templates, templateSearch]);
 
   const groups = useMemo(() => {
     const grouped = new Map<string, SkillRow[]>();
@@ -336,6 +385,32 @@ export function SkillStudio({
     } catch (cause) {
       toast.error(
         friendlyError(cause, "The read-only template catalogue could not sync.")
+      );
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function publishTemplate(template: TemplateRow) {
+    if (
+      !window.confirm(
+        `Publish “${template.title}” version ${template.version} for review-controlled use? This approves the exact stored content but does not send a message or change Genie.`
+      )
+    )
+      return;
+    try {
+      setBusy(`publish-template-${template.id}`);
+      await api(
+        `/api/team-admin/approval-templates/${template.id}/publish`,
+        { method: "PUT", body: "{}" }
+      );
+      toast.success(
+        `${template.title} is now approved for review-controlled use. Nothing was sent.`
+      );
+      await load();
+    } catch (cause) {
+      toast.error(
+        friendlyError(cause, "The template could not be published.")
       );
     } finally {
       setBusy("");
@@ -591,19 +666,85 @@ export function SkillStudio({
               {busy === "sync-templates" ? "Reading…" : "Sync read-only"}
             </Button>
           </div>
-          <div className="amk-template-grid">
-            {(catalogue?.templates || []).map(template => (
-              <article key={template.id}>
-                <span className={`amk-status amk-status--${template.status}`}>{template.status}</span>
-                <h4>{template.title}</h4>
-                <p>{template.templateKey}</p>
-                <small>Version {template.version}</small>
-              </article>
-            ))}
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <strong>{currentTemplates.length} current template{currentTemplates.length === 1 ? "" : "s"}</strong>
+              <p className="text-sm text-[#66758A]">
+                Imported templates stay drafts until a manager reviews and publishes the exact content.
+              </p>
+            </div>
+            <input
+              value={templateSearch}
+              onChange={event => setTemplateSearch(event.target.value)}
+              placeholder="Search templates, subject or channel…"
+              aria-label="Search Genie templates"
+              className="h-10 min-w-[280px] rounded-xl border border-[#DCE4EE] bg-white px-3 text-sm outline-none focus:border-[#7D9AAA]"
+            />
           </div>
-          {!catalogue?.templates.length ? (
+          <div className="amk-template-grid">
+            {currentTemplates.map(template => {
+              const preview = readableTemplateBody(template.body);
+              return (
+                <article key={template.id}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={`amk-status amk-status--${template.status}`}>
+                      {template.status}
+                    </span>
+                    {template.metadata?.channel ? (
+                      <span className="rounded-full bg-[#EEF3F7] px-2 py-1 text-[11px] font-bold uppercase tracking-[.08em] text-[#55788B]">
+                        {template.metadata.channel}
+                      </span>
+                    ) : null}
+                  </div>
+                  <h4>{template.title}</h4>
+                  {template.metadata?.subject ? (
+                    <p className="font-semibold text-[#526985]">
+                      Subject: {template.metadata.subject}
+                    </p>
+                  ) : null}
+                  <p>{template.templateKey}</p>
+                  <small>
+                    Version {template.version}
+                    {template.metadata?.purpose ? ` · ${template.metadata.purpose}` : ""}
+                  </small>
+                  <details className="amk-skill-history mt-3">
+                    <summary>Review exact stored content</summary>
+                    <div className="mt-3 space-y-3">
+                      <p className="whitespace-pre-wrap break-words text-sm leading-6 text-[#33445B]">
+                        {preview || "No readable template body."}
+                      </p>
+                      {template.metadata?.sourceReference ? (
+                        <small className="block break-all text-[#7A899C]">
+                          Genie source: {template.metadata.sourceReference}
+                        </small>
+                      ) : null}
+                    </div>
+                  </details>
+                  {template.status === "draft" ? (
+                    <Button
+                      className="mt-3"
+                      size="sm"
+                      disabled={busy === `publish-template-${template.id}`}
+                      onClick={() => void publishTemplate(template)}
+                    >
+                      {busy === `publish-template-${template.id}`
+                        ? "Publishing…"
+                        : "Publish for Review use"}
+                    </Button>
+                  ) : template.status === "published" ? (
+                    <p className="mt-3 text-xs font-semibold text-emerald-700">
+                      Approved for review-controlled use. Publishing never sends it automatically.
+                    </p>
+                  ) : null}
+                </article>
+              );
+            })}
+          </div>
+          {!currentTemplates.length ? (
             <p className="amk-skill-empty">
-              No templates are stored yet. Teach and prove the read-only catalogue operation in the CRM connection, then sync here.
+              {catalogue?.templates.length
+                ? "No templates match that search."
+                : "No templates are stored yet. Prove the read-only catalogue operation in the CRM connection, then sync here."}
             </p>
           ) : null}
         </div>
