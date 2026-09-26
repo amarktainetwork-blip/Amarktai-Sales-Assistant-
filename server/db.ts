@@ -1292,6 +1292,117 @@ export async function listKnowledgeSources(
     .orderBy(desc(knowledgeSources.updatedAt));
 }
 
+const KNOWLEDGE_INTENT_TERMS = new Set([
+  "available",
+  "course",
+  "courses",
+  "programme",
+  "programmes",
+  "program",
+  "programs",
+  "price",
+  "pricing",
+  "cost",
+  "costs",
+  "deposit",
+  "finance",
+  "financing",
+  "payment",
+  "payments",
+  "monthly",
+  "duration",
+  "access",
+  "support",
+  "exam",
+  "exams",
+  "certificate",
+  "certification",
+  "certifications",
+  "information",
+  "details",
+  "option",
+  "options",
+]);
+
+function approvedKnowledgeTerms(query: string) {
+  return Array.from(
+    new Set(
+      query
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter(term => term.length > 2)
+        .slice(0, 24)
+    )
+  );
+}
+
+function knowledgeContextQualifier(source: {
+  title: string;
+  content?: string | null;
+}) {
+  const candidate = `${source.title}\n${source.content ?? ""}`.trim();
+  const match = candidate.match(
+    /^([A-Z][A-Z0-9 &/+.-]{1,60})-SPECIFIC CONTEXT ONLY:/m
+  );
+  return match?.[1]
+    ?.toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(term => term.length > 2) ?? [];
+}
+
+export function rankApprovedKnowledgeSources<
+  T extends {
+    title: string;
+    content?: string | null;
+    sourceUrl?: string | null;
+    updatedAt: Date;
+  },
+>(sources: T[], query: string) {
+  const terms = approvedKnowledgeTerms(query);
+  if (!terms.length) return [];
+  const identityTerms = terms.filter(term => !KNOWLEDGE_INTENT_TERMS.has(term));
+  const queryTerms = new Set(terms);
+
+  return sources
+    .map(source => {
+      const title = source.title.toLowerCase();
+      const content = (source.content ?? "").toLowerCase();
+      const sourceUrl = (source.sourceUrl ?? "").toLowerCase();
+      const qualifier = knowledgeContextQualifier(source);
+      if (
+        qualifier.length &&
+        !qualifier.some(term => queryTerms.has(term))
+      )
+        return { source, score: 0, identityMatches: 0 };
+
+      const identityMatches = identityTerms.filter(
+        term =>
+          title.includes(term) ||
+          content.includes(term) ||
+          sourceUrl.includes(term)
+      ).length;
+      if (identityTerms.length && identityMatches === 0)
+        return { source, score: 0, identityMatches: 0 };
+
+      const score = terms.reduce((total, term) => {
+        if (title.includes(term)) return total + 4;
+        if (content.includes(term)) return total + 2;
+        if (sourceUrl.includes(term)) return total + 1;
+        return total;
+      }, 0);
+      return { source, score, identityMatches };
+    })
+    .filter(item => item.score > 0)
+    .sort(
+      (a, b) =>
+        b.identityMatches - a.identityMatches ||
+        b.score - a.score ||
+        Number(b.source.updatedAt) - Number(a.source.updatedAt)
+    )
+    .slice(0, 6)
+    .map(item => item.source);
+}
+
 export async function searchApprovedKnowledge(
   userId: number,
   organisationId: number,
@@ -1313,29 +1424,7 @@ export async function searchApprovedKnowledge(
     )
     .orderBy(desc(knowledgeSources.updatedAt))
     .limit(80);
-  const terms = query
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter(term => term.length > 2)
-    .slice(0, 18);
-  const score = (source: (typeof sources)[number]) => {
-    const haystack =
-      `${source.title}\n${source.content ?? ""}\n${source.sourceUrl ?? ""}`.toLowerCase();
-    return terms.reduce(
-      (total, term) => total + (haystack.includes(term) ? 1 : 0),
-      0
-    );
-  };
-  return sources
-    .map(source => ({ source, score: score(source) }))
-    .filter(item => item.score > 0)
-    .sort(
-      (a, b) =>
-        b.score - a.score ||
-        Number(b.source.updatedAt) - Number(a.source.updatedAt)
-    )
-    .slice(0, 6)
-    .map(item => item.source);
+  return rankApprovedKnowledgeSources(sources, query);
 }
 
 export async function createKnowledgeSource(input: {
