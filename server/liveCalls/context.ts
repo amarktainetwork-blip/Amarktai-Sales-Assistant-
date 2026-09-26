@@ -26,6 +26,7 @@ import { getCrmAdapter } from "../crm/adapterRegistry";
 import { loadConnectionSecret, toAdapterConnection } from "../connectedSystems";
 import { requireRuntimeBrowserOperation } from "../browserConnectors/learnedOperations";
 import { randomUUID } from "node:crypto";
+import type { CommercialTruth } from "../commercialTruth";
 
 export type LiveCallCrmContext = {
   source: "today" | "manual_resolved";
@@ -45,6 +46,7 @@ export type LiveCallCrmContext = {
   courseInterest?: string;
   courseInterestValues?: string[];
   customerTags?: string[];
+  commercialTruth?: CommercialTruth;
   taskExternalId?: string;
   taskTitle?: string;
   opportunityExternalId?: string;
@@ -358,6 +360,7 @@ async function contextForContact(input: {
     courseInterest: interest.primary || undefined,
     courseInterestValues: interest.values,
     customerTags: interest.tags,
+    commercialTruth: exactDetail?.commercialTruth,
     firstName: input.contact.firstName || undefined,
     lastName: input.contact.lastName || undefined,
     companyName: company?.name || undefined,

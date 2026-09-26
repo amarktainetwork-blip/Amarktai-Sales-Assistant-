@@ -359,6 +359,7 @@ export function assistantCustomerEvidence(
         value: assistantContextValue(field.value),
       }))
       .filter(field => field.value !== undefined),
+    commercialTruth: detail.commercialTruth,
     openOpportunity: detail.openOpportunity
       ? {
           name: detail.openOpportunity.name,

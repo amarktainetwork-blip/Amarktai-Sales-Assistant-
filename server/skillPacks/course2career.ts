@@ -231,11 +231,13 @@ export const COURSE2CAREER_SKILL_PACK: readonly OrganisationSkillSeed[] = [
         stopConditions: [
           "The learner has already renewed",
           "The original enrolment or purchase date cannot be proven",
+          "Multiple mapped Won payment events exist while Course Enrolment Date is absent; require review instead of choosing a date",
           "The programme cannot be identified",
           "The customer has opted out",
         ],
         decisionRules: [
-          "Expiry is exactly 12 months after the original purchase or enrolment date",
+          "Expiry is exactly 12 calendar months after a proven Course Enrolment Date; when that configured field is empty, one and only one mapped Won opportunity with authoritative close/status-change time may prove the purchase date",
+          "A task title, note, tag or payment-link source never proves payment or renewal",
           "Before every renewal communication, refresh the source truth and stop if the learner has renewed",
           "Stage 1 sends Renewal 1 email and text, keeps the same task open, and schedules the next check in 3–4 days",
           "Stage 2 sends Renewal 2 email and text only when still not renewed, then moves the same task to two days before expiry",
@@ -247,10 +249,11 @@ export const COURSE2CAREER_SKILL_PACK: readonly OrganisationSkillSeed[] = [
           "Renewal email templates for each programme and stages 1–3",
           "Renewal text templates for each programme and stages 1–3",
           "Exact expired-access email and text templates for each programme",
-          "Original Course Enrolment Date / purchase-date source",
+          "Course Enrolment Date field mapped with purpose enrolment",
+          "Mapped Won opportunity stages used only as authoritative purchase evidence when exactly one qualifying Won event exists",
         ],
         parameters: {
-          expiryRule: "exactly 12 months after original purchase or enrolment date",
+          expiryRule: "exactly 12 calendar months after one authoritative enrolment/purchase date; ambiguity requires review",
           stage1NextDue: "3–4 days after Renewal 1",
           stage2NextDue: "2 days before expiry",
           stage3NextDue: "actual expiry date",

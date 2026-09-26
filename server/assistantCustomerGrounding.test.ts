@@ -23,6 +23,26 @@ function customerDetailFixture() {
         value: "Cyber Security",
       },
     ],
+    commercialTruth: {
+      payment: {
+        state: "not_proven",
+        latestOpportunityExternalId: "opp-open",
+        latestOpportunityStage: "Enrolment – Verbal Yes / Pending Payment",
+        latestPaidAt: new Date("2025-09-30T10:54:34Z"),
+        latestPaidOpportunityExternalId: "opp-paid",
+        historicalPaidCount: 1,
+        evidence: "no_current_payment_proof",
+      },
+      renewal: {
+        state: "proven",
+        basis: "single_mapped_won_opportunity",
+        enrolmentOrPurchaseAt: new Date("2025-09-30T10:54:34Z"),
+        nextAccessExpiryAt: new Date("2026-09-30T10:54:34Z"),
+        sourceFieldLabel: null,
+        sourceOpportunityExternalId: "opp-paid",
+        evidenceCount: 1,
+      },
+    },
     openOpportunity: {
       name: "September enrolment",
       pipeline: "Admissions",
@@ -110,6 +130,13 @@ describe("Assistant selected-customer grounding", () => {
     expect(evidence.currentTasks[0].title).toBe("Call at agreed time");
     expect(evidence.completedTasks[0].title).toBe("Send course outline");
     expect(evidence.opportunityHistory[0].stage).toBe("Qualified");
+    expect(evidence.commercialTruth).toMatchObject({
+      payment: { state: "not_proven" },
+      renewal: {
+        state: "proven",
+        basis: "single_mapped_won_opportunity",
+      },
+    });
   });
 
   it("keeps newest-first chronology and removes quoted or executable email content", () => {

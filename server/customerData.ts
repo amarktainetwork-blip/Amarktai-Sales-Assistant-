@@ -18,6 +18,7 @@ import {
   crmTasks,
   crmActivities,
   crmOpportunities,
+  crmPipelineStageMappings,
   externalUserMappings,
   inboundMessages,
   salesActivityEvents,
@@ -27,6 +28,7 @@ import { requireOrganisationMembership } from "./organisation";
 import { getOrganisationWorkspaceContext } from "./organisationWorkspace";
 import { deriveCustomerInterest } from "./customerInterest";
 import { opportunityIsHistorical } from "./crm/actionExecutionPreconditions";
+import { deriveCommercialTruth } from "./commercialTruth";
 import {
   INCOMPLETE_TASK_STATUSES,
   isIncompleteTask,
@@ -267,6 +269,7 @@ export async function getExactCustomerDetail(input: {
     activityTotal,
     opportunityTotal,
     workspace,
+    stageMappings,
   ] = await Promise.all([
     db
       .select()
@@ -373,6 +376,16 @@ export async function getExactCustomerDetail(input: {
       .from(crmOpportunities)
       .where(opportunityScope),
     getOrganisationWorkspaceContext(input.organisationId),
+    db
+      .select()
+      .from(crmPipelineStageMappings)
+      .where(
+        and(
+          eq(crmPipelineStageMappings.organisationId, input.organisationId),
+          eq(crmPipelineStageMappings.connectedSystemId, contact.connectedSystemId),
+          eq(crmPipelineStageMappings.isActive, true)
+        )
+      ),
   ]);
   const attributes = normalizedCustomerAttributes(contact.raw);
   const interest = deriveCustomerInterest({
@@ -389,6 +402,11 @@ export async function getExactCustomerDetail(input: {
         ? interest.primary
         : sourceValue;
     return { ...mapping, value };
+  });
+  const commercialTruth = deriveCommercialTruth({
+    mappedFields,
+    opportunities,
+    stageMappings,
   });
   return {
     ...contact,
@@ -409,6 +427,7 @@ export async function getExactCustomerDetail(input: {
     attributes,
     interest,
     mappedFields,
+    commercialTruth,
     workspace,
     tasks: {
       current: tasks,

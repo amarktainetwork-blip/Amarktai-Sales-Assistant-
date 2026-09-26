@@ -111,6 +111,24 @@ describe("organisation skill builder contract", () => {
     expect(JSON.stringify(COURSE2CAREER_SKILL_PACK)).not.toMatch(/elcas|ppc/i);
   });
 
+  it("keeps renewal timing grounded in authoritative commercial truth", () => {
+    const skill = COURSE2CAREER_SKILL_PACK.find(
+      item => item.key === "renewal-sequence"
+    )!;
+    expect(skill.definition.stopConditions.join(" ")).toContain(
+      "Multiple mapped Won payment events"
+    );
+    expect(skill.definition.decisionRules.join(" ")).toContain(
+      "A task title, note, tag or payment-link source never proves payment or renewal"
+    );
+    expect(skill.definition.requiredMappings).toEqual(
+      expect.arrayContaining([
+        "Course Enrolment Date field mapped with purpose enrolment",
+        "Mapped Won opportunity stages used only as authoritative purchase evidence when exactly one qualifying Won event exists",
+      ])
+    );
+  });
+
   it("keeps invalid-contact handling limited to the confirmed Stage 1 rule", () => {
     const skill = COURSE2CAREER_SKILL_PACK.find(
       item => item.key === "invalid-contact-complete"
