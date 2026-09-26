@@ -150,10 +150,18 @@ export function registerLiveCallRoutes(app: Express) {
           ? req.body.language.trim()
           : user.membership.locale;
       const transcribeStartedAt = Date.now();
+      let queueMetrics = {
+        queueWaitMs: 0,
+        activeAtStart: 0,
+        waitingAtStart: 0,
+      };
       const rawText = await transcribeAudio(
         bytes,
         mimeType,
-        transcriptionLanguage
+        transcriptionLanguage,
+        metrics => {
+          queueMetrics = metrics;
+        }
       );
       const normalizedText = rawText.replace(/\s+/g, " ").trim();
       const words = normalizedText.toLowerCase().split(/\s+/).filter(Boolean);
@@ -189,6 +197,9 @@ export function registerLiveCallRoutes(app: Express) {
           mimeType,
           textChars: text.length,
           transcriptionMs,
+          queueWaitMs: queueMetrics.queueWaitMs,
+          sttActiveAtStart: queueMetrics.activeAtStart,
+          sttWaitingAtStart: queueMetrics.waitingAtStart,
           discardedAsGarbage: repetitiveGarbage,
           rawAudioRetained: false,
         },
@@ -202,6 +213,9 @@ export function registerLiveCallRoutes(app: Express) {
           durationMs,
           textChars: text.length,
           transcriptionMs,
+          queueWaitMs: queueMetrics.queueWaitMs,
+          sttActiveAtStart: queueMetrics.activeAtStart,
+          sttWaitingAtStart: queueMetrics.waitingAtStart,
           discardedAsGarbage: repetitiveGarbage,
           signalTypes: signals.map(signal => signal.type),
         })
@@ -211,6 +225,9 @@ export function registerLiveCallRoutes(app: Express) {
         signals,
         structuredNotes,
         durationMs,
+        queueWaitMs: queueMetrics.queueWaitMs,
+        sttActiveAtStart: queueMetrics.activeAtStart,
+        sttWaitingAtStart: queueMetrics.waitingAtStart,
         rawAudioRetained: false,
       });
     } catch (error) {
