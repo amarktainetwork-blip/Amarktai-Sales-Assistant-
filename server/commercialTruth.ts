@@ -85,10 +85,10 @@ function mappedWon(
   opportunity: CommercialOpportunity,
   mappings: CommercialStageMapping[]
 ) {
-  return (
-    commercialOpportunityStatus(opportunity.raw) === "won" &&
-    mappings.some(mapping => mappingMatches(opportunity, mapping))
-  );
+  const sourceStatus = commercialOpportunityStatus(opportunity.raw);
+  if (sourceStatus === "won") return true;
+  if (sourceStatus) return false;
+  return mappings.some(mapping => mappingMatches(opportunity, mapping));
 }
 
 export function parseCommercialDate(value: unknown): Date | null {
