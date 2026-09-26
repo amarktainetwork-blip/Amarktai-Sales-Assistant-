@@ -1322,6 +1322,19 @@ const KNOWLEDGE_INTENT_TERMS = new Set([
   "details",
   "option",
   "options",
+  "job",
+  "jobs",
+  "placement",
+  "placements",
+  "condition",
+  "conditions",
+  "route",
+  "routes",
+  "guarantee",
+  "guaranteed",
+  "employment",
+  "outcome",
+  "outcomes",
 ]);
 
 function approvedKnowledgeTerms(query: string) {
@@ -1361,9 +1374,10 @@ export function rankApprovedKnowledgeSources<
   const terms = approvedKnowledgeTerms(query);
   if (!terms.length) return [];
   const identityTerms = terms.filter(term => !KNOWLEDGE_INTENT_TERMS.has(term));
+  const intentTerms = terms.filter(term => KNOWLEDGE_INTENT_TERMS.has(term));
   const queryTerms = new Set(terms);
 
-  return sources
+  const ranked = sources
     .map(source => {
       const title = source.title.toLowerCase();
       const content = (source.content ?? "").toLowerCase();
@@ -1373,34 +1387,52 @@ export function rankApprovedKnowledgeSources<
         qualifier.length &&
         !qualifier.some(term => queryTerms.has(term))
       )
-        return { source, score: 0, identityMatches: 0 };
+        return { source, score: 0, identityMatches: 0, intentMatches: 0 };
 
       const identityMatches = identityTerms.filter(
-        term =>
-          title.includes(term) ||
-          content.includes(term) ||
-          sourceUrl.includes(term)
+        term => title.includes(term) || content.includes(term)
       ).length;
       if (identityTerms.length && identityMatches === 0)
-        return { source, score: 0, identityMatches: 0 };
+        return { source, score: 0, identityMatches: 0, intentMatches: 0 };
 
+      const intentMatches = intentTerms.filter(
+        term => title.includes(term) || content.includes(term)
+      ).length;
       const score = terms.reduce((total, term) => {
         if (title.includes(term)) return total + 4;
         if (content.includes(term)) return total + 2;
         if (sourceUrl.includes(term)) return total + 1;
         return total;
       }, 0);
-      return { source, score, identityMatches };
+      return { source, score, identityMatches, intentMatches };
     })
     .filter(item => item.score > 0)
     .sort(
       (a, b) =>
         b.identityMatches - a.identityMatches ||
+        b.intentMatches - a.intentMatches ||
         b.score - a.score ||
         Number(b.source.updatedAt) - Number(a.source.updatedAt)
-    )
-    .slice(0, 6)
-    .map(item => item.source);
+    );
+
+  const seen = new Set<string>();
+  const selected: T[] = [];
+  for (const item of ranked) {
+    const key = [
+      item.source.title,
+      item.source.content ?? "",
+      item.source.sourceUrl ?? "",
+    ]
+      .join("\n")
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .trim();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    selected.push(item.source);
+    if (selected.length >= 6) break;
+  }
+  return selected;
 }
 
 export async function searchApprovedKnowledge(

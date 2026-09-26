@@ -59,4 +59,36 @@ describe("approved knowledge relevance", () => {
     const result = rankApprovedKnowledgeSources(sources, "finance options");
     expect(result.some(item => item.id === 500)).toBe(true);
   });
+
+  it("does not treat placement-language as product identity and prioritises placement evidence", () => {
+    const duplicate = source(
+      702,
+      "Cyber Security Career Programme — standard pricing and access",
+      "STANDARD PUBLIC PROGRAMME: Cyber Security Career Programme. Total standard price: £1,899 inclusive of VAT. £1 deposit and flexible finance up to 48 months. Do not substitute ELCAS-specific pricing for the standard public price."
+    );
+    const result = rankApprovedKnowledgeSources(
+      [
+        ...sources,
+        duplicate,
+        source(
+          701,
+          "Placement conditions",
+          "The Cyber Security Career Programme includes job placement support. Placement conditions apply under the Terms of Learning."
+        ),
+        {
+          ...source(
+            700,
+            "Registered office",
+            "Course2Career has its registered office in London."
+          ),
+          sourceUrl:
+            "https://example.test/blog/cyber-security-jobs-career-path",
+        },
+      ],
+      "Cyber Security job placement conditions"
+    );
+    expect(result[0]?.id).toBe(701);
+    expect(result.filter(item => item.title.includes("standard pricing"))).toHaveLength(1);
+    expect(result.some(item => item.id === 700)).toBe(false);
+  });
 });
