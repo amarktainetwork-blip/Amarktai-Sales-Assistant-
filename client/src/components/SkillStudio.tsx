@@ -59,6 +59,11 @@ type CapabilityPlan = {
     displayName: string;
     connectionMethod: string;
   };
+  readCapabilities: Array<{
+    capability: string;
+    currentlyAllowed: boolean;
+    currentlyVerified: boolean;
+  }>;
   writeCapabilities: Array<{
     capability: string;
     description: string;
@@ -322,7 +327,10 @@ export function SkillStudio({
       setBusy(`${action}-${id}`);
       await api(`/api/team-admin/skills/${id}/${action}`, {
         method: "PUT",
-        body: "{}",
+        body:
+          action === "archive"
+            ? "{}"
+            : JSON.stringify({ connectedSystemId }),
       });
       toast.success(
         action === "rollback"
@@ -543,6 +551,14 @@ export function SkillStudio({
                           onClick={() => void changeSkill(current.id, "publish")}
                           disabled={
                             !result?.valid ||
+                            Boolean(plan?.missingReadOperations.length) ||
+                            Boolean(
+                              plan?.readCapabilities.some(
+                                capability =>
+                                  !capability.currentlyAllowed ||
+                                  !capability.currentlyVerified
+                              )
+                            ) ||
                             Boolean(plan?.writeApprovalRequired) ||
                             Boolean(
                               plan?.writeCapabilities.length &&
