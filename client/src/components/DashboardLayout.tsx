@@ -168,7 +168,15 @@ export default function DashboardLayout({
     system => system.status === stableCrmAttention
   );
   const timedAttention = useMemo(
-    () => timedWorkAttention(dayPulse.data?.queues.callQueue ?? [], clock),
+    () =>
+      timedWorkAttention(
+        (dayPulse.data?.queues.callQueue ?? []).map(item => ({
+          ...item,
+          dueAt: item.attentionDueAt,
+          headline: item.attentionHeadline ?? item.headline,
+        })),
+        clock
+      ),
     [clock, dayPulse.data?.queues.callQueue]
   );
   const dueAttention = timedAttention?.item;

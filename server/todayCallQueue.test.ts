@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { timedWorkAttention } from "../client/src/lib/timedWorkAttention";
 import { buildTodayCallQueue, unrepresentedTodayTasks } from "./todayCallQueue";
 
 const contacts = [
@@ -65,6 +66,60 @@ describe("Today call queue", () => {
       "Scheduled task due within 30 minutes",
     ]);
     expect(queue[1].primaryKind).toBe("overdue_task");
+  });
+
+  it("keeps a due-soon reminder alertable even when the same customer also has overdue work", () => {
+    const now = new Date("2026-09-18T09:00:00Z");
+    const queue = buildTodayCallQueue({
+      now,
+      contacts,
+      overdueTasks: [
+        {
+          id: 10,
+          connectedSystemId: 8,
+          contactExternalId: "a",
+          title: "Old task",
+          dueAt: new Date("2026-09-17T10:00:00Z"),
+        },
+      ],
+      inbound: [],
+      reminders: [
+        {
+          id: 77,
+          contactExternalId: "a",
+          title: "Scheduled customer callback",
+          dueAt: new Date("2026-09-18T09:20:00Z"),
+          source: "call_commitment",
+        },
+      ],
+      dueToday: [],
+    });
+    expect(queue).toHaveLength(1);
+    expect(queue[0]).toMatchObject({
+      primaryKind: "overdue_task",
+      headline: "Old task",
+      attentionHeadline: "Scheduled customer callback",
+      reasons: [
+        "Overdue task",
+        "Scheduled follow-up due within 30 minutes",
+      ],
+    });
+    expect(queue[0].attentionDueAt?.toISOString()).toBe(
+      "2026-09-18T09:20:00.000Z"
+    );
+    const attention = timedWorkAttention(
+      queue.map(item => ({
+        ...item,
+        dueAt: item.attentionDueAt,
+        headline: item.attentionHeadline ?? item.headline,
+      })),
+      now.valueOf()
+    );
+    expect(attention).toMatchObject({
+      phase: "soon",
+      minutes: 20,
+      item: { headline: "Scheduled customer callback" },
+    });
   });
 
   it("keeps overdue work ahead of an ordinary later follow-up", () => {

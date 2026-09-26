@@ -57,6 +57,8 @@ export type TodayCallQueueItem = {
     | "due_today";
   headline: string;
   dueAt: Date | null;
+  attentionDueAt: Date | null;
+  attentionHeadline: string | null;
   receivedAt: Date | null;
   reasons: string[];
   taskIds: number[];
@@ -252,6 +254,14 @@ export function buildTodayCallQueue(input: {
         primaryKind: candidate.kind,
         headline: candidate.headline,
         dueAt: candidate.dueAt,
+        attentionDueAt:
+          candidate.dueAt && candidate.dueAt.valueOf() >= now.valueOf() - 60_000
+            ? candidate.dueAt
+            : null,
+        attentionHeadline:
+          candidate.dueAt && candidate.dueAt.valueOf() >= now.valueOf() - 60_000
+            ? candidate.headline
+            : null,
         receivedAt: candidate.receivedAt,
         reasons: [candidate.reason],
         taskIds: candidate.taskId ? [candidate.taskId] : [],
@@ -268,6 +278,15 @@ export function buildTodayCallQueue(input: {
     if (candidate.inboundId) existing.inboundIds.push(candidate.inboundId);
     if (candidate.reminderId) existing.reminderIds.push(candidate.reminderId);
     if (candidate.workItemId) existing.workItemIds.push(candidate.workItemId);
+    if (
+      candidate.dueAt &&
+      candidate.dueAt.valueOf() >= now.valueOf() - 60_000 &&
+      (!existing.attentionDueAt ||
+        candidate.dueAt.valueOf() < existing.attentionDueAt.valueOf())
+    ) {
+      existing.attentionDueAt = candidate.dueAt;
+      existing.attentionHeadline = candidate.headline;
+    }
     existing.workCount += 1;
   }
   return Array.from(result.values());
