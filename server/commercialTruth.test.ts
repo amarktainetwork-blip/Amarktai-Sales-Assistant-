@@ -54,6 +54,30 @@ describe("commercial truth", () => {
     );
   });
 
+  it("trusts an explicit CRM Won status even when the current stage is no longer a Won-mapped stage", () => {
+    const truth = deriveCommercialTruth({
+      mappedFields: [],
+      opportunities: [
+        {
+          ...won,
+          stage: "Enrolment – Verbal Yes / Pending Payment",
+          raw: { status: "won", stageExternalId: "pending-stage" },
+        },
+      ],
+      stageMappings: [wonMapping],
+    });
+    expect(truth.payment).toMatchObject({
+      state: "paid",
+      latestPaidOpportunityExternalId: "won-1",
+      historicalPaidCount: 1,
+    });
+    expect(truth.renewal).toMatchObject({
+      state: "proven",
+      basis: "single_mapped_won_opportunity",
+      sourceOpportunityExternalId: "won-1",
+    });
+  });
+
   it("does not treat an open pending-payment opportunity as paid", () => {
     const truth = deriveCommercialTruth({
       mappedFields: [],
