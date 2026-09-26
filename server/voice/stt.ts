@@ -27,13 +27,18 @@ async function enterQueue() {
   const maxWaiting = Math.min(40, positiveInt(process.env.STT_MAX_QUEUE, 8));
   if (activeTranscriptions < concurrency) {
     activeTranscriptions += 1;
-    return;
+    return {
+      queueWaitMs: 0,
+      activeAtStart: activeTranscriptions,
+      waitingAtStart: waitingTranscriptions,
+    };
   }
   if (waitingTranscriptions >= maxWaiting)
     throw new Error("Speech transcription is busy. Wait a moment, then retry this audio chunk.");
   waitingTranscriptions += 1;
+  const waitingAtStart = waitingTranscriptions;
+  const started = Date.now();
   await new Promise<void>((resolve, reject) => {
-    const started = Date.now();
     const timer = setInterval(() => {
       if (activeTranscriptions < concurrency) {
         clearInterval(timer);
@@ -48,6 +53,11 @@ async function enterQueue() {
     }, 50);
     timer.unref?.();
   });
+  return {
+    queueWaitMs: Date.now() - started,
+    activeAtStart: activeTranscriptions,
+    waitingAtStart,
+  };
 }
 
 function leaveQueue() {
@@ -268,14 +278,20 @@ async function requestTranscription(input: {
 export async function transcribeAudio(
   bytes: Buffer,
   mimeType: string,
-  language?: string
+  language?: string,
+  onQueue?: (metrics: {
+    queueWaitMs: number;
+    activeAtStart: number;
+    waitingAtStart: number;
+  }) => void
 ) {
   const target = transcriptionTarget(language);
   if (!target.endpoint || !target.model)
     throw new Error("Speech-to-text is not configured.");
   if (!ALLOWED_STT_MIME.has(mimeType))
     throw new Error("Unsupported audio type.");
-  await enterQueue();
+  const queueMetrics = await enterQueue();
+  onQueue?.(queueMetrics);
   try {
     const normalized = await normalizeAudioForWhisper(bytes, mimeType);
     try {
