@@ -2,6 +2,13 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { friendlyError } from "@/lib/friendlyError";
+import {
+  LIVE_AUDIO_MAX_LOCAL_BACKLOG_MS,
+  LIVE_AUDIO_MAX_WAITING_CHUNKS,
+  audioFrameRms,
+  hasEnoughVoicedAudio,
+  transcriptionQueueHasCapacity,
+} from "@/lib/liveAudioPipeline";
 import { trpc } from "@/lib/trpc";
 import {
   emptyLiveStructuredNotes,
@@ -245,8 +252,8 @@ async function getCaptureStream(
 ) {
   const mic = await navigator.mediaDevices.getUserMedia({
     audio: {
-      echoCancellation: false,
-      noiseSuppression: false,
+      echoCancellation: true,
+      noiseSuppression: true,
       autoGainControl: true,
       channelCount: 1,
       ...(microphoneDeviceId
@@ -332,6 +339,7 @@ export default function LiveCalls() {
   const sourcesRef = useRef<MediaStream[]>([]);
   const audioContextRef = useRef<AudioContext | undefined>(undefined);
   const pendingRef = useRef<Promise<void>>(Promise.resolve());
+  const pendingChunkCountRef = useRef(0);
   const transcriptRef = useRef("");
   const conversationStateRef = useRef("");
   const [showTranscript, setShowTranscript] = useState(false);
@@ -529,7 +537,11 @@ export default function LiveCalls() {
     }, delay);
   }
 
-  async function uploadChunk(blob: Blob, activeSessionId: number) {
+  async function uploadChunk(
+    blob: Blob,
+    activeSessionId: number,
+    durationMs = LIVE_AUDIO_CHUNK_MS
+  ) {
     if (!blob.size) return;
     const base64 = await blobToBase64(blob);
     const mimeType = (blob.type || "audio/webm").split(";")[0];
@@ -539,7 +551,7 @@ export default function LiveCalls() {
         callSessionId: activeSessionId,
         audioBase64: base64,
         mimeType,
-        durationMs: LIVE_AUDIO_CHUNK_MS,
+        durationMs,
       }
     );
     setStructuredNotes(current => {
@@ -629,55 +641,112 @@ export default function LiveCalls() {
     const context = audioContextRef.current || new AudioContext();
     audioContextRef.current = context;
     const source = context.createMediaStreamSource(stream);
+    const highPass = context.createBiquadFilter();
+    highPass.type = "highpass";
+    highPass.frequency.value = 80;
+    highPass.Q.value = 0.7;
+    const compressor = context.createDynamicsCompressor();
+    compressor.threshold.value = -45;
+    compressor.knee.value = 18;
+    compressor.ratio.value = 4;
+    compressor.attack.value = 0.005;
+    compressor.release.value = 0.18;
     const processor = context.createScriptProcessor(4096, 1, 1);
-    const sink = context.createGain();
-    // ScriptProcessor callbacks are only guaranteed while the node participates
-    // in an audible render graph. Muting the processor output itself to zero can
-    // cause Chromium to optimise the branch away and deliver silent buffers.
-    // Keep the processor branch alive and mute the source through a parallel
-    // zero-gain monitor instead.
+    // ScriptProcessor callbacks require an active render branch. The callback
+    // never writes to the output buffer, so this branch remains silent.
     const silentMonitor = context.createGain();
     silentMonitor.gain.value = 0;
     const samples: number[] = [];
+    let voicedSamples = 0;
+    let peakRms = 0;
     let lastFlushAt = performance.now();
     let lastMeterAt = 0;
 
+    const pauseForBackpressure = () => {
+      recordingRef.current = false;
+      setRecording(false);
+      sourcesRef.current.forEach(sourceStream =>
+        sourceStream.getTracks().forEach(track => track.stop())
+      );
+      sourcesRef.current = [];
+      const detail =
+        "Live transcription paused because speech processing fell more than 30 seconds behind. The transcript already captured is safe; restart the microphone to continue.";
+      setWorkflowError(detail);
+      setRetryAction(() => () => void begin());
+      toast.error(detail);
+    };
+
     const flush = () => {
-      if (!samples.length) return;
+      if (!samples.length) return true;
+      if (
+        !transcriptionQueueHasCapacity(
+          pendingChunkCountRef.current,
+          LIVE_AUDIO_MAX_WAITING_CHUNKS
+        )
+      ) {
+        const backlogMs = (samples.length / context.sampleRate) * 1000;
+        if (backlogMs >= LIVE_AUDIO_MAX_LOCAL_BACKLOG_MS)
+          pauseForBackpressure();
+        return false;
+      }
+
       const captured = Float32Array.from(samples.splice(0));
+      const speech = hasEnoughVoicedAudio({
+        voicedSamples,
+        sampleRate: context.sampleRate,
+        peakRms,
+      });
+      voicedSamples = 0;
+      peakRms = 0;
+      if (!speech) return true;
+
       const normalized = downsamplePcm(captured, context.sampleRate);
       const blob = encodePcmWav(normalized, 16_000);
+      const durationMs = Math.max(
+        1,
+        Math.round((captured.length / context.sampleRate) * 1000)
+      );
+      pendingChunkCountRef.current += 1;
       pendingRef.current = pendingRef.current
-        .then(() => uploadChunk(blob, activeSessionId))
+        .then(() => uploadChunk(blob, activeSessionId, durationMs))
         .catch(error => {
           const detail = callError(
             error,
             "Live transcription was interrupted. Your existing call notes are still available."
           );
           setWorkflowError(detail);
-          setRetryAction(() => () => void uploadChunk(blob, activeSessionId));
+          setRetryAction(
+            () => () => void uploadChunk(blob, activeSessionId, durationMs)
+          );
           toast.error(detail);
+        })
+        .finally(() => {
+          pendingChunkCountRef.current = Math.max(
+            0,
+            pendingChunkCountRef.current - 1
+          );
         });
+      return true;
     };
 
     processor.onaudioprocess = event => {
       if (!recordingRef.current) return;
       const input = event.inputBuffer.getChannelData(0);
-      let energy = 0;
-      for (let index = 0; index < input.length; index++) {
-        samples.push(input[index]);
-        energy += input[index] * input[index];
-      }
+      const rms = audioFrameRms(input);
+      for (let index = 0; index < input.length; index++) samples.push(input[index]);
+      if (rms >= 0.006) voicedSamples += input.length;
+      peakRms = Math.max(peakRms, rms);
       if (performance.now() - lastMeterAt > 250) {
         lastMeterAt = performance.now();
-        setMicLevel(Math.sqrt(energy / Math.max(1, input.length)));
+        setMicLevel(rms);
       }
       if (performance.now() - lastFlushAt >= LIVE_AUDIO_CHUNK_MS) {
-        lastFlushAt = performance.now();
-        flush();
+        if (flush()) lastFlushAt = performance.now();
       }
     };
-    source.connect(processor);
+    source.connect(highPass);
+    highPass.connect(compressor);
+    compressor.connect(processor);
     processor.connect(context.destination);
     source.connect(silentMonitor);
     silentMonitor.connect(context.destination);
@@ -687,8 +756,7 @@ export default function LiveCalls() {
         recordingRef.current &&
         performance.now() - lastFlushAt >= LIVE_AUDIO_CHUNK_MS
       ) {
-        lastFlushAt = performance.now();
-        flush();
+        if (flush()) lastFlushAt = performance.now();
       }
     }, 250);
   }
