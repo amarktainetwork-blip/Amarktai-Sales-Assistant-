@@ -73,7 +73,7 @@ describe("client-handover AmarktAI contract", () => {
     expect(assistantRoute).toContain("isSafeAssistantMemory");
     expect(assistantRoute).toContain("getClientActionConfiguration");
     expect(assistantRoute).toContain(
-      "No approved communication templates are commissioned"
+      "No approved communication templates are published"
     );
   });
 });
