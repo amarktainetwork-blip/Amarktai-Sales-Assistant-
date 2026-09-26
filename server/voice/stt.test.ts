@@ -46,6 +46,35 @@ describe("built-in speech transcription", () => {
     await expect(transcribeAudio(Buffer.from("RIFF-test-audio"), "audio/wav", "en")).resolves.toBe("The sales assistant voice test");
   });
 
+  it("reports bounded queue telemetry for live-call capacity monitoring", async () => {
+    process.env.STT_TRANSCRIPTIONS_URL = "http://stt.test/inference";
+    process.env.STT_MODEL = "ggml-base-q5_1";
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ text: "Measured transcript" }))
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const metrics: Array<{
+      queueWaitMs: number;
+      activeAtStart: number;
+      waitingAtStart: number;
+    }> = [];
+    await expect(
+      transcribeAudio(
+        Buffer.from("RIFF-test-audio"),
+        "audio/wav",
+        "en",
+        value => metrics.push(value)
+      )
+    ).resolves.toBe("Measured transcript");
+    expect(metrics).toEqual([
+      expect.objectContaining({
+        queueWaitMs: 0,
+        activeAtStart: 1,
+        waitingAtStart: 0,
+      }),
+    ]);
+  });
+
   it("routes English live audio to the fast lane and keeps multilingual fallback", async () => {
     process.env.STT_TRANSCRIPTIONS_URL = "http://stt.test/inference";
     process.env.STT_MODEL = "ggml-base-q5_1";
