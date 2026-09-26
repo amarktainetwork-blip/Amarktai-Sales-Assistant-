@@ -22,6 +22,7 @@ import { listConnectedSystemsForUser } from "./connectedSystems";
 import { planAssistantCrmBatchInstruction } from "./crm/assistantBatchExecution";
 import { routeConnectedSystemActions } from "./crmRouter";
 import { tryPrepareDirectAssistantAction } from "./assistantDirectActions";
+import { listPublishedCommunicationTemplates } from "./approvedTemplates";
 import { attachRuntimeOperationReadiness } from "./crm/runtimeCapabilities";
 import { getClientActionConfiguration } from "./clientActionConfiguration";
 import { syncConnectedSystemsForUser } from "./crm/sync";
@@ -504,22 +505,47 @@ export function registerAssistantRoutes(app: Express) {
           latestUserMessage
         );
       if (asksAboutTemplates) {
-        const configuration = await getClientActionConfiguration({
-          organisationId: membership.organisationId,
-        });
-        const templates = Object.values(configuration.templates);
+        const [configuration, publishedCatalogue] = await Promise.all([
+          getClientActionConfiguration({
+            organisationId: membership.organisationId,
+          }),
+          listPublishedCommunicationTemplates({
+            organisationId: membership.organisationId,
+          }),
+        ]);
+        const templates = Array.from(
+          new Map(
+            [
+              ...Object.values(configuration.templates).map(template => ({
+                key: template.key,
+                name: template.templateName,
+                channel: template.channel,
+                subject: undefined as string | undefined,
+              })),
+              ...publishedCatalogue.map(template => ({
+                key: template.templateKey,
+                name: template.title,
+                channel: template.metadata?.channel,
+                subject: template.metadata?.subject,
+              })),
+            ].map(template => [
+              `${template.key}:${template.channel || "unknown"}`,
+              template,
+            ])
+          ).values()
+        );
         return res.json({
           content: templates.length
             ? [
-                "These communication templates are commissioned for this workspace:",
+                "These communication templates are approved for review-controlled use in this workspace:",
                 ...templates.map(
                   template =>
-                    `• ${template.templateName} · ${template.channel.toUpperCase()}`
+                    `• ${template.name} · ${template.channel?.toUpperCase() || "CHANNEL NOT CATALOGUED"}${template.subject ? ` · ${template.subject}` : ""}`
                 ),
                 "",
-                "I can use an exact commissioned template when you name it. Nothing will be sent without the required Review and authority.",
+                "I can use an exact approved template when you name it. Nothing will be sent without the required Review and authority.",
               ].join("\n")
-            : "No approved communication templates are commissioned in this workspace yet. I can still prepare a grounded customer-specific draft for Review, but I will not pretend it came from a saved template.",
+            : "No approved communication templates are published in this workspace yet. I can still prepare a grounded customer-specific draft for Review, but I will not pretend it came from a saved template.",
         });
       }
 
@@ -831,6 +857,7 @@ export function registerAssistantRoutes(app: Express) {
         user,
         listedSystems,
         clientActions,
+        publishedTemplates,
       ] = await Promise.all([
         searchApprovedKnowledge(userId, membership.organisationId, query),
         getAssistantOperationalContext(userId, membership.organisationId),
@@ -843,6 +870,9 @@ export function registerAssistantRoutes(app: Express) {
         getUserById(userId),
         listConnectedSystemsForUser(userId, membership.organisationId),
         getClientActionConfiguration({
+          organisationId: membership.organisationId,
+        }),
+        listPublishedCommunicationTemplates({
           organisationId: membership.organisationId,
         }),
       ]);
@@ -934,13 +964,28 @@ export function registerAssistantRoutes(app: Express) {
               mode: operation.mode,
             })),
         })),
-        communicationTemplates: Object.values(clientActions.templates).map(
-          template => ({
-            key: template.key,
-            name: template.templateName,
-            channel: template.channel,
-            source: template.source,
-          })
+        communicationTemplates: Array.from(
+          new Map(
+            [
+              ...Object.values(clientActions.templates).map(template => ({
+                key: template.key,
+                name: template.templateName,
+                channel: template.channel,
+                source: template.source,
+              })),
+              ...publishedTemplates.map(template => ({
+                key: template.templateKey,
+                name: template.title,
+                channel: template.metadata?.channel || null,
+                subject: template.metadata?.subject || null,
+                purpose: template.metadata?.purpose || null,
+                source: "approved_genie_catalogue",
+              })),
+            ].map(template => [
+              `${template.key}:${template.channel || "unknown"}`,
+              template,
+            ])
+          ).values()
         ),
         workflowTemplateMappings: Object.fromEntries(
           Object.entries(clientActions.workflows).map(([key, workflow]) => [

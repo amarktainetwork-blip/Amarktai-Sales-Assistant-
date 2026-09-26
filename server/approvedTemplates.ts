@@ -12,6 +12,31 @@ function templateKey(value: string) {
     .slice(0, 140);
 }
 
+export async function listPublishedCommunicationTemplates(input: {
+  organisationId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  return db
+    .select({
+      id: approvalTemplates.id,
+      templateKey: approvalTemplates.templateKey,
+      version: approvalTemplates.version,
+      title: approvalTemplates.title,
+      metadata: approvalTemplates.metadata,
+      publishedAt: approvalTemplates.publishedAt,
+    })
+    .from(approvalTemplates)
+    .where(
+      and(
+        eq(approvalTemplates.organisationId, input.organisationId),
+        eq(approvalTemplates.status, "published")
+      )
+    )
+    .orderBy(desc(approvalTemplates.updatedAt), desc(approvalTemplates.version))
+    .limit(300);
+}
+
 export async function resolveApprovedCommunicationTemplate(input: {
   organisationId: number;
   channel: SalesChannel;
