@@ -21,6 +21,7 @@ import {
 import { getDb } from "./db";
 import {
   FEATURE_ACCEPTANCE_NAMES,
+  callCrmReadbackAcceptance,
   evaluateStrictClientAcceptance,
   operationStatus,
   result,
@@ -458,16 +459,16 @@ async function main() {
             item.executionResult
         )
       : undefined;
-    matrix.CALL_CRM_READBACK = readbackProposal
-      ? result(
-          "LIVE_PROVEN",
-          "The completed production call has an executed closeout proposal with stored CRM result/readback.",
-          { callSessionId: completedCall?.id, proposalId: readbackProposal.id }
-        )
-      : result(
-          "NOT_CONFIGURED",
-          "No production call-to-CRM execution and readback evidence was found."
-        );
+    matrix.CALL_CRM_READBACK = callCrmReadbackAcceptance({
+      writesEnabled: enabledWrites.size > 0,
+      hasReadback: Boolean(readbackProposal),
+      evidence: readbackProposal
+        ? {
+            callSessionId: completedCall?.id,
+            proposalId: readbackProposal.id,
+          }
+        : undefined,
+    });
     const reviewedProposal = proposals.find(item =>
       ["approved", "skipped", "executed"].includes(item.state)
     );
