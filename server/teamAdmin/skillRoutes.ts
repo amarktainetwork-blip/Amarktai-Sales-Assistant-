@@ -86,6 +86,7 @@ async function publishSkill(input: {
   organisationId: number;
   id: number;
   actorUserId: number;
+  connectedSystemId?: number;
   eventType: "skill_version_published" | "skill_version_rolled_back";
 }) {
   const db = await getDb();
@@ -93,6 +94,11 @@ async function publishSkill(input: {
   const skill = await scopedSkill(input.organisationId, input.id);
   const definition = normalizeSkillDefinition(skill.inputSchema);
   const simulation = simulateSkillDefinition(definition);
+  const requiresRead =
+    definition.requiredReadCapabilities.length > 0 ||
+    definition.requiredOperations.some(operation =>
+      operation.startsWith("custom.read.")
+    );
   const requiresWrite =
     definition.requiredWriteCapabilities.length > 0 ||
     definition.requiredOperations.some(operation =>
@@ -105,22 +111,42 @@ async function publishSkill(input: {
     throw new Error(
       "WRITE_APPROVAL_REQUIRED: review and approve the exact CRM writes required by this skill before publishing it."
     );
-  if (requiresWrite) {
-    const connectedSystemId = definition.writeApproval.connectedSystemId;
+
+  const connectedSystemId =
+    definition.writeApproval.connectedSystemId || input.connectedSystemId;
+  let plan: Awaited<ReturnType<typeof buildSkillCapabilityPlan>> | undefined;
+  if (requiresRead || requiresWrite) {
     if (!connectedSystemId)
       throw new Error(
-        "WRITE_COMMISSIONING_REQUIRED: choose the exact CRM connection for this skill before publication."
+        requiresWrite
+          ? "WRITE_COMMISSIONING_REQUIRED: choose the exact CRM connection for this skill before publication."
+          : "READ_COMMISSIONING_REQUIRED: choose the exact CRM connection and prove every required read before publication."
       );
-    const plan = await buildSkillCapabilityPlan({
+    plan = await buildSkillCapabilityPlan({
       organisationId: input.organisationId,
       connectedSystemId,
       definition,
     });
-    if (!plan.canExecuteWrites)
-      throw new Error(
-        "WRITE_COMMISSIONING_REQUIRED: the approved write plan is not fully commissioned and LIVE_PROVEN yet."
-      );
   }
+
+  if (
+    requiresRead &&
+    plan &&
+    (plan.missingReadOperations.length > 0 ||
+      plan.readCapabilities.some(
+        capability =>
+          !capability.currentlyAllowed || !capability.currentlyVerified
+      ))
+  )
+    throw new Error(
+      "READ_COMMISSIONING_REQUIRED: every CRM read required by this skill must be allowed and LIVE_PROVEN before publication."
+    );
+
+  if (requiresWrite && plan && !plan.canExecuteWrites)
+    throw new Error(
+      "WRITE_COMMISSIONING_REQUIRED: the approved write plan is not fully commissioned and LIVE_PROVEN yet."
+    );
+
   if (!simulation.valid)
     throw new Error(
       "SKILL_SIMULATION_REQUIRED: this version must pass every simulation check before publication."
@@ -163,6 +189,7 @@ async function publishSkill(input: {
       organisationId: input.organisationId,
       playbookKey: skill.playbookKey,
       version: skill.version,
+      connectedSystemId: connectedSystemId || null,
     },
   });
   return { ok: true, status: "published", simulation };
@@ -654,6 +681,11 @@ export function registerSkillBuilderRoutes(app: Express) {
           organisationId: membership.organisationId,
           id,
           actorUserId: user.id,
+          connectedSystemId:
+            Number.isInteger(Number(req.body?.connectedSystemId)) &&
+            Number(req.body?.connectedSystemId) > 0
+              ? Number(req.body.connectedSystemId)
+              : undefined,
           eventType: "skill_version_published",
         })
       );
@@ -673,6 +705,11 @@ export function registerSkillBuilderRoutes(app: Express) {
           organisationId: membership.organisationId,
           id,
           actorUserId: user.id,
+          connectedSystemId:
+            Number.isInteger(Number(req.body?.connectedSystemId)) &&
+            Number(req.body?.connectedSystemId) > 0
+              ? Number(req.body.connectedSystemId)
+              : undefined,
           eventType: "skill_version_rolled_back",
         })
       );
