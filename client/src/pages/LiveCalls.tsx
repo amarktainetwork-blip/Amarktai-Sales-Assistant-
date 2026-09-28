@@ -404,6 +404,16 @@ export default function LiveCalls() {
     setContactExternalId(context?.contactExternalId || "");
     setTaskExternalId(context?.taskExternalId || "");
     setOpportunityExternalId(context?.opportunityExternalId || "");
+    if (callContext.data.transcript) {
+      transcriptRef.current = callContext.data.transcript;
+      setTranscript(callContext.data.transcript);
+    }
+    if (callContext.data.coachNotes) setTip(callContext.data.coachNotes);
+    if (callContext.data.status === "ready_for_review") {
+      setRecording(false);
+      setCloseoutConfirmed(false);
+      setAwaitingCloseout(true);
+    }
   }, [callContext.data]);
 
   useEffect(() => {
