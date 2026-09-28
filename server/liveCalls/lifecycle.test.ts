@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   LIVE_CALL_ABANDON_GRACE_MS,
+  checkpointTranscript,
   shouldCheckpointAbandonedLiveCall,
 } from "./store";
 
@@ -13,6 +14,12 @@ const client = readFileSync(
 );
 
 describe("live call recoverable lifecycle", () => {
+  it("never lets a stale browser checkpoint erase a newer server transcript", () => {
+    expect(checkpointTranscript("first\nsecond", "first")).toBe("first\nsecond");
+    expect(checkpointTranscript("first", "first\nsecond")).toBe("first\nsecond");
+    expect(checkpointTranscript(null, "captured")).toBe("captured");
+  });
+
   it("only checkpoints genuinely stale in-progress sessions", () => {
     const nowMs = new Date("2026-09-28T12:00:00.000Z").valueOf();
     expect(
