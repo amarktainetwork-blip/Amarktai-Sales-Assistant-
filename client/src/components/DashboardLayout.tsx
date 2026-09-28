@@ -98,6 +98,8 @@ export default function DashboardLayout({
       retry: false,
       refetchInterval: 60_000,
       refetchIntervalInBackground: true,
+      refetchOnWindowFocus: true,
+      refetchOnReconnect: true,
     }
   );
   const inbox = trpc.sales.inbox.useQuery(
@@ -107,6 +109,8 @@ export default function DashboardLayout({
       retry: false,
       refetchInterval: 15_000,
       refetchIntervalInBackground: true,
+      refetchOnWindowFocus: true,
+      refetchOnReconnect: true,
     }
   );
   const dayPulse = trpc.sales.today.useQuery(
@@ -116,6 +120,8 @@ export default function DashboardLayout({
       retry: false,
       refetchInterval: 30_000,
       refetchIntervalInBackground: true,
+      refetchOnWindowFocus: true,
+      refetchOnReconnect: true,
     }
   );
   const connectedSystems = trpc.connectedSystems.list.useQuery(
@@ -125,6 +131,8 @@ export default function DashboardLayout({
       retry: false,
       refetchInterval: 30_000,
       refetchIntervalInBackground: true,
+      refetchOnWindowFocus: true,
+      refetchOnReconnect: true,
     }
   );
   const integrationReadiness = trpc.integrations.list.useQuery(undefined, {

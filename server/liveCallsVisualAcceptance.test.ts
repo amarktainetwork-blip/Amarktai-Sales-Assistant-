@@ -39,7 +39,7 @@ describe("client-handover live calls presentation", () => {
     expect(liveCalls).toContain('write(0, "RIFF")');
     expect(liveCalls).toContain('write(8, "WAVE")');
     expect(liveCalls).toContain('type: "audio/wav"');
-    expect(liveCalls).toContain("const LIVE_AUDIO_CHUNK_MS = 2_500");
+    expect(liveCalls).toContain("const LIVE_AUDIO_CHUNK_MS = 2_000");
     expect(liveCalls).toContain("context.createScriptProcessor");
     expect(liveCalls).not.toContain("recorder.start(LIVE_AUDIO_CHUNK_MS)");
   });
@@ -54,6 +54,13 @@ describe("client-handover live calls presentation", () => {
     expect(liveCalls).toContain("function scheduleCoaching");
     expect(liveCalls).toContain("eventPacket.slice(-1_500)");
     expect(liveCalls).toContain("coachedSignalRef");
+  });
+
+  it("checkpoints call capture before review and on accidental page exit", () => {
+    expect(liveCalls).toContain('"/api/live-calls/stop"');
+    expect(liveCalls).toContain("checkpointSessionForReview");
+    expect(liveCalls).toContain("navigator.sendBeacon");
+    expect(liveCalls).toContain("await pendingRef.current");
   });
 
   it("keeps the complete prepare-call-assist-closeout workflow", () => {

@@ -1,0 +1,91 @@
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+import {
+  LIVE_CALL_ABANDON_GRACE_MS,
+  assertLiveCallState,
+  checkpointTranscript,
+  shouldCheckpointAbandonedLiveCall,
+} from "./store";
+
+const routes = readFileSync(new URL("./routes.ts", import.meta.url), "utf8");
+const contextSource = readFileSync(new URL("./context.ts", import.meta.url), "utf8");
+const storeSource = readFileSync(new URL("./store.ts", import.meta.url), "utf8");
+const client = readFileSync(
+  new URL("../../client/src/pages/LiveCalls.tsx", import.meta.url),
+  "utf8"
+);
+
+describe("live call recoverable lifecycle", () => {
+  it("never lets a stale browser checkpoint erase a newer server transcript", () => {
+    expect(checkpointTranscript("first\nsecond", "first")).toBe("first\nsecond");
+    expect(checkpointTranscript("first", "first\nsecond")).toBe("first\nsecond");
+    expect(checkpointTranscript(null, "captured")).toBe("captured");
+  });
+
+  it("enforces in-progress capture and review-only closeout transitions", () => {
+    expect(() =>
+      assertLiveCallState("ready_for_review", ["in_progress"], "Transcription")
+    ).toThrow("LIVE_CALL_STATE");
+    expect(() =>
+      assertLiveCallState("in_progress", ["ready_for_review"], "Closeout")
+    ).toThrow("LIVE_CALL_STATE");
+    expect(() =>
+      assertLiveCallState("ready_for_review", ["ready_for_review"], "Closeout")
+    ).not.toThrow();
+  });
+
+  it("only checkpoints genuinely stale in-progress sessions", () => {
+    const nowMs = new Date("2026-09-28T12:00:00.000Z").valueOf();
+    expect(
+      shouldCheckpointAbandonedLiveCall({
+        status: "in_progress",
+        updatedAt: new Date(nowMs - LIVE_CALL_ABANDON_GRACE_MS - 1),
+        nowMs,
+      })
+    ).toBe(true);
+    expect(
+      shouldCheckpointAbandonedLiveCall({
+        status: "in_progress",
+        updatedAt: new Date(nowMs - LIVE_CALL_ABANDON_GRACE_MS + 1),
+        nowMs,
+      })
+    ).toBe(false);
+    expect(
+      shouldCheckpointAbandonedLiveCall({
+        status: "ready_for_review",
+        updatedAt: new Date(nowMs - LIVE_CALL_ABANDON_GRACE_MS * 4),
+        nowMs,
+      })
+    ).toBe(false);
+  });
+
+  it("uses in-progress -> ready-for-review -> completed without allowing a late stop downgrade", () => {
+    expect(storeSource).toContain('if (session.status === "completed")');
+    expect(storeSource).toContain('status: "completed"');
+    expect(client).toContain('status: "ready_for_review" | "completed"');
+  });
+
+  it("persists the canonical Review workflow id before marking closeout completed", () => {
+    const workflowIndex = routes.indexOf("await prepareClaimedCloseoutWorkflow");
+    const completeIndex = routes.indexOf("await completeLiveCallExact");
+    expect(routes).toContain("closeoutWorkflowRunId: claim.workflowRunId");
+    expect(workflowIndex).toBeGreaterThan(-1);
+    expect(completeIndex).toBeGreaterThan(workflowIndex);
+  });
+
+  it("restores ready-for-review sessions after navigation instead of stranding closeout", () => {
+    expect(contextSource).toContain("await reconcileAbandonedLiveCallsForUser");
+    expect(contextSource).toContain('transcript: session.transcript || ""');
+    expect(contextSource).toContain('coachNotes: session.coachNotes || ""');
+    expect(client).toContain('callContext.data.status === "ready_for_review"');
+    expect(client).toContain("setAwaitingCloseout(true)");
+    expect(client).toContain("transcriptRef.current = callContext.data.transcript");
+  });
+
+  it("reconciles abandoned sessions without fabricating outcomes", () => {
+    expect(routes).toContain("reconcileAbandonedLiveCallsForUser");
+    expect(routes).toContain("/api/live-calls/readiness");
+    expect(client).toContain('navigator.sendBeacon("/api/live-calls/stop"');
+    expect(client).toContain("checkpointSessionForReview(activeSessionId, \"\")");
+  });
+});

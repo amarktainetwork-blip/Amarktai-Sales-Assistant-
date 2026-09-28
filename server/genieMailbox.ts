@@ -2,6 +2,7 @@ import { isRetryableGenieMailboxRead } from "./genieMailboxRetry";
 import { readPersonalGenieMailbox } from "./browserConnectors/genieMailboxRead";
 import { and, asc, desc, eq, inArray, lte } from "drizzle-orm";
 import {
+  assistantReminders,
   inboundMessages,
   organisationMembers,
   organisations,
@@ -91,6 +92,83 @@ export function outboundGenieReplyMatchesInbound(
     genieInboundConversationId(inbound.classification) ===
       evidence.conversationExternalId
   );
+}
+
+export function inboundReminderMessageId(
+  sourceReference: string | null | undefined
+) {
+  const match = /^inbound:(\d+):commitment$/.exec(sourceReference?.trim() || "");
+  if (!match) return undefined;
+  const id = Number(match[1]);
+  return Number.isInteger(id) && id > 0 ? id : undefined;
+}
+
+async function reconcileHandledInboundReminders(input: {
+  userId: number;
+  organisationId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const reminders = await db
+    .select({
+      id: assistantReminders.id,
+      sourceReference: assistantReminders.sourceReference,
+    })
+    .from(assistantReminders)
+    .where(
+      and(
+        eq(assistantReminders.organisationId, input.organisationId),
+        eq(assistantReminders.userId, input.userId),
+        eq(assistantReminders.source, "inbound"),
+        inArray(assistantReminders.status, ["open", "snoozed"])
+      )
+    )
+    .limit(200);
+  const reminderMessageIds = reminders
+    .map(reminder => ({
+      reminderId: reminder.id,
+      messageId: inboundReminderMessageId(reminder.sourceReference),
+    }))
+    .filter(
+      (row): row is { reminderId: number; messageId: number } =>
+        Boolean(row.messageId)
+    );
+  if (!reminderMessageIds.length) return 0;
+  const messages = await db
+    .select({
+      id: inboundMessages.id,
+      status: inboundMessages.status,
+      needsAction: inboundMessages.needsAction,
+    })
+    .from(inboundMessages)
+    .where(
+      and(
+        eq(inboundMessages.organisationId, input.organisationId),
+        eq(inboundMessages.mailboxUserId, input.userId),
+        inArray(
+          inboundMessages.id,
+          reminderMessageIds.map(row => row.messageId)
+        )
+      )
+    );
+  const handledMessageIds = new Set(
+    messages
+      .filter(message => !message.needsAction || message.status === "archived")
+      .map(message => message.id)
+  );
+  const reminderIds = reminderMessageIds
+    .filter(row => handledMessageIds.has(row.messageId))
+    .map(row => row.reminderId);
+  if (!reminderIds.length) return 0;
+  await db
+    .update(assistantReminders)
+    .set({
+      status: "completed",
+      completedAt: new Date(),
+      snoozedUntil: null,
+    })
+    .where(inArray(assistantReminders.id, reminderIds));
+  return reminderIds.length;
 }
 
 async function reconcileGenieOutboundReplies(input: {
@@ -446,6 +524,10 @@ export async function syncGenieMailboxForUser(input: {
     connectedSystemId: system.id,
     outboundEvidence: proof.outboundEvidence,
   });
+  const handledReminders = await reconcileHandledInboundReminders({
+    userId: input.userId,
+    organisationId: input.organisationId,
+  });
 
   await recordAudit({
     userId: input.userId,
@@ -459,6 +541,7 @@ export async function syncGenieMailboxForUser(input: {
       checkedConversations: checked,
       received,
       handledReplies,
+      handledReminders,
       outboundEvidence: proof.outboundEvidence.length,
       legacyConversationLinks: proof.legacyConversationLinks.length,
       legacyActionableChecked: actionableBackfill.length,
@@ -481,6 +564,7 @@ export async function syncGenieMailboxForUser(input: {
     checked,
     received,
     handledReplies,
+    handledReminders,
     draftsPrepared,
     rejectedForeignRecipientCount:
       proof.rejectedForeignRecipientCount + foreignRecipientRows.length,

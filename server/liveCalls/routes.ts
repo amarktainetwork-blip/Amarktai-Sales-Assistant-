@@ -17,7 +17,13 @@ import { listConnectedSystemsForUser } from "../connectedSystems";
 import { routeConnectedSystemActions } from "../crmRouter";
 import { detectLiveSignals, isRoutineCallSpeech } from "./signals";
 import { structuredNotesFromSignals } from "../../shared/liveCallNotes";
-import { completeLiveCallExact, requireLiveCallOwner } from "./store";
+import {
+  assertLiveCallState,
+  completeLiveCallExact,
+  markLiveCallReadyForReview,
+  reconcileAbandonedLiveCallsForUser,
+  requireLiveCallOwner,
+} from "./store";
 import { completeCallbackWorkAfterVerifiedCall } from "../salesWork";
 import { parseLiveCallCompletion } from "./completion";
 import { planTelesalesCloseout } from "../telesales/closeoutPlanner";
@@ -97,7 +103,10 @@ function sendLiveCallError(res: Response, error: unknown) {
     )
   )
     return res.status(400).json({ error: detail.slice(0, 300) });
-  if (detail.startsWith("CLOSEOUT_PROCESSING"))
+  if (
+    detail.startsWith("CLOSEOUT_PROCESSING") ||
+    detail.startsWith("LIVE_CALL_STATE:")
+  )
     return res.status(409).json({ error: detail });
   console.error(
     JSON.stringify({
@@ -113,8 +122,12 @@ function sendLiveCallError(res: Response, error: unknown) {
 export function registerLiveCallRoutes(app: Express) {
   app.get("/api/live-calls/readiness", async (req, res) => {
     try {
-      await requireAuthorisedUser(req);
-      return res.json(await probeSttHealth());
+      const user = await requireAuthorisedUser(req);
+      const lifecycle = await reconcileAbandonedLiveCallsForUser({
+        userId: user.id,
+        organisationId: user.membership.organisationId,
+      });
+      return res.json({ ...(await probeSttHealth()), lifecycle });
     } catch (error) {
       return sendLiveCallError(res, error);
     }
@@ -128,11 +141,12 @@ export function registerLiveCallRoutes(app: Express) {
         return res
           .status(400)
           .json({ error: "A valid live call session is required." });
-      await requireLiveCallOwner(
+      const session = await requireLiveCallOwner(
         user.id,
         user.membership.organisationId,
         callSessionId
       );
+      assertLiveCallState(session.status, ["in_progress"], "Transcription");
       const mimeType = String(req.body?.mimeType || "")
         .split(";")[0]
         .toLowerCase();
@@ -259,6 +273,7 @@ export function registerLiveCallRoutes(app: Express) {
         user.membership.organisationId,
         callSessionId
       );
+      assertLiveCallState(session.status, ["in_progress"], "Live coaching");
       const abort = new AbortController();
       res.on("close", () => {
         if (!res.writableEnded) abort.abort();
@@ -397,6 +412,7 @@ export function registerLiveCallRoutes(app: Express) {
         user.membership.organisationId,
         callSessionId
       );
+      assertLiveCallState(session.status, ["in_progress"], "Live coaching");
       const leadLabel = session.leadLabel;
       const approvedContext = await liveCoachingApprovedContext({
         userId: user.id,
@@ -436,6 +452,28 @@ export function registerLiveCallRoutes(app: Express) {
     }
   });
 
+  app.post("/api/live-calls/stop", async (req, res) => {
+    try {
+      const user = await requireAuthorisedUser(req);
+      const callSessionId = Number(req.body?.callSessionId);
+      if (!Number.isInteger(callSessionId) || callSessionId <= 0)
+        return res
+          .status(400)
+          .json({ error: "A valid live call session is required." });
+      const transcript =
+        typeof req.body?.transcript === "string" ? req.body.transcript : "";
+      const result = await markLiveCallReadyForReview({
+        userId: user.id,
+        organisationId: user.membership.organisationId,
+        callSessionId,
+        transcript,
+      });
+      return res.json(result);
+    } catch (error) {
+      return sendLiveCallError(res, error);
+    }
+  });
+
   app.post("/api/live-calls/complete", async (req, res) => {
     try {
       const user = await requireAuthorisedUser(req);
@@ -449,6 +487,11 @@ export function registerLiveCallRoutes(app: Express) {
         user.id,
         user.membership.organisationId,
         callSessionId
+      );
+      assertLiveCallState(
+        session.status,
+        ["ready_for_review", "completed"],
+        "Closeout"
       );
       const leadLabel = session.leadLabel;
       const result = await runCanonicalCallCloseout(
@@ -517,6 +560,7 @@ export function registerLiveCallRoutes(app: Express) {
             )
               ? req.body.opportunityState
               : "unchanged",
+            closeoutWorkflowRunId: claim.workflowRunId,
           };
           const identity = await resolveLiveCallCloseoutIdentity({
             userId: user.id,
@@ -581,14 +625,6 @@ export function registerLiveCallRoutes(app: Express) {
               claimToken: claim.claimToken,
               summaryResult: summary as unknown as Record<string, unknown>,
             });
-          await completeLiveCallExact({
-            userId: user.id,
-            organisationId: user.membership.organisationId,
-            callSessionId,
-            transcript,
-            summary: summary.content,
-            structuredOutcome,
-          });
           await completeCallbackWorkAfterVerifiedCall({
             userId: user.id,
             organisationId: user.membership.organisationId,
@@ -650,6 +686,14 @@ export function registerLiveCallRoutes(app: Express) {
             verificationSummary:
               "The salesperson confirmed this structured outcome. Post-call external actions are prepared for Review only; nothing customer-facing or CRM-writing executes automatically from call closeout.",
             actions: proposed,
+          });
+          await completeLiveCallExact({
+            userId: user.id,
+            organisationId: user.membership.organisationId,
+            callSessionId,
+            transcript,
+            summary: summary.content,
+            structuredOutcome,
           });
           const proposals = await listActionProposals(
             user.id,

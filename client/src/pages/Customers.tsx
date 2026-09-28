@@ -58,11 +58,24 @@ export default function Customers() {
   });
   const customers = trpc.sales.customerDirectory.useQuery(
     { page, pageSize: 50, search: query, sort: "updated" },
-    { retry: false }
+    {
+      retry: false,
+      refetchInterval: 60_000,
+      refetchIntervalInBackground: true,
+      refetchOnWindowFocus: true,
+      refetchOnReconnect: true,
+    }
   );
   const detail = trpc.sales.customerDetail.useQuery(
     { contactId: selectedId || 1 },
-    { enabled: Boolean(selectedId), retry: false }
+    {
+      enabled: Boolean(selectedId),
+      retry: false,
+      refetchInterval: 60_000,
+      refetchIntervalInBackground: true,
+      refetchOnWindowFocus: true,
+      refetchOnReconnect: true,
+    }
   );
   const refreshHistory = trpc.sales.refreshCustomerHistory.useMutation({
     onSuccess: async () => {

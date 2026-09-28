@@ -6,6 +6,7 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit) {
     response = await globalThis.fetch(input, {
       ...init,
       credentials: "include",
+      cache: "no-store",
       signal: init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout,
     });
   } catch {

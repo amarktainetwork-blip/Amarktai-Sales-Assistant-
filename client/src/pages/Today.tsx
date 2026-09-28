@@ -113,6 +113,7 @@ export default function Today() {
       try {
         const statusResponse = await fetch("/api/mailbox", {
           credentials: "include",
+          cache: "no-store",
         });
         if (!statusResponse.ok) return;
         const status = (await statusResponse.json()) as { connected?: boolean };
@@ -123,7 +124,11 @@ export default function Today() {
           headers: { "Content-Type": "application/json" },
           body: "{}",
         });
-        if (active && response.ok) await utils.sales.today.invalidate();
+        if (active && response.ok)
+          await Promise.all([
+            utils.sales.today.invalidate(),
+            utils.sales.inbox.invalidate(),
+          ]);
       } catch {
         // Last safe synchronized state remains available.
       }
@@ -131,7 +136,7 @@ export default function Today() {
     return () => {
       active = false;
     };
-  }, [organisationId, utils.sales.today]);
+  }, [organisationId, utils.sales.inbox, utils.sales.today]);
 
   async function refreshDay() {
     if (refreshInFlight.current || !organisationId) return;
@@ -143,6 +148,10 @@ export default function Today() {
         syncCrm: () => syncAll.mutateAsync({ organisationId }),
         invalidateToday: () => utils.sales.today.invalidate(),
         invalidateCustomers: () => utils.sales.customerDirectory.invalidate(),
+        invalidateCustomerDetail: () => utils.sales.customerDetail.invalidate(),
+        invalidateInbox: () => utils.sales.inbox.invalidate(),
+        invalidateNewLeadAlerts: () => utils.sales.newLeadAlerts.invalidate(),
+        invalidateTracker: () => utils.sales.tracker.invalidate(),
         refetchToday: () => today.refetch(),
       });
       if (crmWarning)

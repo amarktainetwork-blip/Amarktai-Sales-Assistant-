@@ -9,6 +9,115 @@ async function dbOrThrow() {
   return db;
 }
 
+export const LIVE_CALL_ABANDON_GRACE_MS = 15 * 60_000;
+
+export function shouldCheckpointAbandonedLiveCall(input: {
+  status: string;
+  updatedAt: Date | string;
+  nowMs?: number;
+  graceMs?: number;
+}) {
+  if (input.status !== "in_progress") return false;
+  const updatedAtMs = new Date(input.updatedAt).valueOf();
+  if (!Number.isFinite(updatedAtMs)) return false;
+  return (
+    (input.nowMs ?? Date.now()) - updatedAtMs >=
+    (input.graceMs ?? LIVE_CALL_ABANDON_GRACE_MS)
+  );
+}
+
+export async function reconcileAbandonedLiveCallsForUser(input: {
+  userId: number;
+  organisationId: number;
+  nowMs?: number;
+  graceMs?: number;
+}) {
+  const db = await dbOrThrow();
+  const candidates = await db
+    .select({
+      id: callSessions.id,
+      status: callSessions.status,
+      transcript: callSessions.transcript,
+      coachNotes: callSessions.coachNotes,
+      updatedAt: callSessions.updatedAt,
+    })
+    .from(callSessions)
+    .where(
+      and(
+        eq(callSessions.userId, input.userId),
+        eq(callSessions.organisationId, input.organisationId),
+        eq(callSessions.status, "in_progress")
+      )
+    )
+    .limit(200);
+  const stale = candidates.filter(session =>
+    shouldCheckpointAbandonedLiveCall({
+      status: session.status,
+      updatedAt: session.updatedAt,
+      nowMs: input.nowMs,
+      graceMs: input.graceMs,
+    })
+  );
+  for (const session of stale) {
+    await db
+      .update(callSessions)
+      .set({ status: "ready_for_review" })
+      .where(
+        and(
+          eq(callSessions.id, session.id),
+          eq(callSessions.userId, input.userId),
+          eq(callSessions.organisationId, input.organisationId),
+          eq(callSessions.status, "in_progress")
+        )
+      );
+  }
+  if (stale.length) {
+    await recordAudit({
+      userId: input.userId,
+      organisationId: input.organisationId,
+      eventType: "live_call_abandoned_checkpointed",
+      entityType: "call_session_batch",
+      summary:
+        "Inactive live call sessions were checkpointed for review without inventing customer outcomes.",
+      metadata: {
+        sessionIds: stale.map(session => session.id),
+        checkpointed: stale.length,
+        withTranscript: stale.filter(session => Boolean(session.transcript?.trim()))
+          .length,
+        withCoachNotes: stale.filter(session => Boolean(session.coachNotes?.trim()))
+          .length,
+        graceMs: input.graceMs ?? LIVE_CALL_ABANDON_GRACE_MS,
+      },
+    });
+  }
+  return {
+    checkpointed: stale.length,
+    withContent: stale.filter(
+      session => Boolean(session.transcript?.trim()) || Boolean(session.coachNotes?.trim())
+    ).length,
+  };
+}
+
+export function checkpointTranscript(
+  existing: string | null | undefined,
+  incoming: string
+) {
+  const current = (existing || "").trim().slice(-40_000);
+  const candidate = incoming.trim().slice(-40_000);
+  return candidate.length >= current.length ? candidate : current;
+}
+
+export function assertLiveCallState(
+  status: string,
+  allowed: readonly string[],
+  action: string
+) {
+  if (!allowed.includes(status))
+    throw new Error(
+      `LIVE_CALL_STATE: ${action} is not allowed while the call is ${status}.`
+    );
+}
+
 export async function requireLiveCallOwner(
   userId: number,
   organisationId: number,
@@ -32,6 +141,53 @@ export async function requireLiveCallOwner(
   return session;
 }
 
+export async function markLiveCallReadyForReview(input: {
+  userId: number;
+  organisationId: number;
+  callSessionId: number;
+  transcript: string;
+}) {
+  const db = await dbOrThrow();
+  const session = await requireLiveCallOwner(
+    input.userId,
+    input.organisationId,
+    input.callSessionId
+  );
+  const transcript = checkpointTranscript(session.transcript, input.transcript);
+  if (session.status === "completed")
+    return {
+      status: "completed" as const,
+      transcriptChars: session.transcript?.trim().length ?? transcript.length,
+    };
+  await db
+    .update(callSessions)
+    .set({
+      transcript,
+      status: "ready_for_review",
+    })
+    .where(
+      and(
+        eq(callSessions.id, input.callSessionId),
+        eq(callSessions.userId, input.userId),
+        eq(callSessions.organisationId, input.organisationId)
+      )
+    );
+  await recordAudit({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    eventType: "live_call_ready_for_review",
+    entityType: "call_session",
+    entityId: String(input.callSessionId),
+    summary:
+      "Live call capture stopped and the current transcript was checkpointed for review.",
+    metadata: {
+      transcriptChars: transcript.length,
+      rawAudioRetained: false,
+    },
+  });
+  return { status: "ready_for_review" as const, transcriptChars: transcript.length };
+}
+
 export async function completeLiveCallExact(input: {
   userId: number;
   organisationId: number;
@@ -46,7 +202,7 @@ export async function completeLiveCallExact(input: {
     input.organisationId,
     input.callSessionId
   );
-  const transcript = input.transcript.trim().slice(-40_000);
+  const transcript = checkpointTranscript(session.transcript, input.transcript);
   const summary = input.summary.trim().slice(0, 20_000);
   await db
     .update(callSessions)
@@ -54,7 +210,7 @@ export async function completeLiveCallExact(input: {
       transcript,
       summary,
       structuredOutcome: input.structuredOutcome,
-      status: "ready_for_review",
+      status: "completed",
     })
     .where(
       and(

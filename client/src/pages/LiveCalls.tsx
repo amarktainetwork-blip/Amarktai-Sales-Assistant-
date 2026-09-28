@@ -45,7 +45,7 @@ type TranscriptionResult = {
   rawAudioRetained: boolean;
 };
 
-const LIVE_AUDIO_CHUNK_MS = 2_500;
+const LIVE_AUDIO_CHUNK_MS = 2_000;
 const LIVE_COACH_INTERVAL_MS = 750;
 const LIVE_COACH_STALE_MS = 3_500;
 type CoachingResult = {
@@ -340,6 +340,7 @@ export default function LiveCalls() {
   const audioContextRef = useRef<AudioContext | undefined>(undefined);
   const pendingRef = useRef<Promise<void>>(Promise.resolve());
   const pendingChunkCountRef = useRef(0);
+  const sessionIdRef = useRef<number | null>(sessionId);
   const transcriptRef = useRef("");
   const conversationStateRef = useRef("");
   const [showTranscript, setShowTranscript] = useState(false);
@@ -377,6 +378,10 @@ export default function LiveCalls() {
   }, [initialSessionId, sessionId]);
 
   useEffect(() => {
+    sessionIdRef.current = sessionId;
+  }, [sessionId]);
+
+  useEffect(() => {
     if (
       initialContactId <= 0 ||
       initialSelectionApplied.current === initialContactId
@@ -399,6 +404,16 @@ export default function LiveCalls() {
     setContactExternalId(context?.contactExternalId || "");
     setTaskExternalId(context?.taskExternalId || "");
     setOpportunityExternalId(context?.opportunityExternalId || "");
+    if (callContext.data.transcript) {
+      transcriptRef.current = callContext.data.transcript;
+      setTranscript(callContext.data.transcript);
+    }
+    if (callContext.data.coachNotes) setTip(callContext.data.coachNotes);
+    if (callContext.data.status === "ready_for_review") {
+      setRecording(false);
+      setCloseoutConfirmed(false);
+      setAwaitingCloseout(true);
+    }
   }, [callContext.data]);
 
   useEffect(() => {
@@ -460,6 +475,19 @@ export default function LiveCalls() {
       coachAbortRef.current?.abort();
       coachAbortRef.current = null;
       pendingCoachRef.current = null;
+      const activeSessionId = sessionIdRef.current;
+      if (activeSessionId && typeof navigator.sendBeacon === "function") {
+        const payload = new Blob(
+          [
+            JSON.stringify({
+              callSessionId: activeSessionId,
+              transcript: transcriptRef.current,
+            }),
+          ],
+          { type: "application/json" }
+        );
+        navigator.sendBeacon("/api/live-calls/stop", payload);
+      }
       if (recorderRef.current && recorderRef.current.state !== "inactive")
         recorderRef.current.stop();
       sourcesRef.current.forEach(stream =>
@@ -850,6 +878,19 @@ export default function LiveCalls() {
     }
   }
 
+  async function checkpointSessionForReview(
+    activeSessionId: number,
+    transcriptValue = transcriptRef.current
+  ) {
+    return postLive<{
+      status: "ready_for_review" | "completed";
+      transcriptChars: number;
+    }>("/api/live-calls/stop", {
+      callSessionId: activeSessionId,
+      transcript: transcriptValue,
+    });
+  }
+
   async function stop() {
     const recorder = recorderRef.current;
     recordingRef.current = false;
@@ -872,6 +913,20 @@ export default function LiveCalls() {
     audioContextRef.current = undefined;
     await pendingRef.current;
     if (sessionId) {
+      try {
+        await checkpointSessionForReview(sessionId);
+      } catch (error) {
+        const detail = callError(
+          error,
+          "The call stopped, but its review checkpoint could not be saved yet. Your transcript is still available here."
+        );
+        setWorkflowError(detail);
+        setRetryAction(
+          () => () =>
+            void checkpointSessionForReview(sessionId)
+        );
+        toast.warning(detail);
+      }
       setCloseoutConfirmed(false);
       setAwaitingCloseout(true);
     }
@@ -888,6 +943,21 @@ export default function LiveCalls() {
       const activeSessionId = sessionId ?? started!.callSessionId;
       setSessionId(activeSessionId);
       if (started?.leadLabel) setLeadLabel(started.leadLabel);
+      try {
+        await checkpointSessionForReview(activeSessionId, "");
+        setWorkflowError("");
+        setRetryAction(null);
+      } catch (error) {
+        const detail = callError(
+          error,
+          "The call attempt was recorded, but its review checkpoint could not be saved yet."
+        );
+        setWorkflowError(detail);
+        setRetryAction(
+          () => () => void checkpointSessionForReview(activeSessionId, "")
+        );
+        toast.warning(detail);
+      }
       setOutcome("no_answer");
       setCloseoutConfirmed(false);
       setAwaitingCloseout(true);

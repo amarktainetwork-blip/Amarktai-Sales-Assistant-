@@ -5,6 +5,7 @@ import {
   outboundGenieReplyMatchesInbound,
   parseGenieReceivedAt,
   shouldTargetGenieActionableBackfill,
+  inboundReminderMessageId,
 } from "./genieMailbox";
 import {
   readPersonalGenieMailbox,
@@ -432,6 +433,21 @@ describe("Genie personal email isolation", () => {
     expect(source).toContain(".where(eq(organisationMembers.isActive, true));");
     expect(source).toContain(".slice(0, MAX_GENIE_MAILBOXES_PER_CYCLE)");
     expect(source).not.toContain(".limit(MAX_GENIE_MAILBOXES_PER_CYCLE * 4)");
+  });
+
+  it("links inbound commitments to their source message so handled reminders can retire", () => {
+    expect(inboundReminderMessageId("inbound:123:commitment")).toBe(123);
+    expect(inboundReminderMessageId("inbound:not-a-number:commitment")).toBeUndefined();
+    expect(inboundReminderMessageId("call:123:callback")).toBeUndefined();
+
+    const source = readFileSync(
+      new URL("./genieMailbox.ts", import.meta.url),
+      "utf8"
+    );
+    expect(source).toContain("reconcileHandledInboundReminders");
+    expect(source).toContain('eq(assistantReminders.source, "inbound")');
+    expect(source).toContain('status: "completed"');
+    expect(source).toContain("handledReminders");
   });
 
   it("target-checks unresolved owner-scoped messages even when a conversation id is already known", () => {

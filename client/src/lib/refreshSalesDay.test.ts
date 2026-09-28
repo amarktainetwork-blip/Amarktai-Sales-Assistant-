@@ -18,6 +18,10 @@ function dependencies(fetcher: ReturnType<typeof vi.fn>) {
       }),
     invalidateToday: vi.fn().mockResolvedValue(undefined),
     invalidateCustomers: vi.fn().mockResolvedValue(undefined),
+    invalidateCustomerDetail: vi.fn().mockResolvedValue(undefined),
+    invalidateInbox: vi.fn().mockResolvedValue(undefined),
+    invalidateNewLeadAlerts: vi.fn().mockResolvedValue(undefined),
+    invalidateTracker: vi.fn().mockResolvedValue(undefined),
     refetchToday: vi.fn().mockResolvedValue({ isError: false }),
   };
 }
@@ -37,6 +41,7 @@ describe("refreshSalesDay", () => {
     });
     expect(fetcher).toHaveBeenNthCalledWith(1, "/api/mailbox", {
       credentials: "include",
+      cache: "no-store",
     });
     expect(fetcher).toHaveBeenNthCalledWith(2, "/api/mailbox/sync", {
       method: "POST",
@@ -46,6 +51,10 @@ describe("refreshSalesDay", () => {
     });
     expect(deps.invalidateToday).toHaveBeenCalledOnce();
     expect(deps.invalidateCustomers).toHaveBeenCalledOnce();
+    expect(deps.invalidateCustomerDetail).toHaveBeenCalledOnce();
+    expect(deps.invalidateInbox).toHaveBeenCalledOnce();
+    expect(deps.invalidateNewLeadAlerts).toHaveBeenCalledOnce();
+    expect(deps.invalidateTracker).toHaveBeenCalledOnce();
     expect(deps.refetchToday).toHaveBeenCalledOnce();
   });
 
@@ -73,5 +82,9 @@ describe("refreshSalesDay", () => {
     await expect(refreshSalesDay(deps)).rejects.toBe(failure);
     expect(deps.invalidateToday).toHaveBeenCalledOnce();
     expect(deps.invalidateCustomers).toHaveBeenCalledOnce();
+    expect(deps.invalidateCustomerDetail).toHaveBeenCalledOnce();
+    expect(deps.invalidateInbox).toHaveBeenCalledOnce();
+    expect(deps.invalidateNewLeadAlerts).toHaveBeenCalledOnce();
+    expect(deps.invalidateTracker).toHaveBeenCalledOnce();
   });
 });
