@@ -49,7 +49,7 @@ describe("client-handover live calls presentation", () => {
     expect(liveCalls).toContain('fetch("/api/live-calls/coach-stream"');
     expect(liveCalls).toContain("setTip(partial)");
     expect(liveCalls).toContain(
-      "pendingCoachRef.current = { activeSessionId, text }"
+      "pendingCoachRef.current = { activeSessionId, text, manualHelp: false }"
     );
     expect(liveCalls).toContain("function scheduleCoaching");
     expect(liveCalls).toContain("eventPacket.slice(-1_500)");
@@ -63,27 +63,40 @@ describe("client-handover live calls presentation", () => {
     expect(liveCalls).toContain("await pendingRef.current");
   });
 
-  it("keeps the complete prepare-call-assist-closeout workflow", () => {
+  it("keeps the salesperson-led prepare-call-review-finish workflow without live clutter", () => {
     for (const required of [
       "PRE-CALL BRIEF",
       "Start Live Companion",
-      "LIVE CONVERSATION",
+      "LIVE TRANSCRIPT",
+      "YOUR NOTES",
+      "SALES ASSIST",
+      "Help me",
+      "SUMMARY DRAFT",
+      "CALL OUTCOME",
+      "Confirm outcome and prepare follow-up",
+      "CALL SUMMARY",
+      "Listening — no intervention needed.",
+    ])
+      expect(liveCalls).toContain(required);
+
+    for (const removed of [
       "LIVE STRUCTURED NOTES",
       "Goals / intentions heard",
       "Facts / context heard",
-      "Customer questions",
-      "Objections",
       "Buying signals",
-      "Commitments heard",
-      "Callback requests",
-      "Dates / times mentioned",
+      "Commitments heard — confirm speaker",
       "Likely next steps",
-      "Still unresolved",
-      "CALL OUTCOME",
-      "Confirm outcome and prepare follow-up",
       "Live signals",
-      "Sales assist",
     ])
-      expect(liveCalls).toContain(required);
+      expect(liveCalls).not.toContain(removed);
+  });
+
+  it("treats manual notes as salesperson-authored evidence and makes Help me explicit", () => {
+    expect(liveCalls).toContain("manualNotesRef");
+    expect(liveCalls).toContain("amarktai-live-call-notes:");
+    expect(liveCalls).toContain("manualNotes: manualNotesRef.current");
+    expect(liveCalls).toContain("manualHelp");
+    expect(liveCalls).toContain("requestManualHelp");
+    expect(liveCalls).toContain("/api/live-calls/review-summary");
   });
 });
