@@ -122,8 +122,6 @@ export default function DashboardLayout({
       refetchIntervalInBackground: true,
       refetchOnWindowFocus: true,
       refetchOnReconnect: true,
-      refetchOnWindowFocus: true,
-      refetchOnReconnect: true,
     }
   );
   const connectedSystems = trpc.connectedSystems.list.useQuery(
@@ -133,6 +131,8 @@ export default function DashboardLayout({
       retry: false,
       refetchInterval: 30_000,
       refetchIntervalInBackground: true,
+      refetchOnWindowFocus: true,
+      refetchOnReconnect: true,
     }
   );
   const integrationReadiness = trpc.integrations.list.useQuery(undefined, {
