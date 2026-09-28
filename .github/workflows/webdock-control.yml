@@ -289,15 +289,7 @@ jobs:
             echo "Deployment report was not retrieved." >&2
             exit 1
           }
-          grep -q '^DEPLOYMENT=PASS
-            echo "Deployment did not report PASS." >&2
-            exit 1
-          }
-          grep -q "^release_sha=${EXPECTED_RELEASE_SHA}$" /tmp/amarktai-control-report.log || {
-            echo "Live release SHA does not match requested target." >&2
-            exit 1
-          }
- /tmp/amarktai-control-report.log || {
+          grep -q '^DEPLOYMENT=PASS$' /tmp/amarktai-control-report.log || {
             echo "Deployment did not report PASS." >&2
             exit 1
           }
