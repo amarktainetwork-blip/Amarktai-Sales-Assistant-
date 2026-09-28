@@ -42,6 +42,17 @@ type TranscriptionResult = {
 const LIVE_AUDIO_CHUNK_MS = 2_000;
 const LIVE_COACH_INTERVAL_MS = 750;
 const LIVE_COACH_STALE_MS = 3_500;
+const AUTO_COACH_SIGNAL_TYPES = new Set([
+  "price_objection",
+  "funding_question",
+  "eligibility_question",
+  "course_question",
+  "timing_objection",
+  "trust_objection",
+  "competitor",
+  "question",
+  "buying_signal",
+]);
 type CoachingResult = {
   content: string;
   usage?: Record<string, number>;
@@ -665,8 +676,8 @@ export default function LiveCalls() {
       // rolling transcript or on the same unresolved signal. A compact event
       // packet is enough for coaching; the server adds approved CRM context.
       const now = Date.now();
-      const coachable = result.signals.filter(
-        signal => signal.priority === "important" || signal.type === "question"
+      const coachable = result.signals.filter(signal =>
+        AUTO_COACH_SIGNAL_TYPES.has(signal.type)
       );
       const fresh = coachable.filter(signal => {
         const key = `${signal.type}:${signal.evidence.toLowerCase().replace(/\s+/g, " ").trim()}`;
