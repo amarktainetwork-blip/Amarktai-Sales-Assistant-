@@ -9,6 +9,7 @@ type RefreshSalesDayOptions = {
   }>;
   invalidateToday: () => Promise<unknown>;
   invalidateCustomers: () => Promise<unknown>;
+  invalidateInbox: () => Promise<unknown>;
   refetchToday: () => Promise<{ isError: boolean; error?: unknown }>;
 };
 
@@ -17,6 +18,7 @@ export async function refreshSalesDay({
   syncCrm,
   invalidateToday,
   invalidateCustomers,
+  invalidateInbox,
   refetchToday,
 }: RefreshSalesDayOptions): Promise<{
   mailboxWarning: boolean;
@@ -57,7 +59,7 @@ export async function refreshSalesDay({
     mailboxWarning = true;
   }
 
-  await Promise.all([invalidateToday(), invalidateCustomers()]);
+  await Promise.all([invalidateToday(), invalidateCustomers(), invalidateInbox()]);
   const result = await refetchToday();
   if (result.isError) {
     throw result.error ?? new Error("Sales day refresh failed");
