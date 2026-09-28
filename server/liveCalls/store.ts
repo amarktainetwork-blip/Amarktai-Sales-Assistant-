@@ -32,6 +32,48 @@ export async function requireLiveCallOwner(
   return session;
 }
 
+export async function markLiveCallReadyForReview(input: {
+  userId: number;
+  organisationId: number;
+  callSessionId: number;
+  transcript: string;
+}) {
+  const db = await dbOrThrow();
+  await requireLiveCallOwner(
+    input.userId,
+    input.organisationId,
+    input.callSessionId
+  );
+  const transcript = input.transcript.trim().slice(-40_000);
+  await db
+    .update(callSessions)
+    .set({
+      transcript,
+      status: "ready_for_review",
+    })
+    .where(
+      and(
+        eq(callSessions.id, input.callSessionId),
+        eq(callSessions.userId, input.userId),
+        eq(callSessions.organisationId, input.organisationId)
+      )
+    );
+  await recordAudit({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    eventType: "live_call_ready_for_review",
+    entityType: "call_session",
+    entityId: String(input.callSessionId),
+    summary:
+      "Live call capture stopped and the current transcript was checkpointed for review.",
+    metadata: {
+      transcriptChars: transcript.length,
+      rawAudioRetained: false,
+    },
+  });
+  return { status: "ready_for_review" as const, transcriptChars: transcript.length };
+}
+
 export async function completeLiveCallExact(input: {
   userId: number;
   organisationId: number;
