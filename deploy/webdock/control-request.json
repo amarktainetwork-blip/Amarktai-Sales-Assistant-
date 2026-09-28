@@ -1,7 +1,7 @@
 {
-  "operation": "diagnose",
+  "operation": "deploy",
   "server_name": "Amarktai Network - Sales Assistant",
   "server_domain": "sales.amarktai.co.za",
-  "release_sha": "897e9b7cd548442306095e02c6ccd32fe167b752",
-  "request_id": "post-calls-redesign-audit-2026-09-28T17-15+02"
+  "release_sha": "104c7f52a3ef159d7fe57aad8d5140e496719036",
+  "request_id": "final-functional-intelligence-release-2026-09-28T19-30+02"
 }
