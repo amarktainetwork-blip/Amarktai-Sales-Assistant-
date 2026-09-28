@@ -77,6 +77,21 @@ describe("live call recoverable lifecycle", () => {
     expect(completeIndex).toBeGreaterThan(workflowIndex);
   });
 
+  it("checkpoints salesperson notes and restores them for review", () => {
+    expect(storeSource).toContain("draftManualNotes");
+    expect(routes).toContain("manualNotes");
+    expect(client).toContain("salespersonNotes");
+    expect(client).toContain("draftManualNotes");
+    expect(client).toContain("amarktai-live-call-notes:");
+  });
+
+  it("summarises only after the call has entered review state", () => {
+    expect(routes).toContain('"/api/live-calls/review-summary"');
+    expect(routes).toContain('["ready_for_review", "completed"]');
+    expect(client).toContain("prepareReviewSummary");
+    expect(client).toContain("SUMMARY DRAFT");
+  });
+
   it("restores ready-for-review sessions after navigation instead of stranding closeout", () => {
     expect(contextSource).toContain("await reconcileAbandonedLiveCallsForUser");
     expect(contextSource).toContain('transcript: session.transcript || ""');
