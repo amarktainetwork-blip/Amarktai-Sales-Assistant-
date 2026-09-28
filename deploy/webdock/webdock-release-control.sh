@@ -162,6 +162,33 @@ if [ "$OPERATION" = "diagnose" ]; then
   db_sql "SELECT id,title,dueAt,timezone,source,status FROM assistantReminders WHERE organisationId=8 AND userId=2 AND status IN ('open','snoozed') ORDER BY COALESCE(snoozedUntil,dueAt) ASC LIMIT 20;"
   db_sql "SELECT id,leadLabel,title,dueAt,state FROM callbackTasks WHERE organisationId=8 AND userId=2 AND state='open' ORDER BY dueAt ASC LIMIT 20;"
 
+  echo "--- organisation members by role ---"
+  db_sql "SELECT role,isActive,COUNT(*) AS count FROM organisationMembers WHERE organisationId=8 GROUP BY role,isActive ORDER BY role,isActive;"
+
+  echo "--- knowledge readiness ---"
+  db_sql "SELECT status,visibility,sourceType,COUNT(*) AS count FROM knowledgeSources WHERE organisationId=8 GROUP BY status,visibility,sourceType ORDER BY status,visibility,sourceType;"
+  db_sql "SELECT id,phase,status,attempt,lastError,updatedAt,completedAt FROM companyKnowledgeJobs WHERE organisationId=8 ORDER BY id DESC LIMIT 5;"
+
+  echo "--- skills and approved templates ---"
+  db_sql "SELECT status,COUNT(*) AS versions,COUNT(DISTINCT playbookKey) AS skillKeys FROM playbookVersions WHERE organisationId=8 GROUP BY status ORDER BY status;"
+  db_sql "SELECT status,COALESCE(JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.channel')),'unspecified') AS channel,COUNT(*) AS count FROM approvalTemplates WHERE organisationId=8 GROUP BY status,channel ORDER BY status,channel;"
+  db_sql "SELECT b.operationKey,b.status,JSON_UNQUOTE(JSON_EXTRACT(b.definition,'$.mode')) AS mode,b.lastSuccessAt,b.lastFailureAt,b.lastError FROM browserLearnedOperations b JOIN (SELECT operationKey,MAX(version) AS version FROM browserLearnedOperations WHERE organisationId=8 AND connectedSystemId=8 GROUP BY operationKey) latest ON latest.operationKey=b.operationKey AND latest.version=b.version WHERE b.organisationId=8 AND b.connectedSystemId=8 ORDER BY b.operationKey;"
+
+  echo "--- review and workflow state ---"
+  db_sql "SELECT status,COUNT(*) AS count,MAX(updatedAt) AS latest FROM workflowRuns WHERE organisationId=8 GROUP BY status ORDER BY status;"
+  db_sql "SELECT state,governanceState,actionType,COUNT(*) AS count,MAX(createdAt) AS latest FROM actionProposals WHERE organisationId=8 GROUP BY state,governanceState,actionType ORDER BY state,governanceState,actionType;"
+  db_sql "SELECT status,COUNT(*) AS count,MAX(createdAt) AS latest FROM playbookExecutionHistory WHERE organisationId=8 GROUP BY status ORDER BY status;"
+  db_sql "SELECT status,COUNT(*) AS count,MAX(createdAt) AS latest FROM inboundReplyDrafts WHERE organisationId=8 GROUP BY status ORDER BY status;"
+
+  echo "--- mailbox and report state ---"
+  db_sql "SELECT provider,status,JSON_LENGTH(scopes) AS scopeCount,lastSyncedAt,expiresAt,updatedAt FROM userMailboxConnections WHERE organisationId=8 AND userId=2;"
+  db_sql "SELECT isEnabled,COUNT(*) AS count,MAX(lastSentAt) AS latestSent,MAX(updatedAt) AS latestUpdated FROM dailyReports WHERE organisationId=8 AND userId=2 GROUP BY isEnabled;"
+
+  echo "--- connector and worker health ---"
+  db_sql "SELECT resourceType,status,capabilityKey,lastStartedAt,lastSucceededAt,lastError FROM connectorSyncJobs WHERE organisationId=8 ORDER BY resourceType;"
+  db_sql "SELECT severity,category,COUNT(*) AS unresolved,MAX(createdAt) AS latest FROM operationalEvents WHERE organisationId=8 AND resolvedAt IS NULL GROUP BY severity,category ORDER BY severity,category;"
+  db_sql "SELECT workerKey,status,COUNT(*) AS count,MAX(startedAt) AS latestStarted,MAX(finishedAt) AS latestFinished FROM operationalWorkerRuns WHERE organisationId=8 AND startedAt>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 7 DAY) GROUP BY workerKey,status ORDER BY workerKey,status;"
+
   echo "--- live call telemetry ---"
   db_sql "SELECT eventType,COUNT(*) AS count,MIN(createdAt) AS firstAt,MAX(createdAt) AS lastAt FROM auditEntries WHERE organisationId=8 AND eventType IN ('live_call_audio_transcribed','live_call_coaching_stream','live_call_completed','live_call_started') GROUP BY eventType ORDER BY eventType;"
   db_sql "SELECT id,createdAt,JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.transcriptionMs')) AS transcriptionMs,JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.queueWaitMs')) AS queueWaitMs,JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.durationMs')) AS durationMs,JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.sttActiveAtStart')) AS activeAtStart,JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.sttWaitingAtStart')) AS waitingAtStart FROM auditEntries WHERE organisationId=8 AND eventType='live_call_audio_transcribed' ORDER BY id DESC LIMIT 40;"
