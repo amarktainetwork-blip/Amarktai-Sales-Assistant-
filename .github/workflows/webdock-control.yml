@@ -1,0 +1,297 @@
+name: Webdock Control
+
+on:
+  push:
+    branches: ["ops/webdock-control"]
+    paths:
+      - "deploy/webdock/control-request.json"
+      - "deploy/webdock/webdock-release-control.sh"
+      - ".github/workflows/webdock-control.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: webdock-sales-control
+  cancel-in-progress: false
+
+jobs:
+  control:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      WEBDOCK_API: https://api.webdock.io/v1
+      WEBDOCK_TOKEN: ${{ secrets.WEBDOCK_API_TOKEN }}
+      CONTROL_REQUEST: deploy/webdock/control-request.json
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate request and resolve Sales VPS
+        id: resolve
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          test -n "${{WEBDOCK_TOKEN:-}" || {
+            echo "WEBDOCK_API_TOKEN secret is missing." >&2
+            exit 1
+          }
+
+          operation="$(jq -r '.operation' "$CONTROL_REQUEST")"
+          server_name="$(jq -r '.server_name' "$CONTROL_REQUEST")"
+          server_domain="$(jq -r '.server_domain' "$CONTROL_REQUEST")"
+          release_sha="$(jq -r '.release_sha' "$CONTROL_REQUEST")"
+
+          case "$operation" in
+            inspect|deploy|verify) ;;
+            *) echo "Unsupported operation: $operation" >&2; exit 1 ;;
+          esac
+
+          [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "release_sha must be a full 40-character SHA." >&2
+            exit 1
+          }
+
+          auth=(-H "Authorization: Bearer $WEBDOCK_TOKEN" -H "X-Application: AmarktaiSalesGitHubControl/1.0")
+
+          curl --fail-with-body --silent --show-error \
+            "${{auth[@]}" "$WEBDOCK_API/ping" >/tmp/webdock-ping.json
+          echo "Webdock API authentication: PASS"
+
+          curl --fail-with-body --silent --show-error \
+            "${{auth[@]}" "$WEBDOCK_API/servers?status=active" >/tmp/webdock-servers.json
+
+          matches="$(jq \
+            --arg name "$server_name" \
+            --arg domain "$server_domain" \
+            '[.[] | select(.name == $name or (((.aliases // []) | index($domain)) != null))]' \
+            /tmp/webdock-servers.json)"
+
+          count="$(jq 'length' <<<"$matches")"
+          if [ "$count" -ne 1 ]; then
+            echo "Expected exactly one Sales VPS match, found $count." >&2
+            jq '[.[] | {slug,name,status,location,aliases}]' /tmp/webdock-servers.json
+            exit 1
+          fi
+
+          server_slug="$(jq -r '.[0].slug' <<<"$matches")"
+          echo "operation=$operation" >> "$GITHUB_OUTPUT"
+          echo "server_slug=$server_slug" >> "$GITHUB_OUTPUT"
+          echo "release_sha=$release_sha" >> "$GITHUB_OUTPUT"
+
+          echo "Resolved Sales VPS:"
+          jq '.[0] | {slug,name,status,location,image,profile,aliases}' <<<"$matches"
+
+          curl --fail-with-body --silent --show-error \
+            "${{auth[@]}" "$WEBDOCK_API/servers/$server_slug/metrics" \
+            | jq '{resourceUsageStatus,disk,cpu,memory}' || true
+
+          echo "Existing snapshots:"
+          curl --fail-with-body --silent --show-error \
+            "${{auth[@]}" "$WEBDOCK_API/servers/$server_slug/snapshots" \
+            | jq '[.[] | {id,name,date,type,completed,deletable}]' || true
+
+      - name: Inspect-only complete
+        if: steps.resolve.outputs.operation == 'inspect'
+        run: |
+          echo "INSPECT_ONLY=PASS"
+          echo "No server-side script was deployed or executed."
+
+      - name: Prepare Webdock control script
+        if: steps.resolve.outputs.operation != 'inspect'
+        id: script
+        shell: bash
+        env:
+          OPERATION: ${{ steps.resolve.outputs.operation }}
+          RELEASE_SHA: ${{ steps.resolve.outputs.release_sha }}
+          SERVER_SLUG: ${{ steps.resolve.outputs.server_slug }}
+        run: |
+          set -Eeuo pipefail
+
+          auth=(-H "Authorization: Bearer $WEBDOCK_TOKEN" -H "X-Application: AmarktaiSalesGitHubControl/1.0")
+          script_name="amarktai-sales-github-control"
+          script_file="amarktai-sales-github-control.sh"
+
+          sed \
+            -e "s/__OPERATION__/$OPERATION/g" \
+            -e "s/__TARGET_SHA__/$RELEASE_SHA/g" \
+            deploy/webdock/webdock-release-control.sh > /tmp/amarktai-control.sh
+
+          payload="$(jq -n \
+            --arg name "$script_name" \
+            --arg filename "$script_file" \
+            --rawfile content /tmp/amarktai-control.sh \
+            '{name:$name,filename:$filename,content:$content}')"
+
+          curl --fail-with-body --silent --show-error \
+            "${{auth[@]}" "$WEBDOCK_API/account/scripts" >/tmp/account-scripts.json
+
+          script_id="$(jq -r --arg name "$script_name" '.[] | select(.name == $name) | .id' /tmp/account-scripts.json | head -1)"
+
+          if [ -n "$script_id" ] && [ "$script_id" != "null" ]; then
+            echo "Updating existing Webdock account control script."
+            curl --fail-with-body --silent --show-error \
+              -X PATCH "${{auth[@]}" -H "Content-Type: application/json" \
+              --data "$payload" \
+              "$WEBDOCK_API/account/scripts/$script_id" >/tmp/account-script.json
+          else
+            echo "Creating Webdock account control script."
+            curl --fail-with-body --silent --show-error \
+              -X POST "${{auth[@]}" -H "Content-Type: application/json" \
+              --data "$payload" \
+              "$WEBDOCK_API/account/scripts" >/tmp/account-script.json
+            script_id="$(jq -r '.id' /tmp/account-script.json)"
+          fi
+
+          test -n "$script_id" && [ "$script_id" != "null" ] || {
+            echo "Could not resolve Webdock account script ID." >&2
+            exit 1
+          }
+
+          echo "script_id=$script_id" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy and execute controlled server script
+        if: steps.resolve.outputs.operation != 'inspect'
+        id: execute
+        shell: bash
+        env:
+          SERVER_SLUG: ${{ steps.resolve.outputs.server_slug }}
+          SCRIPT_ID: ${{ steps.script.outputs.script_id }}
+        run: |
+          set -Eeuo pipefail
+          auth=(-H "Authorization: Bearer $WEBDOCK_TOKEN" -H "X-Application: AmarktaiSalesGitHubControl/1.0")
+
+          payload="$(jq -n \
+            --arg scriptId "$SCRIPT_ID" \
+            --arg path "/root/amarktai-sales-github-control.sh" \
+            '{scriptId:$scriptId,path:$path,makeScriptExecutable:true,executeImmediately:true}')"
+
+          http_code="$(curl --silent --show-error \
+            -D /tmp/deploy-headers \
+            -o /tmp/deploy-body \
+            -w '%{http_code}' \
+            -X POST "${{auth[@]}" -H "Content-Type: application/json" \
+            --data "$payload" \
+            "$WEBDOCK_API/servers/$SERVER_SLUG/scripts")"
+
+          cat /tmp/deploy-body | jq . || cat /tmp/deploy-body
+          [ "$http_code" = "202" ] || {
+            echo "Webdock script deployment returned HTTP $http_code." >&2
+            exit 1
+          }
+
+          callback_id="$(awk 'BEGIN{IGNORECASE=1} /^x-callback-id:/ {gsub("\r","",$2); print $2}' /tmp/deploy-headers | tail -1)"
+          if [ -z "$callback_id" ]; then
+            callback_id="$(jq -r '.lastRunCallbackId // empty' /tmp/deploy-body)"
+          fi
+          test -n "$callback_id" || {
+            echo "Webdock did not return a callback ID." >&2
+            exit 1
+          }
+
+          echo "callback_id=$callback_id" >> "$GITHUB_OUTPUT"
+          echo "Waiting for Webdock execution callback."
+
+          finished=0
+          for attempt in $(seq 1 180); do
+            events="$(curl --fail-with-body --silent --show-error \
+              "${{auth[@]}" \
+              "$WEBDOCK_API/events?callbackId=$callback_id&per_page=10")"
+            status="$(jq -r '.[0].status // empty' <<<"$events")"
+            message="$(jq -r '.[0].message // empty' <<<"$events")"
+
+            echo "attempt=$attempt status=${{status:-pending}"
+
+            case "$status" in
+              success|completed|complete|finished|done)
+                finished=1
+                break
+                ;;
+              error|failed|failure)
+                echo "$message" >&2
+                exit 1
+                ;;
+            esac
+            sleep 10
+          done
+
+          [ "$finished" -eq 1 ] || {
+            echo "Timed out waiting for Webdock server-script execution." >&2
+            exit 1
+          }
+
+      - name: Fetch VPS control report
+        if: steps.resolve.outputs.operation != 'inspect' && always()
+        shell: bash
+        env:
+          SERVER_SLUG: ${{ steps.resolve.outputs.server_slug }}
+        run: |
+          set -Eeuo pipefail
+          auth=(-H "Authorization: Bearer $WEBDOCK_TOKEN" -H "X-Application: AmarktaiSalesGitHubControl/1.0")
+
+          payload='{"filePath":"/tmp/amarktai-control-report.log"}'
+          http_code="$(curl --silent --show-error \
+            -D /tmp/fetch-headers \
+            -o /tmp/fetch-body \
+            -w '%{http_code}' \
+            -X POST "${{auth[@]}" -H "Content-Type: application/json" \
+            --data "$payload" \
+            "$WEBDOCK_API/servers/$SERVER_SLUG/fetchFile")"
+
+          [ "$http_code" = "202" ] || {
+            echo "Could not request VPS report; HTTP $http_code."
+            cat /tmp/fetch-body || true
+            exit 0
+          }
+
+          callback_id="$(awk 'BEGIN{IGNORECASE=1} /^x-callback-id:/ {gsub("\r","",$2); print $2}' /tmp/fetch-headers | tail -1)"
+          test -n "$callback_id" || {
+            echo "No callback ID returned for report fetch."
+            exit 0
+          }
+
+          for attempt in $(seq 1 60); do
+            events="$(curl --fail-with-body --silent --show-error \
+              "${{auth[@]}" \
+              "$WEBDOCK_API/events?callbackId=$callback_id&per_page=10")"
+            status="$(jq -r '.[0].status // empty' <<<"$events")"
+            message="$(jq -r '.[0].message // empty' <<<"$events")"
+
+            case "$status" in
+              success|completed|complete|finished|done)
+                printf '%s' "$message" | base64 --decode > /tmp/amarktai-control-report.log || {
+                  echo "Report payload was not valid base64."
+                  exit 0
+                }
+                echo "===== VPS CONTROL REPORT ====="
+                cat /tmp/amarktai-control-report.log
+                echo "===== END VPS CONTROL REPORT ====="
+                exit 0
+                ;;
+              error|failed|failure)
+                echo "Report fetch failed: $message"
+                exit 0
+                ;;
+            esac
+            sleep 5
+          done
+
+          echo "Timed out waiting for report fetch."
+
+      - name: Enforce release result
+        if: steps.resolve.outputs.operation == 'deploy'
+        shell: bash
+        run: |
+          test -f /tmp/amarktai-control-report.log || {
+            echo "Deployment report was not retrieved." >&2
+            exit 1
+          }
+          grep -q '^DEPLOYMENT=PASS$' /tmp/amarktai-control-report.log || {
+            echo "Deployment did not report PASS." >&2
+            exit 1
+          }
+          grep -q '^release_sha=3bdf067e5f4eaf06aa5a08c8c7a110f5e893359f$' /tmp/amarktai-control-report.log || {
+            echo "Live release SHA does not match frozen target." >&2
+            exit 1
+          }
