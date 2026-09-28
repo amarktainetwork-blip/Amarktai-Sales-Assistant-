@@ -17,7 +17,7 @@ import { listConnectedSystemsForUser } from "../connectedSystems";
 import { routeConnectedSystemActions } from "../crmRouter";
 import { detectLiveSignals, isRoutineCallSpeech } from "./signals";
 import { structuredNotesFromSignals } from "../../shared/liveCallNotes";
-import { completeLiveCallExact, requireLiveCallOwner } from "./store";
+import { completeLiveCallExact, markLiveCallReadyForReview, requireLiveCallOwner } from "./store";
 import { completeCallbackWorkAfterVerifiedCall } from "../salesWork";
 import { parseLiveCallCompletion } from "./completion";
 import { planTelesalesCloseout } from "../telesales/closeoutPlanner";
@@ -431,6 +431,28 @@ export function registerLiveCallRoutes(app: Express) {
         usage: result.usage ?? {},
         creditsCharged: result.creditsCharged ?? 0,
       });
+    } catch (error) {
+      return sendLiveCallError(res, error);
+    }
+  });
+
+  app.post("/api/live-calls/stop", async (req, res) => {
+    try {
+      const user = await requireAuthorisedUser(req);
+      const callSessionId = Number(req.body?.callSessionId);
+      if (!Number.isInteger(callSessionId) || callSessionId <= 0)
+        return res
+          .status(400)
+          .json({ error: "A valid live call session is required." });
+      const transcript =
+        typeof req.body?.transcript === "string" ? req.body.transcript : "";
+      const result = await markLiveCallReadyForReview({
+        userId: user.id,
+        organisationId: user.membership.organisationId,
+        callSessionId,
+        transcript,
+      });
+      return res.json(result);
     } catch (error) {
       return sendLiveCallError(res, error);
     }
