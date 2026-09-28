@@ -198,7 +198,7 @@ if [ "$OPERATION" = "diagnose" ]; then
 
   echo "--- connector and worker health ---"
   db_sql "SELECT resourceType,status,capabilityKey,lastStartedAt,lastSucceededAt,lastError FROM connectorSyncJobs WHERE organisationId=8 ORDER BY resourceType;"
-  db_sql "SELECT severity,category,COUNT(*) AS unresolved,MAX(createdAt) AS latest FROM operationalEvents WHERE organisationId=8 AND resolvedAt IS NULL GROUP BY severity,category ORDER BY severity,category;"
+  db_sql "SELECT severity,category,COUNT(*) AS eventCount,MAX(createdAt) AS latest FROM operationalEvents WHERE organisationId=8 AND createdAt>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 24 HOUR) GROUP BY severity,category ORDER BY severity,category;"
   db_sql "SELECT workerKey,status,COUNT(*) AS count,MAX(startedAt) AS latestStarted,MAX(finishedAt) AS latestFinished FROM operationalWorkerRuns WHERE organisationId=8 AND startedAt>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 7 DAY) GROUP BY workerKey,status ORDER BY workerKey,status;"
 
   echo "--- live call telemetry ---"
