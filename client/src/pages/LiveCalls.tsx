@@ -340,6 +340,7 @@ export default function LiveCalls() {
   const audioContextRef = useRef<AudioContext | undefined>(undefined);
   const pendingRef = useRef<Promise<void>>(Promise.resolve());
   const pendingChunkCountRef = useRef(0);
+  const sessionIdRef = useRef<number | null>(sessionId);
   const transcriptRef = useRef("");
   const conversationStateRef = useRef("");
   const [showTranscript, setShowTranscript] = useState(false);
@@ -375,6 +376,10 @@ export default function LiveCalls() {
   useEffect(() => {
     if (initialSessionId > 0 && !sessionId) setSessionId(initialSessionId);
   }, [initialSessionId, sessionId]);
+
+  useEffect(() => {
+    sessionIdRef.current = sessionId;
+  }, [sessionId]);
 
   useEffect(() => {
     if (
@@ -460,6 +465,19 @@ export default function LiveCalls() {
       coachAbortRef.current?.abort();
       coachAbortRef.current = null;
       pendingCoachRef.current = null;
+      const activeSessionId = sessionIdRef.current;
+      if (activeSessionId && typeof navigator.sendBeacon === "function") {
+        const payload = new Blob(
+          [
+            JSON.stringify({
+              callSessionId: activeSessionId,
+              transcript: transcriptRef.current,
+            }),
+          ],
+          { type: "application/json" }
+        );
+        navigator.sendBeacon("/api/live-calls/stop", payload);
+      }
       if (recorderRef.current && recorderRef.current.state !== "inactive")
         recorderRef.current.stop();
       sourcesRef.current.forEach(stream =>
@@ -850,6 +868,19 @@ export default function LiveCalls() {
     }
   }
 
+  async function checkpointSessionForReview(
+    activeSessionId: number,
+    transcriptValue = transcriptRef.current
+  ) {
+    return postLive<{
+      status: "ready_for_review" | "completed";
+      transcriptChars: number;
+    }>("/api/live-calls/stop", {
+      callSessionId: activeSessionId,
+      transcript: transcriptValue,
+    });
+  }
+
   async function stop() {
     const recorder = recorderRef.current;
     recordingRef.current = false;
@@ -873,13 +904,7 @@ export default function LiveCalls() {
     await pendingRef.current;
     if (sessionId) {
       try {
-        await postLive<{ status: "ready_for_review"; transcriptChars: number }>(
-          "/api/live-calls/stop",
-          {
-            callSessionId: sessionId,
-            transcript: transcriptRef.current,
-          }
-        );
+        await checkpointSessionForReview(sessionId);
       } catch (error) {
         const detail = callError(
           error,
@@ -888,10 +913,7 @@ export default function LiveCalls() {
         setWorkflowError(detail);
         setRetryAction(
           () => () =>
-            void postLive("/api/live-calls/stop", {
-              callSessionId: sessionId,
-              transcript: transcriptRef.current,
-            })
+            void checkpointSessionForReview(sessionId)
         );
         toast.warning(detail);
       }
@@ -911,6 +933,21 @@ export default function LiveCalls() {
       const activeSessionId = sessionId ?? started!.callSessionId;
       setSessionId(activeSessionId);
       if (started?.leadLabel) setLeadLabel(started.leadLabel);
+      try {
+        await checkpointSessionForReview(activeSessionId, "");
+        setWorkflowError("");
+        setRetryAction(null);
+      } catch (error) {
+        const detail = callError(
+          error,
+          "The call attempt was recorded, but its review checkpoint could not be saved yet."
+        );
+        setWorkflowError(detail);
+        setRetryAction(
+          () => () => void checkpointSessionForReview(activeSessionId, "")
+        );
+        toast.warning(detail);
+      }
       setOutcome("no_answer");
       setCloseoutConfirmed(false);
       setAwaitingCloseout(true);
