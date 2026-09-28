@@ -8,6 +8,7 @@ import {
 } from "./store";
 
 const routes = readFileSync(new URL("./routes.ts", import.meta.url), "utf8");
+const contextSource = readFileSync(new URL("./context.ts", import.meta.url), "utf8");
 const storeSource = readFileSync(new URL("./store.ts", import.meta.url), "utf8");
 const client = readFileSync(
   new URL("../../client/src/pages/LiveCalls.tsx", import.meta.url),
@@ -73,7 +74,8 @@ describe("live call recoverable lifecycle", () => {
   });
 
   it("restores ready-for-review sessions after navigation instead of stranding closeout", () => {
-    expect(routes).toContain('transcript: session.transcript || ""');
+    expect(contextSource).toContain("await reconcileAbandonedLiveCallsForUser");
+    expect(contextSource).toContain('transcript: session.transcript || ""');
     expect(routes).toContain('coachNotes: session.coachNotes || ""');
     expect(client).toContain('callContext.data.status === "ready_for_review"');
     expect(client).toContain("setAwaitingCloseout(true)");
