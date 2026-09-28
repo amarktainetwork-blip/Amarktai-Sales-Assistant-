@@ -116,6 +116,18 @@ if [ "$OPERATION" = "diagnose" ]; then
   echo "--- current task collection ---"
   db_sql "SELECT COUNT(*) AS currentOpenTasks FROM crmTasks WHERE connectedSystemId=8 AND ownerExternalId='yZrFI0ptOyvG3ZXvs7iZ' AND status IN ('open','pending','incomplete','new','todo','to_do');"
 
+  echo "--- inbox action backlog summary ---"
+  db_sql "SELECT channel,status,COUNT(*) AS needsActionCount,MIN(receivedAt) AS oldest,MAX(receivedAt) AS newest FROM inboundMessages WHERE organisationId=8 AND mailboxUserId=2 AND connectedSystemId=8 AND needsAction=1 GROUP BY channel,status ORDER BY channel,status;"
+
+  echo "--- inbox stale-work inconsistencies ---"
+  db_sql "SELECT COUNT(*) AS inboundNeedsActionButWorkCompleted FROM inboundMessages m JOIN salesWorkItems w ON w.organisationId=m.organisationId AND w.connectedSystemId=m.connectedSystemId AND w.salespersonUserId=m.mailboxUserId AND w.sourceType='inbound_message' AND w.sourceExternalId=m.externalMessageId WHERE m.organisationId=8 AND m.mailboxUserId=2 AND m.connectedSystemId=8 AND m.needsAction=1 AND w.status='completed';"
+
+  echo "--- oldest actionable inbox rows (metadata only) ---"
+  db_sql "SELECT m.id,m.channel,m.status,m.receivedAt,m.contactExternalId,LEFT(COALESCE(m.subject,''),120) AS subject,COALESCE(w.status,'NO_WORK_ITEM') AS workStatus,JSON_UNQUOTE(JSON_EXTRACT(m.classification,'$.conversationExternalId')) AS conversationExternalId FROM inboundMessages m LEFT JOIN salesWorkItems w ON w.organisationId=m.organisationId AND w.connectedSystemId=m.connectedSystemId AND w.salespersonUserId=m.mailboxUserId AND w.sourceType='inbound_message' AND w.sourceExternalId=m.externalMessageId WHERE m.organisationId=8 AND m.mailboxUserId=2 AND m.connectedSystemId=8 AND m.needsAction=1 ORDER BY m.receivedAt ASC LIMIT 80;"
+
+  echo "--- latest Genie mailbox sync evidence ---"
+  db_sql "SELECT id,createdAt,JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.checkedConversations')) AS checkedConversations,JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.received')) AS received,JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.handledReplies')) AS handledReplies,JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.outboundEvidence')) AS outboundEvidence,JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.legacyConversationLinks')) AS legacyConversationLinks,JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.legacyActionableChecked')) AS legacyActionableChecked,JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.sourceSince')) AS sourceSince FROM auditEntries WHERE organisationId=8 AND userId=2 AND eventType='personal_genie_mailbox_synced' ORDER BY id DESC LIMIT 5;"
+
   echo "--- handover verifier rerun ---"
   set +e
   shell_admin "docker compose --env-file .env -f deploy/webdock/docker-compose.yml exec -T app node dist/verifyAmeliaHandover.js"
