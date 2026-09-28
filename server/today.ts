@@ -3,6 +3,7 @@ import { getOrganisationWorkspaceContext } from "./organisationWorkspace";
 import { isIncompleteTask } from "../shared/taskState";
 import { normalizedCustomerAttributes, personalOwnerSql } from "./customerData";
 import { deriveCustomerInterest } from "./customerInterest";
+import { deriveCustomerContactPreference } from "./contactPreference";
 import { buildTodayCallQueue, unrepresentedTodayTasks } from "./todayCallQueue";
 import { opportunityIsHistorical } from "./crm/actionExecutionPreconditions";
 import { and, asc, desc, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
@@ -670,9 +671,14 @@ export async function getTodayWork(input: {
   const enrichedWorkContacts = workContacts
     .filter(contact => !syntheticContactIds.has(contact.externalId))
     .map(contact => {
+      const attributes = normalizedCustomerAttributes(contact.raw);
       const interest = deriveCustomerInterest({
         mappings: workspace.customerFieldMappings,
-        attributes: normalizedCustomerAttributes(contact.raw),
+        attributes,
+      });
+      const contactPreference = deriveCustomerContactPreference({
+        mappings: workspace.customerFieldMappings,
+        attributes,
       });
       return {
         ...contact,
@@ -680,10 +686,12 @@ export async function getTodayWork(input: {
         courseInterest: interest.primary,
         interestValues: interest.values,
         tags: interest.tags,
+        contactPreference,
       };
     });
   const callQueue = buildTodayCallQueue({
     now,
+    timezone: workspace.organisation.timezone,
     newLeads: activeNewLeadWork.map(item => ({
       workItemId: item.id,
       connectedSystemId: item.connectedSystemId!,
