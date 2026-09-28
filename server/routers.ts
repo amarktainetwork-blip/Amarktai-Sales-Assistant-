@@ -17,7 +17,6 @@ import {
   WORKFLOW_KEYS,
 } from "./agentCatalog";
 import {
-  createCallSession,
   confirmWebsiteDiscovery,
   createDailyReport,
   createTwoFactorChallenge,
@@ -50,8 +49,6 @@ import {
   saveWorkspaceSavedItem,
   removeWorkspaceSavedItem,
   upsertCompanyProfile,
-  appendLiveTranscript,
-  completeLiveCallSession,
   recordAudit,
   updateDelegatedEmailDraft,
   returnClaimedActionForReview,
@@ -90,7 +87,6 @@ import {
 } from "./localAuth";
 import { routeSalesCommand } from "./supervisor";
 import { prepareGovernedAssistantRequest } from "./governedAssistantEntry";
-import { prepareLiveCoachingTip, preparePostCallSummary } from "./liveCoach";
 import {
   getPersonalMailboxReadiness,
   validatePersonalMailboxEmailPreview,
@@ -2204,23 +2200,6 @@ export const appRouter = router({
           callSessionId: input.callSessionId,
         });
       }),
-    saveNotes: secondFactorProcedure
-      .input(
-        z.object({
-          leadLabel: z.string().trim().min(1).max(160),
-          transcript: z.string().trim().max(40_000).optional(),
-          coachNotes: z.string().trim().max(12_000).optional(),
-        })
-      )
-      .mutation(({ ctx, input }) => {
-        if (!ctx.activeOrganisation)
-          throw new Error("Choose an organisation before saving call notes.");
-        return createCallSession({
-          userId: ctx.user.id,
-          organisationId: ctx.activeOrganisation.organisationId,
-          ...input,
-        });
-      }),
     startLive: secondFactorProcedure
       .input(
         z.object({
@@ -2245,65 +2224,6 @@ export const appRouter = router({
           leadLabel: input.leadLabel,
         });
         return { callSessionId, leadLabel: input.leadLabel };
-      }),
-    coachTranscript: secondFactorProcedure
-      .input(
-        z.object({
-          callSessionId: z.number().int().positive(),
-          leadLabel: z.string().trim().min(1).max(160),
-          transcriptChunk: z.string().trim().min(4).max(12_000),
-          approvedContext: z.string().trim().max(8_000).optional(),
-        })
-      )
-      .mutation(async ({ ctx, input }) => {
-        const tip = await prepareLiveCoachingTip({
-          leadLabel: input.leadLabel,
-          transcript: input.transcriptChunk,
-          approvedContext: input.approvedContext,
-        });
-        if (!ctx.activeOrganisation)
-          throw new Error(
-            "Choose an organisation before updating a live call."
-          );
-        await appendLiveTranscript({
-          userId: ctx.user.id,
-          organisationId: ctx.activeOrganisation.organisationId,
-          callSessionId: input.callSessionId,
-          transcriptChunk: input.transcriptChunk,
-          coachTip: tip.content,
-        });
-        return tip;
-      }),
-    completeLive: secondFactorProcedure
-      .input(
-        z.object({
-          callSessionId: z.number().int().positive(),
-          leadLabel: z.string().trim().min(1).max(160),
-          transcript: z.string().trim().min(4).max(40_000),
-        })
-      )
-      .mutation(async ({ ctx, input }) => {
-        const summary = await preparePostCallSummary({
-          leadLabel: input.leadLabel,
-          transcript: input.transcript,
-        });
-        if (!ctx.activeOrganisation)
-          throw new Error(
-            "Choose an organisation before completing a live call."
-          );
-        await appendLiveTranscript({
-          userId: ctx.user.id,
-          organisationId: ctx.activeOrganisation.organisationId,
-          callSessionId: input.callSessionId,
-          transcriptChunk: input.transcript,
-        });
-        await completeLiveCallSession({
-          userId: ctx.user.id,
-          organisationId: ctx.activeOrganisation.organisationId,
-          callSessionId: input.callSessionId,
-          summary: summary.content,
-        });
-        return summary;
       }),
   }),
   analytics: router({
