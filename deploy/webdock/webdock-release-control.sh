@@ -164,33 +164,36 @@ const configuration = {
 };
 console.log('STT_ROUTING=' + JSON.stringify(configuration));
 const sampleRate = 16000;
-const seconds = 2.5;
-const frames = Math.floor(sampleRate * seconds);
-const wav = Buffer.alloc(44 + frames * 2);
-wav.write('RIFF', 0);
-wav.writeUInt32LE(36 + frames * 2, 4);
-wav.write('WAVE', 8);
-wav.write('fmt ', 12);
-wav.writeUInt32LE(16, 16);
-wav.writeUInt16LE(1, 20);
-wav.writeUInt16LE(1, 22);
-wav.writeUInt32LE(sampleRate, 24);
-wav.writeUInt32LE(sampleRate * 2, 28);
-wav.writeUInt16LE(2, 32);
-wav.writeUInt16LE(16, 34);
-wav.write('data', 36);
-wav.writeUInt32LE(frames * 2, 40);
-for (let i = 0; i < frames; i++) {
-  const envelope = Math.sin(Math.PI * i / frames);
-  const sample = Math.sin(2 * Math.PI * 220 * i / sampleRate) * 0.18 * envelope;
-  wav.writeInt16LE(Math.round(sample * 32767), 44 + i * 2);
+function makeWav(seconds) {
+  const frames = Math.floor(sampleRate * seconds);
+  const wav = Buffer.alloc(44 + frames * 2);
+  wav.write('RIFF', 0);
+  wav.writeUInt32LE(36 + frames * 2, 4);
+  wav.write('WAVE', 8);
+  wav.write('fmt ', 12);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(sampleRate, 24);
+  wav.writeUInt32LE(sampleRate * 2, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write('data', 36);
+  wav.writeUInt32LE(frames * 2, 40);
+  for (let i = 0; i < frames; i++) {
+    const envelope = Math.sin(Math.PI * i / frames);
+    const sample = Math.sin(2 * Math.PI * 220 * i / sampleRate) * 0.18 * envelope;
+    wav.writeInt16LE(Math.round(sample * 32767), 44 + i * 2);
+  }
+  return wav;
 }
-async function bench(label, url, model) {
+async function bench(label, url, model, seconds, rounds = 2) {
   if (!url || !model) {
-    console.log('STT_BENCH=' + JSON.stringify({ label, skipped: true }));
+    console.log('STT_BENCH=' + JSON.stringify({ label, seconds, skipped: true }));
     return;
   }
-  for (let round = 1; round <= 3; round++) {
+  const wav = makeWav(seconds);
+  for (let round = 1; round <= rounds; round++) {
     const form = new FormData();
     form.append('file', new Blob([wav], { type: 'audio/wav' }), 'benchmark.wav');
     form.append('model', model);
@@ -201,6 +204,7 @@ async function bench(label, url, model) {
     const body = await response.text();
     console.log('STT_BENCH=' + JSON.stringify({
       label,
+      seconds,
       round,
       status: response.status,
       elapsedMs: Math.round(performance.now() - started),
@@ -208,8 +212,10 @@ async function bench(label, url, model) {
     }));
   }
 }
-await bench('english', configuration.englishUrl, configuration.englishModel);
-await bench('multilingual', configuration.defaultUrl, configuration.defaultModel);
+for (const seconds of [1, 1.25, 1.5, 2, 2.5]) {
+  await bench('english', configuration.englishUrl, configuration.englishModel, seconds, 2);
+}
+await bench('multilingual', configuration.defaultUrl, configuration.defaultModel, 2.5, 1);
 NODE"
   docker stats --no-stream --format '{{.Name}}|cpu={{.CPUPerc}}|mem={{.MemUsage}}' webdock-app-1 webdock-stt-en-1 webdock-stt-1 2>/dev/null || true
 
