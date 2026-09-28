@@ -73,7 +73,11 @@ export default function Today() {
   const assignedTaskExceptions =
     today.data?.queues.assignedTaskExceptions ?? [];
   const upcoming = today.data?.queues.upcoming ?? [];
-  const current = callQueue[0];
+  const current = callQueue.find(item => item.contactEligibleNow !== false);
+  const availableNow = callQueue.filter(
+    item => item.contactEligibleNow !== false
+  ).length;
+  const deferredForPreference = callQueue.length - availableNow;
   const replyQueue = callQueue.filter(
     item => item.primaryKind === "inbound_reply"
   );
@@ -81,7 +85,12 @@ export default function Today() {
     { contactId: current?.contactId ?? 1 },
     { enabled: Boolean(current?.contactId), retry: false }
   );
-  const visibleQueue = showAll ? callQueue.slice(1) : callQueue.slice(1, 8);
+  const remainingQueue = current
+    ? callQueue.filter(item => item.key !== current.key)
+    : callQueue;
+  const visibleQueue = showAll
+    ? remainingQueue
+    : remainingQueue.slice(0, 7);
   const workspace = today.data?.workspace.organisation;
   const taskMetrics = today.data?.taskData.metrics;
   const preferredName =
@@ -229,8 +238,10 @@ export default function Today() {
             </h1>
             <p className="amk-day__orientation">
               {current
-                ? `${callQueue.length} ${callQueue.length === 1 ? "person needs" : "people need"} your attention. Start with ${current.name}.`
-                : "Nothing needs immediate attention. Upcoming commitments stay protected below."}
+                ? `${availableNow} ${availableNow === 1 ? "person needs" : "people need"} your attention now${deferredForPreference ? `; ${deferredForPreference} more ${deferredForPreference === 1 ? "is" : "are"} queued for the customer's preferred contact time` : ""}. Start with ${current.name}.`
+                : callQueue.length
+                  ? `${callQueue.length} ${callQueue.length === 1 ? "person is" : "people are"} queued for later contact windows. Nothing should be called early just to clear the list.`
+                  : "Nothing needs immediate attention. Upcoming commitments stay protected below."}
             </p>
             <p className="amk-day__freshness">
               <span aria-hidden="true" />
@@ -271,8 +282,10 @@ export default function Today() {
           <div className="amk-day__pulse-intro">
             <span>Today at a glance</span>
             <strong>
-              {callQueue.length} {callQueue.length === 1 ? "person" : "people"}{" "}
-              to work
+              {availableNow} {availableNow === 1 ? "person" : "people"} now
+              {deferredForPreference
+                ? ` · ${deferredForPreference} later`
+                : ""}
             </strong>
           </div>
           <div className="amk-day__metric">
@@ -561,10 +574,15 @@ export default function Today() {
               <section data-today-empty className="amk-day__empty">
                 <CheckCircle2 />
                 <p className="amk-day__eyebrow">Clear for now</p>
-                <h2>Immediate work is clear.</h2>
+                <h2>
+                  {callQueue.length
+                    ? "No customer should be contacted yet."
+                    : "Immediate work is clear."}
+                </h2>
                 <p>
-                  Future follow-ups remain scheduled, but nothing needs your
-                  attention right now.
+                  {callQueue.length
+                    ? "The remaining people are protected by their preferred contact windows. They will move forward automatically when it is appropriate to call."
+                    : "Future follow-ups remain scheduled, but nothing needs your attention right now."}
                 </p>
                 {upcoming[0] ? (
                   <div className="amk-day__next-commitment">
@@ -602,14 +620,14 @@ export default function Today() {
           ) : null}
 
           {activeTab === "queue" ? (
-            callQueue.length > 1 ? (
+            remainingQueue.length ? (
               <section data-today-queue className="amk-queue">
                 <div className="amk-queue__head">
                   <div>
                     <p className="amk-day__eyebrow">Up next</p>
                     <h2>Keep moving without deciding who to find next.</h2>
                   </div>
-                  <span>{callQueue.length - 1} remaining</span>
+                  <span>{remainingQueue.length} remaining</span>
                 </div>
                 <div className="amk-queue__list">
                   {visibleQueue.map((item, offset) => {
@@ -632,6 +650,10 @@ export default function Today() {
                             {item.courseInterest
                               ? item.headline + " · " + item.courseInterest
                               : item.headline}
+                            {item.contactEligibleNow === false &&
+                            item.contactPreferenceLabel
+                              ? ` · Best contact: ${item.contactPreferenceLabel}`
+                              : ""}
                           </small>
                         </span>
                         {item.dueAt ? (
@@ -643,7 +665,7 @@ export default function Today() {
                       </button>
                     );
                   })}
-                  {callQueue.length > 8 ? (
+                  {remainingQueue.length > 7 ? (
                     <button
                       type="button"
                       onClick={() => setShowAll(value => !value)}
@@ -651,7 +673,7 @@ export default function Today() {
                     >
                       {showAll
                         ? "Show priority view"
-                        : `Show all ${callQueue.length} people`}
+                        : `Show all ${remainingQueue.length} people`}
                     </button>
                   ) : null}
                 </div>
