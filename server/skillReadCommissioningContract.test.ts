@@ -9,6 +9,11 @@ const studio = readFileSync(
   new URL("../client/src/components/SkillStudio.tsx", import.meta.url),
   "utf8"
 );
+const compiler = readFileSync(new URL("./skillCompiler.ts", import.meta.url), "utf8");
+const customOperations = readFileSync(
+  new URL("./skillCustomOperations.ts", import.meta.url),
+  "utf8"
+);
 
 describe("Teach AmarktAI read commissioning gate", () => {
   it("blocks publication until every declared CRM read is allowed and proven", () => {
@@ -23,6 +28,15 @@ describe("Teach AmarktAI read commissioning gate", () => {
     expect(studio).toContain("JSON.stringify({ connectedSystemId })");
     expect(studio).toContain("plan?.missingReadOperations.length");
     expect(studio).toContain("plan?.readCapabilities.some");
+  });
+
+  it("makes learned custom CRM reads and writes first-class skill operations", () => {
+    expect(compiler).toContain("read_crm_operation");
+    expect(compiler).toContain("prepare_crm_operation");
+    expect(customOperations).toContain("custom.read.");
+    expect(customOperations).toContain("requireRuntimeBrowserOperation");
+    expect(customOperations).toContain("loadUserConnectionSecret");
+    expect(routes).toContain("executeSkillCustomReads");
   });
 
   it("keeps write commissioning behind explicit approval", () => {
