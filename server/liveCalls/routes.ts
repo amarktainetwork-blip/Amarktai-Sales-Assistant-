@@ -17,7 +17,6 @@ import type { OrganisationMembership } from "../organisation";
 import { listConnectedSystemsForUser } from "../connectedSystems";
 import { routeConnectedSystemActions } from "../crmRouter";
 import { detectLiveSignals, isRoutineCallSpeech } from "./signals";
-import { structuredNotesFromSignals } from "../../shared/liveCallNotes";
 import {
   assertLiveCallState,
   completeLiveCallExact,
@@ -188,7 +187,6 @@ export function registerLiveCallRoutes(app: Express) {
           : normalizedText;
       const transcriptionMs = Date.now() - transcribeStartedAt;
       const signals = detectLiveSignals(text);
-      const structuredNotes = structuredNotesFromSignals(signals, text);
       if (text)
         await appendLiveTranscript({
           userId: user.id,
@@ -236,7 +234,6 @@ export function registerLiveCallRoutes(app: Express) {
       return res.json({
         text,
         signals,
-        structuredNotes,
         durationMs,
         queueWaitMs: queueMetrics.queueWaitMs,
         sttActiveAtStart: queueMetrics.activeAtStart,
