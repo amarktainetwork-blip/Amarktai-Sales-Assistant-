@@ -7,6 +7,12 @@ REPO="/opt/amarktai-sales"
 FULL_LOG="/tmp/amarktai-control-full.log"
 REPORT="/tmp/amarktai-control-report.log"
 
+# Webdock executes account scripts as root while the production checkout is owned by admin.
+# Trust only this known canonical checkout for this process and its child deployment scripts.
+export GIT_CONFIG_COUNT=1
+export GIT_CONFIG_KEY_0=safe.directory
+export GIT_CONFIG_VALUE_0="$REPO"
+
 : > "$FULL_LOG"
 : > "$REPORT"
 finish_report() {
