@@ -302,7 +302,13 @@ export default function LiveCalls() {
   const [consent, setConsent] = useState(false);
   const [recording, setRecording] = useState(false);
   const [transcript, setTranscript] = useState("");
-  const [manualNotes, setManualNotes] = useState("");
+  const [manualNotes, setManualNotes] = useState(() =>
+    initialSessionId > 0
+      ? window.localStorage.getItem(
+          `amarktai-live-call-notes:${initialSessionId}`
+        ) || ""
+      : ""
+  );
   const [helping, setHelping] = useState(false);
   const [reviewing, setReviewing] = useState(false);
   const [reviewSummary, setReviewSummary] = useState("");
@@ -531,10 +537,14 @@ export default function LiveCalls() {
   ) {
     if (coachingRef.current) {
       pendingCoachRef.current = { activeSessionId, text, manualHelp };
-      if (Date.now() - coachStartedAtRef.current > LIVE_COACH_STALE_MS)
+      if (
+        manualHelp ||
+        Date.now() - coachStartedAtRef.current > LIVE_COACH_STALE_MS
+      )
         coachAbortRef.current?.abort();
       return;
     }
+    if (manualHelp) setHelping(true);
     const controller = new AbortController();
     coachingRef.current = true;
     coachAbortRef.current = controller;
@@ -590,6 +600,7 @@ export default function LiveCalls() {
     } finally {
       if (coachAbortRef.current === controller) coachAbortRef.current = null;
       coachingRef.current = false;
+      if (manualHelp) setHelping(false);
       const pending = pendingCoachRef.current;
       pendingCoachRef.current = null;
       if (pending)
@@ -707,22 +718,17 @@ export default function LiveCalls() {
   async function requestManualHelp() {
     const activeSessionId = sessionIdRef.current;
     if (!activeSessionId || !recordingRef.current) return;
-    setHelping(true);
-    try {
-      const latest = transcriptRef.current.trim().slice(-2_500);
-      await requestCoaching(
-        activeSessionId,
-        [
-          "The salesperson explicitly asked AmarktAI for help right now.",
-          latest
-            ? `Most recent transcript:\n${latest}`
-            : "No useful transcript has been captured yet.",
-        ].join("\n\n"),
-        true
-      );
-    } finally {
-      setHelping(false);
-    }
+    const latest = transcriptRef.current.trim().slice(-2_500);
+    await requestCoaching(
+      activeSessionId,
+      [
+        "The salesperson explicitly asked AmarktAI for help right now.",
+        latest
+          ? `Most recent transcript:\n${latest}`
+          : "No useful transcript has been captured yet.",
+      ].join("\n\n"),
+      true
+    );
   }
 
   function startRecordingCycle(stream: MediaStream, activeSessionId: number) {
@@ -1248,22 +1254,32 @@ export default function LiveCalls() {
                 </span>
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#55788B]">
-                    CALL AUDIO
+                    CALL
                   </p>
                   <h2 className="font-display text-2xl font-bold tracking-[-.05em] text-[#26354A]">
-                    Live session
+                    {recording
+                      ? "Live conversation"
+                      : awaitingCloseout
+                        ? "Review call"
+                        : closeoutActions?.length
+                          ? "Finished"
+                          : "Prepare call"}
                   </h2>
                 </div>
               </div>
-              <span
-                className={`rounded-full px-3 py-1 text-xs font-bold ${sttReady ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}
-              >
-                {sttReady === null
-                  ? "Checking transcription…"
-                  : sttReady
-                    ? "Transcription ready"
-                    : "Transcription unavailable"}
-              </span>
+              {!awaitingCloseout && !closeoutActions?.length ? (
+                <span
+                  className={`rounded-full px-3 py-1 text-xs font-bold ${sttReady ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}
+                >
+                  {recording
+                    ? "Listening"
+                    : sttReady === null
+                      ? "Checking transcription…"
+                      : sttReady
+                        ? "Transcription ready"
+                        : "Transcription unavailable"}
+                </span>
+              ) : null}
             </div>
 
             {!recording &&
