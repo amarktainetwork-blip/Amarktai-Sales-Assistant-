@@ -116,6 +116,7 @@ if [ "$OPERATION" = "diagnose" ]; then
   echo "--- customer contact-preference field inventory (labels only) ---"
   db_sql "SELECT JSON_EXTRACT(settings,'$.customerFieldMappings') AS configuredCustomerFieldMappings FROM organisations WHERE id=8;"
   db_sql "SELECT DISTINCT JSON_EXTRACT(raw,'$.normalizedCustomerContext.customFieldLabels') AS customFieldLabels FROM crmContacts WHERE organisationId=8 AND connectedSystemId=8 AND LOWER(CAST(JSON_EXTRACT(raw,'$.normalizedCustomerContext.customFieldLabels') AS CHAR)) REGEXP 'prefer|contact|call|time|morning|afternoon|evening' LIMIT 20;"
+  db_sql "SELECT COALESCE(NULLIF(TRIM(JSON_UNQUOTE(JSON_EXTRACT(raw,'$.normalizedCustomerContext.customFields.Xz5LMfmoQ0bWlFE2aqnu'))),''),'(blank)') AS bestTimeToCall,COUNT(*) AS contacts FROM crmContacts WHERE organisationId=8 AND connectedSystemId=8 GROUP BY bestTimeToCall ORDER BY contacts DESC LIMIT 30;"
 
   echo "--- current task collection ---"
   db_sql "SELECT COUNT(*) AS currentOpenTasks FROM crmTasks WHERE connectedSystemId=8 AND ownerExternalId='yZrFI0ptOyvG3ZXvs7iZ' AND status IN ('open','pending','incomplete','new','todo','to_do');"
