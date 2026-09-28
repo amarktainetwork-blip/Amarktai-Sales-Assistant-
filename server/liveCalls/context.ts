@@ -712,6 +712,13 @@ export async function getLiveCallContext(input: {
     id: session.id,
     leadLabel: session.leadLabel,
     status: session.status,
+    transcript: session.transcript || "",
+    coachNotes: session.coachNotes || "",
+    summary: session.summary || "",
+    structuredOutcome:
+      session.structuredOutcome && typeof session.structuredOutcome === "object"
+        ? session.structuredOutcome
+        : undefined,
     context: (session.crmContext || undefined) as
       | LiveCallCrmContext
       | undefined,
