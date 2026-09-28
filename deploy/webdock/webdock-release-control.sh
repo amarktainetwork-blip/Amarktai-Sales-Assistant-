@@ -147,6 +147,11 @@ if [ "$OPERATION" = "diagnose" ]; then
   echo "--- stale source examples ---"
   db_sql "SELECT w.id,w.type,w.status,w.sourceType,w.sourceExternalId,w.taskExternalId,w.contactExternalId,w.dueAt,t.status AS crmTaskStatus,t.completedAt AS crmTaskCompletedAt FROM salesWorkItems w LEFT JOIN crmTasks t ON t.organisationId=w.organisationId AND t.connectedSystemId=w.connectedSystemId AND t.externalId=w.taskExternalId WHERE w.organisationId=8 AND w.salespersonUserId=2 AND w.status IN ('open','in_progress','snoozed','blocked') AND w.sourceType='crm_task' AND LOWER(TRIM(COALESCE(t.status,''))) IN ('completed','complete','done','closed','cancelled','canceled') ORDER BY t.completedAt DESC LIMIT 50;"
 
+  echo "--- live call telemetry ---"
+  db_sql "SELECT eventType,COUNT(*) AS count,MIN(createdAt) AS firstAt,MAX(createdAt) AS lastAt FROM auditEntries WHERE organisationId=8 AND eventType IN ('live_call_transcription_chunk','live_call_coaching_stream','live_call_completed','live_call_started') GROUP BY eventType ORDER BY eventType;"
+  db_sql "SELECT id,createdAt,JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.transcriptionMs')) AS transcriptionMs,JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.queueWaitMs')) AS queueWaitMs,JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.durationMs')) AS durationMs,JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.sttActiveAtStart')) AS activeAtStart,JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.sttWaitingAtStart')) AS waitingAtStart FROM auditEntries WHERE organisationId=8 AND eventType='live_call_transcription_chunk' ORDER BY id DESC LIMIT 40;"
+  db_sql "SELECT id,status,createdAt,updatedAt,LENGTH(COALESCE(transcript,'')) AS transcriptChars,LENGTH(COALESCE(coachNotes,'')) AS coachChars,JSON_LENGTH(COALESCE(structuredOutcome,JSON_OBJECT())) AS outcomeFields FROM callSessions WHERE organisationId=8 ORDER BY id DESC LIMIT 20;"
+
   echo "--- handover verifier rerun ---"
   set +e
   shell_admin "docker compose --env-file .env -f deploy/webdock/docker-compose.yml exec -T app node dist/verifyAmeliaHandover.js"
