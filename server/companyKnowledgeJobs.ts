@@ -726,6 +726,19 @@ async function advanceCompanyKnowledgeJob(jobId: number) {
 export async function resumeCompanyKnowledgeJobs() {
   const db = await getDb();
   if (!db) return 0;
+
+  const staleApproved = await db
+    .select({
+      organisationId: companyKnowledgeJobs.organisationId,
+      companyProfileId: companyKnowledgeJobs.companyProfileId,
+    })
+    .from(companyKnowledgeJobs)
+    .where(inArray(companyKnowledgeJobs.status, ["failed", "needs_attention"]))
+    .orderBy(desc(companyKnowledgeJobs.updatedAt))
+    .limit(20);
+  for (const stale of staleApproved)
+    await reconcileConfirmedCompanyKnowledgeJob(stale);
+
   const available = workerConcurrency() - activeJobs.size;
   if (available <= 0) return 0;
   const jobs = await db
