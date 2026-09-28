@@ -1,75 +1,63 @@
 # Live Call Intelligence
 
-Amarktai's `/calls` workspace is a desktop-first Live Call Companion. It is intentionally split into replaceable layers so the pilot deployment can use an external transcription service while production can move speech-to-text and realtime media onto dedicated infrastructure without rewriting sales logic.
+AmarktAI's `/calls` workspace is intentionally salesperson-led. The product does not try to replace the salesperson during a conversation. It prepares context, captures an authorised transcript, stays mostly quiet during the call, helps on demand, and moves summarisation and CRM preparation to the post-call review.
 
-## Current implemented path
+## User workflow
+
+The Calls experience has four states:
+
+1. **Prepare** — choose the customer, review essential CRM context, select the audio source, confirm transcription permission, and start the call.
+2. **Live call** — show only compact customer context, the transcript, the salesperson's own notes, and one Sales Assist card. There is no visible signal feed and no AI-generated live structured-notes grid.
+3. **Review** — after Stop, AmarktAI analyses the whole transcript together with the salesperson-authored notes and prepares a concise review draft. The salesperson confirms the outcome, callback and next step.
+4. **Finish** — prepare the CRM note/activity, task completion, callback, opportunity/status changes and any communication as Review proposals. External CRM/customer-facing actions remain review-only until separately commissioned.
+
+## Current implemented media path
 
 1. An authenticated, second-factor-verified salesperson starts a call session.
 2. The browser asks for explicit media permission.
-3. The user chooses either microphone-only capture or microphone plus an explicitly shared tab/system-audio source.
+3. The user chooses microphone-only capture or microphone plus explicitly shared browser-call audio.
 4. Browser audio is mixed locally when two sources are selected.
-5. `MediaRecorder` produces short audio chunks.
-6. `/api/live-calls/transcribe` forwards each chunk to the deployment-controlled `STT_TRANSCRIPTIONS_URL` using an OpenAI-compatible multipart transcription contract.
-7. Amarktai stores the returned text against the authorised call session; the bridge does not persist the raw audio chunk.
-8. Deterministic code detects common questions, objections, callback requests, commitments and buying signals.
-9. GenX coaching is requested only for important signals/questions rather than for every sentence.
-10. At call completion the existing post-call flow prepares a reviewable summary.
+5. Web Audio captures mono PCM, applies filtering/compression, suppresses silence, and emits independently decodable 16 kHz WAV chunks on the benchmarked two-second cadence.
+6. `/api/live-calls/transcribe` forwards speech chunks to the deployment-controlled transcription service.
+7. AmarktAI stores returned transcript text against the authorised call session; raw audio is not retained.
+8. Deterministic signals remain **internal only** and are used to decide whether an automatic coaching intervention is worth interrupting the salesperson.
+9. Automatic coaching is sparse. The visible Sales Assist card should only help with a factual answer, objection response, or clear next sales move. Routine conversation stays silent.
+10. The salesperson can press **Help me** at any time; explicit help takes priority over automatic coaching.
+11. The salesperson's own notes are preserved locally during the call and checkpointed with the server when the call stops or the page exits.
+12. Stop moves the call to `ready_for_review`. Abandoned sessions are also reconciled to that state by the production worker.
+13. Post-call review uses the whole transcript plus salesperson-authored notes. It must not invent speaker identity, commitments, dates, customer intent or outcome.
+14. Confirmed closeout produces a factual summary and Review proposals. It never grants authority to write to the CRM or send customer communications automatically.
 
 ## Deployment-controlled STT
 
-Required when live transcription is enabled:
+The production deployment currently supports a default transcription lane plus a fast English lane. Configuration is deployment-controlled; the application contains no direct OpenAI speech dependency.
 
-```text
-STT_TRANSCRIPTIONS_URL=
-STT_MODEL=
-STT_API_KEY=              # optional when the service does not require one
-STT_PROVIDER_LABEL=
-```
-
-The application contains no direct OpenAI speech dependency. The endpoint may be an authorised self-hosted/open-source OpenAI-compatible transcription server or another deployment-controlled compatible service.
-
-Suitable open-source candidates to evaluate for production include Speaches/faster-whisper-server and whisper.cpp. Benchmark accuracy, language coverage, latency and concurrency against real telesales recordings before standardising a model.
+The live client keeps STT concurrency bounded. Production benchmarking showed the English service serialises concurrent requests, so increasing concurrency would increase latency rather than reduce it. The current two-second chunk cadence is therefore paired with queue/backpressure protection instead of parallel request fan-out.
 
 ## Media capture limitations
 
-Browser permissions are deliberately explicit. Browser/OS support for sharing system audio varies. For browser diallers, sharing the actual call tab with audio is preferred. Microphone-only capture is a fallback, not a guarantee that both speakers will be cleanly captured through every headset/softphone combination.
+Browser permissions are explicit. Browser/OS support for sharing system audio varies. For browser diallers, sharing the actual call tab with audio is preferred. Microphone-only capture is appropriate for speakerphone/headset scenarios only when the authorised conversation is actually audible to the selected input.
 
-A universal telephony deployment should add a provider-neutral media adapter for SIP/WebRTC/provider streams. LiveKit is an appropriate open-source candidate for that production media layer, but it is not required for the first Webdock pilot and should not be introduced merely to make the service graph larger.
+A future universal telephony layer may use provider-neutral SIP/WebRTC/media streams, but it should be introduced only when real scale or call-source requirements justify it.
 
 ## Privacy and consent
 
-The current UI requires the salesperson to confirm that the organisation authorises transcription/recording assistance and that required participant notice/consent has been handled. This is a product safety control, not legal advice and not a substitute for organisation-specific policy.
+The UI requires the salesperson to confirm that the organisation authorises transcription assistance and that required participant notice/consent has been handled. Raw audio chunks are not retained by the Calls pipeline.
 
-Production work should add organisation-level recording/transcription policy, retention settings and jurisdiction-specific workflows before any retained audio-recording feature is enabled. Current chunk transcription does not create a permanent audio recording in Amarktai.
+Transcript-derived material remains evidence, not authority. Salesperson-authored notes are labelled separately from customer speech. Customer commitments, outcomes, callbacks and CRM changes require explicit salesperson confirmation.
 
-## Cost and token discipline
+## AI and cost discipline
 
-Speech-to-text cost is separate from GenX reasoning cost. Deterministic signal detection is zero-GenX-credit work. GenX receives short, relevant transcript segments for semantic coaching; it must not receive a continuously growing full-call transcript on every chunk.
+GenX is not called continuously. Deterministic signal detection is zero-credit trigger logic and is not shown to the salesperson.
 
-Future commercial metering should separately track:
+Automatic AI intervention should be rare. Explicit **Help me** is always available. Full-call summarisation happens after Stop, when the complete conversation is available, rather than continuously generating speculative live notes.
 
-- Amarktai AI Credits;
-- call transcription minutes;
-- optional retained recording storage.
+## Recovery and closeout
 
-## Production evolution
-
-The intended scaling path is:
-
-```text
-Browser / telephony
-        ↓
-Realtime media adapter
-        ↓
-Scalable STT workers
-        ↓
-Finalised transcript events
-        ↓
-Deterministic conversation signals
-        ↓
-Selective GenX reasoning
-        ↓
-Post-call CRM review bundle
-```
-
-The web/API process does not need a GPU. Dedicated transcription/media workers can be added when measured concurrent-call volume requires them.
+- Stop checkpoints the longest known transcript and salesperson notes.
+- Page exit sends an emergency checkpoint.
+- A stale browser checkpoint cannot overwrite a newer server transcript.
+- Reopening a `ready_for_review` call restores transcript, notes and the closeout state.
+- The production worker moves abandoned `in_progress` calls to `ready_for_review` without fabricating outcomes.
+- Final closeout is idempotent and persists the Review workflow before marking the call completed.
+- `autoExecutions` remains empty for live-call closeout until explicitly commissioned write permissions exist.
