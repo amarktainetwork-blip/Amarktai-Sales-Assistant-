@@ -9,6 +9,7 @@ type RefreshSalesDayOptions = {
   }>;
   invalidateToday: () => Promise<unknown>;
   invalidateCustomers: () => Promise<unknown>;
+  invalidateCustomerDetail: () => Promise<unknown>;
   invalidateInbox: () => Promise<unknown>;
   invalidateNewLeadAlerts: () => Promise<unknown>;
   invalidateTracker: () => Promise<unknown>;
@@ -20,6 +21,7 @@ export async function refreshSalesDay({
   syncCrm,
   invalidateToday,
   invalidateCustomers,
+  invalidateCustomerDetail,
   invalidateInbox,
   invalidateNewLeadAlerts,
   invalidateTracker,
@@ -67,6 +69,7 @@ export async function refreshSalesDay({
   await Promise.all([
     invalidateToday(),
     invalidateCustomers(),
+    invalidateCustomerDetail(),
     invalidateInbox(),
     invalidateNewLeadAlerts(),
     invalidateTracker(),
