@@ -19,6 +19,8 @@ function dependencies(fetcher: ReturnType<typeof vi.fn>) {
     invalidateToday: vi.fn().mockResolvedValue(undefined),
     invalidateCustomers: vi.fn().mockResolvedValue(undefined),
     invalidateInbox: vi.fn().mockResolvedValue(undefined),
+    invalidateNewLeadAlerts: vi.fn().mockResolvedValue(undefined),
+    invalidateTracker: vi.fn().mockResolvedValue(undefined),
     refetchToday: vi.fn().mockResolvedValue({ isError: false }),
   };
 }
@@ -48,6 +50,8 @@ describe("refreshSalesDay", () => {
     expect(deps.invalidateToday).toHaveBeenCalledOnce();
     expect(deps.invalidateCustomers).toHaveBeenCalledOnce();
     expect(deps.invalidateInbox).toHaveBeenCalledOnce();
+    expect(deps.invalidateNewLeadAlerts).toHaveBeenCalledOnce();
+    expect(deps.invalidateTracker).toHaveBeenCalledOnce();
     expect(deps.refetchToday).toHaveBeenCalledOnce();
   });
 
@@ -76,5 +80,7 @@ describe("refreshSalesDay", () => {
     expect(deps.invalidateToday).toHaveBeenCalledOnce();
     expect(deps.invalidateCustomers).toHaveBeenCalledOnce();
     expect(deps.invalidateInbox).toHaveBeenCalledOnce();
+    expect(deps.invalidateNewLeadAlerts).toHaveBeenCalledOnce();
+    expect(deps.invalidateTracker).toHaveBeenCalledOnce();
   });
 });
