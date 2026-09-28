@@ -639,7 +639,7 @@ export default function LiveCalls() {
         signal => signal.priority === "important" || signal.type === "question"
       );
       const fresh = coachable.filter(signal => {
-        const key = `${signal.type}:${signal.evidence.toLowerCase().replace(/\\s+/g, " ").trim()}`;
+        const key = `${signal.type}:${signal.evidence.toLowerCase().replace(/\s+/g, " ").trim()}`;
         const previous = coachedSignalRef.current.get(key) || 0;
         if (now - previous < 120_000) return false;
         coachedSignalRef.current.set(key, now);
@@ -1069,12 +1069,12 @@ export default function LiveCalls() {
             AMARKTAI / LIVE CALL COMPANION
           </p>
           <h1 className="mt-3 font-display text-4xl font-bold tracking-[-.06em] text-[#203047] sm:text-5xl">
-            Listen less to the admin. Listen more to the customer.
+            Call Companion
           </h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-[#66758A]">
-            With your permission, AmarktAI can transcribe the call, notice
-            important questions and commitments, and offer coaching when it is
-            useful. You stay in control of what is saved or sent.
+            Prepare, have the conversation, take your own notes, then review the
+            outcome. AmarktAI stays quiet unless it has something useful to add
+            or you ask for help.
           </p>
         </header>
 
@@ -1133,7 +1133,10 @@ export default function LiveCalls() {
               </Button>
             </section>
           )}
-        {callContext.data?.context && (
+        {callContext.data?.context &&
+          !recording &&
+          !awaitingCloseout &&
+          !closeoutActions?.length && (
           <section className="mt-6 rounded-[1.5rem] border border-[#DCE4EE] bg-white p-6">
             <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#55788B]">
               PRE-CALL BRIEF
@@ -1211,6 +1214,10 @@ export default function LiveCalls() {
               </span>
             </div>
 
+            {!recording &&
+            !awaitingCloseout &&
+            !closeoutActions?.length ? (
+              <>
             <label className="mt-6 block text-xs font-black uppercase tracking-[.12em] text-[#66758A]">
               Customer / contact
             </label>
@@ -1354,8 +1361,11 @@ export default function LiveCalls() {
               </span>
             </label>
 
+              </>
+            ) : null}
+
             <div className="mt-5 flex flex-wrap gap-3">
-              {!recording ? (
+              {!recording && !awaitingCloseout && !closeoutActions?.length ? (
                 <Button
                   disabled={
                     !leadLabel.trim() ||
@@ -1382,7 +1392,9 @@ export default function LiveCalls() {
                   Stop & prepare follow-up
                 </Button>
               )}
-              {!recording && (
+              {!recording &&
+                !awaitingCloseout &&
+                !closeoutActions?.length && (
                 <Button
                   variant="outline"
                   disabled={
@@ -1411,98 +1423,98 @@ export default function LiveCalls() {
               )}
             </div>
 
-            <div className="mt-6 rounded-xl border border-[#DCE4EE] bg-[#F8FAFC] p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#55788B]">
-                    LIVE CONVERSATION
-                  </p>
-                  <p className="mt-1 text-xs text-[#66758A]">
-                    Sales-relevant context stays visible; the raw transcript is
-                    available when you need evidence.
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowTranscript(value => !value)}
-                >
-                  {showTranscript ? "Hide transcript" : "View transcript"}
-                </Button>
-              </div>
-              <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-[#33445B]">
-                {conversationStateRef.current ||
-                  "Listening for the customer's needs, questions, objections and next step…"}
-              </p>
-              {showTranscript ? (
-                <div className="mt-4 max-h-64 overflow-y-auto border-t border-[#DCE4EE] pt-4">
-                  <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#728197]">
-                    FULL TRANSCRIPT
-                  </p>
-                  <p className="mt-2 whitespace-pre-wrap text-xs leading-6 text-[#52647A]">
-                    {transcript || "No transcript yet."}
-                  </p>
-                </div>
-              ) : null}
-            </div>
+            {sessionId && (recording || awaitingCloseout) ? (
+              <>
+                {recording && callContext.data?.context ? (
+                  <section className="mt-6 rounded-xl border border-[#DCE4EE] bg-[#F8FAFC] p-4">
+                    <div className="grid gap-3 md:grid-cols-3">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[.12em] text-[#728197]">
+                          Customer
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-[#26354A]">
+                          {callContext.data.context.contactName}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[.12em] text-[#728197]">
+                          Course / product
+                        </p>
+                        <p className="mt-1 text-sm text-[#33445B]">
+                          {callContext.data.context.courseInterest ||
+                            "Not yet identified"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[.12em] text-[#728197]">
+                          Why call
+                        </p>
+                        <p className="mt-1 text-sm text-[#33445B]">
+                          {callContext.data.context.objective ||
+                            callContext.data.context.reasons.join(" · ") ||
+                            "Confirm the next step"}
+                        </p>
+                      </div>
+                    </div>
+                  </section>
+                ) : null}
 
-            <section className="mt-5 rounded-xl border border-[#DCE4EE] bg-white p-4">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#55788B]">
-                  LIVE STRUCTURED NOTES
-                </p>
-                <span className="text-xs text-[#66758A]">
-                  Updated from verified transcript signals
-                </span>
-              </div>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <LiveNoteGroup
-                  label="Current product / topic"
-                  items={structuredNotes.topics}
-                />
-                <LiveNoteGroup
-                  label="Goals / intentions heard"
-                  items={structuredNotes.goals}
-                />
-                <LiveNoteGroup
-                  label="Facts / context heard"
-                  items={structuredNotes.facts}
-                />
-                <LiveNoteGroup
-                  label="Customer questions"
-                  items={structuredNotes.questions}
-                />
-                <LiveNoteGroup
-                  label="Objections"
-                  items={structuredNotes.objections}
-                />
-                <LiveNoteGroup
-                  label="Buying signals"
-                  items={structuredNotes.buyingSignals}
-                />
-                <LiveNoteGroup
-                  label="Commitments heard — confirm speaker"
-                  items={structuredNotes.commitments}
-                />
-                <LiveNoteGroup
-                  label="Callback requests"
-                  items={structuredNotes.callbackRequests}
-                />
-                <LiveNoteGroup
-                  label="Dates / times mentioned"
-                  items={structuredNotes.datesTimes}
-                />
-                <LiveNoteGroup
-                  label="Likely next steps"
-                  items={structuredNotes.nextSteps}
-                />
-                <LiveNoteGroup
-                  label="Still unresolved"
-                  items={structuredNotes.unresolvedItems}
-                />
-              </div>
-            </section>
+                <div className="mt-5 rounded-xl border border-[#DCE4EE] bg-[#F8FAFC] p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#55788B]">
+                        {recording ? "LIVE TRANSCRIPT" : "CALL TRANSCRIPT"}
+                      </p>
+                      <p className="mt-1 text-xs text-[#66758A]">
+                        The transcript is evidence, not the salesperson's job.
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowTranscript(value => !value)}
+                    >
+                      {showTranscript ? "Show less" : "View full transcript"}
+                    </Button>
+                  </div>
+                  <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-[#33445B]">
+                    {transcript
+                      ? transcript.split("\n").slice(-5).join("\n")
+                      : recording
+                        ? "Listening…"
+                        : "No transcript was captured."}
+                  </p>
+                  {showTranscript && transcript ? (
+                    <div className="mt-4 max-h-72 overflow-y-auto border-t border-[#DCE4EE] pt-4">
+                      <p className="whitespace-pre-wrap text-xs leading-6 text-[#52647A]">
+                        {transcript}
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+
+                <section className="mt-5 rounded-xl border border-[#DCE4EE] bg-white p-4">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#55788B]">
+                      YOUR NOTES
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-[#66758A]">
+                      Write only what matters to you. These notes are treated as
+                      salesperson-authored notes and are used with the transcript
+                      when AmarktAI prepares the post-call summary.
+                    </p>
+                  </div>
+                  <textarea
+                    value={manualNotes}
+                    onChange={event => setManualNotes(event.target.value.slice(0, 12_000))}
+                    rows={5}
+                    placeholder="Key detail, concern, promise to follow up, next step…"
+                    className="mt-3 w-full resize-y rounded-xl border border-[#CBD5E0] bg-white px-3 py-3 text-sm leading-6 text-[#26354A] outline-none focus:border-[#55788B]"
+                  />
+                </section>
+              </>
+            ) : null}
 
             {awaitingCloseout && (
               <section className="mt-5 rounded-xl border border-[#DCE4EE] bg-[#F8FAFC] p-5">
@@ -1675,69 +1687,82 @@ export default function LiveCalls() {
           </section>
 
           <div className="grid gap-6">
-            <section className="rounded-[1.5rem] border border-[#DCE4EE] bg-white p-6">
-              <div className="flex items-center gap-3">
-                <AlertTriangle className="size-5 text-[#55788B]" />
-                <h2 className="font-display text-2xl font-bold tracking-[-.05em] text-[#26354A]">
-                  Live signals
-                </h2>
-              </div>
-              <div className="mt-4 space-y-3">
-                {signals.length ? (
-                  signals.map((signal, index) => (
-                    <article
-                      key={`${signal.type}-${index}`}
-                      className={`rounded-xl border p-4 ${signal.priority === "important" ? "border-[#C9D8DE] bg-[#EAF0F2]" : "border-[#DCE4EE] bg-[#F8FAFC]"}`}
-                    >
-                      <p className="text-xs font-black uppercase tracking-[.1em] text-[#55788B]">
-                        {signal.label}
+            {recording ? (
+              <section className="rounded-[1.5rem] border border-[#DCE4EE] bg-white p-6">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <CheckCircle2 className="size-5 text-[#55788B]" />
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#55788B]">
+                        SALES ASSIST
                       </p>
-                      <p className="mt-2 text-sm leading-6 text-[#33445B]">
-                        {signal.evidence}
-                      </p>
-                    </article>
-                  ))
-                ) : (
-                  <p className="text-sm leading-6 text-[#66758A]">
-                    Questions, objections, commitments, callback requests and
-                    buying signals noticed during the call will appear here.
+                      <h2 className="font-display text-2xl font-bold tracking-[-.05em] text-[#26354A]">
+                        Only when useful
+                      </h2>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={helping || !sessionId}
+                    onClick={() => void requestManualHelp()}
+                    className="border-[#B9C7D8] bg-white text-[#405F70]"
+                  >
+                    <CircleHelp className="mr-2 size-4" />
+                    {helping ? "Helping…" : "Help me"}
+                  </Button>
+                </div>
+                <div className="mt-5 rounded-xl bg-[#F8FAFC] p-4">
+                  <p className="whitespace-pre-wrap text-sm leading-7 text-[#33445B]">
+                    {tip || "Listening — no intervention needed."}
                   </p>
-                )}
-              </div>
-            </section>
-
-            <section className="rounded-[1.5rem] border border-[#DCE4EE] bg-white p-6">
-              <div className="flex items-center gap-3">
-                <CheckCircle2 className="size-5 text-[#55788B]" />
-                <h2 className="font-display text-2xl font-bold tracking-[-.05em] text-[#26354A]">
-                  Sales assist
+                </div>
+                <p className="mt-4 text-xs leading-5 text-[#7B8798]">
+                  Automatic guidance appears only for a useful answer, objection
+                  response or clear next sales move. Use Help me whenever you
+                  want assistance immediately.
+                </p>
+              </section>
+            ) : awaitingCloseout ? (
+              <section className="rounded-[1.5rem] border border-[#DCE4EE] bg-white p-6">
+                <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#55788B]">
+                  REVIEW
+                </p>
+                <h2 className="mt-2 font-display text-2xl font-bold tracking-[-.05em] text-[#26354A]">
+                  You decide what happened.
                 </h2>
-              </div>
-              <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-[#33445B]">
-                {tip ||
-                  "Sales help appears only when the conversation contains a product question, objection, buying signal or meaningful next step. Greetings and routine chat do not trigger coaching."}
-              </p>
-            </section>
+                <p className="mt-3 text-sm leading-7 text-[#52647A]">
+                  Check the transcript and your own notes, then confirm the
+                  outcome, next step and callback. AmarktAI will use those
+                  confirmed details to prepare the CRM-ready summary and review
+                  actions.
+                </p>
+              </section>
+            ) : closeoutActions?.length ? (
+              <section className="rounded-[1.5rem] border border-[#DCE4EE] bg-white p-6">
+                <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#55788B]">
+                  CALL SUMMARY
+                </p>
+                <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-[#33445B]">
+                  {tip}
+                </p>
+              </section>
+            ) : (
+              <section className="rounded-[1.5rem] border border-[#DCE4EE] bg-white p-6">
+                <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#55788B]">
+                  SIMPLE BY DESIGN
+                </p>
+                <p className="mt-3 text-sm leading-7 text-[#52647A]">
+                  During the call you will see the transcript, your own notes
+                  and one Sales Assist card. Signals and AI-generated live notes
+                  stay out of your way.
+                </p>
+              </section>
+            )}
+          </div>
           </div>
         </div>
       </div>
     </DashboardLayout>
-  );
-}
-
-function LiveNoteGroup({ label, items }: { label: string; items: string[] }) {
-  return (
-    <div className="rounded-lg bg-[#F8FAFC] p-3">
-      <p className="text-xs font-bold text-[#52647A]">{label}</p>
-      {items.length ? (
-        <ul className="mt-2 space-y-1 text-sm leading-5 text-[#33445B]">
-          {items.map(item => (
-            <li key={item}>• {item}</li>
-          ))}
-        </ul>
-      ) : (
-        <p className="mt-2 text-xs text-[#8A96A8]">Nothing captured yet.</p>
-      )}
-    </div>
   );
 }
