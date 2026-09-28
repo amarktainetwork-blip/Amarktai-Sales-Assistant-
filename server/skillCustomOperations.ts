@@ -1,3 +1,6 @@
+import { and, eq } from "drizzle-orm";
+import { connectedSystems } from "../drizzle/schema";
+import { getDb } from "./db";
 import type { ResolvedAssistantCustomerContext } from "./assistantCustomerContext";
 import {
   loadUserConnectionSecret,
@@ -48,11 +51,28 @@ export async function executeSkillCustomReads(input: {
       "CUSTOM_READ_CONNECTION_REQUIRED: the customer has no exact CRM connection."
     );
 
-  const system = {
-    id: connectedSystemId,
-    provider: input.customer.provider,
-    connectionMethod: "browser",
-  };
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const system = (
+    await db
+      .select()
+      .from(connectedSystems)
+      .where(
+        and(
+          eq(connectedSystems.id, connectedSystemId),
+          eq(connectedSystems.organisationId, input.organisationId)
+        )
+      )
+      .limit(1)
+  )[0];
+  if (
+    !system ||
+    !["browser", "sidecar"].includes(system.connectionMethod) ||
+    system.provider !== input.customer.provider
+  )
+    throw new Error(
+      "CUSTOM_READ_CONNECTION_REQUIRED: the exact browser CRM connection is unavailable."
+    );
   const secret = await loadUserConnectionSecret({
     userId: input.userId,
     organisationId: input.organisationId,
@@ -69,7 +89,7 @@ export async function executeSkillCustomReads(input: {
       "CUSTOM_READ_UNAVAILABLE: this CRM adapter cannot execute learned custom reads."
     );
 
-  const connection = toAdapterConnection(system as any);
+  const connection = toAdapterConnection(system);
   const existingCrm =
     input.runtimeInputs.crm &&
     typeof input.runtimeInputs.crm === "object" &&
