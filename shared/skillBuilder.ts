@@ -3,6 +3,7 @@ export const SKILL_STEP_ACTIONS = [
   "read_tasks",
   "read_history",
   "read_opportunity",
+  "read_crm_operation",
   "set_internal_priority",
   "prepare_note",
   "prepare_email",
@@ -11,6 +12,7 @@ export const SKILL_STEP_ACTIONS = [
   "prepare_task",
   "prepare_contact_update",
   "prepare_opportunity_update",
+  "prepare_crm_operation",
   "complete_task_after_review",
 ] as const;
 
@@ -308,6 +310,25 @@ export function simulateSkillDefinition(
   const missingEvidence = writeLikeSteps.filter(
     step => !step.requiredEvidence?.length
   );
+  const invalidCustomOperations = skill.steps.filter(step => {
+    if (
+      step.action !== "read_crm_operation" &&
+      step.action !== "prepare_crm_operation"
+    )
+      return false;
+    const operationKey =
+      typeof step.inputs?.operationKey === "string"
+        ? step.inputs.operationKey.trim()
+        : "";
+    const expectedPrefix =
+      step.action === "read_crm_operation"
+        ? "custom.read."
+        : "custom.write.";
+    return (
+      !operationKey.startsWith(expectedPrefix) ||
+      !skill.requiredOperations.includes(operationKey)
+    );
+  });
   const checks: SkillSimulationCheck[] = [
     {
       key: "trigger",
@@ -346,6 +367,14 @@ export function simulateSkillDefinition(
         missingEvidence.length === 0
           ? "Consequential completion steps require evidence and review."
           : "Task completion needs explicit postcondition evidence.",
+    },
+    {
+      key: "custom_crm_operations",
+      passed: invalidCustomOperations.length === 0,
+      detail:
+        invalidCustomOperations.length === 0
+          ? "Every custom CRM step names a matching declared learned operation."
+          : "Custom CRM steps must use a declared custom.read.* or custom.write.* operation with the matching step type.",
     },
     {
       key: "outcome",
