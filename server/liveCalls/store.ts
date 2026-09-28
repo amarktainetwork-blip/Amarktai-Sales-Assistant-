@@ -98,6 +98,53 @@ export async function reconcileAbandonedLiveCallsForUser(input: {
   };
 }
 
+export async function reconcileAllAbandonedLiveCalls(input: {
+  nowMs?: number;
+  graceMs?: number;
+} = {}) {
+  const db = await dbOrThrow();
+  const candidates = await db
+    .select({
+      userId: callSessions.userId,
+      organisationId: callSessions.organisationId,
+      status: callSessions.status,
+      updatedAt: callSessions.updatedAt,
+    })
+    .from(callSessions)
+    .where(eq(callSessions.status, "in_progress"))
+    .limit(500);
+  const groups = new Map<string, { userId: number; organisationId: number }>();
+  for (const session of candidates) {
+    if (
+      session.userId == null ||
+      session.organisationId == null ||
+      !shouldCheckpointAbandonedLiveCall({
+        status: session.status,
+        updatedAt: session.updatedAt,
+        nowMs: input.nowMs,
+        graceMs: input.graceMs,
+      })
+    )
+      continue;
+    groups.set(`${session.userId}:${session.organisationId}`, {
+      userId: session.userId,
+      organisationId: session.organisationId,
+    });
+  }
+  let checkpointed = 0;
+  let withContent = 0;
+  for (const group of Array.from(groups.values())) {
+    const result = await reconcileAbandonedLiveCallsForUser({
+      ...group,
+      nowMs: input.nowMs,
+      graceMs: input.graceMs,
+    });
+    checkpointed += result.checkpointed;
+    withContent += result.withContent;
+  }
+  return { checkpointed, withContent, userOrganisationGroups: groups.size };
+}
+
 export function checkpointTranscript(
   existing: string | null | undefined,
   incoming: string
