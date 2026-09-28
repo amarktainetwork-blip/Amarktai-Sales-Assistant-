@@ -6,6 +6,7 @@ import {
 } from "./store";
 
 const routes = readFileSync(new URL("./routes.ts", import.meta.url), "utf8");
+const storeSource = readFileSync(new URL("./store.ts", import.meta.url), "utf8");
 const client = readFileSync(
   new URL("../../client/src/pages/LiveCalls.tsx", import.meta.url),
   "utf8"
@@ -35,6 +36,12 @@ describe("live call recoverable lifecycle", () => {
         nowMs,
       })
     ).toBe(false);
+  });
+
+  it("uses in-progress -> ready-for-review -> completed without allowing a late stop downgrade", () => {
+    expect(storeSource).toContain('if (session.status === "completed")');
+    expect(storeSource).toContain('status: "completed"');
+    expect(client).toContain('status: "ready_for_review" | "completed"');
   });
 
   it("reconciles abandoned sessions without fabricating outcomes", () => {
