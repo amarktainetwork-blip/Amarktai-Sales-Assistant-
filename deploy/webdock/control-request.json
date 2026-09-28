@@ -1,5 +1,5 @@
 {
-  "operation": "inspect",
+  "operation": "diagnose",
   "server_name": "Amarktai Network - Sales Assistant",
   "server_domain": "sales.amarktai.co.za",
   "release_sha": "3bdf067e5f4eaf06aa5a08c8c7a110f5e893359f"
