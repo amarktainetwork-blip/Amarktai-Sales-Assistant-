@@ -44,6 +44,14 @@ describe("live call recoverable lifecycle", () => {
     expect(client).toContain('status: "ready_for_review" | "completed"');
   });
 
+  it("persists the canonical Review workflow id before marking closeout completed", () => {
+    const workflowIndex = routes.indexOf("await prepareClaimedCloseoutWorkflow");
+    const completeIndex = routes.indexOf("await completeLiveCallExact");
+    expect(routes).toContain("closeoutWorkflowRunId: claim.workflowRunId");
+    expect(workflowIndex).toBeGreaterThan(-1);
+    expect(completeIndex).toBeGreaterThan(workflowIndex);
+  });
+
   it("reconciles abandoned sessions without fabricating outcomes", () => {
     expect(routes).toContain("reconcileAbandonedLiveCallsForUser");
     expect(routes).toContain("/api/live-calls/readiness");
