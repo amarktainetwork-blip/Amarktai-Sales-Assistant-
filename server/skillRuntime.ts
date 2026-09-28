@@ -1,4 +1,5 @@
 import {
+  SKILL_DIRECT_CRM_WRITE_OPERATIONS,
   normalizeSkillDefinition,
   type SkillCondition,
   type SkillDefinition,
@@ -301,11 +302,16 @@ function proposalForStep(input: {
     else if (targetKind === "opportunity")
       payload.opportunityExternalId = targetExternalId || "";
     else payload.contactExternalId = customer.contactExternalId;
-    if (!operationKey.startsWith("custom.write.")) {
+    if (
+      !operationKey.startsWith("custom.write.") &&
+      !(SKILL_DIRECT_CRM_WRITE_OPERATIONS as readonly string[]).includes(
+        operationKey
+      )
+    ) {
       payload.draftOnly = true;
       payload.executionReady = false;
       payload.blockedReason =
-        "A custom CRM write step must name an approved custom.write.* operation.";
+        "This CRM operation is not an approved direct learned write operation.";
     }
     if (!targetExternalId) {
       payload.draftOnly = true;
