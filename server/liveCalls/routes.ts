@@ -260,6 +260,7 @@ export function registerLiveCallRoutes(app: Express) {
         typeof req.body?.conversationState === "string"
           ? req.body.conversationState.trim().slice(-4_000)
           : "";
+      const manualHelp = req.body?.manualHelp === true;
       if (
         !Number.isInteger(callSessionId) ||
         callSessionId <= 0 ||
@@ -285,7 +286,7 @@ export function registerLiveCallRoutes(app: Express) {
       res.flushHeaders?.();
       streamOpened = true;
 
-      if (isRoutineCallSpeech(transcriptChunk)) {
+      if (!manualHelp && isRoutineCallSpeech(transcriptChunk)) {
         res.write(`event: done\ndata: ${JSON.stringify({ content: "" })}\n\n`);
         return res.end();
       }
@@ -326,6 +327,7 @@ export function registerLiveCallRoutes(app: Express) {
         approvedContext: approvedContext || undefined,
         approvedKnowledge: approvedKnowledge || undefined,
         conversationState: conversationState || undefined,
+        manualHelp,
         billing: {
           userId: user.id,
           organisationId: user.membership.organisationId,
@@ -462,11 +464,16 @@ export function registerLiveCallRoutes(app: Express) {
           .json({ error: "A valid live call session is required." });
       const transcript =
         typeof req.body?.transcript === "string" ? req.body.transcript : "";
+      const manualNotes =
+        typeof req.body?.manualNotes === "string"
+          ? req.body.manualNotes.trim().slice(0, 12_000)
+          : "";
       const result = await markLiveCallReadyForReview({
         userId: user.id,
         organisationId: user.membership.organisationId,
         callSessionId,
         transcript,
+        manualNotes,
       });
       return res.json(result);
     } catch (error) {
@@ -483,6 +490,10 @@ export function registerLiveCallRoutes(app: Express) {
           error: "A live call and salesperson-confirmed outcome are required.",
         });
       const { callSessionId, transcript, outcome } = completion;
+      const manualNotes =
+        typeof req.body?.manualNotes === "string"
+          ? req.body.manualNotes.trim().slice(0, 12_000)
+          : "";
       const session = await requireLiveCallOwner(
         user.id,
         user.membership.organisationId,
@@ -561,6 +572,7 @@ export function registerLiveCallRoutes(app: Express) {
               ? req.body.opportunityState
               : "unchanged",
             closeoutWorkflowRunId: claim.workflowRunId,
+            salespersonNotes: manualNotes || undefined,
           };
           const identity = await resolveLiveCallCloseoutIdentity({
             userId: user.id,
@@ -612,6 +624,7 @@ export function registerLiveCallRoutes(app: Express) {
                 leadLabel,
                 transcript,
                 structured: structuredOutcome,
+                manualNotes,
                 billing: {
                   userId: user.id,
                   organisationId: user.membership.organisationId,
