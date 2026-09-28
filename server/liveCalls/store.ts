@@ -116,6 +116,8 @@ export async function reconcileAllAbandonedLiveCalls(input: {
   const groups = new Map<string, { userId: number; organisationId: number }>();
   for (const session of candidates) {
     if (
+      session.userId == null ||
+      session.organisationId == null ||
       !shouldCheckpointAbandonedLiveCall({
         status: session.status,
         updatedAt: session.updatedAt,
@@ -131,7 +133,7 @@ export async function reconcileAllAbandonedLiveCalls(input: {
   }
   let checkpointed = 0;
   let withContent = 0;
-  for (const group of groups.values()) {
+  for (const group of Array.from(groups.values())) {
     const result = await reconcileAbandonedLiveCallsForUser({
       ...group,
       nowMs: input.nowMs,
