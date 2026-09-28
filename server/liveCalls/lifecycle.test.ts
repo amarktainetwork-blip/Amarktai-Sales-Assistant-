@@ -10,6 +10,10 @@ import {
 const routes = readFileSync(new URL("./routes.ts", import.meta.url), "utf8");
 const contextSource = readFileSync(new URL("./context.ts", import.meta.url), "utf8");
 const storeSource = readFileSync(new URL("./store.ts", import.meta.url), "utf8");
+const workerSource = readFileSync(
+  new URL("../genie/healthWorker.ts", import.meta.url),
+  "utf8"
+);
 const client = readFileSync(
   new URL("../../client/src/pages/LiveCalls.tsx", import.meta.url),
   "utf8"
@@ -80,6 +84,13 @@ describe("live call recoverable lifecycle", () => {
     expect(client).toContain('callContext.data.status === "ready_for_review"');
     expect(client).toContain("setAwaitingCloseout(true)");
     expect(client).toContain("transcriptRef.current = callContext.data.transcript");
+  });
+
+  it("reconciles abandoned sessions proactively in the production worker", () => {
+    expect(storeSource).toContain("reconcileAllAbandonedLiveCalls");
+    expect(workerSource).toContain("reconcileAllAbandonedLiveCalls");
+    expect(workerSource).toContain("abandoned_live_calls_reconciled");
+    expect(workerSource).toContain("LIVE_CALL_RECONCILE_INTERVAL_MS");
   });
 
   it("reconciles abandoned sessions without fabricating outcomes", () => {
