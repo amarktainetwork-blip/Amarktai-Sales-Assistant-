@@ -168,6 +168,7 @@ if [ "$OPERATION" = "diagnose" ]; then
   echo "--- knowledge readiness ---"
   db_sql "SELECT status,visibility,sourceType,COUNT(*) AS count FROM knowledgeSources WHERE organisationId=8 GROUP BY status,visibility,sourceType ORDER BY status,visibility,sourceType;"
   db_sql "SELECT id,phase,status,attempt,lastError,updatedAt,completedAt FROM companyKnowledgeJobs WHERE organisationId=8 ORDER BY id DESC LIMIT 5;"
+  db_sql "SELECT id,status,phase,attempt,LENGTH(discoverySnapshot) AS discoveryBytes,LENGTH(corpusSnapshot) AS corpusBytes,LENGTH(analysisDraft) AS analysisBytes,LENGTH(auditDraft) AS auditBytes,LENGTH(validatedPack) AS validatedPackBytes,LENGTH(CAST(progress AS CHAR)) AS progressBytes,RIGHT(lastError,2000) AS errorTail,resultDiscoveryId FROM companyKnowledgeJobs WHERE organisationId=8 ORDER BY id DESC LIMIT 3;"
   db_sql "SELECT id,discoveryStatus,confirmedAt,updatedAt FROM companyProfiles WHERE organisationId=8 ORDER BY id DESC LIMIT 5;"
   db_sql "SELECT status,reviewState,COUNT(*) AS count,MAX(discoveryVersion) AS latestVersion,MAX(createdAt) AS latestCreated,MAX(reviewedAt) AS latestReviewed FROM websiteDiscoveries WHERE organisationId=8 GROUP BY status,reviewState ORDER BY status,reviewState;"
   db_sql "SELECT status,COUNT(*) AS count,MIN(updatedAt) AS oldestUpdated,MAX(updatedAt) AS newestUpdated FROM knowledgeSources WHERE organisationId=8 GROUP BY status ORDER BY status;"
