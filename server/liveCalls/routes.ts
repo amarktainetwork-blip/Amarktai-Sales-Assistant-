@@ -8,7 +8,6 @@ import {
   searchApprovedKnowledge,
 } from "../db";
 import {
-  prepareLiveCoachingTip,
   prepareOutcomeAwarePostCallSummary,
   preparePostCallReviewSummary,
   streamLiveCoachingTip,
@@ -383,71 +382,6 @@ export function registerLiveCallRoutes(app: Express) {
         }
         return;
       }
-      return sendLiveCallError(res, error);
-    }
-  });
-
-  app.post("/api/live-calls/coach", async (req, res) => {
-    try {
-      const user = await requireAuthorisedUser(req);
-      const callSessionId = Number(req.body?.callSessionId);
-      const transcriptChunk =
-        typeof req.body?.transcriptChunk === "string"
-          ? req.body.transcriptChunk.trim().slice(-1_800)
-          : "";
-      const conversationState =
-        typeof req.body?.conversationState === "string"
-          ? req.body.conversationState.trim().slice(-4_000)
-          : "";
-      if (
-        !Number.isInteger(callSessionId) ||
-        callSessionId <= 0 ||
-        transcriptChunk.length < 2
-      )
-        return res.status(400).json({
-          error: "A live call, contact and transcript segment are required.",
-        });
-      const session = await requireLiveCallOwner(
-        user.id,
-        user.membership.organisationId,
-        callSessionId
-      );
-      assertLiveCallState(session.status, ["in_progress"], "Live coaching");
-      const leadLabel = session.leadLabel;
-      const approvedContext = await liveCoachingApprovedContext({
-        userId: user.id,
-        organisationId: user.membership.organisationId,
-        crmContext: (session.crmContext || undefined) as
-          | Record<string, unknown>
-          | undefined,
-      });
-      const result = await prepareLiveCoachingTip({
-        leadLabel,
-        transcript: transcriptChunk,
-        approvedContext: approvedContext || undefined,
-        billing: {
-          userId: user.id,
-          organisationId: user.membership.organisationId,
-          feature: "live_call_coaching",
-          reference: `call:${callSessionId}`,
-        },
-      });
-      console.log(
-        JSON.stringify({
-          event: "live_call_coaching",
-          userId: user.id,
-          callSessionId,
-          transcriptChars: transcriptChunk.length,
-          genxUsage: result.usage ?? {},
-          creditsCharged: result.creditsCharged ?? 0,
-        })
-      );
-      return res.json({
-        content: result.content,
-        usage: result.usage ?? {},
-        creditsCharged: result.creditsCharged ?? 0,
-      });
-    } catch (error) {
       return sendLiveCallError(res, error);
     }
   });
