@@ -112,4 +112,23 @@ describe("daily CRM drift economics", () => {
       expect(decisions[0].eligible).toBe(false);
     }
   );
+  it("replays the legacy login proof failure under the corrected authentication policy", () => {
+    const result = selectLatestWatchdogVersions(
+      [
+        {
+          operationKey: "auth.login",
+          version: 1,
+          status: "BLOCKED",
+          lastError:
+            "read_proof_failure: STRUCTURED_RESULT_REQUIRED: deterministic browser operation failed.",
+        },
+      ],
+      new Set(["auth.login"])
+    );
+    expect(result[0]).toMatchObject({
+      eligible: true,
+      reportStatus: "awaiting_verification",
+    });
+  });
+
 });
