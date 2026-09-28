@@ -44,7 +44,7 @@ jobs:
           release_sha="$(jq -r '.release_sha' "$CONTROL_REQUEST")"
 
           case "$operation" in
-            inspect|deploy|verify) ;;
+            inspect|diagnose|deploy|verify) ;;
             *) echo "Unsupported operation: $operation" >&2; exit 1 ;;
           esac
 
