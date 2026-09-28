@@ -154,6 +154,39 @@ describe("learned organisation skill runtime", () => {
     ]);
   });
 
+  it("compiles a commissioned appointment operation through the generic learned CRM action", () => {
+    const result = compileLearnedSkillRuntime({
+      skillKey: "appointment-helper",
+      definition: {
+        trigger: "The salesperson confirms an appointment should be prepared",
+        requiredWriteCapabilities: ["appointments.write"],
+        requiredOperations: ["appointment.book"],
+        steps: [
+          {
+            id: "book-appointment",
+            action: "prepare_crm_operation",
+            label: "Prepare appointment",
+            inputs: {
+              operationKey: "appointment.book",
+              targetKind: "contact",
+            },
+          },
+        ],
+        assertions: ["Review is required"],
+      },
+      customer: customer(),
+    });
+    expect(result.actions[0]).toMatchObject({
+      actionType: "custom_crm_action",
+      payload: {
+        actionName: "appointment.book",
+        externalId: "contact-123",
+        contactExternalId: "contact-123",
+        reviewRequired: true,
+      },
+    });
+  });
+
   it("prepares the IT Support WhatsApp rule as review-only until exact template content is materialised", () => {
     const skill = COURSE2CAREER_SKILL_PACK.find(
       item => item.key === "it-support-whatsapp-template"
