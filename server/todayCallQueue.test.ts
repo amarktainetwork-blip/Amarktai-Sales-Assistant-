@@ -420,7 +420,10 @@ describe("Today contact-time intelligence", () => {
       dueToday: [],
     });
     expect(queue[0]).toMatchObject({
-      name: "Alice Example",
+      name: "Bob",
+      primaryKind: "new_lead",
+    });
+    expect(queue.find(item => item.name === "Alice Example")).toMatchObject({
       primaryKind: "inbound_reply",
       contactEligibleNow: true,
     });
