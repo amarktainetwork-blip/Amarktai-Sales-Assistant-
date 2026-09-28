@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   BROWSER_OPERATION_CATALOGUE,
+  browserProofPolicy,
   assertBrowserOperationRuntimeStatus,
   assertBrowserOperationScope,
   deriveBrowserCapabilityReadiness,
