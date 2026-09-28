@@ -45,7 +45,7 @@ type TranscriptionResult = {
   rawAudioRetained: boolean;
 };
 
-const LIVE_AUDIO_CHUNK_MS = 2_500;
+const LIVE_AUDIO_CHUNK_MS = 2_000;
 const LIVE_COACH_INTERVAL_MS = 750;
 const LIVE_COACH_STALE_MS = 3_500;
 type CoachingResult = {
