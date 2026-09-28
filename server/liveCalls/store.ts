@@ -98,6 +98,15 @@ export async function reconcileAbandonedLiveCallsForUser(input: {
   };
 }
 
+export function checkpointTranscript(
+  existing: string | null | undefined,
+  incoming: string
+) {
+  const current = (existing || "").trim().slice(-40_000);
+  const candidate = incoming.trim().slice(-40_000);
+  return candidate.length >= current.length ? candidate : current;
+}
+
 export async function requireLiveCallOwner(
   userId: number,
   organisationId: number,
@@ -133,7 +142,7 @@ export async function markLiveCallReadyForReview(input: {
     input.organisationId,
     input.callSessionId
   );
-  const transcript = input.transcript.trim().slice(-40_000);
+  const transcript = checkpointTranscript(session.transcript, input.transcript);
   if (session.status === "completed")
     return {
       status: "completed" as const,
