@@ -250,6 +250,21 @@ describe("browser CRM read proof", () => {
     ).toMatchObject({ ok: false, code: "TARGET_IDENTITY_REQUIRED" });
   });
 
+  it("treats authenticated login replay as authentication proof rather than a business-data read", () => {
+    expect(browserProofPolicy("auth.login", "read")).toMatchObject({
+      requiresStructuredResult: false,
+      requiresTargetIdentity: false,
+      readOnly: true,
+    });
+    expect(
+      verifyBrowserReadProof({
+        operationKey: "auth.login",
+        payload: {},
+        data: { authenticated: "true" },
+      })
+    ).toMatchObject({ ok: true, rowCount: 0 });
+  });
+
   it("accepts only deterministic empty collection evidence for sync reads", () => {
     expect(
       verifyBrowserReadProof({
