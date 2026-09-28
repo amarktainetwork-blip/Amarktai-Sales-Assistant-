@@ -304,6 +304,8 @@ export default function LiveCalls() {
   const [transcript, setTranscript] = useState("");
   const [manualNotes, setManualNotes] = useState("");
   const [helping, setHelping] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
+  const [reviewSummary, setReviewSummary] = useState("");
   const [tip, setTip] = useState("");
   const [sttReady, setSttReady] = useState<boolean | null>(null);
   const [completing, setCompleting] = useState(false);
@@ -347,6 +349,7 @@ export default function LiveCalls() {
     manualHelp?: boolean;
   } | null>(null);
   const coachTimerRef = useRef<number | undefined>(undefined);
+  const reviewRequestedRef = useRef<number | null>(null);
 
   const startSession = trpc.calls.startLive.useMutation();
   const initialSelectionApplied = useRef(0);
@@ -432,6 +435,10 @@ export default function LiveCalls() {
       setRecording(false);
       setCloseoutConfirmed(false);
       setAwaitingCloseout(true);
+      if (reviewRequestedRef.current !== callContext.data.id) {
+        reviewRequestedRef.current = callContext.data.id;
+        void prepareReviewSummary(callContext.data.id);
+      }
     }
   }, [callContext.data]);
 
@@ -550,12 +557,24 @@ export default function LiveCalls() {
         },
         controller.signal,
         partial => {
-          if (!controller.signal.aborted) setTip(partial);
+          if (controller.signal.aborted) return;
+          const normalized = partial.trim().toUpperCase();
+          if (
+            !manualHelp &&
+            normalized &&
+            "SILENT".startsWith(normalized)
+          )
+            return;
+          setTip(partial);
         }
       );
       if (!controller.signal.aborted && content) {
         lastCoachAtRef.current = Date.now();
-        setTip(content);
+        const visible =
+          !manualHelp && content.trim().toUpperCase() === "SILENT"
+            ? ""
+            : content;
+        setTip(visible);
         setWorkflowError("");
         setRetryAction(null);
       }
@@ -655,6 +674,33 @@ export default function LiveCalls() {
         ].join("\n");
         scheduleCoaching(activeSessionId, eventPacket.slice(-1_500));
       }
+    }
+  }
+
+  async function prepareReviewSummary(activeSessionId: number) {
+    setReviewing(true);
+    try {
+      const result = await postLive<{ content: string }>(
+        "/api/live-calls/review-summary",
+        {
+          callSessionId: activeSessionId,
+          manualNotes: manualNotesRef.current,
+        }
+      );
+      setReviewSummary(result.content || "");
+      setWorkflowError("");
+      setRetryAction(null);
+    } catch (error) {
+      const detail = callError(
+        error,
+        "The call is safe, but the review summary could not be prepared yet."
+      );
+      setWorkflowError(detail);
+      setRetryAction(
+        () => () => void prepareReviewSummary(activeSessionId)
+      );
+    } finally {
+      setReviewing(false);
     }
   }
 
@@ -840,6 +886,8 @@ export default function LiveCalls() {
       if (started) {
         transcriptRef.current = "";
         manualNotesRef.current = "";
+        reviewRequestedRef.current = null;
+        setReviewSummary("");
         setManualNotes("");
         coachAbortRef.current?.abort();
         coachAbortRef.current = null;
@@ -929,6 +977,8 @@ export default function LiveCalls() {
     if (sessionId) {
       try {
         await checkpointSessionForReview(sessionId);
+        reviewRequestedRef.current = sessionId;
+        void prepareReviewSummary(sessionId);
       } catch (error) {
         const detail = callError(
           error,
@@ -959,6 +1009,8 @@ export default function LiveCalls() {
       if (started?.leadLabel) setLeadLabel(started.leadLabel);
       try {
         await checkpointSessionForReview(activeSessionId, "");
+        reviewRequestedRef.current = activeSessionId;
+        void prepareReviewSummary(activeSessionId);
         setWorkflowError("");
         setRetryAction(null);
       } catch (error) {
@@ -1365,7 +1417,15 @@ export default function LiveCalls() {
             ) : null}
 
             <div className="mt-5 flex flex-wrap gap-3">
-              {!recording && !awaitingCloseout && !closeoutActions?.length ? (
+              {recording ? (
+                <Button
+                  onClick={() => void stop()}
+                  className="h-12 bg-rose-600 hover:bg-rose-500"
+                >
+                  <Square className="mr-2 size-4" />
+                  Stop & review call
+                </Button>
+              ) : !awaitingCloseout && !closeoutActions?.length ? (
                 <Button
                   disabled={
                     !leadLabel.trim() ||
@@ -1383,15 +1443,7 @@ export default function LiveCalls() {
                   <Waves className="mr-2 size-4" />
                   Start Live Companion
                 </Button>
-              ) : (
-                <Button
-                  onClick={() => void stop()}
-                  className="h-12 bg-rose-600 hover:bg-rose-500"
-                >
-                  <Square className="mr-2 size-4" />
-                  Stop & prepare follow-up
-                </Button>
-              )}
+              ) : null}
               {!recording &&
                 !awaitingCloseout &&
                 !closeoutActions?.length && (
@@ -1416,6 +1468,11 @@ export default function LiveCalls() {
                   Listening
                 </span>
               )}
+              {recording && micLevel < 0.003 ? (
+                <span className="inline-flex items-center rounded-xl bg-amber-50 px-4 text-xs font-semibold text-amber-700">
+                  No voice detected — check microphone
+                </span>
+              ) : null}
               {completing && (
                 <span className="inline-flex items-center rounded-xl bg-[#F2F5F8] px-4 text-sm font-bold text-[#52647A]">
                   Preparing follow-up…
@@ -1524,6 +1581,28 @@ export default function LiveCalls() {
                 <h3 className="mt-2 font-display text-2xl font-bold text-[#26354A]">
                   Confirm what happened and prepare the next step.
                 </h3>
+                <div className="mt-4 rounded-xl border border-[#DCE4EE] bg-white p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs font-black uppercase tracking-[.12em] text-[#55788B]">
+                      SUMMARY DRAFT
+                    </p>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={reviewing || !sessionId}
+                      onClick={() => sessionId && void prepareReviewSummary(sessionId)}
+                    >
+                      {reviewing ? "Summarising…" : "Refresh summary"}
+                    </Button>
+                  </div>
+                  <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-[#33445B]">
+                    {reviewing
+                      ? "Reviewing the whole call…"
+                      : reviewSummary ||
+                        "No summary yet. Use Refresh summary after checking your notes."}
+                  </p>
+                </div>
                 <div className="mt-4 grid gap-3 md:grid-cols-2">
                   <label className="grid gap-2 text-xs font-bold text-[#66758A]">
                     Outcome
