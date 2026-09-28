@@ -59,6 +59,14 @@ describe("live call recoverable lifecycle", () => {
     expect(completeIndex).toBeGreaterThan(workflowIndex);
   });
 
+  it("restores ready-for-review sessions after navigation instead of stranding closeout", () => {
+    expect(routes).toContain('transcript: session.transcript || ""');
+    expect(routes).toContain('coachNotes: session.coachNotes || ""');
+    expect(client).toContain('callContext.data.status === "ready_for_review"');
+    expect(client).toContain("setAwaitingCloseout(true)");
+    expect(client).toContain("transcriptRef.current = callContext.data.transcript");
+  });
+
   it("reconciles abandoned sessions without fabricating outcomes", () => {
     expect(routes).toContain("reconcileAbandonedLiveCallsForUser");
     expect(routes).toContain("/api/live-calls/readiness");
