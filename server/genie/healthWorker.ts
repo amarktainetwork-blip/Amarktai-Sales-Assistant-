@@ -11,6 +11,7 @@ import {
 } from "../crm/syncWorker";
 import { runNewLeadWatchCycle, startNewLeadWatcher } from "../crm/leadWatcher";
 import { runBackgroundBrowserReadLane } from "../crm/backgroundReadLane";
+import { reconcileAllAbandonedLiveCalls } from "../liveCalls/store";
 
 const intervalMs = Number(
   process.env.CRM_HEALTH_INTERVAL_MS || 24 * 60 * 60 * 1000
@@ -108,6 +109,43 @@ setTimeout(() => {
   void processMailboxes();
   setInterval(() => void processMailboxes(), mailboxIntervalMs);
 }, mailboxInitialDelayMs);
+
+let processingAbandonedCalls = false;
+async function reconcileAbandonedCalls() {
+  if (processingAbandonedCalls) return;
+  processingAbandonedCalls = true;
+  try {
+    const result = await reconcileAllAbandonedLiveCalls();
+    if (result.checkpointed)
+      console.log(
+        JSON.stringify({
+          event: "abandoned_live_calls_reconciled",
+          ...result,
+        })
+      );
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: "abandoned_live_calls_reconciliation_failed",
+        detail:
+          error instanceof Error
+            ? error.message.slice(0, 500)
+            : String(error).slice(0, 500),
+      })
+    );
+  } finally {
+    processingAbandonedCalls = false;
+  }
+}
+
+const abandonedCallIntervalMs = Math.max(
+  60_000,
+  Number(process.env.LIVE_CALL_RECONCILE_INTERVAL_MS || 60_000)
+);
+setTimeout(() => {
+  void reconcileAbandonedCalls();
+  setInterval(() => void reconcileAbandonedCalls(), abandonedCallIntervalMs);
+}, 20_000);
 
 startCompanyKnowledgeWorker();
 startAutomaticCommissioningWorker();
