@@ -191,7 +191,7 @@ export async function completeLiveCallExact(input: {
     input.organisationId,
     input.callSessionId
   );
-  const transcript = input.transcript.trim().slice(-40_000);
+  const transcript = checkpointTranscript(session.transcript, input.transcript);
   const summary = input.summary.trim().slice(0, 20_000);
   await db
     .update(callSessions)
