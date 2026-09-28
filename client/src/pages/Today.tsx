@@ -113,6 +113,7 @@ export default function Today() {
       try {
         const statusResponse = await fetch("/api/mailbox", {
           credentials: "include",
+          cache: "no-store",
         });
         if (!statusResponse.ok) return;
         const status = (await statusResponse.json()) as { connected?: boolean };
