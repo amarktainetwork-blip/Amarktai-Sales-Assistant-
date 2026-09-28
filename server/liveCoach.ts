@@ -99,6 +99,50 @@ export async function preparePostCallSummary(input: {
   return { ...result, mode: "post_call_summary" as const };
 }
 
+export async function preparePostCallReviewSummary(input: {
+  leadLabel: string;
+  transcript: string;
+  manualNotes?: string;
+  billing?: GenxBillingContext;
+}) {
+  const transcript = input.transcript.trim();
+  const manualNotes = input.manualNotes?.trim().slice(0, 12_000) || "";
+  if (!transcript && !manualNotes)
+    return {
+      content:
+        "No conversation content was captured. Confirm the call outcome and any next step manually.",
+      usage: {},
+      creditsCharged: 0,
+      mode: "deterministic_post_call_review" as const,
+    };
+  const result = await runGenxAgent({
+    agentKey: "notes_agent",
+    modelTier: "fast",
+    billing: input.billing
+      ? { ...input.billing, feature: "post_call_review" }
+      : undefined,
+    messages: [
+      {
+        role: "user",
+        content: `Prepare a short post-call review draft for ${input.leadLabel}.
+Salesperson-authored notes:
+${manualNotes || "None"}
+Transcript:
+${transcript.slice(-20_000) || "No transcript available"}
+
+Use only the evidence above. Return these concise sections:
+What mattered
+Questions / objections
+Agreed or possible next step
+Uncertain / needs confirmation
+
+Do not invent speaker identity, customer intent, promises, commitments, dates or outcomes. Treat salesperson notes as deliberate notes, not as customer quotes. If something is unclear, put it under Uncertain / needs confirmation.`,
+      },
+    ],
+  });
+  return { ...result, mode: "post_call_review" as const };
+}
+
 export type StructuredCallOutcome = {
   outcome: string;
   nextStep?: string;
