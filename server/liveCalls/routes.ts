@@ -18,6 +18,7 @@ import { routeConnectedSystemActions } from "../crmRouter";
 import { detectLiveSignals, isRoutineCallSpeech } from "./signals";
 import { structuredNotesFromSignals } from "../../shared/liveCallNotes";
 import {
+  assertLiveCallState,
   completeLiveCallExact,
   markLiveCallReadyForReview,
   reconcileAbandonedLiveCallsForUser,
@@ -102,7 +103,10 @@ function sendLiveCallError(res: Response, error: unknown) {
     )
   )
     return res.status(400).json({ error: detail.slice(0, 300) });
-  if (detail.startsWith("CLOSEOUT_PROCESSING"))
+  if (
+    detail.startsWith("CLOSEOUT_PROCESSING") ||
+    detail.startsWith("LIVE_CALL_STATE:")
+  )
     return res.status(409).json({ error: detail });
   console.error(
     JSON.stringify({
@@ -137,11 +141,12 @@ export function registerLiveCallRoutes(app: Express) {
         return res
           .status(400)
           .json({ error: "A valid live call session is required." });
-      await requireLiveCallOwner(
+      const session = await requireLiveCallOwner(
         user.id,
         user.membership.organisationId,
         callSessionId
       );
+      assertLiveCallState(session.status, ["in_progress"], "Transcription");
       const mimeType = String(req.body?.mimeType || "")
         .split(";")[0]
         .toLowerCase();
@@ -268,6 +273,7 @@ export function registerLiveCallRoutes(app: Express) {
         user.membership.organisationId,
         callSessionId
       );
+      assertLiveCallState(session.status, ["in_progress"], "Live coaching");
       const abort = new AbortController();
       res.on("close", () => {
         if (!res.writableEnded) abort.abort();
@@ -406,6 +412,7 @@ export function registerLiveCallRoutes(app: Express) {
         user.membership.organisationId,
         callSessionId
       );
+      assertLiveCallState(session.status, ["in_progress"], "Live coaching");
       const leadLabel = session.leadLabel;
       const approvedContext = await liveCoachingApprovedContext({
         userId: user.id,
@@ -480,6 +487,11 @@ export function registerLiveCallRoutes(app: Express) {
         user.id,
         user.membership.organisationId,
         callSessionId
+      );
+      assertLiveCallState(
+        session.status,
+        ["ready_for_review", "completed"],
+        "Closeout"
       );
       const leadLabel = session.leadLabel;
       const result = await runCanonicalCallCloseout(
