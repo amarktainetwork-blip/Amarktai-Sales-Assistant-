@@ -230,7 +230,7 @@ async function concurrentBench(seconds, parallel) {
   const started = performance.now();
   const requests = Array.from({ length: parallel }, async (_, index) => {
     const form = new FormData();
-    form.append('file', new Blob([wav], { type: 'audio/wav' }), `parallel-${index}.wav`);
+    form.append('file', new Blob([wav], { type: 'audio/wav' }), 'parallel-' + index + '.wav');
     form.append('model', configuration.englishModel);
     form.append('response_format', 'json');
     form.append('language', 'en');
