@@ -358,6 +358,101 @@ describe("Today call queue", () => {
   });
 });
 
+describe("Today contact-time intelligence", () => {
+  it("moves an evening-preferring new lead behind people who are contactable now", () => {
+    const queue = buildTodayCallQueue({
+      now: new Date("2026-09-28T08:00:00.000Z"),
+      timezone: "Europe/London",
+      contacts: [
+        { ...contacts[0], contactPreference: "Evening" },
+        contacts[1],
+      ],
+      newLeads: [
+        {
+          workItemId: 90,
+          connectedSystemId: 8,
+          contactExternalId: "a",
+          createdAt: new Date("2026-09-28T07:55:00.000Z"),
+        },
+        {
+          workItemId: 91,
+          connectedSystemId: 8,
+          contactExternalId: "b",
+          createdAt: new Date("2026-09-28T07:56:00.000Z"),
+        },
+      ],
+      inbound: [],
+      overdueTasks: [],
+      dueToday: [],
+    });
+    expect(queue.map(item => item.name)).toEqual(["Bob", "Alice Example"]);
+    expect(queue[1]).toMatchObject({
+      contactEligibleNow: false,
+      contactPreferenceLabel: "evening",
+      contactPreferenceState: "later_today",
+    });
+    expect(queue[1].reasons).toContain("Preferred contact time: evening");
+  });
+
+  it("does not hold back a customer-initiated reply because of a call preference", () => {
+    const queue = buildTodayCallQueue({
+      now: new Date("2026-09-28T08:00:00.000Z"),
+      timezone: "Europe/London",
+      contacts: [{ ...contacts[0], contactPreference: "Evening" }, contacts[1]],
+      newLeads: [
+        {
+          workItemId: 90,
+          connectedSystemId: 8,
+          contactExternalId: "b",
+          createdAt: new Date("2026-09-28T07:55:00.000Z"),
+        },
+      ],
+      inbound: [
+        {
+          id: 91,
+          connectedSystemId: 8,
+          contactExternalId: "a",
+          receivedAt: new Date("2026-09-28T07:59:00.000Z"),
+          subject: "Can we talk about the course?",
+        },
+      ],
+      overdueTasks: [],
+      dueToday: [],
+    });
+    expect(queue[0]).toMatchObject({
+      name: "Alice Example",
+      primaryKind: "inbound_reply",
+      contactEligibleNow: true,
+    });
+  });
+
+  it("lets an explicit due-soon task override a generic contact preference", () => {
+    const queue = buildTodayCallQueue({
+      now: new Date("2026-09-28T08:00:00.000Z"),
+      timezone: "Europe/London",
+      contacts: [{ ...contacts[0], contactPreference: "Evening" }, contacts[1]],
+      inbound: [],
+      overdueTasks: [],
+      dueToday: [
+        {
+          id: 92,
+          connectedSystemId: 8,
+          contactExternalId: "a",
+          title: "Confirmed call",
+          dueAt: new Date("2026-09-28T08:15:00.000Z"),
+        },
+      ],
+    });
+    expect(queue[0]).toMatchObject({
+      name: "Alice Example",
+      contactEligibleNow: true,
+    });
+    expect(queue[0].reasons).toContain(
+      "Scheduled task due within 30 minutes"
+    );
+  });
+});
+
 describe("Today new lead priority", () => {
   it("puts an untouched new lead ahead of an inbound reply", () => {
     const queue = buildTodayCallQueue({
