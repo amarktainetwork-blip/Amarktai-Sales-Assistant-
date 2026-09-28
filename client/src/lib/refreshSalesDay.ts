@@ -44,6 +44,7 @@ export async function refreshSalesDay({
   try {
     const statusResponse = await fetcher("/api/mailbox", {
       credentials: "include",
+      cache: "no-store",
     });
     if (!statusResponse.ok) {
       mailboxWarning = true;
