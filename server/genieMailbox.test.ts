@@ -4,6 +4,7 @@ import {
   exactGenieMailboxIdentity,
   outboundGenieReplyMatchesInbound,
   parseGenieReceivedAt,
+  shouldTargetGenieActionableBackfill,
 } from "./genieMailbox";
 import {
   readPersonalGenieMailbox,
@@ -431,6 +432,43 @@ describe("Genie personal email isolation", () => {
     expect(source).toContain(".where(eq(organisationMembers.isActive, true));");
     expect(source).toContain(".slice(0, MAX_GENIE_MAILBOXES_PER_CYCLE)");
     expect(source).not.toContain(".limit(MAX_GENIE_MAILBOXES_PER_CYCLE * 4)");
+  });
+
+  it("target-checks unresolved owner-scoped messages even when a conversation id is already known", () => {
+    expect(
+      shouldTargetGenieActionableBackfill({
+        channel: "email",
+        contactExternalId: "contact-1",
+      })
+    ).toBe(true);
+    expect(
+      shouldTargetGenieActionableBackfill({
+        channel: "sms",
+        contactExternalId: "contact-1",
+      })
+    ).toBe(true);
+    expect(
+      shouldTargetGenieActionableBackfill({
+        channel: "other",
+        contactExternalId: "contact-1",
+      })
+    ).toBe(false);
+    expect(
+      shouldTargetGenieActionableBackfill({
+        channel: "email",
+        contactExternalId: null,
+      })
+    ).toBe(false);
+
+    const source = readFileSync(
+      new URL("./genieMailbox.ts", import.meta.url),
+      "utf8"
+    );
+    expect(source).toContain("shouldTargetGenieActionableBackfill");
+    expect(source).toContain("actionableBackfill.map");
+    expect(source).not.toContain(
+      "!genieInboundConversationId(row.classification)"
+    );
   });
 });
 
