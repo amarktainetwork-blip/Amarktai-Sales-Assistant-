@@ -27,6 +27,7 @@ import { loadConnectionSecret, toAdapterConnection } from "../connectedSystems";
 import { requireRuntimeBrowserOperation } from "../browserConnectors/learnedOperations";
 import { randomUUID } from "node:crypto";
 import type { CommercialTruth } from "../commercialTruth";
+import { reconcileAbandonedLiveCallsForUser } from "./store";
 
 export type LiveCallCrmContext = {
   source: "today" | "manual_resolved";
@@ -693,6 +694,10 @@ export async function getLiveCallContext(input: {
   organisationId: number;
   callSessionId: number;
 }) {
+  await reconcileAbandonedLiveCallsForUser({
+    userId: input.userId,
+    organisationId: input.organisationId,
+  });
   const db = await dbOrThrow();
   const session = (
     await db
