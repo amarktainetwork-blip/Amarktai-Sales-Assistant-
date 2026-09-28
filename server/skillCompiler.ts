@@ -55,6 +55,7 @@ export function buildSkillCompilerInstruction(input: {
     "If the SOP needs a Genie/browser function outside the standard capability list, add a semantic operation key in requiredOperations using custom.read.<name> or custom.write.<name>. Do not invent implementation selectors or code.",
     "For a custom.read.<name> function, add a read_crm_operation step with inputs.operationKey set to that exact operation and inputs.resultKey set to a short semantic key. Use inputs.targetKind only when the CRM read targets the current contact, task or opportunity.",
     "For a custom.write.<name> function, add a prepare_crm_operation step with inputs.operationKey set to that exact operation. Use inputs.targetKind as contact, task or opportunity so the reviewed proposal carries the exact external target.",
+    "For CRM-native sequence application, dialler launch, appointment booking, quote creation or a permitted CRM workflow, use prepare_crm_operation with the exact standard operation key sequence.apply, dialler.launch, appointment.book, quote.create or workflow.execute and declare the matching write capability.",
     "Write capability requirements are requests only. The user must explicitly approve them before commissioning, and commissioning still requires deterministic proof before production use.",
     "Allowed step actions: " + SKILL_STEP_ACTIONS.join(", "),
     "",
