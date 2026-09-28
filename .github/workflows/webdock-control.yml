@@ -282,16 +282,18 @@ jobs:
       - name: Enforce release result
         if: steps.resolve.outputs.operation == 'deploy'
         shell: bash
+        env:
+          EXPECTED_RELEASE_SHA: ${{ steps.resolve.outputs.release_sha }}
         run: |
           test -f /tmp/amarktai-control-report.log || {
             echo "Deployment report was not retrieved." >&2
             exit 1
           }
-          grep -q '^DEPLOYMENT=PASS$' /tmp/amarktai-control-report.log || {
+          grep -q '^DEPLOYMENT=PASS /tmp/amarktai-control-report.log || {
             echo "Deployment did not report PASS." >&2
             exit 1
           }
-          grep -q '^release_sha=3bdf067e5f4eaf06aa5a08c8c7a110f5e893359f$' /tmp/amarktai-control-report.log || {
-            echo "Live release SHA does not match frozen target." >&2
+          grep -q "^release_sha=${EXPECTED_RELEASE_SHA}$" /tmp/amarktai-control-report.log || {
+            echo "Live release SHA does not match requested target." >&2
             exit 1
           }
