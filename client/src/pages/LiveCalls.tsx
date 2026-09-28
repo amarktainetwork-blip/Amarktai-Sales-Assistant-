@@ -872,6 +872,29 @@ export default function LiveCalls() {
     audioContextRef.current = undefined;
     await pendingRef.current;
     if (sessionId) {
+      try {
+        await postLive<{ status: "ready_for_review"; transcriptChars: number }>(
+          "/api/live-calls/stop",
+          {
+            callSessionId: sessionId,
+            transcript: transcriptRef.current,
+          }
+        );
+      } catch (error) {
+        const detail = callError(
+          error,
+          "The call stopped, but its review checkpoint could not be saved yet. Your transcript is still available here."
+        );
+        setWorkflowError(detail);
+        setRetryAction(
+          () => () =>
+            void postLive("/api/live-calls/stop", {
+              callSessionId: sessionId,
+              transcript: transcriptRef.current,
+            })
+        );
+        toast.warning(detail);
+      }
       setCloseoutConfirmed(false);
       setAwaitingCloseout(true);
     }
