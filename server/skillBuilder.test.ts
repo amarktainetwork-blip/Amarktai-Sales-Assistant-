@@ -264,6 +264,31 @@ describe("organisation skill builder contract", () => {
     ).toMatchObject({ passed: true });
   });
 
+  it("accepts the extended standard CRM write operations through the learned-operation step", () => {
+    for (const operationKey of [
+      "sequence.apply",
+      "dialler.launch",
+      "appointment.book",
+      "quote.create",
+      "workflow.execute",
+    ]) {
+      const result = simulateSkillDefinition({
+        trigger: "The salesperson confirms the next CRM action",
+        requiredOperations: [operationKey],
+        steps: [
+          {
+            id: "extended-write",
+            action: "prepare_crm_operation",
+            label: "Prepare extended CRM operation",
+            inputs: { operationKey, targetKind: "contact" },
+          },
+        ],
+        assertions: ["The write remains review controlled"],
+      });
+      expect(result.valid).toBe(true);
+    }
+  });
+
   it("rejects custom CRM steps that do not match a declared learned operation", () => {
     const result = simulateSkillDefinition({
       trigger: "A customer is selected",
