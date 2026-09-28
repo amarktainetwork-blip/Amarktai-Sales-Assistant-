@@ -259,10 +259,13 @@ describe("final dashboard information architecture", () => {
     expect(css).toContain("background: var(--dash-paper)");
     for (const step of [
       "PRE-CALL BRIEF",
-      "CALL AUDIO",
+      "Prepare call",
+      "Live conversation",
       "LIVE TRANSCRIPT",
+      "Review call",
       "CALL OUTCOME",
       "FOLLOW-UP",
+      "Finished",
     ])
       expect(calls).toContain(step);
   });
