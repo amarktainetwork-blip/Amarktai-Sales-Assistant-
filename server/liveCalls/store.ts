@@ -77,7 +77,6 @@ export async function reconcileAbandonedLiveCallsForUser(input: {
       organisationId: input.organisationId,
       eventType: "live_call_abandoned_checkpointed",
       entityType: "call_session_batch",
-      entityId: null,
       summary:
         "Inactive live call sessions were checkpointed for review without inventing customer outcomes.",
       metadata: {
