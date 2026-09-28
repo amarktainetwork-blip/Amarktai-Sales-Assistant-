@@ -548,6 +548,7 @@ export function registerLiveCallRoutes(app: Express) {
             )
               ? req.body.opportunityState
               : "unchanged",
+            closeoutWorkflowRunId: claim.workflowRunId,
           };
           const identity = await resolveLiveCallCloseoutIdentity({
             userId: user.id,
@@ -612,14 +613,6 @@ export function registerLiveCallRoutes(app: Express) {
               claimToken: claim.claimToken,
               summaryResult: summary as unknown as Record<string, unknown>,
             });
-          await completeLiveCallExact({
-            userId: user.id,
-            organisationId: user.membership.organisationId,
-            callSessionId,
-            transcript,
-            summary: summary.content,
-            structuredOutcome,
-          });
           await completeCallbackWorkAfterVerifiedCall({
             userId: user.id,
             organisationId: user.membership.organisationId,
@@ -681,6 +674,14 @@ export function registerLiveCallRoutes(app: Express) {
             verificationSummary:
               "The salesperson confirmed this structured outcome. Post-call external actions are prepared for Review only; nothing customer-facing or CRM-writing executes automatically from call closeout.",
             actions: proposed,
+          });
+          await completeLiveCallExact({
+            userId: user.id,
+            organisationId: user.membership.organisationId,
+            callSessionId,
+            transcript,
+            summary: summary.content,
+            structuredOutcome,
           });
           const proposals = await listActionProposals(
             user.id,
