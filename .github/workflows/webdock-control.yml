@@ -33,7 +33,7 @@ jobs:
         run: |
           set -Eeuo pipefail
 
-          test -n "${{WEBDOCK_TOKEN:-}" || {
+          test -n "${WEBDOCK_TOKEN:-}" || {
             echo "WEBDOCK_API_TOKEN secret is missing." >&2
             exit 1
           }
@@ -56,11 +56,11 @@ jobs:
           auth=(-H "Authorization: Bearer $WEBDOCK_TOKEN" -H "X-Application: AmarktaiSalesGitHubControl/1.0")
 
           curl --fail-with-body --silent --show-error \
-            "${{auth[@]}" "$WEBDOCK_API/ping" >/tmp/webdock-ping.json
+            "${auth[@]}" "$WEBDOCK_API/ping" >/tmp/webdock-ping.json
           echo "Webdock API authentication: PASS"
 
           curl --fail-with-body --silent --show-error \
-            "${{auth[@]}" "$WEBDOCK_API/servers?status=active" >/tmp/webdock-servers.json
+            "${auth[@]}" "$WEBDOCK_API/servers?status=active" >/tmp/webdock-servers.json
 
           matches="$(jq \
             --arg name "$server_name" \
@@ -84,12 +84,12 @@ jobs:
           jq '.[0] | {slug,name,status,location,image,profile,aliases}' <<<"$matches"
 
           curl --fail-with-body --silent --show-error \
-            "${{auth[@]}" "$WEBDOCK_API/servers/$server_slug/metrics" \
+            "${auth[@]}" "$WEBDOCK_API/servers/$server_slug/metrics" \
             | jq '{resourceUsageStatus,disk,cpu,memory}' || true
 
           echo "Existing snapshots:"
           curl --fail-with-body --silent --show-error \
-            "${{auth[@]}" "$WEBDOCK_API/servers/$server_slug/snapshots" \
+            "${auth[@]}" "$WEBDOCK_API/servers/$server_slug/snapshots" \
             | jq '[.[] | {id,name,date,type,completed,deletable}]' || true
 
       - name: Inspect-only complete
@@ -125,20 +125,20 @@ jobs:
             '{name:$name,filename:$filename,content:$content}')"
 
           curl --fail-with-body --silent --show-error \
-            "${{auth[@]}" "$WEBDOCK_API/account/scripts" >/tmp/account-scripts.json
+            "${auth[@]}" "$WEBDOCK_API/account/scripts" >/tmp/account-scripts.json
 
           script_id="$(jq -r --arg name "$script_name" '.[] | select(.name == $name) | .id' /tmp/account-scripts.json | head -1)"
 
           if [ -n "$script_id" ] && [ "$script_id" != "null" ]; then
             echo "Updating existing Webdock account control script."
             curl --fail-with-body --silent --show-error \
-              -X PATCH "${{auth[@]}" -H "Content-Type: application/json" \
+              -X PATCH "${auth[@]}" -H "Content-Type: application/json" \
               --data "$payload" \
               "$WEBDOCK_API/account/scripts/$script_id" >/tmp/account-script.json
           else
             echo "Creating Webdock account control script."
             curl --fail-with-body --silent --show-error \
-              -X POST "${{auth[@]}" -H "Content-Type: application/json" \
+              -X POST "${auth[@]}" -H "Content-Type: application/json" \
               --data "$payload" \
               "$WEBDOCK_API/account/scripts" >/tmp/account-script.json
             script_id="$(jq -r '.id' /tmp/account-script.json)"
@@ -171,7 +171,7 @@ jobs:
             -D /tmp/deploy-headers \
             -o /tmp/deploy-body \
             -w '%{http_code}' \
-            -X POST "${{auth[@]}" -H "Content-Type: application/json" \
+            -X POST "${auth[@]}" -H "Content-Type: application/json" \
             --data "$payload" \
             "$WEBDOCK_API/servers/$SERVER_SLUG/scripts")"
 
@@ -196,12 +196,12 @@ jobs:
           finished=0
           for attempt in $(seq 1 180); do
             events="$(curl --fail-with-body --silent --show-error \
-              "${{auth[@]}" \
+              "${auth[@]}" \
               "$WEBDOCK_API/events?callbackId=$callback_id&per_page=10")"
             status="$(jq -r '.[0].status // empty' <<<"$events")"
             message="$(jq -r '.[0].message // empty' <<<"$events")"
 
-            echo "attempt=$attempt status=${{status:-pending}"
+            echo "attempt=$attempt status=${status:-pending}"
 
             case "$status" in
               success|completed|complete|finished|done)
@@ -235,7 +235,7 @@ jobs:
             -D /tmp/fetch-headers \
             -o /tmp/fetch-body \
             -w '%{http_code}' \
-            -X POST "${{auth[@]}" -H "Content-Type: application/json" \
+            -X POST "${auth[@]}" -H "Content-Type: application/json" \
             --data "$payload" \
             "$WEBDOCK_API/servers/$SERVER_SLUG/fetchFile")"
 
@@ -253,7 +253,7 @@ jobs:
 
           for attempt in $(seq 1 60); do
             events="$(curl --fail-with-body --silent --show-error \
-              "${{auth[@]}" \
+              "${auth[@]}" \
               "$WEBDOCK_API/events?callbackId=$callback_id&per_page=10")"
             status="$(jq -r '.[0].status // empty' <<<"$events")"
             message="$(jq -r '.[0].message // empty' <<<"$events")"
