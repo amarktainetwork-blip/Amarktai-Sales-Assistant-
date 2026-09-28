@@ -107,6 +107,17 @@ export function checkpointTranscript(
   return candidate.length >= current.length ? candidate : current;
 }
 
+export function assertLiveCallState(
+  status: string,
+  allowed: readonly string[],
+  action: string
+) {
+  if (!allowed.includes(status))
+    throw new Error(
+      `LIVE_CALL_STATE: ${action} is not allowed while the call is ${status}.`
+    );
+}
+
 export async function requireLiveCallOwner(
   userId: number,
   organisationId: number,
