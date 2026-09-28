@@ -193,6 +193,7 @@ export async function markLiveCallReadyForReview(input: {
   organisationId: number;
   callSessionId: number;
   transcript: string;
+  manualNotes?: string;
 }) {
   const db = await dbOrThrow();
   const session = await requireLiveCallOwner(
@@ -201,6 +202,13 @@ export async function markLiveCallReadyForReview(input: {
     input.callSessionId
   );
   const transcript = checkpointTranscript(session.transcript, input.transcript);
+  const manualNotes = input.manualNotes?.trim().slice(0, 12_000) || "";
+  const previousOutcome =
+    session.structuredOutcome &&
+    typeof session.structuredOutcome === "object" &&
+    !Array.isArray(session.structuredOutcome)
+      ? session.structuredOutcome
+      : {};
   if (session.status === "completed")
     return {
       status: "completed" as const,
@@ -210,6 +218,9 @@ export async function markLiveCallReadyForReview(input: {
     .update(callSessions)
     .set({
       transcript,
+      structuredOutcome: manualNotes
+        ? { ...previousOutcome, draftManualNotes: manualNotes }
+        : previousOutcome,
       status: "ready_for_review",
     })
     .where(
@@ -229,6 +240,7 @@ export async function markLiveCallReadyForReview(input: {
       "Live call capture stopped and the current transcript was checkpointed for review.",
     metadata: {
       transcriptChars: transcript.length,
+      salespersonNoteChars: manualNotes.length,
       rawAudioRetained: false,
     },
   });
