@@ -98,7 +98,8 @@ export async function executeSkillCustomReads(input: {
       : {};
   const crm: Record<string, unknown> = { ...existingCrm };
 
-  for (const [index, step] of steps.entries()) {
+  for (let index = 0; index < steps.length; index += 1) {
+    const step = steps[index];
     const operationKey =
       typeof step.inputs?.operationKey === "string"
         ? step.inputs.operationKey.trim()
