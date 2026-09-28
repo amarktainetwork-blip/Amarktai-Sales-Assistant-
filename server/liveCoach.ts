@@ -165,17 +165,19 @@ export async function prepareOutcomeAwarePostCallSummary(input: {
   billing?: GenxBillingContext;
   runAgent?: typeof runGenxAgent;
 }) {
+  const manualNotes = input.manualNotes?.trim().slice(0, 12_000) || "";
   const routine = deterministicOutcomeSummary[input.structured.outcome];
   if (routine)
     return {
-      content: routine,
+      content: manualNotes
+        ? `${routine} Salesperson note: ${manualNotes}`
+        : routine,
       usage: {},
       creditsCharged: 0,
       mode: "deterministic_post_call_summary" as const,
       genxCalls: 0,
     };
   const transcript = input.transcript.trim();
-  const manualNotes = input.manualNotes?.trim().slice(0, 12_000) || "";
   if (!transcript && !manualNotes) {
     const facts = [
       `Outcome: ${input.structured.outcome.replaceAll("_", " ")}.`,
