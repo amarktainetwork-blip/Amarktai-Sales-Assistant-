@@ -1,7 +1,7 @@
 {
-  "operation": "deploy",
+  "operation": "diagnose",
   "server_name": "Amarktai Network - Sales Assistant",
   "server_domain": "sales.amarktai.co.za",
   "release_sha": "5f451f4f30189cf26a878ece9d9684319bd12994",
-  "request_id": "truth-convergence-release-2026-09-28T15-25+02"
+  "request_id": "post-deploy-truth-audit-2026-09-28T16-10+02"
 }
