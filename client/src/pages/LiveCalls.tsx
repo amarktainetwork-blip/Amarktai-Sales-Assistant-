@@ -1839,7 +1839,6 @@ export default function LiveCalls() {
               </section>
             )}
           </div>
-          </div>
         </div>
       </div>
     </DashboardLayout>
