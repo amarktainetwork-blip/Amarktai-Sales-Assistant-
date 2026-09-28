@@ -1,7 +1,7 @@
 {
-  "operation": "diagnose",
+  "operation": "verify",
   "server_name": "Amarktai Network - Sales Assistant",
   "server_domain": "sales.amarktai.co.za",
   "release_sha": "3bdf067e5f4eaf06aa5a08c8c7a110f5e893359f",
-  "request_id": "inbox-truth-audit-2026-09-28T10:47Z"
+  "request_id": "final-functional-sweep-pre-inbox-fix-2026-09-28T10:53Z"
 }
