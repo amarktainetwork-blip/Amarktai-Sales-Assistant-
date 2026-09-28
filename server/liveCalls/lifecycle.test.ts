@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   LIVE_CALL_ABANDON_GRACE_MS,
+  assertLiveCallState,
   checkpointTranscript,
   shouldCheckpointAbandonedLiveCall,
 } from "./store";
@@ -18,6 +19,18 @@ describe("live call recoverable lifecycle", () => {
     expect(checkpointTranscript("first\nsecond", "first")).toBe("first\nsecond");
     expect(checkpointTranscript("first", "first\nsecond")).toBe("first\nsecond");
     expect(checkpointTranscript(null, "captured")).toBe("captured");
+  });
+
+  it("enforces in-progress capture and review-only closeout transitions", () => {
+    expect(() =>
+      assertLiveCallState("ready_for_review", ["in_progress"], "Transcription")
+    ).toThrow("LIVE_CALL_STATE");
+    expect(() =>
+      assertLiveCallState("in_progress", ["ready_for_review"], "Closeout")
+    ).toThrow("LIVE_CALL_STATE");
+    expect(() =>
+      assertLiveCallState("ready_for_review", ["ready_for_review"], "Closeout")
+    ).not.toThrow();
   });
 
   it("only checkpoints genuinely stale in-progress sessions", () => {
