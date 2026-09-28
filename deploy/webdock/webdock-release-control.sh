@@ -68,6 +68,31 @@ if [ "$OPERATION" = "inspect" ]; then
   exit 0
 fi
 
+if [ "$OPERATION" = "cleanup" ]; then
+  echo "=== SAFE BUILD CACHE CLEANUP ==="
+  echo "--- before cleanup ---"
+  df -h / /opt 2>/dev/null || true
+  docker system df || true
+
+  # Build cache is disposable. This does not remove active images, running
+  # containers, named volumes, MariaDB/Valkey data, connector evidence or backups.
+  docker builder prune -af || true
+  docker image prune -f || true
+  apt-get clean || true
+  if command -v journalctl >/dev/null 2>&1; then
+    journalctl --vacuum-time=14d || true
+  fi
+
+  echo "--- after cleanup ---"
+  df -h / /opt 2>/dev/null || true
+  docker system df || true
+  curl -fsS https://sales.amarktai.co.za/readyz
+  echo
+  echo "SAFE_STORAGE_CLEANUP=PASS"
+  echo "completed_at=$(date -u +%FT%TZ)"
+  exit 0
+fi
+
 if [ "$OPERATION" = "diagnose" ]; then
   echo "=== CRM READ-ONLY DIAGNOSTICS ==="
   db_sql() {
