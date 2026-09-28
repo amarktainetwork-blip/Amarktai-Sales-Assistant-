@@ -56,6 +56,13 @@ describe("client-handover live calls presentation", () => {
     expect(liveCalls).toContain("coachedSignalRef");
   });
 
+  it("checkpoints call capture before review and on accidental page exit", () => {
+    expect(liveCalls).toContain('"/api/live-calls/stop"');
+    expect(liveCalls).toContain("checkpointSessionForReview");
+    expect(liveCalls).toContain("navigator.sendBeacon");
+    expect(liveCalls).toContain("await pendingRef.current");
+  });
+
   it("keeps the complete prepare-call-assist-closeout workflow", () => {
     for (const required of [
       "PRE-CALL BRIEF",
