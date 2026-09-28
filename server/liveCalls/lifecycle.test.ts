@@ -76,7 +76,7 @@ describe("live call recoverable lifecycle", () => {
   it("restores ready-for-review sessions after navigation instead of stranding closeout", () => {
     expect(contextSource).toContain("await reconcileAbandonedLiveCallsForUser");
     expect(contextSource).toContain('transcript: session.transcript || ""');
-    expect(routes).toContain('coachNotes: session.coachNotes || ""');
+    expect(contextSource).toContain('coachNotes: session.coachNotes || ""');
     expect(client).toContain('callContext.data.status === "ready_for_review"');
     expect(client).toContain("setAwaitingCloseout(true)");
     expect(client).toContain("transcriptRef.current = callContext.data.transcript");
