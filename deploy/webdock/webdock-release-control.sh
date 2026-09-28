@@ -68,6 +68,40 @@ if [ "$OPERATION" = "inspect" ]; then
   exit 0
 fi
 
+if [ "$OPERATION" = "diagnose" ]; then
+  echo "=== CRM READ-ONLY DIAGNOSTICS ==="
+  db_sql() {
+    local sql="$1"
+    docker compose --env-file .env -f deploy/webdock/docker-compose.yml exec -T db \
+      sh -eu -c 'mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" -D amarktai_sales_assistant --batch --raw -e "$1"' _ "$sql"
+  }
+
+  echo "--- connected system ---"
+  db_sql "SELECT id,provider,status,JSON_LENGTH(allowedReadCapabilities) AS allowedReadCount,allowedReadCapabilities,allowedWriteCapabilities,verifiedCapabilities,lastHealthCheckAt,lastHealthSummary FROM connectedSystems WHERE id=8;"
+
+  echo "--- commissioning job ---"
+  db_sql "SELECT id,state,status,attempt,lastError,updatedAt,JSON_EXTRACT(progress,'$.capabilityAccounting.criticalGaps') AS criticalGaps,JSON_EXTRACT(progress,'$.safeReads.proven') AS safeReadsProven,discoveredOperationKeys FROM crmCommissioningJobs WHERE organisationId=8 AND connectedSystemId=8;"
+
+  echo "--- sync cursors ---"
+  db_sql "SELECT resourceType,lastSuccessfulAt,lastError,updatedAt FROM crmSyncCursors WHERE connectedSystemId=8 ORDER BY resourceType;"
+
+  echo "--- latest required learned operations ---"
+  db_sql "SELECT b.operationKey,b.version,b.status,b.lastSuccessAt,b.lastFailureAt,b.lastError,JSON_UNQUOTE(JSON_EXTRACT(b.evidence,'$.ownerExternalId')) AS evidenceOwner,JSON_UNQUOTE(JSON_EXTRACT(b.evidence,'$.sourceTotal')) AS sourceTotal,JSON_UNQUOTE(JSON_EXTRACT(b.evidence,'$.pagesRead')) AS pagesRead FROM browserLearnedOperations b JOIN (SELECT operationKey,MAX(version) AS version FROM browserLearnedOperations WHERE organisationId=8 AND connectedSystemId=8 GROUP BY operationKey) latest ON latest.operationKey=b.operationKey AND latest.version=b.version WHERE b.organisationId=8 AND b.connectedSystemId=8 AND b.operationKey IN ('contact.sync','contact.search','contact.read','company.sync','task.sync','opportunity.sync','activity.sync','owner.sync','pipeline.list') ORDER BY b.operationKey;"
+
+  echo "--- current task collection ---"
+  db_sql "SELECT COUNT(*) AS currentOpenTasks FROM crmTasks WHERE connectedSystemId=8 AND ownerExternalId='yZrFI0ptOyvG3ZXvs7iZ' AND status IN ('open','pending','incomplete','new','todo','to_do');"
+
+  echo "--- handover verifier rerun ---"
+  set +e
+  shell_admin "docker compose --env-file .env -f deploy/webdock/docker-compose.yml exec -T app node dist/verifyAmeliaHandover.js"
+  HANDOVER_RC=$?
+  set -e
+  echo "HANDOVER_RC=$HANDOVER_RC"
+  echo "DIAGNOSTICS=PASS"
+  echo "completed_at=$(date -u +%FT%TZ)"
+  exit 0
+fi
+
 if [ "$OPERATION" = "verify" ]; then
   test "$(git_admin rev-parse HEAD)" = "$TARGET_SHA" || fail "live repo is not on target SHA"
   shell_admin "AMARKTAI_DEPLOY_PROFILE=full sh deploy/webdock/verify-production.sh"
