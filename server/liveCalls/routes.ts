@@ -10,6 +10,7 @@ import {
 import {
   prepareLiveCoachingTip,
   prepareOutcomeAwarePostCallSummary,
+  preparePostCallReviewSummary,
   streamLiveCoachingTip,
 } from "../liveCoach";
 import type { OrganisationMembership } from "../organisation";
@@ -444,6 +445,59 @@ export function registerLiveCallRoutes(app: Express) {
           creditsCharged: result.creditsCharged ?? 0,
         })
       );
+      return res.json({
+        content: result.content,
+        usage: result.usage ?? {},
+        creditsCharged: result.creditsCharged ?? 0,
+      });
+    } catch (error) {
+      return sendLiveCallError(res, error);
+    }
+  });
+
+  app.post("/api/live-calls/review-summary", async (req, res) => {
+    try {
+      const user = await requireAuthorisedUser(req);
+      const callSessionId = Number(req.body?.callSessionId);
+      if (!Number.isInteger(callSessionId) || callSessionId <= 0)
+        return res
+          .status(400)
+          .json({ error: "A valid live call session is required." });
+      const session = await requireLiveCallOwner(
+        user.id,
+        user.membership.organisationId,
+        callSessionId
+      );
+      assertLiveCallState(
+        session.status,
+        ["ready_for_review", "completed"],
+        "Post-call review"
+      );
+      const sourceOutcome =
+        session.structuredOutcome &&
+        typeof session.structuredOutcome === "object" &&
+        !Array.isArray(session.structuredOutcome)
+          ? (session.structuredOutcome as Record<string, unknown>)
+          : {};
+      const manualNotes =
+        typeof req.body?.manualNotes === "string"
+          ? req.body.manualNotes.trim().slice(0, 12_000)
+          : typeof sourceOutcome.draftManualNotes === "string"
+            ? sourceOutcome.draftManualNotes.slice(0, 12_000)
+            : typeof sourceOutcome.salespersonNotes === "string"
+              ? sourceOutcome.salespersonNotes.slice(0, 12_000)
+              : "";
+      const result = await preparePostCallReviewSummary({
+        leadLabel: session.leadLabel,
+        transcript: session.transcript || "",
+        manualNotes,
+        billing: {
+          userId: user.id,
+          organisationId: user.membership.organisationId,
+          feature: "post_call_review",
+          reference: `call:${callSessionId}`,
+        },
+      });
       return res.json({
         content: result.content,
         usage: result.usage ?? {},
