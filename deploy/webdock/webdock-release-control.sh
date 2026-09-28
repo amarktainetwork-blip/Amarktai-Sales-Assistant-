@@ -118,6 +118,11 @@ if [ "$OPERATION" = "diagnose" ]; then
   db_sql "SELECT DISTINCT JSON_EXTRACT(raw,'$.normalizedCustomerContext.customFieldLabels') AS customFieldLabels FROM crmContacts WHERE organisationId=8 AND connectedSystemId=8 AND LOWER(CAST(JSON_EXTRACT(raw,'$.normalizedCustomerContext.customFieldLabels') AS CHAR)) REGEXP 'prefer|contact|call|time|morning|afternoon|evening' LIMIT 20;"
   db_sql "SELECT COALESCE(NULLIF(TRIM(JSON_UNQUOTE(JSON_EXTRACT(raw,'$.normalizedCustomerContext.customFields.Xz5LMfmoQ0bWlFE2aqnu'))),''),'(blank)') AS bestTimeToCall,COUNT(*) AS contacts FROM crmContacts WHERE organisationId=8 AND connectedSystemId=8 GROUP BY bestTimeToCall ORDER BY contacts DESC LIMIT 30;"
 
+  echo "--- current task due-time shape ---"
+  db_sql "SELECT TIME_FORMAT(TIME(dueAt),'%H:%i') AS dueTime,COUNT(*) AS count FROM crmTasks WHERE connectedSystemId=8 AND ownerExternalId='yZrFI0ptOyvG3ZXvs7iZ' AND status IN ('open','pending','incomplete','new','todo','to_do') AND dueAt IS NOT NULL GROUP BY dueTime ORDER BY count DESC,dueTime LIMIT 30;"
+  db_sql "SELECT SUM(TIME(dueAt)='00:00:00') AS midnightDue,COUNT(*) AS datedOpenTasks,SUM(dueAt<UTC_TIMESTAMP()) AS overdueByTimestamp FROM crmTasks WHERE connectedSystemId=8 AND ownerExternalId='yZrFI0ptOyvG3ZXvs7iZ' AND status IN ('open','pending','incomplete','new','todo','to_do') AND dueAt IS NOT NULL;"
+  db_sql "SELECT JSON_UNQUOTE(JSON_EXTRACT(raw,'$.properties.dueDate')) AS rawDueDate,DATE_FORMAT(dueAt,'%Y-%m-%d %H:%i:%s') AS normalizedDueAt FROM crmTasks WHERE connectedSystemId=8 AND ownerExternalId='yZrFI0ptOyvG3ZXvs7iZ' AND status IN ('open','pending','incomplete','new','todo','to_do') AND dueAt IS NOT NULL ORDER BY dueAt ASC LIMIT 12;"
+
   echo "--- current task collection ---"
   db_sql "SELECT COUNT(*) AS currentOpenTasks FROM crmTasks WHERE connectedSystemId=8 AND ownerExternalId='yZrFI0ptOyvG3ZXvs7iZ' AND status IN ('open','pending','incomplete','new','todo','to_do');"
 
@@ -187,6 +192,9 @@ if [ "$OPERATION" = "diagnose" ]; then
   echo "--- mailbox and report state ---"
   db_sql "SELECT provider,status,JSON_LENGTH(scopes) AS scopeCount,lastSyncedAt,expiresAt,updatedAt FROM userMailboxConnections WHERE organisationId=8 AND userId=2;"
   db_sql "SELECT isEnabled,COUNT(*) AS count,MAX(lastSentAt) AS latestSent,MAX(updatedAt) AS latestUpdated FROM dailyReports WHERE organisationId=8 AND userId=2 GROUP BY isEnabled;"
+
+  echo "--- operational event lifecycle ---"
+  db_sql "SELECT eventKey,severity,category,COUNT(*) AS total,SUM(resolvedAt IS NULL) AS unresolved,MIN(createdAt) AS firstAt,MAX(createdAt) AS lastAt FROM operationalEvents WHERE organisationId=8 GROUP BY eventKey,severity,category ORDER BY unresolved DESC,total DESC LIMIT 40;"
 
   echo "--- connector and worker health ---"
   db_sql "SELECT resourceType,status,capabilityKey,lastStartedAt,lastSucceededAt,lastError FROM connectorSyncJobs WHERE organisationId=8 ORDER BY resourceType;"
