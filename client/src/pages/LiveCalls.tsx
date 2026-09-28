@@ -11,14 +11,9 @@ import {
 } from "@/lib/liveAudioPipeline";
 import { trpc } from "@/lib/trpc";
 import {
-  emptyLiveStructuredNotes,
-  mergeLiveStructuredNotes,
-  type LiveStructuredNotes,
-} from "@shared/liveCallNotes";
-import {
-  AlertTriangle,
   ArrowRight,
   CheckCircle2,
+  CircleHelp,
   ClipboardCheck,
   Headphones,
   Mic,
@@ -40,7 +35,6 @@ type CaptureMode = "microphone" | "mixed";
 type TranscriptionResult = {
   text: string;
   signals: Signal[];
-  structuredNotes: LiveStructuredNotes;
   durationMs: number;
   rawAudioRetained: boolean;
 };
@@ -308,10 +302,8 @@ export default function LiveCalls() {
   const [consent, setConsent] = useState(false);
   const [recording, setRecording] = useState(false);
   const [transcript, setTranscript] = useState("");
-  const [signals, setSignals] = useState<Signal[]>([]);
-  const [structuredNotes, setStructuredNotes] = useState<LiveStructuredNotes>(
-    emptyLiveStructuredNotes
-  );
+  const [manualNotes, setManualNotes] = useState("");
+  const [helping, setHelping] = useState(false);
   const [tip, setTip] = useState("");
   const [sttReady, setSttReady] = useState<boolean | null>(null);
   const [completing, setCompleting] = useState(false);
@@ -342,7 +334,7 @@ export default function LiveCalls() {
   const pendingChunkCountRef = useRef(0);
   const sessionIdRef = useRef<number | null>(sessionId);
   const transcriptRef = useRef("");
-  const conversationStateRef = useRef("");
+  const manualNotesRef = useRef("");
   const [showTranscript, setShowTranscript] = useState(false);
   const lastCoachAtRef = useRef(0);
   const coachingRef = useRef(false);
@@ -352,6 +344,7 @@ export default function LiveCalls() {
   const pendingCoachRef = useRef<{
     activeSessionId: number;
     text: string;
+    manualHelp?: boolean;
   } | null>(null);
   const coachTimerRef = useRef<number | undefined>(undefined);
 
@@ -382,6 +375,15 @@ export default function LiveCalls() {
   }, [sessionId]);
 
   useEffect(() => {
+    manualNotesRef.current = manualNotes;
+    if (sessionId)
+      window.localStorage.setItem(
+        `amarktai-live-call-notes:${sessionId}`,
+        manualNotes
+      );
+  }, [manualNotes, sessionId]);
+
+  useEffect(() => {
     if (
       initialContactId <= 0 ||
       initialSelectionApplied.current === initialContactId
@@ -409,6 +411,23 @@ export default function LiveCalls() {
       setTranscript(callContext.data.transcript);
     }
     if (callContext.data.coachNotes) setTip(callContext.data.coachNotes);
+    const recoveredOutcome =
+      callContext.data.structuredOutcome &&
+      typeof callContext.data.structuredOutcome === "object"
+        ? (callContext.data.structuredOutcome as Record<string, unknown>)
+        : undefined;
+    const serverNotes =
+      typeof recoveredOutcome?.draftManualNotes === "string"
+        ? recoveredOutcome.draftManualNotes
+        : typeof recoveredOutcome?.salespersonNotes === "string"
+          ? recoveredOutcome.salespersonNotes
+          : "";
+    const localNotes = window.localStorage.getItem(
+      `amarktai-live-call-notes:${callContext.data.id}`
+    );
+    const recoveredNotes = serverNotes || localNotes || "";
+    manualNotesRef.current = recoveredNotes;
+    setManualNotes(recoveredNotes);
     if (callContext.data.status === "ready_for_review") {
       setRecording(false);
       setCloseoutConfirmed(false);
@@ -482,6 +501,7 @@ export default function LiveCalls() {
             JSON.stringify({
               callSessionId: activeSessionId,
               transcript: transcriptRef.current,
+              manualNotes: manualNotesRef.current,
             }),
           ],
           { type: "application/json" }
@@ -497,9 +517,13 @@ export default function LiveCalls() {
     };
   }, []);
 
-  async function requestCoaching(activeSessionId: number, text: string) {
+  async function requestCoaching(
+    activeSessionId: number,
+    text: string,
+    manualHelp = false
+  ) {
     if (coachingRef.current) {
-      pendingCoachRef.current = { activeSessionId, text };
+      pendingCoachRef.current = { activeSessionId, text, manualHelp };
       if (Date.now() - coachStartedAtRef.current > LIVE_COACH_STALE_MS)
         coachAbortRef.current?.abort();
       return;
@@ -514,7 +538,15 @@ export default function LiveCalls() {
           callSessionId: activeSessionId,
           leadLabel,
           transcriptChunk: text,
-          conversationState: conversationStateRef.current,
+          conversationState: [
+            transcriptRef.current.slice(-4_000),
+            manualNotesRef.current
+              ? `SALESPERSON NOTES:\n${manualNotesRef.current.slice(-1_500)}`
+              : "",
+          ]
+            .filter(Boolean)
+            .join("\n\n"),
+          manualHelp,
         },
         controller.signal,
         partial => {
@@ -541,12 +573,19 @@ export default function LiveCalls() {
       coachingRef.current = false;
       const pending = pendingCoachRef.current;
       pendingCoachRef.current = null;
-      if (pending) scheduleCoaching(pending.activeSessionId, pending.text);
+      if (pending)
+        pending.manualHelp
+          ? void requestCoaching(
+              pending.activeSessionId,
+              pending.text,
+              true
+            )
+          : scheduleCoaching(pending.activeSessionId, pending.text);
     }
   }
 
   function scheduleCoaching(activeSessionId: number, text: string) {
-    pendingCoachRef.current = { activeSessionId, text };
+    pendingCoachRef.current = { activeSessionId, text, manualHelp: false };
     if (coachingRef.current) {
       if (Date.now() - coachStartedAtRef.current > LIVE_COACH_STALE_MS)
         coachAbortRef.current?.abort();
@@ -582,42 +621,6 @@ export default function LiveCalls() {
         durationMs,
       }
     );
-    setStructuredNotes(current => {
-      const merged = mergeLiveStructuredNotes(
-        current,
-        result.structuredNotes || emptyLiveStructuredNotes()
-      );
-      conversationStateRef.current = [
-        merged.topics.length
-          ? `Current topics: ${merged.topics.slice(0, 4).join(" | ")}`
-          : "",
-        merged.goals.length
-          ? `Customer goals: ${merged.goals.slice(0, 3).join(" | ")}`
-          : "",
-        merged.questions.length
-          ? `Questions: ${merged.questions.slice(0, 3).join(" | ")}`
-          : "",
-        merged.objections.length
-          ? `Objections: ${merged.objections.slice(0, 3).join(" | ")}`
-          : "",
-        merged.buyingSignals.length
-          ? `Buying intent: ${merged.buyingSignals.slice(0, 3).join(" | ")}`
-          : "",
-        merged.commitments.length
-          ? `Commitments: ${merged.commitments.slice(0, 3).join(" | ")}`
-          : "",
-        merged.nextSteps.length
-          ? `Next steps: ${merged.nextSteps.slice(0, 3).join(" | ")}`
-          : "",
-        merged.unresolvedItems.length
-          ? `Unresolved: ${merged.unresolvedItems.slice(0, 3).join(" | ")}`
-          : "",
-      ]
-        .filter(Boolean)
-        .join("\n")
-        .slice(-4_000);
-      return merged;
-    });
     const text = result.text?.trim();
     if (!text) return;
     transcriptRef.current =
@@ -626,18 +629,8 @@ export default function LiveCalls() {
       );
     setTranscript(transcriptRef.current);
     if (result.signals?.length) {
-      setSignals(current =>
-        [...result.signals, ...current]
-          .filter(
-            (signal, index, all) =>
-              all.findIndex(
-                other =>
-                  other.type === signal.type &&
-                  other.evidence === signal.evidence
-              ) === index
-          )
-          .slice(0, 12)
-      );
+      // Signals are deliberately invisible. They only decide whether a genuinely
+      // useful coaching intervention is worth interrupting the salesperson.
       // Coaching is event-driven: do not repeatedly spend AI credits on the
       // rolling transcript or on the same unresolved signal. A compact event
       // packet is enough for coaching; the server adds approved CRM context.
@@ -655,13 +648,34 @@ export default function LiveCalls() {
       if (fresh.length) {
         const eventPacket = [
           `Latest meaningful speech: ${text.slice(-900)}`,
-          conversationStateRef.current,
+          `Recent conversation:\n${transcriptRef.current.slice(-2_500)}`,
           ...fresh.map(
             signal => `Signal: ${signal.label} | Evidence: ${signal.evidence}`
           ),
         ].join("\n");
         scheduleCoaching(activeSessionId, eventPacket.slice(-1_500));
       }
+    }
+  }
+
+  async function requestManualHelp() {
+    const activeSessionId = sessionIdRef.current;
+    if (!activeSessionId || !recordingRef.current) return;
+    setHelping(true);
+    try {
+      const latest = transcriptRef.current.trim().slice(-2_500);
+      await requestCoaching(
+        activeSessionId,
+        [
+          "The salesperson explicitly asked AmarktAI for help right now.",
+          latest
+            ? `Most recent transcript:\n${latest}`
+            : "No useful transcript has been captured yet.",
+        ].join("\n\n"),
+        true
+      );
+    } finally {
+      setHelping(false);
     }
   }
 
@@ -825,7 +839,8 @@ export default function LiveCalls() {
       const activeSessionId = sessionId ?? started!.callSessionId;
       if (started) {
         transcriptRef.current = "";
-        conversationStateRef.current = "";
+        manualNotesRef.current = "";
+        setManualNotes("");
         coachAbortRef.current?.abort();
         coachAbortRef.current = null;
         pendingCoachRef.current = null;
@@ -835,8 +850,6 @@ export default function LiveCalls() {
           coachTimerRef.current = undefined;
         }
         setTranscript("");
-        setSignals([]);
-        setStructuredNotes(emptyLiveStructuredNotes());
         setTip("");
       }
       if (started?.leadLabel) setLeadLabel(started.leadLabel);
@@ -888,6 +901,7 @@ export default function LiveCalls() {
     }>("/api/live-calls/stop", {
       callSessionId: activeSessionId,
       transcript: transcriptValue,
+      manualNotes: manualNotesRef.current,
     });
   }
 
@@ -990,6 +1004,7 @@ export default function LiveCalls() {
           callSessionId: sessionId,
           leadLabel,
           transcript: transcriptRef.current,
+          manualNotes: manualNotesRef.current,
           outcome,
           nextStep: nextStep.trim() || undefined,
           callbackAt: callbackAt
@@ -1024,6 +1039,9 @@ export default function LiveCalls() {
       setTip(result.content);
       setCloseoutActions(result.actions || []);
       setAwaitingCloseout(false);
+      window.localStorage.removeItem(
+        `amarktai-live-call-notes:${sessionId}`
+      );
       const completed = result.autoExecutions?.length || 0;
       toast.success(
         completed
