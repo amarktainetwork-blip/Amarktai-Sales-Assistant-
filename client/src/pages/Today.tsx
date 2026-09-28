@@ -148,6 +148,8 @@ export default function Today() {
         invalidateToday: () => utils.sales.today.invalidate(),
         invalidateCustomers: () => utils.sales.customerDirectory.invalidate(),
         invalidateInbox: () => utils.sales.inbox.invalidate(),
+        invalidateNewLeadAlerts: () => utils.sales.newLeadAlerts.invalidate(),
+        invalidateTracker: () => utils.sales.tracker.invalidate(),
         refetchToday: () => today.refetch(),
       });
       if (crmWarning)
