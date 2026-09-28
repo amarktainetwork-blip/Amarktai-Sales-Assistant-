@@ -28,6 +28,7 @@ import {
   compileLearnedSkillRuntime,
   materializeLearnedSkillCommunications,
 } from "../skillRuntime";
+import { executeSkillCustomReads } from "../skillCustomOperations";
 import { requireManagementHttpContext } from "../managementElevation";
 import { canManageOrganisation } from "../organisationAccess";
 import {
@@ -236,15 +237,23 @@ export function registerSkillBuilderRoutes(app: Express) {
           "CUSTOMER_CONTEXT_REQUIRED: the exact customer could not be resolved."
         );
 
-      const runtimeInputs =
+      const suppliedRuntimeInputs =
         req.body?.runtimeInputs &&
         typeof req.body.runtimeInputs === "object" &&
         !Array.isArray(req.body.runtimeInputs)
           ? (req.body.runtimeInputs as Record<string, unknown>)
           : {};
+      const definition = normalizeSkillDefinition(skill.inputSchema);
+      const runtimeInputs = await executeSkillCustomReads({
+        userId,
+        organisationId: membership.organisationId,
+        definition,
+        customer,
+        runtimeInputs: suppliedRuntimeInputs,
+      });
       const compiled = compileLearnedSkillRuntime({
         skillKey: skill.playbookKey,
-        definition: skill.inputSchema,
+        definition,
         customer,
         runtimeInputs,
       });

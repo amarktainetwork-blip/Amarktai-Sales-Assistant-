@@ -5,8 +5,12 @@ const read = (relative: string) =>
   readFileSync(new URL(relative, import.meta.url), "utf8");
 
 describe("durable whole-site company knowledge job contract", () => {
-  it("scopes shared company status and retry operations to organisation and company profile", () => {
+  it("scopes shared company status, approval reconciliation and retry operations to organisation and company profile", () => {
     const jobs = read("./companyKnowledgeJobs.ts");
+    const reconciliationScope = jobs.slice(
+      jobs.indexOf("export async function reconcileConfirmedCompanyKnowledgeJob"),
+      jobs.indexOf("export async function getLatestCompanyKnowledgeJob")
+    );
     const statusScope = jobs.slice(
       jobs.indexOf("export async function getLatestCompanyKnowledgeJob"),
       jobs.indexOf("export async function retryCompanyKnowledgeJob")
@@ -15,13 +19,30 @@ describe("durable whole-site company knowledge job contract", () => {
       jobs.indexOf("export async function retryCompanyKnowledgeJob"),
       jobs.indexOf("async function checkpoint")
     );
-    for (const scope of [statusScope, retryScope]) {
+    for (const scope of [reconciliationScope, retryScope]) {
       expect(scope).toContain("companyKnowledgeJobs.organisationId");
       expect(scope).toContain("companyKnowledgeJobs.companyProfileId");
       expect(scope).not.toContain(
         "eq(companyKnowledgeJobs.userId, input.userId)"
       );
     }
+    expect(statusScope).toContain("reconcileConfirmedCompanyKnowledgeJob");
+  });
+
+  it("self-heals only stale failed jobs from independently confirmed company knowledge truth", () => {
+    const jobs = read("./companyKnowledgeJobs.ts");
+    const reconciliation = jobs.slice(
+      jobs.indexOf("export async function reconcileConfirmedCompanyKnowledgeJob"),
+      jobs.indexOf("export async function getLatestCompanyKnowledgeJob")
+    );
+    expect(reconciliation).toContain('profile?.discoveryStatus !== "confirmed"');
+    expect(reconciliation).toContain('eq(websiteDiscoveries.status, "confirmed")');
+    expect(reconciliation).toContain('!["failed", "needs_attention"].includes(job.status)');
+    expect(reconciliation).toContain('status: "ready"');
+    expect(reconciliation).toContain('phase: "READY_FOR_REVIEW"');
+    expect(reconciliation).toContain("resultDiscoveryId: confirmedDiscovery.id");
+    expect(reconciliation).toContain("knowledgeApproved: true");
+    expect(reconciliation).toContain("lastError: null");
   });
 
   it("checkpoints corpus, analyst, critic and temporary-resource state without auto approval", () => {

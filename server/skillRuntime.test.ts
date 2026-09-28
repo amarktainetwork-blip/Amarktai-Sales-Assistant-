@@ -117,6 +117,76 @@ describe("learned organisation skill runtime", () => {
     );
   });
 
+  it("compiles a first-class custom CRM write against the exact requested target", () => {
+    const result = compileLearnedSkillRuntime({
+      skillKey: "custom-stage-helper",
+      definition: {
+        trigger: "The current opportunity needs a custom CRM marker",
+        requiredOperations: ["custom.write.mark_reviewed"],
+        requiredWriteCapabilities: ["custom.write.mark_reviewed"],
+        steps: [
+          {
+            id: "mark-reviewed",
+            action: "prepare_crm_operation",
+            label: "Prepare reviewed marker",
+            inputs: {
+              operationKey: "custom.write.mark_reviewed",
+              targetKind: "opportunity",
+              marker: "reviewed",
+            },
+          },
+        ],
+        assertions: ["The action remains review-only"],
+      },
+      customer: customer(),
+    });
+    expect(result.actions).toEqual([
+      expect.objectContaining({
+        actionType: "custom_crm_action",
+        payload: expect.objectContaining({
+          actionName: "custom.write.mark_reviewed",
+          externalId: "opp-1",
+          opportunityExternalId: "opp-1",
+          contactExternalId: "contact-123",
+          reviewRequired: true,
+        }),
+      }),
+    ]);
+  });
+
+  it("compiles a commissioned appointment operation through the generic learned CRM action", () => {
+    const result = compileLearnedSkillRuntime({
+      skillKey: "appointment-helper",
+      definition: {
+        trigger: "The salesperson confirms an appointment should be prepared",
+        requiredWriteCapabilities: ["appointments.write"],
+        requiredOperations: ["appointment.book"],
+        steps: [
+          {
+            id: "book-appointment",
+            action: "prepare_crm_operation",
+            label: "Prepare appointment",
+            inputs: {
+              operationKey: "appointment.book",
+              targetKind: "contact",
+            },
+          },
+        ],
+        assertions: ["Review is required"],
+      },
+      customer: customer(),
+    });
+    expect(result.actions[0]).toMatchObject({
+      actionType: "custom_crm_action",
+      payload: {
+        actionName: "appointment.book",
+        externalId: "contact-123",
+        contactExternalId: "contact-123",
+        reviewRequired: true,
+      },
+    });
+  });
+
   it("prepares the IT Support WhatsApp rule as review-only until exact template content is materialised", () => {
     const skill = COURSE2CAREER_SKILL_PACK.find(
       item => item.key === "it-support-whatsapp-template"

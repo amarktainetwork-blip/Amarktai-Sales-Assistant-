@@ -242,6 +242,55 @@ describe("canonical connected-system capability router", () => {
     ).toBe(false);
   });
 
+  it("routes an extended learned CRM write only with its catalogue write authority and LIVE_PROVEN operation", () => {
+    const appointment = {
+      operationKey: "appointment.book",
+      label: "Book appointment",
+      mode: "write" as const,
+      status: "LIVE_PROVEN",
+      version: 1,
+      lastTestAt: null,
+      lastSuccessAt: null,
+      lastFailureAt: null,
+      productionReady: true,
+    };
+    const system = {
+      id: 7,
+      provider: "genie",
+      displayName: "Genie",
+      status: "limited_permissions",
+      connectionMethod: "browser",
+      verifiedCapabilities: [],
+      allowedWriteCapabilities: ["appointments.write"],
+      learnedOperations: [appointment],
+    };
+    const [proposal] = routeConnectedSystemActions(
+      [
+        {
+          actionType: "custom_crm_action",
+          payload: {
+            actionName: "appointment.book",
+            preferredConnectedSystemId: 7,
+          },
+        },
+      ],
+      [system]
+    );
+    expect(proposal.payload.crmRoute).toMatchObject({
+      routable: true,
+      connectedSystemId: 7,
+      operationKey: "appointment.book",
+      operationState: "LIVE_PROVEN",
+    });
+    expect(
+      connectedSystemSupportsAction(
+        { ...system, allowedWriteCapabilities: [] },
+        "custom_crm_action",
+        "appointment.book"
+      )
+    ).toBe(false);
+  });
+
   it("fails closed immediately when write authority is revoked even if verification remains", () => {
     const system = {
       id: 8,

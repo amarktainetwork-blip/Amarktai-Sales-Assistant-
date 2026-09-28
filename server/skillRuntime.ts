@@ -1,4 +1,5 @@
 import {
+  SKILL_DIRECT_CRM_WRITE_OPERATIONS,
   normalizeSkillDefinition,
   type SkillCondition,
   type SkillDefinition,
@@ -175,6 +176,7 @@ function proposalForStep(input: {
     step.action === "read_tasks" ||
     step.action === "read_history" ||
     step.action === "read_opportunity" ||
+    step.action === "read_crm_operation" ||
     step.action === "set_internal_priority"
   )
     return undefined;
@@ -280,6 +282,43 @@ function proposalForStep(input: {
     payload.fields = step.inputs?.fields || step.inputs || {};
     payload.transitionIntent =
       runtimeValue(step, "transitionIntent", runtimeInputs) ?? step.label;
+  } else if (step.action === "prepare_crm_operation") {
+    const operationKey =
+      typeof step.inputs?.operationKey === "string"
+        ? step.inputs.operationKey.trim()
+        : "";
+    const targetKind = String(step.inputs?.targetKind || "contact");
+    const targetExternalId =
+      runtimeValue(step, "targetExternalId", runtimeInputs) ??
+      (targetKind === "task"
+        ? customer.operationalRecordState.currentActiveTaskExternalId
+        : targetKind === "opportunity"
+          ? customer.operationalRecordState.currentActiveOpportunityExternalId
+          : customer.contactExternalId);
+    actionType = "custom_crm_action";
+    payload.actionName = operationKey;
+    payload.externalId = targetExternalId || "";
+    if (targetKind === "task") payload.taskExternalId = targetExternalId || "";
+    else if (targetKind === "opportunity")
+      payload.opportunityExternalId = targetExternalId || "";
+    else payload.contactExternalId = customer.contactExternalId;
+    if (
+      !operationKey.startsWith("custom.write.") &&
+      !(SKILL_DIRECT_CRM_WRITE_OPERATIONS as readonly string[]).includes(
+        operationKey
+      )
+    ) {
+      payload.draftOnly = true;
+      payload.executionReady = false;
+      payload.blockedReason =
+        "This CRM operation is not an approved direct learned write operation.";
+    }
+    if (!targetExternalId) {
+      payload.draftOnly = true;
+      payload.executionReady = false;
+      payload.blockedReason =
+        "The exact CRM target required by this learned operation is unavailable.";
+    }
   } else if (step.action === "complete_task_after_review") {
     actionType = "complete_active_task";
     payload.taskExternalId =

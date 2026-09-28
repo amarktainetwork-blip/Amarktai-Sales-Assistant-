@@ -87,7 +87,12 @@ export function watchdogIdentityMappingIsConfirmed(
 }
 
 export function selectLatestWatchdogVersions<
-  T extends { operationKey: string; version: number; status: string },
+  T extends {
+    operationKey: string;
+    version: number;
+    status: string;
+    lastError?: string | null;
+  },
 >(rows: T[], safeKeys: ReadonlySet<string>) {
   const latest = new Map<string, T>();
   for (const row of rows) {
@@ -96,18 +101,24 @@ export function selectLatestWatchdogVersions<
     if (!current || row.version > current.version)
       latest.set(row.operationKey, row);
   }
-  return Array.from(latest.values()).map(operation => ({
-    operation,
-    eligible: operation.status === "LIVE_PROVEN",
-    reportStatus:
-      operation.status === "LIVE_PROVEN"
-        ? ("live" as const)
-        : operation.status === "TEST_READY"
-          ? ("awaiting_verification" as const)
-          : operation.status === "DEGRADED"
-            ? ("degraded" as const)
-            : ("blocked" as const),
-  }));
+  return Array.from(latest.values()).map(operation => {
+    const legacyLoginProofBlock =
+      operation.operationKey === "auth.login" &&
+      operation.status === "BLOCKED" &&
+      /STRUCTURED_RESULT_REQUIRED/i.test(operation.lastError || "");
+    return {
+      operation,
+      eligible: operation.status === "LIVE_PROVEN" || legacyLoginProofBlock,
+      reportStatus:
+        operation.status === "LIVE_PROVEN"
+          ? ("live" as const)
+          : legacyLoginProofBlock || operation.status === "TEST_READY"
+            ? ("awaiting_verification" as const)
+            : operation.status === "DEGRADED"
+              ? ("degraded" as const)
+              : ("blocked" as const),
+    };
+  });
 }
 
 /** Verifies only non-destructive learned reads and degrades one failed operation. */
@@ -257,6 +268,10 @@ export async function runGenieOperationWatchdog() {
           operationKey: operation.operationKey,
           payload: watchdogInputs,
           correlationId: `watchdog-${system.id}-${operation.operationKey}-${Date.now()}`,
+          ...(operation.operationKey === "auth.login" &&
+          operation.status !== "LIVE_PROVEN"
+            ? { publishByUserId: secret.commissioningUserId }
+            : {}),
         });
         results.push({
           connectedSystemId: system.id,

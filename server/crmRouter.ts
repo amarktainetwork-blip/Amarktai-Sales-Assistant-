@@ -1,10 +1,10 @@
 import { getDelegatedMailboxStatus } from "./delegatedMailbox";
 import { requireOrganisationMembership } from "./organisation";
 import {
-  isCustomOperationKey,
   productionOperationAvailable,
   type RuntimeLearnedOperation,
 } from "./crm/runtimeCapabilities";
+import { BROWSER_OPERATION_CATALOGUE } from "./browserConnectors/operationContracts";
 
 export type ConnectedSystemRoute = {
   id: number;
@@ -65,6 +65,21 @@ function isBrowserConnection(system: ConnectedSystemRoute) {
   );
 }
 
+function learnedWriteOperationCapability(operationKey: string) {
+  const standard = BROWSER_OPERATION_CATALOGUE.find(
+    operation => operation.key === operationKey
+  );
+  if (standard)
+    return standard.mode === "write"
+      ? standard.capability || operationKey
+      : undefined;
+  return operationKey.startsWith("custom.write.") ? operationKey : undefined;
+}
+
+function isLearnedWriteOperationKey(operationKey: string) {
+  return Boolean(learnedWriteOperationCapability(operationKey));
+}
+
 function capabilityNeedsExplicitWriteAuthority(capability: string) {
   return !capability.endsWith(".read");
 }
@@ -93,11 +108,13 @@ export function connectedSystemSupportsAction(
     // was supplied. Proposal routing always supplies a matrix and therefore
     // requires the exact LIVE_PROVEN operation below.
     if (!system.learnedOperations && !customOperationKey) return true;
+    if (!customOperationKey || !isLearnedWriteOperationKey(customOperationKey))
+      return false;
+    const requiredWriteCapability =
+      learnedWriteOperationCapability(customOperationKey);
     return Boolean(
-      customOperationKey &&
-        isCustomOperationKey(customOperationKey) &&
-        (!customOperationKey.startsWith("custom.write.") ||
-          system.allowedWriteCapabilities.includes(customOperationKey)) &&
+      requiredWriteCapability &&
+        system.allowedWriteCapabilities.includes(requiredWriteCapability) &&
         productionOperationAvailable(
           system.learnedOperations,
           customOperationKey
@@ -243,7 +260,7 @@ export function routeConnectedSystemActions<
 
     const customAction = effectiveActionType === "custom_crm_action";
     const customOperationKey =
-      customAction && isCustomOperationKey(effectivePayload.actionName)
+      customAction && typeof effectivePayload.actionName === "string"
         ? effectivePayload.actionName.trim()
         : undefined;
     const alternatives = customAction
@@ -277,7 +294,7 @@ export function routeConnectedSystemActions<
     const requiredCapability = customAction
       ? customOperationKey
         ? `${customOperationKey} must be LIVE_PROVEN`
-        : "a valid custom.read.* or custom.write.* LIVE_PROVEN operation"
+        : "a valid commissioned write operation"
       : alternatives.map(set => set.join("+")).join(" OR ");
     const crmRoute = chosen
       ? {
