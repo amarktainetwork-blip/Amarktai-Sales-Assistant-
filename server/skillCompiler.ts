@@ -53,6 +53,8 @@ export function buildSkillCompilerInstruction(input: {
     "Separate read and write requirements. Standard read capabilities include contacts.read, companies.read, opportunities.read, tasks.read, activities.read, notes.read, owners.read and pipelines.read.",
     "Standard write capabilities include contacts.write, companies.write, opportunities.write, tasks.write, activities.write, notes.write, owners.write, stage.write, email.send, sms.send, whatsapp.send, sequences.apply, dialler.launch, appointments.write, quotes.write and workflows.execute.",
     "If the SOP needs a Genie/browser function outside the standard capability list, add a semantic operation key in requiredOperations using custom.read.<name> or custom.write.<name>. Do not invent implementation selectors or code.",
+    "For a custom.read.<name> function, add a read_crm_operation step with inputs.operationKey set to that exact operation and inputs.resultKey set to a short semantic key. Use inputs.targetKind only when the CRM read targets the current contact, task or opportunity.",
+    "For a custom.write.<name> function, add a prepare_crm_operation step with inputs.operationKey set to that exact operation. Use inputs.targetKind as contact, task or opportunity so the reviewed proposal carries the exact external target.",
     "Write capability requirements are requests only. The user must explicitly approve them before commissioning, and commissioning still requires deterministic proof before production use.",
     "Allowed step actions: " + SKILL_STEP_ACTIONS.join(", "),
     "",
