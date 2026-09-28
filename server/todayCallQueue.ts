@@ -1,3 +1,4 @@
+import { contactPreferenceEligibility } from "./contactPreference";
 export type TodayQueueTask = {
   id: number;
   connectedSystemId: number;
@@ -35,6 +36,7 @@ export type TodayQueueContact = {
   courseInterest?: string | null;
   interestValues?: string[];
   tags?: string[];
+  contactPreference?: string | null;
 };
 
 export type TodayCallQueueItem = {
@@ -49,6 +51,10 @@ export type TodayCallQueueItem = {
   courseInterest: string | null;
   interestValues: string[];
   tags: string[];
+  contactPreference: string | null;
+  contactPreferenceLabel: string | null;
+  contactEligibleNow: boolean;
+  contactPreferenceState: "none" | "in_window" | "later_today" | "window_passed";
   primaryKind:
     | "new_lead"
     | "inbound_reply"
@@ -82,6 +88,7 @@ function contactName(contact: TodayQueueContact) {
 
 export function buildTodayCallQueue(input: {
   now?: Date;
+  timezone?: string;
   newLeads?: Array<{
     workItemId: number;
     connectedSystemId: number;
@@ -95,6 +102,7 @@ export function buildTodayCallQueue(input: {
   contacts: TodayQueueContact[];
 }) {
   const now = input.now ?? new Date();
+  const timezone = input.timezone || "UTC";
   const dueSoonCutoff = new Date(now.valueOf() + 30 * 60_000);
   const contacts = new Map(
     input.contacts.map(contact => [
@@ -116,9 +124,19 @@ export function buildTodayCallQueue(input: {
     inboundId?: number;
     reminderId?: number;
     workItemId?: number;
+    deferForContactPreference: boolean;
+    preferenceLabel: string | null;
+    preferenceState: "none" | "in_window" | "later_today" | "window_passed";
+    preferenceSortMinute: number;
   };
 
   const candidates: Candidate[] = [];
+  const preferenceFor = (contact: TodayQueueContact) =>
+    contactPreferenceEligibility({
+      preference: contact.contactPreference,
+      now,
+      timezone,
+    });
   const addTask = (
     task: TodayQueueTask,
     kind: "overdue_task" | "due_today",
@@ -133,6 +151,12 @@ export function buildTodayCallQueue(input: {
       task.dueAt && task.dueAt >= now && task.dueAt <= dueSoonCutoff
     );
     const overdue = Boolean(task.dueAt && task.dueAt < now);
+    const preference = preferenceFor(contact);
+    const deferForContactPreference =
+      !timeCritical &&
+      !overdue &&
+      preference.preference !== null &&
+      !preference.eligibleNow;
     candidates.push({
       rank: overdue ? 2 : timeCritical ? 3 : defaultRank,
       occurredAt: task.dueAt?.valueOf() ?? Number.MAX_SAFE_INTEGER,
@@ -148,6 +172,10 @@ export function buildTodayCallQueue(input: {
             ? "Scheduled task due within 30 minutes"
             : "Task due today",
       taskId: task.id,
+      deferForContactPreference,
+      preferenceLabel: preference.preference?.label || null,
+      preferenceState: preference.state,
+      preferenceSortMinute: preference.sortMinute,
     });
   };
 
@@ -156,6 +184,7 @@ export function buildTodayCallQueue(input: {
       contactKey(lead.connectedSystemId, lead.contactExternalId)
     );
     if (!contact) continue;
+    const preference = preferenceFor(contact);
     candidates.push({
       rank: 0,
       occurredAt: lead.createdAt.valueOf(),
@@ -168,6 +197,11 @@ export function buildTodayCallQueue(input: {
       receivedAt: null,
       reason: "New lead needs first contact",
       workItemId: lead.workItemId,
+      deferForContactPreference:
+        preference.preference !== null && !preference.eligibleNow,
+      preferenceLabel: preference.preference?.label || null,
+      preferenceState: preference.state,
+      preferenceSortMinute: preference.sortMinute,
     });
   }
   for (const message of input.inbound) {
@@ -177,6 +211,7 @@ export function buildTodayCallQueue(input: {
     );
     if (!contact) continue;
     const saleIntent = message.classification?.category === "sale_intent";
+    const preference = preferenceFor(contact);
     candidates.push({
       rank: 1,
       occurredAt: message.receivedAt.valueOf(),
@@ -191,6 +226,10 @@ export function buildTodayCallQueue(input: {
         ? "Possible sale or payment step needs attention"
         : "Customer reply needs action",
       inboundId: message.id,
+      deferForContactPreference: false,
+      preferenceLabel: preference.preference?.label || null,
+      preferenceState: preference.state,
+      preferenceSortMinute: preference.sortMinute,
     });
   }
   for (const reminder of input.reminders || []) {
@@ -203,6 +242,7 @@ export function buildTodayCallQueue(input: {
     const timeCritical =
       reminder.dueAt >= now && reminder.dueAt <= dueSoonCutoff;
     const overdue = reminder.dueAt < now;
+    const preference = preferenceFor(contact);
     candidates.push({
       rank: overdue ? 2 : timeCritical ? 3 : 4,
       occurredAt: reminder.dueAt.valueOf(),
@@ -219,6 +259,10 @@ export function buildTodayCallQueue(input: {
             ? "Confirmed follow-up is due"
             : "Reminder is due",
       reminderId: reminder.id,
+      deferForContactPreference: false,
+      preferenceLabel: preference.preference?.label || null,
+      preferenceState: preference.state,
+      preferenceSortMinute: preference.sortMinute,
     });
   }
   input.overdueTasks.forEach(task => addTask(task, "overdue_task", 3));
@@ -226,6 +270,11 @@ export function buildTodayCallQueue(input: {
 
   candidates.sort(
     (a, b) =>
+      Number(a.deferForContactPreference) -
+        Number(b.deferForContactPreference) ||
+      (a.deferForContactPreference && b.deferForContactPreference
+        ? a.preferenceSortMinute - b.preferenceSortMinute
+        : 0) ||
       a.rank - b.rank ||
       a.occurredAt - b.occurredAt ||
       a.contact.id - b.contact.id
@@ -251,6 +300,10 @@ export function buildTodayCallQueue(input: {
         courseInterest: candidate.contact.courseInterest || null,
         interestValues: candidate.contact.interestValues || [],
         tags: candidate.contact.tags || [],
+        contactPreference: candidate.contact.contactPreference || null,
+        contactPreferenceLabel: candidate.preferenceLabel,
+        contactEligibleNow: !candidate.deferForContactPreference,
+        contactPreferenceState: candidate.preferenceState,
         primaryKind: candidate.kind,
         headline: candidate.headline,
         dueAt: candidate.dueAt,
@@ -263,7 +316,12 @@ export function buildTodayCallQueue(input: {
             ? candidate.headline
             : null,
         receivedAt: candidate.receivedAt,
-        reasons: [candidate.reason],
+        reasons: [
+          candidate.reason,
+          ...(candidate.deferForContactPreference && candidate.preferenceLabel
+            ? [`Preferred contact time: ${candidate.preferenceLabel}`]
+            : []),
+        ],
         taskIds: candidate.taskId ? [candidate.taskId] : [],
         inboundIds: candidate.inboundId ? [candidate.inboundId] : [],
         reminderIds: candidate.reminderId ? [candidate.reminderId] : [],
@@ -272,8 +330,20 @@ export function buildTodayCallQueue(input: {
       });
       continue;
     }
+    if (!candidate.deferForContactPreference)
+      existing.contactEligibleNow = true;
     if (!existing.reasons.includes(candidate.reason))
       existing.reasons.push(candidate.reason);
+    if (
+      candidate.deferForContactPreference &&
+      candidate.preferenceLabel &&
+      !existing.reasons.includes(
+        `Preferred contact time: ${candidate.preferenceLabel}`
+      )
+    )
+      existing.reasons.push(
+        `Preferred contact time: ${candidate.preferenceLabel}`
+      );
     if (candidate.taskId) existing.taskIds.push(candidate.taskId);
     if (candidate.inboundId) existing.inboundIds.push(candidate.inboundId);
     if (candidate.reminderId) existing.reminderIds.push(candidate.reminderId);
