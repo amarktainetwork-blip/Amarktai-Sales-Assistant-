@@ -52,6 +52,16 @@ export function genieInboundConversationId(
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
+export function shouldTargetGenieActionableBackfill(input: {
+  channel: string;
+  contactExternalId: string | null;
+}) {
+  return (
+    Boolean(input.contactExternalId) &&
+    ["email", "sms", "chat"].includes(input.channel)
+  );
+}
+
 export function genieInboundRecipient(
   classification: unknown
 ): string | undefined {
@@ -316,7 +326,7 @@ export async function syncGenieMailboxForUser(input: {
       .orderBy(asc(inboundMessages.receivedAt))
       .limit(1)
   )[0];
-  const legacyActionable = (
+  const actionableBackfill = (
     await db
       .select({
         id: inboundMessages.id,
@@ -338,11 +348,11 @@ export async function syncGenieMailboxForUser(input: {
       .orderBy(asc(inboundMessages.receivedAt))
       .limit(60)
   )
-    .filter(
-      row =>
-        !genieInboundConversationId(row.classification) &&
-        Boolean(row.contactExternalId) &&
-        ["email", "sms", "chat"].includes(row.channel)
+    .filter(row =>
+      shouldTargetGenieActionableBackfill({
+        channel: row.channel,
+        contactExternalId: row.contactExternalId,
+      })
     )
     .slice(0, 20);
   const now = Date.now();
@@ -373,7 +383,7 @@ export async function syncGenieMailboxForUser(input: {
         ownerExternalId: scope.externalUserId,
         mailboxEmail: scope.email,
         since,
-        unresolved: legacyActionable.map(row => ({
+        unresolved: actionableBackfill.map(row => ({
           externalMessageId: row.externalMessageId,
           channel: row.channel as "email" | "sms" | "chat",
           contactExternalId: row.contactExternalId!,
@@ -383,7 +393,7 @@ export async function syncGenieMailboxForUser(input: {
   });
   checked = proof.checked;
   for (const link of proof.legacyConversationLinks) {
-    const row = legacyActionable.find(
+    const row = actionableBackfill.find(
       candidate => candidate.externalMessageId === link.inboundExternalMessageId
     );
     if (!row) continue;
@@ -451,7 +461,7 @@ export async function syncGenieMailboxForUser(input: {
       handledReplies,
       outboundEvidence: proof.outboundEvidence.length,
       legacyConversationLinks: proof.legacyConversationLinks.length,
-      legacyActionableChecked: legacyActionable.length,
+      legacyActionableChecked: actionableBackfill.length,
       draftsPrepared,
       contentRetained: false,
       exactEmailIsolation: true,
