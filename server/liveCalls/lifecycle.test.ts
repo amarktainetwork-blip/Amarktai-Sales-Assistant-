@@ -8,6 +8,7 @@ import {
 } from "./store";
 
 const routes = readFileSync(new URL("./routes.ts", import.meta.url), "utf8");
+const routers = readFileSync(new URL("../routers.ts", import.meta.url), "utf8");
 const contextSource = readFileSync(new URL("./context.ts", import.meta.url), "utf8");
 const storeSource = readFileSync(new URL("./store.ts", import.meta.url), "utf8");
 const workerSource = readFileSync(
@@ -106,6 +107,14 @@ describe("live call recoverable lifecycle", () => {
     expect(workerSource).toContain("reconcileAllAbandonedLiveCalls");
     expect(workerSource).toContain("abandoned_live_calls_reconciled");
     expect(workerSource).toContain("LIVE_CALL_RECONCILE_INTERVAL_MS");
+  });
+
+  it("uses one live-call architecture instead of legacy duplicate tRPC paths", () => {
+    expect(routers).not.toContain("saveNotes: secondFactorProcedure");
+    expect(routers).not.toContain("coachTranscript: secondFactorProcedure");
+    expect(routers).not.toContain("completeLive: secondFactorProcedure");
+    expect(routers).toContain("startLive: secondFactorProcedure");
+    expect(routers).toContain("context: secondFactorProcedure");
   });
 
   it("reconciles abandoned sessions without fabricating outcomes", () => {
