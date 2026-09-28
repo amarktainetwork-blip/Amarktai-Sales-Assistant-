@@ -148,6 +148,7 @@ export default function Today() {
         syncCrm: () => syncAll.mutateAsync({ organisationId }),
         invalidateToday: () => utils.sales.today.invalidate(),
         invalidateCustomers: () => utils.sales.customerDirectory.invalidate(),
+        invalidateCustomerDetail: () => utils.sales.customerDetail.invalidate(),
         invalidateInbox: () => utils.sales.inbox.invalidate(),
         invalidateNewLeadAlerts: () => utils.sales.newLeadAlerts.invalidate(),
         invalidateTracker: () => utils.sales.tracker.invalidate(),
