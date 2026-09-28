@@ -215,6 +215,34 @@ async function bench(label, url, model, seconds, rounds = 2) {
 for (const seconds of [1, 1.25, 1.5, 2, 2.5]) {
   await bench('english', configuration.englishUrl, configuration.englishModel, seconds, 2);
 }
+async function concurrentBench(seconds, parallel) {
+  const wav = makeWav(seconds);
+  const started = performance.now();
+  const requests = Array.from({ length: parallel }, async (_, index) => {
+    const form = new FormData();
+    form.append('file', new Blob([wav], { type: 'audio/wav' }), `parallel-${index}.wav`);
+    form.append('model', configuration.englishModel);
+    form.append('response_format', 'json');
+    form.append('language', 'en');
+    const oneStarted = performance.now();
+    const response = await fetch(configuration.englishUrl, { method: 'POST', body: form });
+    await response.text();
+    return {
+      index,
+      status: response.status,
+      elapsedMs: Math.round(performance.now() - oneStarted),
+    };
+  });
+  const results = await Promise.all(requests);
+  console.log('STT_PARALLEL=' + JSON.stringify({
+    seconds,
+    parallel,
+    wallMs: Math.round(performance.now() - started),
+    results,
+  }));
+}
+await concurrentBench(2.5, 2);
+await concurrentBench(2, 2);
 await bench('multilingual', configuration.defaultUrl, configuration.defaultModel, 2.5, 1);
 NODE"
   docker stats --no-stream --format '{{.Name}}|cpu={{.CPUPerc}}|mem={{.MemUsage}}' webdock-app-1 webdock-stt-en-1 webdock-stt-1 2>/dev/null || true
