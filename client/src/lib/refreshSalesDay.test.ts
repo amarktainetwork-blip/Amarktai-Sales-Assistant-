@@ -40,6 +40,7 @@ describe("refreshSalesDay", () => {
     });
     expect(fetcher).toHaveBeenNthCalledWith(1, "/api/mailbox", {
       credentials: "include",
+      cache: "no-store",
     });
     expect(fetcher).toHaveBeenNthCalledWith(2, "/api/mailbox/sync", {
       method: "POST",
