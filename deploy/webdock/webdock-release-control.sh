@@ -152,6 +152,67 @@ if [ "$OPERATION" = "diagnose" ]; then
   db_sql "SELECT id,createdAt,JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.transcriptionMs')) AS transcriptionMs,JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.queueWaitMs')) AS queueWaitMs,JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.durationMs')) AS durationMs,JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.sttActiveAtStart')) AS activeAtStart,JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.sttWaitingAtStart')) AS waitingAtStart FROM auditEntries WHERE organisationId=8 AND eventType='live_call_audio_transcribed' ORDER BY id DESC LIMIT 40;"
   db_sql "SELECT id,status,createdAt,updatedAt,LENGTH(COALESCE(transcript,'')) AS transcriptChars,LENGTH(COALESCE(coachNotes,'')) AS coachChars,JSON_LENGTH(COALESCE(structuredOutcome,JSON_OBJECT())) AS outcomeFields FROM callSessions WHERE organisationId=8 ORDER BY id DESC LIMIT 20;"
 
+  echo "--- current STT routing and direct benchmark ---"
+  shell_admin "docker compose --env-file .env -f deploy/webdock/docker-compose.yml exec -T app node --input-type=module - <<'NODE'
+const configuration = {
+  defaultUrl: process.env.STT_TRANSCRIPTIONS_URL || '',
+  defaultModel: process.env.STT_MODEL || '',
+  englishUrl: process.env.STT_EN_TRANSCRIPTIONS_URL || '',
+  englishModel: process.env.STT_EN_MODEL || '',
+  maxConcurrency: process.env.STT_MAX_CONCURRENCY || '1(default)',
+  maxQueue: process.env.STT_MAX_QUEUE || '8(default)',
+};
+console.log('STT_ROUTING=' + JSON.stringify(configuration));
+const sampleRate = 16000;
+const seconds = 2.5;
+const frames = Math.floor(sampleRate * seconds);
+const wav = Buffer.alloc(44 + frames * 2);
+wav.write('RIFF', 0);
+wav.writeUInt32LE(36 + frames * 2, 4);
+wav.write('WAVE', 8);
+wav.write('fmt ', 12);
+wav.writeUInt32LE(16, 16);
+wav.writeUInt16LE(1, 20);
+wav.writeUInt16LE(1, 22);
+wav.writeUInt32LE(sampleRate, 24);
+wav.writeUInt32LE(sampleRate * 2, 28);
+wav.writeUInt16LE(2, 32);
+wav.writeUInt16LE(16, 34);
+wav.write('data', 36);
+wav.writeUInt32LE(frames * 2, 40);
+for (let i = 0; i < frames; i++) {
+  const envelope = Math.sin(Math.PI * i / frames);
+  const sample = Math.sin(2 * Math.PI * 220 * i / sampleRate) * 0.18 * envelope;
+  wav.writeInt16LE(Math.round(sample * 32767), 44 + i * 2);
+}
+async function bench(label, url, model) {
+  if (!url || !model) {
+    console.log('STT_BENCH=' + JSON.stringify({ label, skipped: true }));
+    return;
+  }
+  for (let round = 1; round <= 3; round++) {
+    const form = new FormData();
+    form.append('file', new Blob([wav], { type: 'audio/wav' }), 'benchmark.wav');
+    form.append('model', model);
+    form.append('response_format', 'json');
+    form.append('language', 'en');
+    const started = performance.now();
+    const response = await fetch(url, { method: 'POST', body: form });
+    const body = await response.text();
+    console.log('STT_BENCH=' + JSON.stringify({
+      label,
+      round,
+      status: response.status,
+      elapsedMs: Math.round(performance.now() - started),
+      responseChars: body.length,
+    }));
+  }
+}
+await bench('english', configuration.englishUrl, configuration.englishModel);
+await bench('multilingual', configuration.defaultUrl, configuration.defaultModel);
+NODE"
+  docker stats --no-stream --format '{{.Name}}|cpu={{.CPUPerc}}|mem={{.MemUsage}}' webdock-app-1 webdock-stt-en-1 webdock-stt-1 2>/dev/null || true
+
   echo "--- handover verifier rerun ---"
   set +e
   shell_admin "docker compose --env-file .env -f deploy/webdock/docker-compose.yml exec -T app node dist/verifyAmeliaHandover.js"
