@@ -36,4 +36,21 @@ describe("JSON API transport", () => {
       "connection was interrupted"
     );
   });
+  it("always bypasses browser caches for authenticated API truth", async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ result: { data: { value: 1 } } }), {
+        status: 200,
+      })
+    );
+    vi.stubGlobal("fetch", fetch);
+    await apiFetch("/api/trpc/sales.inbox");
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/trpc/sales.inbox",
+      expect.objectContaining({
+        credentials: "include",
+        cache: "no-store",
+      })
+    );
+  });
+
 });
