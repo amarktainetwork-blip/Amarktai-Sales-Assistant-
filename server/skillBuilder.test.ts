@@ -229,6 +229,61 @@ describe("organisation skill builder contract", () => {
     expect(skill.definition.writeApproval.status).toBe("approval_required");
   });
 
+  it("accepts first-class declared custom CRM read and write steps", () => {
+    const result = simulateSkillDefinition({
+      trigger: "A customer is selected",
+      requiredOperations: [
+        "custom.read.eligibility_status",
+        "custom.write.mark_reviewed",
+      ],
+      steps: [
+        {
+          id: "read-eligibility",
+          action: "read_crm_operation",
+          label: "Read the CRM eligibility status",
+          inputs: {
+            operationKey: "custom.read.eligibility_status",
+            resultKey: "eligibility",
+          },
+        },
+        {
+          id: "prepare-reviewed",
+          action: "prepare_crm_operation",
+          label: "Prepare the CRM reviewed marker",
+          inputs: {
+            operationKey: "custom.write.mark_reviewed",
+            targetKind: "contact",
+          },
+        },
+      ],
+      assertions: ["No CRM write executes without Review"],
+    });
+    expect(result.valid).toBe(true);
+    expect(
+      result.checks.find(check => check.key === "custom_crm_operations")
+    ).toMatchObject({ passed: true });
+  });
+
+  it("rejects custom CRM steps that do not match a declared learned operation", () => {
+    const result = simulateSkillDefinition({
+      trigger: "A customer is selected",
+      requiredOperations: ["custom.read.eligibility_status"],
+      steps: [
+        {
+          id: "bad-write",
+          action: "prepare_crm_operation",
+          label: "Unsafe mismatch",
+          inputs: { operationKey: "custom.read.eligibility_status" },
+        },
+      ],
+      assertions: ["Nothing changed"],
+    });
+    expect(result.valid).toBe(false);
+    expect(
+      result.checks.find(check => check.key === "custom_crm_operations")
+    ).toMatchObject({ passed: false });
+  });
+
   it("keeps a live-demo skill ineligible for publication", () => {
     const result = simulateSkillDefinition({
       ...COURSE2CAREER_LIVE_DEMO_RESERVATION.definition,
