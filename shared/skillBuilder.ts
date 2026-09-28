@@ -16,6 +16,14 @@ export const SKILL_STEP_ACTIONS = [
   "complete_task_after_review",
 ] as const;
 
+export const SKILL_DIRECT_CRM_WRITE_OPERATIONS = [
+  "sequence.apply",
+  "dialler.launch",
+  "appointment.book",
+  "quote.create",
+  "workflow.execute",
+] as const;
+
 export type SkillStepAction = (typeof SKILL_STEP_ACTIONS)[number];
 
 export const SKILL_CONDITION_OPERATORS = [
@@ -320,14 +328,14 @@ export function simulateSkillDefinition(
       typeof step.inputs?.operationKey === "string"
         ? step.inputs.operationKey.trim()
         : "";
-    const expectedPrefix =
+    const validKind =
       step.action === "read_crm_operation"
-        ? "custom.read."
-        : "custom.write.";
-    return (
-      !operationKey.startsWith(expectedPrefix) ||
-      !skill.requiredOperations.includes(operationKey)
-    );
+        ? operationKey.startsWith("custom.read.")
+        : operationKey.startsWith("custom.write.") ||
+          (SKILL_DIRECT_CRM_WRITE_OPERATIONS as readonly string[]).includes(
+            operationKey
+          );
+    return !validKind || !skill.requiredOperations.includes(operationKey);
   });
   const checks: SkillSimulationCheck[] = [
     {
@@ -374,7 +382,7 @@ export function simulateSkillDefinition(
       detail:
         invalidCustomOperations.length === 0
           ? "Every custom CRM step names a matching declared learned operation."
-          : "Custom CRM steps must use a declared custom.read.* or custom.write.* operation with the matching step type.",
+          : "Custom CRM steps must use a declared custom.read.* operation or an approved direct CRM write operation with the matching step type.",
     },
     {
       key: "outcome",
