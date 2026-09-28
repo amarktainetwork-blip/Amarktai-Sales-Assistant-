@@ -113,6 +113,10 @@ if [ "$OPERATION" = "diagnose" ]; then
   echo "--- latest required learned operations ---"
   db_sql "SELECT b.operationKey,b.version,b.status,b.lastSuccessAt,b.lastFailureAt,b.lastError,JSON_UNQUOTE(JSON_EXTRACT(b.evidence,'$.ownerExternalId')) AS evidenceOwner,JSON_UNQUOTE(JSON_EXTRACT(b.evidence,'$.sourceTotal')) AS sourceTotal,JSON_UNQUOTE(JSON_EXTRACT(b.evidence,'$.pagesRead')) AS pagesRead FROM browserLearnedOperations b JOIN (SELECT operationKey,MAX(version) AS version FROM browserLearnedOperations WHERE organisationId=8 AND connectedSystemId=8 GROUP BY operationKey) latest ON latest.operationKey=b.operationKey AND latest.version=b.version WHERE b.organisationId=8 AND b.connectedSystemId=8 AND b.operationKey IN ('contact.sync','contact.search','contact.read','company.sync','task.sync','opportunity.sync','activity.sync','owner.sync','pipeline.list') ORDER BY b.operationKey;"
 
+  echo "--- customer contact-preference field inventory (labels only) ---"
+  db_sql "SELECT JSON_EXTRACT(settings,'$.customerFieldMappings') AS configuredCustomerFieldMappings FROM organisations WHERE id=8;"
+  db_sql "SELECT DISTINCT JSON_EXTRACT(raw,'$.normalizedCustomerContext.customFieldLabels') AS customFieldLabels FROM crmContacts WHERE organisationId=8 AND connectedSystemId=8 AND LOWER(CAST(JSON_EXTRACT(raw,'$.normalizedCustomerContext.customFieldLabels') AS CHAR)) REGEXP 'prefer|contact|call|time|morning|afternoon|evening' LIMIT 20;"
+
   echo "--- current task collection ---"
   db_sql "SELECT COUNT(*) AS currentOpenTasks FROM crmTasks WHERE connectedSystemId=8 AND ownerExternalId='yZrFI0ptOyvG3ZXvs7iZ' AND status IN ('open','pending','incomplete','new','todo','to_do');"
 
