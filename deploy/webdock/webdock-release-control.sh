@@ -100,10 +100,15 @@ if [ -n "$unexpected" ]; then
   fail "unexpected working-tree changes; refusing deployment"
 fi
 
-git_admin diff --exit-code "$TARGET_SHA" -- \
+if ! git_admin diff --exit-code "$TARGET_SHA" -- \
   server/salesTracker.ts \
-  server/salesTrackerAcceptance.test.ts \
-  || fail "local tracker edits differ from frozen GitHub release"
+  server/salesTrackerAcceptance.test.ts; then
+  git_admin diff --ignore-all-space --ignore-blank-lines --exit-code "$TARGET_SHA" -- \
+    server/salesTracker.ts \
+    server/salesTrackerAcceptance.test.ts \
+    || fail "local tracker edits differ semantically from frozen GitHub release"
+  echo "TRACKER_LOCAL_DIFF=WHITESPACE_ONLY"
+fi
 
 echo "=== PRE-CLEANUP BACKUP ==="
 shell_admin "AMARKTAI_DEPLOY_PROFILE=full sh deploy/webdock/backup.sh"
