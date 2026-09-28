@@ -128,12 +128,17 @@ export async function markLiveCallReadyForReview(input: {
   transcript: string;
 }) {
   const db = await dbOrThrow();
-  await requireLiveCallOwner(
+  const session = await requireLiveCallOwner(
     input.userId,
     input.organisationId,
     input.callSessionId
   );
   const transcript = input.transcript.trim().slice(-40_000);
+  if (session.status === "completed")
+    return {
+      status: "completed" as const,
+      transcriptChars: session.transcript?.trim().length ?? transcript.length,
+    };
   await db
     .update(callSessions)
     .set({
@@ -185,7 +190,7 @@ export async function completeLiveCallExact(input: {
       transcript,
       summary,
       structuredOutcome: input.structuredOutcome,
-      status: "ready_for_review",
+      status: "completed",
     })
     .where(
       and(
