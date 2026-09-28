@@ -122,7 +122,8 @@ if [ "$OPERATION" = "diagnose" ]; then
   db_sql "SELECT TIME_FORMAT(TIME(dueAt),'%H:%i') AS dueTime,COUNT(*) AS count FROM crmTasks WHERE connectedSystemId=8 AND ownerExternalId='yZrFI0ptOyvG3ZXvs7iZ' AND status IN ('open','pending','incomplete','new','todo','to_do') AND dueAt IS NOT NULL GROUP BY dueTime ORDER BY count DESC,dueTime LIMIT 30;"
   db_sql "SELECT SUM(TIME(dueAt)='00:00:00') AS midnightDue,COUNT(*) AS datedOpenTasks,SUM(dueAt<UTC_TIMESTAMP()) AS overdueByTimestamp FROM crmTasks WHERE connectedSystemId=8 AND ownerExternalId='yZrFI0ptOyvG3ZXvs7iZ' AND status IN ('open','pending','incomplete','new','todo','to_do') AND dueAt IS NOT NULL;"
   db_sql "SELECT JSON_UNQUOTE(JSON_EXTRACT(raw,'$.dueAt')) AS sourceDueAt,DATE_FORMAT(dueAt,'%Y-%m-%d %H:%i:%s') AS normalizedDueAt FROM crmTasks WHERE connectedSystemId=8 AND ownerExternalId='yZrFI0ptOyvG3ZXvs7iZ' AND status IN ('open','pending','incomplete','new','todo','to_do') AND dueAt IS NOT NULL ORDER BY dueAt ASC LIMIT 20;"
-  db_sql "SELECT SUM(JSON_UNQUOTE(JSON_EXTRACT(raw,'$.dueAt')) REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}
+  db_sql "SELECT SUM(JSON_UNQUOTE(JSON_EXTRACT(raw,'$.dueAt')) NOT LIKE '%T%') AS dateOnlySource,SUM(JSON_UNQUOTE(JSON_EXTRACT(raw,'$.dueAt')) LIKE '%T00:00:00%') AS explicitMidnightSource,COUNT(*) AS taskCount FROM crmTasks WHERE connectedSystemId=8 AND ownerExternalId='yZrFI0ptOyvG3ZXvs7iZ' AND status IN ('open','pending','incomplete','new','todo','to_do') AND dueAt IS NOT NULL;"
+
   echo "--- current task collection ---"
   db_sql "SELECT COUNT(*) AS currentOpenTasks FROM crmTasks WHERE connectedSystemId=8 AND ownerExternalId='yZrFI0ptOyvG3ZXvs7iZ' AND status IN ('open','pending','incomplete','new','todo','to_do');"
 
