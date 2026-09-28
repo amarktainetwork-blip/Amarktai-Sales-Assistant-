@@ -17,7 +17,12 @@ import { listConnectedSystemsForUser } from "../connectedSystems";
 import { routeConnectedSystemActions } from "../crmRouter";
 import { detectLiveSignals, isRoutineCallSpeech } from "./signals";
 import { structuredNotesFromSignals } from "../../shared/liveCallNotes";
-import { completeLiveCallExact, markLiveCallReadyForReview, requireLiveCallOwner } from "./store";
+import {
+  completeLiveCallExact,
+  markLiveCallReadyForReview,
+  reconcileAbandonedLiveCallsForUser,
+  requireLiveCallOwner,
+} from "./store";
 import { completeCallbackWorkAfterVerifiedCall } from "../salesWork";
 import { parseLiveCallCompletion } from "./completion";
 import { planTelesalesCloseout } from "../telesales/closeoutPlanner";
@@ -113,8 +118,12 @@ function sendLiveCallError(res: Response, error: unknown) {
 export function registerLiveCallRoutes(app: Express) {
   app.get("/api/live-calls/readiness", async (req, res) => {
     try {
-      await requireAuthorisedUser(req);
-      return res.json(await probeSttHealth());
+      const user = await requireAuthorisedUser(req);
+      const lifecycle = await reconcileAbandonedLiveCallsForUser({
+        userId: user.id,
+        organisationId: user.membership.organisationId,
+      });
+      return res.json({ ...(await probeSttHealth()), lifecycle });
     } catch (error) {
       return sendLiveCallError(res, error);
     }
