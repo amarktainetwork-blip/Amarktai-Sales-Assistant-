@@ -1,37 +1,13 @@
 import { runGenxAgent, type GenxBillingContext } from "./genx";
 import { streamGenxAgent } from "./genxStreaming";
 
-export async function prepareLiveCoachingTip(input: {
-  leadLabel: string;
-  transcript: string;
-  approvedContext?: string;
-  billing?: GenxBillingContext;
-}) {
-  const context = input.approvedContext
-    ? `\nApproved context:\n${input.approvedContext.slice(0, 8_000)}`
-    : "";
-  const result = await runGenxAgent({
-    agentKey: "conversation_coach",
-    modelTier: "fast",
-    billing: input.billing
-      ? { ...input.billing, feature: "live_call_coaching" }
-      : undefined,
-    messages: [
-      {
-        role: "user",
-        content: `Live call context for ${input.leadLabel}:\n${input.transcript.slice(-12_000)}${context}\n\nProvide a short factual coaching tip with: 1) what you heard, 2) a suggested question or response, and 3) a safe next step. If the transcript is insufficient, ask the rep to clarify rather than infer.`,
-      },
-    ],
-  });
-  return { ...result, mode: "live_coaching" as const };
-}
-
 export async function streamLiveCoachingTip(input: {
   leadLabel: string;
   transcript: string;
   approvedContext?: string;
   approvedKnowledge?: string;
   conversationState?: string;
+  manualHelp?: boolean;
   billing: GenxBillingContext;
   signal?: AbortSignal;
   onDelta: (delta: string) => void | Promise<void>;
@@ -62,12 +38,15 @@ export async function streamLiveCoachingTip(input: {
           "CURRENT SALES EVENT:",
           input.transcript.slice(-1_800),
           "",
-          "Help the salesperson SELL the product. Never coach greetings, pleasantries or generic rapport.",
-          "Return only a compact live card:",
-          "ANSWER NOW: If the customer asked a product/course/pricing/funding/eligibility question, give the factual answer from approved knowledge. If knowledge does not support an answer, say exactly what must be checked.",
-          "SELLING MOVE: One specific next sentence or question that advances this customer's sale based on their need, objection or buying intent.",
-          "WATCH: One unresolved sales fact, objection, commitment or next step only if material.",
-          "Do not repeat old coaching. Prioritise the newest event and current topic. Do not invent company facts.",
+          input.manualHelp
+            ? "The salesperson explicitly asked for help. Give direct assistance now."
+            : "Intervene only when there is something genuinely useful for the salesperson right now.",
+          input.manualHelp
+            ? "Return at most two short lines: SAY: one factual suggested response. NEXT: one useful next question only if it helps."
+            : "Return at most two short lines: SAY: one factual response only if needed. NEXT: one question only if it materially advances this sale. If no intervention is useful, return exactly SILENT.",
+          "Never coach greetings, pleasantries or generic rapport. Never narrate the conversation back to the salesperson.",
+          "Use approved knowledge for product, pricing, funding and eligibility facts. If the available knowledge does not support an answer, say what must be checked instead of guessing.",
+          "Do not repeat old coaching. Do not invent company facts, customer intent, promises or commitments.",
         ].join("\n"),
       },
     ],
@@ -95,6 +74,50 @@ export async function preparePostCallSummary(input: {
   return { ...result, mode: "post_call_summary" as const };
 }
 
+export async function preparePostCallReviewSummary(input: {
+  leadLabel: string;
+  transcript: string;
+  manualNotes?: string;
+  billing?: GenxBillingContext;
+}) {
+  const transcript = input.transcript.trim();
+  const manualNotes = input.manualNotes?.trim().slice(0, 12_000) || "";
+  if (!transcript && !manualNotes)
+    return {
+      content:
+        "No conversation content was captured. Confirm the call outcome and any next step manually.",
+      usage: {},
+      creditsCharged: 0,
+      mode: "deterministic_post_call_review" as const,
+    };
+  const result = await runGenxAgent({
+    agentKey: "notes_agent",
+    modelTier: "fast",
+    billing: input.billing
+      ? { ...input.billing, feature: "post_call_review" }
+      : undefined,
+    messages: [
+      {
+        role: "user",
+        content: `Prepare a short post-call review draft for ${input.leadLabel}.
+Salesperson-authored notes:
+${manualNotes || "None"}
+Transcript:
+${transcript.slice(-20_000) || "No transcript available"}
+
+Use only the evidence above. Return these concise sections:
+What mattered
+Questions / objections
+Agreed or possible next step
+Uncertain / needs confirmation
+
+Do not invent speaker identity, customer intent, promises, commitments, dates or outcomes. Treat salesperson notes as deliberate notes, not as customer quotes. If something is unclear, put it under Uncertain / needs confirmation.`,
+      },
+    ],
+  });
+  return { ...result, mode: "post_call_review" as const };
+}
+
 export type StructuredCallOutcome = {
   outcome: string;
   nextStep?: string;
@@ -113,20 +136,24 @@ export async function prepareOutcomeAwarePostCallSummary(input: {
   leadLabel: string;
   transcript: string;
   structured: StructuredCallOutcome;
+  manualNotes?: string;
   billing?: GenxBillingContext;
   runAgent?: typeof runGenxAgent;
 }) {
+  const manualNotes = input.manualNotes?.trim().slice(0, 12_000) || "";
   const routine = deterministicOutcomeSummary[input.structured.outcome];
   if (routine)
     return {
-      content: routine,
+      content: manualNotes
+        ? `${routine} Salesperson note: ${manualNotes}`
+        : routine,
       usage: {},
       creditsCharged: 0,
       mode: "deterministic_post_call_summary" as const,
       genxCalls: 0,
     };
   const transcript = input.transcript.trim();
-  if (!transcript) {
+  if (!transcript && !manualNotes) {
     const facts = [
       `Outcome: ${input.structured.outcome.replaceAll("_", " ")}.`,
       input.structured.nextStep
@@ -161,7 +188,7 @@ export async function prepareOutcomeAwarePostCallSummary(input: {
     messages: [
       {
         role: "user",
-        content: `Create one factual CRM-ready post-call result for ${input.leadLabel}.\nConfirmed structured outcome:\n${JSON.stringify(input.structured)}\nTranscript:\n${transcript.slice(-20_000)}\n\nReturn concise facts, objections/questions, interest/timing, and the confirmed next step. Do not invent commitments.`,
+        content: `Create one factual CRM-ready post-call result for ${input.leadLabel}.\nConfirmed structured outcome:\n${JSON.stringify(input.structured)}\nSalesperson-authored notes (treat as deliberate notes, but do not turn them into customer quotes):\n${manualNotes || "None"}\nTranscript:\n${transcript.slice(-20_000) || "No transcript available"}\n\nReturn concise facts, objections/questions, interest/timing, and the confirmed next step. Prefer salesperson-confirmed details when they conflict with uncertain transcript text. Do not invent commitments.`,
       },
     ],
   });

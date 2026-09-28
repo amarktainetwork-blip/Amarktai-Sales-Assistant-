@@ -8,6 +8,7 @@ import {
 } from "./store";
 
 const routes = readFileSync(new URL("./routes.ts", import.meta.url), "utf8");
+const routers = readFileSync(new URL("../routers.ts", import.meta.url), "utf8");
 const contextSource = readFileSync(new URL("./context.ts", import.meta.url), "utf8");
 const storeSource = readFileSync(new URL("./store.ts", import.meta.url), "utf8");
 const workerSource = readFileSync(
@@ -77,6 +78,21 @@ describe("live call recoverable lifecycle", () => {
     expect(completeIndex).toBeGreaterThan(workflowIndex);
   });
 
+  it("checkpoints salesperson notes and restores them for review", () => {
+    expect(storeSource).toContain("draftManualNotes");
+    expect(routes).toContain("manualNotes");
+    expect(client).toContain("salespersonNotes");
+    expect(client).toContain("draftManualNotes");
+    expect(client).toContain("amarktai-live-call-notes:");
+  });
+
+  it("summarises only after the call has entered review state", () => {
+    expect(routes).toContain('"/api/live-calls/review-summary"');
+    expect(routes).toContain('["ready_for_review", "completed"]');
+    expect(client).toContain("prepareReviewSummary");
+    expect(client).toContain("SUMMARY DRAFT");
+  });
+
   it("restores ready-for-review sessions after navigation instead of stranding closeout", () => {
     expect(contextSource).toContain("await reconcileAbandonedLiveCallsForUser");
     expect(contextSource).toContain('transcript: session.transcript || ""');
@@ -91,6 +107,14 @@ describe("live call recoverable lifecycle", () => {
     expect(workerSource).toContain("reconcileAllAbandonedLiveCalls");
     expect(workerSource).toContain("abandoned_live_calls_reconciled");
     expect(workerSource).toContain("LIVE_CALL_RECONCILE_INTERVAL_MS");
+  });
+
+  it("uses one live-call architecture instead of legacy duplicate tRPC paths", () => {
+    expect(routers).not.toContain("saveNotes: secondFactorProcedure");
+    expect(routers).not.toContain("coachTranscript: secondFactorProcedure");
+    expect(routers).not.toContain("completeLive: secondFactorProcedure");
+    expect(routers).toContain("startLive: secondFactorProcedure");
+    expect(routers).toContain("context: secondFactorProcedure");
   });
 
   it("reconciles abandoned sessions without fabricating outcomes", () => {

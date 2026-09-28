@@ -11,14 +11,9 @@ import {
 } from "@/lib/liveAudioPipeline";
 import { trpc } from "@/lib/trpc";
 import {
-  emptyLiveStructuredNotes,
-  mergeLiveStructuredNotes,
-  type LiveStructuredNotes,
-} from "@shared/liveCallNotes";
-import {
-  AlertTriangle,
   ArrowRight,
   CheckCircle2,
+  CircleHelp,
   ClipboardCheck,
   Headphones,
   Mic,
@@ -40,7 +35,6 @@ type CaptureMode = "microphone" | "mixed";
 type TranscriptionResult = {
   text: string;
   signals: Signal[];
-  structuredNotes: LiveStructuredNotes;
   durationMs: number;
   rawAudioRetained: boolean;
 };
@@ -48,6 +42,17 @@ type TranscriptionResult = {
 const LIVE_AUDIO_CHUNK_MS = 2_000;
 const LIVE_COACH_INTERVAL_MS = 750;
 const LIVE_COACH_STALE_MS = 3_500;
+const AUTO_COACH_SIGNAL_TYPES = new Set([
+  "price_objection",
+  "funding_question",
+  "eligibility_question",
+  "course_question",
+  "timing_objection",
+  "trust_objection",
+  "competitor",
+  "question",
+  "buying_signal",
+]);
 type CoachingResult = {
   content: string;
   usage?: Record<string, number>;
@@ -308,10 +313,16 @@ export default function LiveCalls() {
   const [consent, setConsent] = useState(false);
   const [recording, setRecording] = useState(false);
   const [transcript, setTranscript] = useState("");
-  const [signals, setSignals] = useState<Signal[]>([]);
-  const [structuredNotes, setStructuredNotes] = useState<LiveStructuredNotes>(
-    emptyLiveStructuredNotes
+  const [manualNotes, setManualNotes] = useState(() =>
+    initialSessionId > 0
+      ? window.localStorage.getItem(
+          `amarktai-live-call-notes:${initialSessionId}`
+        ) || ""
+      : ""
   );
+  const [helping, setHelping] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
+  const [reviewSummary, setReviewSummary] = useState("");
   const [tip, setTip] = useState("");
   const [sttReady, setSttReady] = useState<boolean | null>(null);
   const [completing, setCompleting] = useState(false);
@@ -342,7 +353,7 @@ export default function LiveCalls() {
   const pendingChunkCountRef = useRef(0);
   const sessionIdRef = useRef<number | null>(sessionId);
   const transcriptRef = useRef("");
-  const conversationStateRef = useRef("");
+  const manualNotesRef = useRef("");
   const [showTranscript, setShowTranscript] = useState(false);
   const lastCoachAtRef = useRef(0);
   const coachingRef = useRef(false);
@@ -352,8 +363,10 @@ export default function LiveCalls() {
   const pendingCoachRef = useRef<{
     activeSessionId: number;
     text: string;
+    manualHelp?: boolean;
   } | null>(null);
   const coachTimerRef = useRef<number | undefined>(undefined);
+  const reviewRequestedRef = useRef<number | null>(null);
 
   const startSession = trpc.calls.startLive.useMutation();
   const initialSelectionApplied = useRef(0);
@@ -380,6 +393,15 @@ export default function LiveCalls() {
   useEffect(() => {
     sessionIdRef.current = sessionId;
   }, [sessionId]);
+
+  useEffect(() => {
+    manualNotesRef.current = manualNotes;
+    if (sessionId)
+      window.localStorage.setItem(
+        `amarktai-live-call-notes:${sessionId}`,
+        manualNotes
+      );
+  }, [manualNotes, sessionId]);
 
   useEffect(() => {
     if (
@@ -409,10 +431,31 @@ export default function LiveCalls() {
       setTranscript(callContext.data.transcript);
     }
     if (callContext.data.coachNotes) setTip(callContext.data.coachNotes);
+    const recoveredOutcome =
+      callContext.data.structuredOutcome &&
+      typeof callContext.data.structuredOutcome === "object"
+        ? (callContext.data.structuredOutcome as Record<string, unknown>)
+        : undefined;
+    const serverNotes =
+      typeof recoveredOutcome?.draftManualNotes === "string"
+        ? recoveredOutcome.draftManualNotes
+        : typeof recoveredOutcome?.salespersonNotes === "string"
+          ? recoveredOutcome.salespersonNotes
+          : "";
+    const localNotes = window.localStorage.getItem(
+      `amarktai-live-call-notes:${callContext.data.id}`
+    );
+    const recoveredNotes = serverNotes || localNotes || "";
+    manualNotesRef.current = recoveredNotes;
+    setManualNotes(recoveredNotes);
     if (callContext.data.status === "ready_for_review") {
       setRecording(false);
       setCloseoutConfirmed(false);
       setAwaitingCloseout(true);
+      if (reviewRequestedRef.current !== callContext.data.id) {
+        reviewRequestedRef.current = callContext.data.id;
+        void prepareReviewSummary(callContext.data.id);
+      }
     }
   }, [callContext.data]);
 
@@ -482,6 +525,7 @@ export default function LiveCalls() {
             JSON.stringify({
               callSessionId: activeSessionId,
               transcript: transcriptRef.current,
+              manualNotes: manualNotesRef.current,
             }),
           ],
           { type: "application/json" }
@@ -497,13 +541,21 @@ export default function LiveCalls() {
     };
   }, []);
 
-  async function requestCoaching(activeSessionId: number, text: string) {
+  async function requestCoaching(
+    activeSessionId: number,
+    text: string,
+    manualHelp = false
+  ) {
     if (coachingRef.current) {
-      pendingCoachRef.current = { activeSessionId, text };
-      if (Date.now() - coachStartedAtRef.current > LIVE_COACH_STALE_MS)
+      pendingCoachRef.current = { activeSessionId, text, manualHelp };
+      if (
+        manualHelp ||
+        Date.now() - coachStartedAtRef.current > LIVE_COACH_STALE_MS
+      )
         coachAbortRef.current?.abort();
       return;
     }
+    if (manualHelp) setHelping(true);
     const controller = new AbortController();
     coachingRef.current = true;
     coachAbortRef.current = controller;
@@ -514,16 +566,36 @@ export default function LiveCalls() {
           callSessionId: activeSessionId,
           leadLabel,
           transcriptChunk: text,
-          conversationState: conversationStateRef.current,
+          conversationState: [
+            transcriptRef.current.slice(-4_000),
+            manualNotesRef.current
+              ? `SALESPERSON NOTES:\n${manualNotesRef.current.slice(-1_500)}`
+              : "",
+          ]
+            .filter(Boolean)
+            .join("\n\n"),
+          manualHelp,
         },
         controller.signal,
         partial => {
-          if (!controller.signal.aborted) setTip(partial);
+          if (controller.signal.aborted) return;
+          const normalized = partial.trim().toUpperCase();
+          if (
+            !manualHelp &&
+            normalized &&
+            "SILENT".startsWith(normalized)
+          )
+            return;
+          setTip(partial);
         }
       );
       if (!controller.signal.aborted && content) {
         lastCoachAtRef.current = Date.now();
-        setTip(content);
+        const visible =
+          !manualHelp && content.trim().toUpperCase() === "SILENT"
+            ? ""
+            : content;
+        setTip(visible);
         setWorkflowError("");
         setRetryAction(null);
       }
@@ -539,14 +611,22 @@ export default function LiveCalls() {
     } finally {
       if (coachAbortRef.current === controller) coachAbortRef.current = null;
       coachingRef.current = false;
+      if (manualHelp) setHelping(false);
       const pending = pendingCoachRef.current;
       pendingCoachRef.current = null;
-      if (pending) scheduleCoaching(pending.activeSessionId, pending.text);
+      if (pending)
+        pending.manualHelp
+          ? void requestCoaching(
+              pending.activeSessionId,
+              pending.text,
+              true
+            )
+          : scheduleCoaching(pending.activeSessionId, pending.text);
     }
   }
 
   function scheduleCoaching(activeSessionId: number, text: string) {
-    pendingCoachRef.current = { activeSessionId, text };
+    pendingCoachRef.current = { activeSessionId, text, manualHelp: false };
     if (coachingRef.current) {
       if (Date.now() - coachStartedAtRef.current > LIVE_COACH_STALE_MS)
         coachAbortRef.current?.abort();
@@ -582,42 +662,6 @@ export default function LiveCalls() {
         durationMs,
       }
     );
-    setStructuredNotes(current => {
-      const merged = mergeLiveStructuredNotes(
-        current,
-        result.structuredNotes || emptyLiveStructuredNotes()
-      );
-      conversationStateRef.current = [
-        merged.topics.length
-          ? `Current topics: ${merged.topics.slice(0, 4).join(" | ")}`
-          : "",
-        merged.goals.length
-          ? `Customer goals: ${merged.goals.slice(0, 3).join(" | ")}`
-          : "",
-        merged.questions.length
-          ? `Questions: ${merged.questions.slice(0, 3).join(" | ")}`
-          : "",
-        merged.objections.length
-          ? `Objections: ${merged.objections.slice(0, 3).join(" | ")}`
-          : "",
-        merged.buyingSignals.length
-          ? `Buying intent: ${merged.buyingSignals.slice(0, 3).join(" | ")}`
-          : "",
-        merged.commitments.length
-          ? `Commitments: ${merged.commitments.slice(0, 3).join(" | ")}`
-          : "",
-        merged.nextSteps.length
-          ? `Next steps: ${merged.nextSteps.slice(0, 3).join(" | ")}`
-          : "",
-        merged.unresolvedItems.length
-          ? `Unresolved: ${merged.unresolvedItems.slice(0, 3).join(" | ")}`
-          : "",
-      ]
-        .filter(Boolean)
-        .join("\n")
-        .slice(-4_000);
-      return merged;
-    });
     const text = result.text?.trim();
     if (!text) return;
     transcriptRef.current =
@@ -626,27 +670,17 @@ export default function LiveCalls() {
       );
     setTranscript(transcriptRef.current);
     if (result.signals?.length) {
-      setSignals(current =>
-        [...result.signals, ...current]
-          .filter(
-            (signal, index, all) =>
-              all.findIndex(
-                other =>
-                  other.type === signal.type &&
-                  other.evidence === signal.evidence
-              ) === index
-          )
-          .slice(0, 12)
-      );
+      // Signals are deliberately invisible. They only decide whether a genuinely
+      // useful coaching intervention is worth interrupting the salesperson.
       // Coaching is event-driven: do not repeatedly spend AI credits on the
       // rolling transcript or on the same unresolved signal. A compact event
       // packet is enough for coaching; the server adds approved CRM context.
       const now = Date.now();
-      const coachable = result.signals.filter(
-        signal => signal.priority === "important" || signal.type === "question"
+      const coachable = result.signals.filter(signal =>
+        AUTO_COACH_SIGNAL_TYPES.has(signal.type)
       );
       const fresh = coachable.filter(signal => {
-        const key = `${signal.type}:${signal.evidence.toLowerCase().replace(/\\s+/g, " ").trim()}`;
+        const key = `${signal.type}:${signal.evidence.toLowerCase().replace(/\s+/g, " ").trim()}`;
         const previous = coachedSignalRef.current.get(key) || 0;
         if (now - previous < 120_000) return false;
         coachedSignalRef.current.set(key, now);
@@ -655,7 +689,7 @@ export default function LiveCalls() {
       if (fresh.length) {
         const eventPacket = [
           `Latest meaningful speech: ${text.slice(-900)}`,
-          conversationStateRef.current,
+          `Recent conversation:\n${transcriptRef.current.slice(-2_500)}`,
           ...fresh.map(
             signal => `Signal: ${signal.label} | Evidence: ${signal.evidence}`
           ),
@@ -663,6 +697,49 @@ export default function LiveCalls() {
         scheduleCoaching(activeSessionId, eventPacket.slice(-1_500));
       }
     }
+  }
+
+  async function prepareReviewSummary(activeSessionId: number) {
+    setReviewing(true);
+    try {
+      const result = await postLive<{ content: string }>(
+        "/api/live-calls/review-summary",
+        {
+          callSessionId: activeSessionId,
+          manualNotes: manualNotesRef.current,
+        }
+      );
+      setReviewSummary(result.content || "");
+      setWorkflowError("");
+      setRetryAction(null);
+    } catch (error) {
+      const detail = callError(
+        error,
+        "The call is safe, but the review summary could not be prepared yet."
+      );
+      setWorkflowError(detail);
+      setRetryAction(
+        () => () => void prepareReviewSummary(activeSessionId)
+      );
+    } finally {
+      setReviewing(false);
+    }
+  }
+
+  async function requestManualHelp() {
+    const activeSessionId = sessionIdRef.current;
+    if (!activeSessionId || !recordingRef.current) return;
+    const latest = transcriptRef.current.trim().slice(-2_500);
+    await requestCoaching(
+      activeSessionId,
+      [
+        "The salesperson explicitly asked AmarktAI for help right now.",
+        latest
+          ? `Most recent transcript:\n${latest}`
+          : "No useful transcript has been captured yet.",
+      ].join("\n\n"),
+      true
+    );
   }
 
   function startRecordingCycle(stream: MediaStream, activeSessionId: number) {
@@ -825,7 +902,10 @@ export default function LiveCalls() {
       const activeSessionId = sessionId ?? started!.callSessionId;
       if (started) {
         transcriptRef.current = "";
-        conversationStateRef.current = "";
+        manualNotesRef.current = "";
+        reviewRequestedRef.current = null;
+        setReviewSummary("");
+        setManualNotes("");
         coachAbortRef.current?.abort();
         coachAbortRef.current = null;
         pendingCoachRef.current = null;
@@ -835,8 +915,6 @@ export default function LiveCalls() {
           coachTimerRef.current = undefined;
         }
         setTranscript("");
-        setSignals([]);
-        setStructuredNotes(emptyLiveStructuredNotes());
         setTip("");
       }
       if (started?.leadLabel) setLeadLabel(started.leadLabel);
@@ -888,6 +966,7 @@ export default function LiveCalls() {
     }>("/api/live-calls/stop", {
       callSessionId: activeSessionId,
       transcript: transcriptValue,
+      manualNotes: manualNotesRef.current,
     });
   }
 
@@ -915,6 +994,8 @@ export default function LiveCalls() {
     if (sessionId) {
       try {
         await checkpointSessionForReview(sessionId);
+        reviewRequestedRef.current = sessionId;
+        void prepareReviewSummary(sessionId);
       } catch (error) {
         const detail = callError(
           error,
@@ -945,6 +1026,8 @@ export default function LiveCalls() {
       if (started?.leadLabel) setLeadLabel(started.leadLabel);
       try {
         await checkpointSessionForReview(activeSessionId, "");
+        reviewRequestedRef.current = activeSessionId;
+        void prepareReviewSummary(activeSessionId);
         setWorkflowError("");
         setRetryAction(null);
       } catch (error) {
@@ -990,6 +1073,7 @@ export default function LiveCalls() {
           callSessionId: sessionId,
           leadLabel,
           transcript: transcriptRef.current,
+          manualNotes: manualNotesRef.current,
           outcome,
           nextStep: nextStep.trim() || undefined,
           callbackAt: callbackAt
@@ -1024,6 +1108,9 @@ export default function LiveCalls() {
       setTip(result.content);
       setCloseoutActions(result.actions || []);
       setAwaitingCloseout(false);
+      window.localStorage.removeItem(
+        `amarktai-live-call-notes:${sessionId}`
+      );
       const completed = result.autoExecutions?.length || 0;
       toast.success(
         completed
@@ -1051,12 +1138,12 @@ export default function LiveCalls() {
             AMARKTAI / LIVE CALL COMPANION
           </p>
           <h1 className="mt-3 font-display text-4xl font-bold tracking-[-.06em] text-[#203047] sm:text-5xl">
-            Listen less to the admin. Listen more to the customer.
+            Call Companion
           </h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-[#66758A]">
-            With your permission, AmarktAI can transcribe the call, notice
-            important questions and commitments, and offer coaching when it is
-            useful. You stay in control of what is saved or sent.
+            Prepare, have the conversation, take your own notes, then review the
+            outcome. AmarktAI stays quiet unless it has something useful to add
+            or you ask for help.
           </p>
         </header>
 
@@ -1115,7 +1202,10 @@ export default function LiveCalls() {
               </Button>
             </section>
           )}
-        {callContext.data?.context && (
+        {callContext.data?.context &&
+          !recording &&
+          !awaitingCloseout &&
+          !closeoutActions?.length && (
           <section className="mt-6 rounded-[1.5rem] border border-[#DCE4EE] bg-white p-6">
             <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#55788B]">
               PRE-CALL BRIEF
@@ -1175,24 +1265,38 @@ export default function LiveCalls() {
                 </span>
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#55788B]">
-                    CALL AUDIO
+                    CALL
                   </p>
                   <h2 className="font-display text-2xl font-bold tracking-[-.05em] text-[#26354A]">
-                    Live session
+                    {recording
+                      ? "Live conversation"
+                      : awaitingCloseout
+                        ? "Review call"
+                        : closeoutActions?.length
+                          ? "Finished"
+                          : "Prepare call"}
                   </h2>
                 </div>
               </div>
-              <span
-                className={`rounded-full px-3 py-1 text-xs font-bold ${sttReady ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}
-              >
-                {sttReady === null
-                  ? "Checking transcription…"
-                  : sttReady
-                    ? "Transcription ready"
-                    : "Transcription unavailable"}
-              </span>
+              {!awaitingCloseout && !closeoutActions?.length ? (
+                <span
+                  className={`rounded-full px-3 py-1 text-xs font-bold ${sttReady ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}
+                >
+                  {recording
+                    ? "Listening"
+                    : sttReady === null
+                      ? "Checking transcription…"
+                      : sttReady
+                        ? "Transcription ready"
+                        : "Transcription unavailable"}
+                </span>
+              ) : null}
             </div>
 
+            {!recording &&
+            !awaitingCloseout &&
+            !closeoutActions?.length ? (
+              <>
             <label className="mt-6 block text-xs font-black uppercase tracking-[.12em] text-[#66758A]">
               Customer / contact
             </label>
@@ -1336,8 +1440,19 @@ export default function LiveCalls() {
               </span>
             </label>
 
+              </>
+            ) : null}
+
             <div className="mt-5 flex flex-wrap gap-3">
-              {!recording ? (
+              {recording ? (
+                <Button
+                  onClick={() => void stop()}
+                  className="h-12 bg-rose-600 hover:bg-rose-500"
+                >
+                  <Square className="mr-2 size-4" />
+                  Stop & review call
+                </Button>
+              ) : !awaitingCloseout && !closeoutActions?.length ? (
                 <Button
                   disabled={
                     !leadLabel.trim() ||
@@ -1355,16 +1470,10 @@ export default function LiveCalls() {
                   <Waves className="mr-2 size-4" />
                   Start Live Companion
                 </Button>
-              ) : (
-                <Button
-                  onClick={() => void stop()}
-                  className="h-12 bg-rose-600 hover:bg-rose-500"
-                >
-                  <Square className="mr-2 size-4" />
-                  Stop & prepare follow-up
-                </Button>
-              )}
-              {!recording && (
+              ) : null}
+              {!recording &&
+                !awaitingCloseout &&
+                !closeoutActions?.length && (
                 <Button
                   variant="outline"
                   disabled={
@@ -1386,6 +1495,11 @@ export default function LiveCalls() {
                   Listening
                 </span>
               )}
+              {recording && micLevel < 0.003 ? (
+                <span className="inline-flex items-center rounded-xl bg-amber-50 px-4 text-xs font-semibold text-amber-700">
+                  No voice detected — check microphone
+                </span>
+              ) : null}
               {completing && (
                 <span className="inline-flex items-center rounded-xl bg-[#F2F5F8] px-4 text-sm font-bold text-[#52647A]">
                   Preparing follow-up…
@@ -1393,98 +1507,98 @@ export default function LiveCalls() {
               )}
             </div>
 
-            <div className="mt-6 rounded-xl border border-[#DCE4EE] bg-[#F8FAFC] p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#55788B]">
-                    LIVE CONVERSATION
-                  </p>
-                  <p className="mt-1 text-xs text-[#66758A]">
-                    Sales-relevant context stays visible; the raw transcript is
-                    available when you need evidence.
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowTranscript(value => !value)}
-                >
-                  {showTranscript ? "Hide transcript" : "View transcript"}
-                </Button>
-              </div>
-              <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-[#33445B]">
-                {conversationStateRef.current ||
-                  "Listening for the customer's needs, questions, objections and next step…"}
-              </p>
-              {showTranscript ? (
-                <div className="mt-4 max-h-64 overflow-y-auto border-t border-[#DCE4EE] pt-4">
-                  <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#728197]">
-                    FULL TRANSCRIPT
-                  </p>
-                  <p className="mt-2 whitespace-pre-wrap text-xs leading-6 text-[#52647A]">
-                    {transcript || "No transcript yet."}
-                  </p>
-                </div>
-              ) : null}
-            </div>
+            {sessionId && (recording || awaitingCloseout) ? (
+              <>
+                {recording && callContext.data?.context ? (
+                  <section className="mt-6 rounded-xl border border-[#DCE4EE] bg-[#F8FAFC] p-4">
+                    <div className="grid gap-3 md:grid-cols-3">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[.12em] text-[#728197]">
+                          Customer
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-[#26354A]">
+                          {callContext.data.context.contactName}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[.12em] text-[#728197]">
+                          Course / product
+                        </p>
+                        <p className="mt-1 text-sm text-[#33445B]">
+                          {callContext.data.context.courseInterest ||
+                            "Not yet identified"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[.12em] text-[#728197]">
+                          Why call
+                        </p>
+                        <p className="mt-1 text-sm text-[#33445B]">
+                          {callContext.data.context.objective ||
+                            callContext.data.context.reasons.join(" · ") ||
+                            "Confirm the next step"}
+                        </p>
+                      </div>
+                    </div>
+                  </section>
+                ) : null}
 
-            <section className="mt-5 rounded-xl border border-[#DCE4EE] bg-white p-4">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#55788B]">
-                  LIVE STRUCTURED NOTES
-                </p>
-                <span className="text-xs text-[#66758A]">
-                  Updated from verified transcript signals
-                </span>
-              </div>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <LiveNoteGroup
-                  label="Current product / topic"
-                  items={structuredNotes.topics}
-                />
-                <LiveNoteGroup
-                  label="Goals / intentions heard"
-                  items={structuredNotes.goals}
-                />
-                <LiveNoteGroup
-                  label="Facts / context heard"
-                  items={structuredNotes.facts}
-                />
-                <LiveNoteGroup
-                  label="Customer questions"
-                  items={structuredNotes.questions}
-                />
-                <LiveNoteGroup
-                  label="Objections"
-                  items={structuredNotes.objections}
-                />
-                <LiveNoteGroup
-                  label="Buying signals"
-                  items={structuredNotes.buyingSignals}
-                />
-                <LiveNoteGroup
-                  label="Commitments heard — confirm speaker"
-                  items={structuredNotes.commitments}
-                />
-                <LiveNoteGroup
-                  label="Callback requests"
-                  items={structuredNotes.callbackRequests}
-                />
-                <LiveNoteGroup
-                  label="Dates / times mentioned"
-                  items={structuredNotes.datesTimes}
-                />
-                <LiveNoteGroup
-                  label="Likely next steps"
-                  items={structuredNotes.nextSteps}
-                />
-                <LiveNoteGroup
-                  label="Still unresolved"
-                  items={structuredNotes.unresolvedItems}
-                />
-              </div>
-            </section>
+                <div className="mt-5 rounded-xl border border-[#DCE4EE] bg-[#F8FAFC] p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#55788B]">
+                        {recording ? "LIVE TRANSCRIPT" : "CALL TRANSCRIPT"}
+                      </p>
+                      <p className="mt-1 text-xs text-[#66758A]">
+                        The transcript is evidence, not the salesperson's job.
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowTranscript(value => !value)}
+                    >
+                      {showTranscript ? "Show less" : "View full transcript"}
+                    </Button>
+                  </div>
+                  <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-[#33445B]">
+                    {transcript
+                      ? transcript.split("\n").slice(-5).join("\n")
+                      : recording
+                        ? "Listening…"
+                        : "No transcript was captured."}
+                  </p>
+                  {showTranscript && transcript ? (
+                    <div className="mt-4 max-h-72 overflow-y-auto border-t border-[#DCE4EE] pt-4">
+                      <p className="whitespace-pre-wrap text-xs leading-6 text-[#52647A]">
+                        {transcript}
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+
+                <section className="mt-5 rounded-xl border border-[#DCE4EE] bg-white p-4">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#55788B]">
+                      YOUR NOTES
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-[#66758A]">
+                      Write only what matters to you. These notes are treated as
+                      salesperson-authored notes and are used with the transcript
+                      when AmarktAI prepares the post-call summary.
+                    </p>
+                  </div>
+                  <textarea
+                    value={manualNotes}
+                    onChange={event => setManualNotes(event.target.value.slice(0, 12_000))}
+                    rows={5}
+                    placeholder="Key detail, concern, promise to follow up, next step…"
+                    className="mt-3 w-full resize-y rounded-xl border border-[#CBD5E0] bg-white px-3 py-3 text-sm leading-6 text-[#26354A] outline-none focus:border-[#55788B]"
+                  />
+                </section>
+              </>
+            ) : null}
 
             {awaitingCloseout && (
               <section className="mt-5 rounded-xl border border-[#DCE4EE] bg-[#F8FAFC] p-5">
@@ -1494,6 +1608,28 @@ export default function LiveCalls() {
                 <h3 className="mt-2 font-display text-2xl font-bold text-[#26354A]">
                   Confirm what happened and prepare the next step.
                 </h3>
+                <div className="mt-4 rounded-xl border border-[#DCE4EE] bg-white p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs font-black uppercase tracking-[.12em] text-[#55788B]">
+                      SUMMARY DRAFT
+                    </p>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={reviewing || !sessionId}
+                      onClick={() => sessionId && void prepareReviewSummary(sessionId)}
+                    >
+                      {reviewing ? "Summarising…" : "Refresh summary"}
+                    </Button>
+                  </div>
+                  <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-[#33445B]">
+                    {reviewing
+                      ? "Reviewing the whole call…"
+                      : reviewSummary ||
+                        "No summary yet. Use Refresh summary after checking your notes."}
+                  </p>
+                </div>
                 <div className="mt-4 grid gap-3 md:grid-cols-2">
                   <label className="grid gap-2 text-xs font-bold text-[#66758A]">
                     Outcome
@@ -1657,69 +1793,81 @@ export default function LiveCalls() {
           </section>
 
           <div className="grid gap-6">
-            <section className="rounded-[1.5rem] border border-[#DCE4EE] bg-white p-6">
-              <div className="flex items-center gap-3">
-                <AlertTriangle className="size-5 text-[#55788B]" />
-                <h2 className="font-display text-2xl font-bold tracking-[-.05em] text-[#26354A]">
-                  Live signals
-                </h2>
-              </div>
-              <div className="mt-4 space-y-3">
-                {signals.length ? (
-                  signals.map((signal, index) => (
-                    <article
-                      key={`${signal.type}-${index}`}
-                      className={`rounded-xl border p-4 ${signal.priority === "important" ? "border-[#C9D8DE] bg-[#EAF0F2]" : "border-[#DCE4EE] bg-[#F8FAFC]"}`}
-                    >
-                      <p className="text-xs font-black uppercase tracking-[.1em] text-[#55788B]">
-                        {signal.label}
+            {recording ? (
+              <section className="rounded-[1.5rem] border border-[#DCE4EE] bg-white p-6">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <CheckCircle2 className="size-5 text-[#55788B]" />
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#55788B]">
+                        SALES ASSIST
                       </p>
-                      <p className="mt-2 text-sm leading-6 text-[#33445B]">
-                        {signal.evidence}
-                      </p>
-                    </article>
-                  ))
-                ) : (
-                  <p className="text-sm leading-6 text-[#66758A]">
-                    Questions, objections, commitments, callback requests and
-                    buying signals noticed during the call will appear here.
+                      <h2 className="font-display text-2xl font-bold tracking-[-.05em] text-[#26354A]">
+                        Only when useful
+                      </h2>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={helping || !sessionId}
+                    onClick={() => void requestManualHelp()}
+                    className="border-[#B9C7D8] bg-white text-[#405F70]"
+                  >
+                    <CircleHelp className="mr-2 size-4" />
+                    {helping ? "Helping…" : "Help me"}
+                  </Button>
+                </div>
+                <div className="mt-5 rounded-xl bg-[#F8FAFC] p-4">
+                  <p className="whitespace-pre-wrap text-sm leading-7 text-[#33445B]">
+                    {tip || "Listening — no intervention needed."}
                   </p>
-                )}
-              </div>
-            </section>
-
-            <section className="rounded-[1.5rem] border border-[#DCE4EE] bg-white p-6">
-              <div className="flex items-center gap-3">
-                <CheckCircle2 className="size-5 text-[#55788B]" />
-                <h2 className="font-display text-2xl font-bold tracking-[-.05em] text-[#26354A]">
-                  Sales assist
+                </div>
+                <p className="mt-4 text-xs leading-5 text-[#7B8798]">
+                  Automatic guidance appears only for a useful answer, objection
+                  response or clear next sales move. Use Help me whenever you
+                  want assistance immediately.
+                </p>
+              </section>
+            ) : awaitingCloseout ? (
+              <section className="rounded-[1.5rem] border border-[#DCE4EE] bg-white p-6">
+                <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#55788B]">
+                  REVIEW
+                </p>
+                <h2 className="mt-2 font-display text-2xl font-bold tracking-[-.05em] text-[#26354A]">
+                  You decide what happened.
                 </h2>
-              </div>
-              <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-[#33445B]">
-                {tip ||
-                  "Sales help appears only when the conversation contains a product question, objection, buying signal or meaningful next step. Greetings and routine chat do not trigger coaching."}
-              </p>
-            </section>
+                <p className="mt-3 text-sm leading-7 text-[#52647A]">
+                  Check the transcript and your own notes, then confirm the
+                  outcome, next step and callback. AmarktAI will use those
+                  confirmed details to prepare the CRM-ready summary and review
+                  actions.
+                </p>
+              </section>
+            ) : closeoutActions?.length ? (
+              <section className="rounded-[1.5rem] border border-[#DCE4EE] bg-white p-6">
+                <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#55788B]">
+                  CALL SUMMARY
+                </p>
+                <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-[#33445B]">
+                  {tip}
+                </p>
+              </section>
+            ) : (
+              <section className="rounded-[1.5rem] border border-[#DCE4EE] bg-white p-6">
+                <p className="text-[10px] font-black uppercase tracking-[.13em] text-[#55788B]">
+                  SIMPLE BY DESIGN
+                </p>
+                <p className="mt-3 text-sm leading-7 text-[#52647A]">
+                  During the call you will see the transcript, your own notes
+                  and one Sales Assist card. Signals and AI-generated live notes
+                  stay out of your way.
+                </p>
+              </section>
+            )}
           </div>
         </div>
       </div>
     </DashboardLayout>
-  );
-}
-
-function LiveNoteGroup({ label, items }: { label: string; items: string[] }) {
-  return (
-    <div className="rounded-lg bg-[#F8FAFC] p-3">
-      <p className="text-xs font-bold text-[#52647A]">{label}</p>
-      {items.length ? (
-        <ul className="mt-2 space-y-1 text-sm leading-5 text-[#33445B]">
-          {items.map(item => (
-            <li key={item}>• {item}</li>
-          ))}
-        </ul>
-      ) : (
-        <p className="mt-2 text-xs text-[#8A96A8]">Nothing captured yet.</p>
-      )}
-    </div>
   );
 }
