@@ -24,7 +24,13 @@ export default function SalesTracker() {
   const organisationId = organisation.data?.organisationId;
   const tracker = trpc.sales.tracker.useQuery(
     { organisationId: organisationId || 0 },
-    { enabled: Boolean(organisationId), refetchInterval: 60_000 }
+    {
+      enabled: Boolean(organisationId),
+      refetchInterval: 60_000,
+      refetchIntervalInBackground: true,
+      refetchOnWindowFocus: true,
+      refetchOnReconnect: true,
+    }
   );
   const data = tracker.data;
   const cards = data
