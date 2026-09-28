@@ -1,6 +1,8 @@
 import { and, desc, eq, inArray, isNull, lt, or } from "drizzle-orm";
 import {
   companyKnowledgeJobs,
+  companyProfiles,
+  websiteDiscoveries,
   type CompanyKnowledgeJob,
 } from "../drizzle/schema";
 import {
@@ -278,15 +280,14 @@ export async function startCompanyKnowledgeJob(input: {
   return presentCompanyKnowledgeJob(job);
 }
 
-export async function getLatestCompanyKnowledgeJob(input: {
-  userId: number;
+export async function reconcileConfirmedCompanyKnowledgeJob(input: {
   organisationId: number;
   companyProfileId: number;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
-  const job = (
-    await db
+  const [job, profile, confirmedDiscovery] = await Promise.all([
+    db
       .select()
       .from(companyKnowledgeJobs)
       .where(
@@ -297,7 +298,113 @@ export async function getLatestCompanyKnowledgeJob(input: {
       )
       .orderBy(desc(companyKnowledgeJobs.createdAt))
       .limit(1)
-  )[0];
+      .then(rows => rows[0]),
+    db
+      .select({
+        id: companyProfiles.id,
+        discoveryStatus: companyProfiles.discoveryStatus,
+        confirmedAt: companyProfiles.confirmedAt,
+      })
+      .from(companyProfiles)
+      .where(
+        and(
+          eq(companyProfiles.id, input.companyProfileId),
+          eq(companyProfiles.organisationId, input.organisationId)
+        )
+      )
+      .limit(1)
+      .then(rows => rows[0]),
+    db
+      .select({
+        id: websiteDiscoveries.id,
+        reviewedAt: websiteDiscoveries.reviewedAt,
+        proposedFacts: websiteDiscoveries.proposedFacts,
+      })
+      .from(websiteDiscoveries)
+      .where(
+        and(
+          eq(websiteDiscoveries.organisationId, input.organisationId),
+          eq(websiteDiscoveries.companyProfileId, input.companyProfileId),
+          eq(websiteDiscoveries.status, "confirmed")
+        )
+      )
+      .orderBy(
+        desc(websiteDiscoveries.discoveryVersion),
+        desc(websiteDiscoveries.createdAt)
+      )
+      .limit(1)
+      .then(rows => rows[0]),
+  ]);
+
+  if (
+    !job ||
+    !["failed", "needs_attention"].includes(job.status) ||
+    profile?.discoveryStatus !== "confirmed" ||
+    !confirmedDiscovery
+  )
+    return job || null;
+
+  const facts =
+    confirmedDiscovery.proposedFacts &&
+    typeof confirmedDiscovery.proposedFacts === "object" &&
+    !Array.isArray(confirmedDiscovery.proposedFacts)
+      ? (confirmedDiscovery.proposedFacts as Record<string, unknown>)
+      : {};
+  const confirmedIndexes = Array.isArray(facts.confirmedKnowledgeIndexes)
+    ? facts.confirmedKnowledgeIndexes
+    : [];
+  const completedAt =
+    confirmedDiscovery.reviewedAt || profile.confirmedAt || new Date();
+  const progress = mergeCompanyKnowledgeProgress(job.progress, {
+    humanStatus: "Company knowledge ready",
+    phase: "ready",
+    knowledgePersisted: confirmedIndexes.length > 0,
+    knowledgeApproved: true,
+    retryState: null,
+    status: "complete",
+  });
+
+  await db
+    .update(companyKnowledgeJobs)
+    .set({
+      phase: "READY_FOR_REVIEW",
+      status: "ready",
+      progress,
+      resultDiscoveryId: confirmedDiscovery.id,
+      leaseExpiresAt: null,
+      lastError: null,
+      completedAt,
+    })
+    .where(
+      and(
+        eq(companyKnowledgeJobs.id, job.id),
+        eq(companyKnowledgeJobs.organisationId, input.organisationId)
+      )
+    );
+
+  return {
+    ...job,
+    phase: "READY_FOR_REVIEW" as const,
+    status: "ready" as const,
+    progress,
+    resultDiscoveryId: confirmedDiscovery.id,
+    leaseExpiresAt: null,
+    lastError: null,
+    completedAt,
+  };
+}
+
+export async function getLatestCompanyKnowledgeJob(input: {
+  userId: number;
+  organisationId: number;
+  companyProfileId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const job = await reconcileConfirmedCompanyKnowledgeJob({
+    organisationId: input.organisationId,
+    companyProfileId: input.companyProfileId,
+  });
   return job ? presentCompanyKnowledgeJob(job) : null;
 }
 
