@@ -613,7 +613,7 @@ export function browserProofPolicy(
   );
   return {
     requiresTargetIdentity: mode === "write" || operationKey === "contact.read",
-    requiresStructuredResult: mode === "read",
+    requiresStructuredResult: mode === "read" && operationKey !== "auth.login",
     requiresExactSearchMatch: operationKey === "contact.search",
     requiresPostcondition: mode === "write",
     requiresTargetGuardian: mode === "write",
