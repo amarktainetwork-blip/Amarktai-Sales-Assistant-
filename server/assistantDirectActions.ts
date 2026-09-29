@@ -98,6 +98,27 @@ function draftTimelineBody(value: string) {
     .slice(0, 700);
 }
 
+export function salespersonVoiceExamples(
+  detail: NonNullable<Awaited<ReturnType<typeof getExactCustomerDetail>>>
+) {
+  const examples = customerHistory(
+    detail.activities.items,
+    detail.communications.items
+  )
+    .filter(item => item.direction === "outbound")
+    .map(item => ({
+      channel: item.channel,
+      body: draftTimelineBody(item.body),
+    }))
+    .filter(item => item.body.length >= 20)
+    .slice(0, 5)
+    .map(
+      (item, index) =>
+        `Example ${index + 1} (${item.channel}):\n${item.body.slice(0, 900)}`
+    );
+  return examples.join("\n\n").slice(0, 4_000);
+}
+
 export function groundedDraftCustomerHistory(
   detail: NonNullable<Awaited<ReturnType<typeof getExactCustomerDetail>>>
 ) {
@@ -413,6 +434,7 @@ export async function tryPrepareDirectAssistantAction(input: {
           "I could not verify the selected customer's current history, so nothing was prepared or sent.",
       };
     const verifiedHistory = groundedDraftCustomerHistory(exactDetail);
+    const voiceExamples = salespersonVoiceExamples(exactDetail);
     const grounding: GroundedDraftContext = {
       request: input.request,
       channel,
@@ -425,6 +447,7 @@ export async function tryPrepareDirectAssistantAction(input: {
           ? workspace.businessContext.brandVoice
           : undefined,
       personalStyle: personalStyle || undefined,
+      salespersonVoiceExamples: voiceExamples || undefined,
       contactName: customer.contactName,
       companyName: customer.companyName,
       emailSubject: customer.recentInboundSubject,
