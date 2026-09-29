@@ -12,6 +12,14 @@ function categoryOf(value: unknown) {
     : "";
 }
 
+function sourceChannelOf(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? String((value as Record<string, unknown>).sourceChannel || "")
+        .trim()
+        .toLowerCase()
+    : "";
+}
+
 function readableMessage(body: string) {
   if (typeof DOMParser === "undefined") return body.slice(0, 12_000);
   const doc = new DOMParser().parseFromString(body, "text/html");
@@ -71,8 +79,13 @@ export default function Inbox() {
   const selectedText = selected ? readableMessage(selected.body) : "";
   const draftReply = () => {
     if (!selected) return;
+    const sourceChannel = sourceChannelOf(selected.classification);
+    const replyChannel =
+      selected.channel === "chat" && sourceChannel === "whatsapp"
+        ? "WhatsApp"
+        : selected.channel;
     const prompt = [
-      `Draft a reply to this ${selected.channel} from ${selected.senderReference}.`,
+      `Draft a reply to this ${replyChannel} from ${selected.senderReference}.`,
       `Subject: ${selected.subject || "No subject"}`,
       `Customer message: ${selectedText.slice(0, 2_500)}`,
       "Use the customer and CRM context, keep it concise and helpful, and do not send anything. Put the draft into Review.",
