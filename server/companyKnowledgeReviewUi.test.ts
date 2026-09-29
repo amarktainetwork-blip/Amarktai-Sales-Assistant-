@@ -36,6 +36,12 @@ describe("company knowledge report review", () => {
       expect(source).toContain(heading);
     expect(source).toContain("buildSalesFocusSuggestions");
     expect(source).toContain("selectedFocus");
+    expect(source).toContain("buildCommercialKnowledgeApproval");
+    expect(source).toContain("selectedCommercial");
+    expect(source).toContain("Select all evidenced commercial facts");
+    expect(source).toContain("commercialKnowledgeIndexes");
+    expect(source).toContain("View first-party source");
+    expect(source).toContain("Conflicting or ambiguous commercial claims cannot be");
     expect(source).toContain("Manager-confirmed primary sales focus.");
   });
 
