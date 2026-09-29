@@ -1,7 +1,7 @@
 {
-  "operation": "diagnose",
+  "operation": "deploy",
   "server_name": "Amarktai Network - Sales Assistant",
   "server_domain": "sales.amarktai.co.za",
-  "release_sha": "27fda5d4843a64c1c817cdc0ed3fb45506dcb2c5",
-  "request_id": "audit-amelia-workflow-memory-and-live-truth-2026-09-29"
+  "release_sha": "2fcab964416dfcc76fc816c0aaa9736f6ecfde08",
+  "request_id": "deploy-live-truth-scheduler-2026-09-29"
 }
