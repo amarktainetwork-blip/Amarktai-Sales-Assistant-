@@ -3,6 +3,10 @@ set -Eeuo pipefail
 
 OPERATION="__OPERATION__"
 TARGET_SHA="__TARGET_SHA__"
+CONFIG_USER_ID="__CONFIG_USER_ID__"
+CONFIG_ORGANISATION_ID="__CONFIG_ORGANISATION_ID__"
+CONFIG_CONNECTED_SYSTEM_ID="__CONFIG_CONNECTED_SYSTEM_ID__"
+CONFIG_CLIENT_PACK="__CONFIG_CLIENT_PACK__"
 REPO="/opt/amarktai-sales"
 ADMIN_USER="admin"
 PUBLIC_REPO_URL="https://github.com/amarktainetwork-blip/Amarktai-Sales-Assistant-.git"
@@ -89,6 +93,48 @@ if [ "$OPERATION" = "cleanup" ]; then
   curl -fsS https://sales.amarktai.co.za/readyz
   echo
   echo "SAFE_STORAGE_CLEANUP=PASS"
+  echo "completed_at=$(date -u +%FT%TZ)"
+  exit 0
+fi
+
+if [ "$OPERATION" = "configure" ]; then
+  echo "=== TENANT CLIENT-PACK CONFIGURATION ==="
+  [[ "$CONFIG_USER_ID" =~ ^[1-9][0-9]*$ ]] || fail "configure user id invalid"
+  [[ "$CONFIG_ORGANISATION_ID" =~ ^[1-9][0-9]*$ ]] || fail "configure organisation id invalid"
+  [[ "$CONFIG_CONNECTED_SYSTEM_ID" =~ ^[1-9][0-9]*$ ]] || fail "configure connected system id invalid"
+  [[ "$CONFIG_CLIENT_PACK" =~ ^[a-z0-9][a-z0-9_-]{0,79}$ ]] || fail "configure client pack slug invalid"
+
+  app_container="$(docker compose --env-file .env -f deploy/webdock/docker-compose.yml ps -q app)"
+  [ -n "$app_container" ] || fail "production app container is not running"
+  app_revision="$(docker inspect -f '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$app_container")"
+  [ "$app_revision" = "$TARGET_SHA" ] || fail "live app revision $app_revision does not match requested configuration release $TARGET_SHA"
+
+  pack_path="/app/config/client-packs/$CONFIG_CLIENT_PACK.json"
+  docker compose --env-file .env -f deploy/webdock/docker-compose.yml exec -T app     sh -eu -c 'test -f "$1"' _ "$pack_path" || fail "client pack is not present in production image"
+
+  db_sql() {
+    local sql="$1"
+    docker compose --env-file .env -f deploy/webdock/docker-compose.yml exec -T db       sh -eu -c 'mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" -D amarktai_sales_assistant --batch --raw -e "$1"' _ "$sql"
+  }
+
+  before_write_caps="$(db_sql "SELECT COALESCE(JSON_LENGTH(allowedWriteCapabilities),0) FROM connectedSystems WHERE id=$CONFIG_CONNECTED_SYSTEM_ID AND organisationId=$CONFIG_ORGANISATION_ID;" | tail -1)"
+  [ "$before_write_caps" = "0" ] || fail "client-pack configuration requires CRM write capabilities to remain disabled"
+
+  echo "--- applying validated internal client pack ---"
+  docker compose --env-file .env -f deploy/webdock/docker-compose.yml exec -T app     node dist/applyClientConfigurationCli.js       "$CONFIG_USER_ID"       "$CONFIG_ORGANISATION_ID"       "$CONFIG_CONNECTED_SYSTEM_ID"       "$pack_path"
+
+  after_write_caps="$(db_sql "SELECT COALESCE(JSON_LENGTH(allowedWriteCapabilities),0) FROM connectedSystems WHERE id=$CONFIG_CONNECTED_SYSTEM_ID AND organisationId=$CONFIG_ORGANISATION_ID;" | tail -1)"
+  [ "$after_write_caps" = "0" ] || fail "CRM write capabilities changed during client-pack configuration"
+
+  echo "--- configured Today policy shape ---"
+  db_sql "SELECT JSON_KEYS(JSON_EXTRACT(settings,'$.salesAssistantConfig.todayWorkPolicy')) AS policyKeys,JSON_LENGTH(JSON_EXTRACT(settings,'$.salesAssistantConfig.todayWorkPolicy.categories')) AS categoryCount,JSON_EXTRACT(settings,'$.salesAssistantConfig.todayWorkPolicy.morningWindowEnd') AS morningWindowEnd,JSON_EXTRACT(settings,'$.salesAssistantConfig.todayWorkPolicy.callTimeRotation.enabled') AS rotationEnabled FROM organisations WHERE id=$CONFIG_ORGANISATION_ID;"
+  echo "--- CRM write capability proof ---"
+  db_sql "SELECT id,provider,status,allowedWriteCapabilities FROM connectedSystems WHERE id=$CONFIG_CONNECTED_SYSTEM_ID AND organisationId=$CONFIG_ORGANISATION_ID;"
+
+  curl -fsS https://sales.amarktai.co.za/readyz
+  echo
+  echo "CONFIGURATION=PASS"
+  echo "GENIE_WRITES=UNCHANGED_READ_ONLY_POLICY"
   echo "completed_at=$(date -u +%FT%TZ)"
   exit 0
 fi
