@@ -204,10 +204,13 @@ describe("Today inbound ownership lookup", () => {
       ],
     ]);
     const database = {
-      select: vi.fn(() => ({
+      select: vi.fn((selection?: Record<string, unknown>) => ({
         from: vi.fn((table: unknown) => {
           fromCalls.push(table);
-          const result = rows.get(table) || [];
+          const result =
+            table === inboundMessages && selection?.total
+              ? [{ total: 1 }]
+              : rows.get(table) || [];
           const chain = {
             where: vi.fn(() => chain),
             orderBy: vi.fn(() => chain),
