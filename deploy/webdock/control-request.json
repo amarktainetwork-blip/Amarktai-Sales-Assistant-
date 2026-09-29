@@ -1,7 +1,7 @@
 {
-  "operation": "diagnose",
+  "operation": "deploy",
   "server_name": "Amarktai Network - Sales Assistant",
   "server_domain": "sales.amarktai.co.za",
-  "release_sha": "104c7f52a3ef159d7fe57aad8d5140e496719036",
-  "request_id": "acceptance-regression-audit-2026-09-29"
+  "release_sha": "3378a1c92e8cf0ff7b3feab61158daef1b0a1dff",
+  "request_id": "deploy-today-truth-mailbox-regressions-2026-09-29"
 }
