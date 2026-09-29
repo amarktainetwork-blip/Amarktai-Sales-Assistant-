@@ -5,6 +5,10 @@ const source = readFileSync(
   new URL("./salesInbox.ts", import.meta.url),
   "utf8"
 );
+const today = readFileSync(
+  new URL("./today.ts", import.meta.url),
+  "utf8"
+);
 
 describe("Sales Inbox truth-count contract", () => {
   it("counts the complete actionable source independently of the displayed page limit", () => {
@@ -15,5 +19,11 @@ describe("Sales Inbox truth-count contract", () => {
     expect(source).not.toContain(
       "needsActionCount: messages.filter(message => message.needsAction).length"
     );
+  });
+
+  it("keeps Today's reply headline independent of its bounded message queue", () => {
+    expect(today).toContain("inboundActionCountRows");
+    expect(today).toContain("inboundNeedsAction: Number(inboundActionCountRows[0]?.total || 0)");
+    expect(today).not.toContain("inboundNeedsAction: currentInbound.length");
   });
 });
