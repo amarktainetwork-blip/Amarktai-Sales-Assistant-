@@ -1,7 +1,11 @@
 {
-  "operation": "deploy",
+  "operation": "configure",
   "server_name": "Amarktai Network - Sales Assistant",
   "server_domain": "sales.amarktai.co.za",
   "release_sha": "d470f808bdb2d48168a354e268dcac30d85a7807",
-  "request_id": "deploy-final-pre-redesign-baseline-2026-09-29"
+  "request_id": "configure-course2career-pre-redesign-2026-09-29",
+  "user_id": 2,
+  "organisation_id": 8,
+  "connected_system_id": 8,
+  "client_pack": "course2career"
 }
