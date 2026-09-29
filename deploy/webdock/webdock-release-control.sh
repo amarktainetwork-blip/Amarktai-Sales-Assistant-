@@ -217,6 +217,9 @@ if [ "$OPERATION" = "diagnose" ]; then
   db_sql "SELECT severity,category,COUNT(*) AS eventCount,MAX(createdAt) AS latest FROM operationalEvents WHERE organisationId=8 AND createdAt>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 24 HOUR) GROUP BY severity,category ORDER BY severity,category;"
   db_sql "SELECT workerKey,status,COUNT(*) AS count,MAX(startedAt) AS latestStarted,MAX(finishedAt) AS latestFinished FROM operationalWorkerRuns WHERE organisationId=8 AND startedAt>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 7 DAY) GROUP BY workerKey,status ORDER BY workerKey,status;"
 
+  echo "--- recent live truth worker cycles ---"
+  shell_admin "docker compose --env-file .env -f deploy/webdock/docker-compose.yml logs --since=8m --timestamps worker 2>&1 | grep -E 'crm_sync_cycle|crm_new_lead_watch_cycle|personal_mailbox_sync_cycle|crm_background_read_lane_wait' | tail -n 240 || true"
+
   echo "--- live call telemetry ---"
   db_sql "SELECT eventType,COUNT(*) AS count,MIN(createdAt) AS firstAt,MAX(createdAt) AS lastAt FROM auditEntries WHERE organisationId=8 AND eventType IN ('live_call_audio_transcribed','live_call_coaching_stream','live_call_completed','live_call_started') GROUP BY eventType ORDER BY eventType;"
   db_sql "SELECT id,createdAt,JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.transcriptionMs')) AS transcriptionMs,JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.queueWaitMs')) AS queueWaitMs,JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.durationMs')) AS durationMs,JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.sttActiveAtStart')) AS activeAtStart,JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.sttWaitingAtStart')) AS waitingAtStart FROM auditEntries WHERE organisationId=8 AND eventType='live_call_audio_transcribed' ORDER BY id DESC LIMIT 40;"
