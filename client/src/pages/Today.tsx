@@ -93,6 +93,8 @@ export default function Today() {
     : remainingQueue.slice(0, 7);
   const workspace = today.data?.workspace.organisation;
   const taskMetrics = today.data?.taskData.metrics;
+  const sourceTaskCount =
+    (taskMetrics?.overdue ?? 0) + (taskMetrics?.dueToday ?? 0);
   const preferredName =
     organisation.data?.memberOnboarding.preferredName?.trim() || "there";
   const localHour = (() => {
@@ -237,11 +239,13 @@ export default function Today() {
               {greeting}, {preferredName}.
             </h1>
             <p className="amk-day__orientation">
-              {current
-                ? `${availableNow} ${availableNow === 1 ? "person needs" : "people need"} your attention now${deferredForPreference ? `; ${deferredForPreference} more ${deferredForPreference === 1 ? "is" : "are"} queued for the customer's preferred contact time` : ""}. Start with ${current.name}.`
-                : callQueue.length
-                  ? `${callQueue.length} ${callQueue.length === 1 ? "person is" : "people are"} queued for later contact windows. Nothing should be called early just to clear the list.`
-                  : "Nothing needs immediate attention. Upcoming commitments stay protected below."}
+              {sourceTaskCount
+                ? `${sourceTaskCount} CRM task${sourceTaskCount === 1 ? "" : "s"} currently need attention: ${taskMetrics?.overdue ?? 0} overdue and ${taskMetrics?.dueToday ?? 0} due today. ${current ? `${availableNow} ${availableNow === 1 ? "person can" : "people can"} be worked now${deferredForPreference ? `; ${deferredForPreference} more ${deferredForPreference === 1 ? "is" : "are"} protected for the customer's preferred contact time` : ""}. Start with ${current.name}.` : "No customer should be contacted before their preferred window."}`
+                : current
+                  ? `${availableNow} ${availableNow === 1 ? "person needs" : "people need"} your attention now. Start with ${current.name}.`
+                  : callQueue.length
+                    ? `${callQueue.length} ${callQueue.length === 1 ? "person is" : "people are"} queued for later contact windows. Nothing should be called early just to clear the list.`
+                    : "Nothing needs immediate attention. Upcoming commitments stay protected below."}
             </p>
             <p className="amk-day__freshness">
               <span aria-hidden="true" />
@@ -282,6 +286,7 @@ export default function Today() {
           <div className="amk-day__pulse-intro">
             <span>Today at a glance</span>
             <strong>
+              {sourceTaskCount} {sourceTaskCount === 1 ? "task" : "tasks"} ·{" "}
               {availableNow} {availableNow === 1 ? "person" : "people"} now
               {deferredForPreference
                 ? ` · ${deferredForPreference} later`
@@ -386,6 +391,7 @@ export default function Today() {
                       <div className="amk-day__safety-meta">
                         <span>{item.workType}</span>
                         <span>{item.reason}</span>
+                        {item.contactName ? <span>{item.contactName}</span> : null}
                         {item.dueAt ? (
                           <span>{dateLabel(item.dueAt)}</span>
                         ) : null}
@@ -393,15 +399,19 @@ export default function Today() {
                       <h3>{item.title}</h3>
                       <p>
                         {item.detail ||
-                          "Customer details are still syncing from the assigned CRM task."}
+                          "No additional task notes were supplied by the CRM. The task title above is the instruction."}
                       </p>
                     </div>
-                    <Button
-                      variant="ghost"
-                      onClick={() => navigate(`/crm/${item.connectedSystemId}`)}
-                    >
-                      Open CRM context <ArrowRight className="ml-2 h-4 w-4" />
-                    </Button>
+                    {item.contactId ? (
+                      <Button
+                        variant="ghost"
+                        onClick={() =>
+                          navigate(`/customers?contactId=${item.contactId}`)
+                        }
+                      >
+                        Open related customer <ArrowRight className="ml-2 h-4 w-4" />
+                      </Button>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -437,6 +447,11 @@ export default function Today() {
                   <div className="amk-now__story">
                     <h2>{current.name}</h2>
                     <p className="amk-now__headline">{current.headline}</p>
+                    {current.workCount > 1 ? (
+                      <p className="amk-day__eyebrow">
+                        {current.workCount} CRM work items are grouped for this customer
+                      </p>
+                    ) : null}
 
                     <div className="amk-now__identity">
                       {current.courseInterest ? (
@@ -650,6 +665,9 @@ export default function Today() {
                             {item.courseInterest
                               ? item.headline + " · " + item.courseInterest
                               : item.headline}
+                            {item.workCount > 1
+                              ? ` · ${item.workCount} work items`
+                              : ""}
                             {item.contactEligibleNow === false &&
                             item.contactPreferenceLabel
                               ? ` · Best contact: ${item.contactPreferenceLabel}`
