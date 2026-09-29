@@ -20,17 +20,17 @@ import { toast } from "sonner";
 import { useLocation } from "wouter";
 
 function freshnessLabel(value?: Date | string | null, status?: string) {
-  if (status === "attention") return "Sync needs attention";
+  if (status === "attention") return "CRM sync needs attention";
   if (!value) return "Waiting for first CRM sync";
   const seconds = Math.max(
     0,
     Math.floor((Date.now() - new Date(value).valueOf()) / 1000)
   );
-  if (seconds < 60) return "Updated moments ago";
+  if (seconds <= 15) return "Live CRM truth · updated just now";
+  if (seconds <= 45) return `Live CRM truth · updated ${seconds}s ago`;
+  if (seconds < 60) return `Refreshing CRM truth · last confirmed ${seconds}s ago`;
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60)
-    return `Updated ${minutes} minute${minutes === 1 ? "" : "s"} ago`;
-  return "Using the last successful CRM sync";
+  return `STALE CRM DATA · last confirmed ${minutes} minute${minutes === 1 ? "" : "s"} ago`;
 }
 
 export default function Today() {
@@ -42,7 +42,8 @@ export default function Today() {
     {
       enabled: Boolean(organisationId),
       retry: false,
-      refetchInterval: 30_000,
+      refetchInterval: 10_000,
+      refetchIntervalInBackground: true,
       refetchOnWindowFocus: true,
       refetchOnReconnect: true,
     }
@@ -240,11 +241,11 @@ export default function Today() {
             </h1>
             <p className="amk-day__orientation">
               {sourceTaskCount
-                ? `${sourceTaskCount} CRM task${sourceTaskCount === 1 ? "" : "s"} currently need attention: ${taskMetrics?.overdue ?? 0} overdue and ${taskMetrics?.dueToday ?? 0} due today. ${current ? `${availableNow} ${availableNow === 1 ? "person can" : "people can"} be worked now${deferredForPreference ? `; ${deferredForPreference} more ${deferredForPreference === 1 ? "is" : "are"} protected for the customer's preferred contact time` : ""}. Start with ${current.name}.` : "No customer should be contacted before their preferred window."}`
+                ? `${taskMetrics?.overdue ?? 0} overdue CRM task${(taskMetrics?.overdue ?? 0) === 1 ? "" : "s"} and ${taskMetrics?.dueToday ?? 0} due today. ${current ? `Your next best action is ${current.name}.` : "No customer should be contacted before their preferred window."}`
                 : current
-                  ? `${availableNow} ${availableNow === 1 ? "person needs" : "people need"} your attention now. Start with ${current.name}.`
+                  ? `Your next best action is ${current.name}.`
                   : callQueue.length
-                    ? `${callQueue.length} ${callQueue.length === 1 ? "person is" : "people are"} queued for later contact windows. Nothing should be called early just to clear the list.`
+                    ? "Remaining customer work is protected for the correct contact windows."
                     : "Nothing needs immediate attention. Upcoming commitments stay protected below."}
             </p>
             <p className="amk-day__freshness">
@@ -286,11 +287,7 @@ export default function Today() {
           <div className="amk-day__pulse-intro">
             <span>Today at a glance</span>
             <strong>
-              {sourceTaskCount} {sourceTaskCount === 1 ? "task" : "tasks"} ·{" "}
-              {availableNow} {availableNow === 1 ? "person" : "people"} now
-              {deferredForPreference
-                ? ` · ${deferredForPreference} later`
-                : ""}
+              {taskMetrics?.overdue ?? 0} overdue · {taskMetrics?.dueToday ?? 0} due today
             </strong>
           </div>
           <div className="amk-day__metric">
