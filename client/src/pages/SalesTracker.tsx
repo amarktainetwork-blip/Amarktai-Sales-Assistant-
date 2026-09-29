@@ -26,7 +26,7 @@ export default function SalesTracker() {
     { organisationId: organisationId || 0 },
     {
       enabled: Boolean(organisationId),
-      refetchInterval: 60_000,
+      refetchInterval: 15_000,
       refetchIntervalInBackground: true,
       refetchOnWindowFocus: true,
       refetchOnReconnect: true,
