@@ -1,7 +1,7 @@
 {
-  "operation": "deploy",
+  "operation": "verify",
   "server_name": "Amarktai Network - Sales Assistant",
   "server_domain": "sales.amarktai.co.za",
   "release_sha": "1c2adfb15def43cb8ea4a7ccfbd8c7594d35b929",
-  "request_id": "deploy-commercial-knowledge-approval-final-baseline-2026-09-29"
+  "request_id": "verify-final-pre-redesign-baseline-2026-09-29"
 }
