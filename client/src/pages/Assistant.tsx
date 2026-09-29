@@ -169,7 +169,7 @@ export default function Assistant() {
   }, [customers.data?.items, selectedCustomer]);
 
   const firstName =
-    organisation.data?.memberOnboarding.preferredName ||
+    organisation.data?.memberOnboarding.preferredName?.trim().split(/\s+/)[0] ||
     user?.name?.trim().split(/\s+/)[0] ||
     "there";
 

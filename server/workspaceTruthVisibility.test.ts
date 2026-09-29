@@ -11,13 +11,12 @@ const todaySource = readFileSync(
 );
 
 describe("workspace-wide CRM truth visibility", () => {
-  it("warns on every sales page when the synchronized source truth is stale", () => {
-    expect(source).toContain("truthAgeMs > 60_000");
-    expect(source).toContain("CRM truth is stale.");
-    expect(source).toContain("Screens may show work that has already");
-    expect(source).toContain(
-      "been completed until synchronization catches up."
-    );
+  it("warns only for real CRM connection attention, not a healthy reconciliation age", () => {
+    expect(source).not.toContain("truthAgeMs > 60_000");
+    expect(source).not.toContain("CRM truth is stale.");
+    expect(source).toContain("storedCompanyComplete && crmAttention && crmProblem");
+    expect(source).toContain("The CRM sign-in has expired.");
+    expect(source).toContain("The CRM connection needs attention.");
   });
 
   it("checks for new-lead notifications every 15 seconds", () => {

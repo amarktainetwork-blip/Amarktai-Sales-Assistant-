@@ -29,7 +29,7 @@ export async function streamLiveCoachingTip(input: {
     workingContext: workingContext || undefined,
     signal: input.signal,
     onDelta: input.onDelta,
-    maxOutputTokens: 150,
+    maxOutputTokens: 90,
     messages: [
       {
         role: "user",

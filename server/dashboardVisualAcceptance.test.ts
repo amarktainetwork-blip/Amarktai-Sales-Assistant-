@@ -113,6 +113,13 @@ describe("final dashboard information architecture", () => {
     expect(layout).toContain(
       "storedCompanyComplete && crmAttention && crmProblem"
     );
+    expect(layout).not.toContain("CRM truth is stale.");
+    expect(layout).not.toContain("crmTruthStale");
+    expect(layout).toContain("refetchInterval: 10_000");
+    expect(today).not.toContain("STALE CRM DATA");
+    expect(today).toContain("refreshing automatically");
+    expect(today).toContain("preferredName.split(/\\s+/)[0]");
+    expect(assistant).toContain("preferredName?.trim().split(/\\s+/)[0]");
     expect(today).not.toContain("Daily loop");
     expect(today).not.toContain("Work the hottest customer");
     expect(today).toContain("Immediate work is clear.");

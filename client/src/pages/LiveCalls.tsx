@@ -39,8 +39,9 @@ type TranscriptionResult = {
   rawAudioRetained: boolean;
 };
 
+const LIVE_AUDIO_FIRST_CHUNK_MS = 1_000;
 const LIVE_AUDIO_CHUNK_MS = 2_000;
-const LIVE_COACH_INTERVAL_MS = 750;
+const LIVE_COACH_INTERVAL_MS = 300;
 const LIVE_COACH_STALE_MS = 3_500;
 const AUTO_COACH_SIGNAL_TYPES = new Set([
   "price_objection",
@@ -766,6 +767,9 @@ export default function LiveCalls() {
     let peakRms = 0;
     let lastFlushAt = performance.now();
     let lastMeterAt = 0;
+    let firstVoicedPacketPending = true;
+    const targetChunkMs = () =>
+      firstVoicedPacketPending ? LIVE_AUDIO_FIRST_CHUNK_MS : LIVE_AUDIO_CHUNK_MS;
 
     const pauseForBackpressure = () => {
       recordingRef.current = false;
@@ -817,7 +821,14 @@ export default function LiveCalls() {
       });
       voicedSamples = 0;
       peakRms = 0;
-      if (!speech) return true;
+      if (!speech) {
+        // After a real quiet gap and no outstanding STT work, arm the fast
+        // packet again so the next speaking turn does not wait a full 2s.
+        if (pendingChunkCountRef.current === 0)
+          firstVoicedPacketPending = true;
+        return true;
+      }
+      firstVoicedPacketPending = false;
 
       const normalized = downsamplePcm(captured, context.sampleRate);
       const blob = encodePcmWav(normalized, 16_000);
@@ -859,7 +870,7 @@ export default function LiveCalls() {
         lastMeterAt = performance.now();
         setMicLevel(rms);
       }
-      if (performance.now() - lastFlushAt >= LIVE_AUDIO_CHUNK_MS) {
+      if (performance.now() - lastFlushAt >= targetChunkMs()) {
         if (flush()) lastFlushAt = performance.now();
       }
     };
@@ -873,7 +884,7 @@ export default function LiveCalls() {
     chunkTimerRef.current = window.setInterval(() => {
       if (
         recordingRef.current &&
-        performance.now() - lastFlushAt >= LIVE_AUDIO_CHUNK_MS
+        performance.now() - lastFlushAt >= targetChunkMs()
       ) {
         if (flush()) lastFlushAt = performance.now();
       }

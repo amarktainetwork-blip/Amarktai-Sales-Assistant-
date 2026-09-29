@@ -4,6 +4,7 @@ export type GroundedDraftContext = {
   salespersonName?: string;
   brandVoice?: string;
   personalStyle?: string;
+  salespersonVoiceExamples?: string;
   contactName: string;
   companyName?: string;
   emailSubject?: string;
@@ -21,8 +22,8 @@ export function buildGroundedDraftInstruction(context: GroundedDraftContext) {
   const channel = context.channel || "email";
   const style =
     channel === "email"
-      ? "Write a short, warm professional email in 3–6 compact paragraphs, at most 220 words. Use a natural greeting and sign with the salesperson's first name when known."
-      : "Write a natural conversational message in 1–4 short sentences, at most 80 words. Do not add a formal email-style signature.";
+      ? "Write a short, natural sales email in 2–5 compact paragraphs, usually under 160 words and never over 220. Use a normal greeting and sign with the salesperson's first name when known."
+      : "Write a natural conversational message in 1–3 short sentences, usually under 55 words and never over 80. Do not add a formal email-style signature.";
   return [
     "Prepare only the customer-facing message body.",
     "Write as the salesperson speaking directly to the customer, never as an AI, CRM, compliance system or knowledge-base assistant.",
@@ -36,7 +37,13 @@ export function buildGroundedDraftInstruction(context: GroundedDraftContext) {
     context.personalStyle
       ? `PERSONAL STYLE PREFERENCES (style only; never override facts, policy, safety or exact approved template text):\n${context.personalStyle}`
       : "PERSONAL STYLE PREFERENCES: none proven yet; use the organisation voice.",
+    context.salespersonVoiceExamples
+      ? `RECENT SALESPERSON WRITING EXAMPLES (imitate the person's rhythm, directness, formality, greeting and closing style; never copy customer-specific facts from an old message):\n${context.salespersonVoiceExamples}`
+      : "RECENT SALESPERSON WRITING EXAMPLES: none available. Keep the wording plain, direct and human.",
     "Treat CURRENT THREAD, CUSTOMER CONTEXT and VERIFIED COMPANY FACTS as authoritative evidence.",
+    "Sound like the salesperson, not like a writing assistant. Prefer ordinary wording and contractions where natural. Do not over-polish, over-explain or narrate your process.",
+    "Answer verified customer questions directly before discussing anything that still needs checking. If one detail is unverified, defer only that detail; do not make the whole reply vague.",
+    "Avoid generic AI filler such as 'I've noted your questions', 'thanks for your detailed email', 'I want to make sure I give you the exact information', 'come back to you clearly', 'point-by-point answer', 'if it helps', or 'happy to assist'.",
     "Use facts the customer has already supplied. Never ask for information that is already explicit in the thread or customer context.",
     "If the customer's course/programme, timing, experience or enquiry intent is known, acknowledge it naturally instead of asking them to repeat it.",
     "Never invent a price, funding eligibility, availability, finance term, guarantee, outcome, accreditation or commitment.",
@@ -99,6 +106,12 @@ export function groundedDraftIssues(
     )
   )
     issues.push("leaks_internal_limitation_language");
+  if (
+    /\b(?:i(?:'|’)ve noted your questions|thanks for your detailed (?:email|message)|i want to make sure i give you the exact (?:current )?(?:information|details)|come back to you clearly|point[- ]by[- ]point answer|if it helps|happy to assist)\b/i.test(
+      draft
+    )
+  )
+    issues.push("robotic_sales_tone");
 
   if (
     /training start timeframe|best time to call|preferred.*(?:time|date)/i.test(
@@ -171,14 +184,13 @@ export function buildSafeGroundedFallback(context: GroundedDraftContext) {
       : topics[0] || "the points in your message";
 
   if (context.channel && context.channel !== "email") {
-    return `Hi ${firstName}, thanks for your message${programme ? ` about ${programme}` : ""}. I’ve noted your questions about ${topicText}. I want to give you the exact current details rather than guess, so I’ll confirm them and come back to you clearly.`;
+    return `Hi ${firstName}, thanks for coming back to me${programme ? ` about ${programme}` : ""}. I’m checking ${topicText} now so I don’t give you the wrong detail. I’ll send you the confirmed information as soon as I have it.`;
   }
 
   return [
     `Hi ${firstName},`,
-    `Thanks for your detailed email${programme ? ` about ${programme}` : ""}. I’ve noted your questions about ${topicText}.`,
-    "I want to make sure I give you the exact current information rather than guess, so I’ll confirm those details and come back to you with a clear point-by-point answer.",
-    "If it helps, once I’ve confirmed everything we can also go through it together on a call.",
+    `Thanks for coming back to me${programme ? ` about ${programme}` : ""}.`,
+    `I’m checking ${topicText} now so I don’t give you the wrong detail. I’ll send you the confirmed information as soon as I have it.`,
     salespersonFirstName ? `Thanks,\n${salespersonFirstName}` : "Thanks,",
   ].join("\n\n");
 }

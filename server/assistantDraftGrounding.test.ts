@@ -12,6 +12,8 @@ const context: GroundedDraftContext = {
   salespersonName: "Amelia De Beer",
   brandVoice: "Clear, professional, helpful, factual and concise.",
   personalStyle: "Warm and direct. Short paragraphs. Close with Thanks, Amelia.",
+  salespersonVoiceExamples:
+    "Example 1 (Email):\nHi Sarah, thanks for coming back to me. I can call you after 4 if that works. Thanks, Amelia",
   contactName: "Namrata Parikh",
   inboundMessage:
     "I am looking for cyber security training and funding options.",
@@ -26,6 +28,8 @@ describe("grounded customer-facing draft contract", () => {
     expect(prompt).toContain("SALESPERSON: Amelia De Beer");
     expect(prompt).toContain("PERSONAL STYLE PREFERENCES");
     expect(prompt).toContain("Short paragraphs");
+    expect(prompt).toContain("RECENT SALESPERSON WRITING EXAMPLES");
+    expect(prompt).toContain("Hi Sarah, thanks for coming back to me");
     expect(prompt).toContain("Course/programme interest: Cyber Security");
     expect(prompt).toContain("Training Start Timeframe: As soon as possible");
     expect(prompt).toContain("never as an AI, CRM, compliance system");
@@ -39,6 +43,20 @@ describe("grounded customer-facing draft contract", () => {
         context
       )
     ).toContain("leaks_internal_limitation_language");
+  });
+
+  it.each([
+    "I've noted your questions and will come back to you.",
+    "Thanks for your detailed email.",
+    "I want to make sure I give you the exact information.",
+    "I will come back to you clearly.",
+    "I can send a point-by-point answer.",
+    "If it helps, I can arrange a call.",
+    "Happy to assist.",
+  ])("rejects robotic sales wording: %s", draft => {
+    expect(groundedDraftIssues(draft, context)).toContain(
+      "robotic_sales_tone"
+    );
   });
 
   it("does not ask the customer to repeat a known course interest", () => {
@@ -159,13 +177,17 @@ describe("deterministic safe draft fallback", () => {
     };
     const fallback = buildSafeGroundedFallback(riskyContext);
     expect(fallback).toContain("Hi Benson");
-    expect(fallback).toContain("exact current course cost");
-    expect(fallback).toContain("which assessments or exams are included");
+    expect(fallback).toContain("Hi Benson");
+    expect(fallback).toContain("Thanks for coming back to me");
+    expect(fallback).toContain("course cost");
+    expect(fallback).toContain("assessments or exams");
     expect(fallback).toContain("practical lab setup");
     expect(fallback).toContain("payment or finance arrangements");
     expect(fallback).toContain("employment-support process");
-    expect(fallback).toContain("rather than guess");
+    expect(fallback).toContain("so I don’t give you the wrong detail");
     expect(fallback).toContain("Thanks,\nAmelia");
+    expect(fallback).not.toContain("I've noted");
+    expect(fallback).not.toContain("point-by-point");
     expect(groundedDraftIssues(fallback, riskyContext)).toEqual([]);
     expect(fallback).not.toContain("£3,900");
   });

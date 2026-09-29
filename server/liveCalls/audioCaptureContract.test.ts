@@ -24,8 +24,13 @@ describe("live call capture contract", () => {
     expect(source).toContain("createDynamicsCompressor()");
   });
 
-  it("uses the production-benchmarked two-second English capture cadence", () => {
+  it("uses a one-second first voiced packet then the proven two-second steady cadence", () => {
+    expect(source).toContain("const LIVE_AUDIO_FIRST_CHUNK_MS = 1_000");
     expect(source).toContain("const LIVE_AUDIO_CHUNK_MS = 2_000");
+    expect(source).toContain("firstVoicedPacketPending");
+    expect(source).toContain("targetChunkMs");
+    expect(source).toContain("pendingChunkCountRef.current === 0");
+    expect(source).toContain("firstVoicedPacketPending = true");
   });
 
   it("gates silence and bounds STT backlog instead of building unlimited latency", () => {
