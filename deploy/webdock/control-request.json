@@ -1,7 +1,7 @@
 {
-  "operation": "deploy",
+  "operation": "inspect",
   "server_name": "Amarktai Network - Sales Assistant",
   "server_domain": "sales.amarktai.co.za",
   "release_sha": "2fcab964416dfcc76fc816c0aaa9736f6ecfde08",
-  "request_id": "deploy-live-truth-scheduler-2026-09-29"
+  "request_id": "hold-safe-inspect-after-live-truth-deploy-2026-09-29"
 }
