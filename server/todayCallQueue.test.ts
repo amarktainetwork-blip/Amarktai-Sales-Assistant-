@@ -394,6 +394,40 @@ describe("Today contact-time intelligence", () => {
     expect(queue[1].reasons).toContain("Preferred contact time: evening");
   });
 
+  it("defers an ordinary overdue task until an evening contact window", () => {
+    const queue = buildTodayCallQueue({
+      now: new Date("2026-09-28T08:00:00.000Z"),
+      timezone: "Europe/London",
+      contacts: [{ ...contacts[0], contactPreference: "Evening" }, contacts[1]],
+      newLeads: [
+        {
+          workItemId: 93,
+          connectedSystemId: 8,
+          contactExternalId: "b",
+          createdAt: new Date("2026-09-28T07:58:00.000Z"),
+        },
+      ],
+      overdueTasks: [
+        {
+          id: 94,
+          connectedSystemId: 8,
+          contactExternalId: "a",
+          title: "Overdue generic follow-up",
+          dueAt: new Date("2026-09-27T10:00:00.000Z"),
+        },
+      ],
+      inbound: [],
+      dueToday: [],
+    });
+    expect(queue.map(item => item.name)).toEqual(["Bob", "Alice Example"]);
+    expect(queue[1]).toMatchObject({
+      primaryKind: "overdue_task",
+      contactEligibleNow: false,
+      contactPreferenceLabel: "evening",
+      contactPreferenceState: "later_today",
+    });
+  });
+
   it("does not hold back a customer-initiated reply because of a call preference", () => {
     const queue = buildTodayCallQueue({
       now: new Date("2026-09-28T08:00:00.000Z"),
