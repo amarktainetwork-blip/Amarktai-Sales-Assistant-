@@ -223,6 +223,11 @@ if [ "$OPERATION" = "diagnose" ]; then
   echo "--- operational event lifecycle ---"
   db_sql "SELECT eventKey,severity,category,COUNT(*) AS total,SUM(resolvedAt IS NULL) AS unresolved,MIN(createdAt) AS firstAt,MAX(createdAt) AS lastAt FROM operationalEvents WHERE organisationId=8 GROUP BY eventKey,severity,category ORDER BY unresolved DESC,total DESC LIMIT 40;"
 
+  echo "--- CRM session stability timeline ---"
+  db_sql "SELECT id,eventType,createdAt,JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.identityScope')) AS identityScope,JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.exactPageIdentityPersisted')) AS exactPageIdentityPersisted FROM auditEntries WHERE organisationId=8 AND userId=2 AND eventType IN ('crm_session_authenticated','crm_reauthentication_required','crm_viewer_opened','crm_viewer_expired','crm_viewer_disconnected') AND createdAt>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 24 HOUR) ORDER BY id DESC LIMIT 60;"
+  db_sql "SELECT operationKey,status,lastSuccessAt,lastFailureAt,LEFT(COALESCE(lastError,''),260) AS errorSummary FROM browserLearnedOperations b JOIN (SELECT operationKey,MAX(version) AS version FROM browserLearnedOperations WHERE organisationId=8 AND connectedSystemId=8 GROUP BY operationKey) latest ON latest.operationKey=b.operationKey AND latest.version=b.version WHERE b.organisationId=8 AND b.connectedSystemId=8 AND b.operationKey IN ('auth.login','contact.sync','contact.search','contact.read','task.sync','opportunity.sync') ORDER BY b.operationKey;"
+  shell_admin "docker compose --env-file .env -f deploy/webdock/docker-compose.yml logs --since=45m --timestamps worker app 2>&1 | grep -E 'CRM_BROWSER_REAUTHENTICATION_REQUIRED|crm_browser_session|crm_degraded_read|crm_sync_cycle|crm_new_lead_watch|personal_mailbox' | tail -n 320 || true"
+
   echo "--- connector and worker health ---"
   db_sql "SELECT resourceType,status,capabilityKey,lastStartedAt,lastSucceededAt,lastError FROM connectorSyncJobs WHERE organisationId=8 ORDER BY resourceType;"
   db_sql "SELECT severity,category,COUNT(*) AS eventCount,MAX(createdAt) AS latest FROM operationalEvents WHERE organisationId=8 AND createdAt>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 24 HOUR) GROUP BY severity,category ORDER BY severity,category;"
