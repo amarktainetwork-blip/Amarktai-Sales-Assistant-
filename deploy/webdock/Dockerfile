@@ -29,6 +29,9 @@ RUN groupadd --system amarktai && useradd --system --gid amarktai --create-home 
 COPY --from=build --chown=amarktai:amarktai /app/dist ./dist
 COPY --from=build --chown=amarktai:amarktai /app/drizzle ./drizzle
 COPY --from=build --chown=amarktai:amarktai /app/config ./config
+# /app/config is bind-mounted in production for persistent runtime connector config.
+# Keep immutable client packs outside that mount so commissioning cannot lose them.
+COPY --from=build --chown=amarktai:amarktai /app/config/client-packs ./client-packs
 COPY --from=build --chown=amarktai:amarktai /app/node_modules ./node_modules
 COPY --from=build --chown=amarktai:amarktai /app/scripts ./scripts
 COPY --from=build --chown=amarktai:amarktai /app/package.json ./package.json
