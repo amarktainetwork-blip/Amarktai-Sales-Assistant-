@@ -74,8 +74,37 @@ vi.mock("./communications", async importOriginal => ({
 }));
 import {
   isDraftOnly,
+  salespersonVoiceExamplesFromActivities,
   tryPrepareDirectAssistantAction,
 } from "./assistantDirectActions";
+describe("salesperson-wide draft voice", () => {
+  it("keeps only recent outbound salesperson messages as style examples", () => {
+    const examples = salespersonVoiceExamplesFromActivities([
+      {
+        activityType: "email",
+        occurredAt: new Date("2026-09-29T10:00:00Z"),
+        body: "Hi Sarah, thanks for coming back to me. I can call you after 4 if that works. Thanks, Amelia",
+        raw: { direction: "outbound" },
+      },
+      {
+        activityType: "email",
+        occurredAt: new Date("2026-09-29T09:00:00Z"),
+        body: "Customer wrote this inbound message and it must never become Amelia's voice example.",
+        raw: { direction: "inbound" },
+      },
+      {
+        activityType: "note",
+        occurredAt: new Date("2026-09-29T08:00:00Z"),
+        body: "Internal note should not be used as customer-facing style.",
+        raw: { direction: "outbound" },
+      },
+    ]);
+    expect(examples).toContain("Hi Sarah, thanks for coming back to me");
+    expect(examples).not.toContain("Customer wrote this inbound message");
+    expect(examples).not.toContain("Internal note");
+  });
+});
+
 describe("draft preparation is separate from sending", () => {
   beforeEach(() => {
     vi.clearAllMocks();
