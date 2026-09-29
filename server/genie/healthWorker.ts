@@ -98,7 +98,7 @@ async function processMailboxes() {
 
 const mailboxIntervalMs = Math.max(
   30_000,
-  Number(process.env.PERSONAL_MAILBOX_SYNC_INTERVAL_MS || 60_000)
+  Number(process.env.PERSONAL_MAILBOX_SYNC_INTERVAL_MS || 30_000)
 );
 const mailboxInitialDelayMs = startupDelay(
   process.env.PERSONAL_MAILBOX_INITIAL_DELAY_MS,

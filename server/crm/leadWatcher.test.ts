@@ -21,10 +21,10 @@ afterEach(() => {
 });
 
 describe("new lead watcher", () => {
-  it("never polls more frequently than every 60 seconds", () => {
+  it("targets 30-second lead freshness and rejects faster overrides", () => {
     expect(newLeadPollIntervalMs("1000")).toBe(DEFAULT_NEW_LEAD_POLL_INTERVAL_MS);
+    expect(newLeadPollIntervalMs("30000")).toBe(30_000);
     expect(newLeadPollIntervalMs("60000")).toBe(60_000);
-    expect(newLeadPollIntervalMs("90000")).toBe(90_000);
   });
   it("does not convert baseline contacts into new leads", () => {
     const candidates = deriveCrmWorkCandidates(
@@ -71,7 +71,7 @@ describe("new lead watcher", () => {
     const runCycle = vi.fn(
       () => new Promise<void>(resolve => (release = resolve))
     );
-    const watcher = startNewLeadWatcher(60_000, runCycle);
+    const watcher = startNewLeadWatcher(30_000, runCycle);
     expect(runCycle).toHaveBeenCalledTimes(1);
     await expect(watcher.run()).resolves.toBe(false);
     expect(runCycle).toHaveBeenCalledTimes(1);

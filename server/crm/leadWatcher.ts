@@ -23,7 +23,7 @@ import {
 import { upsertSalesWorkFromCrm } from "../salesWork";
 import { isTransientBrowserExecutionFailure } from "../browserConnectors/runtimeFailure";
 
-export const DEFAULT_NEW_LEAD_POLL_INTERVAL_MS = 60_000;
+export const DEFAULT_NEW_LEAD_POLL_INTERVAL_MS = 30_000;
 
 export function newLeadPollIntervalMs(
   raw = process.env.NEW_LEAD_POLL_INTERVAL_MS

@@ -10,13 +10,13 @@ import {
 } from "./syncWorker";
 
 describe("connection-scoped CRM synchronization schedule", () => {
-  it("defaults to 120 seconds and rejects unsafe/invalid overrides", () => {
-    expect(DEFAULT_CRM_SYNC_INTERVAL_MS).toBe(120_000);
-    expect(CRM_SYNC_POLL_INTERVAL_MS).toBe(30_000);
-    expect(crmSyncIntervalMs(undefined)).toBe(120_000);
-    expect(crmSyncIntervalMs("180000")).toBe(180_000);
-    expect(crmSyncIntervalMs("1000")).toBe(120_000);
-    expect(crmSyncIntervalMs("not-a-number")).toBe(120_000);
+  it("targets a 30-second live-sales truth interval and rejects unsafe/invalid overrides", () => {
+    expect(DEFAULT_CRM_SYNC_INTERVAL_MS).toBe(30_000);
+    expect(CRM_SYNC_POLL_INTERVAL_MS).toBe(10_000);
+    expect(crmSyncIntervalMs(undefined)).toBe(30_000);
+    expect(crmSyncIntervalMs("60000")).toBe(60_000);
+    expect(crmSyncIntervalMs("1000")).toBe(30_000);
+    expect(crmSyncIntervalMs("not-a-number")).toBe(30_000);
   });
 
   it("uses bounded routine reconciliation for browser CRMs without duplicating lead-watcher history reads", () => {
@@ -67,13 +67,13 @@ describe("connection-scoped CRM synchronization schedule", () => {
     ).toBe(false);
   });
 
-  it("is due after one interval and not due during repeated rapid refreshes", () => {
-    const now = new Date("2026-08-31T12:02:00.000Z");
+  it("is due after 30 seconds and not due during repeated rapid refreshes", () => {
+    const now = new Date("2026-08-31T12:00:30.000Z");
     expect(crmSyncJobIsDue(null, now)).toBe(true);
     expect(crmSyncJobIsDue(new Date("2026-08-31T12:00:00.000Z"), now)).toBe(
       true
     );
-    expect(crmSyncJobIsDue(new Date("2026-08-31T12:01:59.000Z"), now)).toBe(
+    expect(crmSyncJobIsDue(new Date("2026-08-31T12:00:01.000Z"), now)).toBe(
       false
     );
   });
