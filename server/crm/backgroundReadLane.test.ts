@@ -6,43 +6,43 @@ import {
 
 afterEach(() => resetBackgroundBrowserReadLaneForTests());
 
-describe("background browser read lane", () => {
-  it("serializes overlapping unattended browser reads instead of making them contend", async () => {
+describe("background browser read coordinator", () => {
+  it("allows different unattended read cycles to progress without whole-cycle head-of-line blocking", async () => {
     const events: string[] = [];
-    let releaseFirst!: () => void;
-    let markFirstStarted!: () => void;
-    const firstGate = new Promise<void>(resolve => {
-      releaseFirst = resolve;
+    let releaseCrm!: () => void;
+    let markCrmStarted!: () => void;
+    const crmGate = new Promise<void>(resolve => {
+      releaseCrm = resolve;
     });
-    const firstStarted = new Promise<void>(resolve => {
-      markFirstStarted = resolve;
+    const crmStarted = new Promise<void>(resolve => {
+      markCrmStarted = resolve;
     });
 
-    const first = runBackgroundBrowserReadLane("crm", async () => {
+    const crm = runBackgroundBrowserReadLane("crm", async () => {
       events.push("crm:start");
-      markFirstStarted();
-      await firstGate;
+      markCrmStarted();
+      await crmGate;
       events.push("crm:end");
       return "crm";
     });
-    const second = runBackgroundBrowserReadLane("mailbox", async () => {
+    await crmStarted;
+
+    const mailbox = runBackgroundBrowserReadLane("mailbox", async () => {
       events.push("mailbox:start");
       events.push("mailbox:end");
       return "mailbox";
     });
 
-    await firstStarted;
-    expect(events).toEqual(["crm:start"]);
-    releaseFirst();
-    await expect(Promise.all([first, second])).resolves.toEqual([
-      "crm",
-      "mailbox",
-    ]);
+    await expect(mailbox).resolves.toBe("mailbox");
+    expect(events).toEqual(["crm:start", "mailbox:start", "mailbox:end"]);
+
+    releaseCrm();
+    await expect(crm).resolves.toBe("crm");
     expect(events).toEqual([
       "crm:start",
-      "crm:end",
       "mailbox:start",
       "mailbox:end",
+      "crm:end",
     ]);
   });
 
@@ -78,7 +78,7 @@ describe("background browser read lane", () => {
     expect(runs).toBe(1);
   });
 
-  it("releases the lane after a failed cycle", async () => {
+  it("clears a failed label so the next cycle can run", async () => {
     await expect(
       runBackgroundBrowserReadLane("broken", async () => {
         throw new Error("boom");
@@ -86,7 +86,7 @@ describe("background browser read lane", () => {
     ).rejects.toThrow("boom");
 
     await expect(
-      runBackgroundBrowserReadLane("next", async () => "ok")
+      runBackgroundBrowserReadLane("broken", async () => "ok")
     ).resolves.toBe("ok");
   });
 });
