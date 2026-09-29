@@ -434,22 +434,14 @@ export async function syncGenieMailboxForUser(input: {
     )
     .slice(0, 20);
   const now = Date.now();
-  const sevenDaysAgo = now - 7 * 24 * 60 * 60_000;
   const oneDayAgo = now - 24 * 60 * 60_000;
+  // The fast mailbox lane only needs a small overlap behind the newest message.
+  // Older actionable items are reconciled explicitly by actionableBackfill,
+  // so they must not force every 30-second live scan to crawl hours of history.
   const latestOverlap = latest?.receivedAt
-    ? latest.receivedAt.getTime() - 6 * 60 * 60_000
-    : sevenDaysAgo;
-  const actionableOverlap = oldestActionable?.receivedAt
-    ? oldestActionable.receivedAt.getTime() - 6 * 60 * 60_000
+    ? latest.receivedAt.getTime() - 2 * 60_000
     : oneDayAgo;
-  // Revisit unresolved inbound work for up to seven days so a reply made
-  // directly in Genie can retire the matching Today item after the fact.
-  const since = new Date(
-    Math.max(
-      sevenDaysAgo,
-      Math.min(oneDayAgo, latestOverlap, actionableOverlap)
-    )
-  );
+  const since = new Date(Math.max(oneDayAgo, latestOverlap));
 
   const proof = await withAuthenticatedBrowserSessionPage({
     connection: adapterConnection,
