@@ -1,7 +1,7 @@
 {
-  "operation": "verify",
+  "operation": "inspect",
   "server_name": "Amarktai Network - Sales Assistant",
   "server_domain": "sales.amarktai.co.za",
   "release_sha": "1664bdffe9045033f5863c9602ddce4303a4b6d1",
-  "request_id": "verify-final-pre-redesign-baseline-2026-09-29-r2"
+  "request_id": "final-safe-inspect-after-calls-drafts-freshness-2026-09-29"
 }
