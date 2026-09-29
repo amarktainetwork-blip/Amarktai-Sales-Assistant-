@@ -96,7 +96,7 @@ export default function DashboardLayout({
     {
       enabled: Boolean(user && security.data?.verified && organisationId),
       retry: false,
-      refetchInterval: 60_000,
+      refetchInterval: 15_000,
       refetchIntervalInBackground: true,
       refetchOnWindowFocus: true,
       refetchOnReconnect: true,
@@ -175,6 +175,22 @@ export default function DashboardLayout({
   const crmProblem = connectedSystems.data?.find(
     system => system.status === stableCrmAttention
   );
+  const truthLastSuccessfulAt = dayPulse.data?.freshness.lastSuccessfulAt
+    ? new Date(dayPulse.data.freshness.lastSuccessfulAt)
+    : null;
+  const truthAgeMs = truthLastSuccessfulAt
+    ? Math.max(0, clock - truthLastSuccessfulAt.valueOf())
+    : Number.POSITIVE_INFINITY;
+  const crmTruthStale =
+    dayPulse.isSuccess &&
+    (dayPulse.data?.freshness.status !== "synchronized" ||
+      truthAgeMs > 90_000);
+  const crmTruthAgeLabel = truthLastSuccessfulAt
+    ? truthAgeMs < 60_000
+      ? "under a minute"
+      : `${Math.floor(truthAgeMs / 60_000)} minute${Math.floor(truthAgeMs / 60_000) === 1 ? "" : "s"}`
+    : "not yet confirmed";
+
   const timedAttention = useMemo(
     () =>
       timedWorkAttention(
@@ -518,6 +534,26 @@ export default function DashboardLayout({
                 onClick={() => navigate("/today")}
               >
                 Open Today
+              </Button>
+            </div>
+          ) : null}
+
+          {storedCompanyComplete && !crmAttention && crmTruthStale ? (
+            <div role="status" className="amk-attention amk-attention--warning">
+              <div className="flex min-w-0 items-center gap-3">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-[#D7A44F]" />
+                <span>
+                  CRM truth is stale. The last confirmed reconciliation was{" "}
+                  {crmTruthAgeLabel} ago. Screens may show work Amelia has already
+                  completed until synchronization catches up.
+                </span>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => void dayPulse.refetch()}
+              >
+                Check again
               </Button>
             </div>
           ) : null}
