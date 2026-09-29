@@ -6,8 +6,8 @@ import {
   listActionProposals,
   searchApprovedKnowledge,
 } from "./db";
-import { users } from "../drizzle/schema";
-import { eq } from "drizzle-orm";
+import { crmActivities, externalUserMappings, users } from "../drizzle/schema";
+import { and, desc, eq } from "drizzle-orm";
 import { getExactCustomerDetail } from "./customerData";
 import { customerHistory } from "../shared/customerHistory";
 import { listConnectedSystemsForUser } from "./connectedSystems";
@@ -117,6 +117,98 @@ export function salespersonVoiceExamples(
         `Example ${index + 1} (${item.channel}):\n${item.body.slice(0, 900)}`
     );
   return examples.join("\n\n").slice(0, 4_000);
+}
+
+export function salespersonVoiceExamplesFromActivities(
+  activities: Array<{
+    activityType: string;
+    occurredAt: Date;
+    body: string | null;
+    raw: unknown;
+  }>
+) {
+  const seen = new Set<string>();
+  const examples = [...activities]
+    .sort((a, b) => b.occurredAt.valueOf() - a.occurredAt.valueOf())
+    .flatMap(activity => {
+      const raw =
+        activity.raw &&
+        typeof activity.raw === "object" &&
+        !Array.isArray(activity.raw)
+          ? (activity.raw as Record<string, unknown>)
+          : {};
+      if (String(raw.direction || "").toLowerCase() !== "outbound") return [];
+      const channel =
+        {
+          email: "Email",
+          sms: "SMS",
+          whatsapp: "WhatsApp",
+          communication: "Message",
+        }[activity.activityType.trim().toLowerCase()] || "";
+      if (!channel) return [];
+      const body = draftTimelineBody(activity.body || "");
+      if (body.length < 20) return [];
+      const key = body.toLowerCase().replace(/\s+/g, " ").trim();
+      if (seen.has(key)) return [];
+      seen.add(key);
+      return [{ channel, body }];
+    })
+    .slice(0, 6)
+    .map(
+      (item, index) =>
+        `Example ${index + 1} (${item.channel}):\n${item.body.slice(0, 900)}`
+    );
+  return examples.join("\n\n").slice(0, 4_000);
+}
+
+async function recentSalespersonVoiceExamples(input: {
+  userId: number;
+  organisationId: number;
+}) {
+  const db = await getDb();
+  if (!db) return "";
+  const mappings = await db
+    .select({
+      connectedSystemId: externalUserMappings.connectedSystemId,
+      externalUserId: externalUserMappings.externalUserId,
+    })
+    .from(externalUserMappings)
+    .where(
+      and(
+        eq(externalUserMappings.organisationId, input.organisationId),
+        eq(externalUserMappings.userId, input.userId),
+        eq(externalUserMappings.isActive, true)
+      )
+    )
+    .limit(20);
+  const scopedMappings = mappings.filter(
+    mapping => mapping.connectedSystemId && mapping.externalUserId
+  );
+  if (!scopedMappings.length) return "";
+  const rows = (
+    await Promise.all(
+      scopedMappings.map(mapping =>
+        db
+          .select({
+            activityType: crmActivities.activityType,
+            occurredAt: crmActivities.occurredAt,
+            body: crmActivities.body,
+            raw: crmActivities.raw,
+          })
+          .from(crmActivities)
+          .where(
+            and(
+              eq(crmActivities.organisationId, input.organisationId),
+              eq(crmActivities.connectedSystemId, mapping.connectedSystemId),
+              eq(crmActivities.ownerExternalId, mapping.externalUserId)
+            )
+          )
+          .orderBy(desc(crmActivities.occurredAt), desc(crmActivities.id))
+          .limit(24)
+      )
+    )
+  ).flat();
+  return salespersonVoiceExamplesFromActivities(rows);
 }
 
 export function groundedDraftCustomerHistory(
@@ -434,7 +526,15 @@ export async function tryPrepareDirectAssistantAction(input: {
           "I could not verify the selected customer's current history, so nothing was prepared or sent.",
       };
     const verifiedHistory = groundedDraftCustomerHistory(exactDetail);
-    const voiceExamples = salespersonVoiceExamples(exactDetail);
+    const customerVoiceExamples = salespersonVoiceExamples(exactDetail);
+    const organisationVoiceExamples = await recentSalespersonVoiceExamples({
+      userId: input.userId,
+      organisationId: input.organisationId,
+    });
+    const voiceExamples = [customerVoiceExamples, organisationVoiceExamples]
+      .filter(Boolean)
+      .join("\n\n")
+      .slice(0, 4_000);
     const grounding: GroundedDraftContext = {
       request: input.request,
       channel,
