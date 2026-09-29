@@ -7,7 +7,19 @@ import { deriveCustomerContactPreference } from "./contactPreference";
 import { buildTodayCallQueue, unrepresentedTodayTasks } from "./todayCallQueue";
 import { buildTodayWorkGroups } from "./todayWorkPolicy";
 import { opportunityIsHistorical } from "./crm/actionExecutionPreconditions";
-import { and, asc, count, desc, eq, gt, gte, inArray, isNull, lte, or } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  isNull,
+  lte,
+  or,
+} from "drizzle-orm";
 import {
   actionProposals,
   assistantReminders,
@@ -30,6 +42,7 @@ import {
   getClientActionConfiguration,
   type ClientActionConfiguration,
 } from "./clientActionConfiguration";
+import { authoritativeCrmFreshness } from "./crm/currentReadiness";
 
 function isOpen(status: string) {
   return isIncompleteTask(status);
@@ -48,7 +61,9 @@ export function taskDetailFromRaw(raw: unknown) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const source = raw as Record<string, unknown>;
   const nested =
-    source.task && typeof source.task === "object" && !Array.isArray(source.task)
+    source.task &&
+    typeof source.task === "object" &&
+    !Array.isArray(source.task)
       ? (source.task as Record<string, unknown>)
       : {};
   const detail = [
@@ -308,8 +323,7 @@ export async function getTodayWork(input: {
           eq(connectorSyncJobs.resourceType, "crm_reconciliation")
         )
       )
-      .orderBy(desc(connectorSyncJobs.lastSucceededAt))
-      .limit(20),
+      .orderBy(desc(connectorSyncJobs.lastSucceededAt)),
     db
       .select({
         message: inboundMessages,
@@ -488,7 +502,10 @@ export async function getTodayWork(input: {
     .where(
       and(
         eq(salesActivityEvents.organisationId, input.organisationId),
-        gt(salesActivityEvents.occurredAt, new Date(now.valueOf() - 7 * 86_400_000)),
+        gt(
+          salesActivityEvents.occurredAt,
+          new Date(now.valueOf() - 7 * 86_400_000)
+        ),
         inArray(salesActivityEvents.eventType, [
           "new_lead",
           "customer_reply",
@@ -771,7 +788,9 @@ export async function getTodayWork(input: {
         !Array.isArray(activity.raw)
           ? (activity.raw as Record<string, unknown>)
           : {};
-      const direction = String(raw.direction || "").trim().toLowerCase();
+      const direction = String(raw.direction || "")
+        .trim()
+        .toLowerCase();
       return !direction || direction === "outbound";
     })
     .map(activity => ({
@@ -952,15 +971,7 @@ export async function getTodayWork(input: {
     generatedAt: now,
     workspace,
     taskData: visibleTaskData,
-    freshness: {
-      status: syncJobs.some(job => job.status === "error")
-        ? "attention"
-        : syncJobs.some(job => job.lastSucceededAt)
-          ? "synchronized"
-          : "not_synchronized",
-      lastSuccessfulAt:
-        syncJobs.find(job => job.lastSucceededAt)?.lastSucceededAt ?? null,
-    },
+    freshness: authoritativeCrmFreshness(syncJobs),
     paymentReview: {
       enabled: actionConfiguration.paymentReview?.enabled === true,
       status: "manual_source_check_required" as const,

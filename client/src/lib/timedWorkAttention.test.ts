@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { timedWorkAttention } from "./timedWorkAttention";
+import { timedWorkAttention, timedWorkAttentions } from "./timedWorkAttention";
 
 const item = (key: string, dueAt: string) => ({
   key,
@@ -13,10 +13,7 @@ describe("timed work attention", () => {
 
   it("stays quiet outside the 30-minute warning window", () => {
     expect(
-      timedWorkAttention(
-        [item("later", "2026-09-21T14:00:01Z")],
-        now
-      )
+      timedWorkAttention([item("later", "2026-09-21T14:00:01Z")], now)
     ).toBeNull();
   });
 
@@ -39,10 +36,7 @@ describe("timed work attention", () => {
 
   it("drops old overdue work from the global reminder while Today keeps it", () => {
     expect(
-      timedWorkAttention(
-        [item("old", "2026-09-21T13:28:59Z")],
-        now
-      )
+      timedWorkAttention([item("old", "2026-09-21T13:28:59Z")], now)
     ).toBeNull();
   });
 
@@ -55,5 +49,17 @@ describe("timed work attention", () => {
       now
     );
     expect(result?.item.key).toBe("first");
+  });
+
+  it("returns every simultaneous callback so none can expire behind the first", () => {
+    const results = timedWorkAttentions(
+      [
+        item("first", "2026-09-21T13:40:00Z"),
+        item("second", "2026-09-21T13:40:00Z"),
+      ],
+      now
+    );
+    expect(results.map(result => result.item.key)).toEqual(["first", "second"]);
+    expect(results.every(result => result.phase === "soon")).toBe(true);
   });
 });

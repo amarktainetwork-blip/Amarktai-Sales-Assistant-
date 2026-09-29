@@ -21,6 +21,41 @@ const cursorBackedResources: Record<string, string> = {
   "contacts.read": "contacts",
   "tasks.read": "tasks",
 };
+
+/**
+ * Workspace freshness belongs to completed reconciliation cycles, not to the
+ * pagination checkpoints used by individual resource readers. A routine
+ * browser reconciliation can confirm current customer/task truth without
+ * moving an old full-scan cursor, while a successful narrow read must not hide
+ * another connection that has never reconciled.
+ *
+ * For a workspace backed by multiple connections, the oldest successful
+ * reconciliation is the last point at which the whole workspace was known to
+ * be current. A concurrent cycle keeps the previous proof until it finishes;
+ * a current error is surfaced explicitly.
+ */
+export function authoritativeCrmFreshness(
+  jobs: ReadonlyArray<{
+    status: string;
+    lastSucceededAt: Date | null;
+  }>
+) {
+  if (!jobs.length)
+    return { status: "not_synchronized" as const, lastSuccessfulAt: null };
+  const successful = jobs
+    .map(job => job.lastSucceededAt)
+    .filter((value): value is Date => value instanceof Date);
+  const lastSuccessfulAt =
+    successful.length === jobs.length
+      ? new Date(Math.min(...successful.map(value => value.valueOf())))
+      : null;
+  if (jobs.some(job => job.status === "error"))
+    return { status: "attention" as const, lastSuccessfulAt };
+  if (!lastSuccessfulAt)
+    return { status: "not_synchronized" as const, lastSuccessfulAt: null };
+  return { status: "synchronized" as const, lastSuccessfulAt };
+}
+
 export function calculateCurrentReadiness(input: {
   operations: ReadonlyMap<string, string>;
   allowedReads: string[];
