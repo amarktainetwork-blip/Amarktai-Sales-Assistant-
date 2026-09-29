@@ -1,7 +1,7 @@
 {
-  "operation": "inspect",
+  "operation": "diagnose",
   "server_name": "Amarktai Network - Sales Assistant",
   "server_domain": "sales.amarktai.co.za",
   "release_sha": "f75f2a36ea1645e926aa101f5821d9f0db2e9ff5",
-  "request_id": "final-safe-inspect-production-f75f2a36-2026-09-29"
+  "request_id": "post-reauth-final-diagnose-2026-09-29"
 }
