@@ -91,7 +91,7 @@ export default function Assistant() {
   const organisationId = organisation.data?.organisationId;
   const today = trpc.sales.today.useQuery(
     { organisationId: organisationId ?? 0 },
-    { enabled: Boolean(organisationId), retry: false, refetchInterval: 30_000 }
+    { enabled: Boolean(organisationId), retry: false, refetchInterval: 10_000, refetchIntervalInBackground: true }
   );
 
   const [messages, setMessages] = useState<Message[]>([]);

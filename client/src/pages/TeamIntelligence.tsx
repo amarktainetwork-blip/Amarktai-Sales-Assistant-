@@ -42,7 +42,13 @@ export default function TeamIntelligence() {
   const organisationId = organisation.data?.organisationId;
   const query = trpc.management.teamIntelligence.useQuery(
     { organisationId: organisationId ?? 0 },
-    { enabled: Boolean(organisationId), retry: false }
+    {
+      enabled: Boolean(organisationId),
+      retry: false,
+      refetchInterval: 15_000,
+      refetchIntervalInBackground: true,
+      refetchOnWindowFocus: true,
+    }
   );
   if (query.isLoading || organisation.isLoading)
     return (

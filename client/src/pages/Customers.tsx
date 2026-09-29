@@ -60,7 +60,7 @@ export default function Customers() {
     { page, pageSize: 50, search: query, sort: "updated" },
     {
       retry: false,
-      refetchInterval: 60_000,
+      refetchInterval: 15_000,
       refetchIntervalInBackground: true,
       refetchOnWindowFocus: true,
       refetchOnReconnect: true,
@@ -71,7 +71,7 @@ export default function Customers() {
     {
       enabled: Boolean(selectedId),
       retry: false,
-      refetchInterval: 60_000,
+      refetchInterval: 15_000,
       refetchIntervalInBackground: true,
       refetchOnWindowFocus: true,
       refetchOnReconnect: true,

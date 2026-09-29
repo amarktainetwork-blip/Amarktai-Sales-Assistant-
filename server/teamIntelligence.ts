@@ -1,10 +1,10 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, gte, inArray } from "drizzle-orm";
 import { crmActivities, crmOpportunities, crmPipelineStageMappings, crmTasks, externalUserMappings, inboundMessages, salesWorkItems } from "../drizzle/schema";
 import { getDb } from "./db";
 import { canViewTeamData, requireOrganisationMembership } from "./organisation";
 import { getSalesTargets } from "./salesTargets";
+import { INCOMPLETE_TASK_STATUSES } from "../shared/taskState";
 
-function open(status: string) { return !/completed|closed|done|cancelled/i.test(status); }
 function stale(lastActivityAt: Date | null, now: Date) { return !lastActivityAt || now.valueOf() - lastActivityAt.valueOf() >= 7 * 86_400_000; }
 function won(stage: string | null) { return Boolean(stage && /(^|\b)(closed[ _-]?won|won|sale[ _-]?complete|successful)(\b|$)/i.test(stage)); }
 function currencyCode(value: string | null) {
@@ -31,11 +31,46 @@ export async function getTeamIntelligence(input: { userId: number; organisationI
   const expectedMonthlyPace = Math.min(1, Math.max(0, nowParts.day / daysInMonth));
   const [mappings, tasks, opportunities, activities, workItems, inbound, targets, stageMappings] = await Promise.all([
     db.select().from(externalUserMappings).where(and(eq(externalUserMappings.organisationId, input.organisationId), eq(externalUserMappings.isActive, true))),
-    db.select().from(crmTasks).where(eq(crmTasks.organisationId, input.organisationId)).limit(5000),
-    db.select().from(crmOpportunities).where(eq(crmOpportunities.organisationId, input.organisationId)).limit(5000),
-    db.select().from(crmActivities).where(eq(crmActivities.organisationId, input.organisationId)).limit(10_000),
-    db.select().from(salesWorkItems).where(and(eq(salesWorkItems.organisationId, input.organisationId), inArray(salesWorkItems.status, ["open", "in_progress", "snoozed", "blocked"]))).limit(5000),
-    db.select().from(inboundMessages).where(and(eq(inboundMessages.organisationId, input.organisationId), eq(inboundMessages.needsAction, true))).limit(5000),
+    db
+      .select()
+      .from(crmTasks)
+      .where(
+        and(
+          eq(crmTasks.organisationId, input.organisationId),
+          inArray(crmTasks.status, [...INCOMPLETE_TASK_STATUSES])
+        )
+      ),
+    db
+      .select()
+      .from(crmOpportunities)
+      .where(eq(crmOpportunities.organisationId, input.organisationId)),
+    db
+      .select()
+      .from(crmActivities)
+      .where(
+        and(
+          eq(crmActivities.organisationId, input.organisationId),
+          gte(crmActivities.occurredAt, new Date(now.valueOf() - 48 * 60 * 60_000))
+        )
+      ),
+    db
+      .select()
+      .from(salesWorkItems)
+      .where(
+        and(
+          eq(salesWorkItems.organisationId, input.organisationId),
+          inArray(salesWorkItems.status, ["open", "in_progress", "snoozed", "blocked"])
+        )
+      ),
+    db
+      .select()
+      .from(inboundMessages)
+      .where(
+        and(
+          eq(inboundMessages.organisationId, input.organisationId),
+          eq(inboundMessages.needsAction, true)
+        )
+      ),
     getSalesTargets({ userId: input.userId, organisationId: input.organisationId }),
     db.select().from(crmPipelineStageMappings).where(and(eq(crmPipelineStageMappings.organisationId, input.organisationId), eq(crmPipelineStageMappings.isActive, true))),
   ]);
@@ -55,7 +90,7 @@ export async function getTeamIntelligence(input: { userId: number; organisationI
       .map(person => [person.userId!, person])
   );
   for (const task of tasks) {
-    if (!task.ownerExternalId || !people.has(task.ownerExternalId) || !open(task.status) || !task.dueAt || task.dueAt >= now) continue;
+    if (!task.ownerExternalId || !people.has(task.ownerExternalId) || !task.dueAt || task.dueAt >= now) continue;
     people.get(task.ownerExternalId)!.overdueTasks += 1;
   }
   for (const opportunity of opportunities) {
