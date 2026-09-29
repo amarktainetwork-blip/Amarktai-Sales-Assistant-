@@ -39,13 +39,14 @@ describe("client-handover live calls presentation", () => {
     expect(liveCalls).toContain('write(0, "RIFF")');
     expect(liveCalls).toContain('write(8, "WAVE")');
     expect(liveCalls).toContain('type: "audio/wav"');
+    expect(liveCalls).toContain("const LIVE_AUDIO_FIRST_CHUNK_MS = 1_000");
     expect(liveCalls).toContain("const LIVE_AUDIO_CHUNK_MS = 2_000");
     expect(liveCalls).toContain("context.createScriptProcessor");
     expect(liveCalls).not.toContain("recorder.start(LIVE_AUDIO_CHUNK_MS)");
   });
 
   it("queues incremental coaching so a busy request cannot drop a newer signal", () => {
-    expect(liveCalls).toContain("const LIVE_COACH_INTERVAL_MS = 750");
+    expect(liveCalls).toContain("const LIVE_COACH_INTERVAL_MS = 300");
     expect(liveCalls).toContain('fetch("/api/live-calls/coach-stream"');
     expect(liveCalls).toContain("setTip(partial)");
     expect(liveCalls).toContain(
