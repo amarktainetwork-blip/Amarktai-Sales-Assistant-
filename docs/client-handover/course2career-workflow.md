@@ -16,3 +16,17 @@ After a real unsuccessful call: propose VM only if voicemail actually occurred, 
 Stages follow actual facts: New Lead / Uncontacted -> Attempting Contact after the first attempted call -> Discovery Call Booked after an agreed consultation -> Discovery Completed / Considering Options after a completed pitch -> Enrolment / Verbal Yes – Pending Payment after a yes without payment -> Enrolled & Paid with Status Won only after payment or completed finance evidence. A person who is actually reached and is unsuitable/uninterested -> Not a Fit / Rejected with Status Lost. A person who never answers or responds after the full four-day process -> Permission to Close Your File plus the appropriate Close File communication, then Lost – No Show / No Response with Status Lost. These two Lost outcomes are intentionally different. All remain proposals until separately authorised and supported by capability proof.
 
 Post-pitch follow-ups use Failed Follow-Up snippets, not first-contact templates. Preserve agreed follow-up dates/times. Summarise meaningful conversations factually: situation, motivation, programme, funding, objections and next step. Watch payments/transactions for actual paid, monthly, failed or defaulted events; a pending stage is not payment evidence. Every active candidate needs a clear next action; do not fabricate tasks or stages to satisfy this rule.
+
+
+Daily working order and four-day contact pattern, supplied by Amelia on 29 September 2026
+
+Today must not use one fixed universal queue. Course2Career's company policy is:
+- Renewals and debt collection are normally handled first thing in the morning, often before 09:00, so administrative work is cleared before lead calling.
+- Lead contact stages are First Call, #2, #3 and Last Try (fourth/final attempt).
+- On a high-new-lead day the default working order is First Call, then Last Try, then #2, then #3. Workload can change the practical order, so Today must expose these as visible filterable categories rather than hide the underlying task groups.
+- A new lead should be attempted across four consecutive days, with the calling time varied between attempts. Do not repeatedly call at the same clock time if the previous attempt failed.
+- An explicit customer contact preference remains stronger than the generic rotation rule.
+- Genuine inbound replies, confirmed callbacks and truly time-critical commitments remain visible and actionable and must not be suppressed merely to satisfy a generic category order.
+- Every actual call attempt must be evidenced before any CRM task/opportunity update is proposed. Production remains review-only until write commissioning is separately authorised.
+
+These rules are tenant configuration for Course2Career, not global AmarktAI behavior. Other organisations can define different categories, labels, priorities, morning windows and rotation settings without changing application code.
