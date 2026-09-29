@@ -1454,8 +1454,7 @@ export async function searchApprovedKnowledge(
         )
       )
     )
-    .orderBy(desc(knowledgeSources.updatedAt))
-    .limit(80);
+    .orderBy(desc(knowledgeSources.updatedAt));
   return rankApprovedKnowledgeSources(sources, query);
 }
 
