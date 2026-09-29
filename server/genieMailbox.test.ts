@@ -621,7 +621,7 @@ describe("read-only mailbox ownership proof", () => {
       sort: "desc",
       sortBy: "last_message_date",
       status: "all",
-      limit: 50,
+      limit: 20,
     });
   });
 
