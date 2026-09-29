@@ -1803,6 +1803,8 @@ export async function startAutomaticCommissioning(input: {
       connectorClass: values.connectorClass,
     },
   });
+  // The dedicated commissioning worker polls queued work every 10 seconds.
+  // Keep this API path enqueue-only so durable worker ownership stays intact.
   return presentCommissioningJob(job);
 }
 export async function authoriseCommissioningSafeTest(input: {
