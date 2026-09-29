@@ -551,11 +551,14 @@ export async function getTodayWork(input: {
         .where(
           and(
             eq(crmActivities.organisationId, input.organisationId),
-            inArray(crmActivities.contactExternalId, taskContactExternalIds)
+            inArray(crmActivities.contactExternalId, taskContactExternalIds),
+            gte(
+              crmActivities.occurredAt,
+              new Date(now.valueOf() - 30 * 86_400_000)
+            )
           )
         )
         .orderBy(desc(crmActivities.occurredAt))
-        .limit(5000)
     : [];
   const ownerEmailBySystemAndOwner = new Map(
     mappings.map(mapping => [
