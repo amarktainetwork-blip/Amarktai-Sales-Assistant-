@@ -84,6 +84,14 @@ describe("draft preparation is separate from sending", () => {
       activities: {
         items: [
           {
+            id: 10,
+            externalId: "activity-10",
+            activityType: "email",
+            occurredAt: new Date("2026-09-24T15:10:00Z"),
+            body: "Hi Alex, thanks for coming back to me. I can call you after 4 if that works. Thanks, Amelia",
+            raw: { direction: "outbound" },
+          },
+          {
             id: 11,
             externalId: "activity-11",
             activityType: "note",
@@ -169,6 +177,12 @@ describe("draft preparation is separate from sending", () => {
     );
     expect(m.genx.mock.calls[0][0].messages[0].content).toContain(
       "funding remains the blocker"
+    );
+    expect(m.genx.mock.calls[0][0].messages[0].content).toContain(
+      "RECENT SALESPERSON WRITING EXAMPLES"
+    );
+    expect(m.genx.mock.calls[0][0].messages[0].content).toContain(
+      "Hi Alex, thanks for coming back to me"
     );
     expect(m.genx.mock.calls[0][0].messages[0].content).toContain(
       "Can you call me at 16:00 today?"
