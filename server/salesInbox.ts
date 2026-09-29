@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, or } from "drizzle-orm";
+import { and, count, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { crmContacts, inboundMessages, organisations } from "../drizzle/schema";
 import { getDb } from "./db";
 import { memberOnboardingFor, requireOrganisationMembership } from "./organisation";
@@ -16,43 +16,52 @@ export async function getSalesInbox(input: {
   if (!db) throw new Error("Database connection is unavailable.");
   const limit = Math.min(100, Math.max(1, input.limit ?? 50));
 
-  const rows = await db
-    .select({
-      message: inboundMessages,
-      contactId: crmContacts.id,
-      contactFirstName: crmContacts.firstName,
-      contactLastName: crmContacts.lastName,
-      contactEmail: crmContacts.email,
-      contactPhone: crmContacts.phone,
-      contactOwnerExternalId: crmContacts.ownerExternalId,
-    })    .from(inboundMessages)
-    .leftJoin(
-      crmContacts,
+  const actionableWhere = and(
+    eq(inboundMessages.organisationId, input.organisationId),
+    eq(inboundMessages.needsAction, true),
+    or(
+      eq(inboundMessages.mailboxUserId, input.userId),
       and(
-        eq(crmContacts.organisationId, inboundMessages.organisationId),
-        eq(crmContacts.connectedSystemId, inboundMessages.connectedSystemId),
-        eq(crmContacts.externalId, inboundMessages.contactExternalId)
-      )
-    )
-    .where(
-      and(
-        eq(inboundMessages.organisationId, input.organisationId),
-        eq(inboundMessages.needsAction, true),
-        or(
-          eq(inboundMessages.mailboxUserId, input.userId),
-          and(
-            isNull(inboundMessages.mailboxUserId),
-            personalOwnerSql(
-              input,
-              crmContacts.connectedSystemId,
-              crmContacts.ownerExternalId
-            )
-          )
+        isNull(inboundMessages.mailboxUserId),
+        personalOwnerSql(
+          input,
+          crmContacts.connectedSystemId,
+          crmContacts.ownerExternalId
         )
       )
     )
-    .orderBy(desc(inboundMessages.receivedAt))
-    .limit(limit);
+  );
+  const joinContact = and(
+    eq(crmContacts.organisationId, inboundMessages.organisationId),
+    eq(crmContacts.connectedSystemId, inboundMessages.connectedSystemId),
+    eq(crmContacts.externalId, inboundMessages.contactExternalId)
+  );
+
+  const [rows, countRows] = await Promise.all([
+    db
+      .select({
+        message: inboundMessages,
+        contactId: crmContacts.id,
+        contactFirstName: crmContacts.firstName,
+        contactLastName: crmContacts.lastName,
+        contactEmail: crmContacts.email,
+        contactPhone: crmContacts.phone,
+        contactOwnerExternalId: crmContacts.ownerExternalId,
+      })
+      .from(inboundMessages)
+      .leftJoin(crmContacts, joinContact)
+      .where(actionableWhere)
+      .orderBy(desc(inboundMessages.receivedAt))
+      .limit(limit),
+    db
+      .select({
+        total: count(),
+        saleIntent: sql<number>`SUM(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(${inboundMessages.classification}, '$.category')) = 'sale_intent' THEN 1 ELSE 0 END)`,
+      })
+      .from(inboundMessages)
+      .leftJoin(crmContacts, joinContact)
+      .where(actionableWhere),
+  ]);
   const messages = rows.map(row => ({
     ...row.message,
     contact: row.contactId
@@ -67,16 +76,11 @@ export async function getSalesInbox(input: {
         }
       : null,
   }));
-  const category = (value: unknown) =>
-    value && typeof value === "object" && !Array.isArray(value)
-      ? String((value as Record<string, unknown>).category || "")
-      : "";
+  const totals = countRows[0];
   return {
     messages,
-    needsActionCount: messages.filter(message => message.needsAction).length,
-    saleIntentCount: messages.filter(
-      message => category(message.classification) === "sale_intent"
-    ).length,
+    needsActionCount: Number(totals?.total || 0),
+    saleIntentCount: Number(totals?.saleIntent || 0),
     newestReceivedAt: messages[0]?.receivedAt ?? null,
   };
 }
