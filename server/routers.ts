@@ -2098,6 +2098,10 @@ export const appRouter = router({
         z.object({
           discoveryId: z.number().int().positive(),
           knowledgeIndexes: z.array(z.number().int().min(0).max(399)).max(400),
+          commercialKnowledgeIndexes: z
+            .array(z.number().int().min(0).max(399))
+            .max(400)
+            .optional(),
           corrections: z
             .array(
               z.object({
@@ -2129,6 +2133,7 @@ export const appRouter = router({
           companyProfileId: setup.profile.id,
           discoveryId: input.discoveryId,
           knowledgeIndexes: input.knowledgeIndexes,
+          commercialKnowledgeIndexes: input.commercialKnowledgeIndexes,
           corrections: input.corrections,
         });
       }),
