@@ -109,7 +109,7 @@ if [ "$OPERATION" = "configure" ]; then
   app_revision="$(docker inspect -f '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$app_container")"
   [ "$app_revision" = "$TARGET_SHA" ] || fail "live app revision $app_revision does not match requested configuration release $TARGET_SHA"
 
-  pack_path="/app/config/client-packs/$CONFIG_CLIENT_PACK.json"
+  pack_path="/app/client-packs/$CONFIG_CLIENT_PACK.json"
   docker compose --env-file .env -f deploy/webdock/docker-compose.yml exec -T app     sh -eu -c 'test -f "$1"' _ "$pack_path" || fail "client pack is not present in production image"
 
   db_sql() {
