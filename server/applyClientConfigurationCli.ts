@@ -27,20 +27,22 @@ async function main() {
     connectedSystemId,
     packPath,
   });
-  process.stdout.write(
-    JSON.stringify({
-      applied: true,
-      organisationId,
-      connectedSystemId,
-      customerModel: result.customerModel,
-      allowedWriteCapabilities: result.allowedWriteCapabilities,
-    }) + "\n"
-  );
+  await new Promise<void>(resolve => {
+    process.stdout.write(
+      JSON.stringify({
+        applied: true,
+        organisationId,
+        connectedSystemId,
+        customerModel: result.customerModel,
+        allowedWriteCapabilities: result.allowedWriteCapabilities,
+      }) + "\n",
+      () => resolve()
+    );
+  });
+  process.exit(0);
 }
 
 main().catch(error => {
-  console.error(
-    error instanceof Error ? error.message : String(error)
-  );
-  process.exitCode = 1;
+  const message = `${error instanceof Error ? error.message : String(error)}\n`;
+  process.stderr.write(message, () => process.exit(1));
 });
