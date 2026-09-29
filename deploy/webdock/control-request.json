@@ -1,11 +1,7 @@
 {
-  "operation": "configure",
+  "operation": "inspect",
   "server_name": "Amarktai Network - Sales Assistant",
   "server_domain": "sales.amarktai.co.za",
-  "release_sha": "3fd6601fe74dfd730fe8a002503d4ccc5dacfda0",
-  "request_id": "configure-course2career-pre-redesign-2026-09-29-r2",
-  "user_id": 2,
-  "organisation_id": 8,
-  "connected_system_id": 8,
-  "client_pack": "course2career"
+  "release_sha": "ea6c347bab36b65c7653736575b44cff7e629875",
+  "request_id": "safe-inspect-after-stale-configure-2026-09-29"
 }
