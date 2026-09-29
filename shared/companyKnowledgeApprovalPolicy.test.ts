@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildBusinessBasicsApproval,
+  buildCommercialKnowledgeApproval,
   buildSalesFocusSuggestions,
   businessBasicsCounts,
   containsCommercialKnowledge,
@@ -8,6 +9,51 @@ import {
 } from "./companyKnowledgeApprovalPolicy";
 
 describe("company knowledge business-basics approval policy", () => {
+
+  it("offers only evidenced, non-conflicting commercial facts for explicit manager approval", () => {
+    const items = buildCommercialKnowledgeApproval([
+      {
+        title: "Cyber Security Career Programme",
+        content: "Full current price: £1,899. £1 deposit available.",
+        category: "career_programmes",
+        reviewState: "review_required",
+        trustEligible: true,
+        sourceUrl: "https://example.test/cyber",
+        sourcePageIds: ["PAGE_0010"],
+        priceFacts: [{ value: "£1,899" }],
+      },
+      {
+        title: "Conflicting course price",
+        content: "Full current price: £999.",
+        category: "pricing",
+        reviewState: "conflict",
+        trustEligible: false,
+        sourceUrl: "https://example.test/conflict",
+        sourcePageIds: ["PAGE_0011"],
+      },
+      {
+        title: "Navigation price teaser",
+        content: "From £99.",
+        category: "navigation",
+        reviewState: "review_required",
+        trustEligible: true,
+        sourceUrl: "https://example.test/nav",
+        sourcePageIds: ["PAGE_0012"],
+      },
+    ]);
+
+    expect(items).toEqual([
+      {
+        index: 0,
+        title: "Cyber Security Career Programme",
+        content: "Full current price: £1,899. £1 deposit available.",
+        category: "career_programmes",
+        sourceUrl: "https://example.test/cyber",
+        fetchedAt: undefined,
+      },
+    ]);
+  });
+
   it("keeps offering identity while stripping website-derived prices", () => {
     const items = buildBusinessBasicsApproval([
       {
