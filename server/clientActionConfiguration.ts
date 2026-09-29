@@ -70,6 +70,34 @@ export type WorkflowActionConfiguration = {
   requiredPostconditions: string[];
 };
 
+export type TodayWorkSourceKind =
+  | "new_lead"
+  | "inbound_reply"
+  | "confirmed_follow_up";
+
+export type TodayWorkCategoryConfiguration = {
+  key: string;
+  label: string;
+  priority: number;
+  morningPriority?: number;
+  sourceKinds: TodayWorkSourceKind[];
+  exactTaskTitles: string[];
+  taskTitlePrefixes: string[];
+  taskTitleContains: string[];
+  workflowPurposes: string[];
+};
+
+export type TodayWorkPolicyConfiguration = {
+  morningWindowEnd?: string;
+  categories: TodayWorkCategoryConfiguration[];
+  callTimeRotation?: {
+    enabled: boolean;
+    categoryKeys: string[];
+    minimumVariationMinutes: number;
+    expectedConsecutiveDays: number;
+  };
+};
+
 export type CrmCurrentRecordRule = {
   provider?: string;
   entity: "contact";
@@ -94,6 +122,8 @@ export type ClientActionConfiguration = {
   currentRecordRules: CrmCurrentRecordRule[];
   /** Source checks only: configured pending stages never prove a payment. */
   paymentReview?: { enabled: boolean; pendingStages: string[] };
+  /** Tenant-specific Today grouping and prioritisation. Never hard-code a client workflow in the queue engine. */
+  todayWorkPolicy?: TodayWorkPolicyConfiguration;
 };
 
 const EMPTY_WORKFLOW: WorkflowActionConfiguration = {
@@ -118,6 +148,7 @@ export const EMPTY_CLIENT_ACTION_CONFIGURATION: ClientActionConfiguration = {
   closureMapping: {},
   requiredPostconditions: {},
   currentRecordRules: [],
+  todayWorkPolicy: undefined,
 };
 
 export const SUPPORTED_CONFIGURED_WORKFLOW_ACTIONS = new Set([
@@ -350,6 +381,93 @@ function currentRecordRule(value: unknown): CrmCurrentRecordRule | null {
   };
 }
 
+function boundedInteger(
+  value: unknown,
+  fallback: number,
+  minimum: number,
+  maximum: number
+) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= minimum && parsed <= maximum
+    ? parsed
+    : fallback;
+}
+
+function todayWorkPolicy(
+  value: unknown
+): ClientActionConfiguration["todayWorkPolicy"] {
+  const source = object(value);
+  if (!Object.keys(source).length) return undefined;
+  const sourceKinds = new Set<TodayWorkSourceKind>([
+    "new_lead",
+    "inbound_reply",
+    "confirmed_follow_up",
+  ]);
+  const categories: TodayWorkCategoryConfiguration[] = [];
+  if (Array.isArray(source.categories))
+    for (const rawCategory of source.categories.slice(0, 40)) {
+      const category = object(rawCategory);
+      const key =
+        typeof category.key === "string"
+          ? category.key.trim().toLowerCase()
+          : "";
+      const label =
+        typeof category.label === "string" ? category.label.trim() : "";
+      if (!/^[a-z0-9][a-z0-9_-]{0,79}$/.test(key) || !label) continue;
+      const normalized: TodayWorkCategoryConfiguration = {
+        key,
+        label: label.slice(0, 100),
+        priority: boundedInteger(category.priority, 50, -20, 200),
+        sourceKinds: strings(category.sourceKinds, 10).filter(
+          (kind): kind is TodayWorkSourceKind =>
+            sourceKinds.has(kind as TodayWorkSourceKind)
+        ),
+        exactTaskTitles: strings(category.exactTaskTitles, 80),
+        taskTitlePrefixes: strings(category.taskTitlePrefixes, 80),
+        taskTitleContains: strings(category.taskTitleContains, 80),
+        workflowPurposes: strings(category.workflowPurposes, 80),
+      };
+      if (category.morningPriority != null)
+        normalized.morningPriority = boundedInteger(
+          category.morningPriority,
+          50,
+          -20,
+          200
+        );
+      categories.push(normalized);
+    }
+  const rotation = object(source.callTimeRotation);
+  const rotationEnabled = rotation.enabled === true;
+  return {
+    morningWindowEnd:
+      typeof source.morningWindowEnd === "string" &&
+      /^([01]\d|2[0-3]):[0-5]\d$/.test(source.morningWindowEnd.trim())
+        ? source.morningWindowEnd.trim()
+        : undefined,
+    categories,
+    callTimeRotation: rotationEnabled
+      ? {
+          enabled: true,
+          categoryKeys: strings(rotation.categoryKeys, 40).map(value =>
+            value.toLowerCase()
+          ),
+          minimumVariationMinutes: boundedInteger(
+            rotation.minimumVariationMinutes,
+            120,
+            30,
+            480
+          ),
+          expectedConsecutiveDays: boundedInteger(
+            rotation.expectedConsecutiveDays,
+            4,
+            2,
+            14
+          ),
+        }
+      : undefined,
+  };
+}
+
 function officeHours(value: unknown): ClientActionConfiguration["officeHours"] {
   const source = object(value);
   const start = typeof source.start === "string" ? source.start.trim() : "";
@@ -414,6 +532,7 @@ export function normalizeClientActionConfiguration(
       enabled: object(source.paymentReview).enabled === true,
       pendingStages: strings(object(source.paymentReview).pendingStages, 40),
     },
+    todayWorkPolicy: todayWorkPolicy(source.todayWorkPolicy),
     duplicateRules: strings(source.duplicateRules, 80),
     closureMapping: stringMap(source.closureMapping, 80),
     requiredPostconditions,
@@ -536,6 +655,35 @@ export function validateClientActionConfigurationForCommissioning(
   const source = value as Record<string, unknown>;
   const configuration = normalizeClientActionConfiguration(source);
   validateOfficeHoursSource(source.officeHours, configuration.officeHours);
+
+  if (configuration.todayWorkPolicy) {
+    const categories = configuration.todayWorkPolicy.categories;
+    const keys = categories.map(category => category.key);
+    if (new Set(keys).size !== keys.length)
+      throw new Error(
+        "TODAY_WORK_POLICY_CATEGORY_DUPLICATE: category keys must be unique per organisation."
+      );
+    for (const category of categories) {
+      if (
+        !category.sourceKinds.length &&
+        !category.exactTaskTitles.length &&
+        !category.taskTitlePrefixes.length &&
+        !category.taskTitleContains.length &&
+        !category.workflowPurposes.length
+      )
+        throw new Error(
+          `TODAY_WORK_POLICY_CATEGORY_EMPTY: '${category.key}' must match a source kind, CRM task title or workflow purpose.`
+        );
+    }
+    const unknownRotationCategory =
+      configuration.todayWorkPolicy.callTimeRotation?.categoryKeys.find(
+        key => !keys.includes(key)
+      );
+    if (unknownRotationCategory)
+      throw new Error(
+        `TODAY_WORK_POLICY_ROTATION_CATEGORY_UNKNOWN: '${unknownRotationCategory}' is not a configured Today category.`
+      );
+  }
 
   for (const [workflowKey, workflow] of Object.entries(
     configuration.workflows
