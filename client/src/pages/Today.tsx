@@ -75,10 +75,6 @@ export default function Today() {
     today.data?.queues.assignedTaskExceptions ?? [];
   const upcoming = today.data?.queues.upcoming ?? [];
   const current = callQueue.find(item => item.contactEligibleNow !== false);
-  const availableNow = callQueue.filter(
-    item => item.contactEligibleNow !== false
-  ).length;
-  const deferredForPreference = callQueue.length - availableNow;
   const replyQueue = callQueue.filter(
     item => item.primaryKind === "inbound_reply"
   );
