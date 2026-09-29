@@ -20,15 +20,15 @@ import {
   toAdapterConnection,
 } from "../connectedSystems";
 
-export const DEFAULT_CRM_SYNC_INTERVAL_MS = 120_000;
-export const CRM_SYNC_POLL_INTERVAL_MS = 30_000;
+export const DEFAULT_CRM_SYNC_INTERVAL_MS = 30_000;
+export const CRM_SYNC_POLL_INTERVAL_MS = 10_000;
 export const BACKGROUND_ROUTINE_REFRESH_CUSTOMER_HISTORY = false;
 const MAX_CONNECTIONS_PER_CYCLE = 50;
 export const CRM_SYNC_STALE_LEASE_MS = 10 * 60_000;
 
 export function crmSyncIntervalMs(raw = process.env.CRM_SYNC_INTERVAL_MS) {
   const parsed = Number(raw || DEFAULT_CRM_SYNC_INTERVAL_MS);
-  return Number.isFinite(parsed) && parsed >= 30_000
+  return Number.isFinite(parsed) && parsed >= DEFAULT_CRM_SYNC_INTERVAL_MS
     ? Math.floor(parsed)
     : DEFAULT_CRM_SYNC_INTERVAL_MS;
 }
@@ -392,7 +392,7 @@ export async function runConnectionScopedCrmSyncCycle(now = new Date()) {
         if (routine)
           await syncConnectedSystemRoutine({
             ...syncInput,
-            // The 60-second lead watcher owns exact active-customer history.
+            // The 30-second lead watcher owns exact active-customer history.
             // Avoid duplicating those expensive browser reads in reconciliation.
             refreshCustomerHistory:
               BACKGROUND_ROUTINE_REFRESH_CUSTOMER_HISTORY,
