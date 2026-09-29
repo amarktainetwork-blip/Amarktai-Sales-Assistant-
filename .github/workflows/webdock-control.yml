@@ -42,9 +42,13 @@ jobs:
           server_name="$(jq -r '.server_name' "$CONTROL_REQUEST")"
           server_domain="$(jq -r '.server_domain' "$CONTROL_REQUEST")"
           release_sha="$(jq -r '.release_sha' "$CONTROL_REQUEST")"
+          config_user_id="$(jq -r '.user_id // empty' "$CONTROL_REQUEST")"
+          config_organisation_id="$(jq -r '.organisation_id // empty' "$CONTROL_REQUEST")"
+          config_connected_system_id="$(jq -r '.connected_system_id // empty' "$CONTROL_REQUEST")"
+          config_client_pack="$(jq -r '.client_pack // empty' "$CONTROL_REQUEST")"
 
           case "$operation" in
-            inspect|diagnose|cleanup|deploy|verify) ;;
+            inspect|diagnose|cleanup|deploy|verify|configure) ;;
             *) echo "Unsupported operation: $operation" >&2; exit 1 ;;
           esac
 
@@ -52,6 +56,25 @@ jobs:
             echo "release_sha must be a full 40-character SHA." >&2
             exit 1
           }
+
+          if [ "$operation" = "configure" ]; then
+            [[ "$config_user_id" =~ ^[1-9][0-9]*$ ]] || {
+              echo "configure user_id must be a positive integer." >&2
+              exit 1
+            }
+            [[ "$config_organisation_id" =~ ^[1-9][0-9]*$ ]] || {
+              echo "configure organisation_id must be a positive integer." >&2
+              exit 1
+            }
+            [[ "$config_connected_system_id" =~ ^[1-9][0-9]*$ ]] || {
+              echo "configure connected_system_id must be a positive integer." >&2
+              exit 1
+            }
+            [[ "$config_client_pack" =~ ^[a-z0-9][a-z0-9_-]{0,79}$ ]] || {
+              echo "configure client_pack must be a safe client-pack slug." >&2
+              exit 1
+            }
+          fi
 
           auth=(-H "Authorization: Bearer $WEBDOCK_TOKEN" -H "X-Application: AmarktaiSalesGitHubControl/1.0")
 
@@ -79,6 +102,10 @@ jobs:
           echo "operation=$operation" >> "$GITHUB_OUTPUT"
           echo "server_slug=$server_slug" >> "$GITHUB_OUTPUT"
           echo "release_sha=$release_sha" >> "$GITHUB_OUTPUT"
+          echo "config_user_id=$config_user_id" >> "$GITHUB_OUTPUT"
+          echo "config_organisation_id=$config_organisation_id" >> "$GITHUB_OUTPUT"
+          echo "config_connected_system_id=$config_connected_system_id" >> "$GITHUB_OUTPUT"
+          echo "config_client_pack=$config_client_pack" >> "$GITHUB_OUTPUT"
 
           echo "Resolved Sales VPS:"
           jq '.[0] | {slug,name,status,location,image,profile,aliases}' <<<"$matches"
@@ -106,6 +133,10 @@ jobs:
           OPERATION: ${{ steps.resolve.outputs.operation }}
           RELEASE_SHA: ${{ steps.resolve.outputs.release_sha }}
           SERVER_SLUG: ${{ steps.resolve.outputs.server_slug }}
+          CONFIG_USER_ID: ${{ steps.resolve.outputs.config_user_id }}
+          CONFIG_ORGANISATION_ID: ${{ steps.resolve.outputs.config_organisation_id }}
+          CONFIG_CONNECTED_SYSTEM_ID: ${{ steps.resolve.outputs.config_connected_system_id }}
+          CONFIG_CLIENT_PACK: ${{ steps.resolve.outputs.config_client_pack }}
         run: |
           set -Eeuo pipefail
 
@@ -116,6 +147,10 @@ jobs:
           sed \
             -e "s/__OPERATION__/$OPERATION/g" \
             -e "s/__TARGET_SHA__/$RELEASE_SHA/g" \
+            -e "s/__CONFIG_USER_ID__/$CONFIG_USER_ID/g" \
+            -e "s/__CONFIG_ORGANISATION_ID__/$CONFIG_ORGANISATION_ID/g" \
+            -e "s/__CONFIG_CONNECTED_SYSTEM_ID__/$CONFIG_CONNECTED_SYSTEM_ID/g" \
+            -e "s/__CONFIG_CLIENT_PACK__/$CONFIG_CLIENT_PACK/g" \
             deploy/webdock/webdock-release-control.sh > /tmp/amarktai-control.sh
 
           bash -n /tmp/amarktai-control.sh
