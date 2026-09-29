@@ -7,7 +7,7 @@ import { deriveCustomerContactPreference } from "./contactPreference";
 import { buildTodayCallQueue, unrepresentedTodayTasks } from "./todayCallQueue";
 import { buildTodayWorkGroups } from "./todayWorkPolicy";
 import { opportunityIsHistorical } from "./crm/actionExecutionPreconditions";
-import { and, asc, desc, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, gte, inArray, isNull, lte, or } from "drizzle-orm";
 import {
   actionProposals,
   assistantReminders,
@@ -268,6 +268,7 @@ export async function getTodayWork(input: {
     opportunities,
     syncJobs,
     inboundRows,
+    inboundActionCountRows,
     reminders,
     futureCommitments,
     futureCrmTasks,
@@ -343,6 +344,39 @@ export async function getTodayWork(input: {
       )
       .orderBy(desc(inboundMessages.receivedAt))
       .limit(100),
+    db
+      .select({ total: count() })
+      .from(inboundMessages)
+      .leftJoin(
+        crmContacts,
+        and(
+          eq(crmContacts.organisationId, inboundMessages.organisationId),
+          eq(crmContacts.connectedSystemId, inboundMessages.connectedSystemId),
+          eq(crmContacts.externalId, inboundMessages.contactExternalId)
+        )
+      )
+      .where(
+        and(
+          eq(inboundMessages.organisationId, input.organisationId),
+          eq(inboundMessages.needsAction, true),
+          gte(
+            inboundMessages.receivedAt,
+            new Date(now.valueOf() - 45 * 86_400_000)
+          ),
+          lte(inboundMessages.receivedAt, now),
+          or(
+            eq(inboundMessages.mailboxUserId, input.userId),
+            and(
+              isNull(inboundMessages.mailboxUserId),
+              personalOwnerSql(
+                input,
+                crmContacts.connectedSystemId,
+                crmContacts.ownerExternalId
+              )
+            )
+          )
+        )
+      ),
     db
       .select()
       .from(assistantReminders)
@@ -956,7 +990,7 @@ export async function getTodayWork(input: {
       staleOpportunities: staleOpportunities.length,
       noNextStep: noNextStep.length,
       priorityRecords: priority.length,
-      inboundNeedsAction: currentInbound.length,
+      inboundNeedsAction: Number(inboundActionCountRows[0]?.total || 0),
       remindersDue: currentReminders.length,
       callbacksDue: callbacks.length,
       awaitingTaskReview: pendingTaskExternalIds.length,
