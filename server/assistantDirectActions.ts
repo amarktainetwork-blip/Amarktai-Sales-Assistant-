@@ -105,7 +105,7 @@ export function salespersonVoiceExamples(
     detail.activities.items,
     detail.communications.items
   )
-    .filter(item => item.direction === "outbound")
+    .filter(item => item.direction === "Sent")
     .map(item => ({
       channel: item.channel,
       body: draftTimelineBody(item.body),
