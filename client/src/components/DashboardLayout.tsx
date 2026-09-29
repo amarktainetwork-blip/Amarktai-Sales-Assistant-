@@ -21,7 +21,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { trpc } from "@/lib/trpc";
-import { timedWorkAttention } from "@/lib/timedWorkAttention";
+import { timedWorkAttentions } from "@/lib/timedWorkAttention";
 import {
   Building2,
   AlertTriangle,
@@ -183,17 +183,16 @@ export default function DashboardLayout({
     : Number.POSITIVE_INFINITY;
   const crmTruthStale =
     dayPulse.isSuccess &&
-    (dayPulse.data?.freshness.status !== "synchronized" ||
-      truthAgeMs > 60_000);
+    (dayPulse.data?.freshness.status !== "synchronized" || truthAgeMs > 60_000);
   const crmTruthAgeLabel = truthLastSuccessfulAt
     ? truthAgeMs < 60_000
       ? "under a minute"
       : `${Math.floor(truthAgeMs / 60_000)} minute${Math.floor(truthAgeMs / 60_000) === 1 ? "" : "s"}`
     : "not yet confirmed";
 
-  const timedAttention = useMemo(
+  const timedAttentions = useMemo(
     () =>
-      timedWorkAttention(
+      timedWorkAttentions(
         (dayPulse.data?.queues.callQueue ?? []).map(item => ({
           ...item,
           dueAt: item.attentionDueAt,
@@ -203,8 +202,8 @@ export default function DashboardLayout({
       ),
     [clock, dayPulse.data?.queues.callQueue]
   );
-  const dueAttention = timedAttention?.item;
-  const dueAttentionPhase = timedAttention?.phase ?? "soon";
+  const dueAttention = timedAttentions[0]?.item;
+  const dueAttentionPhase = timedAttentions[0]?.phase ?? "soon";
   // Completed onboarding is durable; runtime CRM health is shown separately.
   const setupComplete = storedCompanyComplete;
 
@@ -321,45 +320,45 @@ export default function DashboardLayout({
   }, [inbox.data?.messages, organisationId, navigate]);
 
   useEffect(() => {
-    if (!organisationId || !dueAttention?.dueAt) return;
-    try {
-      const dueAt = new Date(dueAttention.dueAt);
-      const key = `amarktai:timed-work-notified:${organisationId}:${dueAttention.key}:${dueAt.toISOString()}:${dueAttentionPhase}`;
-      if (localStorage.getItem(key)) return;
-      const minutes = Math.max(
-        0,
-        Math.ceil((dueAt.valueOf() - Date.now()) / 60_000)
-      );
-      const dueNow = dueAttentionPhase === "due";
-      const title = dueNow
-        ? `${dueAttention.name} is due now`
-        : `${dueAttention.name} is due in ${minutes} minute${minutes === 1 ? "" : "s"}`;
-      toast.info(title, {
-        description: dueAttention.headline,
-        action: { label: "Open Today", onClick: () => navigate("/today") },
-        duration: dueNow ? 20_000 : 12_000,
-      });
-      if (
-        typeof window !== "undefined" &&
-        "Notification" in window &&
-        Notification.permission === "granted"
-      ) {
-        new Notification(
-          dueNow
-            ? "AmarktAI · Sales task due now"
-            : "AmarktAI · Upcoming sales task",
-          {
-            body: dueNow
-              ? `${dueAttention.name}: ${dueAttention.headline}`
-              : `${dueAttention.name}: ${dueAttention.headline} · due in ${minutes} minute${minutes === 1 ? "" : "s"}`,
-          }
-        );
+    if (!organisationId || !timedAttentions.length) return;
+    for (const attention of timedAttentions) {
+      const { item, phase, minutes } = attention;
+      if (!item.dueAt) continue;
+      try {
+        const dueAt = new Date(item.dueAt);
+        const key = `amarktai:timed-work-notified:${organisationId}:${item.key}:${dueAt.toISOString()}:${phase}`;
+        if (localStorage.getItem(key)) continue;
+        const dueNow = phase === "due";
+        const title = dueNow
+          ? `${item.name} is due now`
+          : `${item.name} is due in ${minutes} minute${minutes === 1 ? "" : "s"}`;
+        toast.info(title, {
+          description: item.headline,
+          action: { label: "Open Today", onClick: () => navigate("/today") },
+          duration: dueNow ? 20_000 : 12_000,
+        });
+        if (
+          typeof window !== "undefined" &&
+          "Notification" in window &&
+          Notification.permission === "granted"
+        ) {
+          new Notification(
+            dueNow
+              ? "AmarktAI · Sales task due now"
+              : "AmarktAI · Upcoming sales task",
+            {
+              body: dueNow
+                ? `${item.name}: ${item.headline}`
+                : `${item.name}: ${item.headline} · due in ${minutes} minute${minutes === 1 ? "" : "s"}`,
+            }
+          );
+        }
+        localStorage.setItem(key, "1");
+      } catch {
+        // The persistent Today queue remains the source of truth.
       }
-      localStorage.setItem(key, "1");
-    } catch {
-      // The persistent Today queue remains the source of truth.
     }
-  }, [dueAttention, dueAttentionPhase, navigate, organisationId]);
+  }, [navigate, organisationId, timedAttentions]);
 
   const secondaryMenu = useMemo<NavItem[]>(() => {
     return [
@@ -544,7 +543,8 @@ export default function DashboardLayout({
                 <AlertTriangle className="h-4 w-4 shrink-0 text-[#D7A44F]" />
                 <span>
                   CRM truth is stale. The last confirmed reconciliation was{" "}
-                  {crmTruthAgeLabel} ago. Screens may show work that has already been completed until synchronization catches up.
+                  {crmTruthAgeLabel} ago. Screens may show work that has already
+                  been completed until synchronization catches up.
                 </span>
               </div>
               <Button

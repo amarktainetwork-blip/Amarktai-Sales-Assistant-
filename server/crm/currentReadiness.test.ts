@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  authoritativeCrmFreshness,
   calculateCurrentReadiness,
   healthSummaryAfterReadiness,
   shouldPreserveConnectionStatus,
@@ -15,6 +16,69 @@ const base = {
   ],
 };
 describe("current readiness convergence", () => {
+  describe("authoritative workspace freshness", () => {
+    const older = new Date("2026-09-25T08:00:00.000Z");
+    const current = new Date("2026-09-29T08:00:00.000Z");
+
+    it("uses a completed full or incremental reconciliation, not an old pagination cursor", () => {
+      // Resource cursors are deliberately not an input to workspace freshness.
+      // The old date represents a full-scan checkpoint that did not need to move.
+      expect(
+        authoritativeCrmFreshness([
+          { status: "ready", lastSucceededAt: current },
+        ])
+      ).toEqual({ status: "synchronized", lastSuccessfulAt: current });
+      expect(older).not.toEqual(current);
+    });
+
+    it("does not let unchanged source data erase the latest successful proof", () => {
+      expect(
+        authoritativeCrmFreshness([
+          { status: "running", lastSucceededAt: current },
+        ])
+      ).toEqual({ status: "synchronized", lastSuccessfulAt: current });
+    });
+
+    it("keeps concurrent reconciliation on the previous proof until completion", () => {
+      expect(
+        authoritativeCrmFreshness([
+          { status: "running", lastSucceededAt: current },
+          { status: "ready", lastSucceededAt: current },
+        ])
+      ).toEqual({ status: "synchronized", lastSuccessfulAt: current });
+    });
+
+    it("uses the oldest connection proof for whole-workspace truth", () => {
+      expect(
+        authoritativeCrmFreshness([
+          { status: "ready", lastSucceededAt: current },
+          { status: "ready", lastSucceededAt: older },
+        ])
+      ).toEqual({ status: "synchronized", lastSuccessfulAt: older });
+    });
+
+    it("does not let one narrow success hide an unsynchronized connection", () => {
+      expect(
+        authoritativeCrmFreshness([
+          { status: "ready", lastSucceededAt: current },
+          { status: "ready", lastSucceededAt: null },
+        ])
+      ).toEqual({ status: "not_synchronized", lastSuccessfulAt: null });
+    });
+
+    it("surfaces a current reconciliation error without fabricating freshness", () => {
+      expect(
+        authoritativeCrmFreshness([
+          { status: "error", lastSucceededAt: current },
+        ])
+      ).toEqual({ status: "attention", lastSuccessfulAt: current });
+      expect(authoritativeCrmFreshness([])).toEqual({
+        status: "not_synchronized",
+        lastSuccessfulAt: null,
+      });
+    });
+  });
+
   it("clears stale transient browser-control health text after current reads recover", () => {
     expect(
       healthSummaryAfterReadiness({
