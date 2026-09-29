@@ -390,8 +390,7 @@ export async function getTodayWork(input: {
           lte(assistantReminders.dueAt, localDayEnd)
         )
       )
-      .orderBy(desc(assistantReminders.dueAt))
-      .limit(100),
+      .orderBy(desc(assistantReminders.dueAt)),
     db
       .select()
       .from(assistantReminders)
@@ -436,8 +435,7 @@ export async function getTodayWork(input: {
           lte(callbackTasks.dueAt, localDayEnd)
         )
       )
-      .orderBy(desc(callbackTasks.dueAt))
-      .limit(100),
+      .orderBy(desc(callbackTasks.dueAt)),
     db
       .select()
       .from(salesWorkItems)
@@ -459,8 +457,7 @@ export async function getTodayWork(input: {
           )
         )
       )
-      .orderBy(desc(salesWorkItems.priority), desc(salesWorkItems.updatedAt))
-      .limit(500),
+      .orderBy(desc(salesWorkItems.priority), desc(salesWorkItems.updatedAt)),
   ]);
   const ownerIds = new Set(
     mappings
