@@ -39,4 +39,14 @@ describe("workspace-wide CRM truth visibility", () => {
       'inArray(connectedSystems.status, ["ready", "limited_permissions"])'
     );
   });
+
+  it("excludes retired connection owner mappings from active Today work", () => {
+    const mappingsQuery = todaySource.slice(
+      todaySource.indexOf("connectedSystemId: externalUserMappings"),
+      todaySource.indexOf(".from(crmOpportunities)")
+    );
+    expect(mappingsQuery).toContain(".innerJoin(");
+    expect(mappingsQuery).toContain("connectedSystems.id");
+    expect(mappingsQuery).toContain('"ready", "limited_permissions"');
+  });
 });

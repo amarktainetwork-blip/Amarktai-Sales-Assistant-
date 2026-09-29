@@ -65,6 +65,9 @@ describe("canonical scoped customer data", () => {
     expect(query.offset).toBe(0);
     expect(query.where.sql).toContain("like");
     expect(query.where.sql).toContain("exists (select 1");
+    expect(query.where.sql).toContain("inner join");
+    expect(query.where.sql).toContain("connectedSystems");
+    expect(query.where.sql).toContain("in ('ready','limited_permissions')");
     expect(query.where.params).toContain(2);
     expect(query.where.params).toContain(8);
     expect(query.where.params).toContain("%Outside%");
