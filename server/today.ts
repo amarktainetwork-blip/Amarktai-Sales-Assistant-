@@ -298,8 +298,7 @@ export async function getTodayWork(input: {
           )
         )
       )
-      .orderBy(desc(crmOpportunities.updatedAt))
-      .limit(600),
+      .orderBy(desc(crmOpportunities.updatedAt)),
     db
       .select()
       .from(connectorSyncJobs)
