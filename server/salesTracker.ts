@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import {
   crmContacts,
   crmOpportunities,
@@ -62,7 +62,7 @@ export async function getSalesTracker(input: {
   );
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
-  const [mappings, stageMappings, opportunities, contacts] = await Promise.all([
+  const [mappings, stageMappings] = await Promise.all([
     db
       .select()
       .from(externalUserMappings)
@@ -82,16 +82,6 @@ export async function getSalesTracker(input: {
           eq(crmPipelineStageMappings.isActive, true)
         )
       ),
-    db
-      .select()
-      .from(crmOpportunities)
-      .where(eq(crmOpportunities.organisationId, input.organisationId))
-      .limit(10_000),
-    db
-      .select()
-      .from(crmContacts)
-      .where(eq(crmContacts.organisationId, input.organisationId))
-      .limit(30_000),
   ]);
   const ownerIds = new Set(mappings.map(mapping => mapping.externalUserId));
   const wonStages = new Set(
@@ -102,6 +92,47 @@ export async function getSalesTracker(input: {
         `${mapping.connectedSystemId}:${mapping.stageLabel}`,
       ])
   );
+  const opportunities = ownerIds.size
+    ? await db
+        .select()
+        .from(crmOpportunities)
+        .where(
+          and(
+            eq(crmOpportunities.organisationId, input.organisationId),
+            inArray(crmOpportunities.ownerExternalId, Array.from(ownerIds))
+          )
+        )
+    : [];
+  const wonOpportunities = opportunities.filter(opportunity =>
+    opportunityCountsAsWon({
+      raw: opportunity.raw,
+      closeAt: opportunity.closeAt,
+      mappedWonStage: Boolean(
+        opportunity.stage &&
+          wonStages.has(
+            `${opportunity.connectedSystemId}:${opportunity.stage}`
+          )
+      ),
+    })
+  );
+  const wonContactExternalIds = Array.from(
+    new Set(
+      wonOpportunities
+        .map(opportunity => opportunity.contactExternalId)
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+  const contacts = wonContactExternalIds.length
+    ? await db
+        .select()
+        .from(crmContacts)
+        .where(
+          and(
+            eq(crmContacts.organisationId, input.organisationId),
+            inArray(crmContacts.externalId, wonContactExternalIds)
+          )
+        )
+    : [];
   const contactsByKey = new Map(
     contacts.map(contact => [
       `${contact.connectedSystemId}:${contact.externalId}`,
@@ -113,24 +144,7 @@ export async function getSalesTracker(input: {
   const today = dayKey(now, timezone);
   const weekStart = startOfWeekKey(now, timezone);
   const month = monthKey(now, timezone);
-  const sales = opportunities
-    .filter(
-      opportunity =>
-        opportunity.ownerExternalId && ownerIds.has(opportunity.ownerExternalId)
-    )
-    .filter(opportunity =>
-      opportunityCountsAsWon({
-        raw: opportunity.raw,
-        closeAt: opportunity.closeAt,
-        mappedWonStage: Boolean(
-          opportunity.stage &&
-            wonStages.has(
-              `${opportunity.connectedSystemId}:${opportunity.stage}`
-            )
-        ),
-      })
-    )
-    .map(opportunity => {
+  const sales = wonOpportunities.map(opportunity => {
       const soldAt = opportunity.closeAt ?? opportunity.sourceUpdatedAt;
       const contact = opportunity.contactExternalId
         ? contactsByKey.get(
