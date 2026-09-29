@@ -147,6 +147,7 @@ describe("Today inbound ownership lookup", () => {
           const chain = {
             where: () => chain,
             orderBy: () => chain,
+            innerJoin: () => chain,
             leftJoin: () => chain,
             limit: async () => result,
             then: (resolve: any) => Promise.resolve(result).then(resolve),
@@ -214,6 +215,7 @@ describe("Today inbound ownership lookup", () => {
           const chain = {
             where: vi.fn(() => chain),
             orderBy: vi.fn(() => chain),
+            innerJoin: vi.fn(() => chain),
             leftJoin: vi.fn(() => chain),
             limit: vi.fn(async (count: number) => result.slice(0, count)),
             then: (
@@ -283,6 +285,7 @@ describe("Today inbound ownership lookup", () => {
           const chain = {
             where: vi.fn(() => chain),
             orderBy: vi.fn(() => chain),
+            innerJoin: vi.fn(() => chain),
             leftJoin: vi.fn(() => chain),
             limit: vi.fn(async (count: number) => result.slice(0, count)),
             then: (
@@ -332,6 +335,7 @@ describe("Today inbound ownership lookup", () => {
           const chain = {
             where: vi.fn(() => chain),
             orderBy: vi.fn(() => chain),
+            innerJoin: vi.fn(() => chain),
             leftJoin: vi.fn(() => chain),
             limit: vi.fn(async (count: number) => result.slice(0, count)),
             then: (

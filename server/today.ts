@@ -291,13 +291,22 @@ export async function getTodayWork(input: {
     workItems,
   ] = await Promise.all([
     db
-      .select()
+      .select({
+        connectedSystemId: externalUserMappings.connectedSystemId,
+        externalUserId: externalUserMappings.externalUserId,
+        email: externalUserMappings.email,
+      })
       .from(externalUserMappings)
+      .innerJoin(
+        connectedSystems,
+        eq(externalUserMappings.connectedSystemId, connectedSystems.id)
+      )
       .where(
         and(
           eq(externalUserMappings.organisationId, input.organisationId),
           eq(externalUserMappings.userId, input.userId),
-          eq(externalUserMappings.isActive, true)
+          eq(externalUserMappings.isActive, true),
+          inArray(connectedSystems.status, ["ready", "limited_permissions"])
         )
       ),
     db
@@ -315,12 +324,20 @@ export async function getTodayWork(input: {
       )
       .orderBy(desc(crmOpportunities.updatedAt)),
     db
-      .select()
+      .select({
+        status: connectorSyncJobs.status,
+        lastSucceededAt: connectorSyncJobs.lastSucceededAt,
+      })
       .from(connectorSyncJobs)
+      .innerJoin(
+        connectedSystems,
+        eq(connectorSyncJobs.connectedSystemId, connectedSystems.id)
+      )
       .where(
         and(
           eq(connectorSyncJobs.organisationId, input.organisationId),
-          eq(connectorSyncJobs.resourceType, "crm_reconciliation")
+          eq(connectorSyncJobs.resourceType, "crm_reconciliation"),
+          inArray(connectedSystems.status, ["ready", "limited_permissions"])
         )
       )
       .orderBy(desc(connectorSyncJobs.lastSucceededAt)),

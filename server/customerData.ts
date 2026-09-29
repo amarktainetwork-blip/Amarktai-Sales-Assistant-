@@ -19,6 +19,7 @@ import {
   crmActivities,
   crmOpportunities,
   crmPipelineStageMappings,
+  connectedSystems,
   externalUserMappings,
   inboundMessages,
   salesActivityEvents,
@@ -57,7 +58,7 @@ export function personalOwnerSql(
   system: AnyMySqlColumn,
   owner: AnyMySqlColumn
 ): SQL {
-  return sql`exists (select 1 from ${externalUserMappings} where ${externalUserMappings.organisationId}=${input.organisationId} and ${externalUserMappings.userId}=${input.userId} and ${externalUserMappings.isActive}=true and ${externalUserMappings.connectedSystemId}=${system} and ${externalUserMappings.externalUserId}=${owner})`;
+  return sql`exists (select 1 from ${externalUserMappings} inner join ${connectedSystems} on ${connectedSystems.id}=${externalUserMappings.connectedSystemId} where ${externalUserMappings.organisationId}=${input.organisationId} and ${externalUserMappings.userId}=${input.userId} and ${externalUserMappings.isActive}=true and ${externalUserMappings.connectedSystemId}=${system} and ${externalUserMappings.externalUserId}=${owner} and ${connectedSystems.status} in ('ready','limited_permissions'))`;
 }
 export function customerPageInput(input: {
   page?: number;
@@ -382,7 +383,10 @@ export async function getExactCustomerDetail(input: {
       .where(
         and(
           eq(crmPipelineStageMappings.organisationId, input.organisationId),
-          eq(crmPipelineStageMappings.connectedSystemId, contact.connectedSystemId),
+          eq(
+            crmPipelineStageMappings.connectedSystemId,
+            contact.connectedSystemId
+          ),
           eq(crmPipelineStageMappings.isActive, true)
         )
       ),
