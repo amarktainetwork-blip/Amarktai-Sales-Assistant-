@@ -64,11 +64,8 @@ export function crmSyncJobIsDue(
   intervalMs = crmSyncIntervalMs(),
   lastSucceededAt: Date | null = null
 ) {
-  return (
-    (!lastStartedAt || now.valueOf() - lastStartedAt.valueOf() >= intervalMs) &&
-    (!lastSucceededAt ||
-      now.valueOf() - lastSucceededAt.valueOf() >= intervalMs)
-  );
+  const cadenceAnchor = lastStartedAt ?? lastSucceededAt;
+  return !cadenceAnchor || now.valueOf() - cadenceAnchor.valueOf() >= intervalMs;
 }
 
 export async function ensureConnectionScopedCrmSyncJob(input: {
