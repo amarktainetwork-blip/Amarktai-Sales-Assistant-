@@ -53,7 +53,8 @@ describe("Phase 2 daily salesperson workflow", () => {
 
     expect(today).toContain("refetchInterval: 10_000");
     expect(today).toContain("refetchIntervalInBackground: true");
-    expect(today).toContain("STALE CRM DATA");
+    expect(today).not.toContain("STALE CRM DATA");
+    expect(today).toContain("refreshing automatically");
     expect(today).toContain("refetchOnWindowFocus: true");
     expect(today).toContain("refetchOnReconnect: true");
     expect(sync).toContain("? syncConnectedSystemRoutine");
