@@ -1,7 +1,7 @@
 {
-  "operation": "cleanup",
+  "operation": "inspect",
   "server_name": "Amarktai Network - Sales Assistant",
   "server_domain": "sales.amarktai.co.za",
   "release_sha": "ea6c347bab36b65c7653736575b44cff7e629875",
-  "request_id": "cleanup-disposable-build-cache-2026-09-29"
+  "request_id": "final-safe-inspect-functional-baseline-2026-09-29"
 }
