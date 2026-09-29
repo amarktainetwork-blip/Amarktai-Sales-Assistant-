@@ -150,8 +150,12 @@ setTimeout(() => {
 startCompanyKnowledgeWorker();
 startAutomaticCommissioningWorker();
 startPersonalWorkLearningWorker();
-startNewLeadWatcher(undefined, () =>
-  runBackgroundBrowserReadLane("crm_new_lead_watch", () =>
+const customerHistorySafetyIntervalMs = Math.max(
+  120_000,
+  Number(process.env.CRM_CUSTOMER_HISTORY_INTERVAL_MS || 120_000)
+);
+startNewLeadWatcher(customerHistorySafetyIntervalMs, () =>
+  runBackgroundBrowserReadLane("crm_customer_history_safety", () =>
     runNewLeadWatchCycle()
   )
 );

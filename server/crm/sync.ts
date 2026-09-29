@@ -669,8 +669,8 @@ export async function reconcileNewLeadAlertsFromTaskHistory(input: {
   return Number(result[0].affectedRows || 0);
 }
 
-const NEW_LEAD_HISTORY_CHECKS_PER_SYNC = 15;
-const ROTATING_CUSTOMER_HISTORY_CHECKS_PER_SYNC = 10;
+const NEW_LEAD_HISTORY_CHECKS_PER_SYNC = 2;
+const ROTATING_CUSTOMER_HISTORY_CHECKS_PER_SYNC = 2;
 
 export function rotatingHistoryWindow<T>(
   items: T[],

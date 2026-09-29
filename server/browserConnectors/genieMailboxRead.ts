@@ -2,8 +2,8 @@ import type { Page } from "playwright-core";
 const ROOT = "https://services.leadconnectorhq.com";
 const BOOTSTRAP =
   "https://backend.leadsconnectorhq.com/conversations/inbox-bootstrap";
-const MAX_CONVERSATIONS_PER_SYNC = 100;
-const CONVERSATION_SEARCH_PAGE_SIZE = 50;
+const MAX_CONVERSATIONS_PER_SYNC = 20;
+const CONVERSATION_SEARCH_PAGE_SIZE = 20;
 const id = (value: unknown) =>
   typeof value === "string" && /^[A-Za-z0-9_-]{1,180}$/.test(value)
     ? value
@@ -342,7 +342,7 @@ export async function readPersonalGenieMailbox(input: {
   let searchTotal = 0;
   let searchBounded = false;
   let startAfterDate: string | number | undefined;
-  for (let searchPage = 0; searchPage < 2; searchPage++) {
+  for (let searchPage = 0; searchPage < 1; searchPage++) {
     const search = await read("/conversations/search", false, {
       locationId,
       assignedTo: input.ownerExternalId,
@@ -389,7 +389,7 @@ export async function readPersonalGenieMailbox(input: {
       typeof nextDate === "number" || typeof nextDate === "string"
         ? nextDate
         : String(nextDate);
-    if (searchPage === 1) searchBounded = true;
+    if (searchPage === 0) searchBounded = true;
   }
 
   const records = new Map<string, PersonalGenieMailboxRecord>();
