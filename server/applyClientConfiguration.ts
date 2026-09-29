@@ -42,11 +42,17 @@ export async function applyClientConfiguration(input: {
     organisationId: input.organisationId,
   });
   const configuration = await getClientActionConfiguration(input);
-  if (pack.officeHours)
+  if (pack.officeHours || pack.todayWorkPolicy)
     await saveClientActionConfiguration({
       userId: input.userId,
       organisationId: input.organisationId,
-      configuration: { ...configuration, officeHours: pack.officeHours },
+      configuration: {
+        ...configuration,
+        ...(pack.officeHours ? { officeHours: pack.officeHours } : {}),
+        ...(pack.todayWorkPolicy
+          ? { todayWorkPolicy: pack.todayWorkPolicy }
+          : {}),
+      },
     });
   const after = await getConnectedSystemForUser(
     input.userId,
