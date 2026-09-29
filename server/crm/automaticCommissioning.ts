@@ -1803,9 +1803,8 @@ export async function startAutomaticCommissioning(input: {
       connectorClass: values.connectorClass,
     },
   });
-  // Do not wait for the periodic commissioning worker after an interactive
-  // reconnect. The database lease still prevents duplicate execution.
-  scheduleAutomaticCommissioning(job.id);
+  // The dedicated commissioning worker polls queued work every 10 seconds.
+  // Keep this API path enqueue-only so durable worker ownership stays intact.
   return presentCommissioningJob(job);
 }
 export async function authoriseCommissioningSafeTest(input: {
