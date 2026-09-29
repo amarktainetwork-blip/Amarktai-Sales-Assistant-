@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { timedWorkAttention } from "../client/src/lib/timedWorkAttention";
+import { normalizeClientActionConfiguration } from "./clientActionConfiguration";
 import { buildTodayCallQueue, unrepresentedTodayTasks } from "./todayCallQueue";
 
 const contacts = [
@@ -567,5 +568,237 @@ describe("Today new lead priority", () => {
       primaryKind: "overdue_task",
       reasons: ["Overdue task"],
     });
+  });
+});
+
+
+describe("tenant-configurable Today work policy", () => {
+  const policyContacts = [
+    ...contacts,
+    {
+      id: 3,
+      connectedSystemId: 8,
+      externalId: "c",
+      firstName: "Cara",
+      lastName: null,
+      email: "cara@example.test",
+      phone: "+443",
+      lifecycleStage: "lead",
+    },
+    {
+      id: 4,
+      connectedSystemId: 8,
+      externalId: "d",
+      firstName: "Dan",
+      lastName: null,
+      email: "dan@example.test",
+      phone: "+444",
+      lifecycleStage: "lead",
+    },
+  ];
+
+  const courseStyleConfiguration = normalizeClientActionConfiguration({
+    todayWorkPolicy: {
+      morningWindowEnd: "09:30",
+      categories: [
+        {
+          key: "admin",
+          label: "Renewals & debt",
+          priority: 6,
+          morningPriority: -1,
+          taskTitleContains: ["renewal", "debt", "default", "chase payment"],
+        },
+        {
+          key: "first",
+          label: "First call",
+          priority: 0,
+          taskTitlePrefixes: ["first call"],
+        },
+        {
+          key: "last",
+          label: "Last try",
+          priority: 2,
+          taskTitleContains: ["last try"],
+        },
+        {
+          key: "second",
+          label: "Second call",
+          priority: 3,
+          taskTitlePrefixes: ["#2"],
+        },
+        {
+          key: "third",
+          label: "Third call",
+          priority: 4,
+          taskTitlePrefixes: ["#3"],
+        },
+      ],
+      callTimeRotation: {
+        enabled: true,
+        categoryKeys: ["second", "third", "last"],
+        minimumVariationMinutes: 120,
+        expectedConsecutiveDays: 4,
+      },
+    },
+  });
+
+  it("uses one company's morning and attempt-stage ordering from configuration", () => {
+    const queue = buildTodayCallQueue({
+      now: new Date("2026-09-29T07:30:00Z"),
+      timezone: "Europe/London",
+      configuration: courseStyleConfiguration,
+      contacts: policyContacts,
+      inbound: [],
+      overdueTasks: [
+        {
+          id: 1,
+          connectedSystemId: 8,
+          contactExternalId: "a",
+          title: "#3 CY yes",
+          dueAt: new Date("2026-09-29T07:00:00Z"),
+        },
+        {
+          id: 2,
+          connectedSystemId: 8,
+          contactExternalId: "b",
+          title: "Renewal call",
+          dueAt: new Date("2026-09-29T07:00:00Z"),
+        },
+        {
+          id: 3,
+          connectedSystemId: 8,
+          contactExternalId: "c",
+          title: "First Call",
+          dueAt: new Date("2026-09-29T07:00:00Z"),
+        },
+        {
+          id: 4,
+          connectedSystemId: 8,
+          contactExternalId: "d",
+          title: "Last Try CY",
+          dueAt: new Date("2026-09-29T07:00:00Z"),
+        },
+      ],
+      dueToday: [],
+    });
+
+    expect(queue.map(item => item.name)).toEqual([
+      "Bob",
+      "Cara",
+      "Dan",
+      "Alice Example",
+    ]);
+    expect(queue[0]).toMatchObject({
+      workCategoryKey: "admin",
+      workCategoryLabel: "Renewals & debt",
+    });
+  });
+
+  it("rotates a later attempt away from yesterday's call time when the tenant enables it", () => {
+    const queue = buildTodayCallQueue({
+      now: new Date("2026-09-29T08:30:00Z"),
+      timezone: "Europe/London",
+      configuration: courseStyleConfiguration,
+      contacts,
+      inbound: [],
+      recentCallAttempts: [
+        {
+          connectedSystemId: 8,
+          contactExternalId: "a",
+          occurredAt: new Date("2026-09-28T08:20:00Z"),
+        },
+      ],
+      overdueTasks: [
+        {
+          id: 1,
+          connectedSystemId: 8,
+          contactExternalId: "a",
+          title: "#2 CY no",
+          dueAt: new Date("2026-09-29T07:00:00Z"),
+        },
+        {
+          id: 2,
+          connectedSystemId: 8,
+          contactExternalId: "b",
+          title: "#2 CY no",
+          dueAt: new Date("2026-09-29T07:00:00Z"),
+        },
+      ],
+      dueToday: [],
+    });
+
+    expect(queue.map(item => item.name)).toEqual(["Bob", "Alice Example"]);
+    expect(queue[1].contactEligibleNow).toBe(false);
+    expect(queue[1].reasons.join(" ")).toContain("vary today's contact time");
+  });
+
+  it("allows a different company to define a completely different priority model", () => {
+    const otherCompany = normalizeClientActionConfiguration({
+      todayWorkPolicy: {
+        categories: [
+          {
+            key: "quotes",
+            label: "Quotes",
+            priority: 0,
+            taskTitleContains: ["quote"],
+          },
+          {
+            key: "appointments",
+            label: "Appointments",
+            priority: 1,
+            taskTitleContains: ["appointment"],
+          },
+          {
+            key: "calls",
+            label: "Calls",
+            priority: 5,
+            taskTitleContains: ["call"],
+          },
+        ],
+      },
+    });
+
+    const queue = buildTodayCallQueue({
+      now: new Date("2026-09-29T10:00:00Z"),
+      timezone: "Europe/London",
+      configuration: otherCompany,
+      contacts: policyContacts,
+      inbound: [],
+      overdueTasks: [
+        {
+          id: 1,
+          connectedSystemId: 8,
+          contactExternalId: "a",
+          title: "Customer call",
+          dueAt: new Date("2026-09-29T08:00:00Z"),
+        },
+        {
+          id: 2,
+          connectedSystemId: 8,
+          contactExternalId: "b",
+          title: "Prepare quote",
+          dueAt: new Date("2026-09-29T09:00:00Z"),
+        },
+        {
+          id: 3,
+          connectedSystemId: 8,
+          contactExternalId: "c",
+          title: "Book appointment",
+          dueAt: new Date("2026-09-29T09:00:00Z"),
+        },
+      ],
+      dueToday: [],
+    });
+
+    expect(queue.map(item => item.name)).toEqual([
+      "Bob",
+      "Cara",
+      "Alice Example",
+    ]);
+    expect(queue.map(item => item.workCategoryKey)).toEqual([
+      "quotes",
+      "appointments",
+      "calls",
+    ]);
   });
 });
