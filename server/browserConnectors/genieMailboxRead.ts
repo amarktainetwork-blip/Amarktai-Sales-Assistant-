@@ -401,6 +401,14 @@ export async function readPersonalGenieMailbox(input: {
   let examined = 0;
   let bounded = false;
   for (const conversation of conversations.slice(0, MAX_CONVERSATIONS_PER_SYNC)) {
+    const conversationLastMessageAt = Date.parse(
+      String(conversation.lastMessageDate || "")
+    );
+    if (
+      Number.isFinite(conversationLastMessageAt) &&
+      conversationLastMessageAt < since
+    )
+      break;
     const conversationId = id(conversation.id);
     const contactExternalId = id(conversation.contactId);
     if (
