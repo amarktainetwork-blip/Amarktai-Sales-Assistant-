@@ -118,6 +118,9 @@ jobs:
             -e "s/__TARGET_SHA__/$RELEASE_SHA/g" \
             deploy/webdock/webdock-release-control.sh > /tmp/amarktai-control.sh
 
+          bash -n /tmp/amarktai-control.sh
+          echo "Generated Webdock control script syntax: PASS"
+
           payload="$(jq -n \
             --arg name "$script_name" \
             --arg filename "$script_file" \
