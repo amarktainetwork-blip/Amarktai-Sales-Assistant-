@@ -1803,6 +1803,9 @@ export async function startAutomaticCommissioning(input: {
       connectorClass: values.connectorClass,
     },
   });
+  // Do not wait for the periodic commissioning worker after an interactive
+  // reconnect. The database lease still prevents duplicate execution.
+  scheduleAutomaticCommissioning(job.id);
   return presentCommissioningJob(job);
 }
 export async function authoriseCommissioningSafeTest(input: {
