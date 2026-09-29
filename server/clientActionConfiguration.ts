@@ -403,42 +403,39 @@ function todayWorkPolicy(
     "inbound_reply",
     "confirmed_follow_up",
   ]);
-  const categories = Array.isArray(source.categories)
-    ? source.categories
-        .slice(0, 40)
-        .map(rawCategory => {
-          const category = object(rawCategory);
-          const key =
-            typeof category.key === "string"
-              ? category.key.trim().toLowerCase()
-              : "";
-          const label =
-            typeof category.label === "string" ? category.label.trim() : "";
-          if (!/^[a-z0-9][a-z0-9_-]{0,79}$/.test(key) || !label) return null;
-          return {
-            key,
-            label: label.slice(0, 100),
-            priority: boundedInteger(category.priority, 50, -20, 200),
-            morningPriority:
-              category.morningPriority == null
-                ? undefined
-                : boundedInteger(category.morningPriority, 50, -20, 200),
-            sourceKinds: strings(category.sourceKinds, 10).filter(
-              (kind): kind is TodayWorkSourceKind =>
-                sourceKinds.has(kind as TodayWorkSourceKind)
-            ),
-            exactTaskTitles: strings(category.exactTaskTitles, 80),
-            taskTitlePrefixes: strings(category.taskTitlePrefixes, 80),
-            taskTitleContains: strings(category.taskTitleContains, 80),
-            workflowPurposes: strings(category.workflowPurposes, 80),
-          };
-        })
-        .filter(
-          (
-            category
-          ): category is TodayWorkCategoryConfiguration => Boolean(category)
-        )
-    : [];
+  const categories: TodayWorkCategoryConfiguration[] = [];
+  if (Array.isArray(source.categories))
+    for (const rawCategory of source.categories.slice(0, 40)) {
+      const category = object(rawCategory);
+      const key =
+        typeof category.key === "string"
+          ? category.key.trim().toLowerCase()
+          : "";
+      const label =
+        typeof category.label === "string" ? category.label.trim() : "";
+      if (!/^[a-z0-9][a-z0-9_-]{0,79}$/.test(key) || !label) continue;
+      const normalized: TodayWorkCategoryConfiguration = {
+        key,
+        label: label.slice(0, 100),
+        priority: boundedInteger(category.priority, 50, -20, 200),
+        sourceKinds: strings(category.sourceKinds, 10).filter(
+          (kind): kind is TodayWorkSourceKind =>
+            sourceKinds.has(kind as TodayWorkSourceKind)
+        ),
+        exactTaskTitles: strings(category.exactTaskTitles, 80),
+        taskTitlePrefixes: strings(category.taskTitlePrefixes, 80),
+        taskTitleContains: strings(category.taskTitleContains, 80),
+        workflowPurposes: strings(category.workflowPurposes, 80),
+      };
+      if (category.morningPriority != null)
+        normalized.morningPriority = boundedInteger(
+          category.morningPriority,
+          50,
+          -20,
+          200
+        );
+      categories.push(normalized);
+    }
   const rotation = object(source.callTimeRotation);
   const rotationEnabled = rotation.enabled === true;
   return {
