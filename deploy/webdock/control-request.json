@@ -1,7 +1,7 @@
 {
-  "operation": "inspect",
+  "operation": "diagnose",
   "server_name": "Amarktai Network - Sales Assistant",
   "server_domain": "sales.amarktai.co.za",
   "release_sha": "2fcab964416dfcc76fc816c0aaa9736f6ecfde08",
-  "request_id": "hold-safe-inspect-after-live-truth-deploy-2026-09-29"
+  "request_id": "diagnose-crm-session-stability-and-live-truth-2026-09-29"
 }
