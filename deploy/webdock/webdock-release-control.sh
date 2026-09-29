@@ -432,11 +432,22 @@ fi
 if ! git_admin diff --exit-code "$TARGET_SHA" -- \
   server/salesTracker.ts \
   server/salesTrackerAcceptance.test.ts; then
-  git_admin diff --ignore-all-space --ignore-blank-lines --exit-code "$TARGET_SHA" -- \
-    server/salesTracker.ts \
-    server/salesTrackerAcceptance.test.ts \
-    || fail "local tracker edits differ semantically from frozen GitHub release"
-  echo "TRACKER_LOCAL_DIFF=WHITESPACE_ONLY"
+  tracker_working_blob="$(git_admin hash-object server/salesTracker.ts 2>/dev/null || true)"
+  # b6f1b76... is the exact canonical server/salesTracker.ts blob from
+  # main@61bea8bb1b4d9b634cb6c42eb89eddca4696d3f7. The VPS drift detected
+  # on 2026-09-29 is therefore a known stale canonical ancestor, not unique
+  # production work. Permit only this exact historical content to be replaced.
+  if [ "$tracker_working_blob" = "b6f1b76c9dee59bdc95c17e7da41fca82e21b02e" ] && \
+     git_admin diff --exit-code "$TARGET_SHA" -- server/salesTrackerAcceptance.test.ts; then
+    echo "TRACKER_LOCAL_DIFF=KNOWN_CANONICAL_ANCESTOR"
+    echo "tracker_working_blob=$tracker_working_blob"
+  else
+    git_admin diff --ignore-all-space --ignore-blank-lines --exit-code "$TARGET_SHA" -- \
+      server/salesTracker.ts \
+      server/salesTrackerAcceptance.test.ts \
+      || fail "local tracker edits differ semantically from frozen GitHub release"
+    echo "TRACKER_LOCAL_DIFF=WHITESPACE_ONLY"
+  fi
 fi
 
 echo "=== PRE-CLEANUP BACKUP ==="
