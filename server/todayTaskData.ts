@@ -43,10 +43,11 @@ export async function getTodayTaskData(input: {
         .filter(Boolean)
     )
   );
-  const incomplete = and(
+  // Source metrics must stay identical to CRM truth. Review-state exclusions
+  // affect only the actionable queue, never the source counts shown to the user.
+  const sourceIncomplete = and(
     owned,
-    inArray(crmTasks.status, [...INCOMPLETE_TASK_STATUSES]),
-    excluded.length ? notInArray(crmTasks.externalId, excluded) : undefined
+    inArray(crmTasks.status, [...INCOMPLETE_TASK_STATUSES])
   );
   const cutoff =
     input.backlogPolicy?.mode === "since" && input.backlogPolicy.actionableSince
@@ -54,21 +55,32 @@ export async function getTodayTaskData(input: {
       : null;
   if (cutoff && !Number.isFinite(cutoff.getTime()))
     throw Error("INVALID_BACKLOG_POLICY");
-  const current = and(
-    incomplete,
+  const sourceCurrent = and(
+    sourceIncomplete,
     cutoff ? or(isNull(crmTasks.dueAt), gte(crmTasks.dueAt, cutoff)) : undefined
   );
-  const overdue = and(current, lt(crmTasks.dueAt, input.now));
+  const queueCurrent = and(
+    sourceCurrent,
+    excluded.length ? notInArray(crmTasks.externalId, excluded) : undefined
+  );
+  const overdue = and(sourceCurrent, lt(crmTasks.dueAt, input.now));
   const today = and(
-    current,
+    sourceCurrent,
     gte(crmTasks.dueAt, input.now),
     lt(crmTasks.dueAt, bounds.endExclusive)
   );
   const futureScheduled = and(
-    current,
+    sourceCurrent,
     gte(crmTasks.dueAt, bounds.endExclusive)
   );
-  const unscheduledWhere = and(current, isNull(crmTasks.dueAt));
+  const unscheduledWhere = and(sourceCurrent, isNull(crmTasks.dueAt));
+  const queueOverdue = and(queueCurrent, lt(crmTasks.dueAt, input.now));
+  const queueToday = and(
+    queueCurrent,
+    gte(crmTasks.dueAt, input.now),
+    lt(crmTasks.dueAt, bounds.endExclusive)
+  );
+  const queueUnscheduledWhere = and(queueCurrent, isNull(crmTasks.dueAt));
   const total = async (where: ReturnType<typeof and>) => {
     const [r] = await db.select({ total: count() }).from(crmTasks).where(where);
     return Number(r.total);
@@ -97,9 +109,9 @@ export async function getTodayTaskData(input: {
   ] = await Promise.all([
     total(overdue),
     total(today),
-    total(incomplete),
+    total(sourceIncomplete),
     cutoff
-      ? total(and(incomplete, lt(crmTasks.dueAt, cutoff)))
+      ? total(and(sourceIncomplete, lt(crmTasks.dueAt, cutoff)))
       : Promise.resolve(0),
     total(and(owned, eq(crmTasks.status, "unknown"))),
     total(futureScheduled),
@@ -107,19 +119,17 @@ export async function getTodayTaskData(input: {
     db
       .select()
       .from(crmTasks)
-      .where(overdue)
-      .orderBy(...priorityOrder, asc(crmTasks.dueAt), asc(crmTasks.id))
-      .limit(50),
+      .where(queueOverdue)
+      .orderBy(...priorityOrder, asc(crmTasks.dueAt), asc(crmTasks.id)),
     db
       .select()
       .from(crmTasks)
-      .where(today)
-      .orderBy(...priorityOrder, asc(crmTasks.dueAt), asc(crmTasks.id))
-      .limit(50),
+      .where(queueToday)
+      .orderBy(...priorityOrder, asc(crmTasks.dueAt), asc(crmTasks.id)),
     db
       .select()
       .from(crmTasks)
-      .where(unscheduledWhere)
+      .where(queueUnscheduledWhere)
       .orderBy(...priorityOrder, asc(crmTasks.id))
       .limit(20),
   ]);
@@ -136,7 +146,7 @@ export async function getTodayTaskData(input: {
       unscheduled: unscheduledCount,
     },
     queues: { overdueTasks, dueToday, unscheduled },
-    queueLimit: 50,
+    queueLimit: null,
     backlogPolicy: input.backlogPolicy || { mode: "all_incomplete" },
     overdueDefinition: "before_current_time" as const,
   };

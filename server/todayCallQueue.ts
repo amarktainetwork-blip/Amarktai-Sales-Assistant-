@@ -154,7 +154,6 @@ export function buildTodayCallQueue(input: {
     const preference = preferenceFor(contact);
     const deferForContactPreference =
       !timeCritical &&
-      !overdue &&
       preference.preference !== null &&
       !preference.eligibleNow;
     candidates.push({
