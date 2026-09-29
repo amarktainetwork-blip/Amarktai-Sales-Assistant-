@@ -94,6 +94,8 @@ describe("Phase 2 daily salesperson workflow", () => {
     expect(inbox).toContain("trpc.sales.inbox.useQuery");
     expect(inbox).toContain("trpc.sales.syncInbox.useMutation");
     expect(inbox).toContain("Draft reply");
+    expect(inbox).toContain("sourceChannelOf");
+    expect(inbox).toContain('"WhatsApp"');
     expect(inbox).toContain("does not send a response");
     expect(inbox).toContain("Draft reply prepares work for");
     expect(inboxService).toContain("eq(inboundMessages.needsAction, true)");
