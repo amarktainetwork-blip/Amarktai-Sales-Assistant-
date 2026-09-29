@@ -43,6 +43,39 @@ function normalizedTaskTitle(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+export function taskDetailFromRaw(raw: unknown) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const source = raw as Record<string, unknown>;
+  const nested =
+    source.task && typeof source.task === "object" && !Array.isArray(source.task)
+      ? (source.task as Record<string, unknown>)
+      : {};
+  const detail = [
+    source.description,
+    source.body,
+    source.note,
+    source.notes,
+    source.details,
+    source.taskDescription,
+    nested.description,
+    nested.body,
+    nested.note,
+  ].find(value => typeof value === "string" && value.trim());
+  if (typeof detail !== "string") return null;
+  return detail
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 1000);
+}
+
 export const TASK_WORK_EARLY_WINDOW_MS = 30 * 60_000;
 
 export function activityFallsWithinWorkedTaskWindow(
@@ -731,26 +764,14 @@ export async function getTodayWork(input: {
   const assignedTaskExceptions = [...overdueTasks, ...dueToday]
     .filter(task => unlinkedTaskIds.has(task.id))
     .map(task => {
-      const raw =
-        task.raw && typeof task.raw === "object" && !Array.isArray(task.raw)
-          ? (task.raw as Record<string, unknown>)
-          : {};
-      const rawDetail =
-        typeof raw.description === "string" ? raw.description.trim() : "";
-      const detail = rawDetail
-        ? rawDetail
-            .replace(/<br\s*\/?>/gi, " ")
-            .replace(/<[^>]+>/g, " ")
-            .replace(/&nbsp;/gi, " ")
-            .replace(/&amp;/gi, "&")
-            .replace(/&lt;/gi, "<")
-            .replace(/&gt;/gi, ">")
-            .replace(/&quot;/gi, '"')
-            .replace(/&#39;/gi, "'")
-            .replace(/\s+/g, " ")
-            .trim()
-            .slice(0, 500)
-        : null;
+      const detail = taskDetailFromRaw(task.raw);
+      const relatedContact = task.contactExternalId
+        ? enrichedWorkContacts.find(
+            contact =>
+              contact.connectedSystemId === task.connectedSystemId &&
+              contact.externalId === task.contactExternalId
+          )
+        : undefined;
       const normalizedTitle = normalizedTaskTitle(task.title);
       const internalSupport =
         !newLeadTaskTitles.has(normalizedTitle) &&
@@ -771,6 +792,15 @@ export async function getTodayWork(input: {
         connectedSystemId: task.connectedSystemId,
         externalId: task.externalId,
         contactExternalId: task.contactExternalId,
+        contactId: relatedContact?.id ?? null,
+        contactName: relatedContact
+          ? [relatedContact.firstName, relatedContact.lastName]
+              .filter(Boolean)
+              .join(" ") ||
+            relatedContact.email ||
+            relatedContact.phone ||
+            "Customer"
+          : null,
         title: task.title,
         detail,
         dueAt: task.dueAt,
@@ -846,8 +876,7 @@ export async function getTodayWork(input: {
     .slice(0, 20);
   const visibleTaskData = {
     ...taskData,
-    metrics: {
-      ...taskData.metrics,
+    actionableMetrics: {
       overdue: overdueTasks.length,
       dueToday: dueToday.length,
     },
