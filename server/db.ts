@@ -14,6 +14,12 @@ import {
 import { drizzle } from "drizzle-orm/mysql2";
 import bcrypt from "bcryptjs";
 import {
+  websiteKnowledgeCanReceiveExplicitCommercialApproval,
+  websiteKnowledgeNeedsCommercialReview,
+  websiteKnowledgePassesCommercialApprovalPolicy,
+  type WebsiteKnowledgeApprovalCandidate,
+} from "../shared/companyKnowledgeApprovalPolicy";
+import {
   actionProposals,
   auditEntries,
   callbackTasks,
@@ -2273,6 +2279,7 @@ export async function confirmWebsiteDiscovery(input: {
   companyProfileId: number;
   discoveryId: number;
   knowledgeIndexes: number[];
+  commercialKnowledgeIndexes?: number[];
   corrections?: Array<{ index: number; title: string; content: string }>;
 }) {
   const db = await requireDb();
@@ -2317,17 +2324,8 @@ export async function confirmWebsiteDiscovery(input: {
   // facts. Approval remains bounded to the explicitly selected candidates
   // below; missing or unselected facts remain untrusted.
   const coverageIncomplete = completeness?.status === "incomplete";
-  const candidates = discovery.proposedKnowledge as Array<{
-    title: string;
-    content: string;
-    sourceUrl?: string;
-    fetchedAt?: string;
-    category?: string;
-    reviewState?: string;
-    confidence?: string;
-    evidenceBasis?: string;
-    trustEligible?: boolean;
-  }>;
+  const candidates =
+    discovery.proposedKnowledge as WebsiteKnowledgeApprovalCandidate[];
   const corrections = new Map(
     (input.corrections ?? []).map(item => [item.index, item])
   );
@@ -2354,25 +2352,50 @@ export async function confirmWebsiteDiscovery(input: {
         candidate.reviewState === "ambiguous"
       )
         return false;
+      const correction = corrections.get(index);
+      if (websiteKnowledgeNeedsCommercialReview(candidate))
+        return websiteKnowledgePassesCommercialApprovalPolicy(
+          candidate,
+          correction
+        );
       return (
         candidate.trustEligible !== false ||
-        (candidate.reviewState === "conflict" && corrections.has(index))
+        (candidate.reviewState === "conflict" && Boolean(correction))
       );
     }
   );
-  const confirmedKnowledge = selectedIndexes
+  const commercialIndexes = Array.from(
+    new Set(input.commercialKnowledgeIndexes ?? [])
+  ).filter(index => {
+    if (index < 0 || index >= candidates.length) return false;
+    const candidate = candidates[index];
+    if (permanentlyExcluded.has(candidate.category || "")) return false;
+    return websiteKnowledgeCanReceiveExplicitCommercialApproval(candidate);
+  });
+  const confirmedSafeKnowledge = selectedIndexes
     .map(index => {
       const candidate = candidates[index];
       const correction = corrections.get(index);
-      return correction
+      const item = correction
         ? {
             ...candidate,
             title: correction.title.trim().slice(0, 220),
             content: correction.content.trim().slice(0, 40_000),
           }
         : candidate;
+      return { ...item, explicitCommercialApproval: false };
     })
     .filter(item => item.title && item.content);
+  const confirmedCommercialKnowledge = commercialIndexes
+    .map(index => ({
+      ...candidates[index],
+      explicitCommercialApproval: true,
+    }))
+    .filter(item => item.title && item.content);
+  const confirmedKnowledge = [
+    ...confirmedSafeKnowledge,
+    ...confirmedCommercialKnowledge,
+  ];
   await db.transaction(async tx => {
     await tx
       .update(websiteDiscoveries)
@@ -2383,6 +2406,7 @@ export async function confirmWebsiteDiscovery(input: {
           ...discovery.proposedFacts,
           confirmedKnowledgeTitles: confirmedKnowledge.map(item => item.title),
           confirmedKnowledgeIndexes: selectedIndexes,
+          confirmedCommercialKnowledgeIndexes: commercialIndexes,
         },
       })
       .where(eq(websiteDiscoveries.id, discovery.id));
@@ -2411,6 +2435,7 @@ export async function confirmWebsiteDiscovery(input: {
             discoveryId: discovery.id,
             reviewAgentKey: discovery.reviewAgentKey,
             discoveryVersion: discovery.discoveryVersion,
+            explicitCommercialApproval: item.explicitCommercialApproval,
           },
           visibility: "organisation" as const,
           content: item.content,
@@ -2428,11 +2453,13 @@ export async function confirmWebsiteDiscovery(input: {
     metadata: {
       sourceUrl: discovery.sourceUrl,
       confirmedKnowledgeItems: confirmedKnowledge.length,
+      confirmedCommercialKnowledgeItems: confirmedCommercialKnowledge.length,
     },
   });
   return {
     discoveryId: discovery.id,
     confirmedKnowledgeItems: confirmedKnowledge.length,
+    confirmedCommercialKnowledgeItems: confirmedCommercialKnowledge.length,
   };
 }
 
