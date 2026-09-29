@@ -7,6 +7,7 @@ import {
   isCurrentActionableInbound,
   salespersonActivityProvesTaskHandled,
   sortTasksByConfiguredPriority,
+  taskDetailFromRaw,
 } from "./today";
 
 describe("current sales day relevance", () => {
@@ -121,6 +122,18 @@ describe("current sales day relevance", () => {
         dueAt
       )
     ).toBe(false);
+  });
+
+  it("extracts the actual assigned CRM task instruction from common source fields", () => {
+    expect(
+      taskDetailFromRaw({
+        body: "<p>Check whether the learner has completed the SNAP assessment.</p>",
+      })
+    ).toBe("Check whether the learner has completed the SNAP assessment.");
+    expect(
+      taskDetailFromRaw({ task: { description: "Confirm funding evidence." } })
+    ).toBe("Confirm funding evidence.");
+    expect(taskDetailFromRaw({})).toBeNull();
   });
 
   it("treats the configured first contact task as new-lead work", () => {
