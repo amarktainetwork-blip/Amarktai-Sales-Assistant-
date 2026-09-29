@@ -1,7 +1,7 @@
 {
-  "operation": "diagnose",
+  "operation": "inspect",
   "server_name": "Amarktai Network - Sales Assistant",
   "server_domain": "sales.amarktai.co.za",
-  "release_sha": "2fcab964416dfcc76fc816c0aaa9736f6ecfde08",
-  "request_id": "confirm-live-truth-staleness-after-amelia-work-2026-09-29"
+  "release_sha": "6177477a08d868860273a27f7d677d40648e4389",
+  "request_id": "safe-inspect-before-client-pack-control-2026-09-29"
 }
