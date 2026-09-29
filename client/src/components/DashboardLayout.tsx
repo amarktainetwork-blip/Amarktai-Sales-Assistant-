@@ -544,8 +544,7 @@ export default function DashboardLayout({
                 <AlertTriangle className="h-4 w-4 shrink-0 text-[#D7A44F]" />
                 <span>
                   CRM truth is stale. The last confirmed reconciliation was{" "}
-                  {crmTruthAgeLabel} ago. Screens may show work Amelia has already
-                  completed until synchronization catches up.
+                  {crmTruthAgeLabel} ago. Screens may show work that has already been completed until synchronization catches up.
                 </span>
               </div>
               <Button
