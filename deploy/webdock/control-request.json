@@ -1,7 +1,11 @@
 {
-  "operation": "diagnose",
+  "operation": "configure",
   "server_name": "Amarktai Network - Sales Assistant",
   "server_domain": "sales.amarktai.co.za",
   "release_sha": "ea6c347bab36b65c7653736575b44cff7e629875",
-  "request_id": "diagnose-ea6c347-before-commissioning-2026-09-29"
+  "request_id": "configure-course2career-ea6c347-2026-09-29",
+  "user_id": 2,
+  "organisation_id": 8,
+  "connected_system_id": 8,
+  "client_pack": "course2career"
 }
