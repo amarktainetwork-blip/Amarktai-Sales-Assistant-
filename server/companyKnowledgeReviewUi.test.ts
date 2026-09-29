@@ -9,6 +9,11 @@ const knowledge = readFileSync(
   new URL("../client/src/pages/Knowledge.tsx", import.meta.url),
   "utf8"
 );
+const dbSource = readFileSync(new URL("./db.ts", import.meta.url), "utf8");
+const routerSource = readFileSync(
+  new URL("./routers.ts", import.meta.url),
+  "utf8"
+);
 
 describe("company knowledge report review", () => {
   it("shows a report before exposing specific correction controls", () => {
@@ -36,7 +41,25 @@ describe("company knowledge report review", () => {
       expect(source).toContain(heading);
     expect(source).toContain("buildSalesFocusSuggestions");
     expect(source).toContain("selectedFocus");
+    expect(source).toContain("buildCommercialKnowledgeApproval");
+    expect(source).toContain("selectedCommercial");
+    expect(source).toContain("Select all evidenced commercial facts");
+    expect(source).toContain("commercialKnowledgeIndexes");
+    expect(source).toContain("View first-party source");
+    expect(source).toContain("Conflicting or ambiguous commercial claims cannot be");
     expect(source).toContain("Manager-confirmed primary sales focus.");
+  });
+
+  it("requires explicit server-side commercial approval instead of trusting UI-only filtering", () => {
+    expect(routerSource).toContain("commercialKnowledgeIndexes");
+    expect(dbSource).toContain(
+      "websiteKnowledgeCanReceiveExplicitCommercialApproval"
+    );
+    expect(dbSource).toContain(
+      "websiteKnowledgePassesCommercialApprovalPolicy"
+    );
+    expect(dbSource).toContain("confirmedCommercialKnowledgeIndexes");
+    expect(dbSource).toContain("explicitCommercialApproval");
   });
 
   it("lets an authorised manager refresh without overwriting trusted facts", () => {
