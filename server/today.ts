@@ -5,6 +5,7 @@ import { normalizedCustomerAttributes, personalOwnerSql } from "./customerData";
 import { deriveCustomerInterest } from "./customerInterest";
 import { deriveCustomerContactPreference } from "./contactPreference";
 import { buildTodayCallQueue, unrepresentedTodayTasks } from "./todayCallQueue";
+import { buildTodayWorkGroups } from "./todayWorkPolicy";
 import { opportunityIsHistorical } from "./crm/actionExecutionPreconditions";
 import { and, asc, desc, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
 import {
@@ -722,9 +723,35 @@ export async function getTodayWork(input: {
         contactPreference,
       };
     });
+  const recentOutboundCallAttempts = recentTaskActivities
+    .filter(activity => {
+      if (
+        activity.activityType.trim().toLowerCase() !== "call" ||
+        !activity.contactExternalId ||
+        !activity.ownerExternalId ||
+        !belongsToUser(activity.ownerExternalId, activity.connectedSystemId)
+      )
+        return false;
+      const raw =
+        activity.raw &&
+        typeof activity.raw === "object" &&
+        !Array.isArray(activity.raw)
+          ? (activity.raw as Record<string, unknown>)
+          : {};
+      const direction = String(raw.direction || "").trim().toLowerCase();
+      return !direction || direction === "outbound";
+    })
+    .map(activity => ({
+      connectedSystemId: activity.connectedSystemId,
+      contactExternalId: activity.contactExternalId!,
+      occurredAt: activity.occurredAt,
+    }));
+
   const callQueue = buildTodayCallQueue({
     now,
     timezone: workspace.organisation.timezone,
+    configuration: actionConfiguration,
+    recentCallAttempts: recentOutboundCallAttempts,
     newLeads: activeNewLeadWork.map(item => ({
       workItemId: item.id,
       connectedSystemId: item.connectedSystemId!,
@@ -919,6 +946,10 @@ export async function getTodayWork(input: {
     role: membership.role,
     requiresOwnerMapping: ownerIds.size === 0,
     recentChanges,
+    workGroups: buildTodayWorkGroups(
+      callQueue,
+      actionConfiguration.todayWorkPolicy
+    ),
     metrics: {
       dueToday: dueToday.length + currentReminders.length + callbacks.length,
       overdue: overdueTasks.length,
