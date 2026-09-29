@@ -251,6 +251,10 @@ if [ "$OPERATION" = "diagnose" ]; then
   db_sql "SELECT status,reviewState,COUNT(*) AS count,MAX(discoveryVersion) AS latestVersion,MAX(createdAt) AS latestCreated,MAX(reviewedAt) AS latestReviewed FROM websiteDiscoveries WHERE organisationId=8 GROUP BY status,reviewState ORDER BY status,reviewState;"
   db_sql "SELECT status,COUNT(*) AS count,MIN(updatedAt) AS oldestUpdated,MAX(updatedAt) AS newestUpdated FROM knowledgeSources WHERE organisationId=8 GROUP BY status ORDER BY status;"
 
+  echo "--- Course2Career Cyber Security knowledge coverage ---"
+  db_sql "SELECT COUNT(*) AS readyCyberSources,SUM(CASE WHEN LOWER(COALESCE(content,'')) LIKE '%£1,899%' OR LOWER(COALESCE(content,'')) LIKE '%1,899%' THEN 1 ELSE 0 END) AS sourcesWithCurrentCyberPrice,SUM(CASE WHEN LOWER(COALESCE(content,'')) LIKE '%security+%' AND LOWER(COALESCE(content,'')) LIKE '%cysa+%' THEN 1 ELSE 0 END) AS sourcesWithExamCoverage,SUM(CASE WHEN LOWER(COALESCE(content,'')) LIKE '%finance%' AND (LOWER(COALESCE(content,'')) LIKE '%48 months%' OR LOWER(COALESCE(content,'')) LIKE '%£1 deposit%') THEN 1 ELSE 0 END) AS sourcesWithFinanceCoverage,SUM(CASE WHEN LOWER(COALESCE(content,'')) LIKE '%recruitment%' AND LOWER(COALESCE(content,'')) LIKE '%linkedin%' THEN 1 ELSE 0 END) AS sourcesWithRecruitmentCoverage FROM knowledgeSources WHERE organisationId=8 AND status='ready' AND (LOWER(COALESCE(title,'')) LIKE '%cyber%' OR LOWER(COALESCE(content,'')) LIKE '%cyber%');"
+  db_sql "SELECT id,title,sourceType,LEFT(COALESCE(sourceUrl,''),220) AS sourceUrl,updatedAt FROM knowledgeSources WHERE organisationId=8 AND status='ready' AND (LOWER(COALESCE(title,'')) LIKE '%cyber%' OR LOWER(COALESCE(sourceUrl,'')) LIKE '%cyber%') ORDER BY updatedAt DESC LIMIT 20;"
+
   echo "--- skills and approved templates ---"
   db_sql "SELECT status,COUNT(*) AS versions,COUNT(DISTINCT playbookKey) AS skillKeys FROM playbookVersions WHERE organisationId=8 GROUP BY status ORDER BY status;"
   db_sql "SELECT status,COALESCE(JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.channel')),'unspecified') AS channel,COUNT(*) AS count FROM approvalTemplates WHERE organisationId=8 GROUP BY status,channel ORDER BY status,channel;"
