@@ -28,6 +28,7 @@ RUN apt-get update \
 RUN groupadd --system amarktai && useradd --system --gid amarktai --create-home amarktai
 COPY --from=build --chown=amarktai:amarktai /app/dist ./dist
 COPY --from=build --chown=amarktai:amarktai /app/drizzle ./drizzle
+COPY --from=build --chown=amarktai:amarktai /app/config ./config
 COPY --from=build --chown=amarktai:amarktai /app/node_modules ./node_modules
 COPY --from=build --chown=amarktai:amarktai /app/scripts ./scripts
 COPY --from=build --chown=amarktai:amarktai /app/package.json ./package.json
