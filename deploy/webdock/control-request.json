@@ -1,7 +1,7 @@
 {
-  "operation": "inspect",
+  "operation": "deploy",
   "server_name": "Amarktai Network - Sales Assistant",
   "server_domain": "sales.amarktai.co.za",
-  "release_sha": "d470f808bdb2d48168a354e268dcac30d85a7807",
-  "request_id": "safe-inspect-before-client-pack-path-switch-2026-09-29"
+  "release_sha": "3fd6601fe74dfd730fe8a002503d4ccc5dacfda0",
+  "request_id": "deploy-final-pre-redesign-baseline-2026-09-29-r2"
 }
