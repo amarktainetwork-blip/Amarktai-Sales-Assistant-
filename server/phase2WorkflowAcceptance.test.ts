@@ -13,8 +13,8 @@ describe("Phase 2 daily salesperson workflow", () => {
 
     expect(today).toContain("assignedTaskExceptions.length");
     expect(today).toContain("Good morning");
-    expect(today).toContain("people need");
-    expect(today).toContain("Start with ${current.name}");
+    expect(today).toContain("overdue CRM task");
+    expect(today).toContain("Your next best action is ${current.name}");
     expect(today).toContain('"Start call"');
     expect(today).not.toContain(
       "Work the hottest customer. AmarktAI handles the admin around it."
@@ -51,7 +51,9 @@ describe("Phase 2 daily salesperson workflow", () => {
     const today = read("client/src/pages/Today.tsx");
     const sync = read("server/crm/sync.ts");
 
-    expect(today).toContain("refetchInterval: 30_000");
+    expect(today).toContain("refetchInterval: 10_000");
+    expect(today).toContain("refetchIntervalInBackground: true");
+    expect(today).toContain("STALE CRM DATA");
     expect(today).toContain("refetchOnWindowFocus: true");
     expect(today).toContain("refetchOnReconnect: true");
     expect(sync).toContain("? syncConnectedSystemRoutine");
