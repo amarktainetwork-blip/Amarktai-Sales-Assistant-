@@ -2,6 +2,8 @@ import type { Page } from "playwright-core";
 const ROOT = "https://services.leadconnectorhq.com";
 const BOOTSTRAP =
   "https://backend.leadsconnectorhq.com/conversations/inbox-bootstrap";
+const MAX_CONVERSATIONS_PER_SYNC = 100;
+const CONVERSATION_SEARCH_PAGE_SIZE = 50;
 const id = (value: unknown) =>
   typeof value === "string" && /^[A-Za-z0-9_-]{1,180}$/.test(value)
     ? value
@@ -335,15 +337,68 @@ export async function readPersonalGenieMailbox(input: {
   const beforeUnread = before.search?.conversations;
   if (!Array.isArray(beforeUnread)) throw Error("GENIE_MAILBOX_SEARCH_INVALID");
 
-  const search = await read("/conversations/search", false, {
-    locationId,
-    assignedTo: input.ownerExternalId,
-    sort: "desc",
-    limit: 50,
-  });
-  const conversations = search.conversations;
-  if (!Array.isArray(conversations))
-    throw Error("GENIE_MAILBOX_SEARCH_INVALID");
+  const conversations: any[] = [];
+  const seenConversationIds = new Set<string>();
+  let searchTotal = 0;
+  let searchBounded = false;
+  let startAfterDate: string | number | undefined;
+  let startAfterId: string | undefined;
+  for (let searchPage = 0; searchPage < 2; searchPage++) {
+    const search = await read("/conversations/search", false, {
+      locationId,
+      assignedTo: input.ownerExternalId,
+      sort: "desc",
+      sortBy: "last_message_date",
+      status: "all",
+      limit: CONVERSATION_SEARCH_PAGE_SIZE,
+      ...(startAfterDate !== undefined
+        ? {
+            startAfterDate,
+            ...(startAfterId ? { id: startAfterId } : {}),
+          }
+        : {}),
+    });
+    const pageConversations = search.conversations;
+    if (!Array.isArray(pageConversations))
+      throw Error("GENIE_MAILBOX_SEARCH_INVALID");
+    searchTotal = Math.max(searchTotal, Number(search.total || 0));
+    for (const conversation of pageConversations) {
+      const conversationId = id(conversation?.id);
+      if (!conversationId || seenConversationIds.has(conversationId)) continue;
+      seenConversationIds.add(conversationId);
+      conversations.push(conversation);
+    }
+    if (
+      pageConversations.length < CONVERSATION_SEARCH_PAGE_SIZE ||
+      (searchTotal > 0 && conversations.length >= searchTotal)
+    )
+      break;
+    const last = pageConversations[pageConversations.length - 1];
+    const nextDate = last?.lastMessageDate;
+    const nextId = id(last?.id) || undefined;
+    if (
+      nextDate === undefined ||
+      nextDate === null ||
+      (nextDate === startAfterDate && nextId === startAfterId)
+    ) {
+      searchBounded = true;
+      break;
+    }
+    const parsedDate = Date.parse(String(nextDate));
+    const nextDateMs =
+      typeof nextDate === "number"
+        ? nextDate
+        : Number.isFinite(parsedDate)
+          ? parsedDate
+          : Number(nextDate);
+    if (Number.isFinite(nextDateMs) && nextDateMs < since) break;
+    startAfterDate =
+      typeof nextDate === "number" || typeof nextDate === "string"
+        ? nextDate
+        : String(nextDate);
+    startAfterId = nextId;
+    if (searchPage === 1) searchBounded = true;
+  }
 
   const records = new Map<string, PersonalGenieMailboxRecord>();
   const outboundEvidence = new Map<string, PersonalGenieOutboundEvidence>();
@@ -353,7 +408,7 @@ export async function readPersonalGenieMailbox(input: {
   let rejectedForeignOwnerCount = 0;
   let examined = 0;
   let bounded = false;
-  for (const conversation of conversations.slice(0, 20)) {
+  for (const conversation of conversations.slice(0, MAX_CONVERSATIONS_PER_SYNC)) {
     const conversationId = id(conversation.id);
     const contactExternalId = id(conversation.contactId);
     if (
@@ -614,7 +669,7 @@ export async function readPersonalGenieMailbox(input: {
     records: Array.from(records.values()),
     outboundEvidence: Array.from(outboundEvidence.values()),
     legacyConversationLinks: Array.from(legacyConversationLinks.values()),
-    checked: Math.min(conversations.length, 20),
+    checked: Math.min(conversations.length, MAX_CONVERSATIONS_PER_SYNC),
     examined,
     rejectedForeignRecipientCount,
     rejectedForeignOwnerCount,
@@ -622,7 +677,8 @@ export async function readPersonalGenieMailbox(input: {
     readOnlySource: true,
     bounded:
       bounded ||
-      conversations.length > 20 ||
-      Number(search.total || 0) > conversations.length,
+      searchBounded ||
+      conversations.length > MAX_CONVERSATIONS_PER_SYNC ||
+      searchTotal > conversations.length,
   };
 }
