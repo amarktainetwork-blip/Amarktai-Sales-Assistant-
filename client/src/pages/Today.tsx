@@ -54,6 +54,7 @@ export default function Today() {
     "now" | "queue" | "schedule" | "replies" | "internal"
   >("now");
   const [showAll, setShowAll] = useState(false);
+  const [workCategoryFilter, setWorkCategoryFilter] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
   const refreshInFlight = useRef(false);
 
@@ -74,6 +75,7 @@ export default function Today() {
   const assignedTaskExceptions =
     today.data?.queues.assignedTaskExceptions ?? [];
   const upcoming = today.data?.queues.upcoming ?? [];
+  const workGroups = today.data?.workGroups ?? [];
   const current = callQueue.find(item => item.contactEligibleNow !== false);
   const replyQueue = callQueue.filter(
     item => item.primaryKind === "inbound_reply"
@@ -85,9 +87,13 @@ export default function Today() {
   const remainingQueue = current
     ? callQueue.filter(item => item.key !== current.key)
     : callQueue;
-  const visibleQueue = showAll
-    ? remainingQueue
-    : remainingQueue.slice(0, 7);
+  const queueForView =
+    workCategoryFilter === "all"
+      ? remainingQueue
+      : callQueue.filter(
+          item => item.workCategoryKey === workCategoryFilter
+        );
+  const visibleQueue = showAll ? queueForView : queueForView.slice(0, 7);
   const workspace = today.data?.workspace.organisation;
   const taskMetrics = today.data?.taskData.metrics;
   const sourceTaskCount =
@@ -113,6 +119,14 @@ export default function Today() {
       : localHour < 18
         ? "Good afternoon"
         : "Good evening";
+
+  useEffect(() => {
+    if (
+      workCategoryFilter !== "all" &&
+      !workGroups.some(group => group.key === workCategoryFilter)
+    )
+      setWorkCategoryFilter("all");
+  }, [workCategoryFilter, workGroups]);
 
   useEffect(() => {
     if (!organisationId) return;
@@ -628,15 +642,53 @@ export default function Today() {
           ) : null}
 
           {activeTab === "queue" ? (
-            remainingQueue.length ? (
+            queueForView.length ? (
               <section data-today-queue className="amk-queue">
                 <div className="amk-queue__head">
                   <div>
                     <p className="amk-day__eyebrow">Up next</p>
                     <h2>Keep moving without deciding who to find next.</h2>
                   </div>
-                  <span>{remainingQueue.length} remaining</span>
+                  <span>{queueForView.length} shown</span>
                 </div>
+                {workGroups.length ? (
+                  <div
+                    aria-label="Filter work by category"
+                    className="mb-4 flex flex-wrap gap-2"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setWorkCategoryFilter("all");
+                        setShowAll(false);
+                      }}
+                      className={`rounded-full border px-3 py-1.5 text-sm font-semibold transition ${
+                        workCategoryFilter === "all"
+                          ? "border-[#315FDD] bg-[#E2E8FA] text-[#244FC3]"
+                          : "border-[#D7E0E4] bg-white text-[#596A75] hover:bg-[#F3F1EC]"
+                      }`}
+                    >
+                      All · {callQueue.length}
+                    </button>
+                    {workGroups.map(group => (
+                      <button
+                        key={group.key}
+                        type="button"
+                        onClick={() => {
+                          setWorkCategoryFilter(group.key);
+                          setShowAll(true);
+                        }}
+                        className={`rounded-full border px-3 py-1.5 text-sm font-semibold transition ${
+                          workCategoryFilter === group.key
+                            ? "border-[#315FDD] bg-[#E2E8FA] text-[#244FC3]"
+                            : "border-[#D7E0E4] bg-white text-[#596A75] hover:bg-[#F3F1EC]"
+                        }`}
+                      >
+                        {group.label} · {group.count}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
                 <div className="amk-queue__list">
                   {visibleQueue.map((item, offset) => {
                     const index = offset + 1;
@@ -676,7 +728,7 @@ export default function Today() {
                       </button>
                     );
                   })}
-                  {remainingQueue.length > 7 ? (
+                  {queueForView.length > 7 ? (
                     <button
                       type="button"
                       onClick={() => setShowAll(value => !value)}
@@ -684,7 +736,7 @@ export default function Today() {
                     >
                       {showAll
                         ? "Show priority view"
-                        : `Show all ${remainingQueue.length} people`}
+                        : `Show all ${queueForView.length} people`}
                     </button>
                   ) : null}
                 </div>
