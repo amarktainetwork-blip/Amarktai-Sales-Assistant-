@@ -30,7 +30,7 @@ function freshnessLabel(value?: Date | string | null, status?: string) {
   if (seconds <= 45) return `Live CRM truth · updated ${seconds}s ago`;
   if (seconds < 60) return `Refreshing CRM truth · last confirmed ${seconds}s ago`;
   const minutes = Math.floor(seconds / 60);
-  return `STALE CRM DATA · last confirmed ${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+  return `CRM truth confirmed ${minutes} minute${minutes === 1 ? "" : "s"} ago · refreshing automatically`;
 }
 
 export default function Today() {
