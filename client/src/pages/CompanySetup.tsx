@@ -7,8 +7,8 @@ import { trpc } from "@/lib/trpc";
 import { friendlyError } from "@/lib/friendlyError";
 import {
   buildBusinessBasicsApproval,
+  buildCommercialKnowledgeApproval,
   buildSalesFocusSuggestions,
-  websiteKnowledgeNeedsCommercialReview,
   type WebsiteKnowledgeApprovalCandidate,
 } from "@shared/companyKnowledgeApprovalPolicy";
 import {
@@ -41,6 +41,7 @@ function CompanyKnowledgeReview() {
   >({});
   const [editing, setEditing] = useState(false);
   const [selectedFocus, setSelectedFocus] = useState<number[]>([]);
+  const [selectedCommercial, setSelectedCommercial] = useState<number[]>([]);
 
   const discovery = setup.data?.currentDiscovery ?? null;
   const candidates = (discovery?.proposedKnowledge ??
@@ -69,9 +70,10 @@ function CompanyKnowledgeReview() {
     });
   const credentials = basics.filter(item => item.group === "credentials");
   const contacts = basics.filter(item => item.group === "contact");
-  const commercial = candidates
-    .map((candidate, index) => ({ candidate, index }))
-    .filter(item => websiteKnowledgeNeedsCommercialReview(item.candidate));
+  const commercial = useMemo(
+    () => buildCommercialKnowledgeApproval(candidates),
+    [candidates]
+  );
   const completeness = (
     discovery?.proposedFacts as
       | {
@@ -100,6 +102,10 @@ function CompanyKnowledgeReview() {
       current.length ? current : salesFocus.map(item => item.index)
     );
   }, [salesFocus]);
+
+  useEffect(() => {
+    setSelectedCommercial([]);
+  }, [discovery?.id]);
 
   function toggleFocus(index: number) {
     setSelectedFocus(current =>
@@ -348,10 +354,10 @@ function CompanyKnowledgeReview() {
                 corrections={corrections}
                 empty="No clear public support or contact facts were identified."
               />
-              <section className="rounded-3xl border border-amber-200 bg-amber-50 p-5 shadow-sm sm:p-6">
+              <section className="rounded-3xl border border-amber-200 bg-amber-50 p-5 shadow-sm sm:p-6 md:col-span-2">
                 <div className="flex items-start gap-3">
                   <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="text-[10px] font-black uppercase tracking-[.14em] text-amber-800">
                       {
                         "G · Protected commercial information · Important commercial information"
@@ -359,9 +365,99 @@ function CompanyKnowledgeReview() {
                     </p>
                     <p className="mt-2 text-sm leading-6 text-amber-950">
                       {commercial.length
-                        ? `${commercial.length} price, finance, guarantee or other commercial item${commercial.length === 1 ? "" : "s"} remain protected and are not trusted by this confirmation.`
-                        : "No protected price, finance or guarantee claims were included in this review."}
+                        ? `${commercial.length} evidence-backed price, finance, guarantee or other commercial item${commercial.length === 1 ? "" : "s"} need separate manager approval. They are never trusted by ordinary business confirmation.`
+                        : "No protected price, finance or guarantee claims were eligible for approval in this review."}
                     </p>
+                    {commercial.length ? (
+                      <>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={!management.data?.elevated}
+                            onClick={() =>
+                              setSelectedCommercial(
+                                commercial.map(item => item.index)
+                              )
+                            }
+                          >
+                            Select all evidenced commercial facts
+                          </Button>
+                          {selectedCommercial.length ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setSelectedCommercial([])}
+                            >
+                              Clear commercial selections
+                            </Button>
+                          ) : null}
+                        </div>
+                        <div className="mt-4 space-y-3">
+                          {commercial.map(item => (
+                            <label
+                              key={item.index}
+                              className="block cursor-pointer rounded-2xl border border-amber-200 bg-white p-4"
+                            >
+                              <span className="flex items-start gap-3">
+                                <input
+                                  type="checkbox"
+                                  className="mt-1 h-4 w-4"
+                                  checked={selectedCommercial.includes(
+                                    item.index
+                                  )}
+                                  disabled={!management.data?.elevated}
+                                  onChange={event =>
+                                    setSelectedCommercial(current =>
+                                      event.target.checked
+                                        ? Array.from(
+                                            new Set([...current, item.index])
+                                          )
+                                        : current.filter(
+                                            index => index !== item.index
+                                          )
+                                    )
+                                  }
+                                />
+                                <span className="min-w-0 flex-1">
+                                  <span className="block font-bold text-amber-950">
+                                    {item.title}
+                                  </span>
+                                  <span className="mt-1 block whitespace-pre-wrap text-xs leading-5 text-amber-900">
+                                    {item.content}
+                                  </span>
+                                  <span className="mt-2 block text-[11px] text-amber-800">
+                                    {item.sourceUrl ? (
+                                      <a
+                                        href={item.sourceUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="font-semibold underline"
+                                        onClick={event => event.stopPropagation()}
+                                      >
+                                        View first-party source
+                                      </a>
+                                    ) : (
+                                      "First-party source retained in the review"
+                                    )}
+                                    {item.fetchedAt
+                                      ? ` · fetched ${new Date(item.fetchedAt).toLocaleDateString("en-GB")}`
+                                      : ""}
+                                  </span>
+                                </span>
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                        <p className="mt-3 text-xs leading-5 text-amber-900">
+                          Only the checked commercial facts will become trusted.
+                          Conflicting or ambiguous commercial claims cannot be
+                          selected here.
+                        </p>
+                      </>
+                    ) : null}
                   </div>
                 </div>
               </section>
@@ -430,6 +526,7 @@ function CompanyKnowledgeReview() {
                 confirm.mutate({
                   discoveryId: discovery.id,
                   knowledgeIndexes: basics.map(item => item.index),
+                  commercialKnowledgeIndexes: selectedCommercial,
                   corrections: basics.map(item => {
                     const correction = corrections[item.index] ?? {
                       title: item.title,
