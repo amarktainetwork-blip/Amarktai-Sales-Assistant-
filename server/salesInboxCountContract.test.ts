@@ -26,5 +26,8 @@ describe("Sales Inbox truth-count contract", () => {
     expect(today).toContain("inboundNeedsAction: Number(inboundActionCountRows[0]?.total || 0)");
     expect(today).not.toContain("inboundNeedsAction: currentInbound.length");
     expect(today).not.toContain(".limit(600)");
+    expect(today).not.toContain(".limit(500),");
+    expect(today).not.toContain("desc(callbackTasks.dueAt))\n      .limit(100)");
+    expect(today).not.toContain("desc(assistantReminders.dueAt))\n      .limit(100)");
   });
 });
