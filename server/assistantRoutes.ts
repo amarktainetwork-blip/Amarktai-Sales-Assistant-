@@ -905,7 +905,7 @@ export function registerAssistantRoutes(app: Express) {
         ),
         user: {
           firstName:
-            membership.memberOnboarding.preferredName ||
+            membership.memberOnboarding.preferredName?.trim().split(/\s+/)[0] ||
             user?.name?.trim().split(/\s+/)[0] ||
             null,
           role: membership.role,
