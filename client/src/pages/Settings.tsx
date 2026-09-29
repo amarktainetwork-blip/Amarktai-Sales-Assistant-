@@ -23,6 +23,7 @@ import {
   Save,
   ShieldCheck,
   SlidersHorizontal,
+  Workflow,
   UserRound,
   Users,
 } from "lucide-react";
@@ -86,6 +87,42 @@ async function mailboxApi(init?: RequestInit): Promise<MailboxStatus> {
   return body;
 }
 
+type WorkflowPolicyCategory = {
+  key: string;
+  label: string;
+  priority: number;
+  morningPriority?: number;
+  sourceKinds: string[];
+};
+
+type WorkflowPolicyResponse = {
+  configuration?: {
+    todayWorkPolicy?: {
+      morningWindowEnd?: string;
+      categories: WorkflowPolicyCategory[];
+      callTimeRotation?: {
+        enabled: boolean;
+        categoryKeys: string[];
+        minimumVariationMinutes: number;
+        expectedConsecutiveDays: number;
+      };
+    };
+  };
+  validation?: { valid?: boolean; error?: string };
+};
+
+async function workflowPolicyApi(): Promise<WorkflowPolicyResponse> {
+  const response = await fetch("/api/client-workflow-configuration", {
+    credentials: "include",
+  });
+  const body = (await response.json().catch(() => ({}))) as WorkflowPolicyResponse & {
+    error?: string;
+  };
+  if (!response.ok)
+    throw new Error(body.error || "Workflow policy is unavailable.");
+  return body;
+}
+
 function downloadExport(file: {
   base64: string;
   contentType: string;
@@ -122,6 +159,10 @@ export default function Settings() {
   const [mailbox, setMailbox] = useState<MailboxStatus | null>(null);
   const [mailboxLoading, setMailboxLoading] = useState(true);
   const [mailboxError, setMailboxError] = useState("");
+  const [workflowPolicy, setWorkflowPolicy] =
+    useState<WorkflowPolicyResponse | null>(null);
+  const [workflowPolicyLoading, setWorkflowPolicyLoading] = useState(false);
+  const [workflowPolicyError, setWorkflowPolicyError] = useState("");
   const [notificationPermission, setNotificationPermission] = useState<
     NotificationPermission | "unsupported"
   >(() =>
@@ -179,6 +220,7 @@ export default function Settings() {
       ? [
           { key: "templates", label: "Templates" },
           { key: "company", label: "Company" },
+          { key: "workflow", label: "Workflow" },
           { key: "team", label: "Team" },
           { key: "knowledge", label: "Knowledge" },
         ]
@@ -212,6 +254,29 @@ export default function Settings() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!canManage || activeSection !== "workflow") return;
+    let active = true;
+    setWorkflowPolicyLoading(true);
+    setWorkflowPolicyError("");
+    workflowPolicyApi()
+      .then(result => {
+        if (active) setWorkflowPolicy(result);
+      })
+      .catch(error => {
+        if (active)
+          setWorkflowPolicyError(
+            friendlyError(error, "Company workflow policy could not be loaded.")
+          );
+      })
+      .finally(() => {
+        if (active) setWorkflowPolicyLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [activeSection, canManage]);
 
   useEffect(() => {
     let active = true;
@@ -403,6 +468,100 @@ export default function Settings() {
               action="Manage connections"
               onClick={() => navigate("/connections")}
             />
+          </section>
+        ) : null}
+
+        {activeSection === "workflow" && canManage ? (
+          <section
+            data-workflow-policy
+            className="rounded-2xl border border-[#D7E0E4] bg-[#F7F5F0] p-5 shadow-sm sm:p-6"
+          >
+            <div className="flex items-start gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#E2E8FA] text-[#315FDD]">
+                <Workflow className="h-5 w-5" />
+              </span>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#315FDD]">
+                  Company workflow
+                </p>
+                <h2 className="mt-1 text-xl font-bold">
+                  Today work policy
+                </h2>
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-[#596A75]">
+                  These rules belong only to this organisation. Another company can
+                  use different work groups, priorities, operating windows and
+                  contact-time rules without changing AmarktAI application code.
+                </p>
+              </div>
+            </div>
+
+            {workflowPolicyLoading ? (
+              <p className="mt-5 flex items-center gap-2 text-sm text-[#596A75]">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading company workflow…
+              </p>
+            ) : workflowPolicyError ? (
+              <p role="alert" className="mt-5 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+                {workflowPolicyError}
+              </p>
+            ) : workflowPolicy?.configuration?.todayWorkPolicy ? (
+              <>
+                <div className="mt-5 flex flex-wrap gap-2 text-xs font-semibold text-[#596A75]">
+                  <span className="rounded-full border border-[#C6D0D2] bg-white px-3 py-1.5">
+                    Morning override until {workflowPolicy.configuration.todayWorkPolicy.morningWindowEnd || "not set"}
+                  </span>
+                  <span className="rounded-full border border-[#C6D0D2] bg-white px-3 py-1.5">
+                    {workflowPolicy.validation?.valid === false
+                      ? "Configuration needs attention"
+                      : "Configuration validated"}
+                  </span>
+                </div>
+                <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {workflowPolicy.configuration.todayWorkPolicy.categories.map(category => (
+                    <article
+                      key={category.key}
+                      className="rounded-xl border border-[#D7E0E4] bg-white p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <strong>{category.label}</strong>
+                          <p className="mt-1 text-xs text-[#6B7881]">
+                            {category.key}
+                          </p>
+                        </div>
+                        <span className="rounded-full bg-[#EEF3F8] px-2.5 py-1 text-xs font-bold text-[#405B7A]">
+                          Priority {category.priority}
+                        </span>
+                      </div>
+                      {category.morningPriority != null ? (
+                        <p className="mt-3 text-sm text-[#596A75]">
+                          Morning priority: {category.morningPriority}
+                        </p>
+                      ) : null}
+                      {category.sourceKinds.length ? (
+                        <p className="mt-2 text-xs text-[#6B7881]">
+                          Sources: {category.sourceKinds.join(", ")}
+                        </p>
+                      ) : null}
+                    </article>
+                  ))}
+                </div>
+                {workflowPolicy.configuration.todayWorkPolicy.callTimeRotation?.enabled ? (
+                  <div className="mt-5 rounded-xl border border-[#D7E0E4] bg-[#EEF0ED] p-4 text-sm text-[#45535D]">
+                    <strong>Contact-time rotation active.</strong>{" "}
+                    Vary later-attempt contact times by at least{" "}
+                    {workflowPolicy.configuration.todayWorkPolicy.callTimeRotation.minimumVariationMinutes} minutes
+                    across the configured categories:{" "}
+                    {workflowPolicy.configuration.todayWorkPolicy.callTimeRotation.categoryKeys.join(", ")}.
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                This organisation has no Today work policy yet. AmarktAI will use
+                the generic queue rules until a manager commissions one.
+              </div>
+            )}
           </section>
         ) : null}
 
