@@ -315,12 +315,20 @@ export async function getTodayWork(input: {
       )
       .orderBy(desc(crmOpportunities.updatedAt)),
     db
-      .select()
+      .select({
+        status: connectorSyncJobs.status,
+        lastSucceededAt: connectorSyncJobs.lastSucceededAt,
+      })
       .from(connectorSyncJobs)
+      .innerJoin(
+        connectedSystems,
+        eq(connectorSyncJobs.connectedSystemId, connectedSystems.id)
+      )
       .where(
         and(
           eq(connectorSyncJobs.organisationId, input.organisationId),
-          eq(connectorSyncJobs.resourceType, "crm_reconciliation")
+          eq(connectorSyncJobs.resourceType, "crm_reconciliation"),
+          inArray(connectedSystems.status, ["ready", "limited_permissions"])
         )
       )
       .orderBy(desc(connectorSyncJobs.lastSucceededAt)),

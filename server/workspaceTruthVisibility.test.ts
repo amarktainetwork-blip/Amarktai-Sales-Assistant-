@@ -5,6 +5,10 @@ const source = readFileSync(
   new URL("../client/src/components/DashboardLayout.tsx", import.meta.url),
   "utf8"
 );
+const todaySource = readFileSync(
+  new URL("./today.ts", import.meta.url),
+  "utf8"
+);
 
 describe("workspace-wide CRM truth visibility", () => {
   it("warns on every sales page when the synchronized source truth is stale", () => {
@@ -22,5 +26,17 @@ describe("workspace-wide CRM truth visibility", () => {
       source.indexOf("const inbox")
     );
     expect(leadQuery).toContain("refetchInterval: 15_000");
+  });
+
+  it("excludes retired CRM connections from authoritative workspace freshness", () => {
+    const freshnessQuery = todaySource.slice(
+      todaySource.indexOf("status: connectorSyncJobs.status"),
+      todaySource.indexOf("message: inboundMessages")
+    );
+    expect(freshnessQuery).toContain(".innerJoin(");
+    expect(freshnessQuery).toContain("connectedSystems.id");
+    expect(freshnessQuery).toContain(
+      'inArray(connectedSystems.status, ["ready", "limited_permissions"])'
+    );
   });
 });
