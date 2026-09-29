@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildGroundedDraftInstruction,
+  buildSafeGroundedFallback,
   groundedDraftIssues,
   type GroundedDraftContext,
 } from "./assistantDraftGrounding";
@@ -144,4 +145,39 @@ it("does not validate a different decimal price by prefix", () => {
       approvedKnowledge: "The price is £99.99.",
     })
   ).toContain("unsupported_commercial_claim:£99.50");
+});
+
+
+describe("deterministic safe draft fallback", () => {
+  it("still produces a useful reply when the customer asks protected commercial questions", () => {
+    const riskyContext: GroundedDraftContext = {
+      ...context,
+      contactName: "Benson Makori",
+      salespersonName: "Amelia De Beer",
+      inboundMessage:
+        "I am interested in the Cyber Security Career Programme. Please confirm whether the £3,900 fee includes exams, how the practical Cyber Range works, the finance repayment terms, whether my IT experience qualifies me, and what employment support is included.",
+    };
+    const fallback = buildSafeGroundedFallback(riskyContext);
+    expect(fallback).toContain("Hi Benson");
+    expect(fallback).toContain("exact current course cost");
+    expect(fallback).toContain("which assessments or exams are included");
+    expect(fallback).toContain("practical lab setup");
+    expect(fallback).toContain("payment or finance arrangements");
+    expect(fallback).toContain("employment-support process");
+    expect(fallback).toContain("rather than guess");
+    expect(fallback).toContain("Thanks,\nAmelia");
+    expect(groundedDraftIssues(fallback, riskyContext)).toEqual([]);
+    expect(fallback).not.toContain("£3,900");
+  });
+
+  it("keeps non-email fallback concise and free of invented claims", () => {
+    const fallback = buildSafeGroundedFallback({
+      ...context,
+      channel: "sms",
+      contactName: "Benson Makori",
+      inboundMessage: "What is the price and are finance options available?",
+    });
+    expect(fallback.split(/\s+/).length).toBeLessThanOrEqual(80);
+    expect(groundedDraftIssues(fallback, { ...context, channel: "sms", contactName: "Benson Makori", inboundMessage: "What is the price and are finance options available?" })).toEqual([]);
+  });
 });

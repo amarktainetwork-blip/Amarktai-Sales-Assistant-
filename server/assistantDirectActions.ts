@@ -34,6 +34,7 @@ import { renderConfiguredTemplateText } from "./communicationContent";
 import { listRelevantAssistantMemories } from "./memory";
 import {
   buildGroundedDraftInstruction,
+  buildSafeGroundedFallback,
   groundedDraftIssues,
   type GroundedDraftContext,
 } from "./assistantDraftGrounding";
@@ -506,11 +507,16 @@ export async function tryPrepareDirectAssistantAction(input: {
         maxOutputTokens: channel === "email" ? 700 : 220,
       });
       body = cleanDraft(repaired.content);
-      if (groundedDraftIssues(body, grounding).length)
-        return {
-          content:
-            "I could not produce a draft that stayed consistent with the current customer context, so nothing was prepared or sent.",
-        };
+      const repairedIssues = groundedDraftIssues(body, grounding);
+      if (repairedIssues.length) {
+        body = buildSafeGroundedFallback(grounding);
+        const fallbackIssues = groundedDraftIssues(body, grounding);
+        if (fallbackIssues.length)
+          return {
+            content:
+              "I could not produce a draft that stayed consistent with the current customer context, so nothing was prepared or sent.",
+          };
+      }
     }
     if (!body)
       return {

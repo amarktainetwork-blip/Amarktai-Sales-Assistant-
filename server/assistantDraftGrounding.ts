@@ -130,3 +130,55 @@ export function groundedDraftIssues(
       issues.push(`unsupported_commercial_claim:${claim}`);
   return issues;
 }
+
+
+function topicList(context: GroundedDraftContext) {
+  const source = `${context.emailSubject || ""} ${context.inboundMessage || ""}`.toLowerCase();
+  const topics: string[] = [];
+  const add = (topic: string) => {
+    if (!topics.includes(topic)) topics.push(topic);
+  };
+  if (/eligib|qualif|entry requirement|experience/.test(source))
+    add("the entry requirements for your situation");
+  if (/price|cost|fee|£|\$|€/.test(source))
+    add("the exact current course cost");
+  if (/exam|certif|assessment/.test(source))
+    add("which assessments or exams are included");
+  if (/lab|practical|cyber range|hands.?on/.test(source))
+    add("the practical lab setup");
+  if (/finance|payment|repay|monthly|instal/.test(source))
+    add("the payment or finance arrangements that may apply");
+  if (/job|employment|placement|career support|salary/.test(source))
+    add("the employment-support process and what it covers");
+  return topics;
+}
+
+/**
+ * Last-resort customer-facing draft used only after two model drafts fail
+ * deterministic grounding. It remains useful without converting a customer's
+ * questions into verified commercial facts.
+ */
+export function buildSafeGroundedFallback(context: GroundedDraftContext) {
+  const firstName =
+    context.contactName.trim().split(/\s+/)[0] || context.contactName.trim() || "there";
+  const salespersonFirstName =
+    context.salespersonName?.trim().split(/\s+/)[0] || "";
+  const programme = context.courseInterest?.trim();
+  const topics = topicList(context);
+  const topicText =
+    topics.length > 1
+      ? `${topics.slice(0, -1).join(", ")}, and ${topics[topics.length - 1]}`
+      : topics[0] || "the points in your message";
+
+  if (context.channel && context.channel !== "email") {
+    return `Hi ${firstName}, thanks for your message${programme ? ` about ${programme}` : ""}. I’ve noted your questions about ${topicText}. I want to give you the exact current details rather than guess, so I’ll confirm them and come back to you clearly.`;
+  }
+
+  return [
+    `Hi ${firstName},`,
+    `Thanks for your detailed email${programme ? ` about ${programme}` : ""}. I’ve noted your questions about ${topicText}.`,
+    "I want to make sure I give you the exact current information rather than guess, so I’ll confirm those details and come back to you with a clear point-by-point answer.",
+    "If it helps, once I’ve confirmed everything we can also go through it together on a call.",
+    salespersonFirstName ? `Thanks,\n${salespersonFirstName}` : "Thanks,",
+  ].join("\n\n");
+}
