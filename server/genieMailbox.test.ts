@@ -605,6 +605,26 @@ describe("read-only mailbox ownership proof", () => {
       } as any,
     };
   }
+  it("searches newest owner-scoped conversations before reading message bodies", async () => {
+    const f = source("owner");
+    await readPersonalGenieMailbox({
+      page: f.page,
+      ownerExternalId: "owner",
+      mailboxEmail: "advisor@example.test",
+      since: new Date("2026-09-17T09:00:00Z"),
+    });
+    const searchCall = f.get.mock.calls.find((call: any) =>
+      String(call[0]).includes("/conversations/search")
+    );
+    expect(searchCall?.[1]?.params).toMatchObject({
+      assignedTo: "owner",
+      sort: "desc",
+      sortBy: "last_message_date",
+      status: "all",
+      limit: 50,
+    });
+  });
+
   it("ingests a proven owner/contact SMS using only reads and preserves unread state", async () => {
     const f = source("owner");
     const result = await readPersonalGenieMailbox({
