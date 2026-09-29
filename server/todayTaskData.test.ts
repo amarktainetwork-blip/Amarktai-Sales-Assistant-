@@ -23,7 +23,6 @@ describe("Today aggregate contract", () => {
       expect(q.where.sql).toContain("exists (select 1");
       expect(q.where.params).toContain(2);
       if (q.selection?.total) expect(q.limit).toBeUndefined();
-      else expect(q.limit).toBeLessThanOrEqual(50);
     }
     const counts = r.queries.filter(q => q.selection?.total);
     expect(counts[0].where.params).toContain("open");
@@ -31,10 +30,10 @@ describe("Today aggregate contract", () => {
     expect(counts[0].where.params).not.toContain("unknown");
     expect(result.metrics.historicalBacklog).toBe(0);
   });
-  it("excludes CRM tasks that have already moved to Review", async () => {
-    const r = queryRecorder(q => (q.selection?.total ? [{ total: 0 }] : []));
+  it("keeps CRM source counts truthful while Review exclusions affect only actionable queues", async () => {
+    const r = queryRecorder(q => (q.selection?.total ? [{ total: 2 }] : []));
     m.db.mockResolvedValue(r.db);
-    await getTodayTaskData({
+    const result = await getTodayTaskData({
       userId: 2,
       organisationId: 8,
       timezone: "Europe/London",
@@ -42,14 +41,24 @@ describe("Today aggregate contract", () => {
       priorityTitles: [],
       excludeExternalIds: ["task-in-review", "task-in-review", "task-approved"],
     });
-    const activeQueries = r.queries.filter(q =>
-      q.where?.params.includes("open")
+    expect(result.metrics.overdue).toBe(2);
+    const countQueries = r.queries.filter(
+      q => q.selection?.total && q.where?.params.includes("open")
     );
-    expect(activeQueries.length).toBeGreaterThan(0);
-    for (const q of activeQueries) {
+    expect(countQueries.length).toBeGreaterThan(0);
+    for (const q of countQueries) {
+      expect(q.where.params).not.toContain("task-in-review");
+      expect(q.where.params).not.toContain("task-approved");
+    }
+    const queueQueries = r.queries.filter(q => !q.selection?.total);
+    expect(queueQueries).toHaveLength(3);
+    for (const q of queueQueries) {
       expect(q.where.params).toContain("task-in-review");
       expect(q.where.params).toContain("task-approved");
     }
+    expect(queueQueries[0].limit).toBeUndefined();
+    expect(queueQueries[1].limit).toBeUndefined();
+    expect(queueQueries[2].limit).toBe(20);
   });
   it("separates a configured backlog cutoff without changing source records", async () => {
     const r = queryRecorder(q => (q.selection?.total ? [{ total: 700 }] : []));
@@ -94,8 +103,11 @@ describe("MariaDB task queue ordering", () => {
       expect(result.bounds.endExclusive.toISOString()).toBe(
         "2026-10-26T00:00:00.000Z"
       );
-      const queues = r.queries.filter(q => q.limit);
+      const queues = r.queries.filter(q => !q.selection?.total);
       expect(queues).toHaveLength(3);
+      expect(queues[0].limit).toBeUndefined();
+      expect(queues[1].limit).toBeUndefined();
+      expect(queues[2].limit).toBe(20);
       for (const [index, q] of queues.entries()) {
         const order = q.orderSql.map((v: any) => v.sql).join(", ");
         expect(order).not.toMatch(/(?:^|,)\s*0(?:\s*,|$)/);
