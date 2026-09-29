@@ -103,6 +103,89 @@ describe("client action configuration", () => {
     });
   });
 
+  it("normalizes tenant-specific Today grouping without embedding client rules in the engine", () => {
+    const configuration = normalizeClientActionConfiguration({
+      todayWorkPolicy: {
+        morningWindowEnd: "09:30",
+        categories: [
+          {
+            key: "admin",
+            label: "Renewals & debt",
+            priority: 6,
+            morningPriority: -1,
+            taskTitleContains: ["renewal", "debt"],
+          },
+          {
+            key: "attempt-1",
+            label: "First call",
+            priority: 0,
+            workflowPurposes: ["attempt_1"],
+          },
+          {
+            key: "replies",
+            label: "Replies",
+            priority: 1,
+            sourceKinds: ["inbound_reply"],
+          },
+        ],
+        callTimeRotation: {
+          enabled: true,
+          categoryKeys: ["attempt-1"],
+          minimumVariationMinutes: 120,
+          expectedConsecutiveDays: 4,
+        },
+      },
+    });
+
+    expect(configuration.todayWorkPolicy).toMatchObject({
+      morningWindowEnd: "09:30",
+      categories: [
+        {
+          key: "admin",
+          label: "Renewals & debt",
+          priority: 6,
+          morningPriority: -1,
+        },
+        {
+          key: "attempt-1",
+          workflowPurposes: ["attempt_1"],
+        },
+        {
+          key: "replies",
+          sourceKinds: ["inbound_reply"],
+        },
+      ],
+      callTimeRotation: {
+        categoryKeys: ["attempt-1"],
+        minimumVariationMinutes: 120,
+        expectedConsecutiveDays: 4,
+      },
+    });
+  });
+
+  it("rejects a Today rotation rule that references an unknown tenant category", () => {
+    expect(() =>
+      validateClientActionConfigurationForCommissioning({
+        todayWorkPolicy: {
+          categories: [
+            {
+              key: "calls",
+              label: "Calls",
+              priority: 1,
+              taskTitleContains: ["call"],
+            },
+          ],
+          callTimeRotation: {
+            enabled: true,
+            categoryKeys: ["missing"],
+            minimumVariationMinutes: 90,
+            expectedConsecutiveDays: 4,
+          },
+        },
+      })
+    ).toThrow("TODAY_WORK_POLICY_ROTATION_CATEGORY_UNKNOWN");
+  });
+
   it("resolves current customer only from a configured stable URL identifier", () => {
     const configuration = normalizeClientActionConfiguration({
       currentRecordRules: [
