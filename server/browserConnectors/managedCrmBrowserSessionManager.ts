@@ -859,6 +859,12 @@ export const managedCrmBrowserSessionManager = {
   async customerFinishedSigningIn(session: ManagedCrmBrowserSession) {
     session.customerConfirmed = true;
     session.authenticatedPersisted = false;
+    // Explicit human sign-in confirmation starts a new authenticated lifecycle.
+    // A prior "commissioning ensured" flag may belong to the session that just
+    // expired; retaining it would leave blocked safe-read proofs stale even
+    // after the user successfully recovered the CRM.
+    session.commissioningEnsuredForAuthentication = false;
+    session.reauthenticationRecorded = false;
     await evaluate(session);
     return { ...session.snapshot };
   },
