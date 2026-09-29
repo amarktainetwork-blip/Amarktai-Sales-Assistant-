@@ -342,7 +342,6 @@ export async function readPersonalGenieMailbox(input: {
   let searchTotal = 0;
   let searchBounded = false;
   let startAfterDate: string | number | undefined;
-  let startAfterId: string | undefined;
   for (let searchPage = 0; searchPage < 2; searchPage++) {
     const search = await read("/conversations/search", false, {
       locationId,
@@ -351,12 +350,7 @@ export async function readPersonalGenieMailbox(input: {
       sortBy: "last_message_date",
       status: "all",
       limit: CONVERSATION_SEARCH_PAGE_SIZE,
-      ...(startAfterDate !== undefined
-        ? {
-            startAfterDate,
-            ...(startAfterId ? { id: startAfterId } : {}),
-          }
-        : {}),
+      ...(startAfterDate !== undefined ? { startAfterDate } : {}),
     });
     const pageConversations = search.conversations;
     if (!Array.isArray(pageConversations))
@@ -375,11 +369,10 @@ export async function readPersonalGenieMailbox(input: {
       break;
     const last = pageConversations[pageConversations.length - 1];
     const nextDate = last?.lastMessageDate;
-    const nextId = id(last?.id) || undefined;
     if (
       nextDate === undefined ||
       nextDate === null ||
-      (nextDate === startAfterDate && nextId === startAfterId)
+      nextDate === startAfterDate
     ) {
       searchBounded = true;
       break;
@@ -396,7 +389,6 @@ export async function readPersonalGenieMailbox(input: {
       typeof nextDate === "number" || typeof nextDate === "string"
         ? nextDate
         : String(nextDate);
-    startAfterId = nextId;
     if (searchPage === 1) searchBounded = true;
   }
 
