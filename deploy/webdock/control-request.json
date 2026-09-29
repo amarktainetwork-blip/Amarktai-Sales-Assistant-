@@ -1,7 +1,7 @@
 {
-  "operation": "deploy",
+  "operation": "diagnose",
   "server_name": "Amarktai Network - Sales Assistant",
   "server_domain": "sales.amarktai.co.za",
   "release_sha": "ea6c347bab36b65c7653736575b44cff7e629875",
-  "request_id": "deploy-ea6c347-functional-baseline-2026-09-29"
+  "request_id": "diagnose-ea6c347-before-commissioning-2026-09-29"
 }
