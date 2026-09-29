@@ -821,7 +821,13 @@ export default function LiveCalls() {
       });
       voicedSamples = 0;
       peakRms = 0;
-      if (!speech) return true;
+      if (!speech) {
+        // After a real quiet gap and no outstanding STT work, arm the fast
+        // packet again so the next speaking turn does not wait a full 2s.
+        if (pendingChunkCountRef.current === 0)
+          firstVoicedPacketPending = true;
+        return true;
+      }
       firstVoicedPacketPending = false;
 
       const normalized = downsamplePcm(captured, context.sampleRate);
