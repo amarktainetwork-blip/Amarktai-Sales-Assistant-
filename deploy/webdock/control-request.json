@@ -1,7 +1,7 @@
 {
-  "operation": "deploy",
+  "operation": "inspect",
   "server_name": "Amarktai Network - Sales Assistant",
   "server_domain": "sales.amarktai.co.za",
   "release_sha": "f75f2a36ea1645e926aa101f5821d9f0db2e9ff5",
-  "request_id": "final-functional-active-crm-freshness-deploy-2026-09-29"
+  "request_id": "final-safe-inspect-active-crm-freshness-2026-09-29"
 }
