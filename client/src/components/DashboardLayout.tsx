@@ -184,7 +184,7 @@ export default function DashboardLayout({
   const crmTruthStale =
     dayPulse.isSuccess &&
     (dayPulse.data?.freshness.status !== "synchronized" ||
-      truthAgeMs > 90_000);
+      truthAgeMs > 60_000);
   const crmTruthAgeLabel = truthLastSuccessfulAt
     ? truthAgeMs < 60_000
       ? "under a minute"
