@@ -9,7 +9,9 @@
     "clientLocation": "United Kingdom",
     "salesModel": "B2C / person-first"
   },
-  "backlogPolicy": { "mode": "all_incomplete" },
+  "backlogPolicy": {
+    "mode": "all_incomplete"
+  },
   "profile": {
     "companyName": "Course2Career",
     "industry": "professional training and career development",
@@ -21,7 +23,13 @@
   },
   "officeHours": {
     "timezone": "Europe/London",
-    "days": [1, 2, 3, 4, 5],
+    "days": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
     "start": "09:00",
     "end": "18:00"
   },
@@ -75,5 +83,130 @@
       "purpose": "enrolment"
     }
   ],
-  "executionConfigurationStatus": "unconfigured_pending_supervised_commissioning"
+  "executionConfigurationStatus": "unconfigured_pending_supervised_commissioning",
+  "todayWorkPolicy": {
+    "morningWindowEnd": "09:30",
+    "categories": [
+      {
+        "key": "renewals-debt",
+        "label": "Renewals & debt",
+        "priority": 6,
+        "morningPriority": -1,
+        "sourceKinds": [],
+        "exactTaskTitles": [],
+        "taskTitlePrefixes": [],
+        "taskTitleContains": [
+          "renewal",
+          "debt",
+          "collection",
+          "default",
+          "payment",
+          "paid?",
+          "take £"
+        ],
+        "workflowPurposes": []
+      },
+      {
+        "key": "new-leads",
+        "label": "New leads",
+        "priority": 0,
+        "sourceKinds": [
+          "new_lead"
+        ],
+        "exactTaskTitles": [],
+        "taskTitlePrefixes": [],
+        "taskTitleContains": [],
+        "workflowPurposes": []
+      },
+      {
+        "key": "first-call",
+        "label": "First call",
+        "priority": 0,
+        "sourceKinds": [],
+        "exactTaskTitles": [],
+        "taskTitlePrefixes": [
+          "first call"
+        ],
+        "taskTitleContains": [],
+        "workflowPurposes": [
+          "attempt_1"
+        ]
+      },
+      {
+        "key": "replies-callbacks",
+        "label": "Replies & callbacks",
+        "priority": 1,
+        "sourceKinds": [
+          "inbound_reply",
+          "confirmed_follow_up"
+        ],
+        "exactTaskTitles": [],
+        "taskTitlePrefixes": [],
+        "taskTitleContains": [],
+        "workflowPurposes": []
+      },
+      {
+        "key": "last-try",
+        "label": "Last try",
+        "priority": 2,
+        "sourceKinds": [],
+        "exactTaskTitles": [],
+        "taskTitlePrefixes": [
+          "last try",
+          "call 4"
+        ],
+        "taskTitleContains": [
+          "last try"
+        ],
+        "workflowPurposes": [
+          "attempt_4",
+          "final_follow_up"
+        ]
+      },
+      {
+        "key": "call-2",
+        "label": "Call #2",
+        "priority": 3,
+        "sourceKinds": [],
+        "exactTaskTitles": [],
+        "taskTitlePrefixes": [
+          "#2",
+          "call 2"
+        ],
+        "taskTitleContains": [
+          "second call"
+        ],
+        "workflowPurposes": [
+          "attempt_2"
+        ]
+      },
+      {
+        "key": "call-3",
+        "label": "Call #3",
+        "priority": 4,
+        "sourceKinds": [],
+        "exactTaskTitles": [],
+        "taskTitlePrefixes": [
+          "#3",
+          "call 3"
+        ],
+        "taskTitleContains": [
+          "third call"
+        ],
+        "workflowPurposes": [
+          "attempt_3"
+        ]
+      }
+    ],
+    "callTimeRotation": {
+      "enabled": true,
+      "categoryKeys": [
+        "call-2",
+        "call-3",
+        "last-try"
+      ],
+      "minimumVariationMinutes": 120,
+      "expectedConsecutiveDays": 4
+    }
+  }
 }
