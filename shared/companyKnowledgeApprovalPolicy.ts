@@ -5,6 +5,8 @@ export type WebsiteKnowledgeApprovalCandidate = {
   reviewState?: string;
   trustEligible?: boolean;
   sourcePageIds?: string[];
+  sourceUrl?: string;
+  fetchedAt?: string;
   offering?: {
     name?: string;
     type?: string;
@@ -34,6 +36,15 @@ export type BusinessBasicsApprovalItem = WebsiteKnowledgeCorrection & {
 export type SalesFocusSuggestion = BusinessBasicsApprovalItem & {
   score: number;
   reason: string;
+};
+
+export type CommercialKnowledgeApprovalItem = {
+  index: number;
+  title: string;
+  content: string;
+  category: string;
+  sourceUrl?: string;
+  fetchedAt?: string;
 };
 
 const permanentlyCommercialCategories = new Set([
@@ -160,6 +171,61 @@ export function websiteKnowledgePassesCommercialApprovalPolicy(
   return !containsCommercialKnowledge(
     `${correction.title}\n${correction.content}`
   );
+}
+
+const explicitCommercialExclusions = new Set([
+  "comparison",
+  "competitor",
+  "testimonial",
+  "case_study",
+  "example",
+  "historical",
+  "navigation",
+  "marketing_copy",
+  "ambiguous",
+  "exclude",
+]);
+
+export function websiteKnowledgeCanReceiveExplicitCommercialApproval(
+  candidate: WebsiteKnowledgeApprovalCandidate
+) {
+  if (!websiteKnowledgeNeedsCommercialReview(candidate)) return false;
+  if (candidate.trustEligible === false) return false;
+  if (["conflict", "ambiguous"].includes(candidate.reviewState || ""))
+    return false;
+  if (explicitCommercialExclusions.has(candidate.category || "")) return false;
+  if (!compactText(candidate.title) || !compactText(candidate.content))
+    return false;
+  return Boolean(
+    candidate.sourceUrl?.startsWith("https://") ||
+      candidate.sourceUrl?.startsWith("http://") ||
+      candidate.sourcePageIds?.length
+  );
+}
+
+export function buildCommercialKnowledgeApproval(
+  candidates: WebsiteKnowledgeApprovalCandidate[]
+): CommercialKnowledgeApprovalItem[] {
+  const seen = new Set<string>();
+  return candidates.flatMap((candidate, index) => {
+    if (!websiteKnowledgeCanReceiveExplicitCommercialApproval(candidate))
+      return [];
+    const title = compactText(candidate.title).slice(0, 220);
+    const content = candidate.content.trim().slice(0, 40_000);
+    const key = `${normalizedKey(title)}|${normalizedKey(content)}`;
+    if (seen.has(key)) return [];
+    seen.add(key);
+    return [
+      {
+        index,
+        title,
+        content,
+        category: candidate.category || "commercial",
+        sourceUrl: candidate.sourceUrl,
+        fetchedAt: candidate.fetchedAt,
+      },
+    ];
+  });
 }
 
 function safeIdentityTitle(value: string) {
