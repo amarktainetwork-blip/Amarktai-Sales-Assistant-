@@ -97,6 +97,19 @@ if [ "$OPERATION" = "cleanup" ]; then
   echo "--- memory after cleanup ---"
   free -h || true
   docker stats --no-stream --format '{{.Name}}|cpu={{.CPUPerc}}|mem={{.MemUsage}}|mem_pct={{.MemPerc}}' 2>/dev/null | sort || true
+  echo "--- top container processes ---"
+  for name in webdock-browser-1 webdock-worker-1 webdock-app-1 webdock-db-1; do
+    if docker inspect "$name" >/dev/null 2>&1; then
+      echo "[$name]"
+      docker top "$name" -eo pid,ppid,rss,%mem,etime,cmd 2>/dev/null | head -25 || true
+      pid="$(docker inspect -f '{{.State.Pid}}' "$name" 2>/dev/null || true)"
+      if [ -n "$pid" ] && [ "$pid" != "0" ] && [ -r "/proc/$pid/status" ]; then
+        grep -E '^(Name|VmRSS|RssAnon|RssFile|VmSwap|Threads):' "/proc/$pid/status" || true
+      fi
+    fi
+  done
+  echo "--- chromium target count ---"
+  docker exec webdock-browser-1 sh -c "curl -fsS http://127.0.0.1:9222/json/list 2>/dev/null | grep -o '\"type\"[[:space:]]*:[[:space:]]*\"page\"' | wc -l" 2>/dev/null || true
   curl -fsS https://sales.amarktai.co.za/readyz
   echo
   echo "SAFE_STORAGE_CLEANUP=PASS"
