@@ -567,7 +567,11 @@ echo "fetched_main=$FETCHED_SHA"
 [ "$FETCHED_SHA" = "$TARGET_SHA" ] || fail "public GitHub main does not equal frozen target SHA"
 
 working_status="$(git_admin status --porcelain)"
-unexpected="$(printf '%s\n' "$working_status" | sed 's/^...//' | grep -v -E '^(server/salesTracker.ts|server/salesTrackerAcceptance.test.ts)
+if [ -n "$working_status" ]; then
+  echo "$working_status"
+  fail "working tree is not clean; refusing deployment"
+fi
+echo "WORKING_TREE=SOURCE_CLEAN"
 
 echo "=== PRE-CLEANUP BACKUP ==="
 shell_admin "AMARKTAI_DEPLOY_PROFILE=full sh deploy/webdock/backup.sh"
