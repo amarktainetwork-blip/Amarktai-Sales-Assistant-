@@ -1,7 +1,7 @@
 {
-  "operation": "cleanup",
+  "operation": "deploy",
   "server_name": "Amarktai Network - Sales Assistant",
   "server_domain": "sales.amarktai.co.za",
-  "release_sha": "4ff4a5eafd395732f5ab8f815d38d974814520cb",
-  "request_id": "phase1-memory-baseline-before-voice-2026-09-30"
+  "release_sha": "2d1d93bdbd4a9176eef3dd180b228d9a9f7159d5",
+  "request_id": "phase1-deploy-clean-main-2026-09-30"
 }
