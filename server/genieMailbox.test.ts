@@ -293,6 +293,61 @@ describe("Genie personal email isolation", () => {
     ).toThrow("GENIE_MAILBOX_SCOPE_MISMATCH");
   });
 
+  it("trusts exact newest-first thread order when a normalized Genie clock makes the reply timestamp look earlier", () => {
+    const evidence = legacyGenieOutboundEvidence(
+      {
+        id: "outbound-after-inbound-by-thread-order",
+        type: 3,
+        direction: "outbound",
+        deleted: false,
+        locationId: "location-1",
+        conversationId: "conversation-1",
+        contactId: "contact-1",
+        dateAdded: "2026-09-30T07:45:00.000Z",
+      },
+      {
+        channel: "email",
+        locationId: "location-1",
+        conversationId: "conversation-1",
+        contactExternalId: "contact-1",
+        receivedAt: new Date("2026-09-30T07:59:02.000Z"),
+        verifiedAfterInboundByThreadOrder: true,
+      }
+    );
+    expect(evidence).toMatchObject({
+      contactExternalId: "contact-1",
+      conversationExternalId: "conversation-1",
+      verifiedAfterInboundByThreadOrder: true,
+    });
+    expect(
+      outboundGenieReplyMatchesInbound(
+        {
+          contactExternalId: "contact-1",
+          receivedAt: new Date("2026-09-30T07:59:02.000Z"),
+          classification: { conversationExternalId: "conversation-1" },
+        },
+        evidence!
+      )
+    ).toBe(true);
+  });
+
+  it("uses the exact inbound message position rather than provider time to backfill handled replies", () => {
+    const reader = readFileSync(
+      new URL("./browserConnectors/genieMailboxRead.ts", import.meta.url),
+      "utf8"
+    );
+    const pipeline = readFileSync(
+      new URL("./communications/inboundPipeline.ts", import.meta.url),
+      "utf8"
+    );
+    expect(reader).toContain("threadMessageIds.includes(externalMessageId)");
+    expect(reader).toContain("verifiedAfterInboundByThreadOrder: true");
+    expect(reader).not.toContain("crossedInboundTime");
+    expect(pipeline).toContain(
+      "sourceUpdatedAt: input.envelope.receivedAt"
+    );
+  });
+
   it("closes only an earlier actionable inbound message in the exact replied conversation", () => {
     const evidence = {
       contactExternalId: "contact-1",
