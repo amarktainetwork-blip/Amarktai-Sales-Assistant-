@@ -667,12 +667,18 @@ export async function readPersonalGenieMailbox(input: {
         // inbound was handled. Provider clocks are not trusted for this proof.
         for (const newerThread of newerThreads) {
           if (unresolved.channel === "email" && Number(newerThread.type) === 3) {
-            for (const candidateEmailId of newerThread.meta?.email?.messageIds || []) {
-              if (!id(candidateEmailId) || candidateEmailId === externalMessageId)
-                continue;
+            const candidateEmailIds = (
+              newerThread.meta?.email?.messageIds || []
+            )
+              .map((value: unknown) => id(value))
+              .filter((value: string | null): value is string => Boolean(value));
+            const unambiguousThreadOrder = candidateEmailIds.length === 1;
+            for (const candidateEmailId of candidateEmailIds) {
+              if (candidateEmailId === externalMessageId) continue;
               const candidateRaw = await read(
                 `/conversations/messages/email/${candidateEmailId}`
               );
+              const candidateEmail = candidateRaw?.emailMessage || candidateRaw;
               const candidate = parsePersonalGenieOutboundEmail(candidateRaw, {
                 emailId: candidateEmailId,
                 locationId,
@@ -681,6 +687,14 @@ export async function readPersonalGenieMailbox(input: {
                 since: 0,
               });
               if (candidate.kind !== "outbound") continue;
+              const candidateRawMs = Date.parse(
+                String(candidateEmail?.dateAdded || "")
+              );
+              const rawAfterExactInbound =
+                Number.isFinite(sourceReceivedAtRawMs) &&
+                Number.isFinite(candidateRawMs) &&
+                candidateRawMs > sourceReceivedAtRawMs;
+              if (!unambiguousThreadOrder && !rawAfterExactInbound) continue;
               outboundEvidence.set(candidateEmailId, {
                 ...candidate.evidence,
                 inboundExternalMessageId: externalMessageId,
