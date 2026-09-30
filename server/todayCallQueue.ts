@@ -195,6 +195,16 @@ export function buildTodayCallQueue(input: {
       fallback: baseRank,
       preserveUrgentRank: timeCritical,
     });
+    const highPriorityFirstCall = Boolean(
+      category?.key === "first-call" &&
+        contact.tags?.some(tag =>
+          ["elcas", "ppc"].includes(tag.trim().toLowerCase())
+        )
+    );
+    const effectiveRank =
+      highPriorityFirstCall && !timeCritical
+        ? Math.min(categoryRank, -0.5)
+        : categoryRank;
     const previousAttempt = recentCalls.get(
       contactKey(task.connectedSystemId, task.contactExternalId)
     );
@@ -218,7 +228,7 @@ export function buildTodayCallQueue(input: {
       ((preference.preference !== null && !preference.eligibleNow) ||
         rotation.defer);
     candidates.push({
-      rank: categoryRank,
+      rank: effectiveRank,
       occurredAt: task.dueAt?.valueOf() ?? Number.MAX_SAFE_INTEGER,
       contact,
       kind,
@@ -244,7 +254,12 @@ export function buildTodayCallQueue(input: {
           : preference.sortMinute,
       workCategoryKey: category?.key || null,
       workCategoryLabel: category?.label || null,
-      extraReasons: rotation.reason ? [rotation.reason] : [],
+      extraReasons: [
+        ...(highPriorityFirstCall
+          ? ["Very high priority First Call: ELCAS/PPC"]
+          : []),
+        ...(rotation.reason ? [rotation.reason] : []),
+      ],
     });
   };
 
