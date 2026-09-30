@@ -1,7 +1,7 @@
 {
-  "operation": "deploy",
+  "operation": "verify",
   "server_name": "Amarktai Network - Sales Assistant",
   "server_domain": "sales.amarktai.co.za",
   "release_sha": "cb429f02e2d329406cef4fdf5dcf1a3aa177af0f",
-  "request_id": "final-readiness-before-redesign-2026-09-30"
+  "request_id": "final-readiness-postdeploy-verify-2026-09-30"
 }
