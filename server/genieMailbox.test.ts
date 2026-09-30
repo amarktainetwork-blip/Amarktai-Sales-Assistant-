@@ -487,6 +487,10 @@ describe("Genie personal email isolation", () => {
     expect(reader).toContain("const newerThreads: any[] = []");
     expect(reader).toContain("inboundExternalMessageId: externalMessageId");
     expect(reader).toContain("exactGenieOutboundEmailEvidenceByThreadOrder");
+    expect(reader).toContain("id(newerThread.id)");
+    expect(reader).toContain("const legacyEmailDetailCache = new Map");
+    expect(reader).toContain("MAX_LEGACY_EMAIL_DETAIL_READS = 80");
+    expect(reader).toContain("readLegacyEmailDetail(newerEmailId)");
     expect(reader).toContain("/conversations/messages/email/");
     expect(reader).toContain("verifiedAfterInboundByThreadOrder: true");
     expect(reader).not.toContain("crossedInboundTime");
