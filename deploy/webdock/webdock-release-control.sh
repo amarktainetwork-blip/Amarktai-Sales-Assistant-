@@ -94,6 +94,9 @@ if [ "$OPERATION" = "cleanup" ]; then
   echo "--- after cleanup ---"
   df -h / /opt 2>/dev/null || true
   docker system df || true
+  echo "--- memory after cleanup ---"
+  free -h || true
+  docker stats --no-stream --format '{{.Name}}|cpu={{.CPUPerc}}|mem={{.MemUsage}}|mem_pct={{.MemPerc}}' 2>/dev/null | sort || true
   curl -fsS https://sales.amarktai.co.za/readyz
   echo
   echo "SAFE_STORAGE_CLEANUP=PASS"
