@@ -3,6 +3,7 @@ const ROOT = "https://services.leadconnectorhq.com";
 const BOOTSTRAP =
   "https://backend.leadsconnectorhq.com/conversations/inbox-bootstrap";
 const CONVERSATION_SEARCH_PAGE_SIZE = 20;
+const MAX_LEGACY_BACKFILL_PAGES_PER_CYCLE = 3;
 const id = (value: unknown) =>
   typeof value === "string" && /^[A-Za-z0-9_-]{1,180}$/.test(value)
     ? value
@@ -108,11 +109,18 @@ export type PersonalGenieOutboundEvidence = {
 };
 
 
+export type LegacyGenieBackfillProgress = {
+  conversationExternalId: string;
+  lastMessageId: string;
+  candidateOutboundEvidence?: PersonalGenieOutboundEvidence;
+};
+
 export type LegacyGenieInboundReference = {
   externalMessageId: string;
   channel: "email" | "sms" | "chat";
   contactExternalId: string;
   receivedAt: Date;
+  backfillProgress?: LegacyGenieBackfillProgress;
 };
 
 export type LegacyGenieConversationLink = {
@@ -422,6 +430,7 @@ export async function readPersonalGenieMailbox(input: {
   const records = new Map<string, PersonalGenieMailboxRecord>();
   const outboundEvidence = new Map<string, PersonalGenieOutboundEvidence>();
   const legacyConversationLinks = new Map<string, LegacyGenieConversationLink>();
+  const legacyBackfillProgress = new Map<string, LegacyGenieBackfillProgress>();
   const visited = new Set<string>();
   let rejectedForeignRecipientCount = 0;
   let rejectedForeignOwnerCount = 0;
@@ -628,11 +637,17 @@ export async function readPersonalGenieMailbox(input: {
       conversationExternalId: conversationId,
     });
 
-    let lastMessageId: string | undefined;
+    const savedProgress =
+      unresolved.backfillProgress?.conversationExternalId === conversationId
+        ? unresolved.backfillProgress
+        : undefined;
+    let lastMessageId = id(savedProgress?.lastMessageId) || undefined;
+    let candidateOutboundEvidence = savedProgress?.candidateOutboundEvidence;
     let foundReply = false;
     let reachedExactInbound = false;
-    const newerThreads: any[] = [];
+    let pagesRead = 0;
     while (!foundReply) {
+      pagesRead += 1;
       const result = await read(
         `/conversations/${conversationId}/messages`,
         false,
@@ -656,28 +671,31 @@ export async function readPersonalGenieMailbox(input: {
             : []),
         ].filter(Boolean);
         if (!threadMessageIds.includes(externalMessageId)) {
-          newerThreads.push(thread);
+          if (!candidateOutboundEvidence) {
+            const evidence = legacyGenieOutboundEvidence(thread, {
+              channel: unresolved.channel,
+              locationId,
+              conversationId,
+              contactExternalId,
+              receivedAt: unresolved.receivedAt,
+              inboundExternalMessageId: externalMessageId,
+              verifiedAfterInboundByThreadOrder: true,
+            });
+            if (evidence) candidateOutboundEvidence = evidence;
+          }
           continue;
         }
 
         reachedExactInbound = true;
-        // The Genie message list is newest-first. Only an outbound item already
-        // encountered before this exact inbound item can prove that this exact
-        // inbound was handled. Provider clocks are not trusted for this proof.
-        for (const newerThread of newerThreads) {
-          const evidence = legacyGenieOutboundEvidence(newerThread, {
-            channel: unresolved.channel,
-            locationId,
-            conversationId,
-            contactExternalId,
-            receivedAt: unresolved.receivedAt,
-            inboundExternalMessageId: externalMessageId,
-            verifiedAfterInboundByThreadOrder: true,
-          });
-          if (!evidence) continue;
-          outboundEvidence.set(evidence.externalMessageId, evidence);
+        // The message list is newest-first. A persisted or same-cycle outbound
+        // candidate was observed before this exact inbound message, so thread
+        // order proves the reply happened after this inbound even if clocks skew.
+        if (candidateOutboundEvidence) {
+          outboundEvidence.set(
+            candidateOutboundEvidence.externalMessageId,
+            candidateOutboundEvidence
+          );
           foundReply = true;
-          break;
         }
         break;
       }
@@ -685,6 +703,14 @@ export async function readPersonalGenieMailbox(input: {
       const next = id(result.messages.lastMessageId);
       if (!next || next === lastMessageId)
         throw Error("GENIE_MAILBOX_CURSOR_STALLED");
+      if (pagesRead >= MAX_LEGACY_BACKFILL_PAGES_PER_CYCLE) {
+        legacyBackfillProgress.set(externalMessageId, {
+          conversationExternalId: conversationId,
+          lastMessageId: next,
+          ...(candidateOutboundEvidence ? { candidateOutboundEvidence } : {}),
+        });
+        break;
+      }
       lastMessageId = next;
     }
   }
@@ -702,6 +728,12 @@ export async function readPersonalGenieMailbox(input: {
     records: Array.from(records.values()),
     outboundEvidence: Array.from(outboundEvidence.values()),
     legacyConversationLinks: Array.from(legacyConversationLinks.values()),
+    legacyBackfillProgress: Array.from(legacyBackfillProgress.entries()).map(
+      ([inboundExternalMessageId, progress]) => ({
+        inboundExternalMessageId,
+        ...progress,
+      })
+    ),
     checked: conversations.length,
     examined,
     rejectedForeignRecipientCount,
