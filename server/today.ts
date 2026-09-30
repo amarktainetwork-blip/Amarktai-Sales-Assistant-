@@ -1,7 +1,11 @@
 import { getTodayTaskData } from "./todayTaskData";
 import { getOrganisationWorkspaceContext } from "./organisationWorkspace";
 import { isIncompleteTask } from "../shared/taskState";
-import { normalizedCustomerAttributes, personalOwnerSql } from "./customerData";
+import {
+  normalizedCustomerAttributes,
+  personalOwnerSql,
+  uniqueOwnerMappingsBySystem,
+} from "./customerData";
 import { deriveCustomerInterest } from "./customerInterest";
 import { deriveCustomerContactPreference } from "./contactPreference";
 import { buildTodayCallQueue, unrepresentedTodayTasks } from "./todayCallQueue";
@@ -504,10 +508,13 @@ export async function getTodayWork(input: {
       )
       .orderBy(desc(salesWorkItems.priority), desc(salesWorkItems.updatedAt)),
   ]);
+  const trustedMappings = uniqueOwnerMappingsBySystem(
+    mappings.filter(mapping => mapping.connectedSystemId && mapping.externalUserId)
+  );
   const ownerIds = new Set(
-    mappings
-      .filter(mapping => mapping.connectedSystemId && mapping.externalUserId)
-      .map(mapping => `${mapping.connectedSystemId}:${mapping.externalUserId}`)
+    trustedMappings.map(
+      mapping => `${mapping.connectedSystemId}:${mapping.externalUserId}`
+    )
   );
   const belongsToUser = (
     ownerExternalId: string | null,
@@ -610,7 +617,7 @@ export async function getTodayWork(input: {
         .orderBy(desc(crmActivities.occurredAt))
     : [];
   const ownerEmailBySystemAndOwner = new Map(
-    mappings.map(mapping => [
+    trustedMappings.map(mapping => [
       `${mapping.connectedSystemId}:${mapping.externalUserId}`,
       mapping.email,
     ])
