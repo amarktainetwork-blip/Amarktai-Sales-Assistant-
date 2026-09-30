@@ -8,7 +8,12 @@ import { getSmtpReadiness } from "./smtp";
 import { probeSttHealth } from "./voice/stt";
 import { probeTtsHealth } from "./voice/tts";
 
-export type ReadinessCheck = { ok: boolean; state: string; detail?: string };
+export type ReadinessCheck = {
+  ok: boolean;
+  state: string;
+  detail?: string;
+  required?: boolean;
+};
 
 function configuredSecret(name: string, minimumLength: number) {
   const value = process.env[name]?.trim() || "";
@@ -40,7 +45,7 @@ export async function getProductionReadiness() {
   const [database, staticAssets, sttProbe, ttsProbe] = await Promise.all([
     databaseCheck(),
     staticAssetsCheck(),
-    probeSttHealth(),
+    probeSttHealth("en"),
     probeTtsHealth(),
   ]);
   const smtp = getSmtpReadiness();
@@ -52,9 +57,25 @@ export async function getProductionReadiness() {
     auth: { ok: authOk, state: authOk ? "READY" : "INVALID_CONFIGURATION", detail: authOk ? undefined : "Production requires local auth plus 32+ character JWT_SECRET and SECRET_KEY." },
     smtp: { ok: smtp.ready, state: smtp.ready ? "CONFIGURED_UNVERIFIED" : "NOT_CONFIGURED", detail: smtp.ready ? "Run the production integration verifier to prove the SMTP transport." : "SMTP is mandatory for 2FA, invitations and recovery." },
     genx: { ok: genx.configured, state: genx.configured ? "CONFIGURED_UNVERIFIED" : "NOT_CONFIGURED", detail: genx.configured ? "Run the production integration verifier to prove the model catalogue and inference path." : "GenX endpoint, key and default model are required." },
-    stt: { ok: sttProbe.ready, state: sttProbe.ready ? "READY" : "UNAVAILABLE", detail: sttProbe.ready ? undefined : `Speech transcription is unavailable: ${sttProbe.reason || "health probe failed"}.` },
-    tts: { ok: ttsProbe.ready, state: ttsProbe.ready ? "READY" : "UNAVAILABLE", detail: ttsProbe.ready ? undefined : `Speech synthesis is unavailable: ${ttsProbe.reason || "health probe failed"}.` },
+    stt: {
+      ok: sttProbe.ready,
+      state: sttProbe.ready ? "READY" : "DORMANT",
+      detail: sttProbe.ready
+        ? undefined
+        : `Live-call transcription is not currently warm: ${sttProbe.reason || "health probe failed"}.`,
+      required: false,
+    },
+    tts: {
+      ok: ttsProbe.ready,
+      state: ttsProbe.ready ? "READY" : "DORMANT",
+      detail: ttsProbe.ready
+        ? undefined
+        : `Speech synthesis is dormant until a voice feature needs it: ${ttsProbe.reason || "health probe failed"}.`,
+      required: false,
+    },
   };
-  const ready = Object.values(checks).every(check => check.ok);
+  const ready = Object.values(checks)
+    .filter(check => check.required !== false)
+    .every(check => check.ok);
   return { status: ready ? "ready" as const : "not_ready" as const, service: "amarktai-sales", checks };
 }
