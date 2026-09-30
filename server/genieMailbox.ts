@@ -95,6 +95,7 @@ export function outboundGenieReplyMatchesInbound(
     sentAt: Date;
     inboundExternalMessageId?: string;
     verifiedAfterInboundByThreadOrder?: boolean;
+    verifiedAfterInboundBySourceTimestamp?: boolean;
   }
 ) {
   const sameContact =
@@ -102,14 +103,14 @@ export function outboundGenieReplyMatchesInbound(
   const sameConversation =
     genieInboundConversationId(inbound.classification) ===
     evidence.conversationExternalId;
-  if (
+  const exactBoundProof =
     evidence.verifiedAfterInboundByThreadOrder === true ||
-    evidence.inboundExternalMessageId
-  ) {
+    evidence.verifiedAfterInboundBySourceTimestamp === true;
+  if (exactBoundProof || evidence.inboundExternalMessageId) {
     return (
       sameContact &&
       sameConversation &&
-      evidence.verifiedAfterInboundByThreadOrder === true &&
+      exactBoundProof &&
       Boolean(
         evidence.inboundExternalMessageId &&
           inbound.externalMessageId === evidence.inboundExternalMessageId
@@ -212,6 +213,7 @@ async function reconcileGenieOutboundReplies(input: {
     sentAt: Date;
     inboundExternalMessageId?: string;
     verifiedAfterInboundByThreadOrder?: boolean;
+    verifiedAfterInboundBySourceTimestamp?: boolean;
   }>;
 }) {
   if (!input.outboundEvidence.length) return 0;
