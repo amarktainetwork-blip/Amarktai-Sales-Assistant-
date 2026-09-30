@@ -119,14 +119,7 @@ jobs:
             "${auth[@]}" "$WEBDOCK_API/servers/$server_slug/snapshots" \
             | jq '[.[] | {id,name,date,type,completed,deletable}]' || true
 
-      - name: Inspect-only complete
-        if: steps.resolve.outputs.operation == 'inspect'
-        run: |
-          echo "INSPECT_ONLY=PASS"
-          echo "No server-side script was deployed or executed."
-
       - name: Prepare Webdock control script
-        if: steps.resolve.outputs.operation != 'inspect'
         id: script
         shell: bash
         env:
@@ -190,7 +183,6 @@ jobs:
           echo "script_id=$script_id" >> "$GITHUB_OUTPUT"
 
       - name: Deploy and execute controlled server script
-        if: steps.resolve.outputs.operation != 'inspect'
         id: execute
         shell: bash
         env:
@@ -260,7 +252,7 @@ jobs:
           }
 
       - name: Fetch VPS control report
-        if: steps.resolve.outputs.operation != 'inspect' && always()
+        if: always()
         shell: bash
         env:
           SERVER_SLUG: ${{ steps.resolve.outputs.server_slug }}

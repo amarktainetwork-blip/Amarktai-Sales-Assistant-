@@ -1,7 +1,7 @@
 {
-  "operation": "diagnose",
+  "operation": "inspect",
   "server_name": "Amarktai Network - Sales Assistant",
   "server_domain": "sales.amarktai.co.za",
   "release_sha": "2d1d93bdbd4a9176eef3dd180b228d9a9f7159d5",
-  "request_id": "phase2-independent-vps-truth-audit-retry-2026-09-30"
+  "request_id": "phase2-resting-state-inspect-2026-09-30"
 }

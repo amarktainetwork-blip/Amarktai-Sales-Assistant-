@@ -57,6 +57,9 @@ storage_attribution() {
   du -xsh /opt /var/lib/docker /var/log /var/cache /var/backups /home /root 2>/dev/null | sort -h || true
   echo "--- /opt detail ---"
   du -x -h --max-depth=3 /opt 2>/dev/null | sort -h | tail -60 || true
+  echo "--- persistent release-state detail ---"
+  ls -ld /opt/amarktai-sales/deploy/webdock/{config,files,backups} 2>/dev/null || true
+  du -x -h --max-depth=2 /opt/amarktai-sales/deploy/webdock 2>/dev/null | sort -h | tail -60 || true
   echo "--- Docker storage detail ---"
   du -x -h --max-depth=2 /var/lib/docker 2>/dev/null | sort -h | tail -60 || true
   echo "--- Docker named-volume data ---"
@@ -86,7 +89,8 @@ memory_attribution() {
     fi
   done
   echo "--- chromium page targets ---"
-  docker exec webdock-browser-1 sh -c "curl -fsS http://127.0.0.1:9222/json/list 2>/dev/null | grep -o '\"type\"[[:space:]]*:[[:space:]]*\"page\"' | wc -l" 2>/dev/null || true
+  browser_targets="$(docker exec webdock-browser-1 sh -c 'curl -fsS http://127.0.0.1:9222/json/list' 2>/dev/null || true)"
+  jq -r '[.[] | select(.type == "page")] | "count=\(length)", (.[] | [.id,.title,(.url | sub("[?].*$";""))] | @tsv)' <<<"$browser_targets" 2>/dev/null || true
 }
 
 [ -d "$REPO/.git" ] || fail "production repository missing at $REPO"
