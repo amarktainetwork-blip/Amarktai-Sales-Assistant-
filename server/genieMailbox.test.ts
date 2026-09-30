@@ -424,6 +424,16 @@ describe("Genie personal email isolation", () => {
     );
   });
 
+  it("does not prefilter exact-thread candidates by normalized receivedAt before the matcher runs", () => {
+    const source = readFileSync(new URL("./genieMailbox.ts", import.meta.url), "utf8");
+    expect(source).not.toContain(
+      "lte(inboundMessages.receivedAt, evidence.sentAt)"
+    );
+    expect(source).toContain(
+      "outboundGenieReplyMatchesInbound(row, evidence)"
+    );
+  });
+
   it("closes only an earlier actionable inbound message in the exact replied conversation", () => {
     const evidence = {
       contactExternalId: "contact-1",
