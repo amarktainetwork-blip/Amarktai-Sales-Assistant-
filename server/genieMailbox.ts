@@ -54,6 +54,13 @@ export function genieInboundConversationId(
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
+export function isDeferrableGenieInboundScopeError(error: unknown) {
+  return (
+    error instanceof Error &&
+    error.message === "INBOUND_CONTACT_SCOPE_REQUIRED"
+  );
+}
+
 export function shouldTargetGenieActionableBackfill(input: {
   channel: string;
   contactExternalId: string | null;
@@ -322,6 +329,7 @@ export async function syncGenieMailboxForUser(input: {
   let checked = 0;
   let received = 0;
   let draftsPrepared = 0;
+  let deferredMissingContactScope = 0;
 
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
@@ -597,24 +605,33 @@ export async function syncGenieMailboxForUser(input: {
       );
   }
   for (const message of proof.records) {
-    const result = await ingestInboundMessage({
-      organisationId: input.organisationId,
-      mailboxUserId: input.userId,
-      connectedSystemId: system.id,
-      envelope: {
-        externalMessageId: message.externalMessageId,
-        channel: message.channel,
-        sourceChannel: message.channel === "chat" ? "whatsapp" : undefined,
-        senderReference: message.sender,
-        recipientReference: message.recipient,
-        contactExternalId: message.contactExternalId,
-        conversationExternalId: message.conversationExternalId,
-        subject: message.subject,
-        body: message.body,
-        receivedAt: message.receivedAt,
-      },
-    });
-    if (!result.duplicate) received += 1;
+    try {
+      const result = await ingestInboundMessage({
+        organisationId: input.organisationId,
+        mailboxUserId: input.userId,
+        connectedSystemId: system.id,
+        envelope: {
+          externalMessageId: message.externalMessageId,
+          channel: message.channel,
+          sourceChannel: message.channel === "chat" ? "whatsapp" : undefined,
+          senderReference: message.sender,
+          recipientReference: message.recipient,
+          contactExternalId: message.contactExternalId,
+          conversationExternalId: message.conversationExternalId,
+          subject: message.subject,
+          body: message.body,
+          receivedAt: message.receivedAt,
+        },
+      });
+      if (!result.duplicate) received += 1;
+    } catch (error) {
+      // The live Genie contact was already owner-verified by the mailbox reader.
+      // If our local owner-scoped contact cache has not caught up yet, defer only
+      // that message. Do not abort retirement/reconciliation for every other
+      // message in the user's mailbox.
+      if (!isDeferrableGenieInboundScopeError(error)) throw error;
+      deferredMissingContactScope += 1;
+    }
   }
   const handledReplies = await reconcileGenieOutboundReplies({
     userId: input.userId,
@@ -651,6 +668,7 @@ export async function syncGenieMailboxForUser(input: {
       rejectedForeignRecipientCount:
         proof.rejectedForeignRecipientCount + foreignRecipientRows.length,
       rejectedForeignOwnerCount: proof.rejectedForeignOwnerCount,
+      deferredMissingContactScope,
       examined: proof.examined,
       bounded: proof.bounded,
       sourceSince: since.toISOString(),
@@ -667,6 +685,7 @@ export async function syncGenieMailboxForUser(input: {
     rejectedForeignRecipientCount:
       proof.rejectedForeignRecipientCount + foreignRecipientRows.length,
     rejectedForeignOwnerCount: proof.rejectedForeignOwnerCount,
+    deferredMissingContactScope,
     unreadPreserved: proof.unreadPreserved,
     bounded: proof.bounded,
   };
