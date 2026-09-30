@@ -679,6 +679,9 @@ export async function syncGenieMailboxForUser(input: {
       outboundEvidence: proof.outboundEvidence.length,
       legacyConversationLinks: proof.legacyConversationLinks.length,
       legacyActionableChecked: actionableBackfill.length,
+      legacyEmailDetailReads: proof.legacyEmailDetailReads,
+      legacyEmailDetailReadBudgetExhausted:
+        proof.legacyEmailDetailReadBudgetExhausted,
       draftsPrepared,
       contentRetained: false,
       exactEmailIsolation: true,
