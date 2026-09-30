@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import {
   exactGenieMailboxIdentity,
+  isDeferrableGenieInboundScopeError,
   outboundGenieReplyMatchesInbound,
   parseGenieReceivedAt,
   shouldTargetGenieActionableBackfill,
@@ -60,6 +61,31 @@ describe("Genie source timestamp safety", () => {
   it("caps the live mailbox overlap cursor at now when a persisted message is future-dated", () => {
     const source = readFileSync(new URL("./genieMailbox.ts", import.meta.url), "utf8");
     expect(source).toContain("Math.min(latest.receivedAt.getTime(), now)");
+  });
+});
+
+describe("Genie mailbox contact-scope deferral", () => {
+  it("defers only a local contact-cache scope miss", () => {
+    expect(
+      isDeferrableGenieInboundScopeError(
+        new Error("INBOUND_CONTACT_SCOPE_REQUIRED")
+      )
+    ).toBe(true);
+    expect(
+      isDeferrableGenieInboundScopeError(
+        new Error("INBOUND_OWNER_SCOPE_REQUIRED")
+      )
+    ).toBe(false);
+    expect(isDeferrableGenieInboundScopeError(new Error("other"))).toBe(false);
+  });
+
+  it("continues to handled-reply reconciliation after a deferred contact cache miss", () => {
+    const source = readFileSync(new URL("./genieMailbox.ts", import.meta.url), "utf8");
+    expect(source).toContain("deferredMissingContactScope += 1");
+    expect(source).toContain("const handledReplies = await reconcileGenieOutboundReplies");
+    expect(source.indexOf("deferredMissingContactScope += 1")).toBeLessThan(
+      source.indexOf("const handledReplies = await reconcileGenieOutboundReplies")
+    );
   });
 });
 
