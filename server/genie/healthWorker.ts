@@ -4,7 +4,11 @@ import { runGenieOperationWatchdog } from "./operationWatchdog";
 import { startCompanyKnowledgeWorker } from "../companyKnowledgeJobs";
 import { startAutomaticCommissioningWorker } from "../crm/automaticCommissioning";
 import { startPersonalWorkLearningWorker } from "../personalWorkLearning";
-import { syncReadyDelegatedMailboxes } from "../mailboxWorker";
+import {
+  armPersonalMailboxSyncWatchdog,
+  personalMailboxSyncTimeoutMs,
+  syncReadyDelegatedMailboxes,
+} from "../mailboxWorker";
 import {
   runConnectionScopedCrmSyncCycle,
   startConnectionScopedCrmSyncWorker,
@@ -69,6 +73,20 @@ let processingMailboxes = false;
 async function processMailboxes() {
   if (processingMailboxes) return;
   processingMailboxes = true;
+  const timeoutMs = personalMailboxSyncTimeoutMs();
+  const clearWatchdog = armPersonalMailboxSyncWatchdog({
+    timeoutMs,
+    onTimeout: () => {
+      console.error(
+        JSON.stringify({
+          event: "personal_mailbox_worker_stalled",
+          timeoutMs,
+          action: "recycle_worker",
+        })
+      );
+      process.exit(75);
+    },
+  });
   try {
     const result = await runBackgroundBrowserReadLane(
       "personal_mailbox_sync",
@@ -92,6 +110,7 @@ async function processMailboxes() {
       })
     );
   } finally {
+    clearWatchdog();
     processingMailboxes = false;
   }
 }
