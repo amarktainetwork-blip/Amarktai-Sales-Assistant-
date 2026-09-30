@@ -1,6 +1,6 @@
 import { isRetryableGenieMailboxRead } from "./genieMailboxRetry";
 import { readPersonalGenieMailbox } from "./browserConnectors/genieMailboxRead";
-import { and, asc, desc, eq, gt, inArray, lte } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray } from "drizzle-orm";
 import {
   assistantReminders,
   inboundMessages,
@@ -214,8 +214,7 @@ async function reconcileGenieOutboundReplies(input: {
           eq(inboundMessages.mailboxUserId, input.userId),
           eq(inboundMessages.connectedSystemId, input.connectedSystemId),
           eq(inboundMessages.needsAction, true),
-          eq(inboundMessages.contactExternalId, evidence.contactExternalId),
-          lte(inboundMessages.receivedAt, evidence.sentAt)
+          eq(inboundMessages.contactExternalId, evidence.contactExternalId)
         )
       );
     const matched = candidates.filter(row =>
