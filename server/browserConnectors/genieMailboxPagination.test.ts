@@ -75,11 +75,36 @@ describe("Genie mailbox continuation", () => {
       context: () => ({ request: { get, post } }),
     } as any;
 
-    const result = await readPersonalGenieMailbox({
+    const first = await readPersonalGenieMailbox({
       page,
       ownerExternalId: "owner",
       mailboxEmail: "advisor@example.test",
       since: new Date("2026-09-17T09:00:00Z"),
+    });
+    expect(first.records).toHaveLength(0);
+    expect(first.liveProgress).toMatchObject({
+      conversationIndex: 10,
+      nextSearchCursor: "provider-cursor-page-2",
+    });
+
+    const second = await readPersonalGenieMailbox({
+      page,
+      ownerExternalId: "owner",
+      mailboxEmail: "advisor@example.test",
+      since: new Date("2026-09-17T09:00:00Z"),
+      liveProgress: first.liveProgress,
+    });
+    expect(second.records).toHaveLength(0);
+    expect(second.liveProgress).toMatchObject({
+      searchCursor: "provider-cursor-page-2",
+    });
+
+    const third = await readPersonalGenieMailbox({
+      page,
+      ownerExternalId: "owner",
+      mailboxEmail: "advisor@example.test",
+      since: new Date("2026-09-17T09:00:00Z"),
+      liveProgress: second.liveProgress,
     });
 
     const searches = get.mock.calls.filter((call: any) =>
@@ -89,14 +114,130 @@ describe("Genie mailbox continuation", () => {
     expect(searches[1]?.[1]?.params?.startAfterDate).toBe(
       "provider-cursor-page-2"
     );
-    expect(result.records).toHaveLength(1);
-    expect(result.records[0]).toMatchObject({
+    expect(third.records).toHaveLength(1);
+    expect(third.records[0]).toMatchObject({
       externalMessageId: "target-message",
       contactExternalId: "target-contact",
       channel: "sms",
     });
-    expect(result.checked).toBe(21);
-    expect(result.unreadPreserved).toBe(true);
+    expect(first.checked + second.checked + third.checked).toBe(21);
+    expect(third.liveProgress).toBeUndefined();
+    expect(third.unreadPreserved).toBe(true);
+  });
+
+  it("bounds a deep live conversation and resumes from the exact message cursor", async () => {
+    const response = (data: unknown) => ({
+      ok: () => true,
+      status: () => 200,
+      json: async () => data,
+    });
+    const conversation = {
+      id: "busy-conversation",
+      contactId: "busy-contact",
+      locationId: "loc",
+      assignedTo: "owner",
+      lastMessageDate: "2026-09-17T10:30:00Z",
+    };
+    const cursors: Array<string | undefined> = [];
+    const liveMessage = {
+      id: "live-message",
+      type: 2,
+      locationId: "loc",
+      contactId: "busy-contact",
+      conversationId: "busy-conversation",
+      direction: "inbound",
+      dateAdded: "2026-09-17T10:00:00Z",
+      body: "Please call me.",
+      from: "+447700900123",
+      deleted: false,
+    };
+    const get = vi.fn(async (url: string, options?: any) => {
+      if (url.includes("/conversations/search"))
+        return response({ conversations: [conversation], total: 1 });
+      if (url.includes("/contacts/busy-contact"))
+        return response({
+          contact: {
+            id: "busy-contact",
+            locationId: "loc",
+            assignedTo: "owner",
+          },
+        });
+      if (url.endsWith("/conversations/busy-conversation/messages")) {
+        const cursor = options?.params?.lastMessageId as string | undefined;
+        cursors.push(cursor);
+        const page = cursor ? Number(cursor.replace("page-", "")) + 1 : 1;
+        if (page <= 6)
+          return response({
+            messages: {
+              messages: [
+                {
+                  ...liveMessage,
+                  id: `filler-${page}`,
+                  dateAdded: "2026-09-17T10:20:00Z",
+                },
+              ],
+              nextPage: true,
+              lastMessageId: `page-${page}`,
+            },
+          });
+        return response({
+          messages: { messages: [liveMessage], nextPage: false },
+        });
+      }
+      if (url.endsWith("/conversations/messages/live-message"))
+        return response({ message: liveMessage });
+      if (url.includes("/conversations/messages/filler-"))
+        return response({
+          message: {
+            ...liveMessage,
+            id: url.split("/").pop(),
+            dateAdded: "2026-09-17T10:20:00Z",
+          },
+        });
+      throw new Error(`unexpected GET ${url}`);
+    });
+    const post = vi.fn(async () =>
+      response({ search: { conversations: [] } })
+    );
+    const page = {
+      url: () => "https://genie.test/v2/location/loc/contacts",
+      evaluate: async () => "token",
+      context: () => ({ request: { get, post } }),
+    } as any;
+
+    const first = await readPersonalGenieMailbox({
+      page,
+      ownerExternalId: "owner",
+      mailboxEmail: "advisor@example.test",
+      since: new Date("2026-09-17T09:00:00Z"),
+    });
+    expect(cursors).toEqual([
+      undefined,
+      "page-1",
+      "page-2",
+      "page-3",
+      "page-4",
+      "page-5",
+    ]);
+    expect(first.liveProgress).toMatchObject({
+      conversationIndex: 0,
+      lastMessageId: "page-6",
+    });
+    expect(first.bounded).toBe(true);
+
+    cursors.length = 0;
+    const second = await readPersonalGenieMailbox({
+      page,
+      ownerExternalId: "owner",
+      mailboxEmail: "advisor@example.test",
+      since: new Date("2026-09-17T09:00:00Z"),
+      liveProgress: first.liveProgress,
+    });
+    expect(cursors).toEqual(["page-6"]);
+    expect(second.records).toEqual([
+      expect.objectContaining({ externalMessageId: "live-message" }),
+    ]);
+    expect(second.liveProgress).toBeUndefined();
   });
 
   it("checkpoints one deep legacy conversation after three pages and resumes from that checkpoint", async () => {
@@ -267,6 +408,8 @@ describe("Genie mailbox continuation", () => {
     expect(mailbox).toContain("genie_mailbox_backfill_");
     expect(mailbox).toContain("upperBoundId");
     expect(mailbox).toContain("saveGenieActionableBackfillCursor");
+    expect(mailbox).toContain("saveGenieLiveMailboxProgress");
+    expect(mailbox).not.toContain("cursor.upperBoundId > maxId");
     const syncStart = mailbox.indexOf("export async function syncGenieMailboxForUser");
     const audit = mailbox.indexOf(
       'eventType: "personal_genie_mailbox_synced"',
