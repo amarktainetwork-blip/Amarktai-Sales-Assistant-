@@ -257,6 +257,18 @@ async function reconcileGenieOutboundReplies(input: {
   return handled;
 }
 
+export function taskCompletionEvidenceCanResolveInbound(metadata: unknown) {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata))
+    return false;
+  const title = String((metadata as Record<string, unknown>).title || "")
+    .trim()
+    .toLowerCase();
+  if (!title) return false;
+  return /\b(reply|respond|email|e-mail|message|whatsapp|sms|call|callback|follow[ -]?up|contact)\b/i.test(
+    title
+  );
+}
+
 async function reconcileGenieVerifiedTaskCompletions(input: {
   userId: number;
   organisationId: number;
@@ -286,6 +298,7 @@ async function reconcileGenieVerifiedTaskCompletions(input: {
     .select({
       contactExternalId: salesActivityEvents.contactExternalId,
       occurredAt: salesActivityEvents.occurredAt,
+      metadata: salesActivityEvents.metadata,
     })
     .from(salesActivityEvents)
     .where(
@@ -304,7 +317,11 @@ async function reconcileGenieVerifiedTaskCompletions(input: {
   let handled = 0;
   for (const event of events) {
     const contactExternalId = event.contactExternalId?.trim();
-    if (!contactExternalId) continue;
+    if (
+      !contactExternalId ||
+      !taskCompletionEvidenceCanResolveInbound(event.metadata)
+    )
+      continue;
     handled += await resolveInboundWorkAfterVerifiedContact({
       userId: input.userId,
       organisationId: input.organisationId,
@@ -787,6 +804,57 @@ export async function syncReadyGenieMailboxes() {
 
   for (const row of selected) {
     try {
+      // Reconcile already-verified local CRM evidence before attempting any
+      // live Genie mailbox read. This keeps Inbox/Today truthful even when the
+      // browser session expires after the source event was safely captured.
+      const systems = await listConnectedSystemsForUser(
+        row.userId,
+        row.organisationId
+      );
+      const localSystem = systems.find(
+        candidate =>
+          candidate.provider === "genie" &&
+          ["browser", "sidecar"].includes(candidate.connectionMethod)
+      );
+      if (localSystem) {
+        const localScope = await verifiedUserCrmScope({
+          userId: row.userId,
+          organisationId: row.organisationId,
+          connectedSystemId: localSystem.id,
+        });
+        if (localScope) {
+          const localDb = await getDb();
+          if (!localDb) throw new Error("Database connection is unavailable.");
+          const actionable = await localDb
+            .select({
+              contactExternalId: inboundMessages.contactExternalId,
+              receivedAt: inboundMessages.receivedAt,
+            })
+            .from(inboundMessages)
+            .where(
+              and(
+                eq(inboundMessages.organisationId, row.organisationId),
+                eq(inboundMessages.mailboxUserId, row.userId),
+                eq(inboundMessages.connectedSystemId, localSystem.id),
+                eq(inboundMessages.needsAction, true)
+              )
+            )
+            .orderBy(asc(inboundMessages.receivedAt))
+            .limit(60);
+          await reconcileGenieVerifiedTaskCompletions({
+            userId: row.userId,
+            organisationId: row.organisationId,
+            connectedSystemId: localSystem.id,
+            externalOwnerId: localScope.externalUserId,
+            actionable,
+          });
+          await reconcileHandledInboundReminders({
+            userId: row.userId,
+            organisationId: row.organisationId,
+          });
+        }
+      }
+
       const result = await syncGenieMailboxForUser({
         userId: row.userId,
         organisationId: row.organisationId,
