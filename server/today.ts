@@ -659,6 +659,40 @@ export async function getTodayWork(input: {
         raw: opportunity.raw,
       })
   );
+  const assignedTaskOpportunityPairs = Array.from(
+    new Map(
+      [...overdueTasks, ...dueToday]
+        .filter(
+          (task): task is typeof task & { opportunityExternalId: string } =>
+            Boolean(task.opportunityExternalId)
+        )
+        .map(task => [
+          `${task.connectedSystemId}:${task.opportunityExternalId}`,
+          {
+            connectedSystemId: task.connectedSystemId,
+            externalId: task.opportunityExternalId,
+          },
+        ])
+    ).values()
+  );
+  const taskLinkedOpportunities = assignedTaskOpportunityPairs.length
+    ? await db
+        .select()
+        .from(crmOpportunities)
+        .where(
+          and(
+            eq(crmOpportunities.organisationId, input.organisationId),
+            or(
+              ...assignedTaskOpportunityPairs.map(pair =>
+                and(
+                  eq(crmOpportunities.connectedSystemId, pair.connectedSystemId),
+                  eq(crmOpportunities.externalId, pair.externalId)
+                )
+              )
+            )
+          )
+        )
+    : [];
   const openTasks = scopedTasks.filter(task => isOpen(task.status));
   const upcomingTasks = futureCrmTasks
     .filter(task => isOpen(task.status) && Boolean(task.dueAt))
@@ -923,7 +957,7 @@ export async function getTodayWork(input: {
         : [];
       const latestActivity = relatedActivities[0];
       const exactTaskOpportunity = task.opportunityExternalId
-        ? scopedOpportunities.find(
+        ? taskLinkedOpportunities.find(
             opportunity =>
               opportunity.connectedSystemId === task.connectedSystemId &&
               opportunity.externalId === task.opportunityExternalId
