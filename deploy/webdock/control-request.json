@@ -1,7 +1,7 @@
 {
-  "operation": "diagnose",
+  "operation": "deploy",
   "server_name": "Amarktai Network - Sales Assistant",
   "server_domain": "sales.amarktai.co.za",
-  "release_sha": "2d1d93bdbd4a9176eef3dd180b228d9a9f7159d5",
-  "request_id": "phase2-tail-task-proof-2026-09-30"
+  "release_sha": "5ed74e0635fc8fd1cb9b819b00122b19c849fb1e",
+  "request_id": "phase2-authoritative-work-lifecycle-deploy-2026-09-30"
 }
