@@ -403,16 +403,27 @@ async function bench(label, url, model, seconds, rounds = 2) {
     form.append('response_format', 'json');
     form.append('language', 'en');
     const started = performance.now();
-    const response = await fetch(url, { method: 'POST', body: form });
-    const body = await response.text();
-    console.log('STT_BENCH=' + JSON.stringify({
-      label,
-      seconds,
-      round,
-      status: response.status,
-      elapsedMs: Math.round(performance.now() - started),
-      responseChars: body.length,
-    }));
+    try {
+      const response = await fetch(url, { method: 'POST', body: form });
+      const body = await response.text();
+      console.log('STT_BENCH=' + JSON.stringify({
+        label,
+        seconds,
+        round,
+        status: response.status,
+        elapsedMs: Math.round(performance.now() - started),
+        responseChars: body.length,
+      }));
+    } catch (error) {
+      console.log('STT_BENCH=' + JSON.stringify({
+        label,
+        seconds,
+        round,
+        unavailable: true,
+        elapsedMs: Math.round(performance.now() - started),
+        error: error instanceof Error ? error.message : String(error),
+      }));
+    }
   }
 }
 for (const seconds of [1, 1.25, 1.5, 2, 2.5]) {
@@ -428,13 +439,22 @@ async function concurrentBench(seconds, parallel) {
     form.append('response_format', 'json');
     form.append('language', 'en');
     const oneStarted = performance.now();
-    const response = await fetch(configuration.englishUrl, { method: 'POST', body: form });
-    await response.text();
-    return {
-      index,
-      status: response.status,
-      elapsedMs: Math.round(performance.now() - oneStarted),
-    };
+    try {
+      const response = await fetch(configuration.englishUrl, { method: 'POST', body: form });
+      await response.text();
+      return {
+        index,
+        status: response.status,
+        elapsedMs: Math.round(performance.now() - oneStarted),
+      };
+    } catch (error) {
+      return {
+        index,
+        unavailable: true,
+        elapsedMs: Math.round(performance.now() - oneStarted),
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
   });
   const results = await Promise.all(requests);
   console.log('STT_PARALLEL=' + JSON.stringify({
