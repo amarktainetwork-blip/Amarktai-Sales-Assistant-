@@ -392,18 +392,28 @@ describe("Genie mailbox continuation", () => {
       canStartLegacyGenieBackfillRow({
         providerRequests: 40,
         elapsedMs: 5_000,
+        attemptedRows: 0,
       })
     ).toBe(true);
     expect(
       canStartLegacyGenieBackfillRow({
         providerRequests: 42,
         elapsedMs: 5_000,
+        attemptedRows: 0,
       })
     ).toBe(false);
     expect(
       canStartLegacyGenieBackfillRow({
         providerRequests: 5,
         elapsedMs: 15_000,
+        attemptedRows: 0,
+      })
+    ).toBe(true);
+    expect(
+      canStartLegacyGenieBackfillRow({
+        providerRequests: 5,
+        elapsedMs: 15_000,
+        attemptedRows: 1,
       })
     ).toBe(false);
   });
