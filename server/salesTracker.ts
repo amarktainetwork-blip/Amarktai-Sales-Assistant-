@@ -1,12 +1,15 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, or } from "drizzle-orm";
 import {
   crmContacts,
   crmOpportunities,
   crmPipelineStageMappings,
   externalUserMappings,
+  connectedSystems,
+  crmSyncCursors,
 } from "../drizzle/schema";
 import { getDb } from "./db";
 import { requireOrganisationMembership } from "./organisation";
+import { uniqueOwnerMappingsBySystem } from "./customerData";
 
 function dayKey(date: Date, timezone: string) {
   return new Intl.DateTimeFormat("en-CA", {
@@ -62,7 +65,8 @@ export async function getSalesTracker(input: {
   );
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
-  const [mappings, stageMappings] = await Promise.all([
+  const [mappings, stageMappings, mappedSystems, opportunityCursors] =
+    await Promise.all([
     db
       .select()
       .from(externalUserMappings)
@@ -82,8 +86,74 @@ export async function getSalesTracker(input: {
           eq(crmPipelineStageMappings.isActive, true)
         )
       ),
+    db
+      .select({
+        id: connectedSystems.id,
+        provider: connectedSystems.provider,
+        status: connectedSystems.status,
+        lastHealthCheckAt: connectedSystems.lastHealthCheckAt,
+      })
+      .from(connectedSystems)
+      .innerJoin(
+        externalUserMappings,
+        eq(externalUserMappings.connectedSystemId, connectedSystems.id)
+      )
+      .where(
+        and(
+          eq(connectedSystems.organisationId, input.organisationId),
+          eq(externalUserMappings.organisationId, input.organisationId),
+          eq(externalUserMappings.userId, input.userId),
+          eq(externalUserMappings.isActive, true)
+        )
+      ),
+    db
+      .select({
+        connectedSystemId: crmSyncCursors.connectedSystemId,
+        lastSuccessfulAt: crmSyncCursors.lastSuccessfulAt,
+        lastError: crmSyncCursors.lastError,
+      })
+      .from(crmSyncCursors)
+      .innerJoin(
+        connectedSystems,
+        eq(connectedSystems.id, crmSyncCursors.connectedSystemId)
+      )
+      .where(
+        and(
+          eq(connectedSystems.organisationId, input.organisationId),
+          eq(crmSyncCursors.resourceType, "opportunities")
+        )
+      ),
   ]);
-  const ownerIds = new Set(mappings.map(mapping => mapping.externalUserId));
+  const trustedMappings = uniqueOwnerMappingsBySystem(mappings);
+  const trustedSystemIds = new Set(
+    trustedMappings.map(mapping => mapping.connectedSystemId)
+  );
+  const sourceSystems = Array.from(
+    new Map(
+      mappedSystems
+        .filter(system => trustedSystemIds.has(system.id))
+        .map(system => [system.id, system])
+    ).values()
+  );
+  const opportunityCursorBySystem = new Map(
+    opportunityCursors.map(cursor => [cursor.connectedSystemId, cursor])
+  );
+  const sourceCurrent =
+    trustedMappings.length > 0 &&
+    sourceSystems.length === trustedMappings.length &&
+    sourceSystems.every(system => {
+      const cursor = opportunityCursorBySystem.get(system.id);
+      return (
+        ["ready", "limited_permissions"].includes(system.status) &&
+        Boolean(cursor?.lastSuccessfulAt) &&
+        !cursor?.lastError
+      );
+    });
+  const reconnectRequired = sourceSystems.some(system =>
+    ["authentication_expired", "needs_attention", "error"].includes(
+      system.status
+    )
+  );
   const wonStages = new Set(
     stageMappings
       .filter(mapping => mapping.category === "won")
@@ -92,14 +162,20 @@ export async function getSalesTracker(input: {
         `${mapping.connectedSystemId}:${mapping.stageLabel}`,
       ])
   );
-  const opportunities = ownerIds.size
+  const ownerPairs = trustedMappings.map(mapping =>
+    and(
+      eq(crmOpportunities.connectedSystemId, mapping.connectedSystemId),
+      eq(crmOpportunities.ownerExternalId, mapping.externalUserId)
+    )
+  );
+  const opportunities = ownerPairs.length
     ? await db
         .select()
         .from(crmOpportunities)
         .where(
           and(
             eq(crmOpportunities.organisationId, input.organisationId),
-            inArray(crmOpportunities.ownerExternalId, Array.from(ownerIds))
+            or(...ownerPairs)
           )
         )
     : [];
@@ -183,6 +259,18 @@ export async function getSalesTracker(input: {
     timezone,
     currency: membership.currency,
     stageMappingRequired: wonStages.size === 0,
+    sourceCurrent,
+    reconnectRequired,
+    sourceSystems: sourceSystems.map(system => ({
+      connectedSystemId: system.id,
+      provider: system.provider,
+      status: system.status,
+      lastHealthCheckAt: system.lastHealthCheckAt,
+      opportunityLastSuccessfulAt:
+        opportunityCursorBySystem.get(system.id)?.lastSuccessfulAt || null,
+      opportunityLastError:
+        opportunityCursorBySystem.get(system.id)?.lastError || null,
+    })),
     summary: {
       today: summarize(todaySales),
       week: summarize(weekSales),

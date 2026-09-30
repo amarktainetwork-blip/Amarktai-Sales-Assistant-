@@ -83,6 +83,19 @@ describe("commercial Sales Assistant product boundaries", () => {
     expect(team).not.toContain("CONNECTOR OPERATIONS");
   });
 
+  it("fails Today closed when CRM task truth needs reauthentication", () => {
+    const today = read("../client/src/pages/Today.tsx");
+    const todayServer = read("./today.ts");
+    const ownerScope = read("./customerData.ts");
+    expect(today).toContain("Reconnect Genie to refresh CRM work");
+    expect(today).toContain("cached CRM tasks are not treated as live");
+    expect(todayServer).toContain("trustedForCurrentTasks");
+    expect(todayServer).toContain("reconnectRequired");
+    expect(ownerScope).toContain(
+      "connectedSystems.status} in ('ready','limited_permissions')"
+    );
+  });
+
   it("keeps CRM authentication between the customer and the real CRM", () => {
     const auth = read("../client/src/pages/Auth.tsx");
     const crm = read("../client/src/pages/CrmWorkspace.tsx");

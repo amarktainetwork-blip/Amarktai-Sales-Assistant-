@@ -63,6 +63,16 @@ export default function SalesTracker() {
             <CheckCircle2 className="h-4 w-4" /> No CRM writes
           </div>
         </div>
+        {data && !data.sourceCurrent ? (
+          <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            <strong>Reconnect Genie to refresh Sales Tracker.</strong>{" "}
+            These figures come from the last synchronized Won opportunities and
+            may be out of date until the CRM source is current again.
+            <a className="ml-2 font-semibold underline" href="/crm">
+              Reconnect CRM
+            </a>
+          </div>
+        ) : null}
         {data?.stageMappingRequired ? (
           <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
             No CRM pipeline stage is mapped to <strong>Won</strong>, so Sales

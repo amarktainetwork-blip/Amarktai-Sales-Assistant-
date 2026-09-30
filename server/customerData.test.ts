@@ -1,3 +1,16 @@
+describe("exact personal CRM owner mapping", () => {
+  it("fails closed for a connected system with multiple active owner mappings", () => {
+    const mappings = [
+      { connectedSystemId: 8, externalUserId: "amelia" },
+      { connectedSystemId: 8, externalUserId: "stale-owner" },
+      { connectedSystemId: 9, externalUserId: "other-system-owner" },
+    ];
+    expect(uniqueOwnerMappingsBySystem(mappings)).toEqual([
+      { connectedSystemId: 9, externalUserId: "other-system-owner" },
+    ]);
+  });
+});
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { queryRecorder } from "./testSupport/queryRecorder";
 const m = vi.hoisted(() => ({ db: vi.fn(), member: vi.fn() }));
@@ -17,7 +30,11 @@ vi.mock("./organisationWorkspace", () => ({
     ],
   })),
 }));
-import { listCustomerDirectory, getExactCustomerDetail } from "./customerData";
+import {
+  listCustomerDirectory,
+  getExactCustomerDetail,
+  uniqueOwnerMappingsBySystem,
+} from "./customerData";
 const contact = {
   id: 301,
   organisationId: 8,
@@ -68,6 +85,7 @@ describe("canonical scoped customer data", () => {
     expect(query.where.sql).toContain("inner join");
     expect(query.where.sql).toContain("connectedSystems");
     expect(query.where.sql).toContain("in ('ready','limited_permissions')");
+    expect(query.where.sql).toContain("select count(*)");
     expect(query.where.params).toContain(2);
     expect(query.where.params).toContain(8);
     expect(query.where.params).toContain("%Outside%");

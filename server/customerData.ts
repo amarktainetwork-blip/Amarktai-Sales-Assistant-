@@ -53,12 +53,26 @@ export async function refreshExactCustomerHistoryIfDue(input: {
   return { refreshed: true as const, result };
 }
 
+export function uniqueOwnerMappingsBySystem<
+  T extends { connectedSystemId: number; externalUserId: string },
+>(mappings: T[]) {
+  const counts = new Map<number, number>();
+  for (const mapping of mappings)
+    counts.set(
+      mapping.connectedSystemId,
+      (counts.get(mapping.connectedSystemId) || 0) + 1
+    );
+  return mappings.filter(
+    mapping => counts.get(mapping.connectedSystemId) === 1
+  );
+}
+
 export function personalOwnerSql(
   input: { userId: number; organisationId: number },
   system: AnyMySqlColumn,
   owner: AnyMySqlColumn
 ): SQL {
-  return sql`exists (select 1 from ${externalUserMappings} inner join ${connectedSystems} on ${connectedSystems.id}=${externalUserMappings.connectedSystemId} where ${externalUserMappings.organisationId}=${input.organisationId} and ${externalUserMappings.userId}=${input.userId} and ${externalUserMappings.isActive}=true and ${externalUserMappings.connectedSystemId}=${system} and ${externalUserMappings.externalUserId}=${owner} and ${connectedSystems.status} in ('ready','limited_permissions'))`;
+  return sql`exists (select 1 from ${externalUserMappings} inner join ${connectedSystems} on ${connectedSystems.id}=${externalUserMappings.connectedSystemId} where ${externalUserMappings.organisationId}=${input.organisationId} and ${externalUserMappings.userId}=${input.userId} and ${externalUserMappings.isActive}=true and ${externalUserMappings.connectedSystemId}=${system} and ${externalUserMappings.externalUserId}=${owner} and ${connectedSystems.status} in ('ready','limited_permissions')) and 1=(select count(*) from ${externalUserMappings} as exact_owner_mapping where exact_owner_mapping.organisationId=${input.organisationId} and exact_owner_mapping.userId=${input.userId} and exact_owner_mapping.isActive=true and exact_owner_mapping.connectedSystemId=${system})`;
 }
 export function customerPageInput(input: {
   page?: number;

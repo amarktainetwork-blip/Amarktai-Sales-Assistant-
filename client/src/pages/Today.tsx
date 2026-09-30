@@ -94,6 +94,7 @@ export default function Today() {
         );
   const visibleQueue = showAll ? queueForView : queueForView.slice(0, 7);
   const workspace = today.data?.workspace.organisation;
+  const crmConnection = today.data?.crmConnection;
   const taskMetrics = today.data?.taskData.metrics;
   const inboundNeedsAction =
     today.data?.metrics.inboundNeedsAction ?? inboundQueue.length;
@@ -289,7 +290,23 @@ export default function Today() {
           </div>
         </header>
 
-        {today.data?.requiresOwnerMapping ? (
+        {crmConnection?.reconnectRequired ? (
+          <div className="amk-day__warning">
+            <strong>Reconnect Genie to refresh CRM work.</strong>{" "}
+            Current task ownership cannot be verified while the secure CRM
+            session is signed out, so cached CRM tasks are not treated as live
+            work.
+            <Button
+              variant="outline"
+              className="ml-3"
+              onClick={() =>
+                navigate("/crm")
+              }
+            >
+              Reconnect CRM
+            </Button>
+          </div>
+        ) : today.data?.requiresOwnerMapping ? (
           <div className="amk-day__warning">
             Your CRM salesperson record needs to be matched before a personal
             work queue can be shown safely.

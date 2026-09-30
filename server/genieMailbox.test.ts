@@ -6,6 +6,7 @@ import {
   outboundGenieReplyMatchesInbound,
   parseGenieReceivedAt,
   shouldTargetGenieActionableBackfill,
+  taskCompletionEvidenceCanResolveInbound,
   inboundReminderMessageId,
 } from "./genieMailbox";
 import { verifiedContactActionCoversInbound } from "./salesWork";
@@ -33,6 +34,71 @@ const baseEmail = {
   subject: "Question",
   body: "Please call me.",
 };
+
+describe("verified task-completion evidence", () => {
+  it("accepts communication work and rejects unrelated completed tasks", () => {
+    expect(
+      taskCompletionEvidenceCanResolveInbound({ title: "REPLY ASAP – Uzuva" })
+    ).toBe(true);
+    expect(
+      taskCompletionEvidenceCanResolveInbound({ title: "Call customer back" })
+    ).toBe(true);
+    for (const title of [
+      "Called customer",
+      "Replied to enquiry",
+      "Responded by email",
+      "Messaged customer",
+      "Emailed customer",
+      "Contacted customer",
+    ])
+      expect(taskCompletionEvidenceCanResolveInbound({ title })).toBe(true);
+    expect(
+      taskCompletionEvidenceCanResolveInbound({ title: "Has Snap been done??" })
+    ).toBe(false);
+    expect(
+      taskCompletionEvidenceCanResolveInbound({ title: "Prepare finance file" })
+    ).toBe(false);
+  });
+
+  it("reconciles cached verified evidence in the shared per-user path before live-session validation", () => {
+    const source = readFileSync(
+      new URL("./genieMailbox.ts", import.meta.url),
+      "utf8"
+    );
+    const shared = source.indexOf(
+      "export async function syncGenieMailboxForUser"
+    );
+    const cached = source.indexOf(
+      "const handledCachedTaskCompletions",
+      shared
+    );
+    const liveSession = source.indexOf(
+      "const secret = await loadUserConnectionSecret",
+      shared
+    );
+    expect(cached).toBeGreaterThan(shared);
+    expect(liveSession).toBeGreaterThan(cached);
+  });
+
+  it("drives cached task-completion reconciliation from evidence instead of a fixed Inbox page", () => {
+    const source = readFileSync(
+      new URL("./genieMailbox.ts", import.meta.url),
+      "utf8"
+    );
+    const start = source.indexOf(
+      "async function reconcileGenieVerifiedTaskCompletions"
+    );
+    const end = source.indexOf(
+      "export async function syncGenieMailboxForUser",
+      start
+    );
+    const helper = source.slice(start, end);
+    expect(helper).toContain('eq(salesActivityEvents.eventType, "task_completed_in_crm")');
+    expect(helper).toContain("oldestActionable.receivedAt");
+    expect(helper).not.toContain(".limit(60)");
+    expect(helper).not.toContain("inArray(salesActivityEvents.contactExternalId");
+  });
+});
 
 describe("verified customer-work lifecycle", () => {
   it("lets a verified same-customer task completion retire only inbound work that existed before the action", () => {
@@ -651,7 +717,7 @@ describe("Genie personal email isolation", () => {
       "utf8"
     );
     expect(source).toContain(
-      '["ready", "limited_permissions"].includes(candidate.status)'
+      '!["ready", "limited_permissions"].includes(system.status)'
     );
     expect(source).toContain("receivedAt: message.receivedAt");
     expect(source).not.toContain("receivedAt: new Date()");

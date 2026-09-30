@@ -1,7 +1,11 @@
 import { getTodayTaskData } from "./todayTaskData";
 import { getOrganisationWorkspaceContext } from "./organisationWorkspace";
 import { isIncompleteTask } from "../shared/taskState";
-import { normalizedCustomerAttributes, personalOwnerSql } from "./customerData";
+import {
+  normalizedCustomerAttributes,
+  personalOwnerSql,
+  uniqueOwnerMappingsBySystem,
+} from "./customerData";
 import { deriveCustomerInterest } from "./customerInterest";
 import { deriveCustomerContactPreference } from "./contactPreference";
 import { buildTodayCallQueue, unrepresentedTodayTasks } from "./todayCallQueue";
@@ -276,6 +280,7 @@ export async function getTodayWork(input: {
   const localDayEnd = new Date(taskData.bounds.endExclusive.getTime() - 1);
   const [
     mappings,
+    mappedSystems,
     opportunities,
     syncJobs,
     inboundRows,
@@ -305,6 +310,28 @@ export async function getTodayWork(input: {
           inArray(connectedSystems.status, ["ready", "limited_permissions"])
         )
       ),
+    db
+      .select({
+        id: connectedSystems.id,
+        provider: connectedSystems.provider,
+        status: connectedSystems.status,
+        lastHealthCheckAt: connectedSystems.lastHealthCheckAt,
+        lastHealthSummary: connectedSystems.lastHealthSummary,
+      })
+      .from(connectedSystems)
+      .innerJoin(
+        externalUserMappings,
+        eq(externalUserMappings.connectedSystemId, connectedSystems.id)
+      )
+      .where(
+        and(
+          eq(connectedSystems.organisationId, input.organisationId),
+          eq(externalUserMappings.organisationId, input.organisationId),
+          eq(externalUserMappings.userId, input.userId),
+          eq(externalUserMappings.isActive, true)
+        )
+      )
+      .orderBy(desc(connectedSystems.updatedAt)),
     db
       .select()
       .from(crmOpportunities)
@@ -481,10 +508,13 @@ export async function getTodayWork(input: {
       )
       .orderBy(desc(salesWorkItems.priority), desc(salesWorkItems.updatedAt)),
   ]);
+  const trustedMappings = uniqueOwnerMappingsBySystem(
+    mappings.filter(mapping => mapping.connectedSystemId && mapping.externalUserId)
+  );
   const ownerIds = new Set(
-    mappings
-      .filter(mapping => mapping.connectedSystemId && mapping.externalUserId)
-      .map(mapping => `${mapping.connectedSystemId}:${mapping.externalUserId}`)
+    trustedMappings.map(
+      mapping => `${mapping.connectedSystemId}:${mapping.externalUserId}`
+    )
   );
   const belongsToUser = (
     ownerExternalId: string | null,
@@ -587,7 +617,7 @@ export async function getTodayWork(input: {
         .orderBy(desc(crmActivities.occurredAt))
     : [];
   const ownerEmailBySystemAndOwner = new Map(
-    mappings.map(mapping => [
+    trustedMappings.map(mapping => [
       `${mapping.connectedSystemId}:${mapping.externalUserId}`,
       mapping.email,
     ])
@@ -1104,11 +1134,34 @@ export async function getTodayWork(input: {
     },
   };
 
+  const primaryCrmSystem =
+    mappedSystems.find(system => system.provider === "genie") ||
+    mappedSystems[0] ||
+    null;
+  const crmConnection = primaryCrmSystem
+    ? {
+        connectedSystemId: primaryCrmSystem.id,
+        provider: primaryCrmSystem.provider,
+        status: primaryCrmSystem.status,
+        trustedForCurrentTasks: ["ready", "limited_permissions"].includes(
+          primaryCrmSystem.status
+        ),
+        reconnectRequired: [
+          "authentication_expired",
+          "needs_attention",
+          "error",
+        ].includes(primaryCrmSystem.status),
+        lastHealthCheckAt: primaryCrmSystem.lastHealthCheckAt,
+        lastHealthSummary: primaryCrmSystem.lastHealthSummary,
+      }
+    : null;
+
   return {
     generatedAt: now,
     workspace,
     taskData: visibleTaskData,
     freshness: authoritativeCrmFreshness(syncJobs),
+    crmConnection,
     paymentReview: {
       enabled: actionConfiguration.paymentReview?.enabled === true,
       status: "manual_source_check_required" as const,
