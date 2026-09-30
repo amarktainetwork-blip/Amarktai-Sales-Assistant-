@@ -63,6 +63,27 @@ describe("built-in speech transcription", () => {
     await expect(transcribeAudio(Buffer.from("RIFF-test-audio"), "audio/wav", "en")).resolves.toBe("The sales assistant voice test");
   });
 
+  it("probes the fast English lane for English live-call readiness", async () => {
+    process.env.STT_TRANSCRIPTIONS_URL = "http://stt.test/inference";
+    process.env.STT_HEALTH_URL = "http://stt.test/";
+    process.env.STT_MODEL = "ggml-base-q5_1";
+    process.env.STT_EN_TRANSCRIPTIONS_URL = "http://stt-en.test/inference";
+    process.env.STT_EN_HEALTH_URL = "http://stt-en.test/";
+    process.env.STT_EN_MODEL = "ggml-tiny.en-q5_1";
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      expect(url).toBe("http://stt-en.test/");
+      return new Response("ok");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(probeSttHealth("en-GB")).resolves.toMatchObject({
+      ready: true,
+      activeLane: "english",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("reports bounded queue telemetry for live-call capacity monitoring", async () => {
     process.env.STT_TRANSCRIPTIONS_URL = "http://stt.test/inference";
     process.env.STT_MODEL = "ggml-base-q5_1";
