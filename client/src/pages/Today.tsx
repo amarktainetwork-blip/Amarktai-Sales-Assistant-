@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { refreshSalesDay } from "@/lib/refreshSalesDay";
 import { trpc } from "@/lib/trpc";
 import {
-  AlertTriangle,
   ArrowRight,
   CheckCircle2,
   ClipboardCheck,
@@ -368,22 +367,22 @@ export default function Today() {
 
         <div className="amk-day__body">
           {activeTab === "internal" && assignedTaskExceptions.length ? (
-            <section data-today-task-safety className="amk-day__safety">
-              <div className="amk-day__safety-head">
-                <span className="amk-day__safety-icon">
-                  <AlertTriangle />
+            <section data-today-internal-work className="amk-internal">
+              <div className="amk-internal__head">
+                <span className="amk-internal__icon">
+                  <ClipboardCheck />
                 </span>
                 <div>
-                  <p className="amk-day__eyebrow">Assigned work</p>
+                  <p className="amk-day__eyebrow">Internal work</p>
                   <h2>
                     {assignedTaskExceptions.length === 1
-                      ? "1 CRM task needs your attention"
-                      : `${assignedTaskExceptions.length} CRM tasks need your attention`}
+                      ? "1 assigned task to work"
+                      : `${assignedTaskExceptions.length} assigned tasks to work`}
                   </h2>
                   <p>
-                    These tasks are assigned to you, but they are not
-                    automatically your leads. Internal or colleague-support work
-                    stays separate from First Calls and sales follow-ups.
+                    Work the task here with the related customer context. You
+                    should not need to search Genie just to understand who the
+                    task is about or what happened recently.
                   </p>
                 </div>
                 <Button
@@ -395,35 +394,111 @@ export default function Today() {
                   Refresh context
                 </Button>
               </div>
-              <div className="amk-day__safety-list">
+              <div className="amk-internal__list">
                 {assignedTaskExceptions.map(item => (
-                  <div key={item.id} className="amk-day__safety-row">
-                    <div>
-                      <div className="amk-day__safety-meta">
-                        <span>{item.workType}</span>
-                        <span>{item.reason}</span>
-                        {item.contactName ? <span>{item.contactName}</span> : null}
-                        {item.dueAt ? (
-                          <span>{dateLabel(item.dueAt)}</span>
-                        ) : null}
+                  <article key={item.id} className="amk-internal__card">
+                    <div className="amk-internal__topline">
+                      <div>
+                        <div className="amk-internal__meta">
+                          <span>{item.workType}</span>
+                          <span>{item.reason}</span>
+                          {item.dueAt ? <span>{dateLabel(item.dueAt)}</span> : null}
+                        </div>
+                        <h3>{item.title}</h3>
                       </div>
-                      <h3>{item.title}</h3>
+                      <strong className="amk-internal__customer">
+                        {item.contactName || "No related CRM contact"}
+                      </strong>
+                    </div>
+
+                    <div className="amk-internal__instruction">
+                      <p className="amk-day__eyebrow">Task instruction</p>
                       <p>
                         {item.detail ||
                           "No additional task notes were supplied by the CRM. The task title above is the instruction."}
                       </p>
                     </div>
+
                     {item.contactId ? (
-                      <Button
-                        variant="ghost"
-                        onClick={() =>
-                          navigate(`/customers?contactId=${item.contactId}`)
-                        }
-                      >
-                        Open related customer <ArrowRight className="ml-2 h-4 w-4" />
-                      </Button>
-                    ) : null}
-                  </div>
+                      <>
+                        <div className="amk-internal__facts">
+                          <TodayContextFact
+                            label="Contact"
+                            value={
+                              [item.contactEmail, item.contactPhone]
+                                .filter(Boolean)
+                                .join(" · ") || "No contact details available"
+                            }
+                          />
+                          <TodayContextFact
+                            label="Course / interest"
+                            value={
+                              item.courseInterest ||
+                              item.interestValues?.[0] ||
+                              "No course interest recorded"
+                            }
+                          />
+                          <TodayContextFact
+                            label="CRM stage"
+                            value={
+                              item.opportunity?.stage ||
+                              item.lifecycleStage ||
+                              "No current stage"
+                            }
+                          />
+                          <TodayContextFact
+                            label="Latest activity"
+                            value={
+                              item.latestActivity
+                                ? `${item.latestActivity.activityType} · ${dateLabel(item.latestActivity.occurredAt)}`
+                                : "No recent activity found"
+                            }
+                          />
+                        </div>
+
+                        {item.contactPreference || item.tags?.length ? (
+                          <div className="amk-internal__tags">
+                            {item.contactPreference ? (
+                              <span>Best contact: {item.contactPreference}</span>
+                            ) : null}
+                            {item.tags?.slice(0, 4).map(tag => (
+                              <span key={tag}>{tag}</span>
+                            ))}
+                          </div>
+                        ) : null}
+
+                        <div className="amk-internal__actions">
+                          <Button
+                            onClick={() =>
+                              navigate(`/customers?contactId=${item.contactId}`)
+                            }
+                          >
+                            <UserRound className="mr-2 h-4 w-4" />
+                            Open customer
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() =>
+                              navigate(
+                                `/assistant?contactId=${item.contactId}&prompt=${encodeURIComponent(
+                                  `Help me work this internal CRM task: ${item.title}. Summarise the customer context, recent history, what this task is asking me to do, and the safest next action.`
+                                )}`
+                              )
+                            }
+                          >
+                            <Sparkles className="mr-2 h-4 w-4" />
+                            Prepare with AmarktAI
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <p className="amk-internal__missing">
+                        This CRM task is not linked to a customer record. The task
+                        remains visible so it cannot be missed, but no customer
+                        context can be safely inferred.
+                      </p>
+                    )}
+                  </article>
                 ))}
               </div>
             </section>

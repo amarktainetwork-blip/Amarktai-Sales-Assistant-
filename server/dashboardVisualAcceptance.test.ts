@@ -132,6 +132,12 @@ describe("final dashboard information architecture", () => {
     expect(today).toContain('activeTab === "queue"');
     expect(today).toContain('activeTab === "schedule"');
     expect(today).toContain('activeTab === "replies"');
+    expect(today).toContain('activeTab === "internal"');
+    expect(today).toContain("Work the task here with the related customer context.");
+    expect(today).toContain("Prepare with AmarktAI");
+    expect(today).toContain("No related CRM contact");
+    expect(today).toContain('data-today-internal-work');
+    expect(today).not.toContain("<AlertTriangle />");
     expect(customers).not.toContain("Know the person before you call.");
     expect(customers).toContain("Customer context");
     for (const tab of [

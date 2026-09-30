@@ -874,6 +874,20 @@ export async function getTodayWork(input: {
       const supportLabel = internalSupport
         ? ("Internal / colleague support" as const)
         : null;
+      const latestActivity = task.contactExternalId
+        ? recentTaskActivities.find(
+            activity =>
+              activity.connectedSystemId === task.connectedSystemId &&
+              activity.contactExternalId === task.contactExternalId
+          )
+        : undefined;
+      const relatedOpportunity = task.contactExternalId
+        ? scopedOpportunities.find(
+            opportunity =>
+              opportunity.connectedSystemId === task.connectedSystemId &&
+              opportunity.contactExternalId === task.contactExternalId
+          )
+        : undefined;
       return {
         id: task.id,
         connectedSystemId: task.connectedSystemId,
@@ -888,6 +902,26 @@ export async function getTodayWork(input: {
             relatedContact.phone ||
             "Customer"
           : null,
+        contactEmail: relatedContact?.email ?? null,
+        contactPhone: relatedContact?.phone ?? null,
+        lifecycleStage: relatedContact?.lifecycleStage ?? null,
+        courseInterest: relatedContact?.courseInterest ?? null,
+        interestValues: relatedContact?.interestValues ?? [],
+        tags: relatedContact?.tags ?? [],
+        contactPreference: relatedContact?.contactPreference ?? null,
+        latestActivity: latestActivity
+          ? {
+              activityType: latestActivity.activityType,
+              occurredAt: latestActivity.occurredAt,
+            }
+          : null,
+        opportunity: relatedOpportunity
+          ? {
+              name: relatedOpportunity.name,
+              stage: relatedOpportunity.stage,
+              nextStepAt: relatedOpportunity.nextStepAt,
+            }
+          : null,
         title: task.title,
         detail,
         dueAt: task.dueAt,
@@ -895,8 +929,8 @@ export async function getTodayWork(input: {
         workType: supportLabel || ("Assigned CRM task" as const),
         reason: internalSupport
           ? task.dueAt && task.dueAt < now
-            ? ("Internal check overdue" as const)
-            : ("Internal check due today" as const)
+            ? ("Internal task overdue" as const)
+            : ("Internal task due today" as const)
           : task.dueAt && task.dueAt < now
             ? ("Overdue assigned task" as const)
             : ("Assigned task due today" as const),
