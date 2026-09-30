@@ -9,6 +9,10 @@ const today = readFileSync(
   new URL("./today.ts", import.meta.url),
   "utf8"
 );
+const todayUi = readFileSync(
+  new URL("../client/src/pages/Today.tsx", import.meta.url),
+  "utf8"
+);
 
 describe("Sales Inbox truth-count contract", () => {
   it("counts the complete actionable source independently of the displayed page limit", () => {
@@ -25,6 +29,14 @@ describe("Sales Inbox truth-count contract", () => {
     expect(today).toContain("inboundActionCountRows");
     expect(today).toContain("inboundNeedsAction: Number(inboundActionCountRows[0]?.total || 0)");
     expect(today).not.toContain("inboundNeedsAction: currentInbound.length");
+    expect(today).not.toContain("INTERVAL 45 DAY");
+    expect(todayUi).toContain(
+      "today.data?.metrics.inboundNeedsAction ?? inboundQueue.length"
+    );
+    expect(todayUi).toContain("{inboundNeedsAction}</strong>");
+    expect(todayUi).not.toContain(
+      '<strong aria-hidden="true">{inboundQueue.length}</strong>'
+    );
     expect(today).not.toContain(".limit(600)");
     expect(today).not.toContain(".limit(500),");
     expect(today).not.toContain("desc(callbackTasks.dueAt))\n      .limit(100)");
