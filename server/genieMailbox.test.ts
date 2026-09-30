@@ -431,8 +431,13 @@ describe("Genie personal email isolation", () => {
     );
     expect(reader).toContain("threadMessageIds.includes(externalMessageId)");
     expect(reader).toContain("const newerThreads: any[] = []");
+    expect(reader).toContain("sourceReceivedAtRawMs");
+    expect(reader).toContain(
+      "`/conversations/messages/email/\${candidateEmailId}`"
+    );
     expect(reader).toContain("inboundExternalMessageId: externalMessageId");
     expect(reader).toContain("verifiedAfterInboundByThreadOrder: true");
+    expect(reader).toContain("candidateRawMs <= sourceReceivedAtRawMs");
     expect(reader).not.toContain("crossedInboundTime");
     expect(pipeline).toContain(
       "sourceUpdatedAt: input.envelope.receivedAt"
