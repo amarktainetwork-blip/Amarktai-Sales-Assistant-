@@ -1,6 +1,6 @@
 import { isRetryableGenieMailboxRead } from "./genieMailboxRetry";
 import { readPersonalGenieMailbox } from "./browserConnectors/genieMailboxRead";
-import { and, asc, desc, eq, gt, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray } from "drizzle-orm";
 import {
   assistantReminders,
   inboundMessages,
@@ -19,7 +19,10 @@ import {
 import { ingestInboundMessage } from "./communications/inboundPipeline";
 import { getDb, recordAudit } from "./db";
 import { memberOnboardingFor } from "./organisation";
-import { completeNewLeadWorkAfterVerifiedContact } from "./salesWork";
+import {
+  completeNewLeadWorkAfterVerifiedContact,
+  resolveInboundWorkAfterVerifiedContact,
+} from "./salesWork";
 import { withAuthenticatedBrowserSessionPage } from "./browserConnectors/browserCrmAdapter";
 
 const MAX_GENIE_MAILBOXES_PER_CYCLE = 50;
@@ -241,42 +244,75 @@ async function reconcileGenieOutboundReplies(input: {
       outboundGenieReplyMatchesInbound(row, evidence)
     );
     if (!matched.length) continue;
-    const ids = matched.map(row => row.id);
-    const externalIds = matched.map(row => row.externalMessageId);
-    await db
-      .update(inboundMessages)
-      .set({ status: "archived", needsAction: false })
-      .where(inArray(inboundMessages.id, ids));
-    await db
-      .update(salesWorkItems)
-      .set({
-        status: "completed",
-        completedAt: evidence.sentAt,
-        freshness: "current",
-        syncedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(salesWorkItems.organisationId, input.organisationId),
-          eq(salesWorkItems.connectedSystemId, input.connectedSystemId),
-          eq(salesWorkItems.salespersonUserId, input.userId),
-          eq(salesWorkItems.sourceType, "inbound_message"),
-          inArray(salesWorkItems.sourceExternalId, externalIds),
-          inArray(salesWorkItems.status, [
-            "open",
-            "in_progress",
-            "snoozed",
-            "blocked",
-          ])
-        )
-      );
-    await completeNewLeadWorkAfterVerifiedContact({
+    handled += await resolveInboundWorkAfterVerifiedContact({
       userId: input.userId,
       organisationId: input.organisationId,
+      connectedSystemId: input.connectedSystemId,
       contactExternalId: evidence.contactExternalId,
+      handledAt: evidence.sentAt,
       reason: "verified_outbound_reply",
-    }).catch(() => 0);
-    handled += matched.length;
+      externalMessageIds: matched.map(row => row.externalMessageId),
+    });
+  }
+  return handled;
+}
+
+async function reconcileGenieVerifiedTaskCompletions(input: {
+  userId: number;
+  organisationId: number;
+  connectedSystemId: number;
+  externalOwnerId: string;
+  actionable: Array<{
+    contactExternalId: string | null;
+    receivedAt: Date;
+  }>;
+}) {
+  const contacts = Array.from(
+    new Set(
+      input.actionable
+        .map(row => row.contactExternalId?.trim() || "")
+        .filter(Boolean)
+    )
+  );
+  if (!contacts.length) return 0;
+
+  const oldestReceivedAt = new Date(
+    Math.min(...input.actionable.map(row => row.receivedAt.getTime()))
+  );
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+
+  const events = await db
+    .select({
+      contactExternalId: salesActivityEvents.contactExternalId,
+      occurredAt: salesActivityEvents.occurredAt,
+    })
+    .from(salesActivityEvents)
+    .where(
+      and(
+        eq(salesActivityEvents.organisationId, input.organisationId),
+        eq(salesActivityEvents.connectedSystemId, input.connectedSystemId),
+        eq(salesActivityEvents.salespersonUserId, input.userId),
+        eq(salesActivityEvents.externalOwnerId, input.externalOwnerId),
+        eq(salesActivityEvents.eventType, "task_completed_in_crm"),
+        inArray(salesActivityEvents.contactExternalId, contacts),
+        gte(salesActivityEvents.occurredAt, oldestReceivedAt)
+      )
+    )
+    .orderBy(asc(salesActivityEvents.occurredAt));
+
+  let handled = 0;
+  for (const event of events) {
+    const contactExternalId = event.contactExternalId?.trim();
+    if (!contactExternalId) continue;
+    handled += await resolveInboundWorkAfterVerifiedContact({
+      userId: input.userId,
+      organisationId: input.organisationId,
+      connectedSystemId: input.connectedSystemId,
+      contactExternalId,
+      handledAt: event.occurredAt,
+      reason: "verified_task_completion",
+    });
   }
   return handled;
 }
@@ -658,6 +694,13 @@ export async function syncGenieMailboxForUser(input: {
     connectedSystemId: system.id,
     outboundEvidence: proof.outboundEvidence,
   });
+  const handledTaskCompletions = await reconcileGenieVerifiedTaskCompletions({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    connectedSystemId: system.id,
+    externalOwnerId: scope.externalUserId,
+    actionable: actionableBackfill,
+  });
   const handledReminders = await reconcileHandledInboundReminders({
     userId: input.userId,
     organisationId: input.organisationId,
@@ -675,6 +718,7 @@ export async function syncGenieMailboxForUser(input: {
       checkedConversations: checked,
       received,
       handledReplies,
+      handledTaskCompletions,
       handledReminders,
       outboundEvidence: proof.outboundEvidence.length,
       legacyConversationLinks: proof.legacyConversationLinks.length,

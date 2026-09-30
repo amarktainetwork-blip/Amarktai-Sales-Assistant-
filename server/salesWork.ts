@@ -1,5 +1,5 @@
 import { isIncompleteTask, isCompletedTask } from "../shared/taskState";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lte, sql } from "drizzle-orm";
 import {
   crmContacts,
   crmTasks,
@@ -834,6 +834,146 @@ const VERIFIED_CONTACT_NEW_LEAD_STATUSES = [
   "snoozed",
   "blocked",
 ] as const;
+
+const VERIFIED_INBOUND_WORK_STATUSES = [
+  "open",
+  "in_progress",
+  "snoozed",
+  "blocked",
+] as const;
+
+export function verifiedContactActionCoversInbound(
+  inbound: { contactExternalId: string | null; receivedAt: Date },
+  evidence: { contactExternalId: string; handledAt: Date }
+) {
+  return (
+    Boolean(inbound.contactExternalId) &&
+    inbound.contactExternalId === evidence.contactExternalId &&
+    evidence.handledAt.getTime() >= inbound.receivedAt.getTime()
+  );
+}
+
+/**
+ * Resolve customer inbound work from positive, owner-scoped CRM evidence.
+ *
+ * This is deliberately source-agnostic: callers must first prove that the
+ * evidence belongs to the salesperson. The resolver then closes only inbound
+ * items for the same customer that existed at or before the verified action.
+ * A newer customer message therefore remains actionable.
+ */
+export async function resolveInboundWorkAfterVerifiedContact(input: {
+  userId: number;
+  organisationId: number;
+  connectedSystemId: number;
+  contactExternalId: string;
+  handledAt: Date;
+  reason:
+    | "verified_outbound_reply"
+    | "verified_call"
+    | "verified_task_completion"
+    | "verified_customer_history";
+  externalMessageIds?: string[];
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const contactExternalId = input.contactExternalId.trim();
+  if (!contactExternalId || !Number.isFinite(input.handledAt.getTime())) return 0;
+
+  const constrainedMessageIds = Array.from(
+    new Set(
+      (input.externalMessageIds || [])
+        .map(value => value.trim())
+        .filter(Boolean)
+    )
+  );
+
+  const messages = await db
+    .select({
+      id: inboundMessages.id,
+      externalMessageId: inboundMessages.externalMessageId,
+      contactExternalId: inboundMessages.contactExternalId,
+      receivedAt: inboundMessages.receivedAt,
+    })
+    .from(inboundMessages)
+    .where(
+      and(
+        eq(inboundMessages.organisationId, input.organisationId),
+        eq(inboundMessages.mailboxUserId, input.userId),
+        eq(inboundMessages.connectedSystemId, input.connectedSystemId),
+        eq(inboundMessages.needsAction, true),
+        eq(inboundMessages.contactExternalId, contactExternalId),
+        lte(inboundMessages.receivedAt, input.handledAt),
+        constrainedMessageIds.length
+          ? inArray(inboundMessages.externalMessageId, constrainedMessageIds)
+          : undefined
+      )
+    );
+
+  const handled = messages.filter(message =>
+    verifiedContactActionCoversInbound(message, {
+      contactExternalId,
+      handledAt: input.handledAt,
+    })
+  );
+  if (!handled.length) return 0;
+
+  const ids = handled.map(message => message.id);
+  const externalIds = handled.map(message => message.externalMessageId);
+  const now = new Date();
+
+  await db
+    .update(inboundMessages)
+    .set({ needsAction: false, status: "archived" })
+    .where(inArray(inboundMessages.id, ids));
+
+  await db
+    .update(salesWorkItems)
+    .set({
+      status: "completed",
+      completedAt: input.handledAt,
+      blockedReason: null,
+      snoozedUntil: null,
+      freshness: "current",
+      syncedAt: now,
+      stateVersion: sql`${salesWorkItems.stateVersion} + 1`,
+    })
+    .where(
+      and(
+        eq(salesWorkItems.organisationId, input.organisationId),
+        eq(salesWorkItems.connectedSystemId, input.connectedSystemId),
+        eq(salesWorkItems.salespersonUserId, input.userId),
+        eq(salesWorkItems.sourceType, "inbound_message"),
+        inArray(salesWorkItems.sourceExternalId, externalIds),
+        inArray(salesWorkItems.status, [...VERIFIED_INBOUND_WORK_STATUSES])
+      )
+    );
+
+  await completeNewLeadWorkAfterVerifiedContact({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    contactExternalId,
+    reason: input.reason,
+  }).catch(() => 0);
+
+  await recordAudit({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    eventType: "sales_inbound_resolved_by_verified_contact_action",
+    entityType: "contact",
+    entityId: contactExternalId,
+    summary:
+      "Positive salesperson CRM evidence resolved customer inbound work that existed before the verified action.",
+    metadata: {
+      count: handled.length,
+      connectedSystemId: input.connectedSystemId,
+      handledAt: input.handledAt.toISOString(),
+      reason: input.reason,
+      externalMessageIds: externalIds,
+    },
+  });
+
+  return handled.length;
+}
 
 export async function completeNewLeadWorkAfterVerifiedContact(input: {
   userId: number;
