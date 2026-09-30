@@ -471,6 +471,7 @@ export async function ingestInboundMessage(input: {
               : "An inbound customer message needs a reply.",
         status: workStatus,
         freshness: "current",
+        sourceUpdatedAt: input.envelope.receivedAt,
         syncedAt: new Date(),
         metadata: {
           channel: input.envelope.channel,
