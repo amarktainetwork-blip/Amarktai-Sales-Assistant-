@@ -19,16 +19,14 @@ require_service() {
 for service in caddy app worker reporter db redis; do require_service "$service"; done
 if [ "$PROFILE" != "pilot" ]; then
   require_service browser
-  require_service stt
-  require_service tts
+  require_service stt-en
 fi
 
 $COMPOSE exec -T db sh -eu -c 'mariadb-admin ping -uroot -p"$MARIADB_ROOT_PASSWORD" --silent'
 $COMPOSE exec -T db sh -eu -c 'mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" -D amarktai_sales_assistant -Nse "SELECT 1"' | grep -qx 1
 $COMPOSE exec -T redis valkey-cli ping | grep -qx PONG
 [ "$PROFILE" = "pilot" ] || $COMPOSE exec -T browser curl -fsS http://127.0.0.1:9222/json/version >/dev/null
-[ "$PROFILE" = "pilot" ] || $COMPOSE exec -T stt curl -fsS http://127.0.0.1:8080/ >/dev/null
-[ "$PROFILE" = "pilot" ] || $COMPOSE exec -T tts python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/info', timeout=3).read()"
+[ "$PROFILE" = "pilot" ] || $COMPOSE exec -T stt-en curl -fsS http://127.0.0.1:8080/ >/dev/null
 $COMPOSE exec -T app node --input-type=module -e '
   import { chromium } from "playwright-core";
   const endpoint = process.env.BROWSERLESS_WS_ENDPOINT;
@@ -68,7 +66,7 @@ printf 'RELEASE_SHA=%s\n' "$(git rev-parse HEAD 2>/dev/null || printf unknown)"
 printf 'PROFILE=%s\n' "$PROFILE"
 printf 'PUBLIC_URL=%s\n' "$PUBLIC_URL"
 printf 'DATABASE=PASS\nVALKEY=PASS\nAPP_HEALTH=PASS\nAPP_READINESS=PASS\nWORKER=PASS\nREPORTER=PASS\nSMTP=PASS\nGENX=PASS\nINTEGRATIONS=PASS\nHTTPS=PASS\nPUBLIC_FRONTEND=PASS\nSECURITY_HEADERS=PASS\nBROWSER_RUNTIME=PASS\n'
-[ "$PROFILE" = "pilot" ] || printf 'STT_RUNTIME=PASS\nTTS_RUNTIME=PASS\nVOICE_ACCEPTANCE=PASS\n'
+[ "$PROFILE" = "pilot" ] || printf 'STT_EN_RUNTIME=PASS\nMULTILINGUAL_STT=DORMANT_BY_DEFAULT\nTTS_RUNTIME=DORMANT_BY_DEFAULT\nVOICE_ACCEPTANCE=DEFERRED_UNTIL_VOICE_FEATURE_USE\n'
 printf 'PRODUCTION_VERIFIER=PASS\n'
 printf 'PLATFORM_READY=PASS\n'
 printf 'CLIENT_ACCEPTANCE=PENDING\n'
