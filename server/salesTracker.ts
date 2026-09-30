@@ -1,9 +1,10 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, or } from "drizzle-orm";
 import {
   crmContacts,
   crmOpportunities,
   crmPipelineStageMappings,
   externalUserMappings,
+  connectedSystems,
 } from "../drizzle/schema";
 import { getDb } from "./db";
 import { requireOrganisationMembership } from "./organisation";
@@ -63,7 +64,7 @@ export async function getSalesTracker(input: {
   );
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
-  const [mappings, stageMappings] = await Promise.all([
+  const [mappings, stageMappings, mappedSystems] = await Promise.all([
     db
       .select()
       .from(externalUserMappings)
@@ -83,9 +84,48 @@ export async function getSalesTracker(input: {
           eq(crmPipelineStageMappings.isActive, true)
         )
       ),
+    db
+      .select({
+        id: connectedSystems.id,
+        provider: connectedSystems.provider,
+        status: connectedSystems.status,
+        lastHealthCheckAt: connectedSystems.lastHealthCheckAt,
+      })
+      .from(connectedSystems)
+      .innerJoin(
+        externalUserMappings,
+        eq(externalUserMappings.connectedSystemId, connectedSystems.id)
+      )
+      .where(
+        and(
+          eq(connectedSystems.organisationId, input.organisationId),
+          eq(externalUserMappings.organisationId, input.organisationId),
+          eq(externalUserMappings.userId, input.userId),
+          eq(externalUserMappings.isActive, true)
+        )
+      ),
   ]);
-  const ownerIds = new Set(
-    uniqueOwnerMappingsBySystem(mappings).map(mapping => mapping.externalUserId)
+  const trustedMappings = uniqueOwnerMappingsBySystem(mappings);
+  const trustedSystemIds = new Set(
+    trustedMappings.map(mapping => mapping.connectedSystemId)
+  );
+  const sourceSystems = Array.from(
+    new Map(
+      mappedSystems
+        .filter(system => trustedSystemIds.has(system.id))
+        .map(system => [system.id, system])
+    ).values()
+  );
+  const sourceCurrent =
+    trustedMappings.length > 0 &&
+    sourceSystems.length === trustedMappings.length &&
+    sourceSystems.every(system =>
+      ["ready", "limited_permissions"].includes(system.status)
+    );
+  const reconnectRequired = sourceSystems.some(system =>
+    ["authentication_expired", "needs_attention", "error"].includes(
+      system.status
+    )
   );
   const wonStages = new Set(
     stageMappings
@@ -95,14 +135,20 @@ export async function getSalesTracker(input: {
         `${mapping.connectedSystemId}:${mapping.stageLabel}`,
       ])
   );
-  const opportunities = ownerIds.size
+  const ownerPairs = trustedMappings.map(mapping =>
+    and(
+      eq(crmOpportunities.connectedSystemId, mapping.connectedSystemId),
+      eq(crmOpportunities.ownerExternalId, mapping.externalUserId)
+    )
+  );
+  const opportunities = ownerPairs.length
     ? await db
         .select()
         .from(crmOpportunities)
         .where(
           and(
             eq(crmOpportunities.organisationId, input.organisationId),
-            inArray(crmOpportunities.ownerExternalId, Array.from(ownerIds))
+            or(...ownerPairs)
           )
         )
     : [];
@@ -186,6 +232,14 @@ export async function getSalesTracker(input: {
     timezone,
     currency: membership.currency,
     stageMappingRequired: wonStages.size === 0,
+    sourceCurrent,
+    reconnectRequired,
+    sourceSystems: sourceSystems.map(system => ({
+      connectedSystemId: system.id,
+      provider: system.provider,
+      status: system.status,
+      lastHealthCheckAt: system.lastHealthCheckAt,
+    })),
     summary: {
       today: summarize(todaySales),
       week: summarize(weekSales),
