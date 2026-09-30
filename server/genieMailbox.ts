@@ -264,7 +264,7 @@ export function taskCompletionEvidenceCanResolveInbound(metadata: unknown) {
     .trim()
     .toLowerCase();
   if (!title) return false;
-  return /\b(reply|respond|email|e-mail|message|whatsapp|sms|call|callback|follow[ -]?up|contact)\b/i.test(
+  return /\b(?:repl(?:y|ied|ies|ying)|respond(?:ed|ing|s)?|e-?mail(?:ed|ing|s)?|messag(?:e|ed|ing|es)|whatsapp(?:ed|ing|s)?|sms(?:ed|ing|es)?|call(?:ed|ing|s)?|callback(?:s)?|follow[ -]?up(?:s)?|contact(?:ed|ing|s)?)\b/i.test(
     title
   );
 }
@@ -274,25 +274,30 @@ async function reconcileGenieVerifiedTaskCompletions(input: {
   organisationId: number;
   connectedSystemId: number;
   externalOwnerId: string;
-  actionable: Array<{
-    contactExternalId: string | null;
-    receivedAt: Date;
-  }>;
 }) {
-  const contacts = Array.from(
-    new Set(
-      input.actionable
-        .map(row => row.contactExternalId?.trim() || "")
-        .filter(Boolean)
-    )
-  );
-  if (!contacts.length) return 0;
-
-  const oldestReceivedAt = new Date(
-    Math.min(...input.actionable.map(row => row.receivedAt.getTime()))
-  );
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
+
+  // Drive offline reconciliation from authoritative completion evidence rather
+  // than a fixed page of Inbox rows. The oldest currently-actionable inbound
+  // only bounds the evidence time window; every qualifying owner-scoped event
+  // in that window gets a chance to resolve its own contact's earlier work.
+  const oldestActionable = (
+    await db
+      .select({ receivedAt: inboundMessages.receivedAt })
+      .from(inboundMessages)
+      .where(
+        and(
+          eq(inboundMessages.organisationId, input.organisationId),
+          eq(inboundMessages.mailboxUserId, input.userId),
+          eq(inboundMessages.connectedSystemId, input.connectedSystemId),
+          eq(inboundMessages.needsAction, true)
+        )
+      )
+      .orderBy(asc(inboundMessages.receivedAt))
+      .limit(1)
+  )[0];
+  if (!oldestActionable) return 0;
 
   const events = await db
     .select({
@@ -308,8 +313,7 @@ async function reconcileGenieVerifiedTaskCompletions(input: {
         eq(salesActivityEvents.salespersonUserId, input.userId),
         eq(salesActivityEvents.externalOwnerId, input.externalOwnerId),
         eq(salesActivityEvents.eventType, "task_completed_in_crm"),
-        inArray(salesActivityEvents.contactExternalId, contacts),
-        gte(salesActivityEvents.occurredAt, oldestReceivedAt)
+        gte(salesActivityEvents.occurredAt, oldestActionable.receivedAt)
       )
     )
     .orderBy(asc(salesActivityEvents.occurredAt));
@@ -345,8 +349,7 @@ export async function syncGenieMailboxForUser(input: {
   const system = systems.find(
     candidate =>
       candidate.provider === "genie" &&
-      ["browser", "sidecar"].includes(candidate.connectionMethod) &&
-      ["ready", "limited_permissions"].includes(candidate.status)
+      ["browser", "sidecar"].includes(candidate.connectionMethod)
   );
   if (!system)
     return {
@@ -367,6 +370,30 @@ export async function syncGenieMailboxForUser(input: {
       received: 0,
       draftsPrepared: 0,
       skipped: "EXACT_CRM_EMAIL_MAPPING_REQUIRED",
+    };
+
+  const handledCachedTaskCompletions =
+    await reconcileGenieVerifiedTaskCompletions({
+      userId: input.userId,
+      organisationId: input.organisationId,
+      connectedSystemId: system.id,
+      externalOwnerId: scope.externalUserId,
+    });
+  const handledCachedReminders = await reconcileHandledInboundReminders({
+    userId: input.userId,
+    organisationId: input.organisationId,
+  });
+
+  // Cached, verified source evidence is safe to reconcile while Genie is
+  // unavailable, but stale CRM task snapshots are not safe to present as live.
+  if (!["ready", "limited_permissions"].includes(system.status))
+    return {
+      checked: 0,
+      received: 0,
+      draftsPrepared: 0,
+      handledTaskCompletions: handledCachedTaskCompletions,
+      handledReminders: handledCachedReminders,
+      skipped: "GENIE_REAUTHENTICATION_REQUIRED",
     };
 
   const secret = await loadUserConnectionSecret({
@@ -716,7 +743,6 @@ export async function syncGenieMailboxForUser(input: {
     organisationId: input.organisationId,
     connectedSystemId: system.id,
     externalOwnerId: scope.externalUserId,
-    actionable: actionableBackfill,
   });
   const handledReminders = await reconcileHandledInboundReminders({
     userId: input.userId,
@@ -804,57 +830,6 @@ export async function syncReadyGenieMailboxes() {
 
   for (const row of selected) {
     try {
-      // Reconcile already-verified local CRM evidence before attempting any
-      // live Genie mailbox read. This keeps Inbox/Today truthful even when the
-      // browser session expires after the source event was safely captured.
-      const systems = await listConnectedSystemsForUser(
-        row.userId,
-        row.organisationId
-      );
-      const localSystem = systems.find(
-        candidate =>
-          candidate.provider === "genie" &&
-          ["browser", "sidecar"].includes(candidate.connectionMethod)
-      );
-      if (localSystem) {
-        const localScope = await verifiedUserCrmScope({
-          userId: row.userId,
-          organisationId: row.organisationId,
-          connectedSystemId: localSystem.id,
-        });
-        if (localScope) {
-          const localDb = await getDb();
-          if (!localDb) throw new Error("Database connection is unavailable.");
-          const actionable = await localDb
-            .select({
-              contactExternalId: inboundMessages.contactExternalId,
-              receivedAt: inboundMessages.receivedAt,
-            })
-            .from(inboundMessages)
-            .where(
-              and(
-                eq(inboundMessages.organisationId, row.organisationId),
-                eq(inboundMessages.mailboxUserId, row.userId),
-                eq(inboundMessages.connectedSystemId, localSystem.id),
-                eq(inboundMessages.needsAction, true)
-              )
-            )
-            .orderBy(asc(inboundMessages.receivedAt))
-            .limit(60);
-          await reconcileGenieVerifiedTaskCompletions({
-            userId: row.userId,
-            organisationId: row.organisationId,
-            connectedSystemId: localSystem.id,
-            externalOwnerId: localScope.externalUserId,
-            actionable,
-          });
-          await reconcileHandledInboundReminders({
-            userId: row.userId,
-            organisationId: row.organisationId,
-          });
-        }
-      }
-
       const result = await syncGenieMailboxForUser({
         userId: row.userId,
         organisationId: row.organisationId,
