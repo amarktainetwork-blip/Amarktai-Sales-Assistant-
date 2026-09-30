@@ -18,6 +18,25 @@ describe("CRM pending-task snapshot reconciliation", () => {
     ).toEqual([]);
   });
 
+  it("restarts full task snapshots from the first provider page instead of a historical cursor", () => {
+    const source = readFileSync(new URL("./sync.ts", import.meta.url), "utf8");
+    const fullBuffer = source.indexOf(
+      "const bufferedTaskRecords ="
+    );
+    const fullDrain = source.indexOf(
+      "const drained = await drainCrmPages<SyncRecord>",
+      fullBuffer
+    );
+    const fullPersist = source.indexOf(
+      "await upsertTasks(",
+      fullDrain
+    );
+    const fullSnapshot = source.slice(fullDrain, fullPersist);
+    expect(fullSnapshot).toContain(
+      'resourceType === "tasks" ? undefined : existing?.cursor ?? undefined'
+    );
+  });
+
   it("publishes Genie task snapshots only after the complete owner-scoped read succeeds", () => {
     const source = readFileSync(new URL("./sync.ts", import.meta.url), "utf8");
     expect(source).toContain(
