@@ -32,6 +32,19 @@ const baseEmail = {
   body: "Please call me.",
 };
 
+describe("Genie persisted timestamp repair", () => {
+  it("repairs impossible future inbound timestamps and their local work/activity mirrors", () => {
+    const source = readFileSync(new URL("./genieMailbox.ts", import.meta.url), "utf8");
+    expect(source).toContain("gt(inboundMessages.receivedAt, futureCutoff)");
+    expect(source).toContain(
+      'eventType: "personal_genie_mailbox_timestamp_normalized"'
+    );
+    expect(source).toContain('eq(salesWorkItems.sourceType, "inbound_message")');
+    expect(source).toContain('eq(salesActivityEvents.source, "inbound_message")');
+    expect(source).toContain("originalReceivedAt: row.receivedAt.toISOString()");
+  });
+});
+
 describe("Genie source timestamp safety", () => {
   it("keeps valid source timestamps but clamps impossible future message times to observation time", () => {
     const observed = Date.parse("2026-09-30T06:56:20.000Z");
