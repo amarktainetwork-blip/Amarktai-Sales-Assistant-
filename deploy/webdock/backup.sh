@@ -51,6 +51,31 @@ if [ -f "$FILES_DEST" ]; then sha256sum "$FILES_DEST" > "$FILES_DEST.sha256"; fi
 chmod 600 "$SQL_DEST" "$SQL_DEST.sha256" "$MANIFEST" 2>/dev/null || true
 [ ! -f "$FILES_DEST" ] || chmod 600 "$FILES_DEST" "$FILES_DEST.sha256" 2>/dev/null || true
 
+# Keep ordinary deployment backups bounded. Named milestone/manual directories
+# are intentionally excluded from this retention pass.
+KEEP_STANDARD_BACKUPS="${AMARKTAI_BACKUP_KEEP_STANDARD:-20}"
+case "$KEEP_STANDARD_BACKUPS" in
+  ''|*[!0-9]*) echo "AMARKTAI_BACKUP_KEEP_STANDARD must be a non-negative integer." >&2; exit 1 ;;
+esac
+if [ "$KEEP_STANDARD_BACKUPS" -gt 0 ]; then
+  standard_stamps="$(
+    find "$BACKUP_DIR" -maxdepth 1 -type f -name 'amarktai-*.manifest.txt' -printf '%f\n' 2>/dev/null |
+      sed -n 's/^amarktai-\([0-9]\{8\}T[0-9]\{6\}Z\)\.manifest\.txt$/\1/p' |
+      sort -r
+  )"
+  printf '%s\n' "$standard_stamps" |
+    awk -v keep="$KEEP_STANDARD_BACKUPS" 'NF && NR > keep { print }' |
+    while IFS= read -r old_stamp; do
+      [ -n "$old_stamp" ] || continue
+      rm -f -- \
+        "$BACKUP_DIR/amarktai-${old_stamp}.sql.gz" \
+        "$BACKUP_DIR/amarktai-${old_stamp}.sql.gz.sha256" \
+        "$BACKUP_DIR/amarktai-${old_stamp}-connector-files.tar.gz" \
+        "$BACKUP_DIR/amarktai-${old_stamp}-connector-files.tar.gz.sha256" \
+        "$BACKUP_DIR/amarktai-${old_stamp}.manifest.txt"
+    done
+fi
+
 printf 'Database backup: %s\n' "$SQL_DEST"
 [ ! -f "$FILES_DEST" ] || printf 'Connector files: %s\n' "$FILES_DEST"
 printf 'Manifest: %s\n' "$MANIFEST"
