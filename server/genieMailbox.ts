@@ -344,6 +344,28 @@ type GenieActionableBackfillCursor = {
   upperBoundId: number;
 };
 
+export function nextGenieActionableBackfillCursor(input: {
+  cursor: GenieActionableBackfillCursor;
+  rows: Array<{ id: number; externalMessageId: string }>;
+  attemptedExternalIds: string[];
+  incompleteExternalIds: string[];
+}) {
+  if (!input.rows.length)
+    return {
+      afterId: input.cursor.upperBoundId,
+      upperBoundId: input.cursor.upperBoundId,
+    };
+  const attempted = new Set(input.attemptedExternalIds);
+  const incomplete = new Set(input.incompleteExternalIds);
+  let afterId = input.cursor.afterId;
+  for (const row of input.rows) {
+    if (!attempted.has(row.externalMessageId)) break;
+    if (incomplete.has(row.externalMessageId)) break;
+    afterId = row.id;
+  }
+  return { afterId, upperBoundId: input.cursor.upperBoundId };
+}
+
 function genieActionableBackfillResourceType(userId: number) {
   return `genie_mailbox_backfill_${userId}`;
 }
@@ -440,10 +462,7 @@ async function selectGenieActionableBackfill(input: {
   return {
     rows,
     resourceType,
-    cursor: {
-      afterId: rows.length ? rows[rows.length - 1].id : cursor.upperBoundId,
-      upperBoundId: cursor.upperBoundId,
-    },
+    cursor,
   };
 }
 
@@ -1051,6 +1070,9 @@ export async function syncGenieMailboxForUser(input: {
       outboundEvidence: proof.outboundEvidence.length,
       legacyConversationLinks: proof.legacyConversationLinks.length,
       legacyActionableChecked: actionableBackfill.length,
+      legacyActionableAttempted:
+        proof.legacyBackfillAttemptedExternalIds.length,
+      mailboxProviderRequests: proof.providerRequests,
       draftsPrepared,
       contentRetained: false,
       exactEmailIsolation: true,
@@ -1067,10 +1089,18 @@ export async function syncGenieMailboxForUser(input: {
     },
   });
 
+  const nextBackfillCursor = nextGenieActionableBackfillCursor({
+    cursor: actionableBackfillBatch.cursor,
+    rows: actionableBackfill,
+    attemptedExternalIds: proof.legacyBackfillAttemptedExternalIds,
+    incompleteExternalIds: proof.legacyBackfillProgress.map(
+      progress => progress.inboundExternalMessageId
+    ),
+  });
   await saveGenieActionableBackfillCursor({
     connectedSystemId: system.id,
     resourceType: actionableBackfillBatch.resourceType,
-    cursor: actionableBackfillBatch.cursor,
+    cursor: nextBackfillCursor,
   });
 
   await saveGenieLiveMailboxProgress({
