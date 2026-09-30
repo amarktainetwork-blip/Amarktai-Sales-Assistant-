@@ -6,6 +6,29 @@ import { syncReadyGenieMailboxes } from "./genieMailbox";
 
 const MAX_MAILBOXES_PER_CYCLE = 50;
 
+export const DEFAULT_PERSONAL_MAILBOX_SYNC_TIMEOUT_MS = 90_000;
+
+export function personalMailboxSyncTimeoutMs(
+  raw = process.env.PERSONAL_MAILBOX_SYNC_TIMEOUT_MS
+) {
+  const parsed = Number(raw || DEFAULT_PERSONAL_MAILBOX_SYNC_TIMEOUT_MS);
+  return Number.isFinite(parsed) && parsed >= 60_000
+    ? Math.floor(parsed)
+    : DEFAULT_PERSONAL_MAILBOX_SYNC_TIMEOUT_MS;
+}
+
+export function armPersonalMailboxSyncWatchdog(input: {
+  timeoutMs?: number;
+  onTimeout: () => void;
+}) {
+  const timer = setTimeout(
+    input.onTimeout,
+    input.timeoutMs ?? personalMailboxSyncTimeoutMs()
+  );
+  timer.unref?.();
+  return () => clearTimeout(timer);
+}
+
 /**
  * Refresh connected personal mailboxes without relying on an organisation-wide
  * application mailbox. Each sync re-enters the delegated mailbox boundary with
