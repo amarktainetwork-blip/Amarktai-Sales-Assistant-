@@ -8,6 +8,19 @@ const id = (value: unknown) =>
   typeof value === "string" && /^[A-Za-z0-9_-]{1,180}$/.test(value)
     ? value
     : null;
+
+const MAX_SOURCE_FUTURE_SKEW_MS = 5 * 60_000;
+
+export function normalizeGenieMessageTime(
+  value: unknown,
+  observedAtMs = Date.now()
+) {
+  const date = new Date(String(value ?? ""));
+  if (!Number.isFinite(date.getTime())) return null;
+  if (date.getTime() > observedAtMs + MAX_SOURCE_FUTURE_SKEW_MS)
+    return new Date(observedAtMs);
+  return date;
+}
 export function mailboxAddress(value: unknown) {
   if (typeof value !== "string") return "";
   const match = value
@@ -38,11 +51,8 @@ export function parsePersonalGenieEmail(
       email.contactId !== input.contactExternalId)
   )
     throw Error("GENIE_MAILBOX_SCOPE_MISMATCH");
-  const receivedAt = new Date(email.dateAdded);
-  if (
-    !Number.isFinite(receivedAt.getTime()) ||
-    receivedAt.getTime() < input.since
-  )
+  const receivedAt = normalizeGenieMessageTime(email.dateAdded);
+  if (!receivedAt || receivedAt.getTime() < input.since)
     return { kind: "excluded" as const };
   const rawRecipients = Array.isArray(email.to)
     ? email.to
@@ -128,11 +138,8 @@ export function legacyGenieOutboundEvidence(
     (thread.contactId && thread.contactId !== input.contactExternalId)
   )
     throw Error("GENIE_MAILBOX_SCOPE_MISMATCH");
-  const sentAt = new Date(thread.dateAdded);
-  if (
-    !Number.isFinite(sentAt.getTime()) ||
-    sentAt.getTime() <= input.receivedAt.getTime()
-  )
+  const sentAt = normalizeGenieMessageTime(thread.dateAdded);
+  if (!sentAt || sentAt.getTime() <= input.receivedAt.getTime())
     return undefined;
   const channel =
     Number(thread.type) === 3 ? ("email" as const) : genieConversationChannel(thread);
@@ -172,8 +179,8 @@ export function parsePersonalGenieOutboundEmail(
     email.contactId !== input.contactExternalId
   )
     throw Error("GENIE_MAILBOX_SCOPE_MISMATCH");
-  const sentAt = new Date(email.dateAdded);
-  if (!Number.isFinite(sentAt.getTime()) || sentAt.getTime() < input.since)
+  const sentAt = normalizeGenieMessageTime(email.dateAdded);
+  if (!sentAt || sentAt.getTime() < input.since)
     return { kind: "excluded" as const };
   return {
     kind: "outbound" as const,
@@ -229,11 +236,8 @@ export function parsePersonalGenieConversationMessage(
     message.contactId !== input.contactExternalId
   )
     throw Error("GENIE_MAILBOX_SCOPE_MISMATCH");
-  const receivedAt = new Date(message.dateAdded);
-  if (
-    !Number.isFinite(receivedAt.getTime()) ||
-    receivedAt.getTime() < input.since
-  )
+  const receivedAt = normalizeGenieMessageTime(message.dateAdded);
+  if (!receivedAt || receivedAt.getTime() < input.since)
     return { kind: "excluded" as const };
   const channel = genieConversationChannel(message);
   if (!channel) return { kind: "excluded" as const };
@@ -513,11 +517,11 @@ export async function readPersonalGenieMailbox(input: {
         if (thread.direction === "outbound") {
           const messageId = id(thread.id);
           const channel = genieConversationChannel(thread);
-          const sentAt = new Date(thread.dateAdded);
+          const sentAt = normalizeGenieMessageTime(thread.dateAdded);
           if (
             messageId &&
             channel &&
-            Number.isFinite(sentAt.getTime()) &&
+            sentAt &&
             sentAt.getTime() >= since
           )
             outboundEvidence.set(messageId, {
