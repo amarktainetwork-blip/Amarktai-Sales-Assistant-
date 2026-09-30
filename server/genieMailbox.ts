@@ -1,8 +1,9 @@
 import { isRetryableGenieMailboxRead } from "./genieMailboxRetry";
 import { readPersonalGenieMailbox } from "./browserConnectors/genieMailboxRead";
-import { and, asc, desc, eq, gt, gte, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNotNull, lte } from "drizzle-orm";
 import {
   assistantReminders,
+  crmSyncCursors,
   inboundMessages,
   organisationMembers,
   organisations,
@@ -27,6 +28,7 @@ import { withAuthenticatedBrowserSessionPage } from "./browserConnectors/browser
 
 const MAX_GENIE_MAILBOXES_PER_CYCLE = 50;
 const MAX_CONVERSATIONS_PER_SYNC = 20;
+const GENIE_ACTIONABLE_BACKFILL_BATCH_SIZE = 10;
 
 function normalizeEmail(value: string | null | undefined) {
   return value?.trim().toLowerCase() || "";
@@ -338,6 +340,147 @@ async function reconcileGenieVerifiedTaskCompletions(input: {
   return handled;
 }
 
+type GenieActionableBackfillCursor = {
+  afterId: number;
+  upperBoundId: number;
+};
+
+function genieActionableBackfillResourceType(userId: number) {
+  return `genie_mailbox_backfill_${userId}`;
+}
+
+export function parseGenieActionableBackfillCursor(
+  value: string | null | undefined
+): GenieActionableBackfillCursor {
+  try {
+    const parsed = JSON.parse(value || "{}") as Partial<GenieActionableBackfillCursor>;
+    const afterId = Number(parsed.afterId || 0);
+    const upperBoundId = Number(parsed.upperBoundId || 0);
+    return {
+      afterId: Number.isInteger(afterId) && afterId > 0 ? afterId : 0,
+      upperBoundId:
+        Number.isInteger(upperBoundId) && upperBoundId > 0 ? upperBoundId : 0,
+    };
+  } catch {
+    return { afterId: 0, upperBoundId: 0 };
+  }
+}
+
+async function selectGenieActionableBackfill(input: {
+  userId: number;
+  organisationId: number;
+  connectedSystemId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const resourceType = genieActionableBackfillResourceType(input.userId);
+  const [stored] = await db
+    .select({ cursor: crmSyncCursors.cursor })
+    .from(crmSyncCursors)
+    .where(
+      and(
+        eq(crmSyncCursors.connectedSystemId, input.connectedSystemId),
+        eq(crmSyncCursors.resourceType, resourceType)
+      )
+    )
+    .limit(1);
+
+  const eligible = and(
+    eq(inboundMessages.organisationId, input.organisationId),
+    eq(inboundMessages.mailboxUserId, input.userId),
+    eq(inboundMessages.connectedSystemId, input.connectedSystemId),
+    eq(inboundMessages.needsAction, true),
+    inArray(inboundMessages.channel, ["email", "sms", "chat"]),
+    isNotNull(inboundMessages.contactExternalId)
+  );
+  const [highest] = await db
+    .select({ id: inboundMessages.id })
+    .from(inboundMessages)
+    .where(eligible)
+    .orderBy(desc(inboundMessages.id))
+    .limit(1);
+  if (!highest)
+    return {
+      rows: [] as Array<{
+        id: number;
+        externalMessageId: string;
+        channel: string;
+        contactExternalId: string | null;
+        receivedAt: Date;
+        classification: unknown;
+      }>,
+      resourceType,
+      cursor: { afterId: 0, upperBoundId: 0 },
+    };
+
+  const maxId = highest.id;
+  let cursor = parseGenieActionableBackfillCursor(stored?.cursor);
+  if (
+    cursor.upperBoundId <= 0 ||
+    cursor.afterId >= cursor.upperBoundId ||
+    cursor.upperBoundId > maxId
+  )
+    cursor = { afterId: 0, upperBoundId: maxId };
+
+  const rows = await db
+    .select({
+      id: inboundMessages.id,
+      externalMessageId: inboundMessages.externalMessageId,
+      channel: inboundMessages.channel,
+      contactExternalId: inboundMessages.contactExternalId,
+      receivedAt: inboundMessages.receivedAt,
+      classification: inboundMessages.classification,
+    })
+    .from(inboundMessages)
+    .where(
+      and(
+        eligible,
+        gt(inboundMessages.id, cursor.afterId),
+        lte(inboundMessages.id, cursor.upperBoundId)
+      )
+    )
+    .orderBy(asc(inboundMessages.id))
+    .limit(GENIE_ACTIONABLE_BACKFILL_BATCH_SIZE);
+
+  return {
+    rows,
+    resourceType,
+    cursor: {
+      afterId: rows.length ? rows[rows.length - 1].id : cursor.upperBoundId,
+      upperBoundId: cursor.upperBoundId,
+    },
+  };
+}
+
+async function saveGenieActionableBackfillCursor(input: {
+  connectedSystemId: number;
+  resourceType: string;
+  cursor: GenieActionableBackfillCursor;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const now = new Date();
+  const cursor = JSON.stringify(input.cursor);
+  await db
+    .insert(crmSyncCursors)
+    .values({
+      connectedSystemId: input.connectedSystemId,
+      resourceType: input.resourceType,
+      cursor,
+      sourceCheckpoint: now.toISOString(),
+      lastSuccessfulAt: now,
+      lastError: null,
+    })
+    .onDuplicateKeyUpdate({
+      set: {
+        cursor,
+        sourceCheckpoint: now.toISOString(),
+        lastSuccessfulAt: now,
+        lastError: null,
+      },
+    });
+}
+
 export async function syncGenieMailboxForUser(input: {
   userId: number;
   organisationId: number;
@@ -616,32 +759,12 @@ export async function syncGenieMailboxForUser(input: {
       .orderBy(asc(inboundMessages.receivedAt))
       .limit(1)
   )[0];
-  const actionableBackfill = (
-    await db
-      .select({
-        id: inboundMessages.id,
-        externalMessageId: inboundMessages.externalMessageId,
-        channel: inboundMessages.channel,
-        contactExternalId: inboundMessages.contactExternalId,
-        receivedAt: inboundMessages.receivedAt,
-        classification: inboundMessages.classification,
-      })
-      .from(inboundMessages)
-      .where(
-        and(
-          eq(inboundMessages.organisationId, input.organisationId),
-          eq(inboundMessages.mailboxUserId, input.userId),
-          eq(inboundMessages.connectedSystemId, system.id),
-          eq(inboundMessages.needsAction, true)
-        )
-      )
-      .orderBy(asc(inboundMessages.receivedAt))
-  ).filter(row =>
-    shouldTargetGenieActionableBackfill({
-      channel: row.channel,
-      contactExternalId: row.contactExternalId,
-    })
-  );
+  const actionableBackfillBatch = await selectGenieActionableBackfill({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    connectedSystemId: system.id,
+  });
+  const actionableBackfill = actionableBackfillBatch.rows;
   const now = Date.now();
   const oneDayAgo = now - 24 * 60 * 60_000;
   // The fast mailbox lane only needs a small overlap behind the newest message.
@@ -672,6 +795,11 @@ export async function syncGenieMailboxForUser(input: {
       }),
   });
   checked = proof.checked;
+  await saveGenieActionableBackfillCursor({
+    connectedSystemId: system.id,
+    resourceType: actionableBackfillBatch.resourceType,
+    cursor: actionableBackfillBatch.cursor,
+  });
   for (const link of proof.legacyConversationLinks) {
     const row = actionableBackfill.find(
       candidate => candidate.externalMessageId === link.inboundExternalMessageId
