@@ -319,6 +319,55 @@ describe("Genie personal email isolation", () => {
     ).toThrow("GENIE_MAILBOX_SCOPE_MISMATCH");
   });
 
+  it("uses raw same-thread provider timestamps for relative ordering even when both source times are in the future", () => {
+    const evidence = legacyGenieOutboundEvidence(
+      {
+        id: "outbound-after-future-inbound",
+        type: 3,
+        direction: "outbound",
+        deleted: false,
+        locationId: "location-1",
+        conversationId: "conversation-1",
+        contactId: "contact-1",
+        dateAdded: "2026-09-30T13:40:00.000Z",
+      },
+      {
+        channel: "email",
+        locationId: "location-1",
+        conversationId: "conversation-1",
+        contactExternalId: "contact-1",
+        receivedAt: new Date("2026-09-30T07:59:02.000Z"),
+        sourceReceivedAtRawMs: Date.parse("2026-09-30T13:33:33.000Z"),
+      }
+    );
+    expect(evidence).toMatchObject({
+      contactExternalId: "contact-1",
+      conversationExternalId: "conversation-1",
+    });
+    expect(
+      legacyGenieOutboundEvidence(
+        {
+          id: "outbound-before-future-inbound",
+          type: 3,
+          direction: "outbound",
+          deleted: false,
+          locationId: "location-1",
+          conversationId: "conversation-1",
+          contactId: "contact-1",
+          dateAdded: "2026-09-30T13:30:00.000Z",
+        },
+        {
+          channel: "email",
+          locationId: "location-1",
+          conversationId: "conversation-1",
+          contactExternalId: "contact-1",
+          receivedAt: new Date("2026-09-30T07:59:02.000Z"),
+          sourceReceivedAtRawMs: Date.parse("2026-09-30T13:33:33.000Z"),
+        }
+      )
+    ).toBeUndefined();
+  });
+
   it("trusts exact newest-first thread order when a normalized Genie clock makes the reply timestamp look earlier", () => {
     const evidence = legacyGenieOutboundEvidence(
       {
@@ -367,7 +416,8 @@ describe("Genie personal email isolation", () => {
       "utf8"
     );
     expect(reader).toContain("threadMessageIds.includes(externalMessageId)");
-    expect(reader).toContain("verifiedAfterInboundByThreadOrder: true");
+    expect(reader).toContain("sourceReceivedAtRawMs");
+    expect(reader).toContain("rawSentAtMs > input.sourceReceivedAtRawMs");
     expect(reader).not.toContain("crossedInboundTime");
     expect(pipeline).toContain(
       "sourceUpdatedAt: input.envelope.receivedAt"
