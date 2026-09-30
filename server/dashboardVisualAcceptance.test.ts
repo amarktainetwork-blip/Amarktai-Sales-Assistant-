@@ -136,6 +136,8 @@ describe("final dashboard information architecture", () => {
     expect(today).toContain("Work the task here with the related customer context.");
     expect(today).toContain("Prepare with AmarktAI");
     expect(today).toContain("No related CRM contact");
+    expect(today).toContain("Recent CRM context");
+    expect(today).toContain("Colleague-owned lead · task-linked context shown here");
     expect(today).toContain('data-today-internal-work');
     expect(today).not.toContain("<AlertTriangle />");
     expect(customers).not.toContain("Know the person before you call.");
