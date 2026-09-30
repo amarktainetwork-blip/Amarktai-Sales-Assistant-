@@ -609,6 +609,20 @@ export async function readPersonalGenieMailbox(input: {
     }
     if (bounded) break;
   }
+  const legacyEmailDetailCache = new Map<string, any>();
+  let legacyEmailDetailReads = 0;
+  const MAX_LEGACY_EMAIL_DETAIL_READS = 80;
+  const readLegacyEmailDetail = async (emailId: string) => {
+    if (legacyEmailDetailCache.has(emailId))
+      return legacyEmailDetailCache.get(emailId);
+    if (legacyEmailDetailReads >= MAX_LEGACY_EMAIL_DETAIL_READS)
+      return undefined;
+    legacyEmailDetailReads++;
+    const value = await read(`/conversations/messages/email/${emailId}`);
+    legacyEmailDetailCache.set(emailId, value);
+    return value;
+  };
+
   for (const unresolved of (input.unresolved || []).slice(0, 20)) {
     const externalMessageId = id(unresolved.externalMessageId);
     const contactExternalId = id(unresolved.contactExternalId);
@@ -699,15 +713,23 @@ export async function readPersonalGenieMailbox(input: {
         // inbound was handled. Provider clocks are not trusted for this proof.
         for (const newerThread of newerThreads) {
           if (unresolved.channel === "email" && Number(newerThread.type) === 3) {
-            const newerEmailIds = Array.isArray(newerThread.meta?.email?.messageIds)
-              ? newerThread.meta.email.messageIds
-                  .map((value: unknown) => id(value))
-                  .filter((value: string | null): value is string => Boolean(value))
-              : [];
+            const newerEmailIds = Array.from(
+              new Set(
+                [
+                  id(newerThread.id),
+                  ...(Array.isArray(newerThread.meta?.email?.messageIds)
+                    ? newerThread.meta.email.messageIds.map(
+                        (value: unknown) => id(value)
+                      )
+                    : []),
+                ].filter(
+                  (value: string | null): value is string => Boolean(value)
+                )
+              )
+            );
             for (const newerEmailId of newerEmailIds) {
-              const newerRaw = await read(
-                `/conversations/messages/email/${newerEmailId}`
-              );
+              const newerRaw = await readLegacyEmailDetail(newerEmailId);
+              if (!newerRaw) break;
               const evidence = exactGenieOutboundEmailEvidenceByThreadOrder(
                 newerRaw,
                 {
@@ -763,6 +785,9 @@ export async function readPersonalGenieMailbox(input: {
     records: Array.from(records.values()),
     outboundEvidence: Array.from(outboundEvidence.values()),
     legacyConversationLinks: Array.from(legacyConversationLinks.values()),
+    legacyEmailDetailReads,
+    legacyEmailDetailReadBudgetExhausted:
+      legacyEmailDetailReads >= MAX_LEGACY_EMAIL_DETAIL_READS,
     checked: Math.min(conversations.length, MAX_CONVERSATIONS_PER_SYNC),
     examined,
     rejectedForeignRecipientCount,
