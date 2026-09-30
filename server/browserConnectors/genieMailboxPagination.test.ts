@@ -99,6 +99,157 @@ describe("Genie mailbox continuation", () => {
     expect(result.unreadPreserved).toBe(true);
   });
 
+  it("checkpoints one deep legacy conversation after three pages and resumes from that checkpoint", async () => {
+    const response = (data: unknown) => ({
+      ok: () => true,
+      status: () => 200,
+      json: async () => data,
+    });
+    const outbound = {
+      id: "outbound-after",
+      type: 2,
+      locationId: "loc",
+      contactId: "target-contact",
+      conversationId: "legacy-conversation",
+      direction: "outbound",
+      dateAdded: "2026-09-17T10:20:00Z",
+      deleted: false,
+    };
+    const filler = (id: string) => ({
+      id,
+      type: 2,
+      locationId: "loc",
+      contactId: "target-contact",
+      conversationId: "legacy-conversation",
+      direction: "inbound",
+      dateAdded: "2026-09-17T10:10:00Z",
+      deleted: false,
+    });
+    const target = {
+      ...filler("legacy-inbound"),
+      dateAdded: "2026-09-17T10:00:00Z",
+    };
+    const historyCursors: Array<string | undefined> = [];
+    const get = vi.fn(async (url: string, options?: any) => {
+      if (url.includes("/conversations/search"))
+        return response({ conversations: [], total: 0 });
+      if (url.includes("/contacts/target-contact"))
+        return response({
+          contact: {
+            id: "target-contact",
+            locationId: "loc",
+            assignedTo: "owner",
+          },
+        });
+      if (url.endsWith("/conversations/messages/legacy-inbound"))
+        return response({
+          message: {
+            ...target,
+            id: "legacy-inbound",
+          },
+        });
+      if (url.endsWith("/conversations/legacy-conversation/messages")) {
+        const cursor = options?.params?.lastMessageId as string | undefined;
+        historyCursors.push(cursor);
+        if (!cursor)
+          return response({
+            messages: {
+              messages: [outbound],
+              nextPage: true,
+              lastMessageId: "page-1",
+            },
+          });
+        if (cursor === "page-1")
+          return response({
+            messages: {
+              messages: [filler("filler-2")],
+              nextPage: true,
+              lastMessageId: "page-2",
+            },
+          });
+        if (cursor === "page-2")
+          return response({
+            messages: {
+              messages: [filler("filler-3")],
+              nextPage: true,
+              lastMessageId: "page-3",
+            },
+          });
+        if (cursor === "page-3")
+          return response({
+            messages: {
+              messages: [target],
+              nextPage: false,
+              lastMessageId: "page-4",
+            },
+          });
+      }
+      throw new Error(`unexpected GET ${url}`);
+    });
+    const post = vi.fn(async () =>
+      response({ search: { conversations: [] } })
+    );
+    const page = {
+      url: () => "https://genie.test/v2/location/loc/contacts",
+      evaluate: async () => "token",
+      context: () => ({ request: { get, post } }),
+    } as any;
+    const unresolved = {
+      externalMessageId: "legacy-inbound",
+      channel: "sms" as const,
+      contactExternalId: "target-contact",
+      receivedAt: new Date("2026-09-17T10:00:00Z"),
+    };
+
+    const first = await readPersonalGenieMailbox({
+      page,
+      ownerExternalId: "owner",
+      mailboxEmail: "advisor@example.test",
+      since: new Date("2026-09-17T09:00:00Z"),
+      unresolved: [unresolved],
+    });
+    expect(historyCursors).toEqual([undefined, "page-1", "page-2"]);
+    expect(first.outboundEvidence).toHaveLength(0);
+    expect(first.legacyBackfillProgress).toHaveLength(1);
+    expect(first.legacyBackfillProgress[0]).toMatchObject({
+      inboundExternalMessageId: "legacy-inbound",
+      conversationExternalId: "legacy-conversation",
+      lastMessageId: "page-3",
+      candidateOutboundEvidence: {
+        externalMessageId: "outbound-after",
+        verifiedAfterInboundByThreadOrder: true,
+      },
+    });
+
+    historyCursors.length = 0;
+    const progress = first.legacyBackfillProgress[0];
+    const second = await readPersonalGenieMailbox({
+      page,
+      ownerExternalId: "owner",
+      mailboxEmail: "advisor@example.test",
+      since: new Date("2026-09-17T09:00:00Z"),
+      unresolved: [
+        {
+          ...unresolved,
+          backfillProgress: {
+            conversationExternalId: progress.conversationExternalId,
+            lastMessageId: progress.lastMessageId,
+            candidateOutboundEvidence: progress.candidateOutboundEvidence,
+          },
+        },
+      ],
+    });
+    expect(historyCursors).toEqual(["page-3"]);
+    expect(second.legacyBackfillProgress).toHaveLength(0);
+    expect(second.outboundEvidence).toEqual([
+      expect.objectContaining({
+        externalMessageId: "outbound-after",
+        inboundExternalMessageId: "legacy-inbound",
+        verifiedAfterInboundByThreadOrder: true,
+      }),
+    ]);
+  });
+
   it("has no fixed first-page or first-200-message discovery cap and checkpoints bounded legacy backfill", () => {
     const reader = readFileSync(new URL("./genieMailboxRead.ts", import.meta.url), "utf8");
     expect(reader).not.toContain("searchPage < 1");
@@ -116,5 +267,15 @@ describe("Genie mailbox continuation", () => {
     expect(mailbox).toContain("genie_mailbox_backfill_");
     expect(mailbox).toContain("upperBoundId");
     expect(mailbox).toContain("saveGenieActionableBackfillCursor");
+    const syncStart = mailbox.indexOf("export async function syncGenieMailboxForUser");
+    const audit = mailbox.indexOf(
+      'eventType: "personal_genie_mailbox_synced"',
+      syncStart
+    );
+    const checkpoint = mailbox.indexOf(
+      "await saveGenieActionableBackfillCursor",
+      audit
+    );
+    expect(checkpoint).toBeGreaterThan(audit);
   });
 });
