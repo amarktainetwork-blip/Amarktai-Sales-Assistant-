@@ -1,7 +1,7 @@
 {
-  "operation": "inspect",
+  "operation": "cleanup",
   "server_name": "Amarktai Network - Sales Assistant",
   "server_domain": "sales.amarktai.co.za",
-  "release_sha": "1664bdffe9045033f5863c9602ddce4303a4b6d1",
-  "request_id": "final-safe-inspect-after-calls-drafts-freshness-2026-09-29"
+  "release_sha": "4ff4a5eafd395732f5ab8f815d38d974814520cb",
+  "request_id": "phase1-safe-vps-cleanup-2026-09-30"
 }
