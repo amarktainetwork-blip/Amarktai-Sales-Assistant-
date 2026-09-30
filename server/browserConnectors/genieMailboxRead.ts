@@ -12,6 +12,19 @@ const MAX_LEGACY_PROVIDER_REQUESTS_PER_ROW = 6;
 const FINAL_UNREAD_REQUEST_RESERVE = 1;
 const LEGACY_BACKFILL_START_DEADLINE_MS = 15_000;
 const MAILBOX_REQUEST_TIMEOUT_MS = 10_000;
+
+export function canStartLegacyGenieBackfillRow(input: {
+  providerRequests: number;
+  elapsedMs: number;
+}) {
+  return (
+    input.elapsedMs < LEGACY_BACKFILL_START_DEADLINE_MS &&
+    input.providerRequests +
+        MAX_LEGACY_PROVIDER_REQUESTS_PER_ROW +
+        FINAL_UNREAD_REQUEST_RESERVE <=
+      MAX_PROVIDER_REQUESTS_PER_CYCLE
+  );
+}
 const id = (value: unknown) =>
   typeof value === "string" && /^[A-Za-z0-9_-]{1,180}$/.test(value)
     ? value
@@ -780,11 +793,10 @@ export async function readPersonalGenieMailbox(input: {
   }
   for (const unresolved of input.unresolved || []) {
     if (
-      Date.now() - cycleStartedAt >= LEGACY_BACKFILL_START_DEADLINE_MS ||
-      providerRequests +
-          MAX_LEGACY_PROVIDER_REQUESTS_PER_ROW +
-          FINAL_UNREAD_REQUEST_RESERVE >
-        MAX_PROVIDER_REQUESTS_PER_CYCLE
+      !canStartLegacyGenieBackfillRow({
+        providerRequests,
+        elapsedMs: Date.now() - cycleStartedAt,
+      })
     )
       break;
     legacyBackfillAttemptedExternalIds.push(unresolved.externalMessageId);
