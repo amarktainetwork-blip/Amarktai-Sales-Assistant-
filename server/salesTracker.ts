@@ -7,6 +7,7 @@ import {
 } from "../drizzle/schema";
 import { getDb } from "./db";
 import { requireOrganisationMembership } from "./organisation";
+import { uniqueOwnerMappingsBySystem } from "./customerData";
 
 function dayKey(date: Date, timezone: string) {
   return new Intl.DateTimeFormat("en-CA", {
@@ -83,7 +84,9 @@ export async function getSalesTracker(input: {
         )
       ),
   ]);
-  const ownerIds = new Set(mappings.map(mapping => mapping.externalUserId));
+  const ownerIds = new Set(
+    uniqueOwnerMappingsBySystem(mappings).map(mapping => mapping.externalUserId)
+  );
   const wonStages = new Set(
     stageMappings
       .filter(mapping => mapping.category === "won")
