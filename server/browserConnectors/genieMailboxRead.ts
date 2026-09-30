@@ -129,6 +129,7 @@ export function legacyGenieOutboundEvidence(
     conversationId: string;
     contactExternalId: string;
     receivedAt: Date;
+    sourceReceivedAtRawMs?: number;
     verifiedAfterInboundByThreadOrder?: boolean;
   }
 ): PersonalGenieOutboundEvidence | undefined {
@@ -140,13 +141,13 @@ export function legacyGenieOutboundEvidence(
     (thread.contactId && thread.contactId !== input.contactExternalId)
   )
     throw Error("GENIE_MAILBOX_SCOPE_MISMATCH");
+  const rawSentAtMs = Date.parse(String(thread.dateAdded || ""));
   const sentAt = normalizeGenieMessageTime(thread.dateAdded);
-  if (
-    !sentAt ||
-    (!input.verifiedAfterInboundByThreadOrder &&
-      sentAt.getTime() <= input.receivedAt.getTime())
-  )
-    return undefined;
+  const followsInbound = Number.isFinite(input.sourceReceivedAtRawMs)
+    ? Number.isFinite(rawSentAtMs) && rawSentAtMs > input.sourceReceivedAtRawMs!
+    : input.verifiedAfterInboundByThreadOrder === true ||
+      Boolean(sentAt && sentAt.getTime() > input.receivedAt.getTime());
+  if (!sentAt || !followsInbound) return undefined;
   const channel =
     Number(thread.type) === 3 ? ("email" as const) : genieConversationChannel(thread);
   if (!channel || channel !== input.channel) return undefined;
@@ -610,6 +611,7 @@ export async function readPersonalGenieMailbox(input: {
       continue;
     const conversationId = id(source.conversationId);
     if (!conversationId) continue;
+    const sourceReceivedAtRawMs = Date.parse(String(source.dateAdded || ""));
     if (
       unresolved.channel !== "email" &&
       genieConversationChannel(source) !== unresolved.channel
@@ -650,7 +652,7 @@ export async function readPersonalGenieMailbox(input: {
         ].filter(Boolean);
         if (threadMessageIds.includes(externalMessageId)) {
           reachedExactInbound = true;
-          break;
+          continue;
         }
 
         // Genie has returned impossible future timestamps in production. The
@@ -663,14 +665,16 @@ export async function readPersonalGenieMailbox(input: {
           conversationId,
           contactExternalId,
           receivedAt: unresolved.receivedAt,
-          verifiedAfterInboundByThreadOrder: true,
+          ...(Number.isFinite(sourceReceivedAtRawMs)
+            ? { sourceReceivedAtRawMs }
+            : { verifiedAfterInboundByThreadOrder: !reachedExactInbound }),
         });
         if (!evidence) continue;
         outboundEvidence.set(evidence.externalMessageId, evidence);
         foundReply = true;
         break;
       }
-      if (foundReply || reachedExactInbound || !result.messages.nextPage) break;
+      if (foundReply || !result.messages.nextPage) break;
       const next = id(result.messages.lastMessageId);
       if (!next || next === lastMessageId)
         throw Error("GENIE_MAILBOX_CURSOR_STALLED");
