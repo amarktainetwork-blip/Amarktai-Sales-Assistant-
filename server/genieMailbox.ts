@@ -1,5 +1,5 @@
 import { isRetryableGenieMailboxRead } from "./genieMailboxRetry";
-import { readPersonalGenieMailbox } from "./browserConnectors/genieMailboxRead";
+import { readPersonalGenieMailbox, type GenieLiveMailboxProgress } from "./browserConnectors/genieMailboxRead";
 import { and, asc, desc, eq, gt, gte, inArray, isNotNull, lte } from "drizzle-orm";
 import {
   assistantReminders,
@@ -27,7 +27,6 @@ import {
 import { withAuthenticatedBrowserSessionPage } from "./browserConnectors/browserCrmAdapter";
 
 const MAX_GENIE_MAILBOXES_PER_CYCLE = 50;
-const MAX_CONVERSATIONS_PER_SYNC = 20;
 const GENIE_ACTIONABLE_BACKFILL_BATCH_SIZE = 10;
 
 function normalizeEmail(value: string | null | undefined) {
@@ -415,11 +414,7 @@ async function selectGenieActionableBackfill(input: {
 
   const maxId = highest.id;
   let cursor = parseGenieActionableBackfillCursor(stored?.cursor);
-  if (
-    cursor.upperBoundId <= 0 ||
-    cursor.afterId >= cursor.upperBoundId ||
-    cursor.upperBoundId > maxId
-  )
+  if (cursor.upperBoundId <= 0 || cursor.afterId >= cursor.upperBoundId)
     cursor = { afterId: 0, upperBoundId: maxId };
 
   const rows = await db
@@ -461,6 +456,78 @@ async function saveGenieActionableBackfillCursor(input: {
   if (!db) throw new Error("Database connection is unavailable.");
   const now = new Date();
   const cursor = JSON.stringify(input.cursor);
+  await db
+    .insert(crmSyncCursors)
+    .values({
+      connectedSystemId: input.connectedSystemId,
+      resourceType: input.resourceType,
+      cursor,
+      sourceCheckpoint: now.toISOString(),
+      lastSuccessfulAt: now,
+      lastError: null,
+    })
+    .onDuplicateKeyUpdate({
+      set: {
+        cursor,
+        sourceCheckpoint: now.toISOString(),
+        lastSuccessfulAt: now,
+        lastError: null,
+      },
+    });
+}
+
+function genieLiveMailboxResourceType(userId: number) {
+  return `genie_mailbox_live_${userId}`;
+}
+
+function parseGenieLiveMailboxProgress(
+  value: string | null | undefined
+): GenieLiveMailboxProgress | undefined {
+  if (!value) return undefined;
+  try {
+    const parsed = JSON.parse(value) as GenieLiveMailboxProgress;
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      typeof parsed.sourceSince !== "string" ||
+      !Number.isFinite(Date.parse(parsed.sourceSince))
+    )
+      return undefined;
+    return parsed;
+  } catch {
+    return undefined;
+  }
+}
+
+async function loadGenieLiveMailboxProgress(input: {
+  userId: number;
+  connectedSystemId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const resourceType = genieLiveMailboxResourceType(input.userId);
+  const [stored] = await db
+    .select({ cursor: crmSyncCursors.cursor })
+    .from(crmSyncCursors)
+    .where(
+      and(
+        eq(crmSyncCursors.connectedSystemId, input.connectedSystemId),
+        eq(crmSyncCursors.resourceType, resourceType)
+      )
+    )
+    .limit(1);
+  return { resourceType, progress: parseGenieLiveMailboxProgress(stored?.cursor) };
+}
+
+async function saveGenieLiveMailboxProgress(input: {
+  connectedSystemId: number;
+  resourceType: string;
+  progress?: GenieLiveMailboxProgress;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const now = new Date();
+  const cursor = input.progress ? JSON.stringify(input.progress) : null;
   await db
     .insert(crmSyncCursors)
     .values({
@@ -776,6 +843,11 @@ export async function syncGenieMailboxForUser(input: {
   const latestOverlap = latestReceivedAt - 2 * 60_000;
   const since = new Date(Math.max(oneDayAgo, latestOverlap));
 
+  const liveMailboxCheckpoint = await loadGenieLiveMailboxProgress({
+    userId: input.userId,
+    connectedSystemId: system.id,
+  });
+
   const proof = await withAuthenticatedBrowserSessionPage({
     connection: adapterConnection,
     secret,
@@ -786,6 +858,7 @@ export async function syncGenieMailboxForUser(input: {
         ownerExternalId: scope.externalUserId,
         mailboxEmail: scope.email,
         since,
+        liveProgress: liveMailboxCheckpoint.progress,
         unresolved: actionableBackfill.map(row => {
           const classification =
             row.classification &&
@@ -998,6 +1071,12 @@ export async function syncGenieMailboxForUser(input: {
     connectedSystemId: system.id,
     resourceType: actionableBackfillBatch.resourceType,
     cursor: actionableBackfillBatch.cursor,
+  });
+
+  await saveGenieLiveMailboxProgress({
+    connectedSystemId: system.id,
+    resourceType: liveMailboxCheckpoint.resourceType,
+    progress: proof.liveProgress,
   });
 
   return {
