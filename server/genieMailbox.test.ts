@@ -10,6 +10,7 @@ import {
 } from "./genieMailbox";
 import {
   readPersonalGenieMailbox,
+  exactGenieOutboundEmailEvidenceByThreadOrder,
   genieConversationChannel,
   legacyGenieOutboundEvidence,
   mailboxAddress,
@@ -368,6 +369,59 @@ describe("Genie personal email isolation", () => {
     ).toBeUndefined();
   });
 
+  it("verifies email-detail direction for exact thread-order reply evidence", () => {
+    const evidence = exactGenieOutboundEmailEvidenceByThreadOrder(
+      {
+        emailMessage: {
+          id: "outbound-email-1",
+          direction: "outbound",
+          deleted: false,
+          locationId: "location-1",
+          conversationId: "conversation-1",
+          contactId: "contact-1",
+          dateAdded: "2026-09-30T08:05:00.000Z",
+        },
+      },
+      {
+        emailId: "outbound-email-1",
+        locationId: "location-1",
+        conversationId: "conversation-1",
+        contactExternalId: "contact-1",
+        inboundExternalMessageId: "inbound-email-1",
+      }
+    );
+    expect(evidence).toMatchObject({
+      externalMessageId: "outbound-email-1",
+      channel: "email",
+      contactExternalId: "contact-1",
+      conversationExternalId: "conversation-1",
+      inboundExternalMessageId: "inbound-email-1",
+      verifiedAfterInboundByThreadOrder: true,
+    });
+    expect(
+      exactGenieOutboundEmailEvidenceByThreadOrder(
+        {
+          emailMessage: {
+            id: "newer-inbound-email",
+            direction: "inbound",
+            deleted: false,
+            locationId: "location-1",
+            conversationId: "conversation-1",
+            contactId: "contact-1",
+            dateAdded: "2026-09-30T08:06:00.000Z",
+          },
+        },
+        {
+          emailId: "newer-inbound-email",
+          locationId: "location-1",
+          conversationId: "conversation-1",
+          contactExternalId: "contact-1",
+          inboundExternalMessageId: "inbound-email-1",
+        }
+      )
+    ).toBeUndefined();
+  });
+
   it("trusts exact newest-first thread order when a normalized Genie clock makes the reply timestamp look earlier", () => {
     const evidence = legacyGenieOutboundEvidence(
       {
@@ -432,6 +486,8 @@ describe("Genie personal email isolation", () => {
     expect(reader).toContain("threadMessageIds.includes(externalMessageId)");
     expect(reader).toContain("const newerThreads: any[] = []");
     expect(reader).toContain("inboundExternalMessageId: externalMessageId");
+    expect(reader).toContain("exactGenieOutboundEmailEvidenceByThreadOrder");
+    expect(reader).toContain("/conversations/messages/email/");
     expect(reader).toContain("verifiedAfterInboundByThreadOrder: true");
     expect(reader).not.toContain("crossedInboundTime");
     expect(pipeline).toContain(
