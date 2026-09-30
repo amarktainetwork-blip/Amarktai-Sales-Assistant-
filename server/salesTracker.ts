@@ -5,6 +5,7 @@ import {
   crmPipelineStageMappings,
   externalUserMappings,
   connectedSystems,
+  crmSyncCursors,
 } from "../drizzle/schema";
 import { getDb } from "./db";
 import { requireOrganisationMembership } from "./organisation";
@@ -64,7 +65,8 @@ export async function getSalesTracker(input: {
   );
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
-  const [mappings, stageMappings, mappedSystems] = await Promise.all([
+  const [mappings, stageMappings, mappedSystems, opportunityCursors] =
+    await Promise.all([
     db
       .select()
       .from(externalUserMappings)
@@ -104,6 +106,23 @@ export async function getSalesTracker(input: {
           eq(externalUserMappings.isActive, true)
         )
       ),
+    db
+      .select({
+        connectedSystemId: crmSyncCursors.connectedSystemId,
+        lastSuccessfulAt: crmSyncCursors.lastSuccessfulAt,
+        lastError: crmSyncCursors.lastError,
+      })
+      .from(crmSyncCursors)
+      .innerJoin(
+        connectedSystems,
+        eq(connectedSystems.id, crmSyncCursors.connectedSystemId)
+      )
+      .where(
+        and(
+          eq(connectedSystems.organisationId, input.organisationId),
+          eq(crmSyncCursors.resourceType, "opportunities")
+        )
+      ),
   ]);
   const trustedMappings = uniqueOwnerMappingsBySystem(mappings);
   const trustedSystemIds = new Set(
@@ -116,12 +135,20 @@ export async function getSalesTracker(input: {
         .map(system => [system.id, system])
     ).values()
   );
+  const opportunityCursorBySystem = new Map(
+    opportunityCursors.map(cursor => [cursor.connectedSystemId, cursor])
+  );
   const sourceCurrent =
     trustedMappings.length > 0 &&
     sourceSystems.length === trustedMappings.length &&
-    sourceSystems.every(system =>
-      ["ready", "limited_permissions"].includes(system.status)
-    );
+    sourceSystems.every(system => {
+      const cursor = opportunityCursorBySystem.get(system.id);
+      return (
+        ["ready", "limited_permissions"].includes(system.status) &&
+        Boolean(cursor?.lastSuccessfulAt) &&
+        !cursor?.lastError
+      );
+    });
   const reconnectRequired = sourceSystems.some(system =>
     ["authentication_expired", "needs_attention", "error"].includes(
       system.status
@@ -239,6 +266,10 @@ export async function getSalesTracker(input: {
       provider: system.provider,
       status: system.status,
       lastHealthCheckAt: system.lastHealthCheckAt,
+      opportunityLastSuccessfulAt:
+        opportunityCursorBySystem.get(system.id)?.lastSuccessfulAt || null,
+      opportunityLastError:
+        opportunityCursorBySystem.get(system.id)?.lastError || null,
     })),
     summary: {
       today: summarize(todaySales),
