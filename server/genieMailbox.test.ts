@@ -435,15 +435,47 @@ describe("Genie personal email isolation", () => {
     expect(reader).toContain(
       "`/conversations/messages/email/\${candidateEmailId}`"
     );
-    expect(reader).toContain("const unambiguousThreadOrder = candidateEmailIds.length === 1");
-    expect(reader).toContain("if (!unambiguousThreadOrder && !rawAfterExactInbound) continue");
+    expect(reader).toContain("candidateRawMs <= sourceReceivedAtRawMs");
+    expect(reader).toContain("verifiedAfterInboundBySourceTimestamp: true");
+    expect(reader).toContain("if (candidateEmailIds.length !== 1) continue");
     expect(reader).toContain("inboundExternalMessageId: externalMessageId");
     expect(reader).toContain("verifiedAfterInboundByThreadOrder: true");
-    expect(reader).toContain("candidateRawMs <= sourceReceivedAtRawMs");
     expect(reader).not.toContain("crossedInboundTime");
     expect(pipeline).toContain(
       "sourceUpdatedAt: input.envelope.receivedAt"
     );
+  });
+
+  it("accepts exact same-source timestamp proof only for the bound inbound message", () => {
+    const evidence = {
+      contactExternalId: "contact-1",
+      conversationExternalId: "conversation-1",
+      sentAt: new Date("2026-09-30T07:45:00.000Z"),
+      inboundExternalMessageId: "inbound-1",
+      verifiedAfterInboundBySourceTimestamp: true,
+    };
+    expect(
+      outboundGenieReplyMatchesInbound(
+        {
+          externalMessageId: "inbound-1",
+          contactExternalId: "contact-1",
+          receivedAt: new Date("2026-09-30T07:59:02.000Z"),
+          classification: { conversationExternalId: "conversation-1" },
+        },
+        evidence
+      )
+    ).toBe(true);
+    expect(
+      outboundGenieReplyMatchesInbound(
+        {
+          externalMessageId: "newer-inbound",
+          contactExternalId: "contact-1",
+          receivedAt: new Date("2026-09-30T07:40:00.000Z"),
+          classification: { conversationExternalId: "conversation-1" },
+        },
+        evidence
+      )
+    ).toBe(false);
   });
 
   it("does not prefilter exact-thread candidates by normalized receivedAt before the matcher runs", () => {
