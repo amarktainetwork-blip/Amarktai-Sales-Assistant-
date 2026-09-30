@@ -67,10 +67,38 @@ curl -fsS https://sales.amarktai.co.za/readyz || true
 echo
 
 if [ "$OPERATION" = "inspect" ]; then
+  echo "=== INSPECT: STORAGE ATTRIBUTION ==="
+  echo "--- major filesystem paths ---"
+  du -xsh /opt /var/lib/docker /var/log /var/cache /var/backups /home /root 2>/dev/null | sort -h || true
+  echo "--- /opt detail ---"
+  du -x -h --max-depth=3 /opt 2>/dev/null | sort -h | tail -60 || true
+  echo "--- Docker storage detail ---"
+  du -x -h --max-depth=2 /var/lib/docker 2>/dev/null | sort -h | tail -60 || true
+  echo "--- Docker named-volume data ---"
+  for volume_data in /var/lib/docker/volumes/*/_data; do
+    [ -d "$volume_data" ] || continue
+    du -xsh "$volume_data" 2>/dev/null || true
+  done | sort -h
+  echo "--- container JSON logs ---"
+  find /var/lib/docker/containers -maxdepth 2 -type f -name '*-json.log' -exec du -h {} + 2>/dev/null | sort -h | tail -40 || true
+  echo "--- journal and package cache ---"
+  journalctl --disk-usage 2>/dev/null || true
+  du -xsh /var/cache/apt /var/lib/apt/lists 2>/dev/null || true
+  echo "--- repository checkouts under /opt ---"
+  find /opt -maxdepth 5 -type d -name .git -print 2>/dev/null | sort || true
   echo "=== INSPECT: MEMORY ==="
   free -h || true
   awk '/MemTotal|MemFree|MemAvailable|Buffers|Cached/ {print}' /proc/meminfo || true
   docker stats --no-stream --format '{{.Name}}|cpu={{.CPUPerc}}|mem={{.MemUsage}}|mem_pct={{.MemPerc}}' 2>/dev/null | sort || true
+  echo "--- key container processes ---"
+  for name in webdock-browser-1 webdock-worker-1 webdock-app-1 webdock-db-1; do
+    if docker inspect "$name" >/dev/null 2>&1; then
+      echo "[$name]"
+      docker top "$name" -eo pid,ppid,rss,%mem,etime,cmd 2>/dev/null | head -25 || true
+    fi
+  done
+  echo "--- chromium page targets ---"
+  docker exec webdock-browser-1 sh -c "curl -fsS http://127.0.0.1:9222/json/list 2>/dev/null | grep -o '\"type\"[[:space:]]*:[[:space:]]*\"page\"' | wc -l" 2>/dev/null || true
   echo "INSPECT_ONLY=PASS"
   echo "completed_at=$(date -u +%FT%TZ)"
   exit 0
