@@ -67,6 +67,10 @@ curl -fsS https://sales.amarktai.co.za/readyz || true
 echo
 
 if [ "$OPERATION" = "inspect" ]; then
+  echo "=== INSPECT: MEMORY ==="
+  free -h || true
+  awk '/MemTotal|MemFree|MemAvailable|Buffers|Cached/ {print}' /proc/meminfo || true
+  docker stats --no-stream --format '{{.Name}}|cpu={{.CPUPerc}}|mem={{.MemUsage}}|mem_pct={{.MemPerc}}' 2>/dev/null | sort || true
   echo "INSPECT_ONLY=PASS"
   echo "completed_at=$(date -u +%FT%TZ)"
   exit 0
