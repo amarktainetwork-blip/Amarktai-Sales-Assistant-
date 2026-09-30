@@ -358,7 +358,7 @@ export async function readPersonalGenieMailbox(input: {
   const conversations: any[] = [];
   const seenConversationIds = new Set<string>();
   let searchTotal = 0;
-  let startAfterDate: string | number | undefined;
+  let searchCursor: string | undefined;
   for (;;) {
     const search = await read("/conversations/search", false, {
       locationId,
@@ -367,7 +367,7 @@ export async function readPersonalGenieMailbox(input: {
       sortBy: "last_message_date",
       status: "all",
       limit: CONVERSATION_SEARCH_PAGE_SIZE,
-      ...(startAfterDate !== undefined ? { startAfterDate } : {}),
+      ...(searchCursor ? { startAfterDate: searchCursor } : {}),
     });
     const pageConversations = search.conversations;
     if (!Array.isArray(pageConversations))
@@ -379,31 +379,39 @@ export async function readPersonalGenieMailbox(input: {
       seenConversationIds.add(conversationId);
       conversations.push(conversation);
     }
+
+    const oldestPageTime = pageConversations.reduce(
+      (oldest: number, conversation: any) => {
+        const parsed = Date.parse(String(conversation?.lastMessageDate || ""));
+        return Number.isFinite(parsed) ? Math.min(oldest, parsed) : oldest;
+      },
+      Number.POSITIVE_INFINITY
+    );
     if (
       pageConversations.length < CONVERSATION_SEARCH_PAGE_SIZE ||
-      (searchTotal > 0 && conversations.length >= searchTotal)
+      (searchTotal > 0 && conversations.length >= searchTotal) ||
+      oldestPageTime < since
     )
       break;
-    const last = pageConversations[pageConversations.length - 1];
-    const nextDate = last?.lastMessageDate;
-    if (
-      nextDate === undefined ||
-      nextDate === null ||
-      nextDate === startAfterDate
-    )
+
+    const meta =
+      search.meta && typeof search.meta === "object" && !Array.isArray(search.meta)
+        ? search.meta
+        : {};
+    const rawNext =
+      search.nextPage ?? search.nextCursor ?? (meta as Record<string, unknown>).nextCursor;
+    const nextCursor =
+      typeof rawNext === "string" || typeof rawNext === "number"
+        ? String(rawNext).trim()
+        : "";
+    if (!nextCursor) {
+      if (searchTotal > conversations.length)
+        throw Error("GENIE_MAILBOX_CONTINUATION_REQUIRED");
+      break;
+    }
+    if (nextCursor === searchCursor)
       throw Error("GENIE_MAILBOX_SEARCH_CURSOR_STALLED");
-    const parsedDate = Date.parse(String(nextDate));
-    const nextDateMs =
-      typeof nextDate === "number"
-        ? nextDate
-        : Number.isFinite(parsedDate)
-          ? parsedDate
-          : Number(nextDate);
-    if (Number.isFinite(nextDateMs) && nextDateMs < since) break;
-    startAfterDate =
-      typeof nextDate === "number" || typeof nextDate === "string"
-        ? nextDate
-        : String(nextDate);
+    searchCursor = nextCursor;
   }
 
   const records = new Map<string, PersonalGenieMailboxRecord>();
