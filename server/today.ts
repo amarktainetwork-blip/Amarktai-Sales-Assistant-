@@ -922,13 +922,22 @@ export async function getTodayWork(input: {
             .slice(0, 3)
         : [];
       const latestActivity = relatedActivities[0];
-      const relatedOpportunity = task.contactExternalId
+      const exactTaskOpportunity = task.opportunityExternalId
         ? scopedOpportunities.find(
             opportunity =>
               opportunity.connectedSystemId === task.connectedSystemId &&
-              opportunity.contactExternalId === task.contactExternalId
+              opportunity.externalId === task.opportunityExternalId
           )
         : undefined;
+      const relatedOpportunity =
+        exactTaskOpportunity ||
+        (task.contactExternalId
+          ? scopedOpportunities.find(
+              opportunity =>
+                opportunity.connectedSystemId === task.connectedSystemId &&
+                opportunity.contactExternalId === task.contactExternalId
+            )
+          : undefined);
       return {
         id: task.id,
         connectedSystemId: task.connectedSystemId,
