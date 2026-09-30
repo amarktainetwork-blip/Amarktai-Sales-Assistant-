@@ -1,11 +1,12 @@
 import { isRetryableGenieMailboxRead } from "./genieMailboxRetry";
 import { readPersonalGenieMailbox } from "./browserConnectors/genieMailboxRead";
-import { and, asc, desc, eq, inArray, lte } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, lte } from "drizzle-orm";
 import {
   assistantReminders,
   inboundMessages,
   organisationMembers,
   organisations,
+  salesActivityEvents,
   salesWorkItems,
 } from "../drizzle/schema";
 import {
@@ -321,6 +322,107 @@ export async function syncGenieMailboxForUser(input: {
 
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
+
+  // A received inbound message cannot legitimately be hours in the future.
+  // Normalize persisted bad source clocks here as well as at parse time so
+  // previously-ingested rows cannot poison Today ordering or freshness.
+  const mailboxObservedAt = new Date();
+  const futureCutoff = new Date(mailboxObservedAt.getTime() + 5 * 60_000);
+  const futureInboundRows = await db
+    .select({
+      id: inboundMessages.id,
+      externalMessageId: inboundMessages.externalMessageId,
+      idempotencyKey: inboundMessages.idempotencyKey,
+      receivedAt: inboundMessages.receivedAt,
+      classification: inboundMessages.classification,
+    })
+    .from(inboundMessages)
+    .where(
+      and(
+        eq(inboundMessages.organisationId, input.organisationId),
+        eq(inboundMessages.mailboxUserId, input.userId),
+        eq(inboundMessages.connectedSystemId, system.id),
+        gt(inboundMessages.receivedAt, futureCutoff)
+      )
+    )
+    .orderBy(asc(inboundMessages.receivedAt))
+    .limit(100);
+  if (futureInboundRows.length) {
+    const maxFutureSkewMs = Math.max(
+      ...futureInboundRows.map(row =>
+        Math.max(0, row.receivedAt.getTime() - mailboxObservedAt.getTime())
+      )
+    );
+    for (const row of futureInboundRows) {
+      const classification =
+        row.classification &&
+        typeof row.classification === "object" &&
+        !Array.isArray(row.classification)
+          ? (row.classification as Record<string, unknown>)
+          : {};
+      await db
+        .update(inboundMessages)
+        .set({
+          receivedAt: mailboxObservedAt,
+          classification: {
+            ...classification,
+            timestampNormalization: {
+              reason: "future_source_time",
+              originalReceivedAt: row.receivedAt.toISOString(),
+              normalizedAt: mailboxObservedAt.toISOString(),
+            },
+          },
+        })
+        .where(eq(inboundMessages.id, row.id));
+      await db
+        .update(salesWorkItems)
+        .set({
+          dueAt: mailboxObservedAt,
+          sourceUpdatedAt: mailboxObservedAt,
+          syncedAt: mailboxObservedAt,
+        })
+        .where(
+          and(
+            eq(salesWorkItems.organisationId, input.organisationId),
+            eq(salesWorkItems.connectedSystemId, system.id),
+            eq(salesWorkItems.salespersonUserId, input.userId),
+            eq(salesWorkItems.sourceType, "inbound_message"),
+            eq(salesWorkItems.sourceExternalId, row.externalMessageId)
+          )
+        );
+      if (row.idempotencyKey) {
+        await db
+          .update(salesActivityEvents)
+          .set({ occurredAt: mailboxObservedAt })
+          .where(
+            and(
+              eq(salesActivityEvents.organisationId, input.organisationId),
+              eq(salesActivityEvents.connectedSystemId, system.id),
+              eq(salesActivityEvents.salespersonUserId, input.userId),
+              eq(salesActivityEvents.source, "inbound_message"),
+              eq(
+                salesActivityEvents.externalId,
+                `reply:${row.idempotencyKey}`
+              )
+            )
+          );
+      }
+    }
+    await recordAudit({
+      userId: input.userId,
+      organisationId: input.organisationId,
+      eventType: "personal_genie_mailbox_timestamp_normalized",
+      entityType: "connected_system",
+      entityId: String(system.id),
+      summary:
+        "Impossible future Genie mailbox timestamps were normalized to the current observation time.",
+      metadata: {
+        count: futureInboundRows.length,
+        maxFutureSkewMs,
+        normalizedAt: mailboxObservedAt.toISOString(),
+      },
+    });
+  }
 
   const actionableEmailRows = await db
     .select({
