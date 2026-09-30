@@ -491,6 +491,106 @@ describe("Today contact-time intelligence", () => {
   });
 });
 
+describe("Course2Career high-priority First Call tags", () => {
+  it("puts ELCAS/PPC First Call work ahead of ordinary First Call work without bypassing contact windows", () => {
+    const configuration = normalizeClientActionConfiguration({
+      todayWorkPolicy: {
+        categories: [
+          {
+            key: "first-call",
+            label: "First call",
+            priority: 0,
+            taskTitlePrefixes: ["first call"],
+          },
+        ],
+      },
+    });
+    const taggedContacts = [
+      { ...contacts[0], tags: ["ELCAS"] },
+      { ...contacts[1], tags: [] },
+    ];
+    const queue = buildTodayCallQueue({
+      now: new Date("2026-09-30T09:00:00.000Z"),
+      timezone: "Europe/London",
+      configuration,
+      contacts: taggedContacts,
+      inbound: [],
+      overdueTasks: [
+        {
+          id: 301,
+          connectedSystemId: 8,
+          contactExternalId: "b",
+          title: "First Call",
+          dueAt: new Date("2026-09-30T08:00:00.000Z"),
+        },
+        {
+          id: 302,
+          connectedSystemId: 8,
+          contactExternalId: "a",
+          title: "First Call",
+          dueAt: new Date("2026-09-30T08:05:00.000Z"),
+        },
+      ],
+      dueToday: [],
+    });
+    expect(queue.map(item => item.name)).toEqual(["Alice Example", "Bob"]);
+    expect(queue[0].reasons).toContain(
+      "Very high priority First Call: ELCAS/PPC"
+    );
+  });
+
+  it("does not force an ELCAS First Call outside an explicit later contact preference", () => {
+    const configuration = normalizeClientActionConfiguration({
+      todayWorkPolicy: {
+        categories: [
+          {
+            key: "first-call",
+            label: "First call",
+            priority: 0,
+            taskTitlePrefixes: ["first call"],
+          },
+        ],
+      },
+    });
+    const taggedContacts = [
+      { ...contacts[0], tags: ["PPC"], contactPreference: "Evening" },
+      contacts[1],
+    ];
+    const queue = buildTodayCallQueue({
+      now: new Date("2026-09-30T08:00:00.000Z"),
+      timezone: "Europe/London",
+      configuration,
+      contacts: taggedContacts,
+      inbound: [],
+      overdueTasks: [
+        {
+          id: 303,
+          connectedSystemId: 8,
+          contactExternalId: "a",
+          title: "First Call",
+          dueAt: new Date("2026-09-29T09:00:00.000Z"),
+        },
+        {
+          id: 304,
+          connectedSystemId: 8,
+          contactExternalId: "b",
+          title: "First Call",
+          dueAt: new Date("2026-09-29T09:00:00.000Z"),
+        },
+      ],
+      dueToday: [],
+    });
+    expect(queue[0].name).toBe("Bob");
+    expect(queue[1]).toMatchObject({
+      name: "Alice Example",
+      contactEligibleNow: false,
+    });
+    expect(queue[1].reasons).toContain(
+      "Very high priority First Call: ELCAS/PPC"
+    );
+  });
+});
+
 describe("Today new lead priority", () => {
   it("puts an untouched new lead ahead of an inbound reply", () => {
     const queue = buildTodayCallQueue({
