@@ -786,37 +786,123 @@ export async function syncGenieMailboxForUser(input: {
         ownerExternalId: scope.externalUserId,
         mailboxEmail: scope.email,
         since,
-        unresolved: actionableBackfill.map(row => ({
-          externalMessageId: row.externalMessageId,
-          channel: row.channel as "email" | "sms" | "chat",
-          contactExternalId: row.contactExternalId!,
-          receivedAt: row.receivedAt,
-        })),
+        unresolved: actionableBackfill.map(row => {
+          const classification =
+            row.classification &&
+            typeof row.classification === "object" &&
+            !Array.isArray(row.classification)
+              ? (row.classification as Record<string, unknown>)
+              : {};
+          const saved =
+            classification.genieLegacyBackfillProgress &&
+            typeof classification.genieLegacyBackfillProgress === "object" &&
+            !Array.isArray(classification.genieLegacyBackfillProgress)
+              ? (classification.genieLegacyBackfillProgress as Record<string, unknown>)
+              : undefined;
+          const candidate =
+            saved?.candidateOutboundEvidence &&
+            typeof saved.candidateOutboundEvidence === "object" &&
+            !Array.isArray(saved.candidateOutboundEvidence)
+              ? (saved.candidateOutboundEvidence as Record<string, unknown>)
+              : undefined;
+          const sentAt = candidate?.sentAt
+            ? new Date(String(candidate.sentAt))
+            : undefined;
+          const backfillProgress =
+            saved &&
+            typeof saved.conversationExternalId === "string" &&
+            typeof saved.lastMessageId === "string"
+              ? {
+                  conversationExternalId: saved.conversationExternalId,
+                  lastMessageId: saved.lastMessageId,
+                  ...(candidate &&
+                  typeof candidate.externalMessageId === "string" &&
+                  ["email", "sms", "chat"].includes(String(candidate.channel)) &&
+                  typeof candidate.contactExternalId === "string" &&
+                  typeof candidate.conversationExternalId === "string" &&
+                  sentAt &&
+                  Number.isFinite(sentAt.getTime())
+                    ? {
+                        candidateOutboundEvidence: {
+                          externalMessageId: candidate.externalMessageId,
+                          channel: candidate.channel as "email" | "sms" | "chat",
+                          contactExternalId: candidate.contactExternalId,
+                          conversationExternalId: candidate.conversationExternalId,
+                          sentAt,
+                          inboundExternalMessageId:
+                            typeof candidate.inboundExternalMessageId === "string"
+                              ? candidate.inboundExternalMessageId
+                              : undefined,
+                          verifiedAfterInboundByThreadOrder:
+                            candidate.verifiedAfterInboundByThreadOrder === true,
+                        },
+                      }
+                    : {}),
+                }
+              : undefined;
+          return {
+            externalMessageId: row.externalMessageId,
+            channel: row.channel as "email" | "sms" | "chat",
+            contactExternalId: row.contactExternalId!,
+            receivedAt: row.receivedAt,
+            ...(backfillProgress ? { backfillProgress } : {}),
+          };
+        }),
       }),
   });
   checked = proof.checked;
-  await saveGenieActionableBackfillCursor({
-    connectedSystemId: system.id,
-    resourceType: actionableBackfillBatch.resourceType,
-    cursor: actionableBackfillBatch.cursor,
-  });
-  for (const link of proof.legacyConversationLinks) {
-    const row = actionableBackfill.find(
-      candidate => candidate.externalMessageId === link.inboundExternalMessageId
-    );
-    if (!row) continue;
+
+  const legacyLinks = new Map(
+    proof.legacyConversationLinks.map(link => [
+      link.inboundExternalMessageId,
+      link,
+    ])
+  );
+  const legacyProgress = new Map(
+    proof.legacyBackfillProgress.map(progress => [
+      progress.inboundExternalMessageId,
+      progress,
+    ])
+  );
+  for (const row of actionableBackfill) {
+    const link = legacyLinks.get(row.externalMessageId);
+    const progress = legacyProgress.get(row.externalMessageId);
     const classification =
       row.classification &&
       typeof row.classification === "object" &&
       !Array.isArray(row.classification)
         ? (row.classification as Record<string, unknown>)
         : {};
+    const {
+      genieLegacyBackfillProgress: _previousBackfillProgress,
+      ...classificationWithoutProgress
+    } = classification;
+    if (!link && !progress && !_previousBackfillProgress) continue;
     await db
       .update(inboundMessages)
       .set({
         classification: {
-          ...classification,
-          conversationExternalId: link.conversationExternalId,
+          ...classificationWithoutProgress,
+          ...(link
+            ? { conversationExternalId: link.conversationExternalId }
+            : {}),
+          ...(progress
+            ? {
+                genieLegacyBackfillProgress: {
+                  conversationExternalId: progress.conversationExternalId,
+                  lastMessageId: progress.lastMessageId,
+                  ...(progress.candidateOutboundEvidence
+                    ? {
+                        candidateOutboundEvidence: {
+                          ...progress.candidateOutboundEvidence,
+                          sentAt:
+                            progress.candidateOutboundEvidence.sentAt.toISOString(),
+                        },
+                      }
+                    : {}),
+                },
+              }
+            : {}),
         },
       })
       .where(
@@ -828,6 +914,7 @@ export async function syncGenieMailboxForUser(input: {
         )
       );
   }
+
   for (const message of proof.records) {
     try {
       const result = await ingestInboundMessage({
@@ -905,6 +992,12 @@ export async function syncGenieMailboxForUser(input: {
       sourceSince: since.toISOString(),
       crmUserExternalId: scope.externalUserId,
     },
+  });
+
+  await saveGenieActionableBackfillCursor({
+    connectedSystemId: system.id,
+    resourceType: actionableBackfillBatch.resourceType,
+    cursor: actionableBackfillBatch.cursor,
   });
 
   return {
