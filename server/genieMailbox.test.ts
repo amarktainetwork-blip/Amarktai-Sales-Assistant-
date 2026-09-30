@@ -435,6 +435,8 @@ describe("Genie personal email isolation", () => {
     expect(reader).toContain(
       "`/conversations/messages/email/\${candidateEmailId}`"
     );
+    expect(reader).toContain("const unambiguousThreadOrder = candidateEmailIds.length === 1");
+    expect(reader).toContain("if (!unambiguousThreadOrder && !rawAfterExactInbound) continue");
     expect(reader).toContain("inboundExternalMessageId: externalMessageId");
     expect(reader).toContain("verifiedAfterInboundByThreadOrder: true");
     expect(reader).toContain("candidateRawMs <= sourceReceivedAtRawMs");
