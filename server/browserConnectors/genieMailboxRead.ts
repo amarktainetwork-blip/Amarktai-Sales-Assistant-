@@ -174,6 +174,39 @@ export function legacyGenieOutboundEvidence(
   };
 }
 
+export function exactGenieOutboundEmailEvidenceByThreadOrder(
+  value: any,
+  input: {
+    emailId: string;
+    locationId: string;
+    conversationId: string;
+    contactExternalId: string;
+    inboundExternalMessageId: string;
+  }
+): PersonalGenieOutboundEvidence | undefined {
+  const email = value?.emailMessage || value;
+  if (!email || email.deleted === true || email.direction !== "outbound")
+    return undefined;
+  if (
+    email.id !== input.emailId ||
+    email.locationId !== input.locationId ||
+    email.conversationId !== input.conversationId ||
+    email.contactId !== input.contactExternalId
+  )
+    throw Error("GENIE_MAILBOX_SCOPE_MISMATCH");
+  const sentAt = normalizeGenieMessageTime(email.dateAdded);
+  if (!sentAt) return undefined;
+  return {
+    externalMessageId: input.emailId,
+    channel: "email",
+    contactExternalId: input.contactExternalId,
+    conversationExternalId: input.conversationId,
+    sentAt,
+    inboundExternalMessageId: input.inboundExternalMessageId,
+    verifiedAfterInboundByThreadOrder: true,
+  };
+}
+
 export function parsePersonalGenieOutboundEmail(
   value: any,
   input: {
@@ -665,6 +698,34 @@ export async function readPersonalGenieMailbox(input: {
         // encountered before this exact inbound item can prove that this exact
         // inbound was handled. Provider clocks are not trusted for this proof.
         for (const newerThread of newerThreads) {
+          if (unresolved.channel === "email" && Number(newerThread.type) === 3) {
+            const newerEmailIds = Array.isArray(newerThread.meta?.email?.messageIds)
+              ? newerThread.meta.email.messageIds
+                  .map((value: unknown) => id(value))
+                  .filter((value: string | null): value is string => Boolean(value))
+              : [];
+            for (const newerEmailId of newerEmailIds) {
+              const newerRaw = await read(
+                `/conversations/messages/email/${newerEmailId}`
+              );
+              const evidence = exactGenieOutboundEmailEvidenceByThreadOrder(
+                newerRaw,
+                {
+                  emailId: newerEmailId,
+                  locationId,
+                  conversationId,
+                  contactExternalId,
+                  inboundExternalMessageId: externalMessageId,
+                }
+              );
+              if (!evidence) continue;
+              outboundEvidence.set(evidence.externalMessageId, evidence);
+              foundReply = true;
+              break;
+            }
+            if (foundReply) break;
+            continue;
+          }
           const evidence = legacyGenieOutboundEvidence(newerThread, {
             channel: unresolved.channel,
             locationId,
