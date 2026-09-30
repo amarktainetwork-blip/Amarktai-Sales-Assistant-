@@ -2,7 +2,6 @@ import type { Page } from "playwright-core";
 const ROOT = "https://services.leadconnectorhq.com";
 const BOOTSTRAP =
   "https://backend.leadsconnectorhq.com/conversations/inbox-bootstrap";
-const MAX_CONVERSATIONS_PER_SYNC = 20;
 const CONVERSATION_SEARCH_PAGE_SIZE = 20;
 const id = (value: unknown) =>
   typeof value === "string" && /^[A-Za-z0-9_-]{1,180}$/.test(value)
@@ -359,9 +358,8 @@ export async function readPersonalGenieMailbox(input: {
   const conversations: any[] = [];
   const seenConversationIds = new Set<string>();
   let searchTotal = 0;
-  let searchBounded = false;
   let startAfterDate: string | number | undefined;
-  for (let searchPage = 0; searchPage < 1; searchPage++) {
+  for (;;) {
     const search = await read("/conversations/search", false, {
       locationId,
       assignedTo: input.ownerExternalId,
@@ -392,10 +390,8 @@ export async function readPersonalGenieMailbox(input: {
       nextDate === undefined ||
       nextDate === null ||
       nextDate === startAfterDate
-    ) {
-      searchBounded = true;
-      break;
-    }
+    )
+      throw Error("GENIE_MAILBOX_SEARCH_CURSOR_STALLED");
     const parsedDate = Date.parse(String(nextDate));
     const nextDateMs =
       typeof nextDate === "number"
@@ -408,7 +404,6 @@ export async function readPersonalGenieMailbox(input: {
       typeof nextDate === "number" || typeof nextDate === "string"
         ? nextDate
         : String(nextDate);
-    if (searchPage === 0) searchBounded = true;
   }
 
   const records = new Map<string, PersonalGenieMailboxRecord>();
@@ -418,8 +413,7 @@ export async function readPersonalGenieMailbox(input: {
   let rejectedForeignRecipientCount = 0;
   let rejectedForeignOwnerCount = 0;
   let examined = 0;
-  let bounded = false;
-  for (const conversation of conversations.slice(0, MAX_CONVERSATIONS_PER_SYNC)) {
+  for (const conversation of conversations) {
     const conversationLastMessageAt = Date.parse(
       String(conversation.lastMessageDate || "")
     );
@@ -459,7 +453,7 @@ export async function readPersonalGenieMailbox(input: {
     }
 
     let lastMessageId: string | undefined;
-    for (let pageNumber = 0; pageNumber < 5; pageNumber++) {
+    for (;;) {
       const result = await read(
         `/conversations/${conversationId}/messages`,
         false,
@@ -468,6 +462,7 @@ export async function readPersonalGenieMailbox(input: {
       const messages = result.messages?.messages;
       if (!Array.isArray(messages))
         throw Error("GENIE_MAILBOX_MESSAGES_INVALID");
+      let reachedBeforeSince = false;
       for (const thread of messages) {
         if (thread.deleted === true) continue;
         if (
@@ -476,15 +471,14 @@ export async function readPersonalGenieMailbox(input: {
         )
           throw Error("GENIE_MAILBOX_SCOPE_MISMATCH");
         const threadAt = Date.parse(String(thread.dateAdded || ""));
-        if (Number.isFinite(threadAt) && threadAt < since) continue;
+        if (Number.isFinite(threadAt) && threadAt < since) {
+          reachedBeforeSince = true;
+          continue;
+        }
 
         if (Number(thread.type) === 3) {
           for (const emailId of thread.meta?.email?.messageIds || []) {
             if (!id(emailId) || visited.has(emailId)) continue;
-            if (examined >= 200) {
-              bounded = true;
-              break;
-            }
             visited.add(emailId);
             examined++;
             const raw = await read(`/conversations/messages/email/${emailId}`);
@@ -525,7 +519,6 @@ export async function readPersonalGenieMailbox(input: {
                 conversationExternalId: conversationId,
               });
           }
-          if (bounded) break;
           continue;
         }
 
@@ -551,10 +544,6 @@ export async function readPersonalGenieMailbox(input: {
         if (thread.direction !== "inbound") continue;
         const messageId = id(thread.id);
         if (!messageId || visited.has(messageId)) continue;
-        if (examined >= 200) {
-          bounded = true;
-          break;
-        }
         visited.add(messageId);
         examined++;
         const raw = await read(`/conversations/messages/${messageId}`);
@@ -567,16 +556,14 @@ export async function readPersonalGenieMailbox(input: {
         });
         if (parsed.kind === "personal") records.set(messageId, parsed.message);
       }
-      if (bounded || !result.messages.nextPage) break;
+      if (reachedBeforeSince || !result.messages.nextPage) break;
       const next = id(result.messages.lastMessageId);
       if (!next || next === lastMessageId)
         throw Error("GENIE_MAILBOX_CURSOR_STALLED");
       lastMessageId = next;
-      if (pageNumber === 4) bounded = true;
     }
-    if (bounded) break;
   }
-  for (const unresolved of (input.unresolved || []).slice(0, 20)) {
+  for (const unresolved of input.unresolved || []) {
     const externalMessageId = id(unresolved.externalMessageId);
     const contactExternalId = id(unresolved.contactExternalId);
     if (
@@ -632,7 +619,7 @@ export async function readPersonalGenieMailbox(input: {
     let foundReply = false;
     let reachedExactInbound = false;
     const newerThreads: any[] = [];
-    for (let pageNumber = 0; pageNumber < 3 && !foundReply; pageNumber++) {
+    while (!foundReply) {
       const result = await read(
         `/conversations/${conversationId}/messages`,
         false,
@@ -702,16 +689,13 @@ export async function readPersonalGenieMailbox(input: {
     records: Array.from(records.values()),
     outboundEvidence: Array.from(outboundEvidence.values()),
     legacyConversationLinks: Array.from(legacyConversationLinks.values()),
-    checked: Math.min(conversations.length, MAX_CONVERSATIONS_PER_SYNC),
+    checked: conversations.length,
     examined,
     rejectedForeignRecipientCount,
     rejectedForeignOwnerCount,
     unreadPreserved,
     readOnlySource: true,
-    bounded:
-      bounded ||
-      searchBounded ||
-      conversations.length > MAX_CONVERSATIONS_PER_SYNC ||
-      searchTotal > conversations.length,
+    // The source window is fully traversed to its provider cursor/time boundary.
+    bounded: false,
   };
 }
