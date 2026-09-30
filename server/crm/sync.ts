@@ -1014,8 +1014,11 @@ async function syncConnectedSystemDeterministically(input: {
         | NormalizedOpportunity
         | NormalizedTask
         | NormalizedActivity;
-      const currentTaskExternalIds =
-        resourceType === "tasks" ? new Set<string>() : undefined;
+      // Task sync is a complete current-owner snapshot. Buffer it until every
+      // page has been read and owner-validated so a mid-read authentication
+      // failure can never publish a partial task set to Today.
+      const bufferedTaskRecords =
+        resourceType === "tasks" ? ([] as NormalizedTask[]) : undefined;
       const drained = await drainCrmPages<SyncRecord>({
         initialCursor: existing?.cursor ?? undefined,
         fetchPage: cursor =>
@@ -1030,9 +1033,10 @@ async function syncConnectedSystemDeterministically(input: {
               expectedOwnerExternalId: secret.crmUserExternalId || "",
               records,
             });
-          if (currentTaskExternalIds)
-            for (const record of records)
-              currentTaskExternalIds.add(record.externalId);
+          if (bufferedTaskRecords) {
+            bufferedTaskRecords.push(...(records as NormalizedTask[]));
+            return;
+          }
           const contactBaseline =
             resourceType === "contacts"
               ? {
@@ -1049,13 +1053,6 @@ async function syncConnectedSystemDeterministically(input: {
               input.organisationId,
               system.id,
               records as NormalizedContact[],
-              { baselineComplete: Boolean(existing?.lastSuccessfulAt) }
-            );
-          else if (resourceType === "tasks")
-            await upsertTasks(
-              input.organisationId,
-              system.id,
-              records as NormalizedTask[],
               { baselineComplete: Boolean(existing?.lastSuccessfulAt) }
             );
           else if (resourceType === "opportunities")
@@ -1078,14 +1075,27 @@ async function syncConnectedSystemDeterministically(input: {
       });
       if (
         resourceType === "tasks" &&
-        currentTaskExternalIds &&
+        bufferedTaskRecords &&
         secret.crmUserExternalId
       ) {
+        await upsertTasks(
+          input.organisationId,
+          system.id,
+          bufferedTaskRecords,
+          { baselineComplete: Boolean(existing?.lastSuccessfulAt) }
+        );
+        await upsertSalesWorkFromCrm({
+          organisationId: input.organisationId,
+          connectedSystemId: system.id,
+          resource: { type: "tasks", records: bufferedTaskRecords },
+        });
         await reconcileOpenTaskSnapshot({
           organisationId: input.organisationId,
           connectedSystemId: system.id,
           ownerExternalId: secret.crmUserExternalId,
-          currentOpenIds: currentTaskExternalIds,
+          currentOpenIds: new Set(
+            bufferedTaskRecords.map(record => record.externalId)
+          ),
         });
         await reconcileNewLeadAlertsFromTaskHistory({
           userId: input.userId,
@@ -1325,10 +1335,11 @@ async function syncConnectedSystemRoutineDeterministically(input: {
   ) {
     const existing = await cursorFor(system.id, "tasks");
     try {
-      const currentTaskExternalIds = new Set<string>();
+      const bufferedTaskRecords: NormalizedTask[] = [];
       const drained = await drainCrmPages<NormalizedTask>({
         // The Genie task reader is a complete current-pending snapshot. Never
         // resume from an old historical cursor or missing tasks cannot be retired.
+        // Do not publish any page until the complete snapshot has succeeded.
         initialCursor: undefined,
         fetchPage: cursor => adapter.syncTasks({ connection, secret, cursor }),
         onPage: async records => {
@@ -1337,23 +1348,24 @@ async function syncConnectedSystemRoutineDeterministically(input: {
             expectedOwnerExternalId: secret.crmUserExternalId || "",
             records,
           });
-          for (const record of records)
-            currentTaskExternalIds.add(record.externalId);
-          await upsertTasks(input.organisationId, system.id, records, {
-            baselineComplete: Boolean(existing?.lastSuccessfulAt),
-          });
-          await upsertSalesWorkFromCrm({
-            organisationId: input.organisationId,
-            connectedSystemId: system.id,
-            resource: { type: "tasks", records },
-          });
+          bufferedTaskRecords.push(...records);
         },
+      });
+      await upsertTasks(input.organisationId, system.id, bufferedTaskRecords, {
+        baselineComplete: Boolean(existing?.lastSuccessfulAt),
+      });
+      await upsertSalesWorkFromCrm({
+        organisationId: input.organisationId,
+        connectedSystemId: system.id,
+        resource: { type: "tasks", records: bufferedTaskRecords },
       });
       await reconcileOpenTaskSnapshot({
         organisationId: input.organisationId,
         connectedSystemId: system.id,
         ownerExternalId: secret.crmUserExternalId,
-        currentOpenIds: currentTaskExternalIds,
+        currentOpenIds: new Set(
+          bufferedTaskRecords.map(record => record.externalId)
+        ),
       });
       await reconcileNewLeadAlertsFromTaskHistory({
         userId: input.userId,
