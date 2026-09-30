@@ -1723,76 +1723,159 @@ body:has(.amarktai-dashboard-sidebar) [data-slot="sidebar-inset"] section {
   line-height: 1.55;
 }
 
-.amk-day__safety {
-  border: 1px solid #d6b887;
-  border-radius: 20px;
-  background: #f3ebdd;
+.amk-internal {
+  border: 1px solid var(--dash-line);
+  border-radius: 22px;
+  background: var(--dash-paper);
   padding: 22px;
+  box-shadow: var(--dash-shadow);
 }
 
-.amk-day__safety-head {
+.amk-internal__head {
   display: grid;
-  grid-template-columns: 44px 1fr auto;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
   gap: 14px;
   align-items: start;
 }
 
-.amk-day__safety-icon {
+.amk-internal__icon {
   display: grid;
   place-items: center;
   width: 42px;
   height: 42px;
   border-radius: 50%;
-  background: #e8d7b4;
-  color: #9a681f;
+  background: #e2ebe6;
+  color: #456657;
 }
 
-.amk-day__safety-head h2 {
+.amk-internal__head h2 {
   margin-top: 4px;
   font-size: 21px;
 }
 
-.amk-day__safety-head p:not(.amk-day__eyebrow) {
+.amk-internal__head p:not(.amk-day__eyebrow) {
   max-width: 760px;
   margin: 6px 0 0;
-  color: #735d32;
+  color: var(--dash-copy);
   font-size: 13px;
   line-height: 1.55;
 }
 
-.amk-day__safety-list {
+.amk-internal__list {
   display: grid;
-  gap: 8px;
-  margin-top: 18px;
+  gap: 14px;
+  margin-top: 20px;
 }
 
-.amk-day__safety-row {
+.amk-internal__card {
+  display: grid;
+  gap: 16px;
+  border: 1px solid var(--dash-line);
+  border-radius: 18px;
+  background: #fbfaf6;
+  padding: 18px;
+}
+
+.amk-internal__topline {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 18px;
-  border-top: 1px solid #d6b887;
-  padding-top: 14px;
 }
 
-.amk-day__safety-row h3 {
-  margin-top: 4px;
-  font-size: 15px;
+.amk-internal__topline h3 {
+  margin-top: 5px;
+  font-size: 18px;
 }
 
-.amk-day__safety-row p {
-  margin: 4px 0 0;
-  color: #735d32;
-  font-size: 12px;
-}
-
-.amk-day__safety-meta {
+.amk-internal__meta,
+.amk-internal__tags {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  color: #9a681f;
+}
+
+.amk-internal__meta {
+  color: var(--dash-blue);
   font-size: 10px;
   font-weight: 760;
+}
+
+.amk-internal__customer {
+  color: var(--dash-ink);
+  font-size: 14px;
+  text-align: right;
+}
+
+.amk-internal__instruction {
+  border-left: 3px solid #9eb1aa;
+  padding-left: 14px;
+}
+
+.amk-internal__instruction > p:not(.amk-day__eyebrow),
+.amk-internal__missing {
+  margin: 5px 0 0;
+  color: var(--dash-copy);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.amk-internal__facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-block: 1px solid var(--dash-line);
+}
+
+.amk-internal__facts .amk-now__fact {
+  min-width: 0;
+}
+
+.amk-internal__tags span {
+  border: 1px solid #d7e0dc;
+  border-radius: 999px;
+  background: #eef3f0;
+  padding: 5px 9px;
+  color: #4d655b;
+  font-size: 11px;
+}
+
+.amk-internal__history {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--dash-line);
+  padding-top: 14px;
+}
+
+.amk-internal__history-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.35fr) minmax(140px, 0.55fr) minmax(0, 2fr);
+  gap: 10px;
+  align-items: start;
+  color: var(--dash-copy);
+  font-size: 12px;
+}
+
+.amk-internal__history-row strong {
+  color: var(--dash-ink);
+  text-transform: capitalize;
+}
+
+.amk-internal__history-row p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.amk-internal__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.amk-internal__scope-note {
+  color: var(--dash-copy);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .amk-day__empty {
@@ -2408,17 +2491,29 @@ body:has([data-crm-workspace-root]) [data-crm-workspace-root] header {
     border-bottom: 0;
   }
 
-  .amk-day__safety-head {
+  .amk-internal__head {
     grid-template-columns: 42px 1fr;
   }
 
-  .amk-day__safety-head > button {
+  .amk-internal__head > button {
     grid-column: 1 / -1;
   }
 
-  .amk-day__safety-row {
-    align-items: flex-start;
+  .amk-internal__topline {
     flex-direction: column;
+  }
+
+  .amk-internal__customer {
+    text-align: left;
+  }
+
+  .amk-internal__facts {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .amk-internal__history-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
   }
 
   .amk-schedule {
