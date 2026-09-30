@@ -67,6 +67,12 @@ describe("read-only Sales Tracker", () => {
     expect(server).not.toMatch(/update\(|insert\(|delete\(/);
     expect(page).toContain("data-sales-tracker");
     expect(page).toContain("No CRM writes");
+    expect(page).toContain("Reconnect Genie to refresh Sales Tracker.");
+    expect(page).toContain("last synchronized Won opportunities");
+    expect(server).toContain("sourceCurrent");
+    expect(server).toContain("reconnectRequired");
+    expect(server).toContain("trustedMappings");
+    expect(server).toContain("crmOpportunities.connectedSystemId");
     expect(app).toContain('path="/sales-tracker"');
     expect(nav).toContain('label: "Sales Tracker"');
   });
