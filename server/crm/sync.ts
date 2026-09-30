@@ -1020,7 +1020,10 @@ async function syncConnectedSystemDeterministically(input: {
       const bufferedTaskRecords =
         resourceType === "tasks" ? ([] as NormalizedTask[]) : undefined;
       const drained = await drainCrmPages<SyncRecord>({
-        initialCursor: existing?.cursor ?? undefined,
+        // Tasks are a complete current-owner pending snapshot in both full and
+        // routine sync. Never resume them from a historical pagination cursor.
+        initialCursor:
+          resourceType === "tasks" ? undefined : existing?.cursor ?? undefined,
         fetchPage: cursor =>
           sync({ connection, secret, cursor }) as Promise<{
             records: SyncRecord[];
