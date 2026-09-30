@@ -84,6 +84,7 @@ export function genieInboundRecipient(
 
 export function outboundGenieReplyMatchesInbound(
   inbound: {
+    externalMessageId?: string;
     contactExternalId: string | null;
     receivedAt: Date;
     classification: unknown;
@@ -92,15 +93,33 @@ export function outboundGenieReplyMatchesInbound(
     contactExternalId: string;
     conversationExternalId: string;
     sentAt: Date;
+    inboundExternalMessageId?: string;
     verifiedAfterInboundByThreadOrder?: boolean;
   }
 ) {
-  return (
-    inbound.contactExternalId === evidence.contactExternalId &&
-    (inbound.receivedAt.valueOf() <= evidence.sentAt.valueOf() ||
-      evidence.verifiedAfterInboundByThreadOrder === true) &&
+  const sameContact =
+    inbound.contactExternalId === evidence.contactExternalId;
+  const sameConversation =
     genieInboundConversationId(inbound.classification) ===
-      evidence.conversationExternalId
+    evidence.conversationExternalId;
+  if (
+    evidence.verifiedAfterInboundByThreadOrder === true ||
+    evidence.inboundExternalMessageId
+  ) {
+    return (
+      sameContact &&
+      sameConversation &&
+      evidence.verifiedAfterInboundByThreadOrder === true &&
+      Boolean(
+        evidence.inboundExternalMessageId &&
+          inbound.externalMessageId === evidence.inboundExternalMessageId
+      )
+    );
+  }
+  return (
+    sameContact &&
+    sameConversation &&
+    inbound.receivedAt.valueOf() <= evidence.sentAt.valueOf()
   );
 }
 
@@ -191,6 +210,7 @@ async function reconcileGenieOutboundReplies(input: {
     contactExternalId: string;
     conversationExternalId: string;
     sentAt: Date;
+    inboundExternalMessageId?: string;
     verifiedAfterInboundByThreadOrder?: boolean;
   }>;
 }) {

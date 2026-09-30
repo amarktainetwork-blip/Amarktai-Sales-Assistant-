@@ -386,17 +386,20 @@ describe("Genie personal email isolation", () => {
         conversationId: "conversation-1",
         contactExternalId: "contact-1",
         receivedAt: new Date("2026-09-30T07:59:02.000Z"),
+        inboundExternalMessageId: "inbound-1",
         verifiedAfterInboundByThreadOrder: true,
       }
     );
     expect(evidence).toMatchObject({
       contactExternalId: "contact-1",
       conversationExternalId: "conversation-1",
+      inboundExternalMessageId: "inbound-1",
       verifiedAfterInboundByThreadOrder: true,
     });
     expect(
       outboundGenieReplyMatchesInbound(
         {
+          externalMessageId: "inbound-1",
           contactExternalId: "contact-1",
           receivedAt: new Date("2026-09-30T07:59:02.000Z"),
           classification: { conversationExternalId: "conversation-1" },
@@ -404,6 +407,17 @@ describe("Genie personal email isolation", () => {
         evidence!
       )
     ).toBe(true);
+    expect(
+      outboundGenieReplyMatchesInbound(
+        {
+          externalMessageId: "newer-inbound",
+          contactExternalId: "contact-1",
+          receivedAt: new Date("2026-09-30T07:40:00.000Z"),
+          classification: { conversationExternalId: "conversation-1" },
+        },
+        evidence!
+      )
+    ).toBe(false);
   });
 
   it("uses the exact inbound message position rather than provider time to backfill handled replies", () => {
@@ -416,8 +430,9 @@ describe("Genie personal email isolation", () => {
       "utf8"
     );
     expect(reader).toContain("threadMessageIds.includes(externalMessageId)");
-    expect(reader).toContain("sourceReceivedAtRawMs");
-    expect(reader).toContain("rawSentAtMs > input.sourceReceivedAtRawMs");
+    expect(reader).toContain("const newerThreads: any[] = []");
+    expect(reader).toContain("inboundExternalMessageId: externalMessageId");
+    expect(reader).toContain("verifiedAfterInboundByThreadOrder: true");
     expect(reader).not.toContain("crossedInboundTime");
     expect(pipeline).toContain(
       "sourceUpdatedAt: input.envelope.receivedAt"
