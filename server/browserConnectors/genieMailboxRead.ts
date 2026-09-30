@@ -398,12 +398,17 @@ export async function readPersonalGenieMailbox(input: {
       search.meta && typeof search.meta === "object" && !Array.isArray(search.meta)
         ? search.meta
         : {};
-    const rawNext =
-      search.nextPage ?? search.nextCursor ?? (meta as Record<string, unknown>).nextCursor;
+    const rawNext = [
+      search.nextPage,
+      search.nextCursor,
+      (meta as Record<string, unknown>).nextCursor,
+    ].find(
+      value =>
+        (typeof value === "string" || typeof value === "number") &&
+        String(value).trim()
+    );
     const nextCursor =
-      typeof rawNext === "string" || typeof rawNext === "number"
-        ? String(rawNext).trim()
-        : "";
+      rawNext === undefined ? "" : String(rawNext).trim();
     if (!nextCursor) {
       if (searchTotal > conversations.length)
         throw Error("GENIE_MAILBOX_CONTINUATION_REQUIRED");
