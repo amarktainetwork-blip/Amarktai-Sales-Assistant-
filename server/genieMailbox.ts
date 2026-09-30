@@ -636,15 +636,12 @@ export async function syncGenieMailboxForUser(input: {
         )
       )
       .orderBy(asc(inboundMessages.receivedAt))
-      .limit(60)
-  )
-    .filter(row =>
-      shouldTargetGenieActionableBackfill({
-        channel: row.channel,
-        contactExternalId: row.contactExternalId,
-      })
-    )
-    .slice(0, 20);
+  ).filter(row =>
+    shouldTargetGenieActionableBackfill({
+      channel: row.channel,
+      contactExternalId: row.contactExternalId,
+    })
+  );
   const now = Date.now();
   const oneDayAgo = now - 24 * 60 * 60_000;
   // The fast mailbox lane only needs a small overlap behind the newest message.
