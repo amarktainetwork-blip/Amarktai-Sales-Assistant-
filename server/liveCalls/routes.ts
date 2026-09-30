@@ -126,7 +126,10 @@ export function registerLiveCallRoutes(app: Express) {
         userId: user.id,
         organisationId: user.membership.organisationId,
       });
-      return res.json({ ...(await probeSttHealth()), lifecycle });
+      return res.json({
+        ...(await probeSttHealth(user.membership.locale)),
+        lifecycle,
+      });
     } catch (error) {
       return sendLiveCallError(res, error);
     }

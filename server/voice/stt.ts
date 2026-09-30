@@ -131,22 +131,37 @@ export function getSttConfiguration() {
   };
 }
 
-export async function probeSttHealth() {
+export async function probeSttHealth(language?: string) {
   const configuration = getSttConfiguration();
-  if (!configuration.configured || !configuration.endpoint)
+  const target = transcriptionTarget(language);
+  if (!target.endpoint || !target.model)
     return { ...configuration, ready: false, reason: "NOT_CONFIGURED" as const };
-  const endpoint = new URL(configuration.endpoint);
-  const healthUrl = process.env.STT_HEALTH_URL?.trim() || `${endpoint.origin}/`;
+  const endpoint = new URL(target.endpoint);
+  const configuredHealthUrl = target.fastEnglish
+    ? process.env.STT_EN_HEALTH_URL?.trim()
+    : process.env.STT_HEALTH_URL?.trim();
+  const healthUrl = configuredHealthUrl || `${endpoint.origin}/`;
   try {
     const response = await fetch(healthUrl, { signal: AbortSignal.timeout(5_000) });
     return response.ok
-      ? { ...configuration, ready: true, reason: null }
-      : { ...configuration, ready: false, reason: `HEALTH_HTTP_${response.status}` };
+      ? {
+          ...configuration,
+          ready: true,
+          reason: null,
+          activeLane: target.fastEnglish ? ("english" as const) : ("multilingual" as const),
+        }
+      : {
+          ...configuration,
+          ready: false,
+          reason: `HEALTH_HTTP_${response.status}`,
+          activeLane: target.fastEnglish ? ("english" as const) : ("multilingual" as const),
+        };
   } catch (error) {
     return {
       ...configuration,
       ready: false,
       reason: error instanceof Error ? error.message.slice(0, 160) : "HEALTH_CHECK_FAILED",
+      activeLane: target.fastEnglish ? ("english" as const) : ("multilingual" as const),
     };
   }
 }
