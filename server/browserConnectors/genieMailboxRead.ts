@@ -5,6 +5,7 @@ const BOOTSTRAP =
 const CONVERSATION_SEARCH_PAGE_SIZE = 20;
 const MAX_LIVE_CONVERSATIONS_PER_CYCLE = 10;
 const MAX_LIVE_MESSAGE_PAGES_PER_CYCLE = 6;
+const MAX_LIVE_DETAIL_READS_PER_CYCLE = 20;
 const MAX_LEGACY_BACKFILL_PAGES_PER_CYCLE = 3;
 const id = (value: unknown) =>
   typeof value === "string" && /^[A-Za-z0-9_-]{1,180}$/.test(value)
@@ -101,6 +102,8 @@ export type GenieLiveMailboxProgress = {
   nextSearchCursor?: string;
   conversationIndex?: number;
   lastMessageId?: string;
+  threadOffset?: number;
+  emailIdOffset?: number;
 };
 
 export type PersonalGenieMailboxRecord = {
@@ -406,6 +409,14 @@ export async function readPersonalGenieMailbox(input: {
     Number(input.liveProgress?.conversationIndex || 0) || 0
   );
   let resumedLastMessageId = id(input.liveProgress?.lastMessageId) || undefined;
+  let resumedThreadOffset = Math.max(
+    0,
+    Number(input.liveProgress?.threadOffset || 0) || 0
+  );
+  let resumedEmailIdOffset = Math.max(
+    0,
+    Number(input.liveProgress?.emailIdOffset || 0) || 0
+  );
 
   if (input.liveProgress?.conversations?.length) {
     conversations = input.liveProgress.conversations.map(snapshotConversation);
@@ -414,6 +425,8 @@ export async function readPersonalGenieMailbox(input: {
       conversations = [];
       conversationIndex = 0;
       resumedLastMessageId = undefined;
+      resumedThreadOffset = 0;
+      resumedEmailIdOffset = 0;
     }
   }
 
@@ -438,6 +451,8 @@ export async function readPersonalGenieMailbox(input: {
     conversations = pageConversations.map(snapshotConversation);
     conversationIndex = 0;
     resumedLastMessageId = undefined;
+    resumedThreadOffset = 0;
+    resumedEmailIdOffset = 0;
 
     const oldestPageTime = pageConversations.reduce(
       (oldest: number, conversation: any) => {
@@ -484,7 +499,9 @@ export async function readPersonalGenieMailbox(input: {
   let examined = 0;
   let checked = 0;
   let liveMessagePagesRead = 0;
+  let liveDetailReads = 0;
   let liveConversationsProcessed = 0;
+  let liveReachedTimeBoundary = false;
   let liveProgress: GenieLiveMailboxProgress | undefined;
 
   liveTraversal: for (
@@ -512,7 +529,8 @@ export async function readPersonalGenieMailbox(input: {
       conversationLastMessageAt < since
     ) {
       nextSearchCursor = undefined;
-      break;
+      liveReachedTimeBoundary = true;
+      break liveTraversal;
     }
     const conversationId = id(conversation.id);
     const contactExternalId = id(conversation.contactId);
@@ -530,6 +548,8 @@ export async function readPersonalGenieMailbox(input: {
       rejectedForeignOwnerCount++;
       liveConversationsProcessed += 1;
       resumedLastMessageId = undefined;
+      resumedThreadOffset = 0;
+      resumedEmailIdOffset = 0;
       continue;
     }
     const contact = (await read(`/contacts/${contactExternalId}`)).contact;
@@ -542,11 +562,17 @@ export async function readPersonalGenieMailbox(input: {
       rejectedForeignOwnerCount++;
       liveConversationsProcessed += 1;
       resumedLastMessageId = undefined;
+      resumedThreadOffset = 0;
+      resumedEmailIdOffset = 0;
       continue;
     }
 
     let lastMessageId =
       index === conversationIndex ? resumedLastMessageId : undefined;
+    let threadOffset =
+      index === conversationIndex ? resumedThreadOffset : 0;
+    let emailIdOffset =
+      index === conversationIndex ? resumedEmailIdOffset : 0;
     for (;;) {
       if (liveMessagePagesRead >= MAX_LIVE_MESSAGE_PAGES_PER_CYCLE) {
         liveProgress = {
@@ -568,7 +594,12 @@ export async function readPersonalGenieMailbox(input: {
       if (!Array.isArray(messages))
         throw Error("GENIE_MAILBOX_MESSAGES_INVALID");
       let reachedBeforeSince = false;
-      for (const thread of messages) {
+      for (
+        let threadIndex = threadOffset;
+        threadIndex < messages.length;
+        threadIndex++
+      ) {
+        const thread = messages[threadIndex];
         if (thread.deleted === true) continue;
         if (
           thread.locationId !== locationId ||
@@ -582,10 +613,33 @@ export async function readPersonalGenieMailbox(input: {
         }
 
         if (Number(thread.type) === 3) {
-          for (const emailId of thread.meta?.email?.messageIds || []) {
+          const emailIds = Array.isArray(thread.meta?.email?.messageIds)
+            ? thread.meta.email.messageIds
+            : [];
+          const startEmailIdOffset =
+            threadIndex === threadOffset ? emailIdOffset : 0;
+          for (
+            let emailIndex = startEmailIdOffset;
+            emailIndex < emailIds.length;
+            emailIndex++
+          ) {
+            const emailId = emailIds[emailIndex];
             if (!id(emailId) || visited.has(emailId)) continue;
+            if (liveDetailReads >= MAX_LIVE_DETAIL_READS_PER_CYCLE) {
+              liveProgress = {
+                sourceSince: new Date(since).toISOString(),
+                conversations: conversations.map(snapshotConversation),
+                nextSearchCursor,
+                conversationIndex: index,
+                ...(lastMessageId ? { lastMessageId } : {}),
+                threadOffset: threadIndex,
+                emailIdOffset: emailIndex,
+              };
+              break liveTraversal;
+            }
             visited.add(emailId);
             examined++;
+            liveDetailReads += 1;
             const raw = await read(`/conversations/messages/email/${emailId}`);
             const outbound = parsePersonalGenieOutboundEmail(raw, {
               emailId,
@@ -649,8 +703,20 @@ export async function readPersonalGenieMailbox(input: {
         if (thread.direction !== "inbound") continue;
         const messageId = id(thread.id);
         if (!messageId || visited.has(messageId)) continue;
+        if (liveDetailReads >= MAX_LIVE_DETAIL_READS_PER_CYCLE) {
+          liveProgress = {
+            sourceSince: new Date(since).toISOString(),
+            conversations: conversations.map(snapshotConversation),
+            nextSearchCursor,
+            conversationIndex: index,
+            ...(lastMessageId ? { lastMessageId } : {}),
+            threadOffset: threadIndex,
+          };
+          break liveTraversal;
+        }
         visited.add(messageId);
         examined++;
+        liveDetailReads += 1;
         const raw = await read(`/conversations/messages/${messageId}`);
         const parsed = parsePersonalGenieConversationMessage(raw, {
           messageId,
@@ -664,6 +730,8 @@ export async function readPersonalGenieMailbox(input: {
       if (reachedBeforeSince || !result.messages.nextPage) {
         liveConversationsProcessed += 1;
         resumedLastMessageId = undefined;
+        resumedThreadOffset = 0;
+        resumedEmailIdOffset = 0;
         break;
       }
       const next = id(result.messages.lastMessageId);
@@ -680,10 +748,12 @@ export async function readPersonalGenieMailbox(input: {
         break liveTraversal;
       }
       lastMessageId = next;
+      threadOffset = 0;
+      emailIdOffset = 0;
     }
   }
 
-  if (!liveProgress) {
+  if (!liveProgress && !liveReachedTimeBoundary) {
     const nextIndex = conversationIndex + liveConversationsProcessed;
     if (nextIndex < conversations.length) {
       liveProgress = {
