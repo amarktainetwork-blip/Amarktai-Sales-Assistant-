@@ -85,11 +85,13 @@ export function outboundGenieReplyMatchesInbound(
     contactExternalId: string;
     conversationExternalId: string;
     sentAt: Date;
+    verifiedAfterInboundByThreadOrder?: boolean;
   }
 ) {
   return (
     inbound.contactExternalId === evidence.contactExternalId &&
-    inbound.receivedAt.valueOf() <= evidence.sentAt.valueOf() &&
+    (inbound.receivedAt.valueOf() <= evidence.sentAt.valueOf() ||
+      evidence.verifiedAfterInboundByThreadOrder === true) &&
     genieInboundConversationId(inbound.classification) ===
       evidence.conversationExternalId
   );
@@ -182,6 +184,7 @@ async function reconcileGenieOutboundReplies(input: {
     contactExternalId: string;
     conversationExternalId: string;
     sentAt: Date;
+    verifiedAfterInboundByThreadOrder?: boolean;
   }>;
 }) {
   if (!input.outboundEvidence.length) return 0;
