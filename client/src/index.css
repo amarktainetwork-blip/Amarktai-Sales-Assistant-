@@ -1839,10 +1839,43 @@ body:has(.amarktai-dashboard-sidebar) [data-slot="sidebar-inset"] section {
   font-size: 11px;
 }
 
+.amk-internal__history {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--dash-line);
+  padding-top: 14px;
+}
+
+.amk-internal__history-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.35fr) minmax(140px, 0.55fr) minmax(0, 2fr);
+  gap: 10px;
+  align-items: start;
+  color: var(--dash-copy);
+  font-size: 12px;
+}
+
+.amk-internal__history-row strong {
+  color: var(--dash-ink);
+  text-transform: capitalize;
+}
+
+.amk-internal__history-row p {
+  margin: 0;
+  line-height: 1.5;
+}
+
 .amk-internal__actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 10px;
+}
+
+.amk-internal__scope-note {
+  color: var(--dash-copy);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .amk-day__empty {
@@ -2476,6 +2509,11 @@ body:has([data-crm-workspace-root]) [data-crm-workspace-root] header {
 
   .amk-internal__facts {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .amk-internal__history-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
   }
 
   .amk-schedule {
