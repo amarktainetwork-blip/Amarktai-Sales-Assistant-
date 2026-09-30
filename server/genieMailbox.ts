@@ -438,9 +438,10 @@ export async function syncGenieMailboxForUser(input: {
   // The fast mailbox lane only needs a small overlap behind the newest message.
   // Older actionable items are reconciled explicitly by actionableBackfill,
   // so they must not force every 30-second live scan to crawl hours of history.
-  const latestOverlap = latest?.receivedAt
-    ? latest.receivedAt.getTime() - 2 * 60_000
+  const latestReceivedAt = latest?.receivedAt
+    ? Math.min(latest.receivedAt.getTime(), now)
     : oneDayAgo;
+  const latestOverlap = latestReceivedAt - 2 * 60_000;
   const since = new Date(Math.max(oneDayAgo, latestOverlap));
 
   const proof = await withAuthenticatedBrowserSessionPage({
