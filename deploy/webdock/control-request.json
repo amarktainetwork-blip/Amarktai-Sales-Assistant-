@@ -1,7 +1,7 @@
 {
-  "operation": "diagnose",
+  "operation": "verify",
   "server_name": "Amarktai Network - Sales Assistant",
   "server_domain": "sales.amarktai.co.za",
   "release_sha": "e104208db4096ee6a9f49cde9c138b5ffacb9d9e",
-  "request_id": "phase2-postdeploy-truth-audit-2026-09-30"
+  "request_id": "phase2-final-postconvergence-verify-2026-09-30"
 }
