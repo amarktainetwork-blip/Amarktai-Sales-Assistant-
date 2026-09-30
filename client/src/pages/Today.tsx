@@ -467,24 +467,59 @@ export default function Today() {
                           </div>
                         ) : null}
 
+                        {item.recentActivities?.length ? (
+                          <div className="amk-internal__history">
+                            <p className="amk-day__eyebrow">Recent CRM context</p>
+                            {item.recentActivities.map((activity, index) => (
+                              <div
+                                key={`${activity.activityType}:${new Date(activity.occurredAt).valueOf()}:${index}`}
+                                className="amk-internal__history-row"
+                              >
+                                <strong>{activity.activityType}</strong>
+                                <span>{dateLabel(activity.occurredAt)}</span>
+                                {activity.body ? <p>{activity.body}</p> : null}
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+
                         <div className="amk-internal__actions">
-                          <Button
-                            onClick={() =>
-                              navigate(`/customers?contactId=${item.contactId}`)
-                            }
-                          >
-                            <UserRound className="mr-2 h-4 w-4" />
-                            Open customer
-                          </Button>
+                          {item.personallyOwned ? (
+                            <Button
+                              onClick={() =>
+                                navigate(`/customers?contactId=${item.contactId}`)
+                              }
+                            >
+                              <UserRound className="mr-2 h-4 w-4" />
+                              Open customer
+                            </Button>
+                          ) : (
+                            <span className="amk-internal__scope-note">
+                              Colleague-owned lead · task-linked context shown here
+                            </span>
+                          )}
                           <Button
                             variant="outline"
-                            onClick={() =>
+                            onClick={() => {
+                              const prompt = [
+                                `Help me work this internal CRM task: ${item.title}.`,
+                                item.contactName
+                                  ? `Customer: ${item.contactName}.`
+                                  : "",
+                                item.courseInterest
+                                  ? `Course/interest: ${item.courseInterest}.`
+                                  : "",
+                                item.opportunity?.stage
+                                  ? `CRM stage: ${item.opportunity.stage}.`
+                                  : "",
+                                "Summarise what matters, what this task is asking me to do, and the safest next action.",
+                              ]
+                                .filter(Boolean)
+                                .join(" ");
                               navigate(
-                                `/assistant?contactId=${item.contactId}&prompt=${encodeURIComponent(
-                                  `Help me work this internal CRM task: ${item.title}. Summarise the customer context, recent history, what this task is asking me to do, and the safest next action.`
-                                )}`
-                              )
-                            }
+                                `/assistant?${item.personallyOwned ? `contactId=${item.contactId}&` : ""}prompt=${encodeURIComponent(prompt)}`
+                              );
+                            }}
                           >
                             <Sparkles className="mr-2 h-4 w-4" />
                             Prepare with AmarktAI
