@@ -54,12 +54,6 @@ services:
         condition: service_healthy
       browser:
         condition: service_healthy
-      stt:
-        condition: service_healthy
-      stt-en:
-        condition: service_healthy
-      tts:
-        condition: service_healthy
     healthcheck:
       test:
         [
@@ -204,6 +198,7 @@ services:
       start_period: 20s
 
   stt:
+    profiles: ["voice-fallback"]
     build:
       context: ../..
       dockerfile: deploy/stt/Dockerfile
@@ -256,6 +251,7 @@ services:
       - /tmp:rw,noexec,nosuid,size=128m,uid=10002,gid=10002
 
   tts:
+    profiles: ["voice-tts"]
     build:
       context: ../..
       dockerfile: deploy/tts/Dockerfile
