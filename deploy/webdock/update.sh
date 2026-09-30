@@ -17,6 +17,11 @@ $COMPOSE build --build-arg VCS_REF="$VCS_REF"
 AMARKTAI_DEPLOY_PROFILE="$PROFILE" sh deploy/webdock/align-runtime-state.sh
 $COMPOSE run --rm app node dist/migrate.js
 $COMPOSE up -d --remove-orphans
+if [ "$PROFILE" = "full" ]; then
+  # Heavy voice fallback/synthesis runtimes are dormant by default. Explicitly
+  # stop any containers left from an older release so they do not keep RAM warm.
+  $COMPOSE stop stt tts >/dev/null 2>&1 || true
+fi
 AMARKTAI_DEPLOY_PROFILE="$PROFILE" sh deploy/webdock/smoke-test.sh
 
 printf 'Update completed for %s profile.\n' "$PROFILE"
