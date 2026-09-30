@@ -27,8 +27,11 @@ finish_report() {
   rc=$?
   {
     echo
+    echo "=== CONTROL REPORT HEAD ==="
+    head -c 140000 "$FULL_LOG" 2>/dev/null || true
+    echo
     echo "=== CONTROL REPORT TAIL ==="
-    tail -c 80000 "$FULL_LOG" 2>/dev/null || true
+    tail -c 140000 "$FULL_LOG" 2>/dev/null || true
     echo
     echo "control_exit_code=$rc"
   } > "$REPORT"
@@ -241,6 +244,20 @@ if [ "$OPERATION" = "diagnose" ]; then
 
   echo "--- current task collection ---"
   db_sql "SELECT COUNT(*) AS currentOpenTasks FROM crmTasks WHERE connectedSystemId=8 AND ownerExternalId='yZrFI0ptOyvG3ZXvs7iZ' AND status IN ('open','pending','incomplete','new','todo','to_do');"
+
+  echo "--- issue 256 exact inbound fixture ---"
+  db_sql "SELECT id,organisationId,mailboxUserId,connectedSystemId,externalMessageId,channel,contactExternalId,subject,status,needsAction,receivedAt,JSON_UNQUOTE(JSON_EXTRACT(classification,'$.conversationExternalId')) AS conversationExternalId FROM inboundMessages WHERE id=35085 AND externalMessageId='NgTR4XGovhO9jwKlWGMW' AND contactExternalId='74kkY0z0ryb8u4X9rm7b';"
+  db_sql "SELECT id,salespersonUserId,sourceKey,sourceType,sourceExternalId,contactExternalId,type,priority,status,startedAt,completedAt,dueAt,freshness,sourceUpdatedAt,syncedAt,updatedAt,lastTransitionKey FROM salesWorkItems WHERE id=6054230 OR (organisationId=8 AND sourceExternalId='NgTR4XGovhO9jwKlWGMW') ORDER BY id;"
+
+  echo "--- issue 256 exact fixture positive-evidence candidates ---"
+  db_sql "SELECT id,externalId,ownerExternalId,activityType,occurredAt,JSON_UNQUOTE(JSON_EXTRACT(raw,'$.direction')) AS direction,JSON_UNQUOTE(JSON_EXTRACT(raw,'$.type')) AS rawType,JSON_UNQUOTE(JSON_EXTRACT(raw,'$.status')) AS rawStatus,opportunityExternalId FROM crmActivities WHERE organisationId=8 AND connectedSystemId=8 AND contactExternalId='74kkY0z0ryb8u4X9rm7b' AND occurredAt>='2026-09-30 07:59:02' ORDER BY occurredAt,id;"
+  db_sql "SELECT id,externalId,ownerExternalId,title,status,dueAt,completedAt,sourceUpdatedAt,updatedAt,opportunityExternalId FROM crmTasks WHERE organisationId=8 AND connectedSystemId=8 AND contactExternalId='74kkY0z0ryb8u4X9rm7b' AND (completedAt>='2026-09-30 07:59:02' OR sourceUpdatedAt>='2026-09-30 07:59:02' OR updatedAt>='2026-09-30 07:59:02') ORDER BY COALESCE(completedAt,sourceUpdatedAt,updatedAt),id;"
+  db_sql "SELECT id,eventType,source,occurredAt,externalId,externalOwnerId,salespersonUserId,opportunityExternalId FROM salesActivityEvents WHERE organisationId=8 AND connectedSystemId=8 AND contactExternalId='74kkY0z0ryb8u4X9rm7b' AND occurredAt>='2026-09-30 07:59:02' ORDER BY occurredAt,id;"
+  db_sql "SELECT id,externalId,ownerExternalId,name,pipeline,stage,lastActivityAt,nextStepAt,sourceUpdatedAt,updatedAt FROM crmOpportunities WHERE organisationId=8 AND connectedSystemId=8 AND contactExternalId='74kkY0z0ryb8u4X9rm7b' ORDER BY updatedAt,id;"
+  db_sql "SELECT id,userId,eventType,entityType,entityId,createdAt FROM auditEntries WHERE organisationId=8 AND createdAt>='2026-09-30 07:59:02' AND (entityId IN ('35085','6054230','NgTR4XGovhO9jwKlWGMW','74kkY0z0ryb8u4X9rm7b','7dXAxKvJQdMNlfkcJbuY') OR CAST(metadata AS CHAR) LIKE '%NgTR4XGovhO9jwKlWGMW%' OR CAST(metadata AS CHAR) LIKE '%74kkY0z0ryb8u4X9rm7b%' OR CAST(metadata AS CHAR) LIKE '%7dXAxKvJQdMNlfkcJbuY%') ORDER BY createdAt,id;"
+
+  echo "--- issue 256 unanswered negative-control candidates ---"
+  db_sql "SELECT m.id,m.externalMessageId,m.contactExternalId,m.receivedAt,m.status,m.needsAction,COALESCE(w.status,'NO_WORK_ITEM') AS workStatus,COUNT(a.id) AS laterOwnerPositiveActivities FROM inboundMessages m LEFT JOIN salesWorkItems w ON w.organisationId=m.organisationId AND w.connectedSystemId=m.connectedSystemId AND w.salespersonUserId=m.mailboxUserId AND w.sourceType='inbound_message' AND w.sourceExternalId=m.externalMessageId LEFT JOIN crmActivities a ON a.organisationId=m.organisationId AND a.connectedSystemId=m.connectedSystemId AND a.contactExternalId=m.contactExternalId AND a.ownerExternalId='yZrFI0ptOyvG3ZXvs7iZ' AND a.occurredAt>=m.receivedAt AND (LOWER(a.activityType)='call' OR (LOWER(a.activityType) IN ('email','sms','whatsapp','communication') AND LOWER(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(a.raw,'$.direction')),''))='outbound')) WHERE m.organisationId=8 AND m.mailboxUserId=2 AND m.connectedSystemId=8 AND m.needsAction=1 GROUP BY m.id,m.externalMessageId,m.contactExternalId,m.receivedAt,m.status,w.status HAVING laterOwnerPositiveActivities=0 ORDER BY m.receivedAt DESC LIMIT 20;"
 
   echo "--- inbox action backlog summary ---"
   db_sql "SELECT channel,status,COUNT(*) AS needsActionCount,MIN(receivedAt) AS oldest,MAX(receivedAt) AS newest FROM inboundMessages WHERE organisationId=8 AND mailboxUserId=2 AND connectedSystemId=8 AND needsAction=1 GROUP BY channel,status ORDER BY channel,status;"
