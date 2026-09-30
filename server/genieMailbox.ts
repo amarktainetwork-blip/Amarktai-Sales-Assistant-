@@ -97,18 +97,29 @@ export function outboundGenieReplyMatchesInbound(
     verifiedAfterInboundByThreadOrder?: boolean;
   }
 ) {
-  const exactThreadOrderMatch =
-    evidence.verifiedAfterInboundByThreadOrder === true &&
-    Boolean(
-      evidence.inboundExternalMessageId &&
-        inbound.externalMessageId === evidence.inboundExternalMessageId
-    );
-  return (
-    inbound.contactExternalId === evidence.contactExternalId &&
-    (inbound.receivedAt.valueOf() <= evidence.sentAt.valueOf() ||
-      exactThreadOrderMatch) &&
+  const sameContact =
+    inbound.contactExternalId === evidence.contactExternalId;
+  const sameConversation =
     genieInboundConversationId(inbound.classification) ===
-      evidence.conversationExternalId
+    evidence.conversationExternalId;
+  if (
+    evidence.verifiedAfterInboundByThreadOrder === true ||
+    evidence.inboundExternalMessageId
+  ) {
+    return (
+      sameContact &&
+      sameConversation &&
+      evidence.verifiedAfterInboundByThreadOrder === true &&
+      Boolean(
+        evidence.inboundExternalMessageId &&
+          inbound.externalMessageId === evidence.inboundExternalMessageId
+      )
+    );
+  }
+  return (
+    sameContact &&
+    sameConversation &&
+    inbound.receivedAt.valueOf() <= evidence.sentAt.valueOf()
   );
 }
 
