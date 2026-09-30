@@ -9,9 +9,9 @@ describe("Genie mailbox continuation", () => {
       contactId: `foreign-contact-${index}`,
       locationId: "loc",
       assignedTo: "other-owner",
-      lastMessageDate: new Date(
-        Date.parse("2026-09-17T10:30:00Z") - index * 60_000
-      ).toISOString(),
+      // Deliberately give every first-page row the same timestamp. Date-only
+      // continuation is ambiguous here; the provider cursor must be used.
+      lastMessageDate: "2026-09-17T10:05:00Z",
     }));
     const targetConversation = {
       id: "target-conversation",
@@ -43,7 +43,11 @@ describe("Genie mailbox continuation", () => {
         return response(
           options?.params?.startAfterDate
             ? { conversations: [targetConversation], total: 21 }
-            : { conversations: firstPage, total: 21 }
+            : {
+                conversations: firstPage,
+                total: 21,
+                nextPage: "provider-cursor-page-2",
+              }
         );
       }
       if (url.includes("/contacts/target-contact"))
@@ -83,7 +87,7 @@ describe("Genie mailbox continuation", () => {
     );
     expect(searches).toHaveLength(2);
     expect(searches[1]?.[1]?.params?.startAfterDate).toBe(
-      firstPage[firstPage.length - 1].lastMessageDate
+      "provider-cursor-page-2"
     );
     expect(result.records).toHaveLength(1);
     expect(result.records[0]).toMatchObject({
@@ -95,7 +99,7 @@ describe("Genie mailbox continuation", () => {
     expect(result.unreadPreserved).toBe(true);
   });
 
-  it("has no fixed first-page, first-200-message, or oldest-actionable backfill cap", () => {
+  it("has no fixed first-page or first-200-message discovery cap and checkpoints bounded legacy backfill", () => {
     const reader = readFileSync(new URL("./genieMailboxRead.ts", import.meta.url), "utf8");
     expect(reader).not.toContain("searchPage < 1");
     expect(reader).not.toContain("MAX_CONVERSATIONS_PER_SYNC");
@@ -108,5 +112,9 @@ describe("Genie mailbox continuation", () => {
     const backfill = mailbox.slice(start, end);
     expect(backfill).not.toContain(".limit(60)");
     expect(backfill).not.toContain(".slice(0, 20)");
+    expect(mailbox).toContain("GENIE_ACTIONABLE_BACKFILL_BATCH_SIZE = 10");
+    expect(mailbox).toContain("genie_mailbox_backfill_");
+    expect(mailbox).toContain("upperBoundId");
+    expect(mailbox).toContain("saveGenieActionableBackfillCursor");
   });
 });
