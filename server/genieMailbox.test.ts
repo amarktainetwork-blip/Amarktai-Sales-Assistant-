@@ -717,7 +717,7 @@ describe("Genie personal email isolation", () => {
       "utf8"
     );
     expect(source).toContain(
-      '["ready", "limited_permissions"].includes(candidate.status)'
+      '!["ready", "limited_permissions"].includes(system.status)'
     );
     expect(source).toContain("receivedAt: message.receivedAt");
     expect(source).not.toContain("receivedAt: new Date()");
