@@ -43,6 +43,15 @@ describe("verified task-completion evidence", () => {
     expect(
       taskCompletionEvidenceCanResolveInbound({ title: "Call customer back" })
     ).toBe(true);
+    for (const title of [
+      "Called customer",
+      "Replied to enquiry",
+      "Responded by email",
+      "Messaged customer",
+      "Emailed customer",
+      "Contacted customer",
+    ])
+      expect(taskCompletionEvidenceCanResolveInbound({ title })).toBe(true);
     expect(
       taskCompletionEvidenceCanResolveInbound({ title: "Has Snap been done??" })
     ).toBe(false);
@@ -51,17 +60,43 @@ describe("verified task-completion evidence", () => {
     ).toBe(false);
   });
 
-  it("reconciles cached verified evidence before attempting the live mailbox", () => {
+  it("reconciles cached verified evidence in the shared per-user path before live-session validation", () => {
     const source = readFileSync(
       new URL("./genieMailbox.ts", import.meta.url),
       "utf8"
     );
-    const cached = source.indexOf(
-      "Reconcile already-verified local CRM evidence before attempting any"
+    const shared = source.indexOf(
+      "export async function syncGenieMailboxForUser"
     );
-    const live = source.indexOf("const result = await syncGenieMailboxForUser");
-    expect(cached).toBeGreaterThan(-1);
-    expect(live).toBeGreaterThan(cached);
+    const cached = source.indexOf(
+      "const handledCachedTaskCompletions",
+      shared
+    );
+    const liveSession = source.indexOf(
+      "const secret = await loadUserConnectionSecret",
+      shared
+    );
+    expect(cached).toBeGreaterThan(shared);
+    expect(liveSession).toBeGreaterThan(cached);
+  });
+
+  it("drives cached task-completion reconciliation from evidence instead of a fixed Inbox page", () => {
+    const source = readFileSync(
+      new URL("./genieMailbox.ts", import.meta.url),
+      "utf8"
+    );
+    const start = source.indexOf(
+      "async function reconcileGenieVerifiedTaskCompletions"
+    );
+    const end = source.indexOf(
+      "export async function syncGenieMailboxForUser",
+      start
+    );
+    const helper = source.slice(start, end);
+    expect(helper).toContain('eq(salesActivityEvents.eventType, "task_completed_in_crm")');
+    expect(helper).toContain("oldestActionable.receivedAt");
+    expect(helper).not.toContain(".limit(60)");
+    expect(helper).not.toContain("inArray(salesActivityEvents.contactExternalId");
   });
 });
 
