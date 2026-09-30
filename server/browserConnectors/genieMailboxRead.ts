@@ -614,6 +614,7 @@ export async function readPersonalGenieMailbox(input: {
       source.contactId !== contactExternalId
     )
       continue;
+    const sourceReceivedAtRawMs = Date.parse(String(source.dateAdded || ""));
     const conversationId = id(source.conversationId);
     if (!conversationId) continue;
     if (
@@ -665,6 +666,32 @@ export async function readPersonalGenieMailbox(input: {
         // encountered before this exact inbound item can prove that this exact
         // inbound was handled. Provider clocks are not trusted for this proof.
         for (const newerThread of newerThreads) {
+          if (unresolved.channel === "email" && Number(newerThread.type) === 3) {
+            for (const candidateEmailId of newerThread.meta?.email?.messageIds || []) {
+              if (!id(candidateEmailId) || candidateEmailId === externalMessageId)
+                continue;
+              const candidateRaw = await read(
+                `/conversations/messages/email/${candidateEmailId}`
+              );
+              const candidate = parsePersonalGenieOutboundEmail(candidateRaw, {
+                emailId: candidateEmailId,
+                locationId,
+                conversationId,
+                contactExternalId,
+                since: 0,
+              });
+              if (candidate.kind !== "outbound") continue;
+              outboundEvidence.set(candidateEmailId, {
+                ...candidate.evidence,
+                inboundExternalMessageId: externalMessageId,
+                verifiedAfterInboundByThreadOrder: true,
+              });
+              foundReply = true;
+              break;
+            }
+            if (foundReply) break;
+            continue;
+          }
           const evidence = legacyGenieOutboundEvidence(newerThread, {
             channel: unresolved.channel,
             locationId,
@@ -678,6 +705,49 @@ export async function readPersonalGenieMailbox(input: {
           outboundEvidence.set(evidence.externalMessageId, evidence);
           foundReply = true;
           break;
+        }
+
+        // HighLevel can group multiple email IDs into one conversation row.
+        // If the exact inbound and its outbound reply share that row, use the
+        // raw same-source timestamps only within that exact row, and still bind
+        // the proof to this exact inbound ID.
+        if (
+          !foundReply &&
+          unresolved.channel === "email" &&
+          Number(thread.type) === 3 &&
+          Number.isFinite(sourceReceivedAtRawMs)
+        ) {
+          for (const candidateEmailId of thread.meta?.email?.messageIds || []) {
+            if (!id(candidateEmailId) || candidateEmailId === externalMessageId)
+              continue;
+            const candidateRaw = await read(
+              `/conversations/messages/email/${candidateEmailId}`
+            );
+            const candidateEmail = candidateRaw?.emailMessage || candidateRaw;
+            const candidate = parsePersonalGenieOutboundEmail(candidateRaw, {
+              emailId: candidateEmailId,
+              locationId,
+              conversationId,
+              contactExternalId,
+              since: 0,
+            });
+            if (candidate.kind !== "outbound") continue;
+            const candidateRawMs = Date.parse(
+              String(candidateEmail?.dateAdded || "")
+            );
+            if (
+              !Number.isFinite(candidateRawMs) ||
+              candidateRawMs <= sourceReceivedAtRawMs
+            )
+              continue;
+            outboundEvidence.set(candidateEmailId, {
+              ...candidate.evidence,
+              inboundExternalMessageId: externalMessageId,
+              verifiedAfterInboundByThreadOrder: true,
+            });
+            foundReply = true;
+            break;
+          }
         }
         break;
       }
