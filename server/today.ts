@@ -214,13 +214,9 @@ export function sortTasksByConfiguredPriority<
 }
 
 export function isCurrentActionableInbound(
-  message: { needsAction: boolean; receivedAt: Date },
-  now = new Date(),
-  maximumAgeDays = 45
+  message: { needsAction: boolean; receivedAt: Date }
 ) {
-  if (!message.needsAction) return false;
-  const age = now.valueOf() - message.receivedAt.valueOf();
-  return age >= 0 && age <= maximumAgeDays * 86_400_000;
+  return message.needsAction;
 }
 
 /** Read-only work queue. CRM stage labels are not payment confirmation. */
@@ -389,11 +385,6 @@ export async function getTodayWork(input: {
         and(
           eq(inboundMessages.organisationId, input.organisationId),
           eq(inboundMessages.needsAction, true),
-          gte(
-            inboundMessages.receivedAt,
-            new Date(now.valueOf() - 45 * 86_400_000)
-          ),
-          lte(inboundMessages.receivedAt, now),
           or(
             eq(inboundMessages.mailboxUserId, input.userId),
             and(
@@ -707,7 +698,7 @@ export async function getTodayWork(input: {
     })
     .map(row => row.message);
   const currentInbound = actionableInbound.filter(message =>
-    isCurrentActionableInbound(message, now)
+    isCurrentActionableInbound(message)
   );
 
   const newLeadWork = workItems.filter(

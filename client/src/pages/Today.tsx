@@ -96,6 +96,8 @@ export default function Today() {
   const visibleQueue = showAll ? queueForView : queueForView.slice(0, 7);
   const workspace = today.data?.workspace.organisation;
   const taskMetrics = today.data?.taskData.metrics;
+  const inboundNeedsAction =
+    today.data?.metrics.inboundNeedsAction ?? inboundQueue.length;
   const sourceTaskCount =
     (taskMetrics?.overdue ?? 0) + (taskMetrics?.dueToday ?? 0);
   const preferredName =
@@ -303,8 +305,8 @@ export default function Today() {
             </strong>
           </div>
           <div className="amk-day__metric">
-            <strong aria-hidden="true">{inboundQueue.length}</strong>
-            <span className="sr-only">{inboundQueue.length} replies</span>
+            <strong aria-hidden="true">{inboundNeedsAction}</strong>
+            <span className="sr-only">{inboundNeedsAction} replies</span>
             <span aria-hidden="true">Replies</span>
           </div>
           <div className="amk-day__metric">

@@ -12,6 +12,7 @@ import {
   genieConversationChannel,
   legacyGenieOutboundEvidence,
   mailboxAddress,
+  normalizeGenieMessageTime,
   parsePersonalGenieConversationMessage,
   parsePersonalGenieEmail,
   parsePersonalGenieOutboundEmail,
@@ -30,6 +31,24 @@ const baseEmail = {
   subject: "Question",
   body: "Please call me.",
 };
+
+describe("Genie source timestamp safety", () => {
+  it("keeps valid source timestamps but clamps impossible future message times to observation time", () => {
+    const observed = Date.parse("2026-09-30T06:56:20.000Z");
+    expect(
+      normalizeGenieMessageTime("2026-09-30T06:33:33.000Z", observed)?.toISOString()
+    ).toBe("2026-09-30T06:33:33.000Z");
+    expect(
+      normalizeGenieMessageTime("2026-09-30T13:33:33.000Z", observed)?.toISOString()
+    ).toBe("2026-09-30T06:56:20.000Z");
+    expect(normalizeGenieMessageTime("not-a-time", observed)).toBeNull();
+  });
+
+  it("caps the live mailbox overlap cursor at now when a persisted message is future-dated", () => {
+    const source = readFileSync(new URL("./genieMailbox.ts", import.meta.url), "utf8");
+    expect(source).toContain("Math.min(latest.receivedAt.getTime(), now)");
+  });
+});
 
 describe("Genie personal email isolation", () => {
   it("requires the signed-in app user and mapped Genie salesperson email to match exactly", () => {
