@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
-import { readPersonalGenieMailbox } from "./genieMailboxRead";
+import { canStartLegacyGenieBackfillRow, readPersonalGenieMailbox } from "./genieMailboxRead";
 
 describe("Genie mailbox continuation", () => {
   it("continues past the first owner-scoped conversation page and ingests a later-page inbound message", async () => {
@@ -387,6 +387,27 @@ describe("Genie mailbox continuation", () => {
     expect(second.bounded).toBe(false);
   });
 
+  it("caps aggregate legacy provider work before the worker watchdog can be monopolised", () => {
+    expect(
+      canStartLegacyGenieBackfillRow({
+        providerRequests: 40,
+        elapsedMs: 5_000,
+      })
+    ).toBe(true);
+    expect(
+      canStartLegacyGenieBackfillRow({
+        providerRequests: 42,
+        elapsedMs: 5_000,
+      })
+    ).toBe(false);
+    expect(
+      canStartLegacyGenieBackfillRow({
+        providerRequests: 5,
+        elapsedMs: 15_000,
+      })
+    ).toBe(false);
+  });
+
   it("checkpoints one deep legacy conversation after three pages and resumes from that checkpoint", async () => {
     const response = (data: unknown) => ({
       ok: () => true,
@@ -557,6 +578,8 @@ describe("Genie mailbox continuation", () => {
     expect(mailbox).toContain("saveGenieActionableBackfillCursor");
     expect(mailbox).toContain("saveGenieLiveMailboxProgress");
     expect(reader).toContain("MAX_LIVE_DETAIL_READS_PER_CYCLE = 20");
+    expect(reader).toContain("MAX_PROVIDER_REQUESTS_PER_CYCLE = 48");
+    expect(reader).toContain("MAILBOX_REQUEST_TIMEOUT_MS = 10_000");
     expect(reader).toContain("threadOffset");
     expect(reader).toContain("emailIdOffset");
     expect(reader).toContain("liveReachedTimeBoundary");
