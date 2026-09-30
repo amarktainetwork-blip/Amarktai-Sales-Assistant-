@@ -300,7 +300,7 @@ export default function Today() {
               variant="outline"
               className="ml-3"
               onClick={() =>
-                navigate("/crm/" + crmConnection.connectedSystemId)
+                navigate("/crm")
               }
             >
               Reconnect CRM
