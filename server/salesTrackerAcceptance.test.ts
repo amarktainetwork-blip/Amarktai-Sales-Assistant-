@@ -73,6 +73,10 @@ describe("read-only Sales Tracker", () => {
     expect(server).toContain("reconnectRequired");
     expect(server).toContain("trustedMappings");
     expect(server).toContain("crmOpportunities.connectedSystemId");
+    expect(server).toContain("crmSyncCursors");
+    expect(server).toContain('crmSyncCursors.resourceType, "opportunities"');
+    expect(server).toContain("opportunityLastSuccessfulAt");
+    expect(server).toContain("opportunityLastError");
     expect(app).toContain('path="/sales-tracker"');
     expect(nav).toContain('label: "Sales Tracker"');
   });
