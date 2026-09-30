@@ -13,7 +13,7 @@ import {
 describe("current sales day relevance", () => {
   const now = new Date("2026-09-07T12:00:00.000Z");
 
-  it("surfaces current actionable replies and excludes old mailbox history", () => {
+  it("surfaces every message still marked actionable, regardless of mailbox age", () => {
     expect(
       isCurrentActionableInbound(
         {
@@ -31,7 +31,7 @@ describe("current sales day relevance", () => {
         },
         now
       )
-    ).toBe(false);
+    ).toBe(true);
     expect(
       isCurrentActionableInbound(
         {
