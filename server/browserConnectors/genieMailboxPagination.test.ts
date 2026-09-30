@@ -240,6 +240,153 @@ describe("Genie mailbox continuation", () => {
     expect(second.liveProgress).toBeUndefined();
   });
 
+  it("clears live progress once a saved source window reaches its time boundary", async () => {
+    const response = (data: unknown) => ({
+      ok: () => true,
+      status: () => 200,
+      json: async () => data,
+    });
+    const oldConversation = {
+      id: "old-conversation",
+      contactId: "old-contact",
+      locationId: "loc",
+      assignedTo: "owner",
+      lastMessageDate: "2026-09-17T08:59:59Z",
+    };
+    const get = vi.fn(async (url: string) => {
+      if (url.includes("/conversations/search"))
+        throw new Error("saved snapshot should finish without a new search");
+      throw new Error(`unexpected GET ${url}`);
+    });
+    const post = vi.fn(async () =>
+      response({ search: { conversations: [] } })
+    );
+    const page = {
+      url: () => "https://genie.test/v2/location/loc/contacts",
+      evaluate: async () => "token",
+      context: () => ({ request: { get, post } }),
+    } as any;
+
+    const result = await readPersonalGenieMailbox({
+      page,
+      ownerExternalId: "owner",
+      mailboxEmail: "advisor@example.test",
+      since: new Date("2026-09-17T09:00:00Z"),
+      liveProgress: {
+        sourceSince: "2026-09-17T09:00:00.000Z",
+        conversations: [oldConversation],
+        conversationIndex: 0,
+      },
+    });
+
+    expect(result.checked).toBe(1);
+    expect(result.liveProgress).toBeUndefined();
+    expect(result.bounded).toBe(false);
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it("bounds email detail reads within one page and resumes at the exact email id", async () => {
+    const response = (data: unknown) => ({
+      ok: () => true,
+      status: () => 200,
+      json: async () => data,
+    });
+    const conversation = {
+      id: "email-heavy-conversation",
+      contactId: "email-heavy-contact",
+      locationId: "loc",
+      assignedTo: "owner",
+      lastMessageDate: "2026-09-17T10:30:00Z",
+    };
+    const emailIds = Array.from({ length: 25 }, (_, index) => `email-${index}`);
+    const thread = {
+      id: "email-thread",
+      type: 3,
+      locationId: "loc",
+      contactId: "email-heavy-contact",
+      conversationId: "email-heavy-conversation",
+      direction: "inbound",
+      dateAdded: "2026-09-17T10:20:00Z",
+      meta: { email: { messageIds: emailIds } },
+    };
+    const detailReads: string[] = [];
+    const get = vi.fn(async (url: string) => {
+      if (url.includes("/conversations/search"))
+        return response({ conversations: [conversation], total: 1 });
+      if (url.includes("/contacts/email-heavy-contact"))
+        return response({
+          contact: {
+            id: "email-heavy-contact",
+            locationId: "loc",
+            assignedTo: "owner",
+          },
+        });
+      if (url.endsWith("/conversations/email-heavy-conversation/messages"))
+        return response({
+          messages: { messages: [thread], nextPage: false },
+        });
+      if (url.includes("/conversations/messages/email/")) {
+        const emailId = url.split("/").pop()!;
+        detailReads.push(emailId);
+        return response({
+          emailMessage: {
+            id: emailId,
+            type: 3,
+            locationId: "loc",
+            contactId: "email-heavy-contact",
+            conversationId: "email-heavy-conversation",
+            direction: "inbound",
+            dateAdded: "2026-09-17T10:20:00Z",
+            from: "lead@example.test",
+            to: ["advisor@example.test"],
+            subject: "Course enquiry",
+            body: `Message ${emailId}`,
+            deleted: false,
+          },
+        });
+      }
+      throw new Error(`unexpected GET ${url}`);
+    });
+    const post = vi.fn(async () =>
+      response({ search: { conversations: [] } })
+    );
+    const page = {
+      url: () => "https://genie.test/v2/location/loc/contacts",
+      evaluate: async () => "token",
+      context: () => ({ request: { get, post } }),
+    } as any;
+
+    const first = await readPersonalGenieMailbox({
+      page,
+      ownerExternalId: "owner",
+      mailboxEmail: "advisor@example.test",
+      since: new Date("2026-09-17T09:00:00Z"),
+    });
+    expect(detailReads).toEqual(emailIds.slice(0, 20));
+    expect(first.records).toHaveLength(20);
+    expect(first.liveProgress).toMatchObject({
+      conversationIndex: 0,
+      threadOffset: 0,
+      emailIdOffset: 20,
+    });
+    expect(first.bounded).toBe(true);
+
+    detailReads.length = 0;
+    const second = await readPersonalGenieMailbox({
+      page,
+      ownerExternalId: "owner",
+      mailboxEmail: "advisor@example.test",
+      since: new Date("2026-09-17T09:00:00Z"),
+      liveProgress: first.liveProgress,
+    });
+    expect(detailReads).toEqual(emailIds.slice(20));
+    expect(second.records.map(record => record.externalMessageId)).toEqual(
+      emailIds.slice(20)
+    );
+    expect(second.liveProgress).toBeUndefined();
+    expect(second.bounded).toBe(false);
+  });
+
   it("checkpoints one deep legacy conversation after three pages and resumes from that checkpoint", async () => {
     const response = (data: unknown) => ({
       ok: () => true,
@@ -409,6 +556,10 @@ describe("Genie mailbox continuation", () => {
     expect(mailbox).toContain("upperBoundId");
     expect(mailbox).toContain("saveGenieActionableBackfillCursor");
     expect(mailbox).toContain("saveGenieLiveMailboxProgress");
+    expect(reader).toContain("MAX_LIVE_DETAIL_READS_PER_CYCLE = 20");
+    expect(reader).toContain("threadOffset");
+    expect(reader).toContain("emailIdOffset");
+    expect(reader).toContain("liveReachedTimeBoundary");
     expect(mailbox).not.toContain("cursor.upperBoundId > maxId");
     const syncStart = mailbox.indexOf("export async function syncGenieMailboxForUser");
     const audit = mailbox.indexOf(
