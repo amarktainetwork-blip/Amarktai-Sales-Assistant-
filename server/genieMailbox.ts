@@ -1,8 +1,9 @@
 import { isRetryableGenieMailboxRead } from "./genieMailboxRetry";
-import { readPersonalGenieMailbox } from "./browserConnectors/genieMailboxRead";
-import { and, asc, desc, eq, gt, gte, inArray } from "drizzle-orm";
+import { readPersonalGenieMailbox, type GenieLiveMailboxProgress } from "./browserConnectors/genieMailboxRead";
+import { and, asc, desc, eq, gt, gte, inArray, isNotNull, lte } from "drizzle-orm";
 import {
   assistantReminders,
+  crmSyncCursors,
   inboundMessages,
   organisationMembers,
   organisations,
@@ -26,7 +27,7 @@ import {
 import { withAuthenticatedBrowserSessionPage } from "./browserConnectors/browserCrmAdapter";
 
 const MAX_GENIE_MAILBOXES_PER_CYCLE = 50;
-const MAX_CONVERSATIONS_PER_SYNC = 20;
+const GENIE_ACTIONABLE_BACKFILL_BATCH_SIZE = 10;
 
 function normalizeEmail(value: string | null | undefined) {
   return value?.trim().toLowerCase() || "";
@@ -338,6 +339,234 @@ async function reconcileGenieVerifiedTaskCompletions(input: {
   return handled;
 }
 
+type GenieActionableBackfillCursor = {
+  afterId: number;
+  upperBoundId: number;
+};
+
+export function nextGenieActionableBackfillCursor(input: {
+  cursor: GenieActionableBackfillCursor;
+  rows: Array<{ id: number; externalMessageId: string }>;
+  attemptedExternalIds: string[];
+  incompleteExternalIds: string[];
+}) {
+  if (!input.rows.length)
+    return {
+      afterId: input.cursor.upperBoundId,
+      upperBoundId: input.cursor.upperBoundId,
+    };
+  const attempted = new Set(input.attemptedExternalIds);
+  const incomplete = new Set(input.incompleteExternalIds);
+  let afterId = input.cursor.afterId;
+  for (const row of input.rows) {
+    if (!attempted.has(row.externalMessageId)) break;
+    if (incomplete.has(row.externalMessageId)) break;
+    afterId = row.id;
+  }
+  return { afterId, upperBoundId: input.cursor.upperBoundId };
+}
+
+function genieActionableBackfillResourceType(userId: number) {
+  return `genie_mailbox_backfill_${userId}`;
+}
+
+export function parseGenieActionableBackfillCursor(
+  value: string | null | undefined
+): GenieActionableBackfillCursor {
+  try {
+    const parsed = JSON.parse(value || "{}") as Partial<GenieActionableBackfillCursor>;
+    const afterId = Number(parsed.afterId || 0);
+    const upperBoundId = Number(parsed.upperBoundId || 0);
+    return {
+      afterId: Number.isInteger(afterId) && afterId > 0 ? afterId : 0,
+      upperBoundId:
+        Number.isInteger(upperBoundId) && upperBoundId > 0 ? upperBoundId : 0,
+    };
+  } catch {
+    return { afterId: 0, upperBoundId: 0 };
+  }
+}
+
+async function selectGenieActionableBackfill(input: {
+  userId: number;
+  organisationId: number;
+  connectedSystemId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const resourceType = genieActionableBackfillResourceType(input.userId);
+  const [stored] = await db
+    .select({ cursor: crmSyncCursors.cursor })
+    .from(crmSyncCursors)
+    .where(
+      and(
+        eq(crmSyncCursors.connectedSystemId, input.connectedSystemId),
+        eq(crmSyncCursors.resourceType, resourceType)
+      )
+    )
+    .limit(1);
+
+  const eligible = and(
+    eq(inboundMessages.organisationId, input.organisationId),
+    eq(inboundMessages.mailboxUserId, input.userId),
+    eq(inboundMessages.connectedSystemId, input.connectedSystemId),
+    eq(inboundMessages.needsAction, true),
+    inArray(inboundMessages.channel, ["email", "sms", "chat"]),
+    isNotNull(inboundMessages.contactExternalId)
+  );
+  const [highest] = await db
+    .select({ id: inboundMessages.id })
+    .from(inboundMessages)
+    .where(eligible)
+    .orderBy(desc(inboundMessages.id))
+    .limit(1);
+  if (!highest)
+    return {
+      rows: [] as Array<{
+        id: number;
+        externalMessageId: string;
+        channel: string;
+        contactExternalId: string | null;
+        receivedAt: Date;
+        classification: unknown;
+      }>,
+      resourceType,
+      cursor: { afterId: 0, upperBoundId: 0 },
+    };
+
+  const maxId = highest.id;
+  let cursor = parseGenieActionableBackfillCursor(stored?.cursor);
+  if (cursor.upperBoundId <= 0 || cursor.afterId >= cursor.upperBoundId)
+    cursor = { afterId: 0, upperBoundId: maxId };
+
+  const rows = await db
+    .select({
+      id: inboundMessages.id,
+      externalMessageId: inboundMessages.externalMessageId,
+      channel: inboundMessages.channel,
+      contactExternalId: inboundMessages.contactExternalId,
+      receivedAt: inboundMessages.receivedAt,
+      classification: inboundMessages.classification,
+    })
+    .from(inboundMessages)
+    .where(
+      and(
+        eligible,
+        gt(inboundMessages.id, cursor.afterId),
+        lte(inboundMessages.id, cursor.upperBoundId)
+      )
+    )
+    .orderBy(asc(inboundMessages.id))
+    .limit(GENIE_ACTIONABLE_BACKFILL_BATCH_SIZE);
+
+  return {
+    rows,
+    resourceType,
+    cursor,
+  };
+}
+
+async function saveGenieActionableBackfillCursor(input: {
+  connectedSystemId: number;
+  resourceType: string;
+  cursor: GenieActionableBackfillCursor;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const now = new Date();
+  const cursor = JSON.stringify(input.cursor);
+  await db
+    .insert(crmSyncCursors)
+    .values({
+      connectedSystemId: input.connectedSystemId,
+      resourceType: input.resourceType,
+      cursor,
+      sourceCheckpoint: now.toISOString(),
+      lastSuccessfulAt: now,
+      lastError: null,
+    })
+    .onDuplicateKeyUpdate({
+      set: {
+        cursor,
+        sourceCheckpoint: now.toISOString(),
+        lastSuccessfulAt: now,
+        lastError: null,
+      },
+    });
+}
+
+function genieLiveMailboxResourceType(userId: number) {
+  return `genie_mailbox_live_${userId}`;
+}
+
+function parseGenieLiveMailboxProgress(
+  value: string | null | undefined
+): GenieLiveMailboxProgress | undefined {
+  if (!value) return undefined;
+  try {
+    const parsed = JSON.parse(value) as GenieLiveMailboxProgress;
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      typeof parsed.sourceSince !== "string" ||
+      !Number.isFinite(Date.parse(parsed.sourceSince))
+    )
+      return undefined;
+    return parsed;
+  } catch {
+    return undefined;
+  }
+}
+
+async function loadGenieLiveMailboxProgress(input: {
+  userId: number;
+  connectedSystemId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const resourceType = genieLiveMailboxResourceType(input.userId);
+  const [stored] = await db
+    .select({ cursor: crmSyncCursors.cursor })
+    .from(crmSyncCursors)
+    .where(
+      and(
+        eq(crmSyncCursors.connectedSystemId, input.connectedSystemId),
+        eq(crmSyncCursors.resourceType, resourceType)
+      )
+    )
+    .limit(1);
+  return { resourceType, progress: parseGenieLiveMailboxProgress(stored?.cursor) };
+}
+
+async function saveGenieLiveMailboxProgress(input: {
+  connectedSystemId: number;
+  resourceType: string;
+  progress?: GenieLiveMailboxProgress;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const now = new Date();
+  const cursor = input.progress ? JSON.stringify(input.progress) : null;
+  await db
+    .insert(crmSyncCursors)
+    .values({
+      connectedSystemId: input.connectedSystemId,
+      resourceType: input.resourceType,
+      cursor,
+      sourceCheckpoint: now.toISOString(),
+      lastSuccessfulAt: now,
+      lastError: null,
+    })
+    .onDuplicateKeyUpdate({
+      set: {
+        cursor,
+        sourceCheckpoint: now.toISOString(),
+        lastSuccessfulAt: now,
+        lastError: null,
+      },
+    });
+}
+
 export async function syncGenieMailboxForUser(input: {
   userId: number;
   organisationId: number;
@@ -616,35 +845,12 @@ export async function syncGenieMailboxForUser(input: {
       .orderBy(asc(inboundMessages.receivedAt))
       .limit(1)
   )[0];
-  const actionableBackfill = (
-    await db
-      .select({
-        id: inboundMessages.id,
-        externalMessageId: inboundMessages.externalMessageId,
-        channel: inboundMessages.channel,
-        contactExternalId: inboundMessages.contactExternalId,
-        receivedAt: inboundMessages.receivedAt,
-        classification: inboundMessages.classification,
-      })
-      .from(inboundMessages)
-      .where(
-        and(
-          eq(inboundMessages.organisationId, input.organisationId),
-          eq(inboundMessages.mailboxUserId, input.userId),
-          eq(inboundMessages.connectedSystemId, system.id),
-          eq(inboundMessages.needsAction, true)
-        )
-      )
-      .orderBy(asc(inboundMessages.receivedAt))
-      .limit(60)
-  )
-    .filter(row =>
-      shouldTargetGenieActionableBackfill({
-        channel: row.channel,
-        contactExternalId: row.contactExternalId,
-      })
-    )
-    .slice(0, 20);
+  const actionableBackfillBatch = await selectGenieActionableBackfill({
+    userId: input.userId,
+    organisationId: input.organisationId,
+    connectedSystemId: system.id,
+  });
+  const actionableBackfill = actionableBackfillBatch.rows;
   const now = Date.now();
   const oneDayAgo = now - 24 * 60 * 60_000;
   // The fast mailbox lane only needs a small overlap behind the newest message.
@@ -656,6 +862,11 @@ export async function syncGenieMailboxForUser(input: {
   const latestOverlap = latestReceivedAt - 2 * 60_000;
   const since = new Date(Math.max(oneDayAgo, latestOverlap));
 
+  const liveMailboxCheckpoint = await loadGenieLiveMailboxProgress({
+    userId: input.userId,
+    connectedSystemId: system.id,
+  });
+
   const proof = await withAuthenticatedBrowserSessionPage({
     connection: adapterConnection,
     secret,
@@ -666,32 +877,124 @@ export async function syncGenieMailboxForUser(input: {
         ownerExternalId: scope.externalUserId,
         mailboxEmail: scope.email,
         since,
-        unresolved: actionableBackfill.map(row => ({
-          externalMessageId: row.externalMessageId,
-          channel: row.channel as "email" | "sms" | "chat",
-          contactExternalId: row.contactExternalId!,
-          receivedAt: row.receivedAt,
-        })),
+        liveProgress: liveMailboxCheckpoint.progress,
+        unresolved: actionableBackfill.map(row => {
+          const classification =
+            row.classification &&
+            typeof row.classification === "object" &&
+            !Array.isArray(row.classification)
+              ? (row.classification as Record<string, unknown>)
+              : {};
+          const saved =
+            classification.genieLegacyBackfillProgress &&
+            typeof classification.genieLegacyBackfillProgress === "object" &&
+            !Array.isArray(classification.genieLegacyBackfillProgress)
+              ? (classification.genieLegacyBackfillProgress as Record<string, unknown>)
+              : undefined;
+          const candidate =
+            saved?.candidateOutboundEvidence &&
+            typeof saved.candidateOutboundEvidence === "object" &&
+            !Array.isArray(saved.candidateOutboundEvidence)
+              ? (saved.candidateOutboundEvidence as Record<string, unknown>)
+              : undefined;
+          const sentAt = candidate?.sentAt
+            ? new Date(String(candidate.sentAt))
+            : undefined;
+          const backfillProgress =
+            saved &&
+            typeof saved.conversationExternalId === "string" &&
+            typeof saved.lastMessageId === "string"
+              ? {
+                  conversationExternalId: saved.conversationExternalId,
+                  lastMessageId: saved.lastMessageId,
+                  ...(candidate &&
+                  typeof candidate.externalMessageId === "string" &&
+                  ["email", "sms", "chat"].includes(String(candidate.channel)) &&
+                  typeof candidate.contactExternalId === "string" &&
+                  typeof candidate.conversationExternalId === "string" &&
+                  sentAt &&
+                  Number.isFinite(sentAt.getTime())
+                    ? {
+                        candidateOutboundEvidence: {
+                          externalMessageId: candidate.externalMessageId,
+                          channel: candidate.channel as "email" | "sms" | "chat",
+                          contactExternalId: candidate.contactExternalId,
+                          conversationExternalId: candidate.conversationExternalId,
+                          sentAt,
+                          inboundExternalMessageId:
+                            typeof candidate.inboundExternalMessageId === "string"
+                              ? candidate.inboundExternalMessageId
+                              : undefined,
+                          verifiedAfterInboundByThreadOrder:
+                            candidate.verifiedAfterInboundByThreadOrder === true,
+                        },
+                      }
+                    : {}),
+                }
+              : undefined;
+          return {
+            externalMessageId: row.externalMessageId,
+            channel: row.channel as "email" | "sms" | "chat",
+            contactExternalId: row.contactExternalId!,
+            receivedAt: row.receivedAt,
+            ...(backfillProgress ? { backfillProgress } : {}),
+          };
+        }),
       }),
   });
   checked = proof.checked;
-  for (const link of proof.legacyConversationLinks) {
-    const row = actionableBackfill.find(
-      candidate => candidate.externalMessageId === link.inboundExternalMessageId
-    );
-    if (!row) continue;
+
+  const legacyLinks = new Map(
+    proof.legacyConversationLinks.map(link => [
+      link.inboundExternalMessageId,
+      link,
+    ])
+  );
+  const legacyProgress = new Map(
+    proof.legacyBackfillProgress.map(progress => [
+      progress.inboundExternalMessageId,
+      progress,
+    ])
+  );
+  for (const row of actionableBackfill) {
+    const link = legacyLinks.get(row.externalMessageId);
+    const progress = legacyProgress.get(row.externalMessageId);
     const classification =
       row.classification &&
       typeof row.classification === "object" &&
       !Array.isArray(row.classification)
         ? (row.classification as Record<string, unknown>)
         : {};
+    const {
+      genieLegacyBackfillProgress: _previousBackfillProgress,
+      ...classificationWithoutProgress
+    } = classification;
+    if (!link && !progress && !_previousBackfillProgress) continue;
     await db
       .update(inboundMessages)
       .set({
         classification: {
-          ...classification,
-          conversationExternalId: link.conversationExternalId,
+          ...classificationWithoutProgress,
+          ...(link
+            ? { conversationExternalId: link.conversationExternalId }
+            : {}),
+          ...(progress
+            ? {
+                genieLegacyBackfillProgress: {
+                  conversationExternalId: progress.conversationExternalId,
+                  lastMessageId: progress.lastMessageId,
+                  ...(progress.candidateOutboundEvidence
+                    ? {
+                        candidateOutboundEvidence: {
+                          ...progress.candidateOutboundEvidence,
+                          sentAt:
+                            progress.candidateOutboundEvidence.sentAt.toISOString(),
+                        },
+                      }
+                    : {}),
+                },
+              }
+            : {}),
         },
       })
       .where(
@@ -703,6 +1006,7 @@ export async function syncGenieMailboxForUser(input: {
         )
       );
   }
+
   for (const message of proof.records) {
     try {
       const result = await ingestInboundMessage({
@@ -766,6 +1070,9 @@ export async function syncGenieMailboxForUser(input: {
       outboundEvidence: proof.outboundEvidence.length,
       legacyConversationLinks: proof.legacyConversationLinks.length,
       legacyActionableChecked: actionableBackfill.length,
+      legacyActionableAttempted:
+        proof.legacyBackfillAttemptedExternalIds.length,
+      mailboxProviderRequests: proof.providerRequests,
       draftsPrepared,
       contentRetained: false,
       exactEmailIsolation: true,
@@ -780,6 +1087,26 @@ export async function syncGenieMailboxForUser(input: {
       sourceSince: since.toISOString(),
       crmUserExternalId: scope.externalUserId,
     },
+  });
+
+  const nextBackfillCursor = nextGenieActionableBackfillCursor({
+    cursor: actionableBackfillBatch.cursor,
+    rows: actionableBackfill,
+    attemptedExternalIds: proof.legacyBackfillAttemptedExternalIds,
+    incompleteExternalIds: proof.legacyBackfillProgress.map(
+      progress => progress.inboundExternalMessageId
+    ),
+  });
+  await saveGenieActionableBackfillCursor({
+    connectedSystemId: system.id,
+    resourceType: actionableBackfillBatch.resourceType,
+    cursor: nextBackfillCursor,
+  });
+
+  await saveGenieLiveMailboxProgress({
+    connectedSystemId: system.id,
+    resourceType: liveMailboxCheckpoint.resourceType,
+    progress: proof.liveProgress,
   });
 
   return {
