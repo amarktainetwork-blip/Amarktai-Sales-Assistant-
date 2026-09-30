@@ -5,8 +5,8 @@ import { getDb } from "./db";
 import { getGenxReadiness } from "./genx";
 import { isLocalAuthMode } from "./localAuth";
 import { getSmtpReadiness } from "./smtp";
-import { probeSttHealth } from "./voice/stt";
-import { probeTtsHealth } from "./voice/tts";
+import { getSttConfiguration } from "./voice/stt";
+import { getTtsConfiguration } from "./voice/tts";
 
 export type ReadinessCheck = {
   ok: boolean;
@@ -42,12 +42,12 @@ async function staticAssetsCheck(): Promise<ReadinessCheck> {
 }
 
 export async function getProductionReadiness() {
-  const [database, staticAssets, sttProbe, ttsProbe] = await Promise.all([
+  const [database, staticAssets] = await Promise.all([
     databaseCheck(),
     staticAssetsCheck(),
-    probeSttHealth("en"),
-    probeTtsHealth(),
   ]);
+  const stt = getSttConfiguration();
+  const tts = getTtsConfiguration();
   const smtp = getSmtpReadiness();
   const genx = getGenxReadiness();
   const authOk = isLocalAuthMode() && configuredSecret("JWT_SECRET", 32) && configuredSecret("SECRET_KEY", 32);
@@ -58,19 +58,17 @@ export async function getProductionReadiness() {
     smtp: { ok: smtp.ready, state: smtp.ready ? "CONFIGURED_UNVERIFIED" : "NOT_CONFIGURED", detail: smtp.ready ? "Run the production integration verifier to prove the SMTP transport." : "SMTP is mandatory for 2FA, invitations and recovery." },
     genx: { ok: genx.configured, state: genx.configured ? "CONFIGURED_UNVERIFIED" : "NOT_CONFIGURED", detail: genx.configured ? "Run the production integration verifier to prove the model catalogue and inference path." : "GenX endpoint, key and default model are required." },
     stt: {
-      ok: sttProbe.ready,
-      state: sttProbe.ready ? "READY" : "DORMANT",
-      detail: sttProbe.ready
-        ? undefined
-        : `Live-call transcription is not currently warm: ${sttProbe.reason || "health probe failed"}.`,
+      ok: stt.configured || stt.fastEnglishConfigured,
+      state: stt.fastEnglishConfigured ? "CONFIGURED_WARM_LANE" : stt.configured ? "CONFIGURED_DORMANT" : "NOT_CONFIGURED",
+      detail:
+        "Voice runtime health is checked only by the Calls/Voice readiness endpoints so core platform readiness never waits on an optional voice service.",
       required: false,
     },
     tts: {
-      ok: ttsProbe.ready,
-      state: ttsProbe.ready ? "READY" : "DORMANT",
-      detail: ttsProbe.ready
-        ? undefined
-        : `Speech synthesis is dormant until a voice feature needs it: ${ttsProbe.reason || "health probe failed"}.`,
+      ok: tts.configured,
+      state: tts.configured ? "CONFIGURED_DORMANT" : "NOT_CONFIGURED",
+      detail:
+        "Speech synthesis is optional for core platform readiness and is probed only when a voice feature is used.",
       required: false,
     },
   };
