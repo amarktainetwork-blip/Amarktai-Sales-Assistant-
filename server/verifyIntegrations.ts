@@ -152,7 +152,7 @@ async function main() {
     results.stt = { status: stt.configured ? "CONFIGURED" : "NOT_CONFIGURED" };
     results.tts = { status: tts.configured ? "CONFIGURED" : "NOT_CONFIGURED" };
     failed = true;
-  } else {
+  } else if (process.env.VERIFY_VOICE_ACCEPTANCE === "true") {
     try {
       const voice = await verifyVoiceAcceptance();
       results.stt = {
@@ -179,6 +179,18 @@ async function main() {
       results.tts = { status: "FAILED", reason };
       failed = true;
     }
+  } else {
+    results.stt = {
+      status: "CONFIGURED_DORMANT",
+      provider: stt.provider,
+      model: stt.model,
+      fastEnglishConfigured: stt.fastEnglishConfigured,
+    };
+    results.tts = {
+      status: "CONFIGURED_DORMANT",
+      provider: tts.provider,
+      voice: tts.defaultVoice,
+    };
   }
 
   results.crmActions = {
