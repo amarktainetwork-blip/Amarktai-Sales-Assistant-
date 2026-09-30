@@ -569,6 +569,7 @@ export async function getTodayWork(input: {
           contactExternalId: crmActivities.contactExternalId,
           ownerExternalId: crmActivities.ownerExternalId,
           activityType: crmActivities.activityType,
+          body: crmActivities.body,
           occurredAt: crmActivities.occurredAt,
           raw: crmActivities.raw,
         })
@@ -722,12 +723,53 @@ export async function getTodayWork(input: {
       ].filter((value): value is string => Boolean(value))
     )
   );
+  const assignedTaskContactPairs = Array.from(
+    new Map(
+      [...overdueTasks, ...dueToday]
+        .filter(
+          (task): task is typeof task & { contactExternalId: string } =>
+            Boolean(task.contactExternalId)
+        )
+        .map(task => [
+          `${task.connectedSystemId}:${task.contactExternalId}`,
+          {
+            connectedSystemId: task.connectedSystemId,
+            externalId: task.contactExternalId,
+          },
+        ])
+    ).values()
+  );
+  const assignedTaskContactScope = assignedTaskContactPairs.length
+    ? or(
+        ...assignedTaskContactPairs.map(pair =>
+          and(
+            eq(crmContacts.connectedSystemId, pair.connectedSystemId),
+            eq(crmContacts.externalId, pair.externalId)
+          )
+        )
+      )
+    : undefined;
+  const workContactAccess = assignedTaskContactScope
+    ? or(
+        personalOwnerSql(
+          input,
+          crmContacts.connectedSystemId,
+          crmContacts.ownerExternalId
+        ),
+        assignedTaskContactScope
+      )
+    : personalOwnerSql(
+        input,
+        crmContacts.connectedSystemId,
+        crmContacts.ownerExternalId
+      );
   const workContacts = workContactExternalIds.length
     ? await db
         .select({
           id: crmContacts.id,
           connectedSystemId: crmContacts.connectedSystemId,
           externalId: crmContacts.externalId,
+          ownerExternalId: crmContacts.ownerExternalId,
           firstName: crmContacts.firstName,
           lastName: crmContacts.lastName,
           email: crmContacts.email,
@@ -740,11 +782,7 @@ export async function getTodayWork(input: {
           and(
             eq(crmContacts.organisationId, input.organisationId),
             inArray(crmContacts.externalId, workContactExternalIds),
-            personalOwnerSql(
-              input,
-              crmContacts.connectedSystemId,
-              crmContacts.ownerExternalId
-            )
+            workContactAccess
           )
         )
     : [];
@@ -874,13 +912,16 @@ export async function getTodayWork(input: {
       const supportLabel = internalSupport
         ? ("Internal / colleague support" as const)
         : null;
-      const latestActivity = task.contactExternalId
-        ? recentTaskActivities.find(
-            activity =>
-              activity.connectedSystemId === task.connectedSystemId &&
-              activity.contactExternalId === task.contactExternalId
-          )
-        : undefined;
+      const relatedActivities = task.contactExternalId
+        ? recentTaskActivities
+            .filter(
+              activity =>
+                activity.connectedSystemId === task.connectedSystemId &&
+                activity.contactExternalId === task.contactExternalId
+            )
+            .slice(0, 3)
+        : [];
+      const latestActivity = relatedActivities[0];
       const relatedOpportunity = task.contactExternalId
         ? scopedOpportunities.find(
             opportunity =>
@@ -909,12 +950,23 @@ export async function getTodayWork(input: {
         interestValues: relatedContact?.interestValues ?? [],
         tags: relatedContact?.tags ?? [],
         contactPreference: relatedContact?.contactPreference ?? null,
+        personallyOwned: relatedContact
+          ? belongsToUser(
+              relatedContact.ownerExternalId,
+              relatedContact.connectedSystemId
+            )
+          : false,
         latestActivity: latestActivity
           ? {
               activityType: latestActivity.activityType,
               occurredAt: latestActivity.occurredAt,
             }
           : null,
+        recentActivities: relatedActivities.map(activity => ({
+          activityType: activity.activityType,
+          occurredAt: activity.occurredAt,
+          body: activity.body?.trim().slice(0, 240) || null,
+        })),
         opportunity: relatedOpportunity
           ? {
               name: relatedOpportunity.name,
