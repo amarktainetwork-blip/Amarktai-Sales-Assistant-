@@ -8,6 +8,7 @@ import {
   shouldTargetGenieActionableBackfill,
   inboundReminderMessageId,
 } from "./genieMailbox";
+import { verifiedContactActionCoversInbound } from "./salesWork";
 import {
   readPersonalGenieMailbox,
   genieConversationChannel,
@@ -32,6 +33,49 @@ const baseEmail = {
   subject: "Question",
   body: "Please call me.",
 };
+
+describe("verified customer-work lifecycle", () => {
+  it("lets a verified same-customer task completion retire only inbound work that existed before the action", () => {
+    const evidence = {
+      contactExternalId: "contact-1",
+      handledAt: new Date("2026-09-30T08:26:45.000Z"),
+    };
+    expect(
+      verifiedContactActionCoversInbound(
+        {
+          contactExternalId: "contact-1",
+          receivedAt: new Date("2026-09-30T07:59:02.000Z"),
+        },
+        evidence
+      )
+    ).toBe(true);
+    expect(
+      verifiedContactActionCoversInbound(
+        {
+          contactExternalId: "contact-1",
+          receivedAt: new Date("2026-09-30T12:29:21.000Z"),
+        },
+        evidence
+      )
+    ).toBe(false);
+    expect(
+      verifiedContactActionCoversInbound(
+        {
+          contactExternalId: "contact-other",
+          receivedAt: new Date("2026-09-30T07:59:02.000Z"),
+        },
+        evidence
+      )
+    ).toBe(false);
+  });
+
+  it("reconciles owner-scoped CRM task-completion evidence through the shared inbound resolver", () => {
+    const source = readFileSync(new URL("./genieMailbox.ts", import.meta.url), "utf8");
+    expect(source).toContain('eq(salesActivityEvents.eventType, "task_completed_in_crm")');
+    expect(source).toContain("resolveInboundWorkAfterVerifiedContact");
+    expect(source).toContain("handledTaskCompletions");
+  });
+});
 
 describe("Genie persisted timestamp repair", () => {
   it("repairs impossible future inbound timestamps and their local work/activity mirrors", () => {
