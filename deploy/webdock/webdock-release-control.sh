@@ -53,6 +53,8 @@ fail() {
 
 storage_attribution() {
   echo "=== STORAGE ATTRIBUTION ==="
+  echo "--- filesystem root paths ---"
+  du -xsh /* 2>/dev/null | sort -h || true
   echo "--- major filesystem paths ---"
   du -xsh /opt /var/lib/docker /var/log /var/cache /var/backups /home /root 2>/dev/null | sort -h || true
   echo "--- /opt detail ---"
@@ -60,6 +62,9 @@ storage_attribution() {
   echo "--- persistent release-state detail ---"
   ls -ld /opt/amarktai-sales/deploy/webdock/{config,files,backups} 2>/dev/null || true
   du -x -h --max-depth=2 /opt/amarktai-sales/deploy/webdock 2>/dev/null | sort -h | tail -60 || true
+  echo "--- backup files and generations ---"
+  du -a -h --max-depth=1 /opt/amarktai-sales/deploy/webdock/backups 2>/dev/null | sort -h | tail -60 || true
+  find /opt/amarktai-sales/deploy/webdock/backups -maxdepth 1 -type f -printf '%TY-%Tm-%TdT%TH:%TM:%TSZ %s %p\n' 2>/dev/null | sort || true
   echo "--- Docker storage detail ---"
   du -x -h --max-depth=2 /var/lib/docker 2>/dev/null | sort -h | tail -60 || true
   echo "--- Docker named-volume data ---"
@@ -72,6 +77,8 @@ storage_attribution() {
   echo "--- journal and package cache ---"
   journalctl --disk-usage 2>/dev/null || true
   du -xsh /var/cache/apt /var/lib/apt/lists 2>/dev/null || true
+  echo "--- Docker image inventory ---"
+  docker image ls --format '{{.Repository}}:{{.Tag}}|{{.ID}}|{{.Size}}' 2>/dev/null | sort || true
   echo "--- repository checkouts under /opt ---"
   find /opt -maxdepth 5 -type d -name .git -print 2>/dev/null | sort || true
 }
