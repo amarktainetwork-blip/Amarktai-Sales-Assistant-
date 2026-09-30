@@ -28,10 +28,10 @@ finish_report() {
   {
     echo
     echo "=== CONTROL REPORT HEAD ==="
-    head -c 140000 "$FULL_LOG" 2>/dev/null || true
+    head -c 82000 "$FULL_LOG" 2>/dev/null || true
     echo
     echo "=== CONTROL REPORT TAIL ==="
-    tail -c 140000 "$FULL_LOG" 2>/dev/null || true
+    tail -c 12000 "$FULL_LOG" 2>/dev/null || true
     echo
     echo "control_exit_code=$rc"
   } > "$REPORT"
