@@ -429,6 +429,7 @@ fi
 echo "=== RELEASE PRE-FLIGHT ==="
 git_admin fetch --quiet "$PUBLIC_REPO_URL" main
 FETCHED_SHA="$(git_admin rev-parse FETCH_HEAD)"
+git_admin update-ref refs/remotes/origin/main "$FETCHED_SHA"
 echo "fetched_main=$FETCHED_SHA"
 [ "$FETCHED_SHA" = "$TARGET_SHA" ] || fail "public GitHub main does not equal frozen target SHA"
 
