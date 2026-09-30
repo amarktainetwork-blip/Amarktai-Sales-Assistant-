@@ -16,13 +16,20 @@ const MAILBOX_REQUEST_TIMEOUT_MS = 10_000;
 export function canStartLegacyGenieBackfillRow(input: {
   providerRequests: number;
   elapsedMs: number;
+  attemptedRows: number;
 }) {
-  return (
-    input.elapsedMs < LEGACY_BACKFILL_START_DEADLINE_MS &&
+  const requestBudgetAvailable =
     input.providerRequests +
-        MAX_LEGACY_PROVIDER_REQUESTS_PER_ROW +
-        FINAL_UNREAD_REQUEST_RESERVE <=
-      MAX_PROVIDER_REQUESTS_PER_CYCLE
+      MAX_LEGACY_PROVIDER_REQUESTS_PER_ROW +
+      FINAL_UNREAD_REQUEST_RESERVE <=
+    MAX_PROVIDER_REQUESTS_PER_CYCLE;
+  if (!requestBudgetAvailable) return false;
+  // A busy live scan must not consume the entire legacy-reconciliation window.
+  // Reserve capacity for one old actionable row whenever the request budget
+  // still permits it; only additional legacy rows obey the elapsed-time cutoff.
+  return (
+    input.attemptedRows === 0 ||
+    input.elapsedMs < LEGACY_BACKFILL_START_DEADLINE_MS
   );
 }
 const id = (value: unknown) =>
@@ -796,6 +803,7 @@ export async function readPersonalGenieMailbox(input: {
       !canStartLegacyGenieBackfillRow({
         providerRequests,
         elapsedMs: Date.now() - cycleStartedAt,
+        attemptedRows: legacyBackfillAttemptedExternalIds.length,
       })
     )
       break;
