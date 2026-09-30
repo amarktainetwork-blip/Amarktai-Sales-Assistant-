@@ -540,7 +540,7 @@ describe("Genie personal email isolation", () => {
       "utf8"
     );
     expect(reader).toContain("threadMessageIds.includes(externalMessageId)");
-    expect(reader).toContain("const newerThreads: any[] = []");
+    expect(reader).toContain("let candidateOutboundEvidence");
     expect(reader).toContain("inboundExternalMessageId: externalMessageId");
     expect(reader).toContain("verifiedAfterInboundByThreadOrder: true");
     expect(reader).not.toContain("crossedInboundTime");
