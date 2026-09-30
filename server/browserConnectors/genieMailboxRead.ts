@@ -7,6 +7,11 @@ const MAX_LIVE_CONVERSATIONS_PER_CYCLE = 10;
 const MAX_LIVE_MESSAGE_PAGES_PER_CYCLE = 6;
 const MAX_LIVE_DETAIL_READS_PER_CYCLE = 20;
 const MAX_LEGACY_BACKFILL_PAGES_PER_CYCLE = 3;
+const MAX_PROVIDER_REQUESTS_PER_CYCLE = 48;
+const MAX_LEGACY_PROVIDER_REQUESTS_PER_ROW = 6;
+const FINAL_UNREAD_REQUEST_RESERVE = 1;
+const LEGACY_BACKFILL_START_DEADLINE_MS = 15_000;
+const MAILBOX_REQUEST_TIMEOUT_MS = 10_000;
 const id = (value: unknown) =>
   typeof value === "string" && /^[A-Za-z0-9_-]{1,180}$/.test(value)
     ? value
@@ -332,6 +337,8 @@ export async function readPersonalGenieMailbox(input: {
     });
   let token = await getToken();
   let refreshed = false;
+  const cycleStartedAt = Date.now();
+  let providerRequests = 0;
   const read = async (
     path: string,
     bootstrap = false,
@@ -339,6 +346,7 @@ export async function readPersonalGenieMailbox(input: {
   ) => {
     const call = () => {
       if (!token) throw Error("CRM_BROWSER_REAUTHENTICATION_REQUIRED");
+      providerRequests += 1;
       const options = {
         headers: {
           "content-type": "application/json",
@@ -347,7 +355,7 @@ export async function readPersonalGenieMailbox(input: {
           version: "2021-07-28",
           "token-id": token,
         },
-        timeout: 30000,
+        timeout: MAILBOX_REQUEST_TIMEOUT_MS,
       };
       return bootstrap
         ? input.page.context().request.post(BOOTSTRAP, {
@@ -493,6 +501,7 @@ export async function readPersonalGenieMailbox(input: {
   const outboundEvidence = new Map<string, PersonalGenieOutboundEvidence>();
   const legacyConversationLinks = new Map<string, LegacyGenieConversationLink>();
   const legacyBackfillProgress = new Map<string, LegacyGenieBackfillProgress>();
+  const legacyBackfillAttemptedExternalIds: string[] = [];
   const visited = new Set<string>();
   let rejectedForeignRecipientCount = 0;
   let rejectedForeignOwnerCount = 0;
@@ -770,6 +779,15 @@ export async function readPersonalGenieMailbox(input: {
     }
   }
   for (const unresolved of input.unresolved || []) {
+    if (
+      Date.now() - cycleStartedAt >= LEGACY_BACKFILL_START_DEADLINE_MS ||
+      providerRequests +
+          MAX_LEGACY_PROVIDER_REQUESTS_PER_ROW +
+          FINAL_UNREAD_REQUEST_RESERVE >
+        MAX_PROVIDER_REQUESTS_PER_CYCLE
+    )
+      break;
+    legacyBackfillAttemptedExternalIds.push(unresolved.externalMessageId);
     const externalMessageId = id(unresolved.externalMessageId);
     const contactExternalId = id(unresolved.contactExternalId);
     if (
@@ -918,6 +936,8 @@ export async function readPersonalGenieMailbox(input: {
         ...progress,
       })
     ),
+    legacyBackfillAttemptedExternalIds,
+    providerRequests,
     liveProgress,
     checked,
     examined,
