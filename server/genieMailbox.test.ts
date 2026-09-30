@@ -8,6 +8,7 @@ import {
   shouldTargetGenieActionableBackfill,
   taskCompletionEvidenceCanResolveInbound,
   inboundReminderMessageId,
+  nextGenieActionableBackfillCursor,
 } from "./genieMailbox";
 import { verifiedContactActionCoversInbound } from "./salesWork";
 import {
@@ -34,6 +35,47 @@ const baseEmail = {
   subject: "Question",
   body: "Please call me.",
 };
+
+describe("Genie actionable backfill cursor", () => {
+  const rows = [
+    { id: 10, externalMessageId: "a" },
+    { id: 20, externalMessageId: "b" },
+    { id: 30, externalMessageId: "c" },
+  ];
+
+  it("advances only through the attempted safe prefix", () => {
+    expect(
+      nextGenieActionableBackfillCursor({
+        cursor: { afterId: 0, upperBoundId: 30 },
+        rows,
+        attemptedExternalIds: ["a", "b"],
+        incompleteExternalIds: [],
+      })
+    ).toEqual({ afterId: 20, upperBoundId: 30 });
+  });
+
+  it("does not advance past an incomplete resumable row", () => {
+    expect(
+      nextGenieActionableBackfillCursor({
+        cursor: { afterId: 0, upperBoundId: 30 },
+        rows,
+        attemptedExternalIds: ["a", "b", "c"],
+        incompleteExternalIds: ["b"],
+      })
+    ).toEqual({ afterId: 10, upperBoundId: 30 });
+  });
+
+  it("closes an exhausted snapshot gap so the next cycle can wrap", () => {
+    expect(
+      nextGenieActionableBackfillCursor({
+        cursor: { afterId: 20, upperBoundId: 30 },
+        rows: [],
+        attemptedExternalIds: [],
+        incompleteExternalIds: [],
+      })
+    ).toEqual({ afterId: 30, upperBoundId: 30 });
+  });
+});
 
 describe("verified task-completion evidence", () => {
   it("accepts communication work and rejects unrelated completed tasks", () => {
