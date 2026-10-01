@@ -1,3 +1,4 @@
+import { readOwnerScopedGenieContactDetail } from "./genieContactDetail";
 import { readGenieContactHistory } from "./genieContactHistory";
 import { readOwnerScopedGenieOpportunities } from "./genieOpportunityScope";
 import { readGenieCommunicationTemplates } from "./genieTemplateRead";
@@ -1359,52 +1360,63 @@ async function runDeterministicOperation(input: RunOperationInput) {
               ? payload.ownerDisplayName.trim()
               : "";
           const execution =
-            input.provider === "genie" &&
-            operationKey === "contact.sync" &&
-            ownerExternalId
-              ? await executeOwnerScopedGenieContactRead({
+            input.provider === "genie" && operationKey === "contact.read"
+              ? await readOwnerScopedGenieContactDetail({
                   page,
-                  script,
-                  ownerExternalId,
-                  runScript,
+                  requested:
+                    typeof payload.externalId === "string"
+                      ? payload.externalId
+                      : "",
+                  ownerExternalId: input.secret.crmUserExternalId || "",
                   assertControl: () => assertBrowserOperationCanRun(owner),
-                  latestPageOnly: payload.fastPath === true,
                 })
               : input.provider === "genie" &&
-                  operationKey === "task.sync" &&
-                  isCanonicalGenieTaskGridScript(script)
-                ? await executeGenieTaskGridRead({
+                  operationKey === "contact.sync" &&
+                  ownerExternalId
+                ? await executeOwnerScopedGenieContactRead({
                     page,
                     script,
+                    ownerExternalId,
                     runScript,
                     assertControl: () => assertBrowserOperationCanRun(owner),
-                    ownerExternalId,
-                    ownerDisplayName,
+                    latestPageOnly: payload.fastPath === true,
                   })
                 : input.provider === "genie" &&
-                    operationKey === "opportunity.sync" &&
-                    ownerExternalId
-                  ? await readOwnerScopedGenieOpportunities({
+                    operationKey === "task.sync" &&
+                    isCanonicalGenieTaskGridScript(script)
+                  ? await executeGenieTaskGridRead({
                       page,
-                      ownerExternalId,
+                      script,
+                      runScript,
                       assertControl: () => assertBrowserOperationCanRun(owner),
-                      continuation:
-                        typeof payload.cursor === "string"
-                          ? payload.cursor
-                          : undefined,
-                      maxPages:
-                        typeof payload.opportunityMaxPages === "number"
-                          ? payload.opportunityMaxPages
-                          : undefined,
+                      ownerExternalId,
+                      ownerDisplayName,
                     })
                   : input.provider === "genie" &&
-                      operationKey === "custom.read.templates"
-                    ? await readGenieCommunicationTemplates({
+                      operationKey === "opportunity.sync" &&
+                      ownerExternalId
+                    ? await readOwnerScopedGenieOpportunities({
                         page,
+                        ownerExternalId,
                         assertControl: () =>
                           assertBrowserOperationCanRun(owner),
+                        continuation:
+                          typeof payload.cursor === "string"
+                            ? payload.cursor
+                            : undefined,
+                        maxPages:
+                          typeof payload.opportunityMaxPages === "number"
+                            ? payload.opportunityMaxPages
+                            : undefined,
                       })
-                    : await runScript(page, script, "execute");
+                    : input.provider === "genie" &&
+                        operationKey === "custom.read.templates"
+                      ? await readGenieCommunicationTemplates({
+                          page,
+                          assertControl: () =>
+                            assertBrowserOperationCanRun(owner),
+                        })
+                      : await runScript(page, script, "execute");
           if (!execution.success) throw new Error(execution.detail);
           execution.data.actualPageUrl = page.url();
           if (learned?.definition.mode === "write") {
