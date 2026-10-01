@@ -1509,8 +1509,7 @@ async function testOperations(input: {
       const parsed = serialized ? (JSON.parse(serialized) as unknown) : [];
       const baseUrl = resultData.actualPageUrl || system.baseUrl || undefined;
       derivedContact = deterministicContactVerificationSeed(parsed, baseUrl);
-      if (!derivedContact)
-        throw new Error("VERIFICATION_TARGET_NOT_DERIVED");
+      if (!derivedContact) throw new Error("VERIFICATION_TARGET_NOT_DERIVED");
     }
   };
   for (const operation of selected.slice(0, 80)) {
@@ -1971,11 +1970,45 @@ export async function automaticCommissioningStatus(input: {
   return presentCommissioningJob(job);
 }
 
+export function terminalCommissioningRecoveryStatus(input: {
+  completedAt: Date | null;
+  lastError: string | null;
+  progress: Record<string, unknown>;
+}): "ready" | "needs_attention" {
+  const accounting = input.progress.capabilityAccounting;
+  return input.completedAt &&
+    !input.lastError &&
+    input.progress.humanStatus === "Ready" &&
+    accounting &&
+    typeof accounting === "object" &&
+    (accounting as { complete?: boolean }).complete === true
+    ? "ready"
+    : "needs_attention";
+}
+
 export async function advanceAutomaticCommissioning(jobId: number) {
   const candidate = await loadJob(jobId);
   if (!candidate || !["queued", "running"].includes(candidate.status)) return;
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
+  // READY is terminal: a stale queued/running status must never restart a
+  // completed job, claim the browser or block the owner's routine source reads.
+  if (candidate.state === "READY") {
+    await db
+      .update(crmCommissioningJobs)
+      .set({
+        status: terminalCommissioningRecoveryStatus(candidate),
+        leaseExpiresAt: null,
+      })
+      .where(
+        and(
+          eq(crmCommissioningJobs.id, jobId),
+          eq(crmCommissioningJobs.state, "READY"),
+          inArray(crmCommissioningJobs.status, ["queued", "running"])
+        )
+      );
+    return;
+  }
   const claimed = await db
     .update(crmCommissioningJobs)
     .set({
