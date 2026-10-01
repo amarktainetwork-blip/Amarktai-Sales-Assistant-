@@ -66,8 +66,19 @@ export async function readOwnerScopedGenieContactDetail(input: {
   const readToken = () =>
     input.page.evaluate(async () => {
       const getter = (window as any).getToken;
-      const raw = typeof getter === "function" ? await getter() : "";
-      return typeof raw === "string" ? raw.trim() : "";
+      let liveToken = "";
+      try {
+        const raw = typeof getter === "function" ? await getter() : "";
+        liveToken = typeof raw === "string" ? raw.trim() : "";
+      } catch {
+        // Older authenticated Genie sessions may retain a storage token.
+      }
+      return (
+        liveToken ||
+        localStorage.getItem("refreshedToken")?.trim() ||
+        sessionStorage.getItem("refreshedToken")?.trim() ||
+        ""
+      );
     });
   let token = await readToken();
   if (!token) {
@@ -93,16 +104,19 @@ export async function readOwnerScopedGenieContactDetail(input: {
       );
   };
   let response = await get();
-  if (response.status() === 401) {
+  // Rotating Genie credentials can briefly produce 401/403 before the
+  // browser's token refresh is visible. Retry only two bounded GET reads.
+  for (const delayMs of [250, 500]) {
+    if (![401, 403].includes(response.status())) break;
+    await new Promise(resolve => setTimeout(resolve, delayMs));
     const refreshed = await readToken();
-    if (!refreshed || refreshed === token)
-      throw new Error("CRM_BROWSER_REAUTHENTICATION_REQUIRED");
+    if (!refreshed) throw new Error("CRM_BROWSER_REAUTHENTICATION_REQUIRED");
     token = refreshed;
     response = await get();
   }
   if (!response.ok())
     throw new Error(
-      response.status() === 401
+      [401, 403].includes(response.status())
         ? "CRM_BROWSER_REAUTHENTICATION_REQUIRED"
         : `GENIE_CONTACT_HTTP_${response.status()}`
     );

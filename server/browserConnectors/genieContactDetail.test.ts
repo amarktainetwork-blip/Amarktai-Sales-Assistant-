@@ -126,3 +126,64 @@ describe("exact owner-scoped Genie contact detail GET", () => {
     ).rejects.toThrow("OWNER_SCOPE_VIOLATION");
   });
 });
+
+it("accepts an older authenticated storage-backed token without disclosing it", async () => {
+  vi.stubGlobal("window", { getToken: () => "" });
+  vi.stubGlobal("localStorage", {
+    getItem: (key: string) =>
+      key === "refreshedToken" ? "storage-token" : null,
+  });
+  vi.stubGlobal("sessionStorage", { getItem: () => null });
+  try {
+    const { page, get } = mockPage();
+    page.evaluate = async (fn: () => Promise<string>) => fn();
+    const result = await readOwnerScopedGenieContactDetail({
+      page,
+      requested: target,
+      ownerExternalId: "amelia",
+      assertControl: () => {},
+    });
+    expect(result.success).toBe(true);
+    expect((get.mock.calls as any)[0][1].headers["token-id"]).toBe(
+      "storage-token"
+    );
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+it.each([401, 403])("retries a transient %s with GET only", async status => {
+  const { page } = mockPage();
+  const get = vi
+    .fn()
+    .mockResolvedValueOnce({ status: () => status, ok: () => false })
+    .mockResolvedValueOnce({
+      status: () => 200,
+      ok: () => true,
+      json: async () => ({ contact: found }),
+    });
+  page.context = () => ({ request: { get } }) as any;
+  const result = await readOwnerScopedGenieContactDetail({
+    page,
+    requested: target,
+    ownerExternalId: "amelia",
+    assertControl: () => {},
+  });
+  expect(result.success).toBe(true);
+  expect(get).toHaveBeenCalledTimes(2);
+});
+
+it("fails closed after a bounded series of rejected GETs", async () => {
+  const { page } = mockPage();
+  const get = vi.fn(async () => ({ status: () => 403, ok: () => false }));
+  page.context = () => ({ request: { get } }) as any;
+  await expect(
+    readOwnerScopedGenieContactDetail({
+      page,
+      requested: target,
+      ownerExternalId: "amelia",
+      assertControl: () => {},
+    })
+  ).rejects.toThrow("REAUTHENTICATION_REQUIRED");
+  expect(get).toHaveBeenCalledTimes(3);
+});
