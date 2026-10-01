@@ -53,7 +53,7 @@ chmod 600 "$SQL_DEST" "$SQL_DEST.sha256" "$MANIFEST" 2>/dev/null || true
 
 # Keep ordinary deployment backups bounded. Named milestone/manual directories
 # are intentionally excluded from this retention pass.
-KEEP_STANDARD_BACKUPS="${AMARKTAI_BACKUP_KEEP_STANDARD:-20}"
+KEEP_STANDARD_BACKUPS="${AMARKTAI_BACKUP_KEEP_STANDARD:-3}"
 case "$KEEP_STANDARD_BACKUPS" in
   ''|*[!0-9]*) echo "AMARKTAI_BACKUP_KEEP_STANDARD must be a non-negative integer." >&2; exit 1 ;;
 esac
