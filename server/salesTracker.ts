@@ -8,6 +8,8 @@ import {
   crmSyncCursors,
 } from "../drizzle/schema";
 import { getDb } from "./db";
+import { maximumCompletedOpportunitySnapshotAgeMs } from "./crm/opportunitySnapshotCadence";
+import { completedOpportunitySnapshotIsCurrent, salesTrackerNeedsReconnect } from "./salesTrackerSourceFreshness";
 import { requireOrganisationMembership } from "./organisation";
 import { uniqueOwnerMappingsBySystem } from "./customerData";
 
@@ -138,21 +140,23 @@ export async function getSalesTracker(input: {
   const opportunityCursorBySystem = new Map(
     opportunityCursors.map(cursor => [cursor.connectedSystemId, cursor])
   );
+  const now = new Date();
+  const maximumSnapshotAgeMs = maximumCompletedOpportunitySnapshotAgeMs();
   const sourceCurrent =
     trustedMappings.length > 0 &&
     sourceSystems.length === trustedMappings.length &&
     sourceSystems.every(system => {
       const cursor = opportunityCursorBySystem.get(system.id);
-      return (
-        ["ready", "limited_permissions"].includes(system.status) &&
-        Boolean(cursor?.lastSuccessfulAt) &&
-        !cursor?.lastError
-      );
+      return completedOpportunitySnapshotIsCurrent({
+        sourceStatus: system.status,
+        lastSuccessfulAt: cursor?.lastSuccessfulAt,
+        lastError: cursor?.lastError,
+        now,
+        maximumAgeMs: maximumSnapshotAgeMs,
+      });
     });
   const reconnectRequired = sourceSystems.some(system =>
-    ["authentication_expired", "needs_attention", "error"].includes(
-      system.status
-    )
+    salesTrackerNeedsReconnect(system.status)
   );
   const wonStages = new Set(
     stageMappings
@@ -216,7 +220,6 @@ export async function getSalesTracker(input: {
     ])
   );
   const timezone = membership.timezone || "UTC";
-  const now = new Date();
   const today = dayKey(now, timezone);
   const weekStart = startOfWeekKey(now, timezone);
   const month = monthKey(now, timezone);
