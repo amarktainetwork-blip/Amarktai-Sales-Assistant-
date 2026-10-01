@@ -1319,8 +1319,10 @@ async function syncConnectedSystemRoutineDeterministically(input: {
     }
   } else {
     summary.contacts = 0;
-    failures.contacts = "SOURCE_OPERATION_NOT_LIVE_PROVEN: contact.sync";
-    failureTransient.contacts = true;
+    if (connection.allowedReadCapabilities.includes("contacts.read")) {
+      failures.contacts = "SOURCE_OPERATION_NOT_LIVE_PROVEN: contact.sync";
+      failureTransient.contacts = true;
+    }
   }
 
   // Reconcile exact customer history immediately after the newest contacts.
@@ -1431,8 +1433,10 @@ async function syncConnectedSystemRoutineDeterministically(input: {
     }
   } else {
     summary.tasks = 0;
-    failures.tasks = "SOURCE_OPERATION_NOT_LIVE_PROVEN: task.sync";
-    failureTransient.tasks = true;
+    if (connection.allowedReadCapabilities.includes("tasks.read")) {
+      failures.tasks = "SOURCE_OPERATION_NOT_LIVE_PROVEN: task.sync";
+      failureTransient.tasks = true;
+    }
   }
 
   summary.opportunitySnapshot = opportunitySnapshotDue ? "due" : "cached";
@@ -1501,7 +1505,10 @@ async function syncConnectedSystemRoutineDeterministically(input: {
     }
   } else {
     summary.opportunities = 0;
-    if (opportunitySnapshotDue) {
+    if (
+      opportunitySnapshotDue &&
+      connection.allowedReadCapabilities.includes("opportunities.read")
+    ) {
       failures.opportunities =
         "SOURCE_OPERATION_NOT_LIVE_PROVEN: opportunity.sync";
       failureTransient.opportunities = true;
