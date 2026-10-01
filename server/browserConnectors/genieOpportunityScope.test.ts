@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   normalizeGenieOpportunities,
   readOwnerScopedGenieOpportunities,
@@ -23,6 +23,75 @@ const pipelines = [
   },
 ];
 describe("Genie opportunity read", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  it("reads the browser's existing retained authenticated state when the SPA getter is unavailable", async () => {
+    vi.stubGlobal("window", { getToken: async () => "" });
+    vi.stubGlobal("localStorage", { getItem: (key: string) => key === "refreshedToken" ? "saved-session" : null });
+    vi.stubGlobal("sessionStorage", { getItem: () => null });
+    const get = vi.fn(async (url: string) => ({
+      status: () => 200, ok: () => true,
+      json: async () => url.includes("pipelines")
+        ? { pipelines }
+        : { opportunities: [row("1")], meta: { total: 1 } },
+    }));
+    const result = await readOwnerScopedGenieOpportunities({
+      page: {
+        url: () => "https://example.test/v2/location/loc/opportunities",
+        evaluate: async (read: () => Promise<string>) => read(),
+        context: () => ({ request: { get } }),
+      } as any,
+      ownerExternalId: "owner", assertControl: () => {}, maxPages: 1,
+    });
+    expect(result.data.snapshotComplete).toBe("true");
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(get.mock.calls[1][0]).toContain("assigned_to=owner");
+  });
+  it("retries only the same owner-scoped GET across independent token rotations", async () => {
+    const tokens = ["initial", "pipeline-current", "search-current"];
+    let tokenReads = 0;
+    const get = vi.fn(async (url: string, options: any) => {
+      const supplied = options.headers["token-id"];
+      const status = url.includes("pipelines")
+        ? supplied === "initial" ? 401 : 200
+        : supplied === "pipeline-current" ? 403 : 200;
+      return {
+        status: () => status, ok: () => status === 200,
+        json: async () => url.includes("pipelines")
+          ? { pipelines }
+          : { opportunities: [row("1")], meta: { total: 1 } },
+      };
+    });
+    const result = await readOwnerScopedGenieOpportunities({
+      page: {
+        url: () => "https://example.test/v2/location/loc/opportunities",
+        evaluate: async () => tokens[Math.min(tokenReads++, 2)],
+        context: () => ({ request: { get } }),
+      } as any,
+      ownerExternalId: "owner", assertControl: () => {}, maxPages: 1,
+    });
+    expect(result.data.snapshotComplete).toBe("true");
+    expect(get.mock.calls.map(([, option]) => option.headers["token-id"])).toEqual(
+      ["initial", "pipeline-current", "pipeline-current", "search-current"]
+    );
+    const ownerReads = get.mock.calls.filter(([url]) => url.includes("/opportunities/search?"));
+    expect(ownerReads).toHaveLength(2);
+    expect(ownerReads.every(([url]) => new URL(url).searchParams.get("assigned_to") === "owner")).toBe(true);
+  });
+  it("does not certify an unauthorised source response after bounded retries", async () => {
+    const get = vi.fn(async () => ({
+      status: () => 403, ok: () => false,
+      json: async () => ({ message: "sign in required" }),
+    }));
+    await expect(readOwnerScopedGenieOpportunities({
+      page: {
+        url: () => "https://example.test/v2/location/loc/opportunities",
+        evaluate: async () => "previous-browser-session",
+        context: () => ({ request: { get } }),
+      } as any,
+      ownerExternalId: "owner", assertControl: () => {}, maxPages: 1,
+    })).rejects.toThrow("CRM_BROWSER_REAUTHENTICATION_REQUIRED");
+    expect(get).toHaveBeenCalledTimes(3);
+  });
   it("normalizes only proven identifiers, relations and lifecycle", () => {
     expect(
       normalizeGenieOpportunities(
@@ -105,7 +174,8 @@ describe("Genie opportunity read", () => {
     const url = new URL(get.mock.calls[2][0]);
     expect(url.searchParams.has("page")).toBe(false);
     expect(url.searchParams.get("assigned_to")).toBe("owner");
-    expect(control).toHaveBeenCalledTimes(3);
+    // Verify the browser-control lease before and after each authenticated GET.
+    expect(control).toHaveBeenCalledTimes(6);
   });
   it("resumes bounded exact-owner batches without asserting premature snapshot completion", async () => {
     const get = vi.fn(async (url: string) => ({
