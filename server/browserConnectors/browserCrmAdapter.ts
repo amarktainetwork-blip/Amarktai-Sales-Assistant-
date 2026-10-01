@@ -1388,12 +1388,21 @@ async function runDeterministicOperation(input: RunOperationInput) {
                       page,
                       ownerExternalId,
                       assertControl: () => assertBrowserOperationCanRun(owner),
+                      continuation:
+                        typeof payload.cursor === "string"
+                          ? payload.cursor
+                          : undefined,
+                      maxPages:
+                        typeof payload.opportunityMaxPages === "number"
+                          ? payload.opportunityMaxPages
+                          : undefined,
                     })
                   : input.provider === "genie" &&
                       operationKey === "custom.read.templates"
                     ? await readGenieCommunicationTemplates({
                         page,
-                        assertControl: () => assertBrowserOperationCanRun(owner),
+                        assertControl: () =>
+                          assertBrowserOperationCanRun(owner),
                       })
                     : await runScript(page, script, "execute");
           if (!execution.success) throw new Error(execution.detail);
@@ -1999,11 +2008,13 @@ export function browserCrmAdapter(
               )
             )
               throw new Error("CRM_READ_REPROOF_CAPABILITY_NOT_AUTHORIZED");
+            // Re-proof only needs an exact-owner structured GET, not another
+            // full 5,700+ row drain that can starve the normal task worker.
             const result = await list(
               "syncOpportunities",
               opportunity,
               input,
-              {},
+              { opportunityMaxPages: 5 },
               verification
             );
             return { recordCount: result.records.length };
@@ -2011,7 +2022,15 @@ export function browserCrmAdapter(
         }
       : {}),
     syncCompanies: input => list("syncCompanies", company, input),
-    syncOpportunities: input => list("syncOpportunities", opportunity, input),
+    syncOpportunities: input =>
+      list(
+        "syncOpportunities",
+        opportunity,
+        input,
+        input.boundedSnapshotPages
+          ? { opportunityMaxPages: input.boundedSnapshotPages }
+          : {}
+      ),
     syncTasks: input => list("syncTasks", task, input),
     syncActivities: input => list("syncActivities", activity, input),
     searchContacts: async input => {
