@@ -35,6 +35,25 @@ export function crmSyncIntervalMs(raw = process.env.CRM_SYNC_INTERVAL_MS) {
     : DEFAULT_CRM_SYNC_INTERVAL_MS;
 }
 
+/**
+ * A busy browser should not be hammered by every 10-second scheduling poll,
+ * but retrying on the same 60-second phase can collide with the mailbox forever.
+ * Use a bounded 30-second retry to break that phase lock without raising load.
+ */
+export function crmTransientRetrySchedule(
+  now = new Date(),
+  intervalMs = crmSyncIntervalMs()
+) {
+  const delayMs = Math.min(
+    intervalMs,
+    Math.max(30_000, Math.floor(intervalMs / 2))
+  );
+  return {
+    delayMs,
+    lastStartedAt: new Date(now.valueOf() - (intervalMs - delayMs)),
+  };
+}
+
 export function crmBackgroundSyncMode(connectionMethod: string) {
   return ["browser", "sidecar"].includes(connectionMethod)
     ? ("routine" as const)
@@ -420,8 +439,7 @@ export async function runConnectionScopedCrmSyncCycle(now = new Date()) {
         .where(eq(connectorSyncJobs.id, row.job.id));
     } catch (error) {
       if (isTransientCrmSyncFailure(error)) {
-        // Preserve a normal retry interval instead of resetting lastStartedAt:
-        // a temporarily busy Chromium must not be hammered every 10 seconds.
+        const retry = crmTransientRetrySchedule();
         console.warn(
           JSON.stringify({
             event: "crm_sync_read_deferred",
@@ -430,7 +448,7 @@ export async function runConnectionScopedCrmSyncCycle(now = new Date()) {
               error instanceof Error
                 ? error.message.slice(0, 300)
                 : String(error).slice(0, 300),
-            nextAttemptAfterMs: crmSyncIntervalMs(),
+            nextAttemptAfterMs: retry.delayMs,
             externalWritePerformed: false,
           })
         );
@@ -438,7 +456,7 @@ export async function runConnectionScopedCrmSyncCycle(now = new Date()) {
           .update(connectorSyncJobs)
           .set({
             status: row.job.status === "error" ? "error" : "ready",
-            lastStartedAt: new Date(),
+            lastStartedAt: retry.lastStartedAt,
           })
           .where(eq(connectorSyncJobs.id, row.job.id));
         continue;

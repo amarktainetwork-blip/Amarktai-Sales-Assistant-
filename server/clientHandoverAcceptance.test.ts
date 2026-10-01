@@ -108,7 +108,8 @@ describe("client handover acceptance guards", () => {
   it("bounds transient CRM retries and refreshes immediately after reauthentication", () => {
     expect(syncWorker).toContain("DEFAULT_CRM_SYNC_INTERVAL_MS = 30_000");
     expect(syncWorker).toContain("CRM_SYNC_POLL_INTERVAL_MS = 10_000");
-    expect(syncWorker).toContain("lastStartedAt: new Date()");
+    expect(syncWorker).toContain("lastStartedAt: retry.lastStartedAt");
+    expect(syncWorker).toContain("crmTransientRetrySchedule");
     expect(syncWorker).not.toContain("lastStartedAt: null");
     expect(crmSync).toContain("reconcileNewLeadAlertsFromTaskHistory");
     expect(syncWorker).toContain('"authentication_expired"');

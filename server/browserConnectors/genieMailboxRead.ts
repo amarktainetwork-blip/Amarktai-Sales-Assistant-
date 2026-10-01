@@ -14,6 +14,9 @@ const MAX_LEGACY_PROVIDER_REQUESTS_PER_ROW = 6;
 const FINAL_UNREAD_REQUEST_RESERVE = 1;
 const LEGACY_BACKFILL_START_DEADLINE_MS = 15_000;
 const MAILBOX_REQUEST_TIMEOUT_MS = 10_000;
+// Release the shared CRM browser at exact continuation boundaries when
+// provider latency is high; keep the established count and pagination budgets.
+const MAILBOX_LIVE_READ_TIME_BUDGET_MS = 15_000;
 
 export function canStartLegacyGenieBackfillRow(input: {
   providerRequests: number;
@@ -47,7 +50,11 @@ export function normalizeGenieMessageTime(
 ) {
   const sourceMs = genieSourceTimeMs(value);
   if (sourceMs === null) return null;
-  return new Date(sourceMs > observedAtMs + MAX_SOURCE_FUTURE_SKEW_MS ? observedAtMs : sourceMs);
+  return new Date(
+    sourceMs > observedAtMs + MAX_SOURCE_FUTURE_SKEW_MS
+      ? observedAtMs
+      : sourceMs
+  );
 }
 export function mailboxAddress(value: unknown) {
   if (typeof value !== "string") return "";
@@ -155,7 +162,6 @@ export type PersonalGenieOutboundEvidence = {
   verifiedAfterInboundByThreadOrder?: boolean;
 };
 
-
 export type LegacyGenieBackfillProgress = {
   conversationExternalId: string;
   lastMessageId: string;
@@ -205,7 +211,9 @@ export function legacyGenieOutboundEvidence(
       Boolean(sentAt && sentAt.getTime() > input.receivedAt.getTime());
   if (!sentAt || !followsInbound) return undefined;
   const channel =
-    Number(thread.type) === 3 ? ("email" as const) : genieConversationChannel(thread);
+    Number(thread.type) === 3
+      ? ("email" as const)
+      : genieConversationChannel(thread);
   if (!channel || channel !== input.channel) return undefined;
   const externalMessageId =
     id(thread.id) ||
@@ -404,7 +412,9 @@ export async function readPersonalGenieMailbox(input: {
     return response.json();
   };
   const requestedSince = input.since.getTime();
-  const progressSince = Date.parse(String(input.liveProgress?.sourceSince || ""));
+  const progressSince = Date.parse(
+    String(input.liveProgress?.sourceSince || "")
+  );
   const since =
     Number.isFinite(progressSince) && progressSince > 0
       ? progressSince
@@ -521,7 +531,10 @@ export async function readPersonalGenieMailbox(input: {
       );
       nextSearchCursor =
         rawNext === undefined ? undefined : String(rawNext).trim() || undefined;
-      if (!nextSearchCursor && Number(search.total || 0) > pageConversations.length) {
+      if (
+        !nextSearchCursor &&
+        Number(search.total || 0) > pageConversations.length
+      ) {
         // Some Genie search versions expose a total but no nextPage/nextCursor.
         // Overlap the boundary by one millisecond rather than skipping equal-time
         // conversations. An unchanging page is rejected by the ID guard above.
@@ -536,7 +549,10 @@ export async function readPersonalGenieMailbox(input: {
 
   const records = new Map<string, PersonalGenieMailboxRecord>();
   const outboundEvidence = new Map<string, PersonalGenieOutboundEvidence>();
-  const legacyConversationLinks = new Map<string, LegacyGenieConversationLink>();
+  const legacyConversationLinks = new Map<
+    string,
+    LegacyGenieConversationLink
+  >();
   const legacyBackfillProgress = new Map<string, LegacyGenieBackfillProgress>();
   const legacyBackfillAttemptedExternalIds: string[] = [];
   const visited = new Set<string>();
@@ -555,7 +571,11 @@ export async function readPersonalGenieMailbox(input: {
     index < conversations.length;
     index++
   ) {
-    if (liveConversationsProcessed >= MAX_LIVE_CONVERSATIONS_PER_CYCLE) {
+    if (
+      liveConversationsProcessed >= MAX_LIVE_CONVERSATIONS_PER_CYCLE ||
+      (liveConversationsProcessed > 0 &&
+        Date.now() - cycleStartedAt >= MAILBOX_LIVE_READ_TIME_BUDGET_MS)
+    ) {
       liveProgress = {
         sourceSince: new Date(since).toISOString(),
         conversations: conversations.map(snapshotConversation),
@@ -615,12 +635,14 @@ export async function readPersonalGenieMailbox(input: {
 
     let lastMessageId =
       index === conversationIndex ? resumedLastMessageId : undefined;
-    let threadOffset =
-      index === conversationIndex ? resumedThreadOffset : 0;
-    let emailIdOffset =
-      index === conversationIndex ? resumedEmailIdOffset : 0;
+    let threadOffset = index === conversationIndex ? resumedThreadOffset : 0;
+    let emailIdOffset = index === conversationIndex ? resumedEmailIdOffset : 0;
     for (;;) {
-      if (liveMessagePagesRead >= MAX_LIVE_MESSAGE_PAGES_PER_CYCLE) {
+      if (
+        liveMessagePagesRead >= MAX_LIVE_MESSAGE_PAGES_PER_CYCLE ||
+        (liveMessagePagesRead > 0 &&
+          Date.now() - cycleStartedAt >= MAILBOX_LIVE_READ_TIME_BUDGET_MS)
+      ) {
         liveProgress = {
           sourceSince: new Date(since).toISOString(),
           conversations: conversations.map(snapshotConversation),
@@ -671,7 +693,11 @@ export async function readPersonalGenieMailbox(input: {
           ) {
             const emailId = emailIds[emailIndex];
             if (!id(emailId) || visited.has(emailId)) continue;
-            if (liveDetailReads >= MAX_LIVE_DETAIL_READS_PER_CYCLE) {
+            if (
+              liveDetailReads >= MAX_LIVE_DETAIL_READS_PER_CYCLE ||
+              (liveDetailReads > 0 &&
+                Date.now() - cycleStartedAt >= MAILBOX_LIVE_READ_TIME_BUDGET_MS)
+            ) {
               liveProgress = {
                 sourceSince: new Date(since).toISOString(),
                 conversations: conversations.map(snapshotConversation),
@@ -731,12 +757,7 @@ export async function readPersonalGenieMailbox(input: {
           const messageId = id(thread.id);
           const channel = genieConversationChannel(thread);
           const sentAt = normalizeGenieMessageTime(thread.dateAdded);
-          if (
-            messageId &&
-            channel &&
-            sentAt &&
-            sentAt.getTime() >= since
-          )
+          if (messageId && channel && sentAt && sentAt.getTime() >= since)
             outboundEvidence.set(messageId, {
               externalMessageId: messageId,
               channel,
@@ -749,7 +770,11 @@ export async function readPersonalGenieMailbox(input: {
         if (thread.direction !== "inbound") continue;
         const messageId = id(thread.id);
         if (!messageId || visited.has(messageId)) continue;
-        if (liveDetailReads >= MAX_LIVE_DETAIL_READS_PER_CYCLE) {
+        if (
+          liveDetailReads >= MAX_LIVE_DETAIL_READS_PER_CYCLE ||
+          (liveDetailReads > 0 &&
+            Date.now() - cycleStartedAt >= MAILBOX_LIVE_READ_TIME_BUDGET_MS)
+        ) {
           liveProgress = {
             sourceSince: new Date(since).toISOString(),
             conversations: conversations.map(snapshotConversation),
@@ -783,7 +808,11 @@ export async function readPersonalGenieMailbox(input: {
       const next = id(result.messages.lastMessageId);
       if (!next || next === lastMessageId)
         throw Error("GENIE_MAILBOX_CURSOR_STALLED");
-      if (liveMessagePagesRead >= MAX_LIVE_MESSAGE_PAGES_PER_CYCLE) {
+      if (
+        liveMessagePagesRead >= MAX_LIVE_MESSAGE_PAGES_PER_CYCLE ||
+        (liveMessagePagesRead > 0 &&
+          Date.now() - cycleStartedAt >= MAILBOX_LIVE_READ_TIME_BUDGET_MS)
+      ) {
         liveProgress = {
           sourceSince: new Date(since).toISOString(),
           conversations: conversations.map(snapshotConversation),
@@ -812,7 +841,9 @@ export async function readPersonalGenieMailbox(input: {
       liveProgress = {
         sourceSince: new Date(since).toISOString(),
         searchCursor: nextSearchCursor,
-        previousPageIds: conversations.map(conversation => String(conversation.id)),
+        previousPageIds: conversations.map(conversation =>
+          String(conversation.id)
+        ),
       };
     }
   }
@@ -943,7 +974,10 @@ export async function readPersonalGenieMailbox(input: {
       const next = id(result.messages.lastMessageId);
       if (!next || next === lastMessageId)
         throw Error("GENIE_MAILBOX_CURSOR_STALLED");
-      if (pagesRead >= MAX_LEGACY_BACKFILL_PAGES_PER_CYCLE) {
+      if (
+        pagesRead >= MAX_LEGACY_BACKFILL_PAGES_PER_CYCLE ||
+        Date.now() - cycleStartedAt >= MAILBOX_LIVE_READ_TIME_BUDGET_MS
+      ) {
         legacyBackfillProgress.set(externalMessageId, {
           conversationExternalId: conversationId,
           lastMessageId: next,

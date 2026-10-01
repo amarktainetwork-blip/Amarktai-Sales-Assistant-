@@ -5,6 +5,7 @@ import {
   DEFAULT_CRM_SYNC_INTERVAL_MS,
   crmSyncIntervalMs,
   crmSyncJobIsDue,
+  crmTransientRetrySchedule,
   crmBackgroundSyncMode,
   shouldAttemptReadOnlyAuthenticationRecovery,
 } from "./syncWorker";
@@ -17,6 +18,27 @@ describe("connection-scoped CRM synchronization schedule", () => {
     expect(crmSyncIntervalMs("60000")).toBe(60_000);
     expect(crmSyncIntervalMs("1000")).toBe(30_000);
     expect(crmSyncIntervalMs("not-a-number")).toBe(30_000);
+  });
+
+  it("breaks same-minute mailbox phase lock without allowing 10-second retry hammering", () => {
+    const start = new Date("2026-10-01T14:20:00Z");
+    const retry = crmTransientRetrySchedule(start, 60_000);
+    expect(retry.delayMs).toBe(30_000);
+    expect(
+      crmSyncJobIsDue(
+        retry.lastStartedAt,
+        new Date(start.valueOf() + 29_000),
+        60_000
+      )
+    ).toBe(false);
+    expect(
+      crmSyncJobIsDue(
+        retry.lastStartedAt,
+        new Date(start.valueOf() + 30_000),
+        60_000
+      )
+    ).toBe(true);
+    expect(crmTransientRetrySchedule(start, 30_000).delayMs).toBe(30_000);
   });
 
   it("uses bounded routine reconciliation for browser CRMs without duplicating lead-watcher history reads", () => {
