@@ -1,5 +1,5 @@
 import { reconcileCurrentBrowserReadiness } from "./currentReadiness";
-import { isTransientBrowserExecutionFailure } from "../browserConnectors/runtimeFailure";
+import { classifyBrowserRuntimeFailure, isTransientBrowserExecutionFailure } from "../browserConnectors/runtimeFailure";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   crmActivities,
@@ -76,6 +76,22 @@ export function routineOpportunitySnapshotDue(
     !lastSuccessfulAt ||
     now.valueOf() - lastSuccessfulAt.valueOf() >= safeInterval
   );
+}
+
+/**
+ * An expired authenticated browser session does not invalidate a previously
+ * owner-scoped, source-validated pagination checkpoint. Retain it for a normal
+ * reauthenticated read, while recording lastError and keeping readiness false.
+ * A target/owner/schema failure may invalidate continuation and must fail closed.
+ */
+export function opportunityContinuationAfterReadFailure(
+  error: unknown,
+  existingCursor: string | null | undefined
+): string | undefined {
+  const message = error instanceof Error ? error.message : String(error || "");
+  return classifyBrowserRuntimeFailure(message) === "authentication"
+    ? existingCursor || undefined
+    : undefined;
 }
 
 /** One immutable cursor namespace per internal mapped user, never per shared connection. */
@@ -1613,7 +1629,7 @@ async function syncConnectedSystemRoutineDeterministically(input: {
         await saveCursor(
           system.id,
           opportunityCursorKey,
-          undefined,
+          opportunityContinuationAfterReadFailure(error, existing?.cursor),
           detail,
           existing?.lastSuccessfulAt
         );
