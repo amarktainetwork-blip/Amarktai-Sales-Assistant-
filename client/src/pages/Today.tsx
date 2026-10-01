@@ -55,6 +55,7 @@ export default function Today() {
   >("now");
   const [showAll, setShowAll] = useState(false);
   const [workCategoryFilter, setWorkCategoryFilter] = useState("all");
+  const [showNewLeadQueue, setShowNewLeadQueue] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const refreshInFlight = useRef(false);
 
@@ -87,12 +88,13 @@ export default function Today() {
   const remainingQueue = current
     ? callQueue.filter(item => item.key !== current.key)
     : callQueue;
-  const queueForView =
-    workCategoryFilter === "all"
+  // This queue is reconciled from exact NEW_LEAD and CRM first-call truth,
+  // even when a reply or follow-up is the primary coalesced action.
+  const queueForView = showNewLeadQueue
+    ? newLeads
+    : workCategoryFilter === "all"
       ? remainingQueue
-      : callQueue.filter(
-          item => item.workCategoryKey === workCategoryFilter
-        );
+      : callQueue.filter(item => item.workCategoryKey === workCategoryFilter);
   const visibleQueue = showAll ? queueForView : queueForView.slice(0, 7);
   const workspace = today.data?.workspace.organisation;
   const crmConnection = today.data?.crmConnection;
@@ -263,7 +265,11 @@ export default function Today() {
                     ? "Remaining customer work is protected for the correct contact windows."
                     : "Nothing needs immediate attention. Upcoming commitments stay protected below."}
             </p>
-            <p className="amk-day__freshness">
+            <p
+              className="amk-day__freshness"
+              data-status={today.data?.freshness.status ?? "not_synchronized"}
+              role="status"
+            >
               <span aria-hidden="true" />
               {freshnessLabel(
                 today.data?.freshness.lastSuccessfulAt,
@@ -308,50 +314,80 @@ export default function Today() {
             </Button>
           </div>
         ) : today.data?.requiresOwnerMapping ? (
-          <div className="amk-day__warning">
+          <div className="amk-day__warning" role="status">
             Your CRM salesperson record needs to be matched before a personal
             work queue can be shown safely.
+          </div>
+        ) : today.data?.freshness.status === "attention" ? (
+          <div className="amk-day__warning" role="status">
+            <strong>Your CRM data is delayed.</strong> The last verified source
+            read is shown above. Cached work is not being presented as a fresh
+            Genie update.
+            <Button variant="outline" className="ml-3" onClick={() => navigate("/crm")}>
+              Check CRM connection
+            </Button>
           </div>
         ) : null}
 
         <section data-today-summary className="amk-day__pulse">
           <div className="amk-day__pulse-intro">
-            <span>Today at a glance</span>
-            <strong>
-              {taskMetrics?.overdue ?? 0} overdue · {taskMetrics?.dueToday ?? 0} due today
-            </strong>
+            <span>At a glance</span>
+            <strong>Your day, in one place.</strong>
+            <small>Only work that still needs attention.</small>
           </div>
-          <div className="amk-day__metric">
+          <button type="button" className="amk-day__metric amk-day__metric--link" onClick={() => navigate("/inbox")}>
             <strong aria-hidden="true">{inboundNeedsAction}</strong>
             <span className="sr-only">{inboundNeedsAction} replies</span>
-            <span aria-hidden="true">Replies</span>
-          </div>
-          <div className="amk-day__metric">
+            <span aria-hidden="true">Replies to handle <ArrowRight size={13} /></span>
+          </button>
+          <button type="button" className="amk-day__metric amk-day__metric--link" onClick={() => {
+            setWorkCategoryFilter("all");
+            setShowNewLeadQueue(true);
+            setShowAll(true);
+            setActiveTab("queue");
+          }}>
             <strong>{newLeads.length}</strong>
-            <span>New leads</span>
-          </div>
-          <div className="amk-day__metric">
+            <span>New leads <ArrowRight size={13} aria-hidden="true" /></span>
+          </button>
+          <div className="amk-day__metric" title="Overdue source CRM tasks">
             <strong>{taskMetrics?.overdue ?? 0}</strong>
-            <span>Overdue</span>
+            <span>Overdue CRM tasks</span>
           </div>
-          <div className="amk-day__metric">
+          <div className="amk-day__metric" title="Source CRM tasks due today">
             <strong>{taskMetrics?.dueToday ?? 0}</strong>
             <span>Due today</span>
           </div>
-          <div className="amk-day__flow" aria-label="Sales workflow">
-            <span>Today</span>
-            <ArrowRight />
-            <span>Context</span>
-            <ArrowRight />
-            <span>Call</span>
-            <ArrowRight />
-            <span>AmarktAI prepares admin</span>
-            <ArrowRight />
-            <span>Review</span>
-            <ArrowRight />
-            <span>Next</span>
-          </div>
         </section>
+
+        {workGroups.length ? (
+          <section className="amk-day__categories" aria-label="Work by category" data-today-categories>
+            <div className="amk-day__categories-heading">
+              <div>
+                <p className="amk-day__eyebrow">Find your next move</p>
+                <h2>Work by stage</h2>
+              </div>
+              <p>Choose a category to see the exact people in that queue.</p>
+            </div>
+            <div className="amk-day__category-list">
+              {workGroups.map(group => (
+                <button key={group.key} type="button"
+                  className={activeTab === "queue" && !showNewLeadQueue && workCategoryFilter === group.key ? "is-active" : ""}
+                  aria-pressed={activeTab === "queue" && !showNewLeadQueue && workCategoryFilter === group.key}
+                  onClick={() => {
+                    setWorkCategoryFilter(group.key);
+                    setShowNewLeadQueue(false);
+                    setShowAll(true);
+                    setActiveTab("queue");
+                  }}>
+                  <span>{group.label}</span>
+                  <strong>{group.count}</strong>
+                  <small>{group.availableNow} available now</small>
+                  <ArrowRight size={15} aria-hidden="true" />
+                </button>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         <div
           className="amk-day__tabs"
@@ -359,11 +395,11 @@ export default function Today() {
           aria-label="Today workspace"
         >
           {[
-            ["now", "Now", callQueue.length],
-            ["queue", "Queue", Math.max(0, callQueue.length - 1)],
+            ["now", "Now", current ? 1 : 0],
+            ["queue", "Queue", showNewLeadQueue ? newLeads.length : workCategoryFilter === "all" ? remainingQueue.length : queueForView.length],
             ["schedule", "Schedule", upcoming.length],
             ["replies", "Replies", replyQueue.length],
-            ["internal", "Internal", assignedTaskExceptions.length],
+            ["internal", "Internal tasks", assignedTaskExceptions.length],
           ].map(([key, label, count]) => (
             <button
               key={String(key)}
@@ -717,9 +753,9 @@ export default function Today() {
                       Customer context
                     </Button>
                     <p className="amk-now__promise">
-                      After the conversation, AmarktAI prepares the follow-up
-                      and CRM admin for Review. Nothing customer-facing is sent
-                      from here.
+                      After the conversation, AmarktAI prepares admin for
+                      Review: follow-up and CRM work. Nothing customer-facing
+                      is sent from here.
                     </p>
                   </aside>
                 </div>
@@ -783,42 +819,18 @@ export default function Today() {
                   </div>
                   <span>{queueForView.length} shown</span>
                 </div>
-                {workGroups.length ? (
-                  <div
-                    aria-label="Filter work by category"
-                    className="mb-4 flex flex-wrap gap-2"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setWorkCategoryFilter("all");
-                        setShowAll(false);
-                      }}
-                      className={`rounded-full border px-3 py-1.5 text-sm font-semibold transition ${
-                        workCategoryFilter === "all"
-                          ? "border-[#315FDD] bg-[#E2E8FA] text-[#244FC3]"
-                          : "border-[#D7E0E4] bg-white text-[#596A75] hover:bg-[#F3F1EC]"
-                      }`}
-                    >
-                      All · {callQueue.length}
-                    </button>
-                    {workGroups.map(group => (
-                      <button
-                        key={group.key}
-                        type="button"
-                        onClick={() => {
-                          setWorkCategoryFilter(group.key);
-                          setShowAll(true);
-                        }}
-                        className={`rounded-full border px-3 py-1.5 text-sm font-semibold transition ${
-                          workCategoryFilter === group.key
-                            ? "border-[#315FDD] bg-[#E2E8FA] text-[#244FC3]"
-                            : "border-[#D7E0E4] bg-white text-[#596A75] hover:bg-[#F3F1EC]"
-                        }`}
-                      >
-                        {group.label} · {group.count}
-                      </button>
-                    ))}
+                {showNewLeadQueue || workCategoryFilter !== "all" ? (
+                  <div className="amk-queue__filter-note" role="status">
+                    <span>
+                      {showNewLeadQueue
+                        ? "Showing new leads that still need action"
+                        : `Showing ${workGroups.find(group => group.key === workCategoryFilter)?.label || "selected category"} work`}
+                    </span>
+                    <button type="button" onClick={() => {
+                      setWorkCategoryFilter("all");
+                      setShowNewLeadQueue(false);
+                      setShowAll(false);
+                    }}>Show all work</button>
                   </div>
                 ) : null}
                 <div className="amk-queue__list">
@@ -876,10 +888,10 @@ export default function Today() {
             ) : (
               <section className="amk-day__empty amk-day__empty--compact">
                 <CheckCircle2 />
-                <h2>No additional people are waiting.</h2>
-                <p>
-                  The current customer is the only person needing attention.
-                </p>
+                <h2>{showNewLeadQueue ? "No new leads are waiting." : "No additional people are waiting."}</h2>
+                <p>{showNewLeadQueue
+                  ? "No new lead work is outstanding in the source queue."
+                  : "The current customer is the only person needing attention."}</p>
               </section>
             )
           ) : null}

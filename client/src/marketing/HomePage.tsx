@@ -74,19 +74,18 @@ export default function HomePage() {
         <div className="amk-shell amk-hero__grid">
           <div className="amk-hero__copy">
             <p className="amk-eyebrow">
-              AI SALES ASSISTANT · WORKS WITH YOUR CRM
+              THE AI SALES ASSISTANT THAT WORKS WITH YOUR CRM
             </p>
             <h1>
               Your sales team sells.
               <span>
-                <BrandName /> runs the work around the sale.
+                <BrandName /> takes care of everything around the sale.
               </span>
             </h1>
             <p className="amk-lead">
-              Keep the CRM you already use. <BrandName /> learns how your
-              company sells, organises the day, prepares every customer
-              conversation and gets the follow-through ready — while your people
-              stay in control.
+              Keep the CRM you already use. <BrandName /> connects the dots
+              between your customers, conversations and commitments — so every
+              salesperson knows who needs them next, why, and what to do.
             </p>
             <div className="amk-actions">
               <Link
@@ -115,15 +114,23 @@ export default function HomePage() {
             </div>
           </div>
           <div className="amk-hero__media">
-            <figure className="amk-photo-frame amk-photo-frame--hero">
-              <img
-                src={marketingImagery.homeHero.src}
-                alt={marketingImagery.homeHero.alt}
-              />
-            </figure>
-            <div className="amk-hero-note">
-              <span>One assistant across the sales day</span>
-              <strong>Priority → Context → Call → Follow-through</strong>
+            <div className="amk-hero-scene">
+              <figure className="amk-photo-frame amk-photo-frame--hero">
+                <img
+                  src={marketingImagery.homeHero.src}
+                  alt={marketingImagery.homeHero.alt}
+                />
+              </figure>
+              <div className="amk-hero-scene__label">
+                <span><Sparkles size={15} aria-hidden="true" /> THE SALES ASSISTANT</span>
+                <strong>More human conversations. Less chasing admin.</strong>
+              </div>
+              <div className="amk-hero-scene__note">
+                <span>One connected sales day</span>
+                <div><BellRing size={17} aria-hidden="true" /> Know who needs you</div>
+                <div><BrainCircuit size={17} aria-hidden="true" /> Arrive with the context</div>
+                <div><ShieldCheck size={17} aria-hidden="true" /> Review the follow-through</div>
+              </div>
             </div>
           </div>
         </div>
@@ -194,13 +201,16 @@ export default function HomePage() {
               </li>
             </ul>
           </div>
-          <figure className="amk-photo-frame amk-photo-frame--story">
-            <img
-              src={marketingImagery.homeContext.src}
-              alt={marketingImagery.homeContext.alt}
-              loading="lazy"
-            />
-          </figure>
+          <div className="amk-editorial-photo amk-editorial-photo--context">
+            <figure className="amk-photo-frame amk-photo-frame--story">
+              <img
+                src={marketingImagery.homeContext.src}
+                alt={marketingImagery.homeContext.alt}
+                loading="lazy"
+              />
+            </figure>
+            <span>One customer story. All the useful details in reach.</span>
+          </div>
         </div>
       </section>
 
@@ -224,13 +234,16 @@ export default function HomePage() {
               <span>Customer context</span>
             </div>
           </div>
-          <figure className="amk-photo-frame amk-photo-frame--story">
-            <img
-              src={marketingImagery.homeCall.src}
-              alt={marketingImagery.homeCall.alt}
-              loading="lazy"
-            />
-          </figure>
+          <div className="amk-editorial-photo amk-editorial-photo--call">
+            <figure className="amk-photo-frame amk-photo-frame--story">
+              <img
+                src={marketingImagery.homeCall.src}
+                alt={marketingImagery.homeCall.alt}
+                loading="lazy"
+              />
+            </figure>
+            <span>The customer gets your attention. The details stay together.</span>
+          </div>
         </div>
       </section>
 
