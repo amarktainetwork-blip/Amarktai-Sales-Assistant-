@@ -1970,6 +1970,22 @@ export async function automaticCommissioningStatus(input: {
   return presentCommissioningJob(job);
 }
 
+export function terminalCommissioningRecoveryStatus(input: {
+  completedAt: Date | null;
+  lastError: string | null;
+  progress: Record<string, unknown>;
+}): "ready" | "needs_attention" {
+  const accounting = input.progress.capabilityAccounting;
+  return input.completedAt &&
+    !input.lastError &&
+    input.progress.humanStatus === "Ready" &&
+    accounting &&
+    typeof accounting === "object" &&
+    (accounting as { complete?: boolean }).complete === true
+    ? "ready"
+    : "needs_attention";
+}
+
 export async function advanceAutomaticCommissioning(jobId: number) {
   const candidate = await loadJob(jobId);
   if (!candidate || !["queued", "running"].includes(candidate.status)) return;
@@ -1981,7 +1997,7 @@ export async function advanceAutomaticCommissioning(jobId: number) {
     await db
       .update(crmCommissioningJobs)
       .set({
-        status: candidate.completedAt ? "ready" : "needs_attention",
+        status: terminalCommissioningRecoveryStatus(candidate),
         leaseExpiresAt: null,
       })
       .where(
