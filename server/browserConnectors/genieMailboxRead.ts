@@ -573,7 +573,8 @@ export async function readPersonalGenieMailbox(input: {
   ) {
     if (
       liveConversationsProcessed >= MAX_LIVE_CONVERSATIONS_PER_CYCLE ||
-      Date.now() - cycleStartedAt >= MAILBOX_LIVE_READ_TIME_BUDGET_MS
+      (liveConversationsProcessed > 0 &&
+        Date.now() - cycleStartedAt >= MAILBOX_LIVE_READ_TIME_BUDGET_MS)
     ) {
       liveProgress = {
         sourceSince: new Date(since).toISOString(),
@@ -639,7 +640,8 @@ export async function readPersonalGenieMailbox(input: {
     for (;;) {
       if (
         liveMessagePagesRead >= MAX_LIVE_MESSAGE_PAGES_PER_CYCLE ||
-        Date.now() - cycleStartedAt >= MAILBOX_LIVE_READ_TIME_BUDGET_MS
+        (liveMessagePagesRead > 0 &&
+          Date.now() - cycleStartedAt >= MAILBOX_LIVE_READ_TIME_BUDGET_MS)
       ) {
         liveProgress = {
           sourceSince: new Date(since).toISOString(),
@@ -693,7 +695,8 @@ export async function readPersonalGenieMailbox(input: {
             if (!id(emailId) || visited.has(emailId)) continue;
             if (
               liveDetailReads >= MAX_LIVE_DETAIL_READS_PER_CYCLE ||
-              Date.now() - cycleStartedAt >= MAILBOX_LIVE_READ_TIME_BUDGET_MS
+              (liveDetailReads > 0 &&
+                Date.now() - cycleStartedAt >= MAILBOX_LIVE_READ_TIME_BUDGET_MS)
             ) {
               liveProgress = {
                 sourceSince: new Date(since).toISOString(),
@@ -769,7 +772,8 @@ export async function readPersonalGenieMailbox(input: {
         if (!messageId || visited.has(messageId)) continue;
         if (
           liveDetailReads >= MAX_LIVE_DETAIL_READS_PER_CYCLE ||
-          Date.now() - cycleStartedAt >= MAILBOX_LIVE_READ_TIME_BUDGET_MS
+          (liveDetailReads > 0 &&
+            Date.now() - cycleStartedAt >= MAILBOX_LIVE_READ_TIME_BUDGET_MS)
         ) {
           liveProgress = {
             sourceSince: new Date(since).toISOString(),
@@ -806,7 +810,8 @@ export async function readPersonalGenieMailbox(input: {
         throw Error("GENIE_MAILBOX_CURSOR_STALLED");
       if (
         liveMessagePagesRead >= MAX_LIVE_MESSAGE_PAGES_PER_CYCLE ||
-        Date.now() - cycleStartedAt >= MAILBOX_LIVE_READ_TIME_BUDGET_MS
+        (liveMessagePagesRead > 0 &&
+          Date.now() - cycleStartedAt >= MAILBOX_LIVE_READ_TIME_BUDGET_MS)
       ) {
         liveProgress = {
           sourceSince: new Date(since).toISOString(),

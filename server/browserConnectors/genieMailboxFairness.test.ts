@@ -2,10 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import { readPersonalGenieMailbox } from "./genieMailboxRead";
 
 describe("Genie mailbox shared browser fairness", () => {
-  it("yields after a slow read, then resumes the exact conversation without losing messages", async () => {
+  it("advances through consistently slow owner lookups instead of yielding at the same cursor", async () => {
     let clock = Date.parse("2026-09-18T12:00:00Z");
     const now = vi.spyOn(Date, "now").mockImplementation(() => clock);
-    let delayed = false;
     const response = (data: unknown) => ({
       ok: () => true,
       status: () => 200,
@@ -23,10 +22,7 @@ describe("Genie mailbox shared browser fairness", () => {
         return response({ conversations, total: 2 });
       const contact = url.match(/\/contacts\/(contact-\d+)/);
       if (contact) {
-        if (!delayed) {
-          delayed = true;
-          clock += 16_000;
-        }
+        clock += 16_000;
         return response({
           contact: { id: contact[1], locationId: "loc", assignedTo: "owner" },
         });
@@ -94,15 +90,16 @@ describe("Genie mailbox shared browser fairness", () => {
     };
     try {
       const first = await readPersonalGenieMailbox(input);
-      expect(first.liveProgress).toMatchObject({ conversationIndex: 0 });
-      expect(first.records).toHaveLength(0);
+      expect(first.liveProgress).toMatchObject({ conversationIndex: 1 });
+      expect(first.records.map(x => x.externalMessageId)).toEqual([
+        "message-1",
+      ]);
       const second = await readPersonalGenieMailbox({
         ...input,
         liveProgress: first.liveProgress,
       });
       expect(second.liveProgress).toBeUndefined();
       expect(second.records.map(x => x.externalMessageId)).toEqual([
-        "message-1",
         "message-2",
       ]);
       expect(second.unreadPreserved).toBe(true);
