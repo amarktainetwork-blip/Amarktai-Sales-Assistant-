@@ -1360,7 +1360,9 @@ async function runDeterministicOperation(input: RunOperationInput) {
               ? payload.ownerDisplayName.trim()
               : "";
           const execution =
-            input.provider === "genie" && operationKey === "contact.read"
+            input.provider === "genie" &&
+            operationKey === "contact.read" &&
+            Boolean(input.secret.crmUserExternalId)
               ? await readOwnerScopedGenieContactDetail({
                   page,
                   requested:
