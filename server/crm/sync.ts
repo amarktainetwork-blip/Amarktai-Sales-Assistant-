@@ -11,6 +11,7 @@ import {
   externalUserMappings,
   salesActivityEvents,
   salesWorkItems,
+  users,
 } from "../../drizzle/schema";
 import { getDb } from "../db";
 import {
@@ -80,6 +81,100 @@ export function routineOpportunitySnapshotDue(
     !lastSuccessfulAt ||
     now.valueOf() - lastSuccessfulAt.valueOf() >= safeInterval
   );
+}
+
+/** One immutable cursor namespace per internal mapped user, never per shared connection. */
+export function opportunityOwnerCursorKey(userId: number) {
+  if (!Number.isSafeInteger(userId) || userId <= 0)
+    throw new Error("CRM_SALESPERSON_IDENTITY_REQUIRED");
+  return `opportunities:user:${userId}`;
+}
+
+export function completedOpportunityOwnerSnapshot(
+  ownerIds: number[],
+  rows: Array<{
+    resourceType: string;
+    cursor: string | null;
+    lastSuccessfulAt: Date | null;
+    lastError: string | null;
+  }>
+) {
+  if (!ownerIds.length) return null;
+  const byKey = new Map(rows.map(row => [row.resourceType, row]));
+  const snapshots = ownerIds.map(id =>
+    byKey.get(opportunityOwnerCursorKey(id))
+  );
+  if (
+    snapshots.some(
+      row => !row || row.cursor || !row.lastSuccessfulAt || row.lastError
+    )
+  )
+    return null;
+  return new Date(
+    Math.min(...snapshots.map(row => row!.lastSuccessfulAt!.getTime()))
+  );
+}
+
+async function publishAggregatedOpportunityCursor(input: {
+  organisationId: number;
+  connectedSystemId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database connection is unavailable.");
+  const mappings = await db
+    .select({
+      userId: externalUserMappings.userId,
+      mappingEmail: externalUserMappings.email,
+      userEmail: users.email,
+    })
+    .from(externalUserMappings)
+    .innerJoin(users, eq(users.id, externalUserMappings.userId))
+    .where(
+      and(
+        eq(externalUserMappings.organisationId, input.organisationId),
+        eq(externalUserMappings.connectedSystemId, input.connectedSystemId),
+        eq(externalUserMappings.isActive, true)
+      )
+    );
+  const ids = Array.from(
+    new Set(
+      mappings
+        .filter(
+          row =>
+            row.userId &&
+            row.mappingEmail?.trim().toLowerCase() ===
+              row.userEmail?.trim().toLowerCase()
+        )
+        .map(row => Number(row.userId))
+    )
+  );
+  if (!ids.length) return;
+  const ownerRows = await db
+    .select({
+      resourceType: crmSyncCursors.resourceType,
+      cursor: crmSyncCursors.cursor,
+      lastSuccessfulAt: crmSyncCursors.lastSuccessfulAt,
+      lastError: crmSyncCursors.lastError,
+    })
+    .from(crmSyncCursors)
+    .where(
+      and(
+        eq(crmSyncCursors.connectedSystemId, input.connectedSystemId),
+        inArray(crmSyncCursors.resourceType, ids.map(opportunityOwnerCursorKey))
+      )
+    );
+  const completedAt = completedOpportunityOwnerSnapshot(ids, ownerRows);
+  if (!completedAt) return;
+  const previous = await cursorFor(input.connectedSystemId, "opportunities");
+  if (!previous?.lastSuccessfulAt || completedAt > previous.lastSuccessfulAt)
+    await saveCursor(
+      input.connectedSystemId,
+      "opportunities",
+      undefined,
+      undefined,
+      completedAt,
+      true
+    );
 }
 
 async function cursorFor(systemId: number, resourceType: string) {
@@ -1178,7 +1273,8 @@ async function syncConnectedSystemRoutineDeterministically(input: {
   if (!secret.crmUserExternalId)
     throw new Error("CRM_SALESPERSON_IDENTITY_REQUIRED");
   const routineNow = new Date();
-  const opportunityCursor = await cursorFor(system.id, "opportunities");
+  const opportunityCursorKey = opportunityOwnerCursorKey(input.userId);
+  const opportunityCursor = await cursorFor(system.id, opportunityCursorKey);
   const opportunitySnapshotDue = routineOpportunitySnapshotDue(
     opportunityCursor?.lastSuccessfulAt,
     routineNow
@@ -1491,7 +1587,7 @@ async function syncConnectedSystemRoutineDeterministically(input: {
       if (batch.cursor) {
         await saveCursor(
           system.id,
-          "opportunities",
+          opportunityCursorKey,
           batch.cursor,
           undefined,
           existing?.lastSuccessfulAt,
@@ -1499,7 +1595,8 @@ async function syncConnectedSystemRoutineDeterministically(input: {
         );
         summary.opportunitySnapshot = "in_progress";
       } else {
-        await saveCursor(system.id, "opportunities", undefined);
+        await saveCursor(system.id, opportunityCursorKey, undefined);
+        await publishAggregatedOpportunityCursor(input);
         summary.opportunitySnapshot = "complete";
       }
       console.log(
@@ -1520,7 +1617,7 @@ async function syncConnectedSystemRoutineDeterministically(input: {
       if (!isTransientBrowserExecutionFailure(error))
         await saveCursor(
           system.id,
-          "opportunities",
+          opportunityCursorKey,
           undefined,
           detail,
           existing?.lastSuccessfulAt
