@@ -115,6 +115,32 @@ describe("Genie live-page dynamic token boundary", () => {
     }));
   });
 
+  it("refreshes a rotated page token and retries token-id before Bearer", async () => {
+    const tokens = ["retiring-token", "new-live-token"];
+    const getToken = vi.fn(async () => tokens.shift() || "new-live-token");
+    const fetchRead = vi.fn(async (_url: string, options: { headers: Record<string, string> }) => {
+      const ok = options.headers["token-id"] === "new-live-token";
+      return {
+        status: ok ? 200 : 401, ok,
+        text: async () => ok ? JSON.stringify({ contacts: [] }) : "token expired",
+      };
+    });
+    vi.stubGlobal("window", { getToken });
+    vi.stubGlobal("localStorage", { getItem: () => null });
+    vi.stubGlobal("sessionStorage", { getItem: () => null });
+    vi.stubGlobal("fetch", fetchRead);
+    const page = { evaluate: async (run: (value: unknown) => unknown, arg: unknown) => run(arg) } as any;
+    await expect(sessionRequestOnPage(page, {
+      url: "https://services.leadconnectorhq.com/contacts/search",
+      method: "POST", body: { assignedTo: "owner" },
+    })).resolves.toEqual({ contacts: [] });
+    expect(getToken).toHaveBeenCalledTimes(2);
+    expect(fetchRead).toHaveBeenCalledTimes(2);
+    expect(fetchRead.mock.calls[0]?.[1]?.headers["token-id"]).toBe("retiring-token");
+    expect(fetchRead.mock.calls[1]?.[1]?.headers["token-id"]).toBe("new-live-token");
+    expect(fetchRead.mock.calls[1]?.[1]?.headers.Authorization).toBeUndefined();
+  });
+
   it("fails closed without any authenticated token rather than attempting the provider read", async () => {
     const fetchRead = vi.fn();
     vi.stubGlobal("window", { getToken: async () => "" });

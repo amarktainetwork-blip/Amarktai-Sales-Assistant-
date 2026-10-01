@@ -82,13 +82,13 @@ export async function sessionRequestOnPage<T>(
         sessionStorage.getItem("refreshedToken") ||
         "";
       if (!token) throw new Error("GENIE_SESSION_TOKEN_UNAVAILABLE");
-      const make = async (authorization: boolean) => {
+      const make = async (authorization: boolean, accessToken: string) => {
         const headers: Record<string, string> = {
           Version: request.version,
           "Content-Type": "application/json",
         };
-        if (authorization) headers.Authorization = `Bearer ${token}`;
-        else headers["token-id"] = token;
+        if (authorization) headers.Authorization = `Bearer ${accessToken}`;
+        else headers["token-id"] = accessToken;
         const result = await fetch(request.url, {
           method: request.method,
           headers,
@@ -107,9 +107,24 @@ export async function sessionRequestOnPage<T>(
           text: await result.text(),
         };
       };
-      const first = await make(false);
+      const first = await make(false, token);
       if (![401, 403].includes(first.status)) return first;
-      return make(true);
+      // Genie rotates tokens without updating storage. A stale token-id can
+      // cause a false auth expiry: re-read the current page token before the
+      // bounded retry, retaining token-id for APIs that reject Bearer.
+      await new Promise(resolve => setTimeout(resolve, 200));
+      let refreshedToken = token;
+      try {
+        const getToken = (window as Window & { getToken?: () => unknown }).getToken;
+        const current = typeof getToken === "function" ? await getToken() : "";
+        if (typeof current === "string" && current.trim())
+          refreshedToken = current.trim();
+      } catch {
+        // If rotation failed, leave the final request bounded and fail closed.
+      }
+      const second = await make(false, refreshedToken);
+      if (![401, 403].includes(second.status)) return second;
+      return make(true, refreshedToken);
     },
     {
       url: input.url,
