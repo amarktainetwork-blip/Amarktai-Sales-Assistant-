@@ -2807,3 +2807,21 @@ body:has(.amarktai-dashboard-sidebar) {
   .amk-site .amk-day-step__number { margin-bottom:10px; }
   .amk-editorial-photo > span { max-width:85%; font-size:13px; }
 }
+
+/* Keep the rest of the public website in the same calm system as the homepage. */
+.amk-site .amk-page-hero,
+.amk-site .amk-pricing-hero,
+.amk-site .amk-contact-hero {
+  background: radial-gradient(ellipse at 82% 8%, rgba(180,205,180,.38), transparent 44%),
+              linear-gradient(130deg,#faf9f4 0%,#eef2ea 65%,#e4eee5 100%);
+}
+.amk-site .amk-pricing-section,
+.amk-site .amk-contact-section { background:#edf2eb; }
+.amk-site .amk-page-hero .amk-photo-frame,
+.amk-site .amk-pricing-hero .amk-photo-frame,
+.amk-site .amk-contact-hero .amk-photo-frame {
+  border:6px solid #fffef9; box-shadow:0 19px 45px rgba(34,65,47,.12);
+}
+.amk-site .amk-pricing-row,
+.amk-site .amk-contact-section__grid { border-color:#d3dfd1; }
+.amk-site .amk-photo-frame img { filter:none; }
