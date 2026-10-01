@@ -16,6 +16,7 @@ import {
   genieConversationChannel,
   legacyGenieOutboundEvidence,
   mailboxAddress,
+  genieSourceTimeMs,
   normalizeGenieMessageTime,
   parsePersonalGenieConversationMessage,
   parsePersonalGenieEmail,
@@ -199,6 +200,18 @@ describe("Genie persisted timestamp repair", () => {
 });
 
 describe("Genie source timestamp safety", () => {
+  it("parses live Genie epoch-millisecond timestamps and persisted numeric strings without losing source chronology", () => {
+    const milliseconds = Date.parse("2026-09-30T06:33:33.000Z");
+    expect(genieSourceTimeMs(milliseconds)).toBe(milliseconds);
+    expect(genieSourceTimeMs(String(milliseconds))).toBe(milliseconds);
+    expect(genieSourceTimeMs(Math.floor(milliseconds / 1000))).toBe(Math.floor(milliseconds / 1000) * 1000);
+    expect(genieSourceTimeMs("2026-09-30T06:33:33.000Z")).toBe(milliseconds);
+    expect(genieSourceTimeMs("123")).toBeNull();
+    expect(genieSourceTimeMs("not-a-time")).toBeNull();
+    expect(normalizeGenieMessageTime(milliseconds, milliseconds + 1000)?.getTime()).toBe(milliseconds);
+    expect(normalizeGenieMessageTime(String(milliseconds), milliseconds + 1000)?.getTime()).toBe(milliseconds);
+  });
+
   it("keeps valid source timestamps but clamps impossible future message times to observation time", () => {
     const observed = Date.parse("2026-09-30T06:56:20.000Z");
     expect(

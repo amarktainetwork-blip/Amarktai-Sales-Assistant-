@@ -17,6 +17,7 @@ import {
   browserCrmAdapter,
   withAuthenticatedBrowserSessionPage,
 } from "../browserConnectors/browserCrmAdapter";
+import { genieSourceRevision, genieSourceTimeMs } from "../genie/genieSourceTime";
 
 const SERVICES = "https://services.leadconnectorhq.com";
 const BACKEND = "https://backend.leadconnectorhq.com";
@@ -37,12 +38,11 @@ function array(value: unknown) {
 function text(value: unknown) {
   return typeof value === "string" ? value : "";
 }
-function date(value: unknown) {
-  const raw = text(value);
-  if (!raw) return undefined;
-  const parsed = new Date(raw);
-  return Number.isNaN(parsed.valueOf()) ? undefined : parsed;
+export function genieSessionSourceDate(value: unknown) {
+  const milliseconds = genieSourceTimeMs(value);
+  return milliseconds === null ? undefined : new Date(milliseconds);
 }
+const date = genieSessionSourceDate;
 function number(value: unknown) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
@@ -196,7 +196,7 @@ function contact(rawValue: unknown): NormalizedContact {
     phone: text(raw.phone) || undefined,
     lifecycleStage: text(raw.type) || undefined,
     sourceUpdatedAt: date(raw.dateUpdated),
-    sourceRevision: text(raw.dateUpdated) || undefined,
+    sourceRevision: genieSourceRevision(raw.dateUpdated),
     raw,
   };
 }
@@ -211,7 +211,7 @@ function company(rawValue: unknown): NormalizedCompany {
     ownerExternalId:
       text(raw.owner) || text(properties.owner) || text(properties.assignedTo) || undefined,
     sourceUpdatedAt: date(raw.updatedAt || raw.dateUpdated),
-    sourceRevision: text(raw.updatedAt || raw.dateUpdated) || undefined,
+    sourceRevision: genieSourceRevision(raw.updatedAt || raw.dateUpdated),
     raw,
   };
 }
@@ -227,7 +227,7 @@ function task(rawValue: unknown): NormalizedTask {
     dueAt: date(raw.dueDate),
     completedAt: raw.completed === true ? date(raw.updatedAt || raw.dateUpdated) : undefined,
     sourceUpdatedAt: date(raw.updatedAt || raw.dateUpdated),
-    sourceRevision: text(raw.updatedAt || raw.dateUpdated) || undefined,
+    sourceRevision: genieSourceRevision(raw.updatedAt || raw.dateUpdated),
     raw,
   };
 }
@@ -249,21 +249,22 @@ function opportunity(rawValue: unknown): NormalizedOpportunity {
     lastActivityAt: date(raw.lastActivityAt),
     nextStepAt: date(raw.nextStepAt),
     sourceUpdatedAt: date(raw.updatedAt || raw.dateUpdated),
-    sourceRevision: text(raw.updatedAt || raw.dateUpdated) || undefined,
+    sourceRevision: genieSourceRevision(raw.updatedAt || raw.dateUpdated),
     raw,
   };
 }
-function activity(rawValue: unknown): NormalizedActivity {
+export function genieSessionActivity(rawValue: unknown): NormalizedActivity | undefined {
   const raw = record(rawValue);
+  const occurredAt = date(raw.lastMessageDate || raw.updatedAt || raw.dateUpdated);
+  if (!occurredAt) return undefined;
   return {
     externalId: text(raw.id),
     contactExternalId: text(raw.contactId) || undefined,
     ownerExternalId: text(raw.assignedTo) || undefined,
     activityType: text(raw.type || raw.lastMessageType) || "conversation",
-    occurredAt:
-      date(raw.lastMessageDate || raw.updatedAt || raw.dateUpdated) || new Date(),
+    occurredAt,
     body: text(raw.lastMessageBody || raw.body) || undefined,
-    sourceRevision: text(raw.updatedAt || raw.dateUpdated) || undefined,
+    sourceRevision: genieSourceRevision(raw.updatedAt || raw.dateUpdated),
     raw,
   };
 }
@@ -551,9 +552,15 @@ async function syncActivities(input: {
   url.searchParams.set("sort", "desc");
   if (input.cursor) url.searchParams.set("startAfterDate", input.cursor);
   const response = await sessionRequest<Json>({ ...input, url: url.toString() });
-  const records = array(response.conversations).map(activity).filter(item => item.externalId);
-  if (records.some(item => item.ownerExternalId && item.ownerExternalId !== ownerId))
+  const sourceRows = array(response.conversations);
+  if (sourceRows.some(item => {
+    const assignedTo = text(record(item).assignedTo);
+    return assignedTo && assignedTo !== ownerId;
+  }))
     throw new Error("CRM_OWNER_SCOPE_VIOLATION: conversation search returned another salesperson's record.");
+  const records = sourceRows
+    .map(genieSessionActivity)
+    .filter((item): item is NormalizedActivity => Boolean(item?.externalId));
   const next = text(response.nextPage || response.nextCursor || record(response.meta).nextCursor) || undefined;
   return { records, cursor: next };
 }

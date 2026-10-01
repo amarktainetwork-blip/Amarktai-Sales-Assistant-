@@ -612,18 +612,18 @@ describe("Genie mailbox continuation", () => {
       contactId: `foreign-contact-${index}`,
       locationId: "loc",
       assignedTo: "other",
-      lastMessageDate: new Date(Date.parse("2026-09-17T10:20:00Z") - index * 60_000).toISOString(),
+      lastMessageDate: Date.parse("2026-09-17T10:20:00Z") - index * 60_000,
     }));
     const target = {
       id: "target", contactId: "target-contact", locationId: "loc",
-      assignedTo: "owner", lastMessageDate: "2026-09-17T10:00:00Z",
+      assignedTo: "owner", lastMessageDate: Date.parse("2026-09-17T10:00:00Z"),
     };
     const response = (data: unknown) => ({
       ok: () => true, status: () => 200, json: async () => data,
     });
     const search = vi.fn(async (_url: string, options?: any) => {
       if (options?.params?.startAfterDate) {
-        expect(options.params.startAfterDate).toBe("2026-09-17T10:01:00.001Z");
+        expect(options.params.startAfterDate).toBe(String(Date.parse("2026-09-17T10:01:00Z") + 1));
         return response({ conversations: [target], total: 21 });
       }
       return response({ conversations: first, total: 21 });
@@ -647,7 +647,7 @@ describe("Genie mailbox continuation", () => {
     const a = await readPersonalGenieMailbox(input);
     const b = await readPersonalGenieMailbox({ ...input, liveProgress: a.liveProgress });
     expect(b.liveProgress).toMatchObject({
-      searchCursor: "2026-09-17T10:01:00.001Z",
+      searchCursor: String(Date.parse("2026-09-17T10:01:00Z") + 1),
       previousPageIds: first.map(x => x.id),
     });
     const c = await readPersonalGenieMailbox({ ...input, liveProgress: b.liveProgress });
@@ -659,7 +659,7 @@ describe("Genie mailbox continuation", () => {
   it("fails closed rather than looping or silently skipping timestamp ties when the fallback page cannot advance", async () => {
     const first = Array.from({ length: 20 }, (_, index) => ({
       id: `same-${index}`, contactId: `contact-${index}`, locationId: "loc",
-      assignedTo: "other", lastMessageDate: "2026-09-17T10:05:00Z",
+      assignedTo: "other", lastMessageDate: Date.parse("2026-09-17T10:05:00Z"),
     }));
     const response = (data: unknown) => ({ ok: () => true, status: () => 200, json: async () => data });
     const page = {
@@ -677,7 +677,7 @@ describe("Genie mailbox continuation", () => {
     const input = { page, ownerExternalId: "owner", mailboxEmail: "advisor@example.test", since: new Date("2026-09-17T09:00:00Z") };
     const a = await readPersonalGenieMailbox(input);
     const b = await readPersonalGenieMailbox({ ...input, liveProgress: a.liveProgress });
-    expect(b.liveProgress?.searchCursor).toBe("2026-09-17T10:05:00.001Z");
+    expect(b.liveProgress?.searchCursor).toBe(String(Date.parse("2026-09-17T10:05:00Z") + 1));
     await expect(readPersonalGenieMailbox({ ...input, liveProgress: b.liveProgress }))
       .rejects.toThrow("GENIE_MAILBOX_SEARCH_CURSOR_STALLED");
   });

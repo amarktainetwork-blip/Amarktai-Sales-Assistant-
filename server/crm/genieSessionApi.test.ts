@@ -32,6 +32,12 @@ vi.mock("../browserConnectors/browserCrmAdapter", () => {
           }),
         };
       }
+      if (url.includes("/conversations/search"))
+        return {
+          status: 200,
+          ok: true,
+          text: JSON.stringify({ conversations: [{ id: "foreign-activity", assignedTo: "foreign-owner", lastMessageDate: null }] }),
+        };
       if (url.includes("/users/crm-user-1"))
         return {
           status: 200,
@@ -59,6 +65,8 @@ vi.mock("../browserConnectors/browserCrmAdapter", () => {
 
 import {
   genieSessionApiAdapter,
+  genieSessionActivity,
+  genieSessionSourceDate,
   genieTokenlessProfileIdentity,
 } from "./genieSessionApi";
 
@@ -81,6 +89,21 @@ const secret = {
   crmUserDisplayName: "Sales Person",
   crmUserEmail: "sales@example.com",
 };
+
+describe("Genie numeric source-date contract", () => {
+  it("retains numeric source chronology without fabricating a missing date", () => {
+    const t = Date.parse("2026-10-01T07:35:00Z");
+    expect(genieSessionSourceDate(t)?.getTime()).toBe(t);
+    expect(genieSessionSourceDate(String(t))?.getTime()).toBe(t);
+    const activity = genieSessionActivity({
+      id: "a", contactId: "c", assignedTo: "crm-user-1",
+      lastMessageDate: t, updatedAt: t, type: "sms",
+    });
+    expect(activity?.occurredAt.getTime()).toBe(t);
+    expect(activity?.sourceRevision).toBe(String(t));
+    expect(genieSessionActivity({ id: "bad", lastMessageDate: "invalid" })).toBeUndefined();
+  });
+});
 
 describe("Genie tokenless signed-in identity fallback", () => {
   it("accepts exactly one profile email and exactly one current-user ID", () => {
@@ -148,6 +171,11 @@ describe("Genie authenticated session API adapter", () => {
         skip: 100,
       }),
     ]);
+  });
+
+  it("rejects foreign owner rows even without a valid timestamp", async () => {
+    await expect(genieSessionApiAdapter.syncActivities({ connection, secret }))
+      .rejects.toThrow("CRM_OWNER_SCOPE_VIOLATION");
   });
 
   it("fails closed before personal task reads without an exact CRM identity", async () => {

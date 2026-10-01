@@ -1,4 +1,6 @@
 import type { Page } from "playwright-core";
+import { genieSourceTimeMs } from "../genie/genieSourceTime";
+export { genieSourceTimeMs } from "../genie/genieSourceTime";
 const ROOT = "https://services.leadconnectorhq.com";
 const BOOTSTRAP =
   "https://backend.leadsconnectorhq.com/conversations/inbox-bootstrap";
@@ -43,11 +45,9 @@ export function normalizeGenieMessageTime(
   value: unknown,
   observedAtMs = Date.now()
 ) {
-  const date = new Date(String(value ?? ""));
-  if (!Number.isFinite(date.getTime())) return null;
-  if (date.getTime() > observedAtMs + MAX_SOURCE_FUTURE_SKEW_MS)
-    return new Date(observedAtMs);
-  return date;
+  const sourceMs = genieSourceTimeMs(value);
+  if (sourceMs === null) return null;
+  return new Date(sourceMs > observedAtMs + MAX_SOURCE_FUTURE_SKEW_MS ? observedAtMs : sourceMs);
 }
 export function mailboxAddress(value: unknown) {
   if (typeof value !== "string") return "";
@@ -197,10 +197,10 @@ export function legacyGenieOutboundEvidence(
     (thread.contactId && thread.contactId !== input.contactExternalId)
   )
     throw Error("GENIE_MAILBOX_SCOPE_MISMATCH");
-  const rawSentAtMs = Date.parse(String(thread.dateAdded || ""));
+  const rawSentAtMs = genieSourceTimeMs(thread.dateAdded);
   const sentAt = normalizeGenieMessageTime(thread.dateAdded);
   const followsInbound = Number.isFinite(input.sourceReceivedAtRawMs)
-    ? Number.isFinite(rawSentAtMs) && rawSentAtMs > input.sourceReceivedAtRawMs!
+    ? rawSentAtMs !== null && rawSentAtMs > input.sourceReceivedAtRawMs!
     : input.verifiedAfterInboundByThreadOrder === true ||
       Boolean(sentAt && sentAt.getTime() > input.receivedAt.getTime());
   if (!sentAt || !followsInbound) return undefined;
@@ -495,8 +495,8 @@ export async function readPersonalGenieMailbox(input: {
 
     const oldestPageTime = pageConversations.reduce(
       (oldest: number, conversation: any) => {
-        const parsed = Date.parse(String(conversation?.lastMessageDate || ""));
-        return Number.isFinite(parsed) ? Math.min(oldest, parsed) : oldest;
+        const parsed = genieSourceTimeMs(conversation?.lastMessageDate);
+        return parsed !== null ? Math.min(oldest, parsed) : oldest;
       },
       Number.POSITIVE_INFINITY
     );
@@ -527,7 +527,7 @@ export async function readPersonalGenieMailbox(input: {
         // conversations. An unchanging page is rejected by the ID guard above.
         if (!Number.isFinite(oldestPageTime))
           throw Error("GENIE_MAILBOX_CONTINUATION_REQUIRED");
-        nextSearchCursor = new Date(oldestPageTime + 1).toISOString();
+        nextSearchCursor = String(oldestPageTime + 1);
       }
       if (nextSearchCursor && nextSearchCursor === searchCursor)
         throw Error("GENIE_MAILBOX_SEARCH_CURSOR_STALLED");
@@ -567,11 +567,11 @@ export async function readPersonalGenieMailbox(input: {
 
     const conversation = conversations[index];
     checked += 1;
-    const conversationLastMessageAt = Date.parse(
-      String(conversation.lastMessageDate || "")
+    const conversationLastMessageAt = genieSourceTimeMs(
+      conversation.lastMessageDate
     );
     if (
-      Number.isFinite(conversationLastMessageAt) &&
+      conversationLastMessageAt !== null &&
       conversationLastMessageAt < since
     ) {
       nextSearchCursor = undefined;
@@ -652,8 +652,8 @@ export async function readPersonalGenieMailbox(input: {
           thread.conversationId !== conversationId
         )
           throw Error("GENIE_MAILBOX_SCOPE_MISMATCH");
-        const threadAt = Date.parse(String(thread.dateAdded || ""));
-        if (Number.isFinite(threadAt) && threadAt < since) {
+        const threadAt = genieSourceTimeMs(thread.dateAdded);
+        if (threadAt !== null && threadAt < since) {
           reachedBeforeSince = true;
           continue;
         }
