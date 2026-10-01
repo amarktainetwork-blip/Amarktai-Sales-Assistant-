@@ -3,10 +3,10 @@ import { crmActivities, crmOpportunities, crmPipelineStageMappings, crmTasks, ex
 import { getDb } from "./db";
 import { canViewTeamData, requireOrganisationMembership } from "./organisation";
 import { getSalesTargets } from "./salesTargets";
+import { teamOpportunityLifecycle } from "./teamOpportunityLifecycle";
 import { INCOMPLETE_TASK_STATUSES } from "../shared/taskState";
 
 function stale(lastActivityAt: Date | null, now: Date) { return !lastActivityAt || now.valueOf() - lastActivityAt.valueOf() >= 7 * 86_400_000; }
-function won(stage: string | null) { return Boolean(stage && /(^|\b)(closed[ _-]?won|won|sale[ _-]?complete|successful)(\b|$)/i.test(stage)); }
 function currencyCode(value: string | null) {
   const code = value?.trim().toUpperCase() ?? "";
   return /^[A-Z]{3}$/.test(code) ? code : null;
@@ -97,8 +97,12 @@ export async function getTeamIntelligence(input: { userId: number; organisationI
     if (!opportunity.ownerExternalId || !people.has(opportunity.ownerExternalId)) continue;
     const person = people.get(opportunity.ownerExternalId)!;
     const mappedCategory = opportunity.stage ? stageCategoryBySystemAndStage.get(`${opportunity.connectedSystemId}:${opportunity.stage}`) : undefined;
-    const isWon = mappedCategory === "won" || (!mappedCategory && won(opportunity.stage));
-    const isClosed = isWon || mappedCategory === "lost";
+    const { isWon, isClosed } = teamOpportunityLifecycle({
+      stage: opportunity.stage,
+      raw: opportunity.raw,
+      closeAt: opportunity.closeAt,
+      mappedCategory,
+    });
     const isStale = stale(opportunity.lastActivityAt, now);
     if (isStale && !isClosed) {
       person.staleOpportunities += 1;
