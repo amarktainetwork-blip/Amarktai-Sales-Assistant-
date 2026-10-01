@@ -1,7 +1,7 @@
 {
-  "operation": "verify",
+  "operation": "deploy",
   "server_name": "Amarktai Network - Sales Assistant",
   "server_domain": "sales.amarktai.co.za",
-  "release_sha": "cb429f02e2d329406cef4fdf5dcf1a3aa177af0f",
-  "request_id": "final-frozen-redesign-gate-verify-2026-09-30"
+  "release_sha": "b90b5dac37b967672018bf17c6c93a74fa68ee78",
+  "request_id": "2026-10-01-live-crm-freshness-recovery"
 }
