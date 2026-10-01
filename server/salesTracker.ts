@@ -8,8 +8,8 @@ import {
   crmSyncCursors,
 } from "../drizzle/schema";
 import { getDb } from "./db";
-import { crmSyncIntervalMs } from "./crm/syncWorker";
-import { completedOpportunitySnapshotIsCurrent } from "./salesTrackerSourceFreshness";
+import { maximumCompletedOpportunitySnapshotAgeMs } from "./crm/opportunitySnapshotCadence";
+import { completedOpportunitySnapshotIsCurrent, salesTrackerNeedsReconnect } from "./salesTrackerSourceFreshness";
 import { requireOrganisationMembership } from "./organisation";
 import { uniqueOwnerMappingsBySystem } from "./customerData";
 
@@ -141,7 +141,7 @@ export async function getSalesTracker(input: {
     opportunityCursors.map(cursor => [cursor.connectedSystemId, cursor])
   );
   const now = new Date();
-  const maximumSnapshotAgeMs = Math.max(3 * 60_000, crmSyncIntervalMs() + 2 * 60_000);
+  const maximumSnapshotAgeMs = maximumCompletedOpportunitySnapshotAgeMs();
   const sourceCurrent =
     trustedMappings.length > 0 &&
     sourceSystems.length === trustedMappings.length &&
@@ -156,9 +156,7 @@ export async function getSalesTracker(input: {
       });
     });
   const reconnectRequired = sourceSystems.some(system =>
-    ["authentication_expired", "needs_attention", "error"].includes(
-      system.status
-    )
+    salesTrackerNeedsReconnect(system.status)
   );
   const wonStages = new Set(
     stageMappings

@@ -21,3 +21,8 @@ export function completedOpportunitySnapshotIsCurrent(input: {
   const ageMs = input.now.getTime() - input.lastSuccessfulAt.getTime();
   return Number.isFinite(ageMs) && ageMs >= 0 && ageMs <= input.maximumAgeMs;
 }
+
+/** Disconnection is an actionable reconnection state, not a stale snapshot. */
+export function salesTrackerNeedsReconnect(status: string) {
+  return ["authentication_expired", "needs_attention", "error", "disconnected"].includes(status);
+}

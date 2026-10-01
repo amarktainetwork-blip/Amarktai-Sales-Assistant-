@@ -79,7 +79,7 @@ export default function SalesTracker() {
                 <strong>Sales Tracker has no recent completed Genie snapshot.</strong>{" "}
                 These figures come from the last synchronized Won opportunities
                 and may be out of date while the CRM source refreshes.
-                Genie is connected; reconnecting is not required.
+                A delayed full snapshot alone does not mean the CRM session expired. Check CRM connection status if this persists.
               </>
             )}
           </div>

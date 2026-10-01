@@ -45,6 +45,7 @@ import {
   isCompletedTask,
 } from "../../shared/taskState";
 import { crmResourceSyncEligible } from "./syncEligibility";
+import { routineOpportunitySnapshotIntervalMs } from "./opportunitySnapshotCadence";
 import { assertPersonalBrowserOwnerScope } from "./personalOwnerScope";
 import {
   deriveContactChangeEvents,
@@ -63,20 +64,14 @@ export function isTransientCrmSyncFailure(error: unknown) {
   return isTransientBrowserExecutionFailure(error);
 }
 
-export const DEFAULT_ROUTINE_OPPORTUNITY_SYNC_INTERVAL_MS = 15 * 60_000;
+export { DEFAULT_ROUTINE_OPPORTUNITY_SYNC_INTERVAL_MS } from "./opportunitySnapshotCadence";
 
 export function routineOpportunitySnapshotDue(
   lastSuccessfulAt: Date | null | undefined,
   now = new Date(),
-  intervalMs = Number(
-    process.env.ROUTINE_OPPORTUNITY_SYNC_INTERVAL_MS ||
-      DEFAULT_ROUTINE_OPPORTUNITY_SYNC_INTERVAL_MS
-  )
+  intervalMs = routineOpportunitySnapshotIntervalMs()
 ) {
-  const safeInterval =
-    Number.isFinite(intervalMs) && intervalMs >= 5 * 60_000
-      ? Math.floor(intervalMs)
-      : DEFAULT_ROUTINE_OPPORTUNITY_SYNC_INTERVAL_MS;
+  const safeInterval = routineOpportunitySnapshotIntervalMs(intervalMs);
   return (
     !lastSuccessfulAt ||
     now.valueOf() - lastSuccessfulAt.valueOf() >= safeInterval
