@@ -55,7 +55,7 @@ function locationIdFromUrl(raw: string) {
   return locationId;
 }
 
-async function sessionRequestOnPage<T>(
+export async function sessionRequestOnPage<T>(
   page: Page,
   input: {
     url: string;
@@ -66,18 +66,29 @@ async function sessionRequestOnPage<T>(
 ): Promise<T> {
   const response = await page.evaluate(
     async request => {
+      // Genie exposes the live account token through its async page helper.
+      // Newer Genie tabs no longer store refreshedToken in local/session storage.
+      let liveToken = "";
+      try {
+        const getToken = (window as Window & { getToken?: () => unknown }).getToken;
+        const resolved = typeof getToken === "function" ? await getToken() : "";
+        liveToken = typeof resolved === "string" ? resolved.trim() : "";
+      } catch {
+        // An older storage-backed session can still be used for a safe read.
+      }
       const token =
+        liveToken ||
         localStorage.getItem("refreshedToken") ||
         sessionStorage.getItem("refreshedToken") ||
         "";
       if (!token) throw new Error("GENIE_SESSION_TOKEN_UNAVAILABLE");
-      const make = async (authorization: boolean) => {
+      const make = async (authorization: boolean, accessToken: string) => {
         const headers: Record<string, string> = {
           Version: request.version,
           "Content-Type": "application/json",
         };
-        if (authorization) headers.Authorization = `Bearer ${token}`;
-        else headers["token-id"] = token;
+        if (authorization) headers.Authorization = `Bearer ${accessToken}`;
+        else headers["token-id"] = accessToken;
         const result = await fetch(request.url, {
           method: request.method,
           headers,
@@ -96,9 +107,24 @@ async function sessionRequestOnPage<T>(
           text: await result.text(),
         };
       };
-      const first = await make(false);
+      const first = await make(false, token);
       if (![401, 403].includes(first.status)) return first;
-      return make(true);
+      // Genie rotates tokens without updating storage. A stale token-id can
+      // cause a false auth expiry: re-read the current page token before the
+      // bounded retry, retaining token-id for APIs that reject Bearer.
+      await new Promise(resolve => setTimeout(resolve, 200));
+      let refreshedToken = token;
+      try {
+        const getToken = (window as Window & { getToken?: () => unknown }).getToken;
+        const current = typeof getToken === "function" ? await getToken() : "";
+        if (typeof current === "string" && current.trim())
+          refreshedToken = current.trim();
+      } catch {
+        // If rotation failed, leave the final request bounded and fail closed.
+      }
+      const second = await make(false, refreshedToken);
+      if (![401, 403].includes(second.status)) return second;
+      return make(true, refreshedToken);
     },
     {
       url: input.url,
@@ -139,8 +165,17 @@ async function sessionRequest<T>(input: {
 
 async function sessionContextOnPage(page: Page) {
   const pageUrl = page.url();
-  const claims = await page.evaluate(() => {
+  const claims = await page.evaluate(async () => {
+    let liveToken = "";
+    try {
+      const getToken = (window as Window & { getToken?: () => unknown }).getToken;
+      const resolved = typeof getToken === "function" ? await getToken() : "";
+      liveToken = typeof resolved === "string" ? resolved.trim() : "";
+    } catch {
+      // Storage-backed sessions remain supported.
+    }
     const token =
+      liveToken ||
       localStorage.getItem("refreshedToken") ||
       sessionStorage.getItem("refreshedToken") ||
       "";
