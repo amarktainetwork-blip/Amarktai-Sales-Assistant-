@@ -183,33 +183,13 @@ const crmSyncInitialDelayMs = startupDelay(
   30_000,
   10_000
 );
-const CRM_SYNC_WATCHDOG_MS = 120_000;
-async function runBoundedCrmReconciliation() {
-  const startedAt = Date.now();
-  const watchdog = setTimeout(() => {
-    console.error(
-      JSON.stringify({
-        event: "crm_reconciliation_worker_stalled",
-        durationMs: Date.now() - startedAt,
-        timeoutMs: CRM_SYNC_WATCHDOG_MS,
-        action: "recycle_worker",
-      })
-    );
-    // A browser/CDP promise can remain pending while the event loop and
-    // heartbeat stay healthy. Recycle only this worker, not the browser,
-    // login session, database or other application services.
-    process.exit(75);
-  }, CRM_SYNC_WATCHDOG_MS);
-  try {
-    return await runBackgroundBrowserReadLane("crm_reconciliation", () =>
-      runConnectionScopedCrmSyncCycle()
-    );
-  } finally {
-    clearTimeout(watchdog);
-  }
-}
 setTimeout(
-  () => startConnectionScopedCrmSyncWorker(undefined, runBoundedCrmReconciliation),
+  () =>
+    startConnectionScopedCrmSyncWorker(undefined, () =>
+      runBackgroundBrowserReadLane("crm_reconciliation", () =>
+        runConnectionScopedCrmSyncCycle()
+      )
+    ),
   crmSyncInitialDelayMs
 );
 

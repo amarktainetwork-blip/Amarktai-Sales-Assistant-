@@ -47,6 +47,7 @@ import {
   type ClientActionConfiguration,
 } from "./clientActionConfiguration";
 import { authoritativeCrmFreshness } from "./crm/currentReadiness";
+import { crmSyncIntervalMs } from "./crm/syncWorker";
 
 function isOpen(status: string) {
   return isIncompleteTask(status);
@@ -1139,7 +1140,8 @@ export async function getTodayWork(input: {
   // a browser request can stall while its worker heartbeat continues.
   const crmSyncDelayed =
     !freshness.lastSuccessfulAt ||
-    now.valueOf() - freshness.lastSuccessfulAt.valueOf() > 3 * 60_000;
+    now.valueOf() - freshness.lastSuccessfulAt.valueOf() >
+      Math.max(3 * 60_000, crmSyncIntervalMs() + 2 * 60_000);
   const effectiveFreshness =
     crmSyncDelayed && freshness.lastSuccessfulAt
       ? { ...freshness, status: "attention" as const }
