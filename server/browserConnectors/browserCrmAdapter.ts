@@ -2008,11 +2008,13 @@ export function browserCrmAdapter(
               )
             )
               throw new Error("CRM_READ_REPROOF_CAPABILITY_NOT_AUTHORIZED");
+            // Re-proof only needs an exact-owner structured GET, not another
+            // full 5,700+ row drain that can starve the normal task worker.
             const result = await list(
               "syncOpportunities",
               opportunity,
               input,
-              {},
+              { opportunityMaxPages: 5 },
               verification
             );
             return { recordCount: result.records.length };
