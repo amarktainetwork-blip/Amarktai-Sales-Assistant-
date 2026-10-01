@@ -302,10 +302,7 @@ async function previousOpportunitiesByExternalId(
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
-  const previous = new Map<
-    string,
-    typeof crmOpportunities.$inferSelect
-  >();
+  const previous = new Map<string, typeof crmOpportunities.$inferSelect>();
   for (let offset = 0; offset < externalIds.length; offset += 500) {
     const chunk = externalIds.slice(offset, offset + 500);
     if (!chunk.length) continue;
@@ -477,7 +474,9 @@ async function reconcileOpenTaskSnapshot(input: {
         inArray(crmTasks.externalId, missing)
       )
     );
-  for (const previous of cached.filter(row => missing.includes(row.externalId))) {
+  for (const previous of cached.filter(row =>
+    missing.includes(row.externalId)
+  )) {
     await persistCrmChangeEvents({
       organisationId: input.organisationId,
       connectedSystemId: input.connectedSystemId,
@@ -1023,7 +1022,9 @@ async function syncConnectedSystemDeterministically(input: {
         // Tasks are a complete current-owner pending snapshot in both full and
         // routine sync. Never resume them from a historical pagination cursor.
         initialCursor:
-          resourceType === "tasks" ? undefined : existing?.cursor ?? undefined,
+          resourceType === "tasks"
+            ? undefined
+            : (existing?.cursor ?? undefined),
         fetchPage: cursor =>
           sync({ connection, secret, cursor }) as Promise<{
             records: SyncRecord[];
@@ -1065,7 +1066,8 @@ async function syncConnectedSystemDeterministically(input: {
               records as NormalizedOpportunity[],
               { baselineComplete: Boolean(existing?.lastSuccessfulAt) }
             );
-          else await persist(input.organisationId, system.id, records as never[]);
+          else
+            await persist(input.organisationId, system.id, records as never[]);
           await upsertSalesWorkFromCrm({
             organisationId: input.organisationId,
             connectedSystemId: system.id,
@@ -1255,6 +1257,8 @@ async function syncConnectedSystemRoutineDeterministically(input: {
       );
   }
 
+  // Each source resource must be independently confirmed. An unavailable
+  // contact reader must not block a complete task snapshot.
   const summary: Record<string, number | string> = { mode: "routine" };
   const failures: Record<string, string> = {};
   const failureTransient: Record<string, boolean> = {};
@@ -1268,7 +1272,21 @@ async function syncConnectedSystemRoutineDeterministically(input: {
   ) {
     try {
       const existing = await cursorFor(system.id, "contacts");
+      const readStartedAt = Date.now();
+      console.log(
+        JSON.stringify({
+          event: "crm_routine_source_read_started",
+          resource: "contacts",
+        })
+      );
       const page = await adapter.syncRecentContacts({ connection, secret });
+      console.log(
+        JSON.stringify({
+          event: "crm_routine_source_read_finished",
+          resource: "contacts",
+          durationMs: Date.now() - readStartedAt,
+        })
+      );
       assertPersonalBrowserOwnerScope({
         resourceType: "contacts",
         expectedOwnerExternalId: secret.crmUserExternalId,
@@ -1299,7 +1317,13 @@ async function syncConnectedSystemRoutineDeterministically(input: {
           : "Unknown sync error";
       failureTransient.contacts = isTransientBrowserExecutionFailure(error);
     }
-  } else summary.contacts = 0;
+  } else {
+    summary.contacts = 0;
+    if (connection.allowedReadCapabilities.includes("contacts.read")) {
+      failures.contacts = "SOURCE_OPERATION_NOT_LIVE_PROVEN: contact.sync";
+      failureTransient.contacts = true;
+    }
+  }
 
   // Reconcile exact customer history immediately after the newest contacts.
   // This retires already-worked NEW_LEAD alerts before slower opportunity/task
@@ -1339,6 +1363,13 @@ async function syncConnectedSystemRoutineDeterministically(input: {
     const existing = await cursorFor(system.id, "tasks");
     try {
       const bufferedTaskRecords: NormalizedTask[] = [];
+      const readStartedAt = Date.now();
+      console.log(
+        JSON.stringify({
+          event: "crm_routine_source_read_started",
+          resource: "tasks",
+        })
+      );
       const drained = await drainCrmPages<NormalizedTask>({
         // The Genie task reader is a complete current-pending snapshot. Never
         // resume from an old historical cursor or missing tasks cannot be retired.
@@ -1354,6 +1385,13 @@ async function syncConnectedSystemRoutineDeterministically(input: {
           bufferedTaskRecords.push(...records);
         },
       });
+      console.log(
+        JSON.stringify({
+          event: "crm_routine_source_read_finished",
+          resource: "tasks",
+          durationMs: Date.now() - readStartedAt,
+        })
+      );
       await upsertTasks(input.organisationId, system.id, bufferedTaskRecords, {
         baselineComplete: Boolean(existing?.lastSuccessfulAt),
       });
@@ -1393,7 +1431,13 @@ async function syncConnectedSystemRoutineDeterministically(input: {
       failures.tasks = detail;
       failureTransient.tasks = isTransientBrowserExecutionFailure(error);
     }
-  } else summary.tasks = 0;
+  } else {
+    summary.tasks = 0;
+    if (connection.allowedReadCapabilities.includes("tasks.read")) {
+      failures.tasks = "SOURCE_OPERATION_NOT_LIVE_PROVEN: task.sync";
+      failureTransient.tasks = true;
+    }
+  }
 
   summary.opportunitySnapshot = opportunitySnapshotDue ? "due" : "cached";
   if (
@@ -1406,6 +1450,13 @@ async function syncConnectedSystemRoutineDeterministically(input: {
   ) {
     const existing = opportunityCursor;
     try {
+      const readStartedAt = Date.now();
+      console.log(
+        JSON.stringify({
+          event: "crm_routine_source_read_started",
+          resource: "opportunities",
+        })
+      );
       const drained = await drainCrmPages<NormalizedOpportunity>({
         initialCursor: undefined,
         fetchPage: cursor =>
@@ -1426,6 +1477,13 @@ async function syncConnectedSystemRoutineDeterministically(input: {
           });
         },
       });
+      console.log(
+        JSON.stringify({
+          event: "crm_routine_source_read_finished",
+          resource: "opportunities",
+          durationMs: Date.now() - readStartedAt,
+        })
+      );
       await saveCursor(system.id, "opportunities", undefined);
       summary.opportunities = drained.total;
     } catch (error) {
@@ -1445,7 +1503,17 @@ async function syncConnectedSystemRoutineDeterministically(input: {
       failureTransient.opportunities =
         isTransientBrowserExecutionFailure(error);
     }
-  } else summary.opportunities = 0;
+  } else {
+    summary.opportunities = 0;
+    if (
+      opportunitySnapshotDue &&
+      connection.allowedReadCapabilities.includes("opportunities.read")
+    ) {
+      failures.opportunities =
+        "SOURCE_OPERATION_NOT_LIVE_PROVEN: opportunity.sync";
+      failureTransient.opportunities = true;
+    }
+  }
 
   await reconcileCurrentBrowserReadiness(input);
   if (Object.keys(failures).length) {
