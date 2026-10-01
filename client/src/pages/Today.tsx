@@ -24,7 +24,7 @@ function freshnessLabel(value?: Date | string | null, status?: string) {
     0,
     Math.floor((Date.now() - new Date(value).valueOf()) / 1000)
   );
-  if (status === "attention" || seconds > 180)
+  if (status === "attention")
     return `CRM sync delayed — last verified ${Math.floor(seconds / 60)} minutes ago. Check Genie connection.`;
   if (seconds <= 15) return "Live CRM truth · updated just now";
   if (seconds <= 45) return `Live CRM truth · updated ${seconds}s ago`;

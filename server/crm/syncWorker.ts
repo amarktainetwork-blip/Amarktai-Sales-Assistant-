@@ -285,14 +285,32 @@ export async function runConnectionScopedCrmSyncCycle(now = new Date()) {
       connectionMethod: system.connectionMethod,
     });
     for (const userId of userIds) {
-      if (
-        await attemptReadOnlyAuthenticationRecovery({
+      const startedAt = Date.now();
+      const watchdog = setTimeout(() => {
+        console.error(
+          JSON.stringify({
+            event: "crm_user_read_stalled",
+            connectedSystemId: system.id,
+            userId,
+            operation: "authentication_recovery",
+            durationMs: Date.now() - startedAt,
+            timeoutMs: CRM_USER_READ_WATCHDOG_MS,
+            action: "recycle_worker",
+          })
+        );
+        process.exit(75);
+      }, CRM_USER_READ_WATCHDOG_MS);
+      let recovered = false;
+      try {
+        recovered = await attemptReadOnlyAuthenticationRecovery({
           system,
           userId,
           now,
-        })
-      )
-        break;
+        });
+      } finally {
+        clearTimeout(watchdog);
+      }
+      if (recovered) break;
     }
   }
 
