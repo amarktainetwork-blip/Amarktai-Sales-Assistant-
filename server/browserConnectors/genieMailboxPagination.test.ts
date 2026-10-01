@@ -605,4 +605,80 @@ describe("Genie mailbox continuation", () => {
     );
     expect(checkpoint).toBeGreaterThan(audit);
   });
+
+  it("overlaps a date boundary when Genie omits provider continuation and still reaches the next-page inbound", async () => {
+    const first = Array.from({ length: 20 }, (_, index) => ({
+      id: `foreign-${index}`,
+      contactId: `foreign-contact-${index}`,
+      locationId: "loc",
+      assignedTo: "other",
+      lastMessageDate: new Date(Date.parse("2026-09-17T10:20:00Z") - index * 60_000).toISOString(),
+    }));
+    const target = {
+      id: "target", contactId: "target-contact", locationId: "loc",
+      assignedTo: "owner", lastMessageDate: "2026-09-17T10:00:00Z",
+    };
+    const response = (data: unknown) => ({
+      ok: () => true, status: () => 200, json: async () => data,
+    });
+    const search = vi.fn(async (_url: string, options?: any) => {
+      if (options?.params?.startAfterDate) {
+        expect(options.params.startAfterDate).toBe("2026-09-17T10:01:00.001Z");
+        return response({ conversations: [target], total: 21 });
+      }
+      return response({ conversations: first, total: 21 });
+    });
+    const get = vi.fn(async (url: string, options?: any) => {
+      if (url.includes("/conversations/search")) return search(url, options);
+      if (url.endsWith("/contacts/target-contact")) return response({
+        contact: { id: "target-contact", locationId: "loc", assignedTo: "owner" },
+      });
+      if (url.endsWith("/conversations/target/messages")) return response({
+        messages: { messages: [], nextPage: false },
+      });
+      throw Error(`unexpected GET ${url}`);
+    });
+    const page = {
+      url: () => "https://genie.test/v2/location/loc/contacts",
+      evaluate: async () => "token",
+      context: () => ({ request: { get, post: async () => response({ search: { conversations: [] } }) } }),
+    } as any;
+    const input = { page, ownerExternalId: "owner", mailboxEmail: "advisor@example.test", since: new Date("2026-09-17T09:00:00Z") };
+    const a = await readPersonalGenieMailbox(input);
+    const b = await readPersonalGenieMailbox({ ...input, liveProgress: a.liveProgress });
+    expect(b.liveProgress).toMatchObject({
+      searchCursor: "2026-09-17T10:01:00.001Z",
+      previousPageIds: first.map(x => x.id),
+    });
+    const c = await readPersonalGenieMailbox({ ...input, liveProgress: b.liveProgress });
+    expect(c.checked).toBe(1);
+    expect(c.liveProgress).toBeUndefined();
+    expect(search).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails closed rather than looping or silently skipping timestamp ties when the fallback page cannot advance", async () => {
+    const first = Array.from({ length: 20 }, (_, index) => ({
+      id: `same-${index}`, contactId: `contact-${index}`, locationId: "loc",
+      assignedTo: "other", lastMessageDate: "2026-09-17T10:05:00Z",
+    }));
+    const response = (data: unknown) => ({ ok: () => true, status: () => 200, json: async () => data });
+    const page = {
+      url: () => "https://genie.test/v2/location/loc/contacts",
+      evaluate: async () => "token",
+      context: () => ({ request: {
+        get: async (url: string) => {
+          if (url.includes("/conversations/search"))
+            return response({ conversations: first, total: 21 });
+          throw Error(`unexpected GET ${url}`);
+        },
+        post: async () => response({ search: { conversations: [] } }),
+      } }),
+    } as any;
+    const input = { page, ownerExternalId: "owner", mailboxEmail: "advisor@example.test", since: new Date("2026-09-17T09:00:00Z") };
+    const a = await readPersonalGenieMailbox(input);
+    const b = await readPersonalGenieMailbox({ ...input, liveProgress: a.liveProgress });
+    expect(b.liveProgress?.searchCursor).toBe("2026-09-17T10:05:00.001Z");
+    await expect(readPersonalGenieMailbox({ ...input, liveProgress: b.liveProgress }))
+      .rejects.toThrow("GENIE_MAILBOX_SEARCH_CURSOR_STALLED");
+  });
 });

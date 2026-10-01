@@ -24,7 +24,12 @@ export const DEFAULT_CRM_SYNC_INTERVAL_MS = 30_000;
 export const CRM_SYNC_POLL_INTERVAL_MS = 10_000;
 export const BACKGROUND_ROUTINE_REFRESH_CUSTOMER_HISTORY = false;
 const MAX_CONNECTIONS_PER_CYCLE = 50;
-export const CRM_SYNC_STALE_LEASE_MS = 10 * 60_000;
+// One CRM user read is bounded independently; a healthy multi-account cycle
+// must not be terminated merely for processing several sequential connections.
+export const CRM_USER_READ_WATCHDOG_MS = 120_000;
+// A stuck browser cycle is recycled at two minutes. Reclaim its durable job
+// lease shortly afterward, rather than leaving Today stale for another 10m.
+export const CRM_SYNC_STALE_LEASE_MS = 3 * 60_000;
 
 export function crmSyncIntervalMs(raw = process.env.CRM_SYNC_INTERVAL_MS) {
   const parsed = Number(raw || DEFAULT_CRM_SYNC_INTERVAL_MS);
@@ -280,14 +285,32 @@ export async function runConnectionScopedCrmSyncCycle(now = new Date()) {
       connectionMethod: system.connectionMethod,
     });
     for (const userId of userIds) {
-      if (
-        await attemptReadOnlyAuthenticationRecovery({
+      const startedAt = Date.now();
+      const watchdog = setTimeout(() => {
+        console.error(
+          JSON.stringify({
+            event: "crm_user_read_stalled",
+            connectedSystemId: system.id,
+            userId,
+            operation: "authentication_recovery",
+            durationMs: Date.now() - startedAt,
+            timeoutMs: CRM_USER_READ_WATCHDOG_MS,
+            action: "recycle_worker",
+          })
+        );
+        process.exit(75);
+      }, CRM_USER_READ_WATCHDOG_MS);
+      let recovered = false;
+      try {
+        recovered = await attemptReadOnlyAuthenticationRecovery({
           system,
           userId,
           now,
-        })
-      )
-        break;
+        });
+      } finally {
+        clearTimeout(watchdog);
+      }
+      if (recovered) break;
     }
   }
 
@@ -386,15 +409,34 @@ export async function runConnectionScopedCrmSyncCycle(now = new Date()) {
           organisationId: row.system.organisationId,
           connectedSystemId: row.system.id,
         };
-        if (routine)
-          await syncConnectedSystemRoutine({
-            ...syncInput,
-            // The 30-second lead watcher owns exact active-customer history.
-            // Avoid duplicating those expensive browser reads in reconciliation.
-            refreshCustomerHistory:
-              BACKGROUND_ROUTINE_REFRESH_CUSTOMER_HISTORY,
-          });
-        else await syncConnectedSystem(syncInput);
+        const startedAt = Date.now();
+        const watchdog = setTimeout(() => {
+          console.error(
+            JSON.stringify({
+              event: "crm_user_read_stalled",
+              connectedSystemId: row.system.id,
+              userId,
+              durationMs: Date.now() - startedAt,
+              timeoutMs: CRM_USER_READ_WATCHDOG_MS,
+              action: "recycle_worker",
+            })
+          );
+          // A stuck CDP promise can leave a healthy event-loop heartbeat. Only
+          // recycle the worker; never touch CRM writes, browser or stored session.
+          process.exit(75);
+        }, CRM_USER_READ_WATCHDOG_MS);
+        try {
+          if (routine)
+            await syncConnectedSystemRoutine({
+              ...syncInput,
+              // The lead watcher owns active-customer history.
+              refreshCustomerHistory:
+                BACKGROUND_ROUTINE_REFRESH_CUSTOMER_HISTORY,
+            });
+          else await syncConnectedSystem(syncInput);
+        } finally {
+          clearTimeout(watchdog);
+        }
       }
       if (userIds.length) synchronized += 1;
       await db

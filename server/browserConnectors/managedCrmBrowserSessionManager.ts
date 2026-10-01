@@ -171,7 +171,7 @@ export async function connectManagedCrmBrowser(endpoint: string) {
   let pending = browserPool.get(endpoint);
   if (!pending) {
     pending = chromium
-      .connectOverCDP(endpoint)
+      .connectOverCDP(endpoint, { timeout: 12_000 })
       .then(browser => {
         browser.once("disconnected", () => browserPool.delete(endpoint));
         return browser;

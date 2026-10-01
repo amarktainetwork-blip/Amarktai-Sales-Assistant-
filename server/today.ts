@@ -47,6 +47,7 @@ import {
   type ClientActionConfiguration,
 } from "./clientActionConfiguration";
 import { authoritativeCrmFreshness } from "./crm/currentReadiness";
+import { crmSyncIntervalMs } from "./crm/syncWorker";
 
 function isOpen(status: string) {
   return isIncompleteTask(status);
@@ -1134,6 +1135,17 @@ export async function getTodayWork(input: {
     },
   };
 
+  const freshness = authoritativeCrmFreshness(syncJobs);
+  // A running process is not evidence of current source truth. In particular,
+  // a browser request can stall while its worker heartbeat continues.
+  const crmSyncDelayed =
+    !freshness.lastSuccessfulAt ||
+    now.valueOf() - freshness.lastSuccessfulAt.valueOf() >
+      Math.max(3 * 60_000, crmSyncIntervalMs() + 2 * 60_000);
+  const effectiveFreshness =
+    crmSyncDelayed && freshness.lastSuccessfulAt
+      ? { ...freshness, status: "attention" as const }
+      : freshness;
   const primaryCrmSystem =
     mappedSystems.find(system => system.provider === "genie") ||
     mappedSystems[0] ||
@@ -1143,9 +1155,9 @@ export async function getTodayWork(input: {
         connectedSystemId: primaryCrmSystem.id,
         provider: primaryCrmSystem.provider,
         status: primaryCrmSystem.status,
-        trustedForCurrentTasks: ["ready", "limited_permissions"].includes(
-          primaryCrmSystem.status
-        ),
+        trustedForCurrentTasks:
+          !crmSyncDelayed &&
+          ["ready", "limited_permissions"].includes(primaryCrmSystem.status),
         reconnectRequired: [
           "authentication_expired",
           "needs_attention",
@@ -1160,7 +1172,7 @@ export async function getTodayWork(input: {
     generatedAt: now,
     workspace,
     taskData: visibleTaskData,
-    freshness: authoritativeCrmFreshness(syncJobs),
+    freshness: effectiveFreshness,
     crmConnection,
     paymentReview: {
       enabled: actionConfiguration.paymentReview?.enabled === true,

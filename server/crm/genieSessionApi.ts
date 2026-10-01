@@ -82,6 +82,9 @@ async function sessionRequestOnPage<T>(
           method: request.method,
           headers,
           credentials: "include",
+          // Unattended reads must never hold the shared Genie browser for an
+          // unbounded fetch. The second token-header attempt has its own limit.
+          signal: AbortSignal.timeout(12_000),
           body:
             request.method === "POST"
               ? JSON.stringify(request.body ?? {})

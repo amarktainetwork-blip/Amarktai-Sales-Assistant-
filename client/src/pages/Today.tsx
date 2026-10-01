@@ -19,12 +19,13 @@ import { toast } from "sonner";
 import { useLocation } from "wouter";
 
 function freshnessLabel(value?: Date | string | null, status?: string) {
-  if (status === "attention") return "CRM sync needs attention";
-  if (!value) return "Waiting for first CRM sync";
+  if (!value) return "Waiting for first CRM sync — source truth is not current";
   const seconds = Math.max(
     0,
     Math.floor((Date.now() - new Date(value).valueOf()) / 1000)
   );
+  if (status === "attention")
+    return `CRM sync delayed — last verified ${Math.floor(seconds / 60)} minutes ago. Check Genie connection.`;
   if (seconds <= 15) return "Live CRM truth · updated just now";
   if (seconds <= 45) return `Live CRM truth · updated ${seconds}s ago`;
   if (seconds < 60) return `Refreshing CRM truth · last confirmed ${seconds}s ago`;
