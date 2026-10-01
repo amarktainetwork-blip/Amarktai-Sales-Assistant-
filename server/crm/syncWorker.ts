@@ -1,7 +1,4 @@
-import {
-  isTransientCrmSyncFailure,
-  reconcileNewLeadAlertsFromTaskHistory,
-} from "./sync";
+import { isTransientCrmSyncFailure } from "./sync";
 import { and, asc, eq, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
 import {
   connectedSystems,
@@ -70,7 +67,9 @@ export function crmSyncJobIsDue(
   lastSucceededAt: Date | null = null
 ) {
   const cadenceAnchor = lastStartedAt ?? lastSucceededAt;
-  return !cadenceAnchor || now.valueOf() - cadenceAnchor.valueOf() >= intervalMs;
+  return (
+    !cadenceAnchor || now.valueOf() - cadenceAnchor.valueOf() >= intervalMs
+  );
 }
 
 export async function ensureConnectionScopedCrmSyncJob(input: {
@@ -241,33 +240,9 @@ export async function runConnectionScopedCrmSyncCycle(now = new Date()) {
       ])
     );
 
-  for (const system of candidateSystems) {
-    if (!["browser", "sidecar"].includes(system.connectionMethod)) continue;
-    try {
-      const userIds = await synchronizationUsers({
-        organisationId: system.organisationId,
-        connectedSystemId: system.id,
-        connectionMethod: system.connectionMethod,
-      });
-      for (const userId of userIds)
-        await reconcileNewLeadAlertsFromTaskHistory({
-          userId,
-          organisationId: system.organisationId,
-          connectedSystemId: system.id,
-        });
-    } catch (error) {
-      console.error(
-        JSON.stringify({
-          event: "crm_cached_work_reconciliation_failed",
-          connectedSystemId: system.id,
-          detail:
-            error instanceof Error
-              ? error.message.slice(0, 500)
-              : String(error).slice(0, 500),
-        })
-      );
-    }
-  }
+  // Current task snapshots and the lead watcher already reconcile historical
+  // NEW_LEAD alerts. Repeating that DB work on every 10-second scheduling poll
+  // delays source reads even when no new source reconciliation is due.
 
   for (const system of candidateSystems) {
     if (
@@ -445,11 +420,25 @@ export async function runConnectionScopedCrmSyncCycle(now = new Date()) {
         .where(eq(connectorSyncJobs.id, row.job.id));
     } catch (error) {
       if (isTransientCrmSyncFailure(error)) {
+        // Preserve a normal retry interval instead of resetting lastStartedAt:
+        // a temporarily busy Chromium must not be hammered every 10 seconds.
+        console.warn(
+          JSON.stringify({
+            event: "crm_sync_read_deferred",
+            connectedSystemId: row.system.id,
+            detail:
+              error instanceof Error
+                ? error.message.slice(0, 300)
+                : String(error).slice(0, 300),
+            nextAttemptAfterMs: crmSyncIntervalMs(),
+            externalWritePerformed: false,
+          })
+        );
         await db
           .update(connectorSyncJobs)
           .set({
             status: row.job.status === "error" ? "error" : "ready",
-            lastStartedAt: null,
+            lastStartedAt: new Date(),
           })
           .where(eq(connectorSyncJobs.id, row.job.id));
         continue;
@@ -478,8 +467,9 @@ export async function runConnectionScopedCrmSyncCycle(now = new Date()) {
 
 export function startConnectionScopedCrmSyncWorker(
   intervalMs = crmSyncIntervalMs(),
-  runCycle: () => Promise<Awaited<ReturnType<typeof runConnectionScopedCrmSyncCycle>>> =
-    runConnectionScopedCrmSyncCycle
+  runCycle: () => Promise<
+    Awaited<ReturnType<typeof runConnectionScopedCrmSyncCycle>>
+  > = runConnectionScopedCrmSyncCycle
 ) {
   let processing = false;
   const run = async () => {

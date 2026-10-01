@@ -141,6 +141,25 @@ describe("Genie live-page dynamic token boundary", () => {
     expect(fetchRead.mock.calls[1]?.[1]?.headers.Authorization).toBeUndefined();
   });
 
+  it("rechecks a single temporarily empty rotated token before reporting authentication expired", async () => {
+    const getToken = vi.fn().mockResolvedValueOnce("").mockResolvedValue("restored-live-token");
+    const fetchRead = vi.fn(async (_url: string, _options: { headers: Record<string, string> }) => ({
+      status: 200, ok: true, text: async () => JSON.stringify({ contacts: [] }),
+    }));
+    vi.stubGlobal("window", { getToken });
+    vi.stubGlobal("localStorage", { getItem: () => null });
+    vi.stubGlobal("sessionStorage", { getItem: () => null });
+    vi.stubGlobal("fetch", fetchRead);
+    const page = { evaluate: async (run: (value: unknown) => unknown, arg: unknown) => run(arg) } as any;
+    await expect(sessionRequestOnPage(page, {
+      url: "https://services.leadconnectorhq.com/contacts/search",
+      method: "POST", body: { assignedTo: "owner" },
+    })).resolves.toEqual({ contacts: [] });
+    expect(getToken).toHaveBeenCalledTimes(2);
+    expect(fetchRead).toHaveBeenCalledTimes(1);
+    expect(fetchRead.mock.calls[0]?.[1]?.headers["token-id"]).toBe("restored-live-token");
+  });
+
   it("fails closed without any authenticated token rather than attempting the provider read", async () => {
     const fetchRead = vi.fn();
     vi.stubGlobal("window", { getToken: async () => "" });

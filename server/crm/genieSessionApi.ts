@@ -76,6 +76,18 @@ export async function sessionRequestOnPage<T>(
       } catch {
         // An older storage-backed session can still be used for a safe read.
       }
+      // A rotating Genie session can return one temporarily empty token.
+      // Recheck once before failing closed; never use a fabricated credential.
+      if (!liveToken && !localStorage.getItem("refreshedToken") && !sessionStorage.getItem("refreshedToken")) {
+        await new Promise(resolve => setTimeout(resolve, 250));
+        try {
+          const getToken = (window as Window & { getToken?: () => unknown }).getToken;
+          const resolved = typeof getToken === "function" ? await getToken() : "";
+          liveToken = typeof resolved === "string" ? resolved.trim() : "";
+        } catch {
+          // Continue to fail closed if no token is available.
+        }
+      }
       const token =
         liveToken ||
         localStorage.getItem("refreshedToken") ||
@@ -173,6 +185,16 @@ async function sessionContextOnPage(page: Page) {
       liveToken = typeof resolved === "string" ? resolved.trim() : "";
     } catch {
       // Storage-backed sessions remain supported.
+    }
+    if (!liveToken && !localStorage.getItem("refreshedToken") && !sessionStorage.getItem("refreshedToken")) {
+      await new Promise(resolve => setTimeout(resolve, 250));
+      try {
+        const getToken = (window as Window & { getToken?: () => unknown }).getToken;
+        const resolved = typeof getToken === "function" ? await getToken() : "";
+        liveToken = typeof resolved === "string" ? resolved.trim() : "";
+      } catch {
+        // Keep identity unproven until an actual authenticated token exists.
+      }
     }
     const token =
       liveToken ||

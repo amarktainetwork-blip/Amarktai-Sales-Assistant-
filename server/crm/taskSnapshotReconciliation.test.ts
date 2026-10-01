@@ -32,8 +32,8 @@ describe("CRM pending-task snapshot reconciliation", () => {
       fullDrain
     );
     const fullSnapshot = source.slice(fullDrain, fullPersist);
-    expect(fullSnapshot).toContain(
-      'resourceType === "tasks" ? undefined : existing?.cursor ?? undefined'
+    expect(fullSnapshot.replace(/\s+/g, " ")).toMatch(
+      /initialCursor: resourceType === "tasks" \? undefined : \(existing\?\.cursor \?\? undefined\)/
     );
   });
 
