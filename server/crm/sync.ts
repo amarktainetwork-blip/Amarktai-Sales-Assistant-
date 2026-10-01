@@ -104,11 +104,14 @@ async function saveCursor(
   resourceType: string,
   cursor?: string,
   error?: string,
-  previousSuccessfulAt?: Date | null
+  previousSuccessfulAt?: Date | null,
+  preserveSuccessfulAt = false
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
-  const lastSuccessfulAt = error ? (previousSuccessfulAt ?? null) : new Date();
+  // A bounded opportunity batch is source evidence, not a complete snapshot.
+  const lastSuccessfulAt =
+    error || preserveSuccessfulAt ? (previousSuccessfulAt ?? null) : new Date();
   await db
     .insert(crmSyncCursors)
     .values({
@@ -1457,35 +1460,58 @@ async function syncConnectedSystemRoutineDeterministically(input: {
           resource: "opportunities",
         })
       );
-      const drained = await drainCrmPages<NormalizedOpportunity>({
-        initialCursor: undefined,
-        fetchPage: cursor =>
-          adapter.syncOpportunities({ connection, secret, cursor }),
-        onPage: async records => {
-          assertPersonalBrowserOwnerScope({
-            resourceType: "opportunities",
-            expectedOwnerExternalId: secret.crmUserExternalId || "",
-            records,
-          });
-          await upsertOpportunities(input.organisationId, system.id, records, {
-            baselineComplete: Boolean(existing?.lastSuccessfulAt),
-          });
-          await upsertSalesWorkFromCrm({
-            organisationId: input.organisationId,
-            connectedSystemId: system.id,
-            resource: { type: "opportunities", records },
-          });
-        },
+      // One bounded batch per normal CRM cycle: the old 5,700+ row read could
+      // hold the shared Genie browser for >120s and recycle the whole worker.
+      // Persist verified owner-scoped records after each batch; only advance
+      // lastSuccessfulAt when the final source-total proof has completed.
+      const batch = await adapter.syncOpportunities({
+        connection,
+        secret,
+        cursor: existing?.cursor ?? undefined,
+        boundedSnapshotPages: 5,
       });
+      assertPersonalBrowserOwnerScope({
+        resourceType: "opportunities",
+        expectedOwnerExternalId: secret.crmUserExternalId || "",
+        records: batch.records,
+      });
+      await upsertOpportunities(
+        input.organisationId,
+        system.id,
+        batch.records,
+        {
+          baselineComplete: Boolean(existing?.lastSuccessfulAt),
+        }
+      );
+      await upsertSalesWorkFromCrm({
+        organisationId: input.organisationId,
+        connectedSystemId: system.id,
+        resource: { type: "opportunities", records: batch.records },
+      });
+      if (batch.cursor) {
+        await saveCursor(
+          system.id,
+          "opportunities",
+          batch.cursor,
+          undefined,
+          existing?.lastSuccessfulAt,
+          true
+        );
+        summary.opportunitySnapshot = "in_progress";
+      } else {
+        await saveCursor(system.id, "opportunities", undefined);
+        summary.opportunitySnapshot = "complete";
+      }
       console.log(
         JSON.stringify({
           event: "crm_routine_source_read_finished",
           resource: "opportunities",
           durationMs: Date.now() - readStartedAt,
+          batchRecords: batch.records.length,
+          snapshotComplete: !batch.cursor,
         })
       );
-      await saveCursor(system.id, "opportunities", undefined);
-      summary.opportunities = drained.total;
+      summary.opportunities = batch.records.length;
     } catch (error) {
       const detail =
         error instanceof Error

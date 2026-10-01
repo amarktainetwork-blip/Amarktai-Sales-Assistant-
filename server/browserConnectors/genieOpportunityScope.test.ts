@@ -57,9 +57,7 @@ describe("Genie opportunity read", () => {
       pipelines
     )[0];
     expect(normalized.closeAt).toBe("2026-09-24T10:15:00.000Z");
-    expect(normalized.lastStatusChangeAt).toBe(
-      "2026-09-24T10:15:00.000Z"
-    );
+    expect(normalized.lastStatusChangeAt).toBe("2026-09-24T10:15:00.000Z");
   });
 
   it.each([
@@ -109,6 +107,65 @@ describe("Genie opportunity read", () => {
     expect(url.searchParams.get("assigned_to")).toBe("owner");
     expect(control).toHaveBeenCalledTimes(3);
   });
+  it("resumes bounded exact-owner batches without asserting premature snapshot completion", async () => {
+    const get = vi.fn(async (url: string) => ({
+      ok: () => true,
+      status: () => 200,
+      json: async () =>
+        url.includes("pipelines")
+          ? { pipelines }
+          : url.includes("startAfter=")
+            ? { opportunities: [row("101")], meta: { total: 101 } }
+            : {
+                opportunities: Array.from({ length: 100 }, (_, i) =>
+                  row(String(i))
+                ),
+                meta: { total: 101, startAfter: 123, startAfterId: "99" },
+              },
+    }));
+    const page = {
+      url: () => "https://example.test/v2/location/loc/contacts",
+      evaluate: async () => "token",
+      context: () => ({ request: { get } }),
+    } as any;
+    const first = await readOwnerScopedGenieOpportunities({
+      page,
+      ownerExternalId: "owner",
+      assertControl: () => {},
+      maxPages: 1,
+    });
+    expect(first.data.snapshotComplete).toBe("false");
+    expect(JSON.parse(first.data.records)).toHaveLength(100);
+    expect(first.data.nextCursor).toBeTruthy();
+    const second = await readOwnerScopedGenieOpportunities({
+      page,
+      ownerExternalId: "owner",
+      assertControl: () => {},
+      maxPages: 1,
+      continuation: first.data.nextCursor,
+    });
+    expect(second.data.snapshotComplete).toBe("true");
+    expect(JSON.parse(second.data.records)).toHaveLength(1);
+    expect(second.data.nextCursor).toBeUndefined();
+    const after = new URL(get.mock.calls.at(-1)![0]);
+    expect(after.searchParams.get("assigned_to")).toBe("owner");
+    expect(after.searchParams.get("startAfterId")).toBe("99");
+  });
+  it("rejects an invalid or changed bounded continuation", async () => {
+    const bad = '{"version":1,"after":[1,"99"],"seen":100,"sourceTotal":99}';
+    await expect(
+      readOwnerScopedGenieOpportunities({
+        page: {
+          url: () => "https://example.test/v2/location/loc/contacts",
+        } as any,
+        ownerExternalId: "owner",
+        assertControl: () => {},
+        continuation: bad,
+        maxPages: 1,
+      })
+    ).rejects.toThrow();
+  });
+
   it("fails an incomplete source count instead of publishing a partial set", async () => {
     const get = vi.fn(async (url: string) => ({
       ok: () => true,

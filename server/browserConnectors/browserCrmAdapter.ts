@@ -1388,12 +1388,21 @@ async function runDeterministicOperation(input: RunOperationInput) {
                       page,
                       ownerExternalId,
                       assertControl: () => assertBrowserOperationCanRun(owner),
+                      continuation:
+                        typeof payload.cursor === "string"
+                          ? payload.cursor
+                          : undefined,
+                      maxPages:
+                        typeof payload.opportunityMaxPages === "number"
+                          ? payload.opportunityMaxPages
+                          : undefined,
                     })
                   : input.provider === "genie" &&
                       operationKey === "custom.read.templates"
                     ? await readGenieCommunicationTemplates({
                         page,
-                        assertControl: () => assertBrowserOperationCanRun(owner),
+                        assertControl: () =>
+                          assertBrowserOperationCanRun(owner),
                       })
                     : await runScript(page, script, "execute");
           if (!execution.success) throw new Error(execution.detail);
@@ -2011,7 +2020,15 @@ export function browserCrmAdapter(
         }
       : {}),
     syncCompanies: input => list("syncCompanies", company, input),
-    syncOpportunities: input => list("syncOpportunities", opportunity, input),
+    syncOpportunities: input =>
+      list(
+        "syncOpportunities",
+        opportunity,
+        input,
+        input.boundedSnapshotPages
+          ? { opportunityMaxPages: input.boundedSnapshotPages }
+          : {}
+      ),
     syncTasks: input => list("syncTasks", task, input),
     syncActivities: input => list("syncActivities", activity, input),
     searchContacts: async input => {

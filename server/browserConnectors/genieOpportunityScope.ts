@@ -40,11 +40,47 @@ export function normalizeGenieOpportunities(
     };
   });
 }
-/** Only GET reads, exact owner and location checked on every record, bounded complete drain. */
+/** A compact cursor for a bounded, resumable, exact-owner opportunity snapshot. */
+export type GenieOpportunityContinuation = {
+  version: 1;
+  after: [string | number, string];
+  seen: number;
+  sourceTotal: number;
+};
+
+export function parseGenieOpportunityContinuation(value?: string) {
+  if (!value) return undefined;
+  let parsed: Partial<GenieOpportunityContinuation>;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw Error("GENIE_OPPORTUNITY_CONTINUATION_INVALID");
+  }
+  if (
+    parsed.version !== 1 ||
+    !Array.isArray(parsed.after) ||
+    parsed.after.length !== 2 ||
+    !["string", "number"].includes(typeof parsed.after[0]) ||
+    typeof parsed.after[1] !== "string" ||
+    !parsed.after[1] ||
+    !Number.isSafeInteger(parsed.seen) ||
+    !Number.isSafeInteger(parsed.sourceTotal) ||
+    Number(parsed.seen) < 0 ||
+    Number(parsed.sourceTotal) <= Number(parsed.seen)
+  )
+    throw Error("GENIE_OPPORTUNITY_CONTINUATION_INVALID");
+  return parsed as GenieOpportunityContinuation;
+}
+
+/** GET-only owner-scoped reader. Default remains the fully verified source drain.
+ * The bounded mode publishes only a continuation until the complete count is proven.
+ */
 export async function readOwnerScopedGenieOpportunities(input: {
   page: Page;
   ownerExternalId: string;
   assertControl: () => void;
+  continuation?: string;
+  maxPages?: number;
 }): Promise<BrowserScriptResult> {
   const location = input.page
     .url()
@@ -52,10 +88,17 @@ export async function readOwnerScopedGenieOpportunities(input: {
   if (!location || !input.ownerExternalId)
     throw Error("CRM_OWNER_SCOPE_REQUIRED");
   const token = async () => {
-    const value = await input.page.evaluate(async () => {
-      const f = (window as any).getToken;
-      return typeof f === "function" ? String(await f()) : "";
-    });
+    const readToken = () =>
+      input.page.evaluate(async () => {
+        const f = (window as any).getToken;
+        const resolved = typeof f === "function" ? await f() : "";
+        return typeof resolved === "string" ? resolved.trim() : "";
+      });
+    let value = await readToken();
+    if (!value) {
+      await new Promise(resolve => setTimeout(resolve, 250));
+      value = await readToken();
+    }
     if (!value) throw Error("CRM_BROWSER_REAUTHENTICATION_REQUIRED");
     return value;
   };
@@ -64,17 +107,15 @@ export async function readOwnerScopedGenieOpportunities(input: {
   const get = async (path: string) => {
     input.assertControl();
     const request = () =>
-      input.page
-        .context()
-        .request.get(BASE + path, {
-          headers: {
-            "token-id": current,
-            version: "2021-07-28",
-            channel: "APP",
-            source: "WEB_USER",
-          },
-          timeout: 30000,
-        });
+      input.page.context().request.get(BASE + path, {
+        headers: {
+          "token-id": current,
+          version: "2021-07-28",
+          channel: "APP",
+          source: "WEB_USER",
+        },
+        timeout: input.maxPages === undefined ? 30000 : 12000,
+      });
     let r = await request();
     if (r.status() === 401 && !refreshed) {
       refreshed = true;
@@ -101,10 +142,16 @@ export async function readOwnerScopedGenieOpportunities(input: {
     string,
     ReturnType<typeof normalizeGenieOpportunities>[number]
   >();
-  let total: number | undefined;
-  let cursor = "";
-  let previous = "";
-  for (let page = 1; page <= 500; page++) {
+  const continuation = parseGenieOpportunityContinuation(input.continuation);
+  const pageLimit =
+    input.maxPages === undefined
+      ? 500
+      : Math.min(12, Math.max(1, Math.floor(input.maxPages)));
+  let total: number | undefined = continuation?.sourceTotal;
+  const alreadySeen = continuation?.seen ?? 0;
+  let cursor = continuation ? JSON.stringify(continuation.after) : "";
+  let previous = cursor;
+  for (let page = 1; page <= pageLimit; page++) {
     const params = new URLSearchParams({
       location_id: location,
       assigned_to: input.ownerExternalId,
@@ -124,12 +171,16 @@ export async function readOwnerScopedGenieOpportunities(input: {
       location,
       metadata.pipelines
     );
-    if (page === 1) total = Number(body.meta?.total);
-    if (!Number.isInteger(total) || total! < 0)
+    const observedTotal = Number(body.meta?.total);
+    if (!Number.isSafeInteger(observedTotal) || observedTotal < 0)
       throw Error("GENIE_OPPORTUNITY_TOTAL_REQUIRED");
+    if (total !== undefined && total !== observedTotal)
+      throw Error("GENIE_OPPORTUNITY_SNAPSHOT_CHANGED");
+    total = observedTotal;
     const before = records.size;
     for (const row of rows) records.set(row.externalId, row);
-    if (records.size === total)
+    const cumulative = alreadySeen + records.size;
+    if (cumulative === total)
       return {
         success: true,
         completedAt: new Date().toISOString(),
@@ -140,6 +191,7 @@ export async function readOwnerScopedGenieOpportunities(input: {
           pagesRead: String(page),
           ownerExternalId: input.ownerExternalId,
           collectionEvidence: `Owner-scoped Genie search verified ${total} opportunities.`,
+          snapshotComplete: "true",
           pipelineMetadata: JSON.stringify(
             metadata.pipelines.map((p: any) => ({
               externalId: p.id,
@@ -152,7 +204,7 @@ export async function readOwnerScopedGenieOpportunities(input: {
           ),
         },
       };
-    if (records.size > total! || rows.length < 100 || records.size === before)
+    if (cumulative > total! || rows.length < 100 || records.size === before)
       throw Error("GENIE_OPPORTUNITY_DRAIN_INCOMPLETE");
     const next =
       body.meta?.startAfter !== undefined && body.meta?.startAfterId
@@ -163,6 +215,28 @@ export async function readOwnerScopedGenieOpportunities(input: {
     cursor = JSON.stringify(next);
     if (cursor === previous) throw Error("CRM_SYNC_CURSOR_STALLED");
     previous = cursor;
+    if (input.maxPages !== undefined && page >= pageLimit) {
+      const nextCursor: GenieOpportunityContinuation = {
+        version: 1,
+        after: next as [string | number, string],
+        seen: cumulative,
+        sourceTotal: total,
+      };
+      return {
+        success: true,
+        completedAt: new Date().toISOString(),
+        detail: "Owner-scoped opportunity snapshot is still in progress.",
+        data: {
+          records: JSON.stringify(Array.from(records.values())),
+          sourceTotal: String(total),
+          pagesRead: String(page),
+          ownerExternalId: input.ownerExternalId,
+          snapshotComplete: "false",
+          nextCursor: JSON.stringify(nextCursor),
+          collectionEvidence: `Bounded batch: ${cumulative} of ${total} owner-scoped opportunities read; snapshot not complete.`,
+        },
+      };
+    }
   }
   throw Error("CRM_SYNC_PAGE_LIMIT_REACHED");
 }

@@ -223,6 +223,8 @@ export type CrmAdapter = {
     connection: AdapterConnection;
     secret: ConnectionSecretPayload;
     cursor?: string;
+    /** Bounded, resume-safe owner snapshot; leave undefined for an explicit full read. */
+    boundedSnapshotPages?: number;
   }) => Promise<{ records: NormalizedOpportunity[]; cursor?: string }>;
   syncTasks: (input: {
     connection: AdapterConnection;
