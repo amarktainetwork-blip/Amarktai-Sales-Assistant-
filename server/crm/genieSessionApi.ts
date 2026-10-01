@@ -55,7 +55,7 @@ function locationIdFromUrl(raw: string) {
   return locationId;
 }
 
-async function sessionRequestOnPage<T>(
+export async function sessionRequestOnPage<T>(
   page: Page,
   input: {
     url: string;
@@ -66,7 +66,18 @@ async function sessionRequestOnPage<T>(
 ): Promise<T> {
   const response = await page.evaluate(
     async request => {
+      // Genie exposes the live account token through its async page helper.
+      // Newer Genie tabs no longer store refreshedToken in local/session storage.
+      let liveToken = "";
+      try {
+        const getToken = (window as Window & { getToken?: () => unknown }).getToken;
+        const resolved = typeof getToken === "function" ? await getToken() : "";
+        liveToken = typeof resolved === "string" ? resolved.trim() : "";
+      } catch {
+        // An older storage-backed session can still be used for a safe read.
+      }
       const token =
+        liveToken ||
         localStorage.getItem("refreshedToken") ||
         sessionStorage.getItem("refreshedToken") ||
         "";
@@ -139,8 +150,17 @@ async function sessionRequest<T>(input: {
 
 async function sessionContextOnPage(page: Page) {
   const pageUrl = page.url();
-  const claims = await page.evaluate(() => {
+  const claims = await page.evaluate(async () => {
+    let liveToken = "";
+    try {
+      const getToken = (window as Window & { getToken?: () => unknown }).getToken;
+      const resolved = typeof getToken === "function" ? await getToken() : "";
+      liveToken = typeof resolved === "string" ? resolved.trim() : "";
+    } catch {
+      // Storage-backed sessions remain supported.
+    }
     const token =
+      liveToken ||
       localStorage.getItem("refreshedToken") ||
       sessionStorage.getItem("refreshedToken") ||
       "";

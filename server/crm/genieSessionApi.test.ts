@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const taskBodies: Array<Record<string, unknown>> = [];
 let authenticatedPageCalls = 0;
@@ -68,6 +68,7 @@ import {
   genieSessionActivity,
   genieSessionSourceDate,
   genieTokenlessProfileIdentity,
+  sessionRequestOnPage,
 } from "./genieSessionApi";
 
 const connection = {
@@ -89,6 +90,45 @@ const secret = {
   crmUserDisplayName: "Sales Person",
   crmUserEmail: "sales@example.com",
 };
+
+describe("Genie live-page dynamic token boundary", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("uses the current in-page getToken for an owner-scoped read when storage tokens are absent", async () => {
+    const fetchRead = vi.fn(async () => ({
+      status: 200, ok: true,
+      text: async () => JSON.stringify({ contacts: [{ id: "owned-contact" }] }),
+    }));
+    vi.stubGlobal("window", { getToken: async () => "live-dynamic-token" });
+    vi.stubGlobal("localStorage", { getItem: () => null });
+    vi.stubGlobal("sessionStorage", { getItem: () => null });
+    vi.stubGlobal("fetch", fetchRead);
+    const page = { evaluate: async (run: (value: unknown) => unknown, arg: unknown) => run(arg) } as any;
+    const url = "https://services.leadconnectorhq.com/contacts/search";
+    const result = await sessionRequestOnPage(page, {
+      url, method: "POST", body: { assignedTo: "owner" },
+    });
+    expect(result).toEqual({ contacts: [{ id: "owned-contact" }] });
+    expect(fetchRead).toHaveBeenCalledWith(url, expect.objectContaining({
+      method: "POST",
+      headers: expect.objectContaining({ "token-id": "live-dynamic-token" }),
+    }));
+  });
+
+  it("fails closed without any authenticated token rather than attempting the provider read", async () => {
+    const fetchRead = vi.fn();
+    vi.stubGlobal("window", { getToken: async () => "" });
+    vi.stubGlobal("localStorage", { getItem: () => null });
+    vi.stubGlobal("sessionStorage", { getItem: () => null });
+    vi.stubGlobal("fetch", fetchRead);
+    const page = { evaluate: async (run: (value: unknown) => unknown, arg: unknown) => run(arg) } as any;
+    await expect(sessionRequestOnPage(page, {
+      url: "https://services.leadconnectorhq.com/contacts/search",
+      method: "POST", body: { assignedTo: "owner" },
+    })).rejects.toThrow("GENIE_SESSION_TOKEN_UNAVAILABLE");
+    expect(fetchRead).not.toHaveBeenCalled();
+  });
+});
 
 describe("Genie numeric source-date contract", () => {
   it("retains numeric source chronology without fabricating a missing date", () => {
