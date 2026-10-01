@@ -1,13 +1,14 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import { crmCommissioningJobs } from "../../drizzle/schema";
 import { getDb } from "../db";
 
 export const ACTIVE_COMMISSIONING_STATUSES = ["queued", "running"] as const;
 
 export function commissioningBlocksBackgroundReads(
-  status: string | null | undefined
+  status: string | null | undefined,
+  state?: string | null
 ) {
-  return status === "queued" || status === "running";
+  return state !== "READY" && (status === "queued" || status === "running");
 }
 
 export async function connectedSystemHasActiveCommissioning(input: {
@@ -24,7 +25,10 @@ export async function connectedSystemHasActiveCommissioning(input: {
         and(
           eq(crmCommissioningJobs.organisationId, input.organisationId),
           eq(crmCommissioningJobs.connectedSystemId, input.connectedSystemId),
-          inArray(crmCommissioningJobs.status, [...ACTIVE_COMMISSIONING_STATUSES])
+          inArray(crmCommissioningJobs.status, [
+            ...ACTIVE_COMMISSIONING_STATUSES,
+          ]),
+          ne(crmCommissioningJobs.state, "READY")
         )
       )
       .limit(1)

@@ -1509,8 +1509,7 @@ async function testOperations(input: {
       const parsed = serialized ? (JSON.parse(serialized) as unknown) : [];
       const baseUrl = resultData.actualPageUrl || system.baseUrl || undefined;
       derivedContact = deterministicContactVerificationSeed(parsed, baseUrl);
-      if (!derivedContact)
-        throw new Error("VERIFICATION_TARGET_NOT_DERIVED");
+      if (!derivedContact) throw new Error("VERIFICATION_TARGET_NOT_DERIVED");
     }
   };
   for (const operation of selected.slice(0, 80)) {
@@ -1976,6 +1975,24 @@ export async function advanceAutomaticCommissioning(jobId: number) {
   if (!candidate || !["queued", "running"].includes(candidate.status)) return;
   const db = await getDb();
   if (!db) throw new Error("Database connection is unavailable.");
+  // READY is terminal: a stale queued/running status must never restart a
+  // completed job, claim the browser or block the owner's routine source reads.
+  if (candidate.state === "READY") {
+    await db
+      .update(crmCommissioningJobs)
+      .set({
+        status: candidate.completedAt ? "ready" : "needs_attention",
+        leaseExpiresAt: null,
+      })
+      .where(
+        and(
+          eq(crmCommissioningJobs.id, jobId),
+          eq(crmCommissioningJobs.state, "READY"),
+          inArray(crmCommissioningJobs.status, ["queued", "running"])
+        )
+      );
+    return;
+  }
   const claimed = await db
     .update(crmCommissioningJobs)
     .set({
