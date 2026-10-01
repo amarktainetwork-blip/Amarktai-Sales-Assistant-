@@ -87,12 +87,26 @@ export async function readOwnerScopedGenieOpportunities(input: {
     .match(/\/v2\/location\/([A-Za-z0-9_-]+)(?:\/|$)/)?.[1];
   if (!location || !input.ownerExternalId)
     throw Error("CRM_OWNER_SCOPE_REQUIRED");
+  // Read only the browser's existing authenticated token, including the
+  // retained token used by older Genie sessions when SPA getToken is missing.
+  // Never invent a token or accept an expired one merely because it is stored.
   const token = async () => {
     const readToken = () =>
       input.page.evaluate(async () => {
         const f = (window as any).getToken;
-        const resolved = typeof f === "function" ? await f() : "";
-        return typeof resolved === "string" ? resolved.trim() : "";
+        let liveToken = "";
+        try {
+          const value = typeof f === "function" ? await f() : "";
+          liveToken = typeof value === "string" ? value.trim() : "";
+        } catch {
+          // A retained authenticated browser session may still have its token.
+        }
+        return (
+          liveToken ||
+          localStorage.getItem("refreshedToken")?.trim() ||
+          sessionStorage.getItem("refreshedToken")?.trim() ||
+          ""
+        );
       });
     let value = await readToken();
     if (!value) {
@@ -103,11 +117,10 @@ export async function readOwnerScopedGenieOpportunities(input: {
     return value;
   };
   let current = await token();
-  let refreshed = false;
   const get = async (path: string) => {
-    input.assertControl();
-    const request = () =>
-      input.page.context().request.get(BASE + path, {
+    const request = () => {
+      input.assertControl();
+      return input.page.context().request.get(BASE + path, {
         headers: {
           "token-id": current,
           version: "2021-07-28",
@@ -116,18 +129,25 @@ export async function readOwnerScopedGenieOpportunities(input: {
         },
         timeout: input.maxPages === undefined ? 30000 : 12000,
       });
+    };
     let r = await request();
-    if (r.status() === 401 && !refreshed) {
-      refreshed = true;
+    // Genie may rotate token-id after a successful prior page. Retry only
+    // the exact GET, bounded and per-request; never widen owner/location scope.
+    for (const delayMs of [250, 500]) {
+      if (![401, 403].includes(r.status())) break;
+      await new Promise(resolve => setTimeout(resolve, delayMs));
       current = await token();
       r = await request();
     }
+    if ([401, 403].includes(r.status()))
+      throw Error("CRM_BROWSER_REAUTHENTICATION_REQUIRED");
     if (!r.ok()) {
-      const error = await r.json();
+      const error = await r.json().catch(() => ({}));
       throw Error(
-        `GENIE_OPPORTUNITY_HTTP_${r.status()} ${JSON.stringify(error.message)}`
+        `GENIE_OPPORTUNITY_HTTP_${r.status()} ${JSON.stringify(error.message || "")}`
       );
     }
+    input.assertControl();
     return r.json();
   };
   const metadata = await get(
