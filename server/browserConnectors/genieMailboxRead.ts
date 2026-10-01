@@ -125,6 +125,8 @@ export type GenieLiveMailboxProgress = {
     lastMessageDate?: string;
   }>;
   nextSearchCursor?: string;
+  /** IDs from the preceding search page, used to reject non-advancing fallback pagination. */
+  previousPageIds?: string[];
   conversationIndex?: number;
   lastMessageId?: string;
   threadOffset?: number;
@@ -476,6 +478,15 @@ export async function readPersonalGenieMailbox(input: {
     const pageConversations = search.conversations;
     if (!Array.isArray(pageConversations))
       throw Error("GENIE_MAILBOX_SEARCH_INVALID");
+    const previousPageIds = new Set(input.liveProgress?.previousPageIds || []);
+    if (
+      previousPageIds.size &&
+      pageConversations.length &&
+      pageConversations.every((conversation: any) =>
+        previousPageIds.has(String(conversation?.id || ""))
+      )
+    )
+      throw Error("GENIE_MAILBOX_SEARCH_CURSOR_STALLED");
     conversations = pageConversations.map(snapshotConversation);
     conversationIndex = 0;
     resumedLastMessageId = undefined;
@@ -510,8 +521,14 @@ export async function readPersonalGenieMailbox(input: {
       );
       nextSearchCursor =
         rawNext === undefined ? undefined : String(rawNext).trim() || undefined;
-      if (!nextSearchCursor && Number(search.total || 0) > pageConversations.length)
-        throw Error("GENIE_MAILBOX_CONTINUATION_REQUIRED");
+      if (!nextSearchCursor && Number(search.total || 0) > pageConversations.length) {
+        // Some Genie search versions expose a total but no nextPage/nextCursor.
+        // Overlap the boundary by one millisecond rather than skipping equal-time
+        // conversations. An unchanging page is rejected by the ID guard above.
+        if (!Number.isFinite(oldestPageTime))
+          throw Error("GENIE_MAILBOX_CONTINUATION_REQUIRED");
+        nextSearchCursor = new Date(oldestPageTime + 1).toISOString();
+      }
       if (nextSearchCursor && nextSearchCursor === searchCursor)
         throw Error("GENIE_MAILBOX_SEARCH_CURSOR_STALLED");
     }
@@ -795,6 +812,7 @@ export async function readPersonalGenieMailbox(input: {
       liveProgress = {
         sourceSince: new Date(since).toISOString(),
         searchCursor: nextSearchCursor,
+        previousPageIds: conversations.map(conversation => String(conversation.id)),
       };
     }
   }

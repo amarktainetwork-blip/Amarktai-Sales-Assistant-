@@ -24,7 +24,9 @@ export const DEFAULT_CRM_SYNC_INTERVAL_MS = 30_000;
 export const CRM_SYNC_POLL_INTERVAL_MS = 10_000;
 export const BACKGROUND_ROUTINE_REFRESH_CUSTOMER_HISTORY = false;
 const MAX_CONNECTIONS_PER_CYCLE = 50;
-export const CRM_SYNC_STALE_LEASE_MS = 10 * 60_000;
+// A stuck browser cycle is recycled at two minutes. Reclaim its durable job
+// lease shortly afterward, rather than leaving Today stale for another 10m.
+export const CRM_SYNC_STALE_LEASE_MS = 3 * 60_000;
 
 export function crmSyncIntervalMs(raw = process.env.CRM_SYNC_INTERVAL_MS) {
   const parsed = Number(raw || DEFAULT_CRM_SYNC_INTERVAL_MS);
