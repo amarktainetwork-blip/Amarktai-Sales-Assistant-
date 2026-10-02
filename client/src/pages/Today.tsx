@@ -461,7 +461,10 @@ export default function Today() {
                         <h3>{item.title}</h3>
                       </div>
                       <strong className="amk-internal__customer">
-                        {item.contactName || "No related CRM contact"}
+                        {item.contactName ||
+                          (item.contactExternalId
+                            ? "Linked CRM contact context unavailable"
+                            : "No related CRM contact")}
                       </strong>
                     </div>
 
@@ -566,7 +569,8 @@ export default function Today() {
                                 item.opportunity?.stage
                                   ? `CRM stage: ${item.opportunity.stage}.`
                                   : "",
-                                "Summarise what matters, what this task is asking me to do, and the safest next action.",
+                                `Task instruction: ${item.detail || item.title}.`,
+                                "Summarise what matters, what this task is asking me to do, and the safest next action. Do not infer missing customer facts.",
                               ]
                                 .filter(Boolean)
                                 .join(" ");
@@ -581,11 +585,28 @@ export default function Today() {
                         </div>
                       </>
                     ) : (
-                      <p className="amk-internal__missing">
-                        This CRM task is not linked to a customer record. The task
-                        remains visible so it cannot be missed, but no customer
-                        context can be safely inferred.
-                      </p>
+                      <div data-internal-contact-unavailable>
+                        <p className="amk-internal__missing">
+                          {item.contactExternalId
+                            ? "This task is assigned to you, but its linked CRM contact is not available in the current source snapshot. The task remains visible; customer identity, ownership and history cannot be safely inferred."
+                            : "This CRM task has no linked customer record. It remains visible so it cannot be missed; no customer context can be safely inferred."}
+                        </p>
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            const prompt = [
+                              `Help me work this internal CRM task: ${item.title}.`,
+                              `Task instruction: ${item.detail || item.title}.`,
+                              "The linked CRM customer context is not available or was not supplied. Do not assume the customer name, owner, history or course.",
+                              "Summarise the task instructions and explain the safest next action using only confirmed information.",
+                            ].join(" ");
+                            navigate(`/assistant?prompt=${encodeURIComponent(prompt)}`);
+                          }}
+                        >
+                          <Sparkles className="mr-2 h-4 w-4" />
+                          Prepare with AmarktAI
+                        </Button>
+                      </div>
                     )}
                   </article>
                 ))}
