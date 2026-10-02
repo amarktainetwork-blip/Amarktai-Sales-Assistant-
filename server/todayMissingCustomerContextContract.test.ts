@@ -29,7 +29,8 @@ describe("Internal tasks without a resolved CRM contact", () => {
     expect(source).toContain("context=task-only&prompt=");
     expect(assistant).toContain('get("context") === "task-only"');
     expect(assistant).toContain("if (contactId !== undefined) switchCustomer(undefined);");
-    expect(assistant).toContain("if (contactId || explicitContactId || taskOnlyContext) return;");
+    expect(assistant).toContain("if (taskOnlyContext) return;");
+    expect(assistant).toContain("if (contactId || explicitContactId) return;");
     expect(assistant).toContain('params.delete("context");');
   });
 });

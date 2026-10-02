@@ -190,7 +190,8 @@ export default function Assistant() {
   useEffect(() => {
     // Explicit contact and task-only contexts are authoritative. Never attach
     // an unrelated Today lead to an internal task with missing source contact.
-    if (contactId || explicitContactId || taskOnlyContext) return;
+    if (taskOnlyContext) return;
+    if (contactId || explicitContactId) return;
     const next = today.data?.queues.callQueue?.[0];
     if (next?.contactId) switchCustomer(next.contactId);
   }, [
