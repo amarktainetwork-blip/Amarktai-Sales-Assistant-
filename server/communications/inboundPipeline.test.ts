@@ -56,6 +56,7 @@ describe("inbound message processing contract", () => {
       category: "unsubscribe" as const,
       reasons: ["opt out"],
     };
+    expect(shouldSurfaceInbound(unsubscribe)).toBe(false);
     expect(mayPrepareInboundReply(unsubscribe, false)).toBe(false);
     expect(
       mayPrepareInboundReply({ category: "reply_needed", reasons: [] }, true)
