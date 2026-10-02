@@ -1,6 +1,6 @@
 import { readOwnerScopedGenieContactDetail } from "./genieContactDetail";
 import { readGenieContactHistory } from "./genieContactHistory";
-import { executeGenieExactOptionalRead, isGenieExactOptionalRead } from "./genieOptionalReads";
+import { executeGenieExactOptionalRead, isGenieExactOptionalRead, GENIE_EXACT_NATIVE_READ_IDENTITIES } from "./genieOptionalReads";
 import { readOwnerScopedGenieOpportunities } from "./genieOpportunityScope";
 import { readOwnerScopedGenieOpportunityDetail } from "./genieOpportunityDetail";
 import { readGenieCommunicationTemplates } from "./genieTemplateRead";
@@ -1363,15 +1363,30 @@ async function runDeterministicOperation(input: RunOperationInput) {
               : "";
           const execution =
             input.provider === "genie" &&
-            isGenieExactOptionalRead(operationKey)
+            isGenieExactOptionalRead(operationKey) &&
+            learned?.prerequisites?.nativeRead ===
+              GENIE_EXACT_NATIVE_READ_IDENTITIES[operationKey]
               ? await (async () => {
+                  const requiredReads: CrmCapability[] =
+                    operationKey === "contact.open"
+                      ? ["contacts.read"]
+                      : operationKey === "note.read"
+                        ? ["contacts.read", "notes.read"]
+                        : operationKey === "communication.context"
+                          ? ["contacts.read", "activities.read"]
+                          : operationKey === "history.read" || operationKey === "interaction.latest"
+                            ? ["contacts.read", "activities.read", "notes.read"]
+                            : ["opportunities.read"];
                   if (
                     !catalogue?.capability ||
-                    !input.connection.allowedReadCapabilities.includes(
-                      catalogue.capability as CrmCapability
+                    requiredReads.some(cap =>
+                      !input.connection.allowedReadCapabilities.includes(cap)
                     ) ||
-                    !input.connection.verifiedCapabilities.includes(
-                      catalogue.capability as CrmCapability
+                    !(
+                      input.connection.verifiedCapabilities.includes(
+                        catalogue.capability as CrmCapability
+                      ) ||
+                      (input.allowTestReady && Boolean(input.publishByUserId))
                     )
                   )
                     throw Error("GENIE_NATIVE_READ_CAPABILITY_NOT_AUTHORISED");
@@ -1384,7 +1399,12 @@ async function runDeterministicOperation(input: RunOperationInput) {
                   });
                 })()
               : input.provider === "genie" &&
-                (operationKey === "task.list" || operationKey === "task.read")
+                (operationKey === "manual_action.sync" || operationKey === "task.list" || operationKey === "task.read") &&
+                learned?.prerequisites?.nativeRead === ({
+                  "manual_action.sync": "genie_owner_scoped_task_object_records_search",
+                  "task.list": "genie_exact_owner_scoped_task_search",
+                  "task.read": "genie_exact_owner_scoped_task_search_and_match",
+                } as Record<string,string>)[operationKey]
               ? await (async () => {
                   if (
                     !input.secret.crmUserExternalId ||
@@ -1974,6 +1994,7 @@ export function browserCrmAdapter(
                   assertControl,
                   contactExternalId: input.externalId,
                   ownerExternalId: input.secret.crmUserExternalId || "",
+                  includeNotes: input.connection.allowedReadCapabilities.includes("notes.read"),
                 }),
             });
           },

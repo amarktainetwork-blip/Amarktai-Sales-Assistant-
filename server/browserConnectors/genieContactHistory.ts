@@ -7,6 +7,8 @@ export async function readGenieContactHistory(input: {
   ownerExternalId: string;
   contactExternalId: string;
   assertControl: () => void;
+  includeNotes?: boolean;
+  includeCommunications?: boolean;
 }) {
   const location = input.page.url().match(/\/v2\/location\/([^/]+)/)?.[1];
   if (!location || !input.ownerExternalId)
@@ -40,6 +42,9 @@ export async function readGenieContactHistory(input: {
   )
     throw Error("CRM_OWNER_SCOPE_VIOLATION");
   const activities: NormalizedActivity[] = [];
+  const includeNotes = input.includeNotes !== false;
+  const includeCommunications = input.includeCommunications !== false;
+  if (includeNotes) {
   const notes = await get("/contacts/" + id + "/notes");
   if (!Array.isArray(notes.notes)) throw Error("GENIE_NOTES_SCHEMA_REQUIRED");
   for (const n of notes.notes) {
@@ -61,12 +66,15 @@ export async function readGenieContactHistory(input: {
       },
     });
   }
+  }
+  let truncated = false;
+  if (includeCommunications) {
   const threads = await get(
     `/conversations/search?locationId=${encodeURIComponent(location)}&contactId=${id}&limit=20`
   );
   if (!Array.isArray(threads.conversations))
     throw Error("GENIE_CONVERSATION_SCHEMA_REQUIRED");
-  let truncated = Number(threads.total) > threads.conversations.length;
+  truncated = Number(threads.total) > threads.conversations.length;
   for (const c of threads.conversations) {
     if (c.contactId !== input.contactExternalId || c.locationId !== location)
       throw Error("CRM_CONTACT_SCOPE_VIOLATION");
@@ -138,13 +146,16 @@ export async function readGenieContactHistory(input: {
       });
     }
   }
+  }
   return {
     activities,
     coverage: {
-      notes: "complete" as const,
-      communications: truncated
-        ? ("recent_page" as const)
-        : ("complete" as const),
+      notes: includeNotes ? ("complete" as const) : ("not_requested" as const),
+      communications: !includeCommunications
+        ? ("not_requested" as const)
+        : truncated
+          ? ("recent_page" as const)
+          : ("complete" as const),
       refreshedAt: new Date().toISOString(),
     },
   };

@@ -391,6 +391,25 @@ describe("automatic CRM commissioning product contract", () => {
     ).toBe(false);
   });
 
+  it("requires fresh individual proof when a new native GET replaces an old proven script", () => {
+    const base = {
+      navigationUpgrade: false,
+      providerPackUpgrade: false,
+      packedPrerequisites: {
+        providerPack: "genie",
+        nativeRead: "genie_exact_owner_scoped_contact_get",
+      },
+    };
+    expect(shouldInstallCanonicalGenieOperation({
+      ...base,
+      existing: {status:"LIVE_PROVEN", prerequisites:{guidedReview:true}},
+    })).toBe(true);
+    expect(shouldInstallCanonicalGenieOperation({
+      ...base,
+      existing: {status:"LIVE_PROVEN", prerequisites:{nativeRead:"genie_exact_owner_scoped_contact_get"}},
+    })).toBe(false);
+  });
+
   it("waits for one authorised test record before controlled writes", () => {
     expect(
       nextCommissioningState({ state: "TEST_SAFE_READS", hasWrites: true })

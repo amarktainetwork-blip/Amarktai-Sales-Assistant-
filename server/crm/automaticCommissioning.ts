@@ -290,6 +290,12 @@ export function shouldInstallCanonicalGenieOperation(input: {
     !Array.isArray(input.existing.prerequisites)
       ? (input.existing.prerequisites as Record<string, unknown>)
       : {};
+  // Changing the native source executor requires a fresh reviewed TEST_READY
+  // version. An older LIVE_PROVEN custom script cannot prove a new GET path.
+  if (
+    typeof input.packedPrerequisites?.nativeRead === "string" &&
+    prerequisites.nativeRead !== input.packedPrerequisites.nativeRead
+  ) return true;
   return (
     input.packedPrerequisites?.providerPack === "genie" &&
     prerequisites.automaticSemanticDiscovery === true &&

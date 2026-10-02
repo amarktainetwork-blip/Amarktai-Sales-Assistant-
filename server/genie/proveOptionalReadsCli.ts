@@ -45,6 +45,7 @@ async function main() {
   let contactId: string | undefined;
   let opportunityId: string | undefined;
   let taskId: string | undefined;
+  let noteContactId: string | undefined;
   try {
     const [contacts] = await c.execute<mysql.RowDataPacket[]>(
       "SELECT externalId FROM crmContacts WHERE organisationId=? AND connectedSystemId=? AND ownerExternalId=? AND externalId<>'' ORDER BY sourceUpdatedAt DESC LIMIT 1",
@@ -58,9 +59,14 @@ async function main() {
       "SELECT externalId FROM crmTasks WHERE organisationId=? AND connectedSystemId=? AND ownerExternalId=? AND externalId<>'' AND completedAt IS NULL ORDER BY sourceUpdatedAt DESC LIMIT 1",
       [organisationId,connectedSystemId,secret.crmUserExternalId]
     );
+    const [noteTargets] = await c.execute<mysql.RowDataPacket[]>(
+      "SELECT DISTINCT a.contactExternalId FROM crmActivities a INNER JOIN crmContacts c ON a.contactExternalId=c.externalId AND a.organisationId=c.organisationId AND a.connectedSystemId=c.connectedSystemId WHERE a.organisationId=? AND a.connectedSystemId=? AND a.activityType='note' AND c.ownerExternalId=? AND a.contactExternalId<>'' ORDER BY a.contactExternalId LIMIT 1",
+      [organisationId,connectedSystemId,secret.crmUserExternalId]
+    );
     contactId = contacts[0]?.externalId;
     opportunityId = opportunities[0]?.externalId;
     taskId = tasks[0]?.externalId;
+    noteContactId = noteTargets[0]?.contactExternalId;
   } finally { await c.end(); }
   if (!contactId || !opportunityId || !taskId) throw Error("GENUINE_OWNER_TARGETS_REQUIRED");
   // Adds reviewed TEST_READY definitions only where exact latest is not
@@ -68,26 +74,33 @@ async function main() {
   const installed = await installKnownGeniePack(job,system);
   const supported = [
     "contact.open","history.read","interaction.latest",
-    "communication.context","task.list","task.read",
-    "opportunity.read","stage.read",
+    "communication.context","manual_action.sync","task.list","task.read",
+    "opportunity.read","stage.read","note.read",
   ];
   const results: Array<{key:string;status:"LIVE_PROVEN"|"NOT_PROVEN";reason?:string}> = [];
   for (const operationKey of supported) {
     try {
-      const required = operationKey.includes("opportunity")||operationKey==="stage.read"
+      const required = operationKey.includes("opportunity") || operationKey === "stage.read"
         ? "opportunities.read"
-        : operationKey.startsWith("task.") ? "tasks.read"
-        : operationKey==="contact.open" ? "contacts.read" : "activities.read";
+        : operationKey.startsWith("task.") || operationKey === "manual_action.sync"
+          ? "tasks.read"
+          : operationKey === "note.read" ? "notes.read"
+          : operationKey === "contact.open" ? "contacts.read" : "activities.read";
       if (!system.allowedReadCapabilities.includes(required as never) ||
-          !system.verifiedCapabilities.includes(required as never))
+          (operationKey !== "note.read" &&
+           !system.verifiedCapabilities.includes(required as never)))
         throw Error("READ_CAPABILITY_NOT_GRANTED");
+      if (operationKey === "note.read" && !noteContactId)
+        throw Error("GENUINE_OWNER_NOTE_SOURCE_RECORD_REQUIRED");
       await testLearnedBrowserOperation({
         connection: toAdapterConnection(system),
         secret, provider: "genie", operationKey,
-        payload: operationKey === "task.list" ? {} : {
+        payload: operationKey === "task.list" || operationKey === "manual_action.sync" ? {} : {
           externalId: operationKey === "opportunity.read" || operationKey === "stage.read"
             ? opportunityId
-            : operationKey === "task.read" ? taskId : contactId,
+            : operationKey === "task.read" ? taskId
+              : operationKey === "note.read" ? noteContactId
+                : contactId,
         },
         correlationId:`independent-native-get-${operationKey}-20261002`,
         publishByUserId:userId,

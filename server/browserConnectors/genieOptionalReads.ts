@@ -16,6 +16,16 @@ export const GENIE_EXACT_OPTIONAL_READS = [
 
 export type GenieExactOptionalRead = (typeof GENIE_EXACT_OPTIONAL_READS)[number];
 
+export const GENIE_EXACT_NATIVE_READ_IDENTITIES: Record<GenieExactOptionalRead, string> = {
+  "contact.open": "genie_exact_owner_scoped_contact_get",
+  "history.read": "genie_exact_contact_history_get",
+  "note.read": "genie_exact_contact_notes_get",
+  "interaction.latest": "genie_exact_latest_interaction_get",
+  "communication.context": "genie_exact_conversation_context_get",
+  "opportunity.read": "genie_exact_owner_scoped_opportunity_get",
+  "stage.read": "genie_exact_owner_scoped_stage_and_pipeline_get",
+};
+
 export function isGenieExactOptionalRead(key: string): key is GenieExactOptionalRead {
   return (GENIE_EXACT_OPTIONAL_READS as readonly string[]).includes(key);
 }
@@ -88,6 +98,8 @@ export async function executeGenieExactOptionalRead(input: {
     ownerExternalId: input.ownerExternalId,
     contactExternalId: id,
     assertControl: input.assertControl,
+    includeNotes: input.operationKey !== "communication.context",
+    includeCommunications: input.operationKey !== "note.read",
   });
   let selected = history.activities;
   if (input.operationKey === "note.read") {

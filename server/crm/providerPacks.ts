@@ -447,6 +447,15 @@ export const GENIE_PROVIDER_PACK: Pick<
         providerPackVersion: GENIE_PROVIDER_PACK_VERSION,
       },
     },
+    "manual_action.sync": {
+      definition: { mode: "read", executeScript: "genie_task_sync", resultKey: "records" },
+      prerequisites: {
+        providerPack: "genie",
+        providerPackVersion: GENIE_PROVIDER_PACK_VERSION,
+        nativeRead: "genie_owner_scoped_task_object_records_search",
+        sourceSemantics: "Genie Manual Actions are represented by the Tasks custom-object source.",
+      },
+    },
     "task.list": {
       definition: { mode: "read", executeScript: "genie_task_sync", resultKey: "records" },
       prerequisites: {

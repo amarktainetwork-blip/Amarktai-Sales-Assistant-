@@ -142,8 +142,8 @@ export type CrmAdapter = {
   }) => Promise<{
     activities: NormalizedActivity[];
     coverage: {
-      notes: "complete";
-      communications: "recent_page" | "complete";
+      notes: "complete" | "not_requested";
+      communications: "recent_page" | "complete" | "not_requested";
       refreshedAt: string;
     };
   }>;
