@@ -4,6 +4,7 @@ import {
  GENIE_COMPANY_READ_IDENTITY,
  GENIE_COMPANY_SYNC_IDENTITY,
  normalizeGenieBusinessSearch,
+ isUnfilteredGenieBusinessSourceUrl,
  readGenieCompanySource,
 } from "./genieCompanyScope";
 import {GENIE_PROVIDER_PACK} from "../crm/providerPacks";

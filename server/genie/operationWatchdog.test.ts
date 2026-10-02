@@ -2,11 +2,20 @@ import { describe, expect, it } from "vitest";
 import {
   selectLatestWatchdogVersions,
   watchdogIdentityMappingIsConfirmed,
+  watchdogOwnerSessionIsVerified,
   watchdogRepairPlan,
   watchdogReplayPayload,
 } from "./operationWatchdog";
 
 describe("daily CRM drift economics", () => {
+  it("uses only the commissioned person's verified personal owner scope for read replay", () => {
+    expect(watchdogOwnerSessionIsVerified(undefined, 2)).toBe(false);
+    expect(watchdogOwnerSessionIsVerified({browserUserId:2}, 2)).toBe(false);
+    expect(watchdogOwnerSessionIsVerified({browserUserId:3,crmUserExternalId:"exact-owner"}, 2)).toBe(false);
+    expect(watchdogOwnerSessionIsVerified({browserUserId:2,crmUserExternalId:"  "}, 2)).toBe(false);
+    expect(watchdogOwnerSessionIsVerified({browserUserId:2,crmUserExternalId:"exact-owner"}, 2)).toBe(true);
+  });
+
   it("uses zero GenX calls when every deterministic watchdog passes", () => {
     expect(
       watchdogRepairPlan([

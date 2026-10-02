@@ -111,18 +111,32 @@ function scopedObservedNavigation(
   return target;
 }
 
+/** A saved CRM search/filter is not a complete source snapshot. Only the
+ * observed canonical, unfiltered Businesses GET can establish source total. */
+export function isUnfilteredGenieBusinessSourceUrl(raw: string, locationId: string) {
+  const url = new URL(raw);
+  const allowed = new Set(["limit", "skip", "locationId", "count"]);
+  const keys = Array.from(url.searchParams.keys());
+  return (
+    url.origin === GENIE_BUSINESS_SOURCE &&
+    url.pathname === GENIE_BUSINESS_PATH &&
+    keys.length === 4 &&
+    new Set(keys).size === 4 &&
+    keys.every(key => allowed.has(key)) &&
+    url.searchParams.get("locationId") === locationId &&
+    url.searchParams.get("skip") === "0" &&
+    url.searchParams.get("count") === "true" &&
+    /^[1-9][0-9]*$/.test(url.searchParams.get("limit") || "") &&
+    Number(url.searchParams.get("limit")) <= 100 &&
+    !url.hash
+  );
+}
 function businessResponseForLocation(response: {
   url(): string;
   request(): { method(): string };
 }, locationId: string) {
-  const url = new URL(response.url());
-  return (
-    url.origin === GENIE_BUSINESS_SOURCE &&
-    url.pathname === GENIE_BUSINESS_PATH &&
-    url.searchParams.get("locationId") === locationId &&
-    Number(url.searchParams.get("skip") || "0") === 0 &&
-    response.request().method() === "GET"
-  );
+  return isUnfilteredGenieBusinessSourceUrl(response.url(), locationId) &&
+    response.request().method() === "GET";
 }
 
 /** Every invocation independently reads the authenticated, location-filtered

@@ -1,4 +1,4 @@
-import {and, desc, eq} from "drizzle-orm";
+import {and, desc, eq, notInArray} from "drizzle-orm";
 import {
   browserLearnedOperations,
   connectedSystems,
@@ -137,6 +137,14 @@ async function main() {
         raw:{...row,verifiedSourceTotal:sourceTotal,sourceLocationScope:"exact"},
       }});
     }
+    // This is a verified COMPLETE, unfiltered location snapshot. Retire only
+    // rows for this exact CRM connection that disappeared from the source,
+    // before marking the cursor successful. Never prune on partial/error reads.
+    await tx.delete(crmCompanies).where(and(
+      eq(crmCompanies.organisationId,organisationId),
+      eq(crmCompanies.connectedSystemId,connectedSystemId),
+      notInArray(crmCompanies.externalId,normalized.map(row=>row.externalId))
+    ));
     await tx.insert(crmSyncCursors).values({
       connectedSystemId,resourceType:"companies",cursor:null,
       sourceCheckpoint:null,lastSuccessfulAt:now,lastError:null,
