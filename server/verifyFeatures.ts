@@ -158,7 +158,7 @@ async function main() {
       callbacks,
       workflows,
       members,
-      audits,
+      auditProofs,
       opportunities,
     ] = await Promise.all([
       db.select().from(connectedSystems),
@@ -206,13 +206,25 @@ async function main() {
         .orderBy(desc(workflowRuns.createdAt))
         .limit(1),
       db.select().from(organisationMembers).limit(2),
-      db
-        .select()
-        .from(auditEntries)
-        .orderBy(desc(auditEntries.createdAt))
-        .limit(500),
+      // Query each acceptance event independently. Mixed recent audit events
+      // must never evict older, still-valid live commissioning proof.
+      Promise.all(
+        [
+          "two_factor_verified",
+          "assistant_response_generated",
+          "live_call_audio_transcribed",
+        ].map(eventType =>
+          db
+            .select()
+            .from(auditEntries)
+            .where(eq(auditEntries.eventType, eventType))
+            .orderBy(desc(auditEntries.createdAt), desc(auditEntries.id))
+            .limit(1)
+        )
+      ),
       db.select({ id: crmOpportunities.id }).from(crmOpportunities).limit(1),
     ]);
+    const audits = auditProofs.flat();
     const readyVerification = verifications.find(
       item => item.status === "ready"
     );

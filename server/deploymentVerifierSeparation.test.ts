@@ -36,6 +36,9 @@ describe("deployment and client acceptance separation", () => {
     expect(strictVerifier).toContain("live_call_audio_transcribed");
     expect(strictVerifier).toContain("assistant_response_generated");
     expect(strictVerifier).toContain("two_factor_verified");
+    expect(strictVerifier).toContain(".where(eq(auditEntries.eventType, eventType))");
+    expect(strictVerifier).not.toContain(".limit(500)");
+
     expect(strictVerifier).toContain('event: "feature_acceptance"');
   });
 
