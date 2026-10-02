@@ -489,7 +489,14 @@ export async function ingestInboundMessage(input: {
         },
       },
     });
-  if (contact?.externalId && input.mailboxUserId != null)
+  // A consent opt-out is not evidence that a new sales lead was worked.
+  // Historical STOP reconciliation reuses this ingestion path; it must not
+  // close a later, unrelated NEW_LEAD alert for the same contact.
+  if (
+    classification.category !== "unsubscribe" &&
+    contact?.externalId &&
+    input.mailboxUserId != null
+  )
     await completeNewLeadWorkAfterVerifiedContact({
       userId: input.mailboxUserId,
       organisationId: input.organisationId,
