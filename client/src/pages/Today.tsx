@@ -249,7 +249,7 @@ export default function Today() {
 
   return (
     <DashboardLayout>
-      <div id="today-page" data-today-workspace className="amk-day">
+      <div id="today-page" data-today-workspace data-today-design-version="20261002" className="amk-day">
         <header className="amk-day__header">
           <div>
             <p className="amk-day__eyebrow">Your sales day</p>
@@ -296,6 +296,37 @@ export default function Today() {
             </Button>
           </div>
         </header>
+
+        <section className="amk-day__guide" aria-label="Your work plan" data-today-work-plan>
+          <div className="amk-day__guide-primary">
+            <span>Focus now</span>
+            <strong>
+              {current
+                ? current.name
+                : callQueue.length
+                  ? "Waiting for the right contact window"
+                  : "Immediate work is clear"}
+            </strong>
+            <small>
+              {current
+                ? current.headline
+                : "Your schedule and contact preferences are protected."}
+            </small>
+          </div>
+          <div className="amk-day__guide-next">
+            <span>Next commitment</span>
+            <strong>{upcoming[0]?.title || "Nothing timed is outstanding"}</strong>
+            <small>
+              {upcoming[0]
+                ? dateLabel(upcoming[0].dueAt)
+                : "New CRM commitments will appear automatically."}
+            </small>
+          </div>
+          <div className="amk-day__guide-policy">
+            <CheckCircle2 aria-hidden="true" />
+            <span>Review first. No customer messages are sent automatically.</span>
+          </div>
+        </section>
 
         {crmConnection?.reconnectRequired ? (
           <div className="amk-day__warning">
