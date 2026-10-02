@@ -1,6 +1,6 @@
 import "dotenv/config";
-import { and, eq, sql } from "drizzle-orm";
-import { connectedSystems, inboundMessages } from "../../drizzle/schema";
+import { and, eq, isNull, or, sql } from "drizzle-orm";
+import { connectedSystems, contactCommunicationSuppressions, inboundMessages } from "../../drizzle/schema";
 import { getDb } from "../db";
 import { classifyInboundMessage } from "./inboundReview";
 import { inboundIdempotencyKey, ingestInboundMessage } from "./inboundPipeline";
@@ -27,14 +27,29 @@ async function main() {
       system.allowedWriteCapabilities.length !== 0)
     throw Error("EXPLICIT_READ_ONLY_GENIE_SCOPE_REQUIRED");
 
-  const candidates = await db.select().from(inboundMessages).where(and(
-    eq(inboundMessages.organisationId, organisationId),
-    eq(inboundMessages.connectedSystemId, connectedSystemId),
-    eq(inboundMessages.mailboxUserId, mailboxUserId),
-    eq(inboundMessages.channel, "sms"),
-    eq(inboundMessages.needsAction, true),
-    sql`LOWER(TRIM(${inboundMessages.body})) IN ('stop','stop.','stop!','stopall','unsubscribe')`
-  )).orderBy(inboundMessages.id).limit(100);
+  // Include archived/handled historical STOP records if their classification
+  // or suppression was never corrected. The one-per-sender suppression may
+  // point to a newer message, so match the organisation/channel/sender rather
+  // than requiring every old message to be the suppression sourceMessageId.
+  const candidates = (await db.select({ message: inboundMessages })
+    .from(inboundMessages)
+    .leftJoin(contactCommunicationSuppressions, and(
+      eq(contactCommunicationSuppressions.organisationId, inboundMessages.organisationId),
+      eq(contactCommunicationSuppressions.channel, inboundMessages.channel),
+      eq(contactCommunicationSuppressions.senderReference, inboundMessages.senderReference)
+    ))
+    .where(and(
+      eq(inboundMessages.organisationId, organisationId),
+      eq(inboundMessages.connectedSystemId, connectedSystemId),
+      eq(inboundMessages.mailboxUserId, mailboxUserId),
+      eq(inboundMessages.channel, "sms"),
+      sql`LOWER(TRIM(${inboundMessages.body})) IN ('stop','stop.','stop!','stopall','unsubscribe')`,
+      or(
+        eq(inboundMessages.needsAction, true),
+        sql`COALESCE(JSON_UNQUOTE(JSON_EXTRACT(${inboundMessages.classification}, '$.category')), '') <> 'unsubscribe'`,
+        isNull(contactCommunicationSuppressions.id)
+      )
+    )).orderBy(inboundMessages.id).limit(100)).map(row => row.message);
   let corrected = 0;
   for (const row of candidates) {
     if (!row.externalMessageId || !row.senderReference ||
