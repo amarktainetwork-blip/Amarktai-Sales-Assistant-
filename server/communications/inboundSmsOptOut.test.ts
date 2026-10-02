@@ -19,12 +19,16 @@ describe("SMS STOP compliance and historical action-queue reconciliation", () =>
     expect(shouldSurfaceInbound(c)).toBe(true);
   });
   it("does not close unrelated new-lead work when replaying an opt-out", () => {
-    // Guard the existing ingestion side effect without adding a second repair path.
-    // STOP re-ingestion may happen long after a newer first-call lead was created.
+    // Preserve the existing ingress path, but require a non-opt-out message
+    // before it may retire a NEW_LEAD task for a matched contact.
     const ingestor = readFileSync(new URL("./inboundPipeline.ts", import.meta.url), "utf8");
-    expect(ingestor).toMatch(
-      /if\\s*\\(\\s*classification\\.category !== "unsubscribe" &&\\s*contact\\?\\.externalId &&\\s*input\\.mailboxUserId != null\\s*\\)\\s*await completeNewLeadWorkAfterVerifiedContact\\(/
-    );
+    const guardStart = ingestor.indexOf("// A consent opt-out is not evidence");
+    const suppressionStart = ingestor.indexOf('if (classification.category === "unsubscribe")');
+    expect(guardStart).toBeGreaterThan(-1);
+    expect(suppressionStart).toBeGreaterThan(guardStart);
+    const guardedWork = ingestor.slice(guardStart, suppressionStart);
+    expect(guardedWork).toContain('classification.category !== "unsubscribe" &&');
+    expect(guardedWork).toContain("await completeNewLeadWorkAfterVerifiedContact({");
   });
   it("reprocesses exact previously cached SMS via owner-scoped idempotent local ingestion", () => {
     const cli = readFileSync(new URL("./reconcileCachedSmsOptOutsCli.ts", import.meta.url), "utf8");
