@@ -1,0 +1,40 @@
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+import { classifyInboundMessage } from "./inboundReview";
+import { mayPrepareInboundReply, shouldSurfaceInbound } from "./inboundPipeline";
+
+describe("SMS STOP compliance and historical action-queue reconciliation", () => {
+  it.each(["STOP", "stop", " STOP ", "STOP.", "Stop!", "<p>STOP</p>", "STOPALL"])(
+    "never offers a sales reply for opt-out keyword %s",
+    body => {
+      const c = classifyInboundMessage({ body });
+      expect(c.category).toBe("unsubscribe");
+      expect(shouldSurfaceInbound(c)).toBe(false);
+      expect(mayPrepareInboundReply(c, false)).toBe(false);
+    }
+  );
+  it("retains legitimate ordinary sales conversation", () => {
+    const c = classifyInboundMessage({ body: "Can we stop by at 4 pm tomorrow?" });
+    expect(c.category).toBe("reply_needed");
+    expect(shouldSurfaceInbound(c)).toBe(true);
+  });
+  it("reprocesses exact previously cached SMS via owner-scoped idempotent local ingestion", () => {
+    const cli = readFileSync(new URL("./reconcileCachedSmsOptOutsCli.ts", import.meta.url), "utf8");
+    const ingestor = readFileSync(new URL("./inboundPipeline.ts", import.meta.url), "utf8");
+    expect(cli).toContain("EXPLICIT_MAILBOX_SOURCE_SCOPE_REQUIRED");
+    expect(cli).toContain("eq(inboundMessages.organisationId, organisationId)");
+    expect(cli).toContain("eq(inboundMessages.connectedSystemId, connectedSystemId)");
+    expect(cli).toContain("eq(inboundMessages.mailboxUserId, mailboxUserId)");
+    expect(cli).toContain('eq(inboundMessages.channel, "sms")');
+    expect(cli).toContain("eq(inboundMessages.needsAction, true)");
+    expect(cli).toContain("inboundIdempotencyKey(");
+    expect(cli).toContain("ingestInboundMessage({");
+    expect(cli).toContain("OPT_OUT_RECLASSIFICATION_DID_NOT_CONVERGE");
+    expect(ingestor).toContain('existing?.status === "archived" ? "archived" : "classified"');
+    expect(ingestor).toContain('if (classification.category === "unsubscribe")');
+    expect(ingestor).toContain(".insert(contactCommunicationSuppressions)");
+    expect(ingestor).toContain('!["information", "unsubscribe"].includes(classification.category)');
+    expect(cli).not.toContain("sendTemplate");
+    expect(cli).not.toContain("executeCrmWrite");
+  });
+});
