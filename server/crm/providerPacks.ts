@@ -360,6 +360,71 @@ export const GENIE_PROVIDER_PACK: Pick<
         verificationInputRole: "derived_contact_external_id",
       },
     },
+    // Each key has its own persisted definition and must pass its own live
+    // owner-scoped GET; sharing an underlying endpoint never shares proof.
+    "contact.open": {
+      definition: { mode: "read", executeScript: "genie_contact_read", resultKey: "records" },
+      prerequisites: {
+        providerPack: "genie",
+        providerPackVersion: GENIE_PROVIDER_PACK_VERSION,
+        verificationInputRole: "derived_contact_external_id",
+        nativeRead: "genie_exact_owner_scoped_contact_get",
+      },
+    },
+    "history.read": {
+      definition: { mode: "read", executeScript: "genie_contact_read", resultKey: "records" },
+      prerequisites: {
+        providerPack: "genie",
+        providerPackVersion: GENIE_PROVIDER_PACK_VERSION,
+        verificationInputRole: "derived_contact_external_id",
+        nativeRead: "genie_exact_contact_history_get",
+      },
+    },
+    "note.read": {
+      definition: { mode: "read", executeScript: "genie_contact_read", resultKey: "records" },
+      prerequisites: {
+        providerPack: "genie",
+        providerPackVersion: GENIE_PROVIDER_PACK_VERSION,
+        verificationInputRole: "derived_contact_external_id",
+        nativeRead: "genie_exact_contact_notes_get",
+      },
+    },
+    "interaction.latest": {
+      definition: { mode: "read", executeScript: "genie_contact_read", resultKey: "records" },
+      prerequisites: {
+        providerPack: "genie",
+        providerPackVersion: GENIE_PROVIDER_PACK_VERSION,
+        verificationInputRole: "derived_contact_external_id",
+        nativeRead: "genie_exact_latest_interaction_get",
+      },
+    },
+    "communication.context": {
+      definition: { mode: "read", executeScript: "genie_contact_read", resultKey: "records" },
+      prerequisites: {
+        providerPack: "genie",
+        providerPackVersion: GENIE_PROVIDER_PACK_VERSION,
+        verificationInputRole: "derived_contact_external_id",
+        nativeRead: "genie_exact_conversation_context_get",
+      },
+    },
+    "opportunity.read": {
+      definition: { mode: "read", executeScript: "genie_opportunity_sync", resultKey: "records" },
+      prerequisites: {
+        providerPack: "genie",
+        providerPackVersion: GENIE_PROVIDER_PACK_VERSION,
+        verificationInputRole: "derived_opportunity_external_id",
+        nativeRead: "genie_exact_owner_scoped_opportunity_get",
+      },
+    },
+    "stage.read": {
+      definition: { mode: "read", executeScript: "genie_opportunity_sync", resultKey: "records" },
+      prerequisites: {
+        providerPack: "genie",
+        providerPackVersion: GENIE_PROVIDER_PACK_VERSION,
+        verificationInputRole: "derived_opportunity_external_id",
+        nativeRead: "genie_exact_owner_scoped_stage_and_pipeline_get",
+      },
+    },
     "company.sync": {
       definition: {
         mode: "read",
@@ -380,6 +445,23 @@ export const GENIE_PROVIDER_PACK: Pick<
       prerequisites: {
         providerPack: "genie",
         providerPackVersion: GENIE_PROVIDER_PACK_VERSION,
+      },
+    },
+    "task.list": {
+      definition: { mode: "read", executeScript: "genie_task_sync", resultKey: "records" },
+      prerequisites: {
+        providerPack: "genie",
+        providerPackVersion: GENIE_PROVIDER_PACK_VERSION,
+        nativeRead: "genie_exact_owner_scoped_task_search",
+      },
+    },
+    "task.read": {
+      definition: { mode: "read", executeScript: "genie_task_sync", resultKey: "records" },
+      prerequisites: {
+        providerPack: "genie",
+        providerPackVersion: GENIE_PROVIDER_PACK_VERSION,
+        verificationInputRole: "derived_task_external_id",
+        nativeRead: "genie_exact_owner_scoped_task_search_and_match",
       },
     },
     "owner.sync": {

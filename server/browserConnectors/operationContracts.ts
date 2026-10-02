@@ -612,7 +612,19 @@ export function browserProofPolicy(
     operation => operation.key === operationKey
   );
   return {
-    requiresTargetIdentity: mode === "write" || operationKey === "contact.read",
+    requiresTargetIdentity:
+      mode === "write" ||
+      [
+        "contact.read",
+        "contact.open",
+        "history.read",
+        "note.read",
+        "interaction.latest",
+        "communication.context",
+        "opportunity.read",
+        "stage.read",
+        "task.read",
+      ].includes(operationKey),
     requiresStructuredResult: mode === "read" && operationKey !== "auth.login",
     requiresExactSearchMatch: operationKey === "contact.search",
     requiresPostcondition: mode === "write",

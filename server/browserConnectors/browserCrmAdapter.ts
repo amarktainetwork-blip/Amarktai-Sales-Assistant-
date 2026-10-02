@@ -1,5 +1,6 @@
 import { readOwnerScopedGenieContactDetail } from "./genieContactDetail";
 import { readGenieContactHistory } from "./genieContactHistory";
+import { executeGenieExactOptionalRead, isGenieExactOptionalRead } from "./genieOptionalReads";
 import { readOwnerScopedGenieOpportunities } from "./genieOpportunityScope";
 import { readOwnerScopedGenieOpportunityDetail } from "./genieOpportunityDetail";
 import { readGenieCommunicationTemplates } from "./genieTemplateRead";
@@ -1362,7 +1363,61 @@ async function runDeterministicOperation(input: RunOperationInput) {
               : "";
           const execution =
             input.provider === "genie" &&
-            operationKey === "contact.read" &&
+            isGenieExactOptionalRead(operationKey)
+              ? await (async () => {
+                  if (
+                    !catalogue?.capability ||
+                    !input.connection.allowedReadCapabilities.includes(
+                      catalogue.capability as CrmCapability
+                    ) ||
+                    !input.connection.verifiedCapabilities.includes(
+                      catalogue.capability as CrmCapability
+                    )
+                  )
+                    throw Error("GENIE_NATIVE_READ_CAPABILITY_NOT_AUTHORISED");
+                  return executeGenieExactOptionalRead({
+                    page,
+                    operationKey,
+                    payload,
+                    ownerExternalId: input.secret.crmUserExternalId || "",
+                    assertControl: () => assertBrowserOperationCanRun(owner),
+                  });
+                })()
+              : input.provider === "genie" &&
+                (operationKey === "task.list" || operationKey === "task.read")
+              ? await (async () => {
+                  if (
+                    !input.secret.crmUserExternalId ||
+                    !input.connection.allowedReadCapabilities.includes("tasks.read") ||
+                    !input.connection.verifiedCapabilities.includes("tasks.read")
+                  )
+                    throw Error("GENIE_TASK_OWNER_READ_NOT_AUTHORISED");
+                  const result = await readOwnerScopedGenieTasks({
+                    page,
+                    ownerExternalId: input.secret.crmUserExternalId,
+                    assertControl: () => assertBrowserOperationCanRun(owner),
+                    normalize: normalizeGenieTaskGridPage,
+                  });
+                  if (operationKey === "task.read") {
+                    const target = typeof payload.externalId === "string"
+                      ? payload.externalId.trim()
+                      : "";
+                    if (!/^[A-Za-z0-9_-]{1,180}$/.test(target))
+                      throw Error("GENIE_EXACT_TASK_TARGET_REQUIRED");
+                    const matches = (JSON.parse(result.data.records) as Array<{
+                      externalId: string; ownerExternalId: string;
+                    }>).filter(row => row.externalId === target &&
+                      row.ownerExternalId === input.secret.crmUserExternalId);
+                    if (matches.length !== 1)
+                      throw Error("GENIE_EXACT_TASK_OWNER_SOURCE_MATCH_REQUIRED");
+                    result.data.records = JSON.stringify(matches);
+                    result.data.actualExternalId = target;
+                    result.detail = "Exact owner-scoped task identity found in live source search.";
+                  }
+                  return result;
+                })()
+              : input.provider === "genie" &&
+                operationKey === "contact.read" &&
             Boolean(input.secret.crmUserExternalId)
               ? await readOwnerScopedGenieContactDetail({
                   page,
