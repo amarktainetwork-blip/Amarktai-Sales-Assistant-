@@ -1,5 +1,6 @@
 import { readOwnerScopedGenieContactDetail } from "./genieContactDetail";
 import { readGenieContactHistory } from "./genieContactHistory";
+import { readGenieHome, openExactGenieSidebarRead } from "./genieNavigationReads";
 import { executeGenieExactOptionalRead, isGenieExactOptionalRead, GENIE_EXACT_NATIVE_READ_IDENTITIES } from "./genieOptionalReads";
 import { readOwnerScopedGenieOpportunities } from "./genieOpportunityScope";
 import { readOwnerScopedGenieOpportunityDetail } from "./genieOpportunityDetail";
@@ -34,6 +35,7 @@ import {
   executeSavedBrowserScript,
   validateSavedBrowserScript,
   type SavedBrowserScript,
+  type BrowserScriptResult,
 } from "./scriptEngine";
 import {
   browserOperationReadinessForSystem,
@@ -1363,7 +1365,103 @@ async function runDeterministicOperation(input: RunOperationInput) {
               : "";
           const execution =
             input.provider === "genie" &&
-            isGenieExactOptionalRead(operationKey) &&
+            operationKey === "home.open" &&
+            learned?.prerequisites?.nativeRead === "genie_location_scoped_home_navigation"
+              ? await (async () => {
+                  if (
+                    !input.connection.allowedReadCapabilities.includes("home.read") ||
+                    !input.secret.crmUserExternalId ||
+                    !(input.connection.verifiedCapabilities.includes("home.read") ||
+                      (input.allowTestReady && Boolean(input.publishByUserId)))
+                  )
+                    throw Error("GENIE_HOME_READ_NOT_AUTHORISED");
+                  return readGenieHome({
+                    page, ownerExternalId: input.secret.crmUserExternalId,
+                    assertControl: () => assertBrowserOperationCanRun(owner),
+                  });
+                })()
+              : input.provider === "genie" &&
+                operationKey === "prospect.next" &&
+                learned?.prerequisites?.nativeRead === "genie_owner_scoped_next_task_read_and_navigation"
+                ? await (async (): Promise<BrowserScriptResult> => {
+                    if (
+                      !input.secret.crmUserExternalId ||
+                      !input.connection.allowedReadCapabilities.includes("next_prospect.read") ||
+                      !input.connection.allowedReadCapabilities.includes("tasks.read") ||
+                      !input.connection.verifiedCapabilities.includes("tasks.read") ||
+                      !(input.connection.verifiedCapabilities.includes("next_prospect.read") ||
+                        (input.allowTestReady && Boolean(input.publishByUserId)))
+                    )
+                      throw Error("GENIE_NEXT_OWNER_TASK_READ_NOT_AUTHORISED");
+                    const source = await readOwnerScopedGenieTasks({
+                      page, ownerExternalId: input.secret.crmUserExternalId,
+                      assertControl: () => assertBrowserOperationCanRun(owner),
+                      normalize: normalizeGenieTaskGridPage,
+                    });
+                    const records = (JSON.parse(source.data.records) as Array<{
+                      externalId: string; ownerExternalId: string;
+                      contactExternalId?: string; dueAt?: string; title?: string; status?: string;
+                    }>).filter(row =>
+                      Boolean(row.externalId) &&
+                      row.ownerExternalId === input.secret.crmUserExternalId
+                    );
+                    if (!records.length)
+                      throw Error("GENIE_NEXT_OWNER_TASK_GENUINE_SOURCE_REQUIRED");
+                    const dueTime = (value?: string) => {
+                      const parsed = Date.parse(value || "");
+                      return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
+                    };
+                    records.sort((a,b) =>
+                      dueTime(a.dueAt) - dueTime(b.dueAt) ||
+                      a.externalId.localeCompare(b.externalId)
+                    );
+                    const selected = records[0];
+                    // The Tasks submenu belongs to Contacts. After home.open,
+                    // enter the observed location-scoped Contacts workspace first.
+                    const currentUrl = new URL(page.url());
+                    const scope = currentUrl.pathname.match(
+                      /^\/v2\/location\/([A-Za-z0-9_-]{1,180})(?:\/|$)/
+                    );
+                    if (!scope || currentUrl.origin !== "https://genie.entrepreneurscircle.org")
+                      throw Error("GENIE_NEXT_TASK_LOCATION_REQUIRED");
+                    const contactsLink = page.locator("#sb_contacts").first();
+                    const contactsHref = await contactsLink.getAttribute("href");
+                    const contactsTarget = new URL(contactsHref || "", currentUrl);
+                    const contactsPrefix = "/v2/location/" + scope[1] + "/contacts/smart_list/";
+                    if (
+                      !contactsHref ||
+                      contactsTarget.origin !== currentUrl.origin ||
+                      !contactsTarget.pathname.startsWith(contactsPrefix) ||
+                      contactsTarget.search || contactsTarget.hash
+                    ) throw Error("GENIE_NEXT_TASK_CONTACTS_TARGET_SCOPE_MISMATCH");
+                    assertBrowserOperationCanRun(owner);
+                    await contactsLink.click({ timeout: 15_000 });
+                    await page.waitForURL(
+                      value => value.origin === currentUrl.origin &&
+                        value.pathname.startsWith(contactsPrefix),
+                      { timeout: 20_000, waitUntil: "domcontentloaded" }
+                    );
+                    assertBrowserOperationCanRun(owner);
+                    const navigation = await openExactGenieSidebarRead({
+                      page, selector: "#tb_tasks", route: "tasks",
+                      assertControl: () => assertBrowserOperationCanRun(owner),
+                    });
+                    return {
+                      ...source,
+                      detail: "Verified earliest due owned source task and opened exact Genie Tasks route.",
+                      data: {
+                        ...source.data,
+                        actualExternalId: selected.externalId,
+                        actualPageUrl: navigation.pathname,
+                        records: JSON.stringify([{
+                          ...selected, sourceKind: "genie_owner_scoped_next_task_read_and_navigation",
+                        }]),
+                        collectionEvidence: "Exact owner-scoped pending task search and observed Tasks sidebar route verified.",
+                      },
+                    };
+                  })()
+              : input.provider === "genie" &&
+                isGenieExactOptionalRead(operationKey) &&
             learned?.prerequisites?.nativeRead ===
               GENIE_EXACT_NATIVE_READ_IDENTITIES[operationKey]
               ? await (async () => {
