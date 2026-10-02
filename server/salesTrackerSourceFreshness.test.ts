@@ -45,7 +45,8 @@ describe("opportunity snapshot scheduler and source proof use the same cadence",
     expect(current(source({lastSuccessfulAt: new Date(now.getTime()-max-1),maximumAgeMs:max}))).toBe(false);
   });
   it("uses configured cadence and falls back safely when invalid", () => {
-    expect(routineOpportunitySnapshotReadStartIntervalMs("300000")).toBe(5 * 60_000);
+    expect(routineOpportunitySnapshotReadStartIntervalMs("300000")).toBe(30_000);
+    expect(routineOpportunitySnapshotReadStartIntervalMs("360000")).toBe(30_000);
     expect(routineOpportunitySnapshotReadStartIntervalMs("1200000")).toBe(13 * 60_000);
     expect(routineOpportunitySnapshotReadStartIntervalMs("garbage")).toBe(8 * 60_000);
     expect(maximumCompletedOpportunitySnapshotAgeMs("300000")).toBe(15 * 60_000);

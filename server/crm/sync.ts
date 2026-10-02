@@ -71,7 +71,12 @@ export function routineOpportunitySnapshotDue(
   now = new Date(),
   intervalMs = routineOpportunitySnapshotIntervalMs()
 ) {
-  const safeInterval = routineOpportunitySnapshotIntervalMs(intervalMs);
+  // The early-read continuation may be due before the nominal 5m minimum.
+  // Never postpone a valid 30s headroom check by reinterpreting it as 15m.
+  const safeInterval =
+    Number.isFinite(intervalMs) && intervalMs >= 30_000
+      ? Math.floor(intervalMs)
+      : routineOpportunitySnapshotIntervalMs();
   return (
     !lastSuccessfulAt ||
     now.valueOf() - lastSuccessfulAt.valueOf() >= safeInterval

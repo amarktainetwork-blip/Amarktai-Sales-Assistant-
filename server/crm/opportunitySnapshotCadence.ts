@@ -24,7 +24,7 @@ export function routineOpportunitySnapshotReadStartIntervalMs(
   raw: string | number | undefined = process.env.ROUTINE_OPPORTUNITY_SYNC_INTERVAL_MS
 ) {
   return Math.max(
-    5 * 60_000,
+    30_000,
     routineOpportunitySnapshotIntervalMs(raw) - OPPORTUNITY_SNAPSHOT_READ_HEADROOM_MS
   );
 }
