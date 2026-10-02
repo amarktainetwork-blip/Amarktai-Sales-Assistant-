@@ -1,6 +1,7 @@
 import { readOwnerScopedGenieContactDetail } from "./genieContactDetail";
 import { readGenieContactHistory } from "./genieContactHistory";
 import { readOwnerScopedGenieOpportunities } from "./genieOpportunityScope";
+import { readOwnerScopedGenieOpportunityDetail } from "./genieOpportunityDetail";
 import { readGenieCommunicationTemplates } from "./genieTemplateRead";
 import { genieTaskCompletion } from "./genieTaskCompletion";
 import { readOwnerScopedGenieTasks } from "./genieTaskScope";
@@ -2099,6 +2100,31 @@ export function browserCrmAdapter(
       return extracted[0] ? company(extracted[0]) : null;
     },
     getOpportunity: async input => {
+      if (provider === "genie") {
+        // Do not fall back to an unscoped generic Genie script when personal
+        // owner mapping is unavailable. Every source record needs exact proof.
+        if (!input.secret.crmUserExternalId)
+          throw Error("CRM_OWNER_SCOPE_REQUIRED");
+        if (
+          !input.connection.allowedReadCapabilities.includes(
+            "opportunities.read"
+          ) ||
+          !input.connection.verifiedCapabilities.includes("opportunities.read")
+        )
+          throw Error("GENIE_OPPORTUNITY_READ_NOT_AUTHORIZED");
+        return withAuthenticatedBrowserSessionPage({
+          connection: input.connection,
+          secret: input.secret,
+          provider: "genie",
+          run: (page, _context, assertControl) =>
+            readOwnerScopedGenieOpportunityDetail({
+              page,
+              externalId: input.externalId,
+              ownerExternalId: input.secret.crmUserExternalId!,
+              assertControl,
+            }),
+        });
+      }
       const execution = await runOperation({
         ...input,
         provider,
