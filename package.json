@@ -18,7 +18,7 @@
     "verify:features": "node dist/verifyFeatures.js",
     "verify:company-discovery": "node dist/verifyCompanyDiscovery.js",
     "verify:company-knowledge": "node dist/verifyCompanyKnowledge.js",
-    "reconcile:cached-sms-opt-outs": "node dist/reconcileCachedSmsOptOutsCli.js",
+    "reconcile:cached-sms-opt-outs": "node dist/communications/reconcileCachedSmsOptOutsCli.js",
     "apply:client-configuration": "node dist/applyClientConfigurationCli.js"
   },
   "dependencies": {
