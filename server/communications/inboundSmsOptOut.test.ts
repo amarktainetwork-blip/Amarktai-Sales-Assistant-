@@ -27,6 +27,11 @@ describe("SMS STOP compliance and historical action-queue reconciliation", () =>
     expect(cli).toContain("eq(inboundMessages.mailboxUserId, mailboxUserId)");
     expect(cli).toContain('eq(inboundMessages.channel, "sms")');
     expect(cli).toContain("eq(inboundMessages.needsAction, true)");
+    // Archived/handled historical STOP can still lack suppression. It must be
+    // reconciled without being reopened or hidden forever by needsAction=false.
+    expect(cli).toContain("isNull(contactCommunicationSuppressions.id)");
+    expect(cli).toContain("COALESCE(JSON_UNQUOTE(JSON_EXTRACT");
+    expect(cli).toContain("eq(contactCommunicationSuppressions.senderReference, inboundMessages.senderReference)");
     expect(cli).toContain("inboundIdempotencyKey(");
     expect(cli).toContain("ingestInboundMessage({");
     expect(cli).toContain("OPT_OUT_RECLASSIFICATION_DID_NOT_CONVERGE");
@@ -36,5 +41,10 @@ describe("SMS STOP compliance and historical action-queue reconciliation", () =>
     expect(ingestor).toContain('!["information", "unsubscribe"].includes(classification.category)');
     expect(cli).not.toContain("sendTemplate");
     expect(cli).not.toContain("executeCrmWrite");
+    const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
+    expect(pkg.scripts.build).toContain("server/communications/reconcileCachedSmsOptOutsCli.ts");
+    expect(pkg.scripts["reconcile:cached-sms-opt-outs"]).toBe(
+      "node dist/reconcileCachedSmsOptOutsCli.js"
+    );
   });
 });
