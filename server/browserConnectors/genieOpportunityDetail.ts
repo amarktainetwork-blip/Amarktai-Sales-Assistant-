@@ -98,8 +98,9 @@ export async function readOwnerScopedGenieOpportunityDetail(input: {
     input.externalId,
     input.ownerExternalId
   );
-  const tokenOnPage = () =>
-    input.page.evaluate(async () => {
+  const tokenOnPage = () => {
+    input.assertControl();
+    return input.page.evaluate(async () => {
       const getter = (window as any).getToken;
       let live = "";
       try {
@@ -115,6 +116,7 @@ export async function readOwnerScopedGenieOpportunityDetail(input: {
         ""
       );
     });
+  };
   let token = await tokenOnPage();
   if (!token) {
     await new Promise(resolve => setTimeout(resolve, 250));
@@ -122,9 +124,9 @@ export async function readOwnerScopedGenieOpportunityDetail(input: {
   }
   if (!token) throw Error("CRM_BROWSER_REAUTHENTICATION_REQUIRED");
   const get = async (url: string) => {
-    input.assertControl();
-    const request = () =>
-      input.page.context().request.get(url, {
+    const request = () => {
+      input.assertControl();
+      return input.page.context().request.get(url, {
         headers: {
           "token-id": token,
           version: "2021-07-28",
@@ -133,6 +135,7 @@ export async function readOwnerScopedGenieOpportunityDetail(input: {
         },
         timeout: 12_000,
       });
+    };
     let response = await request();
     for (const waitMs of [250, 500]) {
       if (![401, 403].includes(response.status())) break;

@@ -154,6 +154,44 @@ describe("exact owner-scoped Genie opportunity read", () => {
       expect(get).toHaveBeenCalledTimes(3);
     }
   );
+  it("stops when the browser lease is revoked during an authentication retry", async () => {
+    let leaseOwned = true;
+    const get = vi.fn(async () => {
+      leaseOwned = false;
+      return response(403);
+    });
+    const evaluate = vi.fn(async () => "live-token");
+    const page = {
+      url: () => root,
+      evaluate,
+      context: () => ({ request: { get } }),
+    } as any;
+    await expect(readOwnerScopedGenieOpportunityDetail({
+      page,
+      externalId: "op-1",
+      ownerExternalId: "amelia",
+      assertControl: () => {
+        if (!leaseOwned) throw Error("CRM_VIEWER_AGENT_CONTROL_ACTIVE");
+      },
+    })).rejects.toThrow("CRM_VIEWER_AGENT_CONTROL_ACTIVE");
+    expect(get).toHaveBeenCalledOnce();
+    // A revoked lease also blocks reading the human's refreshed credential.
+    expect(evaluate).toHaveBeenCalledOnce();
+  });
+  it("checks browser ownership before the first token lookup", async () => {
+    const { page, get } = fakePage();
+    const evaluate = vi.fn(async () => "live-token");
+    page.evaluate = evaluate;
+    await expect(readOwnerScopedGenieOpportunityDetail({
+      page,
+      externalId: "op-1",
+      ownerExternalId: "amelia",
+      assertControl: () => { throw Error("CRM_VIEWER_AGENT_CONTROL_ACTIVE"); },
+    })).rejects.toThrow("CRM_VIEWER_AGENT_CONTROL_ACTIVE");
+    expect(evaluate).not.toHaveBeenCalled();
+    expect(get).not.toHaveBeenCalled();
+  });
+
   it("fails closed after bounded repeated rejected source credentials", async () => {
     const { page, get } = fakePage(response(403), response(403), response(403));
     await expect(
