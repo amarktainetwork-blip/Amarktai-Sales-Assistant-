@@ -100,7 +100,8 @@ function normalizedSender(channel: InboundEnvelope["channel"], value: string) {
 }
 
 export function shouldSurfaceInbound(classification: InboundClassification) {
-  return classification.category !== "information";
+  // A verified opt-out is a consent/suppression event, not a sales reply.
+  return !["information", "unsubscribe"].includes(classification.category);
 }
 
 export function mayPrepareInboundReply(
