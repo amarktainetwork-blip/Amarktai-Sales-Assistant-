@@ -30,6 +30,15 @@ describe("SMS STOP compliance and historical action-queue reconciliation", () =>
     expect(guardedWork).toContain('classification.category !== "unsubscribe" &&');
     expect(guardedWork).toContain("await completeNewLeadWorkAfterVerifiedContact({");
   });
+  it("does not let a delayed Genie backfill overwrite an already-resolved STOP", () => {
+    const mailbox = readFileSync(new URL("../genieMailbox.ts", import.meta.url), "utf8");
+    const start = mailbox.indexOf("for (const row of actionableBackfill)");
+    const end = mailbox.indexOf("for (const message of proof.records)", start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const delayedUpdates = mailbox.slice(start, end);
+    expect(delayedUpdates).toContain("eq(inboundMessages.needsAction, true)");
+  });
   it("reprocesses exact previously cached SMS via owner-scoped idempotent local ingestion", () => {
     const cli = readFileSync(new URL("./reconcileCachedSmsOptOutsCli.ts", import.meta.url), "utf8");
     const ingestor = readFileSync(new URL("./inboundPipeline.ts", import.meta.url), "utf8");
@@ -56,7 +65,7 @@ describe("SMS STOP compliance and historical action-queue reconciliation", () =>
     const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
     expect(pkg.scripts.build).toContain("server/communications/reconcileCachedSmsOptOutsCli.ts");
     expect(pkg.scripts["reconcile:cached-sms-opt-outs"]).toBe(
-      "node dist/reconcileCachedSmsOptOutsCli.js"
+      "node dist/communications/reconcileCachedSmsOptOutsCli.js"
     );
   });
 });
