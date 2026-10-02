@@ -32,7 +32,12 @@ export function classifyInboundMessage(input: {
   const latestBody = latestInboundText(input.body);
   const text = `${input.subject ?? ""}\n${latestBody}`.toLowerCase();
 
-  if (/unsubscribe|stop\s+(sending|emailing)|remove me/.test(text))
+  // SMS opt-out keywords are frequently sent with no other words. A bare
+  // STOP must be consent suppression, never a salesperson reply.
+  if (
+    /^(?:stop|stopall|unsubscribe)[.!]?$/.test(latestBody) ||
+    /\bunsubscribe\b|\bstop\s+(?:sending|emailing|texting|messaging|contacting|calling)\b|\bremove me\b|\bdo not (?:text|message|contact|call) me\b/.test(text)
+  )
     return {
       category: "unsubscribe",
       reasons: ["message includes an opt-out request"],

@@ -2,6 +2,25 @@ import { describe, expect, it } from "vitest";
 import { canSendReviewedReply, classifyInboundMessage } from "./inboundReview";
 describe("inbound review-first communications", () => {
   it("prioritizes opt-out requests and preserves transparent reasons", () => expect(classifyInboundMessage({ body: "Please unsubscribe me from these emails." })).toEqual({ category: "unsubscribe", reasons: ["message includes an opt-out request"] }));
+  it.each(["STOP", "stop", " STOP ", "STOP.", "Stop!", "<p>STOP</p>", "STOPALL", "Unsubscribe"])(
+    "classifies a standalone opt-out keyword %s before the reply fallback",
+    body => {
+      expect(classifyInboundMessage({ body })).toEqual({
+        category: "unsubscribe",
+        reasons: ["message includes an opt-out request"],
+      });
+    }
+  );
+  it("does not turn an ordinary discussion mentioning stop into an opt-out", () => {
+    expect(classifyInboundMessage({ body: "Can we stop by next week?" }).category)
+      .toBe("reply_needed");
+    expect(classifyInboundMessage({ body: "Please stop texting me." }).category)
+      .toBe("unsubscribe");
+    expect(classifyInboundMessage({
+      body: "<p>Can you call me?</p><blockquote>STOP</blockquote>",
+    }).category).toBe("reply_needed");
+  });
+
   it("flags enrolment and payment intent before ordinary reply-needed mail", () => {
     expect(classifyInboundMessage({ body: "I look forward to moving forward with the course. I need the OTP before I can pay the deposit." })).toEqual({
       category: "sale_intent",
