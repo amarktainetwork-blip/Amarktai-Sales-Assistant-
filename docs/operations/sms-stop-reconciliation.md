@@ -9,7 +9,7 @@ docker exec \
   -e AMARKTAI_COMMISSION_ORGANISATION_ID=<verified-organisation-id> \
   -e AMARKTAI_COMMISSION_CONNECTED_SYSTEM_ID=<verified-genie-system-id> \
   -e AMARKTAI_COMMISSION_USER_ID=<verified-mailbox-user-id> \
-  webdock-app-1 node dist/reconcileCachedSmsOptOutsCli.js
+  webdock-app-1 node dist/communications/reconcileCachedSmsOptOutsCli.js
 ```
 
 The script selects up to 100 genuine stored SMS messages with exact standalone STOP-like text when any of these remain wrong: needsAction, unsubscribe classification, or per-sender suppression. It validates each immutable message idempotency key and reprocesses it through the existing owner-scoped ingestion path. An archived message stays archived. A new reply is **never** sent. On success it logs counts only, no personal message content.

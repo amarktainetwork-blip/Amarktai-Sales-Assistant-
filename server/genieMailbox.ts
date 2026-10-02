@@ -1000,6 +1000,10 @@ export async function syncGenieMailboxForUser(input: {
       .where(
         and(
           eq(inboundMessages.id, row.id),
+          // Browser reconciliation may finish after local STOP/handled-state
+          // reconciliation. Never overwrite a now-resolved classification
+          // with the stale classification selected before that browser read.
+          eq(inboundMessages.needsAction, true),
           eq(inboundMessages.organisationId, input.organisationId),
           eq(inboundMessages.mailboxUserId, input.userId),
           eq(inboundMessages.connectedSystemId, system.id)
