@@ -45,7 +45,7 @@ import {
   isCompletedTask,
 } from "../../shared/taskState";
 import { crmResourceSyncEligible } from "./syncEligibility";
-import { routineOpportunitySnapshotIntervalMs } from "./opportunitySnapshotCadence";
+import { DEFAULT_ROUTINE_OPPORTUNITY_BATCH_PAGES, routineOpportunitySnapshotIntervalMs } from "./opportunitySnapshotCadence";
 import { assertPersonalBrowserOwnerScope } from "./personalOwnerScope";
 import {
   deriveContactChangeEvents,
@@ -1575,7 +1575,7 @@ async function syncConnectedSystemRoutineDeterministically(input: {
         connection,
         secret,
         cursor: existing?.cursor ?? undefined,
-        boundedSnapshotPages: 5,
+        boundedSnapshotPages: DEFAULT_ROUTINE_OPPORTUNITY_BATCH_PAGES,
       });
       assertPersonalBrowserOwnerScope({
         resourceType: "opportunities",

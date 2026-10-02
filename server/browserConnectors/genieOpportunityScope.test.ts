@@ -221,6 +221,65 @@ describe("Genie opportunity read", () => {
     expect(after.searchParams.get("assigned_to")).toBe("owner");
     expect(after.searchParams.get("startAfterId")).toBe("99");
   });
+  it("drains ten owner-only pages per bounded read without prematurely certifying source completion", async () => {
+    const get = vi.fn(async (url: string) => {
+      const pipeline = url.includes("/opportunities/pipelines?");
+      const parameters = new URL(url).searchParams;
+      const offset = parameters.has("startAfterId")
+        ? Number(parameters.get("startAfterId")) + 1
+        : 0;
+      const count = Math.min(100, 1001 - offset);
+      const records = Array.from({ length: count }, (_, i) => row(String(offset + i)));
+      return {
+        ok: () => true,
+        status: () => 200,
+        json: async () => pipeline
+          ? { pipelines }
+          : {
+              opportunities: records,
+              meta: {
+                total: 1001,
+                startAfter: offset + count - 1,
+                startAfterId: String(offset + count - 1),
+              },
+            },
+      };
+    });
+    const page = {
+      url: () => "https://example.test/v2/location/loc/opportunities",
+      evaluate: async () => "existing-browser-token",
+      context: () => ({ request: { get } }),
+    } as any;
+    const first = await readOwnerScopedGenieOpportunities({
+      page,
+      ownerExternalId: "owner",
+      assertControl: () => {},
+      maxPages: 10,
+    });
+    expect(first.data.snapshotComplete).toBe("false");
+    expect(first.data.pagesRead).toBe("10");
+    expect(JSON.parse(first.data.records)).toHaveLength(1000);
+    const checkpoint = JSON.parse(first.data.nextCursor!);
+    expect(checkpoint.seen).toBe(1000);
+    expect(checkpoint.sourceTotal).toBe(1001);
+    const second = await readOwnerScopedGenieOpportunities({
+      page,
+      ownerExternalId: "owner",
+      assertControl: () => {},
+      maxPages: 10,
+      continuation: first.data.nextCursor,
+    });
+    expect(second.data.snapshotComplete).toBe("true");
+    expect(JSON.parse(second.data.records)).toHaveLength(1);
+    expect(second.data.nextCursor).toBeUndefined();
+    const sourceReads = get.mock.calls
+      .map(([url]) => url)
+      .filter(url => url.includes("/opportunities/search?"));
+    expect(sourceReads).toHaveLength(11);
+    expect(sourceReads.every(url => new URL(url).searchParams.get("assigned_to") === "owner")).toBe(true);
+    expect(sourceReads.every(url => new URL(url).searchParams.get("location_id") === "loc")).toBe(true);
+  });
+
   it("rejects an invalid or changed bounded continuation", async () => {
     const bad = '{"version":1,"after":[1,"99"],"seen":100,"sourceTotal":99}';
     await expect(

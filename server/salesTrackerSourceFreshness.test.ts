@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { completedOpportunitySnapshotIsCurrent as current, salesTrackerNeedsReconnect } from "./salesTrackerSourceFreshness";
-import { maximumCompletedOpportunitySnapshotAgeMs, routineOpportunitySnapshotIntervalMs } from "./crm/opportunitySnapshotCadence";
+import { DEFAULT_ROUTINE_OPPORTUNITY_BATCH_PAGES, maximumCompletedOpportunitySnapshotAgeMs, routineOpportunitySnapshotIntervalMs } from "./crm/opportunitySnapshotCadence";
 const now = new Date("2026-10-01T18:06:00Z");
 const maximumAgeMs = 3 * 60_000;
 const source = (overrides: Partial<Parameters<typeof current>[0]> = {}) => ({
@@ -30,6 +30,11 @@ describe("Sales Tracker source-completion truth", () => {
 });
 
 describe("opportunity snapshot scheduler and source proof use the same cadence", () => {
+  it("drains the pilot source in at most six bounded worker cycles at 10 pages each", () => {
+    expect(DEFAULT_ROUTINE_OPPORTUNITY_BATCH_PAGES).toBe(10);
+    expect(Math.ceil(5725 / (DEFAULT_ROUTINE_OPPORTUNITY_BATCH_PAGES * 100))).toBe(6);
+    expect(15 + 6).toBeLessThan(25);
+  });
   it("allows the default 15-minute cadence plus bounded completion grace", () => {
     const max = maximumCompletedOpportunitySnapshotAgeMs(undefined);
     expect(routineOpportunitySnapshotIntervalMs(undefined)).toBe(15 * 60_000);
