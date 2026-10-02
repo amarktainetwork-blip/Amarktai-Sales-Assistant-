@@ -45,7 +45,7 @@ import {
   isCompletedTask,
 } from "../../shared/taskState";
 import { crmResourceSyncEligible } from "./syncEligibility";
-import { DEFAULT_ROUTINE_OPPORTUNITY_BATCH_PAGES, routineOpportunitySnapshotIntervalMs } from "./opportunitySnapshotCadence";
+import { DEFAULT_ROUTINE_OPPORTUNITY_BATCH_PAGES, routineOpportunitySnapshotIntervalMs, routineOpportunitySnapshotReadStartIntervalMs } from "./opportunitySnapshotCadence";
 import { assertPersonalBrowserOwnerScope } from "./personalOwnerScope";
 import {
   deriveContactChangeEvents,
@@ -1288,7 +1288,8 @@ async function syncConnectedSystemRoutineDeterministically(input: {
   const opportunityCursor = await cursorFor(system.id, opportunityCursorKey);
   const opportunitySnapshotDue = routineOpportunitySnapshotDue(
     opportunityCursor?.lastSuccessfulAt,
-    routineNow
+    routineNow,
+    routineOpportunitySnapshotReadStartIntervalMs()
   );
   let operationStatuses = new Map(
     (
