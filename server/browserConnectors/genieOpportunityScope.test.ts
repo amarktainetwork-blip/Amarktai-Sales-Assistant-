@@ -23,7 +23,7 @@ const pipelines = [
   },
 ];
 describe("Genie opportunity read", () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
   it("reads the browser's existing retained authenticated state when the SPA getter is unavailable", async () => {
     vi.stubGlobal("window", { getToken: async () => "" });
     vi.stubGlobal("localStorage", { getItem: (key: string) => key === "refreshedToken" ? "saved-session" : null });
@@ -278,6 +278,47 @@ describe("Genie opportunity read", () => {
     expect(sourceReads).toHaveLength(11);
     expect(sourceReads.every(url => new URL(url).searchParams.get("assigned_to") === "owner")).toBe(true);
     expect(sourceReads.every(url => new URL(url).searchParams.get("location_id") === "loc")).toBe(true);
+  });
+
+  it("checkpoints a slow bounded read before the enclosing CRM user watchdog", async () => {
+    let simulatedElapsedMs = 0;
+    vi.spyOn(Date, "now").mockImplementation(() => simulatedElapsedMs);
+    const get = vi.fn(async (url: string) => {
+      const isPipeline = url.includes("/opportunities/pipelines?");
+      const params = new URL(url).searchParams;
+      const offset = params.has("startAfterId")
+        ? Number(params.get("startAfterId")) + 1
+        : 0;
+      if (!isPipeline) simulatedElapsedMs += 26_000;
+      const records = Array.from({ length: 100 }, (_, i) => row(String(offset + i)));
+      return {
+        ok: () => true,
+        status: () => 200,
+        json: async () => isPipeline ? { pipelines } : {
+          opportunities: records,
+          meta: {
+            total: 1001,
+            startAfter: offset + 99,
+            startAfterId: String(offset + 99),
+          },
+        },
+      };
+    });
+    const result = await readOwnerScopedGenieOpportunities({
+      page: {
+        url: () => "https://example.test/v2/location/loc/opportunities",
+        evaluate: async () => "live-token",
+        context: () => ({ request: { get } }),
+      } as any,
+      ownerExternalId: "owner",
+      assertControl: () => {},
+      maxPages: 10,
+    });
+    expect(result.data.snapshotComplete).toBe("false");
+    expect(result.data.pagesRead).toBe("2");
+    expect(JSON.parse(result.data.records)).toHaveLength(200);
+    expect(JSON.parse(result.data.nextCursor!).seen).toBe(200);
+    expect(get).toHaveBeenCalledTimes(3);
   });
 
   it("rejects an invalid or changed bounded continuation", async () => {

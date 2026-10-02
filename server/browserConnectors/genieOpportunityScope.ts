@@ -150,6 +150,11 @@ export async function readOwnerScopedGenieOpportunities(input: {
     input.assertControl();
     return r.json();
   };
+  // Ten normal pages fit the worker watchdog; many slow requests might not.
+  // Stop after a bounded elapsed budget and persist exact-owner continuation,
+  // never promoting a partial collection to a completed source snapshot.
+  const boundedReadStartedAt = Date.now();
+  const boundedReadBudgetMs = 50_000;
   const metadata = await get(
     `/opportunities/pipelines?locationId=${encodeURIComponent(location)}`
   );
@@ -235,7 +240,10 @@ export async function readOwnerScopedGenieOpportunities(input: {
     cursor = JSON.stringify(next);
     if (cursor === previous) throw Error("CRM_SYNC_CURSOR_STALLED");
     previous = cursor;
-    if (input.maxPages !== undefined && page >= pageLimit) {
+    if (
+      input.maxPages !== undefined &&
+      (page >= pageLimit || Date.now() - boundedReadStartedAt >= boundedReadBudgetMs)
+    ) {
       const nextCursor: GenieOpportunityContinuation = {
         version: 1,
         after: next as [string | number, string],
