@@ -89,6 +89,29 @@ describe("selected customer source history", () => {
   });
 });
 
+describe("independent history read permission boundary", () => {
+  it("does not request notes when the capability is not granted", async () => {
+    const f = fixture();
+    const result = await readGenieContactHistory({
+      page:f.page, ownerExternalId:"owner", contactExternalId:"c",
+      assertControl(){}, includeNotes:false,
+    });
+    expect(result.coverage.notes).toBe("not_requested");
+    expect(result.activities.every(x=>x.activityType!=="note")).toBe(true);
+    expect(f.get.mock.calls.some(([url])=>String(url).endsWith("/notes"))).toBe(false);
+  });
+  it("does not request conversations or messages for a note-only read", async () => {
+    const f = fixture();
+    const result = await readGenieContactHistory({
+      page:f.page, ownerExternalId:"owner", contactExternalId:"c",
+      assertControl(){}, includeCommunications:false,
+    });
+    expect(result.coverage.communications).toBe("not_requested");
+    expect(result.activities.map(x=>x.activityType)).toEqual(["note"]);
+    expect(f.get.mock.calls.some(([url])=>String(url).includes("/conversations"))).toBe(false);
+  });
+});
+
 describe("source communication type contract", () => {
   it("keeps calls, SMS, email and metadata-proven WhatsApp distinct", async () => {
     const f = fixture(

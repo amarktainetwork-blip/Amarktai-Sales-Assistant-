@@ -234,13 +234,23 @@ export default function BrowserCrmCommissioning() {
         operation => operation.key === key && operation.status === "LIVE_PROVEN"
       )
   ).length;
-  const optionalUncommissionedCount = operations.filter(
-    operation =>
-      !requiredReadKeys.includes(operation.key) &&
-      operation.status !== "LIVE_PROVEN"
+  // The user's full-read acceptance gate includes every catalogue read, not
+  // just the subset required for initial connection readiness. Never combine
+  // missing read proofs with deliberately disabled WRITE operations.
+  const readOperations = operations.filter(operation => operation.mode === "read");
+  const nativeReadsProven = readOperations.filter(
+    operation => operation.status === "LIVE_PROVEN"
   ).length;
+  const nativeReadsNeedingProof = readOperations.length - nativeReadsProven;
   const writeCapabilitiesEnabled =
     (selectedSystem?.allowedWriteCapabilities?.length ?? 0) > 0;
+  const lockedWrites = operations.filter(
+    operation => operation.mode === "write" && !writeCapabilitiesEnabled
+  ).length;
+  const readPermissionMissing = (operation: OperationRow) =>
+    operation.mode === "read" &&
+    Boolean(operation.capability) &&
+    !selectedSystem?.allowedReadCapabilities?.includes(operation.capability!);
 
   async function refresh() {
     await Promise.all([
@@ -514,9 +524,10 @@ export default function BrowserCrmCommissioning() {
               {unresolvedRequiredCount
                 ? `${unresolvedRequiredCount} required read ${unresolvedRequiredCount === 1 ? "issue" : "issues"}`
                 : "required reads proven"}
-              {optionalUncommissionedCount
-                ? ` · ${optionalUncommissionedCount} additional functions available`
+              {readOperations.length
+                ? ` · ${nativeReadsProven}/${readOperations.length} read operations proven · ${nativeReadsNeedingProof} still need proof`
                 : ""}
+              {lockedWrites ? ` · ${lockedWrites} writes locked` : ""}
             </summary>
             <div className="grid gap-4 border-t border-[#E1E7EF] p-3">
               {grouped.map(([area, rows]) => (
@@ -539,14 +550,15 @@ export default function BrowserCrmCommissioning() {
                             {operation.mode === "write" &&
                             !writeCapabilitiesEnabled
                               ? "Disabled by policy"
-                              : operation.mode === "read" &&
-                                  !requiredReadKeys.includes(operation.key) &&
-                                  operation.status !== "LIVE_PROVEN"
-                                ? "Optional — add only if needed"
-                                : statusCopy[operation.status]}
+                              : readPermissionMissing(operation)
+                                ? "Read permission required before proof"
+                                : operation.mode === "read" &&
+                                    operation.status !== "LIVE_PROVEN"
+                                  ? `Needs individual proof · ${statusCopy[operation.status]}`
+                                  : statusCopy[operation.status]}
                           </p>
                           {operation.lastError &&
-                          (requiredReadKeys.includes(operation.key) ||
+                          (operation.mode === "read" ||
                             (operation.mode === "write" &&
                               writeCapabilitiesEnabled)) ? (
                             <p className="mt-1 max-w-2xl text-xs text-red-700">
@@ -570,12 +582,14 @@ export default function BrowserCrmCommissioning() {
                             <Button
                               size="sm"
                               variant="outline"
+                              disabled={readPermissionMissing(operation)}
                               onClick={() => void beginTeach(operation)}
                             >
-                              {operation.mode === "read" &&
-                              !requiredReadKeys.includes(operation.key)
-                                ? "Add optional function"
-                                : "Teach AmarktAI"}
+                              {readPermissionMissing(operation)
+                                ? "Read permission required"
+                                : operation.mode === "read"
+                                  ? "Teach and prove read"
+                                  : "Teach AmarktAI"}
                             </Button>
                           ) : null}
                           {operation.mode === "write" &&
