@@ -5,6 +5,10 @@ const source = readFileSync(
   new URL("../client/src/pages/Today.tsx", import.meta.url),
   "utf8"
 );
+const assistant = readFileSync(
+  new URL("../client/src/pages/Assistant.tsx", import.meta.url),
+  "utf8"
+);
 
 describe("Internal tasks without a resolved CRM contact", () => {
   it("keeps the assigned task visible and labels missing source context truthfully", () => {
@@ -19,5 +23,13 @@ describe("Internal tasks without a resolved CRM contact", () => {
     expect(source).toContain("Prepare with AmarktAI");
     expect(source).toContain("Summarise the task instructions and explain the safest next action");
     expect(source).toContain("data-today-internal-work");
+  });
+
+  it("suppresses unrelated customer auto-selection in neutral task context", () => {
+    expect(source).toContain("context=task-only&prompt=");
+    expect(assistant).toContain('get("context") === "task-only"');
+    expect(assistant).toContain("if (contactId !== undefined) switchCustomer(undefined);");
+    expect(assistant).toContain("if (contactId || explicitContactId || taskOnlyContext) return;");
+    expect(assistant).toContain('params.delete("context");');
   });
 });

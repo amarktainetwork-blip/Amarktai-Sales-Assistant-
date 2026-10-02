@@ -600,7 +600,7 @@ export default function Today() {
                               "The linked CRM customer context is not available or was not supplied. Do not assume the customer name, owner, history or course.",
                               "Summarise the task instructions and explain the safest next action using only confirmed information.",
                             ].join(" ");
-                            navigate(`/assistant?prompt=${encodeURIComponent(prompt)}`);
+                            navigate(`/assistant?context=task-only&prompt=${encodeURIComponent(prompt)}`);
                           }}
                         >
                           <Sparkles className="mr-2 h-4 w-4" />

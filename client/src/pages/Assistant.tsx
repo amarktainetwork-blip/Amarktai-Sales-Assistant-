@@ -97,6 +97,8 @@ export default function Assistant() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
   const explicitContactId = requestedAssistantContactId();
+  const taskOnlyContext =
+    new URLSearchParams(window.location.search).get("context") === "task-only";
   const [contactId, setContactId] = useState<number | undefined>(
     () => explicitContactId
   );
@@ -117,8 +119,10 @@ export default function Assistant() {
       if (updateLocation) {
         const params = new URLSearchParams(window.location.search);
         params.delete("prompt");
-        if (nextContactId) params.set("contactId", String(nextContactId));
-        else params.delete("contactId");
+        if (nextContactId) {
+          params.set("contactId", String(nextContactId));
+          params.delete("context"); // Deliberate customer choice exits neutral task context.
+        } else params.delete("contactId");
         const query = params.toString();
         window.history.replaceState(
           window.history.state,
@@ -177,19 +181,22 @@ export default function Assistant() {
     const params = new URLSearchParams(window.location.search);
     const prompt = params.get("prompt")?.trim();
     const selected = requestedAssistantContactId();
-    if (selected && selected !== contactId) switchCustomer(selected);
+    if (taskOnlyContext) {
+      if (contactId !== undefined) switchCustomer(undefined);
+    } else if (selected && selected !== contactId) switchCustomer(selected);
     if (prompt) setDraft(prompt.slice(0, 12_000));
-  }, [location, contactId, switchCustomer]);
+  }, [location, contactId, switchCustomer, taskOnlyContext]);
 
   useEffect(() => {
-    // An explicit customer in the URL is authoritative. Today is only a
-    // fallback when AmarktAI is opened without customer context.
-    if (contactId || explicitContactId) return;
+    // Explicit contact and task-only contexts are authoritative. Never attach
+    // an unrelated Today lead to an internal task with missing source contact.
+    if (contactId || explicitContactId || taskOnlyContext) return;
     const next = today.data?.queues.callQueue?.[0];
     if (next?.contactId) switchCustomer(next.contactId);
   }, [
     contactId,
     explicitContactId,
+    taskOnlyContext,
     switchCustomer,
     today.data?.queues.callQueue,
   ]);
