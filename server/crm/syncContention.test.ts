@@ -39,6 +39,12 @@ describe("routine opportunity snapshot cadence", () => {
     ).toBe(false);
   });
 
+  it("accepts the bounded 30-second early-read gate without resetting to 15 minutes", () => {
+    expect(routineOpportunitySnapshotDue(new Date(now.getTime() - 29_999), now, 30_000)).toBe(false);
+    expect(routineOpportunitySnapshotDue(new Date(now.getTime() - 30_000), now, 30_000)).toBe(true);
+    expect(routineOpportunitySnapshotDue(new Date(now.getTime() - 30_000), now, 1)).toBe(false);
+  });
+
   it("runs the full opportunity snapshot when it is stale or missing", () => {
     expect(routineOpportunitySnapshotDue(null, now, 15 * 60_000)).toBe(true);
     expect(

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { completedOpportunitySnapshotIsCurrent as current, salesTrackerNeedsReconnect } from "./salesTrackerSourceFreshness";
-import { DEFAULT_ROUTINE_OPPORTUNITY_BATCH_PAGES, maximumCompletedOpportunitySnapshotAgeMs, routineOpportunitySnapshotIntervalMs } from "./crm/opportunitySnapshotCadence";
+import { DEFAULT_ROUTINE_OPPORTUNITY_BATCH_PAGES, maximumCompletedOpportunitySnapshotAgeMs, routineOpportunitySnapshotIntervalMs, routineOpportunitySnapshotReadStartIntervalMs } from "./crm/opportunitySnapshotCadence";
 const now = new Date("2026-10-01T18:06:00Z");
 const maximumAgeMs = 3 * 60_000;
 const source = (overrides: Partial<Parameters<typeof current>[0]> = {}) => ({
@@ -33,7 +33,9 @@ describe("opportunity snapshot scheduler and source proof use the same cadence",
   it("drains the pilot source in at most six bounded worker cycles at 10 pages each", () => {
     expect(DEFAULT_ROUTINE_OPPORTUNITY_BATCH_PAGES).toBe(10);
     expect(Math.ceil(5725 / (DEFAULT_ROUTINE_OPPORTUNITY_BATCH_PAGES * 100))).toBe(6);
-    expect(15 + 6).toBeLessThan(25);
+    // A busy viewer can defer alternate cycles, so allow twelve minutes to drain.
+    expect(routineOpportunitySnapshotReadStartIntervalMs()).toBe(8 * 60_000);
+    expect(8 + 6 * 2).toBeLessThan(25);
   });
   it("allows the default 15-minute cadence plus bounded completion grace", () => {
     const max = maximumCompletedOpportunitySnapshotAgeMs(undefined);
@@ -43,6 +45,10 @@ describe("opportunity snapshot scheduler and source proof use the same cadence",
     expect(current(source({lastSuccessfulAt: new Date(now.getTime()-max-1),maximumAgeMs:max}))).toBe(false);
   });
   it("uses configured cadence and falls back safely when invalid", () => {
+    expect(routineOpportunitySnapshotReadStartIntervalMs("300000")).toBe(30_000);
+    expect(routineOpportunitySnapshotReadStartIntervalMs("360000")).toBe(30_000);
+    expect(routineOpportunitySnapshotReadStartIntervalMs("1200000")).toBe(13 * 60_000);
+    expect(routineOpportunitySnapshotReadStartIntervalMs("garbage")).toBe(8 * 60_000);
     expect(maximumCompletedOpportunitySnapshotAgeMs("300000")).toBe(15 * 60_000);
     expect(maximumCompletedOpportunitySnapshotAgeMs("garbage")).toBe(25 * 60_000);
   });
