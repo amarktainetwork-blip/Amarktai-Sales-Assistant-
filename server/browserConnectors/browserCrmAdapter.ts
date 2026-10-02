@@ -1,5 +1,6 @@
 import { readOwnerScopedGenieContactDetail } from "./genieContactDetail";
 import { readGenieContactHistory } from "./genieContactHistory";
+import { readGenieCompanySource, GENIE_COMPANY_SYNC_IDENTITY, GENIE_COMPANY_READ_IDENTITY } from "./genieCompanyScope";
 import { readGenieHome, openExactGenieSidebarRead } from "./genieNavigationReads";
 import { executeGenieExactOptionalRead, isGenieExactOptionalRead, GENIE_EXACT_NATIVE_READ_IDENTITIES } from "./genieOptionalReads";
 import { readOwnerScopedGenieOpportunities } from "./genieOpportunityScope";
@@ -1365,7 +1366,32 @@ async function runDeterministicOperation(input: RunOperationInput) {
               : "";
           const execution =
             input.provider === "genie" &&
-            operationKey === "home.open" &&
+            (operationKey === "company.sync" || operationKey === "company.read") &&
+            learned?.prerequisites?.nativeRead ===
+              (operationKey === "company.read"
+                ? GENIE_COMPANY_READ_IDENTITY
+                : GENIE_COMPANY_SYNC_IDENTITY)
+              ? await (async () => {
+                  if (
+                    !input.secret.crmUserExternalId ||
+                    !input.connection.allowedReadCapabilities.includes("companies.read") ||
+                    !(input.connection.verifiedCapabilities.includes("companies.read") ||
+                      (input.allowTestReady && Boolean(input.publishByUserId)))
+                  ) throw Error("GENIE_COMPANY_SOURCE_NOT_AUTHORISED");
+                  return readGenieCompanySource({
+                    page,
+                    verifiedViewerOwnerExternalId: input.secret.crmUserExternalId,
+                    assertControl: () => assertBrowserOperationCanRun(owner),
+                    ...(operationKey === "company.read"
+                      ? { exactExternalId:
+                          typeof payload.externalId === "string"
+                            ? payload.externalId
+                            : "" }
+                      : {}),
+                  });
+                })()
+              : input.provider === "genie" &&
+                operationKey === "home.open" &&
             learned?.prerequisites?.nativeRead === "genie_location_scoped_home_navigation"
               ? await (async () => {
                   if (
