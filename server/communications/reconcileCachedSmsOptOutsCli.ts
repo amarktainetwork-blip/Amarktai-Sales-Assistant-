@@ -33,7 +33,7 @@ async function main() {
     eq(inboundMessages.mailboxUserId, mailboxUserId),
     eq(inboundMessages.channel, "sms"),
     eq(inboundMessages.needsAction, true),
-    sql.raw("LOWER(TRIM(inboundMessages.body)) IN ('stop','stop.','stop!','stopall','unsubscribe')")
+    sql`LOWER(TRIM(${inboundMessages.body})) IN ('stop','stop.','stop!','stopall','unsubscribe')`
   )).orderBy(inboundMessages.id).limit(100);
   let corrected = 0;
   for (const row of candidates) {
