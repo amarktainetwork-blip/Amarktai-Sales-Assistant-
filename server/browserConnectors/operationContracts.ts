@@ -624,6 +624,7 @@ export function browserProofPolicy(
         "opportunity.read",
         "stage.read",
         "task.read",
+        "company.read",
       ].includes(operationKey),
     requiresStructuredResult: mode === "read" && operationKey !== "auth.login",
     requiresExactSearchMatch: operationKey === "contact.search",
@@ -647,8 +648,15 @@ function verifiedEmptyCollection(input: {
   if (rawRecords !== "[]") return false;
   const evidence = input.data.collectionEvidence?.trim() || "";
   if (!evidence) return false;
-  if (input.operationKey === "company.sync")
+  if (input.operationKey === "company.sync") {
+    if (input.data.sourceKind === "genie_location_scoped_businesses_api")
+      return (
+        input.data.sourceTotal === "0" &&
+        input.data.locationScopeVerified === "true" &&
+        /Verified Businesses API GET source returned 0/i.test(evidence)
+      );
     return /Company Name|\bCompanies\b|\bBusinesses\b/i.test(evidence);
+  }
   if (input.operationKey === "opportunity.sync") {
     const counts = Array.from(
       evidence.matchAll(/([0-9][0-9,]*)\s+opportunit(?:y|ies)/gi)
@@ -803,17 +811,27 @@ export function verifyBrowserReadProof(input: {
         code: "TARGET_IDENTITY_REQUIRED" as const,
         detail: "The read must be bound to one exact external record identity.",
       };
-    const structuredContact = rows.some(row =>
-      ["firstName", "lastName", "email", "phone", "ownerExternalId"].some(key =>
-        Object.prototype.hasOwnProperty.call(row, key)
-      )
-    );
-    if (!structuredContact)
+    const structuredRecord =
+      input.operationKey === "company.read"
+        ? rows.some(row =>
+            typeof row.externalId === "string" &&
+            typeof row.name === "string" &&
+            typeof row.locationId === "string" &&
+            row.sourceKind === "genie_location_scoped_businesses_api" &&
+            input.data.locationScopeVerified === "true"
+          )
+        : rows.some(row =>
+            ["firstName", "lastName", "email", "phone", "ownerExternalId"].some(key =>
+              Object.prototype.hasOwnProperty.call(row, key)
+            )
+          );
+    if (!structuredRecord)
       return {
         ok: false,
         code: "STRUCTURED_RESULT_REQUIRED" as const,
-        detail:
-          "The contact read did not execute the expected structured fields.",
+        detail: input.operationKey === "company.read"
+          ? "Exact company identity, business name and live location provenance are required."
+          : "The contact read did not execute the expected structured fields.",
       };
     const identity = exactRecordIdentityRepresented({
       expected: target,

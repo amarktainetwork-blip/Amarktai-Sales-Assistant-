@@ -470,6 +470,22 @@ export const GENIE_PROVIDER_PACK: Pick<
       prerequisites: {
         providerPack: "genie",
         providerPackVersion: GENIE_PROVIDER_PACK_VERSION,
+        nativeRead: "genie_exact_location_scoped_businesses_search",
+        sourceSemantics: "Complete immutable-location Businesses API GET; no empty SPA-grid guessing.",
+      },
+    },
+    "company.read": {
+      definition: {
+        mode: "read",
+        executeScript: "genie_company_sync",
+        resultKey: "records",
+      },
+      prerequisites: {
+        providerPack: "genie",
+        providerPackVersion: GENIE_PROVIDER_PACK_VERSION,
+        nativeRead: "genie_exact_location_scoped_business_identity",
+        verificationInputRole: "derived_company_external_id",
+        sourceSemantics: "Independent exact business identity and location check on a fresh GET.",
       },
     },
     "task.sync": {

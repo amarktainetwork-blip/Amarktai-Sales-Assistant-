@@ -11,7 +11,7 @@ import {
   browserProofPolicy,
 } from "../browserConnectors/operationContracts";
 import { isTransientBrowserExecutionFailure } from "../browserConnectors/runtimeFailure";
-import { loadConnectionSecret, toAdapterConnection } from "../connectedSystems";
+import { loadConnectionSecret, loadUserConnectionSecret, toAdapterConnection } from "../connectedSystems";
 import { getDb } from "../db";
 import { attemptBoundedAutomaticRepairBatch } from "../crm/automaticCommissioning";
 import { connectedSystemHasActiveCommissioning } from "../crm/backgroundReadCommissioningGuard";
@@ -75,6 +75,16 @@ export function watchdogReplayPayload(
   )
     return null;
   return raw;
+}
+
+export function watchdogOwnerSessionIsVerified(
+  secret: { browserUserId?: number; crmUserExternalId?: string } | undefined,
+  commissioningUserId: number
+) {
+  return Boolean(
+    secret?.browserUserId === commissioningUserId &&
+    secret?.crmUserExternalId?.trim()
+  );
 }
 
 export function watchdogIdentityMappingIsConfirmed(
@@ -210,6 +220,26 @@ export async function runGenieOperationWatchdog() {
       });
       continue;
     }
+    // A shared commissioning secret establishes only who commissioned the
+    // connector. It deliberately has no runtime crmUserExternalId, so passing
+    // it into owner-scoped native reads would falsely BLOCK healthy proofs.
+    // Resolve the mapped person's own verified browser secret after the
+    // identity check; if unavailable, retain proofs and request reconnection.
+    const personalSecret = await loadUserConnectionSecret({
+      userId: secret.commissioningUserId,
+      organisationId: system.organisationId,
+      connectedSystemId: system.id,
+      secretKind: "browser",
+    });
+    if (!watchdogOwnerSessionIsVerified(personalSecret, secret.commissioningUserId)) {
+      results.push({
+        connectedSystemId: system.id,
+        operationKey: "personal-owner-session",
+        status: "retry_pending",
+        detail: "The verified salesperson browser identity is unavailable; existing source proofs are retained.",
+      });
+      continue;
+    }
 
     const affectedOperationKeys: string[] = [];
     const rows = await db
@@ -263,7 +293,7 @@ export async function runGenieOperationWatchdog() {
         }
         await testLearnedBrowserOperation({
           connection: toAdapterConnection(system),
-          secret,
+          secret: personalSecret,
           provider: "genie",
           operationKey: operation.operationKey,
           payload: watchdogInputs,
