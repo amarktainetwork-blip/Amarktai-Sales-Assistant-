@@ -15,6 +15,26 @@ const GENIE_CONTACT_SEARCH_INPUT =
   '#list-view-record-search, input[placeholder*="Search Contacts" i]';
 
 const scripts: BrowserProfile["scripts"] = {
+  genie_home_open: {
+    steps: [
+      { action: "click", selector: "#sb_dashboard" },
+      { action: "wait_for_url", value: "**/dashboard" },
+      {
+        action: "read_rows", selector: "#sb_dashboard", key: "records",
+        fields: { externalId: { attribute: "href" }, name: {} },
+      },
+    ],
+  },
+  genie_next_owned_task: {
+    steps: [
+      { action: "click", selector: "#tb_tasks" },
+      { action: "wait_for_url", value: "**/tasks" },
+      {
+        action: "read_rows", selector: "#tb_tasks", key: "records",
+        fields: { externalId: { attribute: "href" }, name: {} },
+      },
+    ],
+  },
   genie_contact_sync: {
     steps: [
       { action: "click", selector: "#sb_contacts" },
@@ -324,6 +344,22 @@ export const GENIE_PROVIDER_PACK: Pick<
     listPipelines: "records",
   },
   operationDefinitions: {
+    "home.open": {
+      definition: { mode: "read", executeScript: "genie_home_open", resultKey: "records" },
+      prerequisites: {
+        providerPack: "genie",
+        providerPackVersion: GENIE_PROVIDER_PACK_VERSION,
+        nativeRead: "genie_location_scoped_home_navigation",
+      },
+    },
+    "prospect.next": {
+      definition: { mode: "read", executeScript: "genie_next_owned_task", resultKey: "records" },
+      prerequisites: {
+        providerPack: "genie",
+        providerPackVersion: GENIE_PROVIDER_PACK_VERSION,
+        nativeRead: "genie_owner_scoped_next_task_read_and_navigation",
+      },
+    },
     "contact.sync": {
       definition: {
         mode: "read",

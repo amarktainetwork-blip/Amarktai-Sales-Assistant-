@@ -73,6 +73,7 @@ async function main() {
   // already LIVE_PROVEN. The known core provider pack stays unchanged.
   const installed = await installKnownGeniePack(job,system);
   const supported = [
+    "home.open","prospect.next",
     "contact.open","history.read","interaction.latest",
     "communication.context","manual_action.sync","task.list","task.read",
     "opportunity.read","stage.read","note.read",
@@ -80,22 +81,24 @@ async function main() {
   const results: Array<{key:string;status:"LIVE_PROVEN"|"NOT_PROVEN";reason?:string}> = [];
   for (const operationKey of supported) {
     try {
-      const required = operationKey.includes("opportunity") || operationKey === "stage.read"
-        ? "opportunities.read"
-        : operationKey.startsWith("task.") || operationKey === "manual_action.sync"
-          ? "tasks.read"
-          : operationKey === "note.read" ? "notes.read"
-          : operationKey === "contact.open" ? "contacts.read" : "activities.read";
+      const required = operationKey === "home.open" ? "home.read"
+        : operationKey === "prospect.next" ? "next_prospect.read"
+        : operationKey.includes("opportunity") || operationKey === "stage.read"
+          ? "opportunities.read"
+          : operationKey.startsWith("task.") || operationKey === "manual_action.sync"
+            ? "tasks.read"
+            : operationKey === "note.read" ? "notes.read"
+            : operationKey === "contact.open" ? "contacts.read" : "activities.read";
+      const initialSafeReadProof = ["home.open","prospect.next","note.read"].includes(operationKey);
       if (!system.allowedReadCapabilities.includes(required as never) ||
-          (operationKey !== "note.read" &&
-           !system.verifiedCapabilities.includes(required as never)))
+          (!initialSafeReadProof && !system.verifiedCapabilities.includes(required as never)))
         throw Error("READ_CAPABILITY_NOT_GRANTED");
       if (operationKey === "note.read" && !noteContactId)
         throw Error("GENUINE_OWNER_NOTE_SOURCE_RECORD_REQUIRED");
       await testLearnedBrowserOperation({
         connection: toAdapterConnection(system),
         secret, provider: "genie", operationKey,
-        payload: operationKey === "task.list" || operationKey === "manual_action.sync" ? {} : {
+        payload: ["home.open","prospect.next","task.list","manual_action.sync"].includes(operationKey) ? {} : {
           externalId: operationKey === "opportunity.read" || operationKey === "stage.read"
             ? opportunityId
             : operationKey === "task.read" ? taskId
@@ -122,4 +125,5 @@ async function main() {
   }));
   if(results.some(row=>row.status!=="LIVE_PROVEN"))process.exitCode=2;
 }
-main().catch(error=>{console.error("OPTIONAL_READ_COMMISSIONING_FAILED",String(error instanceof Error?error.message:error).slice(0,160));process.exitCode=1});
+main().then(()=>process.exit(typeof process.exitCode === "number" ? process.exitCode : 0))
+  .catch(error=>{console.error("OPTIONAL_READ_COMMISSIONING_FAILED",String(error instanceof Error?error.message:error).slice(0,160));process.exit(1);});
